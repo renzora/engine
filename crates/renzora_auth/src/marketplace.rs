@@ -133,6 +133,15 @@ pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadR
     serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
 }
 
+/// Public URL of an asset's file via the marketplace preview proxy.
+///
+/// The proxy serves the real file for **free** assets (and the watermarked
+/// preview for paid ones) without authentication, so it's the path used to
+/// preview a theme live or to grab a free asset when the user isn't signed in.
+pub fn preview_file_url(asset_id: &str) -> String {
+    format!("{API_BASE}/api/marketplace/{asset_id}/preview-file")
+}
+
 /// Download the actual file bytes from a URL.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn download_file(url: &str) -> Result<Vec<u8>, String> {

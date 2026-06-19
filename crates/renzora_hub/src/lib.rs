@@ -1,10 +1,12 @@
-//! Renzora Hub — marketplace browser, library, and asset installer.
+//! Renzora Marketplace — marketplace browser, library, and asset installer.
 //!
 //! Provides two bevy_ui-native panels:
-//! - **Marketplace** (`hub_store`): browse, search, purchase marketplace assets
+//! - **Marketplace** (`hub_store`): browse/search assets, preview themes live,
+//!   and download/install via a destination-folder picker
 //! - **My Library** (`hub_library`): view owned assets and install to project
 
 pub mod install;
+mod install_overlay;
 mod native_library;
 mod native_store;
 mod thumbs;

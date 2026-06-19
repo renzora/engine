@@ -7,19 +7,31 @@ Need a chair, a sound effect, or a ready-made script for your game? The Renzora 
 You can shop the same catalog in two places:
 
 - **On the website** — visit [renzora.com/marketplace](/marketplace) to browse, preview, buy, and read reviews.
-- **Inside the editor** — open the **Hub Store** tab to browse and install without ever leaving your project.
+- **Inside the editor** — open the **Marketplace** tab to browse, preview, and install without ever leaving your project.
 
-![The in-editor Hub Store: a grid of asset cards — here mostly free wooden props plus a scripts pack — with a search box at the top.](/assets/previews/marketplace.png)
+![The in-editor Marketplace: a left column with your account and categories, a search/sort toolbar, and a grid of asset cards each with a download button.](/assets/previews/marketplace.png)
 
-> To install assets you own, sign in to your renzora.com account in the editor. Signed out, you can still look around the store, but your personal library won't show up.
+> To install assets you own, sign in to your renzora.com account in the editor. The **left column** shows who you're signed in as and your **credit balance**; signed out, it shows a **Sign In** button that opens the sign-in window. You can still look around the store while signed out — free assets install without an account, but paid downloads and your personal library need you signed in.
+
+## The left column
+
+Down the left side of the Marketplace tab you'll find:
+
+- Your **account** — "Signed in as …" and your current **credit balance**, or a **Sign In** button when you're signed out.
+- **Upload Asset** — a shortcut for publishing your own work (coming soon).
+- The **category** list — click one to filter the grid; **All** clears the filter.
 
 ## Finding what you need
 
-Both views give you the basics: a **search box**, a list of **categories** down the side, and a way to **sort** results (newest, most popular, top rated, or by price).
+Both views give you the basics: a **search box**, the **categories** in the left column, and a **sort** dropdown (newest, most popular, or by price low/high).
 
-The website adds a few more options when you want to narrow things down — filter by **price** (free or paid), **minimum star rating**, **license**, or a **tag**, and switch between grid and list views. The in-editor store is a lighter, browse-only version; when you find something you want to buy, head to the website to complete the purchase.
+The website adds a few more options when you want to narrow things down — filter by **price** (free or paid), **minimum star rating**, **license**, or a **tag**, and switch between grid and list views.
 
 Categories aren't fixed — the list is set by Renzora and can grow over time, so check back as new types of assets appear.
+
+## Previewing a theme live
+
+For **theme** assets, each card has a **Preview** button. Click it and Renzora downloads the theme and applies it to the editor right away — no install, no commitment — so you can see your panels, colors, and accents in the real UI. A banner across the top of the tab shows what you're previewing with two choices: **Install Theme** to keep it (this opens the normal install prompt) or **Stop** to snap straight back to the theme you had.
 
 ## Buying an asset
 
@@ -51,12 +63,22 @@ Anything that doesn't match a known type lands in a general `assets/` folder. Yo
 
 ## Installing into your project
 
-### From the editor (easiest)
+### Straight from a card (easiest)
 
-1. Open the **My Library** panel in the Hub. It lists everything you own and shows which folder each asset installs into.
+Every asset card has a **Get** (free) or **Buy** (paid) button. Click it and Renzora opens an **install prompt** that works like installing a plugin from file — it shows you what's being installed and asks **where to put it**:
+
+1. Pick a destination from the **folder tree**, which mirrors your project's own folders. It defaults to the conventional folder for that asset type (see the table above), but you can drop the files anywhere — for example into a specific subfolder of `models/`.
+2. Read the short note (Renzora only downloads and writes files into the folder you choose — only install assets from sources you trust).
+3. Click **Download & Install**.
+
+The asset downloads in the background and a notice confirms where it landed. A paid asset you're not signed in for sends you to the sign-in window first.
+
+### From your Library
+
+1. Open the **My Library** panel. It lists everything you own and shows which folder each asset installs into.
 2. Click **Install** on the asset you want.
 
-The editor downloads the asset and writes it into the correct folder for you. When it's done, you'll see a short "Installed" message. If a new asset doesn't show up right away, reopen (or rescan) your project so the editor notices the new files.
+If a new asset doesn't show up right away, reopen (or rescan) your project so the editor notices the new files.
 
 ### Manually
 

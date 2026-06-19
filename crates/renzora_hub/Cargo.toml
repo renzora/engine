@@ -9,11 +9,16 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_auth = { path = "../renzora_auth" }
 # bevy_ui-native panel content + Send+Sync channels for the async result polling.
 renzora_ember = { path = "../renzora_ember" }
+# Live theme preview without installing — applies a downloaded theme into the
+# editor's ThemeManager so the palette updates, then restores on "Stop preview".
+renzora_theme = { path = "../renzora_theme" }
 crossbeam-channel = "0.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ureq = "3"
+# Parse a downloaded theme `.toml` into a `renzora_theme::Theme` for live preview.
+toml = "0.8"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 [lints]

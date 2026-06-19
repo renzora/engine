@@ -76,6 +76,35 @@ pub fn install_asset_with_filename(
     }
 }
 
+/// Install downloaded bytes into an **explicit** destination directory (the
+/// folder the user picked in the install prompt), rather than the
+/// category-derived default. Zips extract into an asset-named subfolder; single
+/// files are written directly into `dest`.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn install_asset_into(
+    dest: &Path,
+    asset_name: &str,
+    file_url: &str,
+    download_filename: &str,
+    data: &[u8],
+) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {e}"))?;
+
+    let is_zip = file_url.ends_with(".zip") || (data.len() >= 4 && &data[..4] == b"PK\x03\x04");
+    if is_zip {
+        extract_zip(data, dest, asset_name)
+    } else {
+        let filename = if !download_filename.is_empty() {
+            download_filename
+        } else {
+            file_url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(asset_name)
+        };
+        let file_path = dest.join(filename);
+        std::fs::write(&file_path, data).map_err(|e| format!("Failed to write file: {e}"))?;
+        Ok(file_path)
+    }
+}
+
 /// Extract a zip archive into a destination directory, inside a subfolder
 /// named after the asset.
 #[cfg(not(target_arch = "wasm32"))]

@@ -384,9 +384,9 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Blueprint
     ("blueprint_graph", "Blueprint", "blueprint", "Blueprint"),
     ("blueprint_properties", "Blueprint Properties", "sliders-horizontal", "Blueprint"),
-    // Hub
-    ("hub_store", "Hub Store", "storefront", "Hub"),
-    ("hub_library", "Library", "books", "Hub"),
+    // Marketplace
+    ("hub_store", "Marketplace", "storefront", "Marketplace"),
+    ("hub_library", "Library", "books", "Marketplace"),
     // Network
     ("network_monitor", "Network", "broadcast", "Network"),
     ("network_entities", "Net Entities", "users-three", "Network"),

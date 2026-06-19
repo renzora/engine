@@ -9589,6 +9589,8 @@ dependencies = [
  "renzora",
  "renzora_auth",
  "renzora_ember",
+ "renzora_theme",
+ "toml 0.8.23",
  "ureq",
  "zip",
 ]
