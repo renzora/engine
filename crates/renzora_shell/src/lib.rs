@@ -11,7 +11,9 @@ use bevy::ui::RelativeCursorPosition;
 use renzora::NativePanelIds;
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
 use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
-use renzora_ember::widgets::{menu_item, scroll_area, screen_menu, text_input, EmberTextInput, Popup};
+use renzora_ember::widgets::{
+    menu_item, scroll_area_keyed, screen_menu, text_input, EmberTextInput, Popup,
+};
 use renzora_ember::theme::{
     accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
     window_bg,
@@ -60,6 +62,7 @@ impl Plugin for ShellPlugin {
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
         app.init_resource::<OpenTopMenu>();
+        app.init_resource::<ThemeMenuOpen>();
         app.add_systems(
             Update,
             (
@@ -74,7 +77,7 @@ impl Plugin for ShellPlugin {
                 settings_btn_click,
                 plugin_install::install_buttons,
                 palette_btn_click,
-                theme_bridge,
+                (theme_bridge, sync_theme_menu_open),
                 apply_chrome_style,
                 doc_add_click,
                 doc_tab_click,
@@ -139,6 +142,22 @@ fn theme_bridge(
             commands.entity(e).try_despawn();
         }
         dirty.0 = true;
+    }
+}
+
+/// Mirror the theme dropup's live open state into [`ThemeMenuOpen`] so it
+/// survives the chrome rebuild a theme switch triggers. The generic `popup_toggle`
+/// / `popup_dismiss` systems own the `Popup.open` flag (trigger toggles it,
+/// outside-click clears it); this just copies it out to the persistent resource,
+/// and is a no-op while the dropup is absent (e.g. mid-rebuild).
+fn sync_theme_menu_open(
+    dropup: Query<&Popup, With<ThemeDropup>>,
+    mut open: ResMut<ThemeMenuOpen>,
+) {
+    if let Ok(p) = dropup.single() {
+        if open.0 != p.open {
+            open.0 = p.open;
+        }
     }
 }
 
@@ -260,6 +279,21 @@ struct RibbonRenameInput(usize);
 #[derive(Component)]
 struct ShellRoot;
 
+/// Marks the status-bar theme picker's trigger so its open/closed state can be
+/// mirrored into [`ThemeMenuOpen`] each frame.
+#[derive(Component)]
+struct ThemeDropup;
+
+/// Whether the status-bar theme dropup is open, persisted *across* chrome
+/// rebuilds. Picking a theme switches `active_theme_name`, which makes
+/// `theme_bridge` despawn and respawn the whole chrome — without this the rebuilt
+/// dropup would always come back closed, so the menu would vanish the instant you
+/// clicked a theme inside it. Holding the open state here lets the rebuilt dropup
+/// re-open, so the menu only closes on a real outside click (or toggling the
+/// trigger).
+#[derive(Resource, Default)]
+struct ThemeMenuOpen(bool);
+
 // ── Systems ─────────────────────────────────────────────────────────────────
 
 /// Spawn the chrome + dock area (and trigger the ember dock to build into it).
@@ -267,6 +301,7 @@ fn manage_shell_root(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
+    theme_menu_open: Res<ThemeMenuOpen>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
@@ -286,7 +321,7 @@ fn manage_shell_root(
         } else {
             (Vec::new(), String::new())
         };
-        spawn_shell(&mut commands, &fonts, &themes, &active);
+        spawn_shell(&mut commands, &fonts, &themes, &active, theme_menu_open.0);
         // Build the dock into the freshly-spawned `DockArea` (ember rebuilds it
         // from the persisted `Dock.tree`).
         dirty.0 = true;
@@ -1111,7 +1146,13 @@ fn workspace_add_click(
 
 // ── Chrome ──────────────────────────────────────────────────────────────────
 
-fn spawn_shell(commands: &mut Commands, fonts: &EmberFonts, themes: &[String], active: &str) {
+fn spawn_shell(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    themes: &[String],
+    active: &str,
+    theme_menu_open: bool,
+) {
     let font = &fonts.ui;
     let root = commands
         .spawn((
@@ -1152,7 +1193,7 @@ fn spawn_shell(commands: &mut Commands, fonts: &EmberFonts, themes: &[String], a
         ))
         .id();
 
-    let statusbar = build_status_bar(commands, fonts, themes, active);
+    let statusbar = build_status_bar(commands, fonts, themes, active, theme_menu_open);
 
     commands
         .entity(root)
@@ -1212,6 +1253,7 @@ fn build_status_bar(
     fonts: &EmberFonts,
     themes: &[String],
     active: &str,
+    theme_menu_open: bool,
 ) -> Entity {
     let bar = commands
         .spawn((
@@ -1250,7 +1292,7 @@ fn build_status_bar(
     renzora_ember::reactive::keyed_list(commands, left_content, status_snapshot_left);
 
     // The theme dropup — a fixed element on the right, just before the metrics.
-    let dropup = theme_dropup(commands, fonts, themes, active);
+    let dropup = theme_dropup(commands, fonts, themes, active, theme_menu_open);
 
     let right_content = commands
         .spawn((
@@ -1278,6 +1320,7 @@ fn theme_dropup(
     fonts: &EmberFonts,
     themes: &[String],
     active: &str,
+    open: bool,
 ) -> Entity {
     let panel = commands
         .spawn((
@@ -1293,7 +1336,9 @@ fn theme_dropup(
                 padding: UiRect::all(Val::Px(4.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
+                // Start open when a prior chrome instance had it open (a theme
+                // switch rebuilds the chrome — see `ThemeMenuOpen`).
+                display: if open { Display::Flex } else { Display::None },
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
@@ -1318,7 +1363,9 @@ fn theme_dropup(
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
         .id();
     commands.entity(content).add_children(&rows);
-    let scroll = scroll_area(commands, content, 260.0);
+    // Keyed so the list keeps its scroll position when picking a theme rebuilds
+    // the whole chrome (see `ThemeMenuOpen`).
+    let scroll = scroll_area_keyed(commands, content, 260.0, "status-theme-menu");
     commands.entity(panel).add_child(scroll);
 
     let icon = icon_text(commands, &fonts.phosphor, "palette", text_muted(), 12.0);
@@ -1344,7 +1391,8 @@ fn theme_dropup(
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
-            Popup::new(panel),
+            Popup { panel, open },
+            ThemeDropup,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("theme-dropup"),
         ))

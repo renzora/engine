@@ -14,6 +14,8 @@ use bevy::window::SystemCursorIcon;
 
 use crate::theme::{border, rgb, text_muted, text_primary};
 
+use std::collections::HashMap;
+
 const BAR_W: f32 = 9.0;
 const MIN_THUMB: f32 = 28.0;
 const WHEEL_STEP: f32 = 52.0;
@@ -64,12 +66,33 @@ pub struct ScrollThumb {
     track: Entity,
 }
 
+/// Last scroll offset (logical px from the top) of each *keyed* scroll area,
+/// surviving the entity's despawn. A scroll view spawned with a [`ScrollKey`]
+/// (see [`scroll_area_keyed`] / [`scroll_view_keyed`]) saves its offset here and
+/// restores it when an identically-keyed view is spawned again — so panels and
+/// dropdowns that are torn down and rebuilt (e.g. the whole editor chrome
+/// re-spawning on a theme switch) keep their scroll position instead of jumping
+/// back to the top.
+#[derive(Resource, Default)]
+pub struct ScrollMemory(pub HashMap<String, f32>);
+
+/// Tags a scroll viewport whose offset is remembered in [`ScrollMemory`] under
+/// `key`. `restored` guards the one-shot restore: the saved offset is re-applied
+/// once, only after the content's height is measured (so the clamp in
+/// [`scroll_update`] can't collapse it to 0 on the first, unmeasured frame).
+#[derive(Component)]
+pub struct ScrollKey {
+    key: String,
+    restored: bool,
+}
+
 fn build_scroll(
     commands: &mut Commands,
     content: Entity,
     max_height: Option<f32>,
     stick: bool,
     always_bar: bool,
+    key: Option<String>,
 ) -> Entity {
     let viewport = commands
         .spawn((
@@ -92,6 +115,9 @@ fn build_scroll(
             Name::new("scroll-viewport"),
         ))
         .id();
+    if let Some(key) = key {
+        commands.entity(viewport).insert(ScrollKey { key, restored: false });
+    }
     commands.entity(viewport).add_child(content);
 
     let track = commands
@@ -170,24 +196,48 @@ fn build_scroll(
 /// Wraps `content` in a flex-filling scrollable viewport (grows to fill its
 /// parent; scrolls when content overflows).
 pub fn scroll_view(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, false, false)
+    build_scroll(commands, content, None, false, false, None)
 }
 
 /// Like [`scroll_view`] but the scrollbar stays visible whenever the content
 /// overflows (not only while hovered).
 pub fn scroll_view_bar(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, false, true)
+    build_scroll(commands, content, None, false, true, None)
 }
 
 /// Like [`scroll_view`] but auto-follows the bottom as content grows (for logs /
 /// chat); releases when the user scrolls up, re-follows at the bottom.
 pub fn scroll_view_pinned(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, true, false)
+    build_scroll(commands, content, None, true, false, None)
 }
 
 /// Wraps `content` in a scrollable viewport capped at `max_height` px.
 pub fn scroll_area(commands: &mut Commands, content: Entity, max_height: f32) -> Entity {
-    build_scroll(commands, content, Some(max_height), false, false)
+    build_scroll(commands, content, Some(max_height), false, false, None)
+}
+
+/// Like [`scroll_view`] but its offset persists across despawn/rebuild, keyed by
+/// `key` in [`ScrollMemory`]. Use a stable, unique key per logical view so two
+/// rebuilt instances of the *same* list line up (e.g. `"hierarchy"` or
+/// `"status-theme-menu"`); distinct lists must use distinct keys or they'd share
+/// (and fight over) one saved offset.
+pub fn scroll_view_keyed(
+    commands: &mut Commands,
+    content: Entity,
+    key: impl Into<String>,
+) -> Entity {
+    build_scroll(commands, content, None, false, false, Some(key.into()))
+}
+
+/// Like [`scroll_area`] (capped at `max_height`) but its offset persists across
+/// despawn/rebuild under `key` — see [`scroll_view_keyed`] for keying rules.
+pub fn scroll_area_keyed(
+    commands: &mut Commands,
+    content: Entity,
+    max_height: f32,
+    key: impl Into<String>,
+) -> Entity {
+    build_scroll(commands, content, Some(max_height), false, false, Some(key.into()))
 }
 
 /// Content height (logical px) of a viewport = its single content child's size.
@@ -387,6 +437,65 @@ pub(crate) fn scroll_thumb_drag(
         };
         if bg.0 != target {
             bg.0 = target;
+        }
+    }
+}
+
+/// Restore a keyed view's saved offset once, after its content has been measured.
+/// Runs *before* [`scroll_update`]: while the content height is still 0 (the
+/// freshly-spawned, not-yet-laid-out frames) it just holds `target` at the saved
+/// value so `scroll_update`'s clamp-to-range can't discard it; the moment the
+/// content has real height it snaps both the target and the live position to the
+/// (clamped) saved offset and marks itself done.
+pub(crate) fn scroll_restore(
+    memory: Res<ScrollMemory>,
+    mut viewports: Query<(
+        &mut EmberScroll,
+        &mut ScrollPosition,
+        &ComputedNode,
+        &Children,
+        &mut ScrollKey,
+    )>,
+    computed: Query<&ComputedNode>,
+) {
+    for (mut s, mut sp, vcn, kids, mut key) in &mut viewports {
+        if key.restored {
+            continue;
+        }
+        let Some(&saved) = memory.0.get(&key.key) else {
+            // Nothing remembered for this key — nothing to restore.
+            key.restored = true;
+            continue;
+        };
+        let inv = vcn.inverse_scale_factor();
+        let ch = content_h(kids, &computed, inv);
+        if ch <= 0.0 {
+            // Not laid out yet: keep the intent alive against the clamp, retry.
+            s.target = saved;
+            continue;
+        }
+        let max = (ch - vcn.size().y * inv).max(0.0);
+        let pos = saved.clamp(0.0, max);
+        s.target = pos;
+        sp.y = pos; // snap (no ease) so there's no visible scroll-from-top
+        key.restored = true;
+    }
+}
+
+/// Persist each keyed view's intended offset into [`ScrollMemory`] so a later
+/// rebuild can restore it. Saves the smooth-scroll `target` (the user's intent),
+/// not the mid-ease position, and only once the one-shot restore has run so the
+/// pre-layout 0 never clobbers a real saved value.
+pub(crate) fn scroll_persist(
+    mut memory: ResMut<ScrollMemory>,
+    viewports: Query<(&EmberScroll, &ScrollKey)>,
+) {
+    for (s, key) in &viewports {
+        if !key.restored {
+            continue;
+        }
+        if memory.0.get(&key.key).copied() != Some(s.target) {
+            memory.0.insert(key.key.clone(), s.target);
         }
     }
 }

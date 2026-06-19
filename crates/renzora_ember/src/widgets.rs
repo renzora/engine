@@ -210,6 +210,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<popup::PointerOverOverlay>();
         app.init_resource::<drag_value::WheelOverDragValue>();
         app.init_resource::<drag_value::WheelGesture>();
+        app.init_resource::<scroll_area::ScrollMemory>();
         app.add_systems(
             Update,
             (
@@ -274,7 +275,9 @@ impl Plugin for WidgetsPlugin {
                 (
                     spinner::spinner_anim,
                     scroll_area::scroll_wheel,
+                    scroll_area::scroll_restore.before(scroll_area::scroll_update),
                     scroll_area::scroll_update,
+                    scroll_area::scroll_persist.after(scroll_area::scroll_update),
                     scroll_area::scroll_thumb_drag,
                     multi_select::multi_select_toggle,
                     menu::menu_hover,

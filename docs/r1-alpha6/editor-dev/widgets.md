@@ -116,6 +116,19 @@ let ng = node_graph(commands, fonts);
 
 Builders run once; dynamic values are wired through `renzora_ember::reactive`. A slider stores its value in a `Bound<f32>` so `bind_2way` can read and write it; text is driven with `bind_text`, visibility with `bind_display`, and variable-length lists with `keyed_list`. See *Building Editor Panels → Reactive content* for the full helper table — the same helpers drive widget contents.
 
+### Scroll areas & remembered position
+
+`scroll_view` / `scroll_view_bar` / `scroll_view_pinned` / `scroll_area` wrap content in a smooth-scrolling, auto-hiding-scrollbar viewport. Their position lives on the entity, so a view that gets despawned and rebuilt (a panel that re-spawns, the whole chrome rebuilding on a theme switch) normally snaps back to the top.
+
+To keep the position across rebuilds, use the **keyed** variants and give the view a stable string key:
+
+```rust
+let s = scroll_view_keyed(commands, content, "hierarchy");          // flex-fill
+let m = scroll_area_keyed(commands, content, 260.0, "status-theme-menu"); // capped
+```
+
+The offset is saved in the `ScrollMemory` resource under that key and restored — once the content is laid out — when an identically-keyed view spawns again. Use one **unique** key per logical list; two unrelated lists sharing a key would fight over the same saved offset.
+
 ## Theming with `Styled` and `Role`
 
 Instead of baking colors into a widget, attach a `Styled` component naming a `Role`. The `apply_theme` system (in `style::ThemePlugin`) repaints every `Styled` entity from the active `Theme` whenever the theme or the widget's state changes — no rebuild.
