@@ -198,7 +198,7 @@ impl RenderModifier for ErosionModifier {
         }
         code += "      default: { erosion_n = 1.0; }\n";
         code += "    }\n";
-        code += "    {\n        let erode_t = 1.0 - color.a;\n        let erode_factor = smoothstep(erode_t, erode_t + 0.15, erosion_n);\n        color = color * erode_factor;\n    }\n";
+        code += "    {\n        let erode_t = 1.0 - color.a;\n        let erode_factor = smoothstep(erode_t, erode_t + 0.45, erosion_n);\n        color = color * erode_factor;\n    }\n";
         context.fragment_code += &code;
         Ok(())
     }
