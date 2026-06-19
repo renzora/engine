@@ -324,14 +324,18 @@ fn wheel_step(step: f32, range: Option<&DragRange>) -> f32 {
     }
 }
 
-/// Hover over a field → highlight its border (accent) and let the wheel nudge the
-/// value. The wheel only scrubs (and is swallowed from the panel via
-/// [`WheelOverDragValue`]) when a field *owns the gesture* — i.e. the scroll began
-/// over a field. A panel scroll that merely drifts across a field keeps scrolling
-/// the panel, so the cursor never snags mid-scroll.
+/// Hover over a field → highlight its border (accent) and let **Shift+wheel**
+/// nudge the value. A plain wheel is left for the panel scrollbar: scrolling past
+/// a field would otherwise snag on it and change the value, which reads as the
+/// field "fighting" the scroll. Requiring Shift makes the panel always win and
+/// the scrub an explicit, opt-in gesture. The scrub is swallowed from the panel
+/// (via [`WheelOverDragValue`]) only while a field actually owns the gesture —
+/// i.e. a Shift+scroll that began over a field; mid-gesture the owner sticks so a
+/// drift across another field doesn't hand off.
 pub(crate) fn drag_value_scroll(
     mut wheel: MessageReader<MouseWheel>,
     time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut capture: ResMut<WheelOverDragValue>,
     mut gesture: ResMut<WheelGesture>,
     mut values: Query<(
@@ -342,6 +346,7 @@ pub(crate) fn drag_value_scroll(
         Option<&mut Styled>,
     )>,
 ) {
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let mut dy = 0.0;
     for ev in wheel.read() {
         dy += ev.y;
@@ -371,15 +376,16 @@ pub(crate) fn drag_value_scroll(
     }
 
     // Decide whether a field owns this wheel gesture (sticky for the gesture's
-    // duration; re-decided only after an idle gap).
+    // duration; re-decided only after an idle gap). A field can only own the
+    // gesture while Shift is held — without it the wheel belongs to the panel.
     let mut field_scrub = false;
     if dy != 0.0 {
         let now = time.elapsed_secs();
         if now - gesture.last_t > GESTURE_GAP {
-            gesture.field_owned = over_any; // new gesture: owner = where it began
+            gesture.field_owned = shift && over_any; // new gesture: owner = where it began
         }
         gesture.last_t = now;
-        field_scrub = gesture.field_owned && over_any;
+        field_scrub = shift && gesture.field_owned && over_any;
     }
 
     // Pass 2: only if a field owns the gesture, scrub the hovered field(s).

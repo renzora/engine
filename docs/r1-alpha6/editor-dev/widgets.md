@@ -129,6 +129,8 @@ let m = scroll_area_keyed(commands, content, 260.0, "status-theme-menu"); // cap
 
 The offset is saved in the `ScrollMemory` resource under that key and restored — once the content is laid out — when an identically-keyed view spawns again. Use one **unique** key per logical list; two unrelated lists sharing a key would fight over the same saved offset.
 
+**Wheel over a numeric field.** A `drag_value` (and the markup `drag_value=` kernel) only scrubs its value on **Shift+wheel**. A plain wheel is always handed to the enclosing scroll area, so dragging the panel scrollbar past a field never snags on it and silently changes the number — the panel scroll always wins, and value-scrubbing is an explicit opt-in gesture.
+
 ## Theming with `Styled` and `Role`
 
 Instead of baking colors into a widget, attach a `Styled` component naming a `Role`. The `apply_theme` system (in `style::ThemePlugin`) repaints every `Styled` entity from the active `Theme` whenever the theme or the widget's state changes — no rebuild.
