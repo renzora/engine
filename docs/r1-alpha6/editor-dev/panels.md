@@ -180,6 +180,38 @@ keyed_list(commands, list, |world: &World| {
 
 > To **mutate** the world from a panel (spawn, despawn, change a selection), do it from your plugin's own systems or from an interaction callback that receives `&mut World` — not from the build closure, which only constructs UI. Bindings read the world; systems write it.
 
+### Virtualized lists — `virtual_scroll`
+
+A `keyed_list` builds one UI entity per item the snapshot emits. For a long list (hundreds–thousands of rows) that tanks the frame rate — every off-screen row still costs layout, change-detection and render. Wrap the same snapshot in `virtual_scroll` instead and only the rows in (or near) the viewport are built; two empty spacer nodes stand in for the rest so the scrollbar and scroll height stay correct.
+
+```rust
+use renzora_ember::virtual_scroll::virtual_scroll;
+
+// `list` is the content node you'd otherwise pass to keyed_list, wrapped in a
+// scroll_view. `snapshot` is unchanged — it still returns the FULL item list;
+// virtual_scroll windows it. `6` is the overscan (extra rows above/below).
+virtual_scroll(commands, list, 6, my_snapshot);
+let scroll = renzora_ember::widgets::scroll_view(commands, list);
+```
+
+It's **self-measuring**: the row height and column count are read from the laid-out children each frame, so it adapts to variable item sizes (e.g. a zoom slider), grid wrapping and DPI with no per-panel constants. The hierarchy and the asset browser both build on it — prefer it over hand-rolling windowing.
+
+### Keeping a hidden panel cheap — `panel_active`
+
+Reactive bindings and `keyed_list`/`virtual_scroll` snapshots are **automatically skipped while a panel is a hidden background tab** — no work needed. Plain `Update` *systems*, though, run regardless of visibility. If your panel has per-frame view systems (directory scans, thumbnail loading, layout over many entities), gate them so a backgrounded tab stops burning frame time:
+
+```rust
+use renzora_ember::dock::panel_active;
+
+app.add_systems(
+    Update,
+    (refresh_thumbnails, relayout_tiles)
+        .run_if(panel_active("my_panel")),
+);
+```
+
+Gate only **view** systems. Leave always-on work ungated — e.g. a console that must keep capturing logs while hidden, or a flag other panels read each frame.
+
 ## A status-bar item
 
 Status items don't need a panel. Register one `ShellStatusItem` whose `render` returns the current segments:

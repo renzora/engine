@@ -32,6 +32,7 @@ pub mod reactive;
 pub mod settings_sections;
 pub mod style;
 pub mod theme;
+pub mod virtual_scroll;
 pub mod widgets;
 
 /// Registers all of ember's runtime systems (theme + dock + widgets + fonts +
@@ -45,6 +46,7 @@ impl Plugin for EmberPlugin {
             dock::DockPlugin,
             widgets::WidgetsPlugin,
             reactive::ReactivePlugin,
+            virtual_scroll::VirtualScrollPlugin,
         ));
     }
 }

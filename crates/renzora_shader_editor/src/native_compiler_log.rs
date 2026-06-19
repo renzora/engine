@@ -8,7 +8,7 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_display, KeyedSnapshot};
 use renzora_ember::theme::*;
 
 use crate::ShaderEditorState;
@@ -51,7 +51,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Error list.
     let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }).id();
-    keyed_list(commands, list, error_snapshot);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, list, 6, error_snapshot);
 
     commands.entity(root).add_children(&[success, no_output, list]);
     root

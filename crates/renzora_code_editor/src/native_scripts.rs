@@ -11,7 +11,7 @@ use bevy::prelude::*;
 use renzora_editor_framework::{EditorCommands, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, bind_display, KeyedSnapshot};
 use renzora_ember::theme::{accent, close_red, placeholder, rgb, section_bg, tab_hover, text_muted, text_primary};
 use renzora_scripting::ScriptComponent;
 
@@ -95,7 +95,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    keyed_list(commands, list, scripts_snapshot);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, list, 6, scripts_snapshot);
 
     commands.entity(root).add_children(&[toolbar, list]);
     root

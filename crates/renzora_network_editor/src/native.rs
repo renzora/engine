@@ -257,7 +257,7 @@ fn build_entities(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, count, |w| format!("{} networked entities", networked(w).len()));
     bind_display(commands, count, |w| !networked(w).is_empty());
     let list = column(commands, 1.0);
-    keyed_list(commands, list, entities_snapshot);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, list, 6, entities_snapshot);
     commands.entity(root).add_children(&[count, list]);
     root
 }

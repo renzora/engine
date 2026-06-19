@@ -60,7 +60,6 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<HierExpanded>();
     app.init_resource::<HierRevealPending>();
     app.init_resource::<tree::HierFlatCache>();
-    app.init_resource::<tree::HierScrollMetrics>();
     app.init_resource::<drag::HierDrag>();
     app.init_resource::<filter::HierFilter>();
     app.init_resource::<filter::HierSearch>();
@@ -114,7 +113,11 @@ pub fn register_native_hierarchy(app: &mut App) {
                 HierScrollContent,
             ))
             .id();
-        renzora_ember::reactive::keyed_list(commands, list, tree::hierarchy_snapshot);
+        // Virtualized via the shared ember primitive (the hierarchy's own
+        // windowing used to live here; it's now one implementation for every
+        // panel). `hierarchy_snapshot` returns the full row list; the helper
+        // builds only the visible window.
+        renzora_ember::virtual_scroll::virtual_scroll(commands, list, 6, tree::hierarchy_snapshot);
         let scroll = renzora_ember::widgets::scroll_view(commands, list);
         // Parent-stacking overlay: pinned ancestor headers over the top of the
         // scroll viewport (toggled by EditorSettings.hierarchy_parent_stacking).
@@ -137,7 +140,6 @@ pub fn register_native_hierarchy(app: &mut App) {
         Update,
         (
             tree::update_flatten_cache,
-            tree::update_scroll_metrics,
             systems::hierarchy_row_click,
             systems::hierarchy_reveal_selection,
             systems::hierarchy_scroll_to_selection,
@@ -155,7 +157,8 @@ pub fn register_native_hierarchy(app: &mut App) {
             rename::focus_rename_field,
             rename::rename_commit,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active(PANEL_ID)),
     );
     scene_starter::register(app);
 }

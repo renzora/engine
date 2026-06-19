@@ -20,43 +20,9 @@ use renzora_ember::reactive::KeyedSnapshot;
 use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
 
-use super::row::{build_row, RowSnapshot, ROW_H};
+use super::row::{build_row, RowSnapshot};
 use super::HierExpanded;
 
-/// Rows rendered above/below the visible window so a fast scroll (the metrics
-/// can lag the snapshot by a frame) never shows a gap before the window catches
-/// up.
-const OVERSCAN: usize = 6;
-
-/// Scroll geometry of the hierarchy's own viewport, refreshed each frame by
-/// [`update_scroll_metrics`] so the (read-only) snapshot can window the list
-/// without running a query itself.
-#[derive(Resource, Default)]
-pub(crate) struct HierScrollMetrics {
-    pub offset: f32,
-    pub viewport_h: f32,
-}
-
-/// Publish the hierarchy viewport's scroll offset + height for the snapshot's
-/// windowing. The viewport is the parent of the marked content node.
-pub(crate) fn update_scroll_metrics(
-    content: Query<Entity, With<super::HierScrollContent>>,
-    parents: Query<&ChildOf>,
-    viewports: Query<(&bevy::ui::ScrollPosition, &bevy::ui::ComputedNode)>,
-    mut metrics: ResMut<HierScrollMetrics>,
-) {
-    let Some(list) = content.iter().next() else {
-        return;
-    };
-    let Ok(vp) = parents.get(list).map(|c| c.parent()) else {
-        return;
-    };
-    let Ok((sp, cn)) = viewports.get(vp) else {
-        return;
-    };
-    metrics.offset = sp.y;
-    metrics.viewport_h = cn.size().y * cn.inverse_scale_factor();
-}
 
 /// Cached flatten of the tree, rebuilt only on change by [`update_flatten_cache`].
 #[derive(Resource, Default)]
@@ -194,65 +160,25 @@ pub(crate) fn update_flatten_cache(
     flat.rows = Arc::new(rows);
 }
 
-/// The keyed-list snapshot — **virtualised**. Only the rows inside the scroll
-/// window (plus overscan) are emitted; the off-screen rows above and below are
-/// represented by two zero-content spacer nodes that reserve their height. This
-/// keeps the live UI-node count (and per-row reactions) proportional to the
-/// viewport, not to how many rows are expanded — without it, expanding a large
-/// model spawns tens of thousands of `bevy_ui` nodes and the framerate tanks.
-///
-/// The total content height is preserved (`top_spacer + window + bottom_spacer`
-/// == `total * ROW_H`), so the scrollbar and scroll-to math are unaffected.
-/// Cheap per frame: a slice of the cached `items` + an `Arc` clone.
+/// The keyed-list snapshot: the **full** row list (one `(key, hash)` per visible
+/// tree row) plus a builder over the cached rows. Virtualization — building only
+/// the rows in the scroll window — is handled generically by
+/// [`renzora_ember::virtual_scroll`], which wraps this. Cheap per frame: a clone
+/// of the cached `items` + an `Arc` clone of the row data.
 pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
     let Some(flat) = world.get_resource::<HierFlatCache>() else {
         return empty_snapshot();
     };
-    let total = flat.rows.len();
-    if total == 0 {
+    if flat.rows.is_empty() {
         return empty_snapshot();
     }
 
-    let (offset, vh) = world
-        .get_resource::<HierScrollMetrics>()
-        .map(|m| (m.offset, m.viewport_h))
-        .unwrap_or((0.0, 0.0));
-
-    // Window of rows to actually build. If the viewport hasn't been measured yet
-    // (first frame), fall back to rendering everything so nothing is missing.
-    let (start, end) = if vh <= 0.0 {
-        (0, total)
-    } else {
-        let first = (offset / ROW_H).floor() as usize;
-        let start = first.saturating_sub(OVERSCAN);
-        let rows_in_view = (vh / ROW_H).ceil() as usize + 1;
-        let end = (start + rows_in_view + OVERSCAN * 2).min(total);
-        (start, end)
-    };
-
-    // top spacer + window rows + bottom spacer. Spacer keys are sentinels that
-    // can't collide with an entity's `to_bits`; their hash is the reserved row
-    // count, so the spacer rebuilds (resizes) when the window slides.
-    let mut items: Vec<(u64, u64)> = Vec::with_capacity(end - start + 2);
-    items.push((u64::MAX, start as u64));
-    items.extend_from_slice(&flat.items[start..end]);
-    items.push((u64::MAX - 1, (total - end) as u64));
-
+    let items = flat.items.clone();
     let rows = flat.rows.clone();
-    let count = items.len();
     KeyedSnapshot {
         items,
-        build: Box::new(move |commands, fonts, i| {
-            if i == 0 {
-                spacer_node(commands, start as f32 * ROW_H)
-            } else if i == count - 1 {
-                spacer_node(commands, (total - end) as f32 * ROW_H)
-            } else {
-                // Global row index — keeps the zebra stripe stable across scroll.
-                let g = start + (i - 1);
-                build_row(commands, fonts, &rows[g], g)
-            }
-        }),
+        // `i` is the full row index — keeps the zebra stripe stable across scroll.
+        build: Box::new(move |commands, fonts, i| build_row(commands, fonts, &rows[i], i)),
     }
 }
 
@@ -263,18 +189,3 @@ fn empty_snapshot() -> KeyedSnapshot {
     }
 }
 
-/// A zero-content filler that reserves `height` px of scroll space for the rows
-/// outside the rendered window. No `Name` (so it never dirties the tree cache).
-fn spacer_node(commands: &mut Commands, height: f32) -> Entity {
-    commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(height.max(0.0)),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            bevy::picking::Pickable::IGNORE,
-        ))
-        .id()
-}

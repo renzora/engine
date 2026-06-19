@@ -9,7 +9,7 @@ use renzora::core::ShapeRegistry;
 use renzora_editor_framework::{EditorCommands, ShapeDragState, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
@@ -92,7 +92,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    keyed_list(commands, grid, shapes_snapshot);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, grid, 6, shapes_snapshot);
 
     commands.entity(root).add_children(&[search, grid]);
     root

@@ -343,7 +343,8 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },))
         .id();
-    keyed_list(commands, log_list, log_snapshot);
+    // Virtualized: console logs can run to thousands of rows.
+    renzora_ember::virtual_scroll::virtual_scroll(commands, log_list, 6, log_snapshot);
     let scroll = scroll_view_pinned(commands, log_list);
 
     let div2 = hsep(commands);
@@ -598,9 +599,13 @@ pub fn register_native_console(app: &mut App) {
     use renzora::SplashState;
     // `scroll = false`: the console manages its own internal log scroll.
     app.register_panel_content(PANEL_ID, false, build_console);
+    // View systems only — gated on visibility. Log *capture* lives in
+    // `ConsolePlugin` and stays always-on so a hidden console keeps collecting.
     app.add_systems(
         Update,
-        (console_buttons, console_chips, console_text_sync).run_if(in_state(SplashState::Editor)),
+        (console_buttons, console_chips, console_text_sync)
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active(PANEL_ID)),
     );
 }
 

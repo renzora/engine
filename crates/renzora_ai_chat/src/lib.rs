@@ -526,7 +526,7 @@ fn build_panel(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    keyed_list(commands, messages, message_snapshot);
+    renzora_ember::virtual_scroll::virtual_scroll(commands, messages, 6, message_snapshot);
     // The thinking bubble sits after the list rows: the keyed list inserts
     // its rows at index 0, so this extra child stays last.
     let thinking = thinking_bubble(commands, fonts);
