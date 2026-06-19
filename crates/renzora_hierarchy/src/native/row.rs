@@ -12,7 +12,8 @@ use renzora_ember::theme::*;
 use renzora_ember::cursor_icon::HoverCursor;
 
 use super::components::{
-    HierCaretToggle, HierDropEdge, HierLockToggle, HierRowClick, HierVisToggle,
+    BadgeKind, HierAssetBadge, HierCaretToggle, HierDropEdge, HierLockToggle, HierRowClick,
+    HierVisToggle,
 };
 use super::drag::HierDrag;
 
@@ -42,6 +43,11 @@ pub(crate) struct RowSnapshot {
     pub is_visible: bool,
     pub is_locked: bool,
     pub is_default_camera: bool,
+    /// Authored-asset badges (script / blueprint / material) drawn just left of
+    /// the eye/lock toggles.
+    pub has_script: bool,
+    pub has_blueprint: bool,
+    pub has_material: bool,
     pub depth: usize,
     pub is_last: bool,
     pub parent_lines: Vec<bool>,
@@ -72,6 +78,9 @@ impl RowSnapshot {
         self.is_visible.hash(&mut h);
         self.is_locked.hash(&mut h);
         self.is_default_camera.hash(&mut h);
+        self.has_script.hash(&mut h);
+        self.has_blueprint.hash(&mut h);
+        self.has_material.hash(&mut h);
         self.label_color.hash(&mut h);
         self.parent_lines.hash(&mut h);
         self.is_renaming.hash(&mut h);
@@ -292,6 +301,21 @@ pub(crate) fn build_row(
     };
     kids.push(label_box);
 
+    // Asset badges — a hint that a script / blueprint / material rides on this
+    // entity, so you can read it off the row without opening the inspector.
+    // Clicking one jumps to that asset's editor (code / blueprint / material).
+    // An entity can carry both a script and a blueprint, so these aren't
+    // exclusive.
+    for (present, glyph, color, kind) in [
+        (s.has_script, "code", Color::srgb_u8(120, 170, 255), BadgeKind::Script),
+        (s.has_blueprint, "blueprint", Color::srgb_u8(100, 180, 255), BadgeKind::Blueprint),
+        (s.has_material, "palette", Color::srgb_u8(0, 200, 130), BadgeKind::Material),
+    ] {
+        if present {
+            kids.push(badge_icon(commands, fonts, glyph, color, s.entity, kind));
+        }
+    }
+
     kids.push(suffix_toggle(
         commands,
         fonts,
@@ -468,6 +492,49 @@ pub(crate) fn build_row(
     }
 
     row
+}
+
+/// A small clickable asset badge (script / blueprint / material) sitting just
+/// left of the eye/lock toggles. Clicking it opens the asset in its editor (see
+/// [`super::systems::hierarchy_badge_click`]). The glyph child is
+/// `Pickable::IGNORE` so the hit lands on the badge button, not the text.
+fn badge_icon(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    glyph: &str,
+    color: Color,
+    entity: Entity,
+    kind: BadgeKind,
+) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                margin: UiRect::right(Val::Px(3.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            HierAssetBadge { entity, kind },
+            Name::new("hier-asset-badge"),
+        ))
+        .id();
+    let g = commands
+        .spawn((
+            Text::new(glyph_str(glyph)),
+            TextFont {
+                font: fonts.phosphor.clone(),
+                font_size: 12.0,
+                ..default()
+            },
+            TextColor(color),
+            Pickable::IGNORE,
+        ))
+        .id();
+    commands.entity(btn).add_child(g);
+    btn
 }
 
 /// A right-edge toggle icon (eye / lock). Exactly one marker arg is `Some`.

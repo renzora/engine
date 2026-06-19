@@ -11,6 +11,7 @@ renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 renzora_blueprint = { path = "../renzora_blueprint" }
+renzora_scripting = { path = "../renzora_scripting" }
 renzora_physics = { path = "../renzora_physics" }
 renzora_engine = { path = "../renzora_engine" }
 renzora_ui = { path = "../renzora_ui" }

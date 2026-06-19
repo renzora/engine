@@ -23,6 +23,13 @@ pub struct EntityNode {
     pub is_visible: bool,
     pub is_locked: bool,
     pub is_default_camera: bool,
+    /// Authored-asset badges shown next to the eye/lock toggles: a script (a
+    /// `ScriptComponent` entry that isn't a blueprint), a blueprint (a
+    /// `.blueprint` script entry), and/or a material (`MaterialRef`). They let
+    /// you spot what rides on an entity without opening the inspector.
+    pub has_script: bool,
+    pub has_blueprint: bool,
+    pub has_material: bool,
     /// Registered type label from `ComponentIconRegistry`, or `None` when the
     /// entity didn't match any registered icon entry. Used by the hierarchy's
     /// "filter by type" UI — `None` is grouped under "Other".
@@ -66,6 +73,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         is_visible: bool,
         is_locked: bool,
         is_default_camera: bool,
+        has_script: bool,
+        has_blueprint: bool,
+        has_material: bool,
         type_name: Option<&'static str>,
     }
 
@@ -174,6 +184,26 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             let is_locked = world.get::<EditorLocked>(entity).is_some();
             let is_default_camera = world.get::<renzora::core::DefaultCamera>(entity).is_some();
 
+            // Asset badges. A `.blueprint` script entry is a blueprint; any other
+            // entry (a `.lua`/`.rhai` file or a registered `script_id`) is a
+            // plain script, so an entity can legitimately show both badges.
+            let is_blueprint = |e: &renzora_scripting::ScriptEntry| {
+                e.script_path
+                    .as_ref()
+                    .and_then(|p| p.extension())
+                    .is_some_and(|x| x.eq_ignore_ascii_case("blueprint"))
+            };
+            let (has_script, has_blueprint) = world
+                .get::<renzora_scripting::ScriptComponent>(entity)
+                .map(|sc| {
+                    (
+                        sc.scripts.iter().any(|e| !is_blueprint(e)),
+                        sc.scripts.iter().any(is_blueprint),
+                    )
+                })
+                .unwrap_or((false, false));
+            let has_material = world.get::<renzora::core::MaterialRef>(entity).is_some();
+
             named_entities.insert(entity);
             entries.push(Entry {
                 entity,
@@ -185,6 +215,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 is_visible,
                 is_locked,
                 is_default_camera,
+                has_script,
+                has_blueprint,
+                has_material,
                 type_name,
             });
         }
@@ -317,6 +350,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             is_visible: entry.is_visible,
             is_locked: entry.is_locked,
             is_default_camera: entry.is_default_camera,
+            has_script: entry.has_script,
+            has_blueprint: entry.has_blueprint,
+            has_material: entry.has_material,
             type_name: entry.type_name,
         }
     }

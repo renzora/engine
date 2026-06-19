@@ -147,6 +147,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             systems::hierarchy_caret_click,
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,
+            systems::hierarchy_badge_click,
             drag::hier_drag,
             drag::hier_drag_tooltip,
             context_menu::hier_context_menu,

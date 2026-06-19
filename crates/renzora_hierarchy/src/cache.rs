@@ -12,6 +12,7 @@
 //! The exclusive `update_hierarchy_cache` system runs in `Update`, rebuilds
 //! only when dirty, and the panel reads from the cached `Vec<EntityNode>`.
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use renzora_editor_framework::{
     EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
@@ -57,6 +58,10 @@ pub fn mark_hierarchy_dirty(
     mut removed_child_of: RemovedComponents<ChildOf>,
     mut removed_hide: RemovedComponents<HideInHierarchy>,
     mut removed_label: RemovedComponents<EntityLabelColor>,
+    // Asset badges (script/blueprint/material) ride on these components, so
+    // their add/change/remove must rebuild the tree too (grouped into one param
+    // to stay under Bevy's per-system param-count cap).
+    mut badges: AssetBadgeChanges,
 ) {
     if dirty.0 {
         return;
@@ -78,8 +83,29 @@ pub fn mark_hierarchy_dirty(
         || removed_child_of.read().next().is_some()
         || removed_hide.read().next().is_some()
         || removed_label.read().next().is_some()
+        || badges.dirty()
     {
         dirty.0 = true;
+    }
+}
+
+/// Change detection for the components that drive the hierarchy's asset badges,
+/// grouped so `mark_hierarchy_dirty` stays under Bevy's system param-count cap.
+#[derive(SystemParam)]
+pub struct AssetBadgeChanges<'w, 's> {
+    // `Changed` already fires on the add tick, so it covers attach + edit.
+    changed_script: Query<'w, 's, (), Changed<renzora_scripting::ScriptComponent>>,
+    changed_material: Query<'w, 's, (), Changed<renzora::core::MaterialRef>>,
+    removed_script: RemovedComponents<'w, 's, renzora_scripting::ScriptComponent>,
+    removed_material: RemovedComponents<'w, 's, renzora::core::MaterialRef>,
+}
+
+impl AssetBadgeChanges<'_, '_> {
+    fn dirty(&mut self) -> bool {
+        !self.changed_script.is_empty()
+            || !self.changed_material.is_empty()
+            || self.removed_script.read().next().is_some()
+            || self.removed_material.read().next().is_some()
     }
 }
 

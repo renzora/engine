@@ -62,6 +62,14 @@ Right-click a row for more options: **Add Child Entity**, **Rename**, **Duplicat
 
 Each row's **eye** toggles whether the object is visible, and the **lock** prevents accidental edits. Both are undoable. To keep a busy scene organized, give related objects a **label color** from the right-click menu.
 
+Just left of the eye and lock you'll also see small **asset badges** when an object carries authored assets, so you can tell what's attached without opening the Inspector — and **click a badge to jump straight to that asset's editor**:
+
+- a **code** icon — the object has a script (a `.lua`/`.rhai` file or a registered script); clicking opens it in the **code editor**;
+- a **blueprint** icon — it has a visual blueprint (a `.blueprint` attached to its Script component); clicking opens the **blueprint graph**;
+- a **palette** icon — it has a material assigned (a `MaterialRef`); clicking opens the **material graph**.
+
+An object can show several badges at once (e.g. both a script and a blueprint).
+
 ## Moving, rotating & scaling
 
 Select an object and a gizmo appears so you can move it around. Switch tools with these keys:

@@ -14,7 +14,9 @@ use renzora_ember::widgets::EmberScroll;
 use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
 
-use super::components::{HierCaretToggle, HierLockToggle, HierRowClick, HierVisToggle};
+use super::components::{
+    BadgeKind, HierAssetBadge, HierCaretToggle, HierLockToggle, HierRowClick, HierVisToggle,
+};
 use super::row::ROW_H;
 use super::{HierExpanded, HierRevealPending, HierScrollContent};
 
@@ -269,6 +271,83 @@ pub(crate) fn hierarchy_vis_toggle(
                 }),
             );
         });
+    }
+}
+
+/// Asset badge click → open the entity's script / blueprint / material in its
+/// editor. The actual path resolution + tab routing runs as a deferred command
+/// (needs `&mut World`), via [`open_entity_asset`].
+pub(crate) fn hierarchy_badge_click(
+    q: Query<(&Interaction, &HierAssetBadge), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else {
+        return;
+    };
+    for (interaction, badge) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (entity, kind) = (badge.entity, badge.kind);
+        cmds.push(move |world: &mut World| open_entity_asset(world, entity, kind));
+    }
+}
+
+/// Resolve the asset path off `entity`'s components and open it in the matching
+/// editor. `open_asset_tab` opens (or focuses) the document tab and switches to
+/// that asset kind's layout — for scripts it also hands the file to the code
+/// editor. The stored paths are project-relative, so we resolve to absolute
+/// first (`open_asset_tab` re-derives the relative form itself).
+fn open_entity_asset(world: &mut World, entity: Entity, kind: BadgeKind) {
+    use renzora_editor_framework::open_asset_tab;
+    use renzora_ui::DocTabKind;
+
+    let resolve = |rel: &str, world: &World| -> std::path::PathBuf {
+        world
+            .get_resource::<renzora::core::CurrentProject>()
+            .map(|p| p.resolve_path(rel))
+            .unwrap_or_else(|| std::path::PathBuf::from(rel))
+    };
+
+    match kind {
+        BadgeKind::Material => {
+            let rel = world
+                .get::<renzora::core::MaterialRef>(entity)
+                .map(|m| m.0.clone())
+                .filter(|s| !s.is_empty());
+            let Some(rel) = rel else {
+                return;
+            };
+            let abs = resolve(&rel, world);
+            open_asset_tab(world, &abs, DocTabKind::Material);
+        }
+        BadgeKind::Script | BadgeKind::Blueprint => {
+            let want_blueprint = matches!(kind, BadgeKind::Blueprint);
+            // First entry whose blueprint-ness matches the badge and that has a
+            // backing file (a registered `script_id` has no file to open).
+            let rel = {
+                let Some(sc) = world.get::<renzora_scripting::ScriptComponent>(entity) else {
+                    return;
+                };
+                sc.scripts.iter().find_map(|e| {
+                    let p = e.script_path.as_ref()?;
+                    let is_bp = p
+                        .extension()
+                        .is_some_and(|x| x.eq_ignore_ascii_case("blueprint"));
+                    (is_bp == want_blueprint).then(|| p.to_string_lossy().replace('\\', "/"))
+                })
+            };
+            let Some(rel) = rel else {
+                return;
+            };
+            let abs = resolve(&rel, world);
+            let doc_kind = if want_blueprint {
+                DocTabKind::Blueprint
+            } else {
+                DocTabKind::Script
+            };
+            open_asset_tab(world, &abs, doc_kind);
+        }
     }
 }
 
