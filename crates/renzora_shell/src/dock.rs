@@ -122,49 +122,7 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
         ("Debug".into(), layout_debug()),
-        ("Gallery".into(), layout_gallery()),
     ]
-}
-
-/// Gallery: the living catalog of the `renzora_ember` widget set. A 2×2 of
-/// tabbed leaves grouping the component categories (12 panels in all).
-fn layout_gallery() -> DockTree {
-    let top = DockTree::horizontal(
-        DockTree::tabs(&[
-            "gallery_typography",
-            "gallery_buttons",
-            "gallery_inputs",
-            "gallery_selection",
-        ]),
-        DockTree::tabs(&[
-            "gallery_feedback",
-            "gallery_inspector",
-            "gallery_pickers",
-            "gallery_charts",
-            "gallery_colors",
-        ]),
-        0.5,
-    );
-    let bottom = DockTree::horizontal(
-        DockTree::tabs(&[
-            "gallery_containers",
-            "gallery_nav",
-            "gallery_data",
-            "gallery_node_graph",
-            "gallery_timeline",
-            "gallery_code",
-        ]),
-        DockTree::tabs(&[
-            "gallery_forms",
-            "gallery_overlays",
-            "gallery_menus",
-            "gallery_extras",
-            "gallery_animation",
-            "gallery_audio",
-        ]),
-        0.5,
-    );
-    DockTree::vertical(top, bottom, 0.5)
 }
 
 /// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector
