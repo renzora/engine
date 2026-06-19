@@ -467,6 +467,16 @@ pub fn register_native_asset_browser(app: &mut App) {
         Update,
         select_all_shortcut.run_if(in_state(SplashState::Editor)),
     );
+    // PreUpdate (after input is collected) so it can consume Delete before the
+    // gizmo's Update entity-delete sees the press. After `UiSystems::Focus` so
+    // the grid's `cursor_over` is fresh this frame.
+    app.add_systems(
+        PreUpdate,
+        asset_delete_shortcut
+            .after(bevy::input::InputSystems)
+            .after(bevy::ui::UiSystems::Focus)
+            .run_if(in_state(SplashState::Editor)),
+    );
     // Force the resize cursor while hovering/dragging the divider. In PostUpdate
     // so it wins over renzora_hui's Update cursor system (which would otherwise
     // reset to Default once the cursor leaves the thin splitter mid-drag).
@@ -1268,6 +1278,41 @@ fn select_all_shortcut(
     state.selection = state.visible_order.iter().cloned().collect();
     state.selected = state.visible_order.first().cloned();
     state.selection_anchor = state.visible_order.first().cloned();
+}
+
+/// Delete the selected files/folders on the Delete key while the asset grid is
+/// hovered with a selection.
+///
+/// Runs in `PreUpdate` and **consumes** the key (`clear_just_pressed`) so no
+/// `Update` consumer — the gizmo's entity-delete, the timeline's keyframe
+/// delete, etc. — also fires on the same press. The shared
+/// `InputFocusState::suppress_entity_delete` bool is unusable for this: several
+/// panel guards write it every frame and clobber one another (the timeline guard
+/// forces it `false` whenever its own cursor isn't over the timeline), so a
+/// raised flag here would be overwritten before the gizmo reads it. Consuming
+/// the key in an earlier schedule sidesteps the ordering entirely.
+fn asset_delete_shortcut(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
+    state: Res<NativeAssets>,
+    mut commands: Commands,
+) {
+    let claim = grid.iter().any(|r| r.cursor_over)
+        && state.renaming.is_none()
+        && (!state.selection.is_empty() || state.selected.is_some());
+    if !claim || !keys.just_pressed(KeyCode::Delete) {
+        return;
+    }
+    keys.clear_just_pressed(KeyCode::Delete);
+    let mut paths: Vec<PathBuf> = state.selection.iter().cloned().collect();
+    if paths.is_empty() {
+        paths.extend(state.selected.clone());
+    }
+    commands.queue(move |world: &mut World| {
+        for p in &paths {
+            delete_asset(world, p);
+        }
+    });
 }
 
 /// Auto-focus the rename field the frame it appears — it's spawned by the keyed
