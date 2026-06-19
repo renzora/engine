@@ -141,9 +141,52 @@ fn editor_fmt_layer(_app: &mut App) -> Option<bevy::log::BoxedFmtLayer> {
     None
 }
 
+/// Pre-initialize Bevy's IO task pool with a large per-thread stack **before**
+/// `DefaultPlugins` (and its `TaskPoolPlugin`) runs.
+///
+/// Why: Bevy's async executor runs ready tasks *nested* inside a worker
+/// thread's `block_on` call stack. While an IO worker is part-way through one
+/// `bevy_gltf` load and that load awaits a sub-asset (image/buffer), the
+/// executor will tick *another* queued GLTF load on the same call stack — and
+/// `bevy_gltf`'s scene/node builder is itself recursive. Drop a handful of
+/// models and the worst case is bounded; drag in *dozens* at once and a single
+/// IO worker accumulates many recursive loads on one stack and overflows the
+/// default 2 MiB thread stack ("IO Task Pool (N) has overflowed its stack").
+/// The main thread never hit it because Windows gives it an 8 MiB stack.
+///
+/// `TaskPoolPlugin`/`TaskPoolOptions` (Bevy 0.18) does not plumb `stack_size`
+/// through to the pool builders, so the supported way to set it is to win the
+/// `get_or_init` race: initialize the pool ourselves here, and Bevy's later
+/// `IoTaskPool::get_or_init` in `create_default_pools` becomes a no-op. We
+/// mirror Bevy's default IO thread count (25% of cores, clamped to 1..=4) so
+/// the compute/async split is unchanged — only the stack size differs.
+fn init_io_task_pool_with_large_stack() {
+    use bevy::tasks::{available_parallelism, IoTaskPool, TaskPoolBuilder};
+
+    // 32 MiB: comfortable headroom for deeply-nested concurrent GLTF loads.
+    // On 64-bit this is reserved address space, committed lazily per page, so
+    // the real cost is only what the loads actually touch.
+    const IO_STACK_SIZE: usize = 32 * 1024 * 1024;
+
+    let cores = available_parallelism();
+    // Match Bevy's default `io` policy: 25% of cores, at least 1, at most 4.
+    let io_threads = ((cores as f32 * 0.25).round() as usize).clamp(1, 4);
+
+    IoTaskPool::get_or_init(|| {
+        TaskPoolBuilder::default()
+            .num_threads(io_threads)
+            .stack_size(IO_STACK_SIZE)
+            .thread_name("IO Task Pool".to_string())
+            .build()
+    });
+}
+
 pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::render::{settings::RenderCreation, RenderPlugin};
     use bevy::window::{Window, WindowPlugin};
+    // Must run before `DefaultPlugins` so we win the `IoTaskPool::get_or_init`
+    // race — see the function doc for why the IO workers need a larger stack.
+    init_io_task_pool_with_large_stack();
     let plugins = DefaultPlugins
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
@@ -252,6 +295,11 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     };
     use bevy::window::{ExitCondition, WindowPlugin};
     use core::time::Duration;
+
+    // Same rationale as the client path: a dedicated server loading a large
+    // scene fans out many concurrent GLTF loads onto the IO pool, so its
+    // workers need the larger stack too. Must precede `DefaultPlugins`.
+    init_io_task_pool_with_large_stack();
 
     app.add_plugins(
         DefaultPlugins
