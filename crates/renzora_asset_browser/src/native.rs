@@ -13,14 +13,16 @@ use bevy::picking::Pickable;
 use bevy::prelude::*;
 
 use renzora_editor_framework::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
+use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::virtual_scroll::virtual_scroll;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
-    text_input, EmberTextInput,
+    text_input, EmberScroll, EmberTextInput,
 };
 
 use crate::thumbnails::{
@@ -110,6 +112,26 @@ pub(crate) struct NativeAssets {
     /// A pending tile press `(path, is_dir, origin)` — promoted to a drag once
     /// the cursor moves >5px (for drag-to-viewport).
     drag_press: Option<(PathBuf, bool, Vec2)>,
+    /// A plain press on a tile that's already part of a multi-selection. We must
+    /// NOT collapse the selection to it on press — that would drop the other
+    /// selected items before a drag can carry them. Instead the collapse is
+    /// deferred to mouse-release and only applied if no drag occurred (a click).
+    pending_single_select: Option<PathBuf>,
+    /// Cached directory listing for the current folder. `read_dir` + a
+    /// `metadata()` syscall per file is far too expensive to run every frame, so
+    /// `refresh_listing` rescans only when the folder/search/sort changes, after
+    /// an edit (`listing_dirty`), or on a slow throttle to catch external
+    /// changes. The grid snapshot and `visible_order` both read this — shared in
+    /// an `Arc` so neither clones the `Entry` data per frame.
+    listing: std::sync::Arc<Vec<Entry>>,
+    /// Hash of the inputs the cached `listing` was built from (folder, search,
+    /// sort, direction). A mismatch forces an immediate rescan.
+    listing_sig: u64,
+    /// Seconds since the last rescan — drives the slow external-change throttle.
+    listing_timer: f32,
+    /// Set by edits (create / rename / delete / move) to force a rescan next
+    /// frame without waiting for the throttle.
+    listing_dirty: bool,
     /// Whether the collapsible FAVORITES / RECENT tree sections are expanded
     /// (both collapsed by default).
     fav_open: bool,
@@ -136,6 +158,13 @@ pub(crate) struct NativeAssets {
     pre_marquee: HashSet<PathBuf>,
     /// The current folder's entries in display order — for shift-range select.
     visible_order: Vec<PathBuf>,
+    /// The asset being inline-renamed (its grid tile / list row shows a text
+    /// field instead of the name label). `None` = no active rename.
+    renaming: Option<PathBuf>,
+    /// A pending name-click rename `(path, click time)`: set when the name of the
+    /// already-sole-selected item is clicked, fired by `rename_arm_fire` after a
+    /// short delay — unless a double-click opens the item first (which clears it).
+    rename_arm: Option<(PathBuf, f64)>,
 }
 
 impl Default for NativeAssets {
@@ -154,6 +183,11 @@ impl Default for NativeAssets {
             recent: Vec::new(),
             loaded: false,
             drag_press: None,
+            pending_single_select: None,
+            listing: std::sync::Arc::new(Vec::new()),
+            listing_sig: 0,
+            listing_timer: 0.0,
+            listing_dirty: false,
             fav_open: false,
             recent_open: false,
             dragging: false,
@@ -167,6 +201,8 @@ impl Default for NativeAssets {
             marquee_current: None,
             pre_marquee: HashSet::new(),
             visible_order: Vec::new(),
+            renaming: None,
+            rename_arm: None,
         }
     }
 }
@@ -260,6 +296,16 @@ struct AssetTile {
     path: PathBuf,
     is_dir: bool,
 }
+/// Marks the inline rename text field in a grid tile / list row, carrying the
+/// asset path it renames. The keyed-list rebuild spawns it when `renaming` is set.
+#[derive(Component)]
+struct AssetRenameInput(PathBuf);
+/// The clickable name label of a tile/row. Clicking it while its asset is already
+/// the sole selection arms an inline rename (OS-explorer "slow second click").
+/// Uses `FocusPolicy::Pass` so the click still reaches the tile beneath it
+/// (selection / double-click-open keep working).
+#[derive(Component)]
+struct AssetNameLabel(PathBuf);
 #[derive(Component)]
 struct AssetBack;
 #[derive(Component)]
@@ -351,7 +397,12 @@ fn unique_path(folder: &Path, filename: &str, is_folder: bool) -> PathBuf {
 
 pub fn register_native_asset_browser(app: &mut App) {
     app.init_resource::<NativeAssets>();
+    app.init_resource::<renzora::core::SelectAllClaimed>();
     app.register_panel_content("assets", false, build);
+    // View systems — gated on the panel being the active (visible) tab. While
+    // the Assets tab is a hidden background tab these stand down, so directory
+    // scans, thumbnail loading and per-tile layout stop churning over entities
+    // nobody can see (the bug where a backgrounded Assets tab held FPS at ~42).
     app.add_systems(
         Update,
         (
@@ -375,23 +426,56 @@ pub fn register_native_asset_browser(app: &mut App) {
             update_grid_layout,
             responsive_layout,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            .run_if(panel_active("assets")),
     );
     app.add_systems(
         Update,
         (track_hover, asset_context_menu)
             .chain()
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            .run_if(panel_active("assets")),
     );
-    app.add_systems(Update, splitter_drag.run_if(in_state(SplashState::Editor)));
     app.add_systems(
         Update,
-        (track_visible_order, marquee_select, marquee_overlay).run_if(in_state(SplashState::Editor)),
+        splitter_drag
+            .run_if(in_state(SplashState::Editor))
+            .run_if(panel_active("assets")),
+    );
+    app.add_systems(
+        Update,
+        (
+            (refresh_listing, track_visible_order).chain(),
+            marquee_select,
+            marquee_overlay,
+            marquee_autoscroll,
+        )
+            .run_if(in_state(SplashState::Editor))
+            .run_if(panel_active("assets")),
+    );
+    app.add_systems(
+        Update,
+        (rename_shortcut, rename_arm_fire, focus_asset_rename, asset_rename_commit)
+            .run_if(in_state(SplashState::Editor))
+            .run_if(panel_active("assets")),
+    );
+    // Kept ungated: it publishes `SelectAllClaimed` every frame from grid-hover,
+    // and the hierarchy reads that flag to decide whether to handle Ctrl+A. If we
+    // froze it while the panel was hidden, the flag could stay stuck "claimed"
+    // and swallow the hierarchy's select-all. It's a single cheap query.
+    app.add_systems(
+        Update,
+        select_all_shortcut.run_if(in_state(SplashState::Editor)),
     );
     // Force the resize cursor while hovering/dragging the divider. In PostUpdate
     // so it wins over renzora_hui's Update cursor system (which would otherwise
     // reset to Default once the cursor leaves the thin splitter mid-drag).
-    app.add_systems(PostUpdate, divider_cursor.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        PostUpdate,
+        divider_cursor
+            .run_if(in_state(SplashState::Editor))
+            .run_if(panel_active("assets")),
+    );
 }
 
 /// Drag the tree/content divider to resize the tree pane. The drag persists via
@@ -532,6 +616,17 @@ fn asset_drag(
                 }
             }
         }
+        // A plain click (no drag) on an already-multi-selected item collapses
+        // the selection to just that item — applied here, on release, so the
+        // multi-selection survived in case this had become a drag instead.
+        if let Some(p) = state.pending_single_select.take() {
+            if !state.dragging {
+                state.selection.clear();
+                state.selection.insert(p.clone());
+                state.selected = Some(p.clone());
+                state.selection_anchor = Some(p);
+            }
+        }
         state.drag_press = None;
         state.dragging = false;
         if payload.is_some() {
@@ -618,6 +713,7 @@ fn move_assets(world: &mut World, sources: &[PathBuf], target: &Path) {
     if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
         s.selection.clear();
         s.selected = None;
+        s.listing_dirty = true;
         if moved > 0 {
             s.current = Some(target.to_path_buf());
             s.expanded.insert(target.to_path_buf());
@@ -794,6 +890,10 @@ fn asset_context_menu(
             let path = path.clone();
             move |w| toggle_favorite(w, &path)
         }),
+        menu_item(&mut commands, &fonts, "pencil-simple", "Rename", {
+            let path = path.clone();
+            move |w| start_rename(w, &path)
+        }),
         menu_item(&mut commands, &fonts, "copy", "Duplicate", {
             let path = path.clone();
             move |_| duplicate_asset(&path)
@@ -935,18 +1035,9 @@ fn sort_menu_open(
 
 /// Keep `visible_order` in sync with the grid's current folder + sort so
 /// shift-range selection knows the display order.
-fn track_visible_order(mut state: ResMut<NativeAssets>, project: Option<Res<renzora::core::CurrentProject>>) {
-    let folder = state.current.clone().or_else(|| project.as_ref().map(|p| p.path.clone()));
-    let Some(folder) = folder else {
-        if !state.visible_order.is_empty() {
-            state.visible_order.clear();
-        }
-        return;
-    };
-    let order: Vec<PathBuf> = read_sorted_entries(&folder, &state.search.to_lowercase(), state.sort, state.sort_desc)
-        .into_iter()
-        .map(|e| e.path)
-        .collect();
+fn track_visible_order(mut state: ResMut<NativeAssets>) {
+    // Reads the shared cache (refreshed by `refresh_listing`) — no filesystem.
+    let order: Vec<PathBuf> = state.listing.iter().map(|e| e.path.clone()).collect();
     if state.visible_order != order {
         state.visible_order = order;
     }
@@ -973,8 +1064,9 @@ fn marquee_select(
         return;
     };
 
-    // Begin on a press over the grid that didn't land on a tile.
-    if mouse.just_pressed(MouseButton::Left) && state.marquee_start.is_none() {
+    // Begin on a press over the grid that didn't land on a tile. Suppressed while
+    // an inline rename is active so clicking into its field doesn't start a sweep.
+    if mouse.just_pressed(MouseButton::Left) && state.marquee_start.is_none() && state.renaming.is_none() {
         let over_grid = grid.iter().any(|r| r.cursor_over);
         let on_tile = tiles.iter().any(|(_, i, _, _)| *i == Interaction::Pressed);
         if over_grid && !on_tile {
@@ -1056,6 +1148,213 @@ fn marquee_overlay(
     }
 }
 
+/// While a marquee is being dragged, scroll the grid when the cursor nears the
+/// viewport's top/bottom edge — so a rubber-band can reach off-screen tiles.
+/// Speed ramps with how deep into the edge band the cursor is.
+fn marquee_autoscroll(
+    state: Res<NativeAssets>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    grid_area: Query<&Children, With<GridArea>>,
+    mut scrolls: Query<(&mut EmberScroll, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
+) {
+    // How close (px) to an edge triggers scrolling, and the max px/frame at the
+    // very edge.
+    const EDGE: f32 = 34.0;
+    const MAX_SPEED: f32 = 16.0;
+
+    if state.marquee_start.is_none() || !mouse.pressed(MouseButton::Left) {
+        return;
+    }
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+        return;
+    };
+    // The grid's `scroll_view` outer (GridArea) wraps the `EmberScroll` viewport
+    // as its first child.
+    let Ok(kids) = grid_area.single() else {
+        return;
+    };
+    let Some(viewport) = kids.iter().find(|&e| scrolls.contains(e)) else {
+        return;
+    };
+    let Ok((mut s, cn, ugt)) = scrolls.get_mut(viewport) else {
+        return;
+    };
+    let inv = cn.inverse_scale_factor();
+    let half_h = cn.size().y * inv * 0.5;
+    let center_y = ugt.translation.y * inv;
+    let (top, bottom) = (center_y - half_h, center_y + half_h);
+    if cursor.y < top + EDGE {
+        let t = ((top + EDGE - cursor.y) / EDGE).clamp(0.0, 1.0);
+        s.nudge(-t * MAX_SPEED);
+    } else if cursor.y > bottom - EDGE {
+        let t = ((cursor.y - (bottom - EDGE)) / EDGE).clamp(0.0, 1.0);
+        s.nudge(t * MAX_SPEED);
+    }
+}
+
+// ── Inline rename ────────────────────────────────────────────────────────────
+
+/// Begin an inline rename of `path`: select it (so it's the visible target) and
+/// arm `renaming`, which makes the keyed-list rebuild that tile with a focused
+/// text field (`AssetRenameInput`).
+fn start_rename(world: &mut World, path: &Path) {
+    if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        s.selection.clear();
+        s.selection.insert(path.to_path_buf());
+        s.selected = Some(path.to_path_buf());
+        s.selection_anchor = Some(path.to_path_buf());
+        s.renaming = Some(path.to_path_buf());
+    }
+}
+
+/// Fire a name-click-armed rename once it has survived the double-click window —
+/// the delay is what lets a double-click open the item instead (it clears the
+/// arm). Cancels the arm if the selection has since moved off the item.
+fn rename_arm_fire(time: Res<Time>, mut state: ResMut<NativeAssets>) {
+    // Just over the 0.4s double-click window, so an open always cancels first.
+    const DELAY: f64 = 0.45;
+    let Some((path, t)) = state.rename_arm.clone() else {
+        return;
+    };
+    let sole = state.selection.len() == 1 && state.selected.as_deref() == Some(path.as_path());
+    if state.renaming.is_some() || !sole {
+        state.rename_arm = None;
+        return;
+    }
+    if time.elapsed_secs_f64() - t >= DELAY {
+        state.rename_arm = None;
+        state.renaming = Some(path);
+    }
+}
+
+/// F2 starts an inline rename of the primary selection (folder or file), unless
+/// one is already in progress.
+fn rename_shortcut(keys: Res<ButtonInput<KeyCode>>, mut state: ResMut<NativeAssets>) {
+    if !keys.just_pressed(KeyCode::F2) || state.renaming.is_some() {
+        return;
+    }
+    if let Some(path) = state.selected.clone() {
+        state.renaming = Some(path);
+    }
+}
+
+/// Ctrl/Cmd+A selects every visible entry in the current folder. Gated on the
+/// grid being hovered so it doesn't hijack select-all from the viewport,
+/// hierarchy, or a focused text field elsewhere in the editor.
+///
+/// It also publishes [`SelectAllClaimed`] every frame from the grid-hover state,
+/// so the hierarchy's "select all entities" stands down while the cursor is over
+/// the file grid — otherwise both fire on the same `Ctrl+A`.
+fn select_all_shortcut(
+    keys: Res<ButtonInput<KeyCode>>,
+    grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
+    mut state: ResMut<NativeAssets>,
+    mut claimed: ResMut<renzora::core::SelectAllClaimed>,
+) {
+    let over_grid = grid.iter().any(|r| r.cursor_over) && state.renaming.is_none();
+    claimed.0 = over_grid;
+
+    let ctrl = keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight)
+        || keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight);
+    if !ctrl || !keys.just_pressed(KeyCode::KeyA) || !over_grid {
+        return;
+    }
+    if state.visible_order.is_empty() {
+        return;
+    }
+    state.selection = state.visible_order.iter().cloned().collect();
+    state.selected = state.visible_order.first().cloned();
+    state.selection_anchor = state.visible_order.first().cloned();
+}
+
+/// Auto-focus the rename field the frame it appears — it's spawned by the keyed
+/// list (not a click), so `text_input` wouldn't focus it otherwise.
+fn focus_asset_rename(mut q: Query<&mut EmberTextInput, Added<AssetRenameInput>>) {
+    for mut inp in &mut q {
+        inp.focused = true;
+        // Start with the whole name selected (like an OS rename) so typing or
+        // Delete replaces it outright.
+        inp.select_all = true;
+    }
+}
+
+/// Commit (Enter / click-away blur) or cancel (Escape) the active rename. Mirrors
+/// the hierarchy's `rename_commit`: wait for the keyed-list-spawned field, and
+/// only commit-on-blur once it has actually held focus.
+fn asset_rename_commit(
+    mut state: ResMut<NativeAssets>,
+    keys: Res<ButtonInput<KeyCode>>,
+    inputs: Query<(&EmberTextInput, &AssetRenameInput)>,
+    mut commands: Commands,
+    mut had_focus: Local<bool>,
+) {
+    let Some(path) = state.renaming.clone() else {
+        *had_focus = false;
+        return;
+    };
+    if keys.just_pressed(KeyCode::Escape) {
+        state.renaming = None;
+        *had_focus = false;
+        return;
+    }
+    // Wait for the rename field to spawn (don't cancel in the meantime).
+    let Some((inp, _)) = inputs.iter().find(|(_, r)| r.0 == path) else {
+        return;
+    };
+    if inp.focused {
+        *had_focus = true;
+    }
+    let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
+    let blurred = *had_focus && !inp.focused;
+    if !enter && !blurred {
+        return;
+    }
+    let new_name: String = inp.value.replace('\n', "").trim().to_string();
+    state.renaming = None;
+    *had_focus = false;
+    if new_name.is_empty() || new_name == file_name_of(&path) {
+        return;
+    }
+    commands.queue(move |world: &mut World| finish_rename(world, &path, &new_name));
+}
+
+/// Rename `old` to `new_name` in place (same parent). Skips no-op / colliding
+/// names, updates asset references (`emit_asset_path_change`) and the selection /
+/// current-folder so they track the new path.
+fn finish_rename(world: &mut World, old: &Path, new_name: &str) {
+    let Some(parent) = old.parent() else {
+        return;
+    };
+    let dest = parent.join(new_name);
+    if dest == old || dest.exists() {
+        return;
+    }
+    let is_dir = old.is_dir();
+    if std::fs::rename(old, &dest).is_err() {
+        return;
+    }
+    crate::emit_asset_path_change(world, old, &dest, is_dir);
+    if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        s.listing_dirty = true;
+        if s.selection.remove(old) {
+            s.selection.insert(dest.clone());
+        }
+        if s.selected.as_deref() == Some(old) {
+            s.selected = Some(dest.clone());
+        }
+        if s.selection_anchor.as_deref() == Some(old) {
+            s.selection_anchor = Some(dest.clone());
+        }
+        // Renaming the open folder (e.g. via F2 in tree-only mode) follows it.
+        if s.current.as_deref() == Some(old) {
+            s.current = Some(dest);
+        }
+    }
+}
+
 /// Collapse to a tree-only file browser when the panel is too narrow for a
 /// usable grid (mirrors the egui browser's `TREE_ONLY_WIDTH` behaviour).
 fn responsive_layout(
@@ -1132,6 +1431,7 @@ fn create_asset(world: &mut World, kind: NewAsset) {
     if ok {
         if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
             s.selected = Some(path);
+            s.listing_dirty = true;
         }
     }
 }
@@ -1159,6 +1459,7 @@ fn delete_asset(world: &mut World, path: &Path) {
         std::fs::remove_file(path)
     };
     if let Some(mut s) = world.get_resource_mut::<NativeAssets>() {
+        s.listing_dirty = true;
         s.selection.remove(path);
         if s.selected.as_deref() == Some(path) {
             s.selected = None;
@@ -1601,7 +1902,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             AssetGrid,
         ))
         .id();
-    keyed_list(commands, grid, grid_snapshot);
+    // Virtualized: only the tiles in (or near) the viewport are built, so a
+    // folder of hundreds of split meshes stays cheap. `grid_snapshot` returns the
+    // full list; `virtual_scroll` windows it.
+    virtual_scroll(commands, grid, 6, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
     // Mark the grid viewport so the marquee knows when a press lands in empty
     // grid space (vs. on a tile or the tree).
@@ -1766,15 +2070,61 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
-fn list_entries(w: &World) -> Vec<Entry> {
-    let Some(folder) = current_folder(w) else {
-        return Vec::new();
+/// The current folder's cached listing (see [`refresh_listing`]). Cheap — clones
+/// an `Arc`, never touches the filesystem.
+fn list_entries(w: &World) -> std::sync::Arc<Vec<Entry>> {
+    w.get_resource::<NativeAssets>()
+        .map(|s| s.listing.clone())
+        .unwrap_or_default()
+}
+
+/// How often (seconds) to rescan the folder even when nothing the editor did
+/// changed — the safety net for files added/removed by other tools.
+const LISTING_THROTTLE: f32 = 0.5;
+
+/// Rescan the current folder into [`NativeAssets::listing`], but only when the
+/// folder/search/sort changed, an edit marked it dirty, or the slow throttle
+/// elapsed. This replaces a per-frame `read_dir` + a `metadata()` syscall per
+/// file — which, on a folder of hundreds of split meshes, was the dominant cost
+/// pinning the visible Assets panel's frame rate.
+fn refresh_listing(
+    time: Res<Time>,
+    mut state: ResMut<NativeAssets>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    use std::hash::{Hash, Hasher};
+
+    let folder = state
+        .current
+        .clone()
+        .or_else(|| project.as_ref().map(|p| p.path.clone()));
+    let Some(folder) = folder else {
+        if !state.listing.is_empty() {
+            state.listing = std::sync::Arc::new(Vec::new());
+        }
+        return;
     };
-    let (search, sort, desc) = w
-        .get_resource::<NativeAssets>()
-        .map(|s| (s.search.to_lowercase(), s.sort, s.sort_desc))
-        .unwrap_or_else(|| (String::new(), SortMode::Name, false));
-    read_sorted_entries(&folder, &search, sort, desc)
+
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    folder.hash(&mut h);
+    state.search.to_lowercase().hash(&mut h);
+    (state.sort as u8).hash(&mut h);
+    state.sort_desc.hash(&mut h);
+    let sig = h.finish();
+
+    state.listing_timer += time.delta_secs();
+    let stale =
+        sig != state.listing_sig || state.listing_dirty || state.listing_timer >= LISTING_THROTTLE;
+    if !stale {
+        return;
+    }
+
+    let search = state.search.to_lowercase();
+    let entries = read_sorted_entries(&folder, &search, state.sort, state.sort_desc);
+    state.listing = std::sync::Arc::new(entries);
+    state.listing_sig = sig;
+    state.listing_timer = 0.0;
+    state.listing_dirty = false;
 }
 
 /// Read + sort a folder's non-hidden entries (folders first). Shared by the grid
@@ -1841,10 +2191,10 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
             }),
         };
     }
-    let (zoom, list_view) = world
+    let (zoom, list_view, renaming) = world
         .get_resource::<NativeAssets>()
-        .map(|s| (s.zoom, s.list_view))
-        .unwrap_or((1.0, false));
+        .map(|s| (s.zoom, s.list_view, s.renaming.clone()))
+        .unwrap_or((1.0, false, None));
     let zoom_q = (zoom * 20.0).round() as u64;
     let favs: HashSet<PathBuf> = world
         .get_resource::<NativeAssets>()
@@ -1853,8 +2203,9 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
     let items: Vec<(u64, u64)> = entries
         .iter()
         .map(|e| {
+            let editing = renaming.as_deref() == Some(e.path.as_path());
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&e.name, e.is_dir, zoom_q, favs.contains(&e.path), list_view, e.size).hash(&mut h);
+            (&e.name, e.is_dir, zoom_q, favs.contains(&e.path), list_view, e.size, editing).hash(&mut h);
             let mut k = std::collections::hash_map::DefaultHasher::new();
             e.path.hash(&mut k);
             (k.finish(), h.finish())
@@ -1865,18 +2216,39 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
         build: Box::new(move |c, f, i| {
             let e = &entries[i];
             let fav = favs.contains(&e.path);
+            let editing = renaming.as_deref() == Some(e.path.as_path());
             if list_view {
-                list_row(c, f, e, fav)
+                list_row(c, f, e, fav, editing)
             } else {
-                tile(c, f, e, zoom, fav)
+                tile(c, f, e, zoom, fav, editing)
             }
         }),
     }
 }
 
+/// The inline rename text field for a grid/list entry, seeded with its current
+/// name and tagged so `asset_rename_commit` can find it.
+fn rename_field(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
+    let input = text_input(commands, &fonts.ui, "Name", &entry.name);
+    commands.entity(input).insert((
+        AssetRenameInput(entry.path.clone()),
+        Node {
+            width: Val::Percent(100.0),
+            min_width: Val::Px(0.0),
+            height: Val::Px(20.0),
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(Val::Px(4.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            ..default()
+        },
+    ));
+    input
+}
+
 /// One compact list-view row: type icon + name + type + size, sharing the same
 /// `AssetTile` selection/click/drag wiring as the grid tile.
-fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: bool) -> Entity {
+fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: bool, editing: bool) -> Entity {
     let is_dir = entry.is_dir;
     let (type_color, type_label) = if is_dir {
         (folder_color(&entry.name), "Folder")
@@ -1925,15 +2297,22 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
         }
     });
     let icon = icon_text(commands, &fonts.phosphor, icon_for(&entry.path, is_dir), type_color, 15.0);
-    let name = commands
-        .spawn((
-            Text::new(entry.name.clone()),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
-            Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
-        ))
-        .id();
+    let name = if editing {
+        rename_field(commands, fonts, entry)
+    } else {
+        commands
+            .spawn((
+                Text::new(entry.name.clone()),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_primary())),
+                bevy::text::TextLayout::new_with_no_wrap(),
+                Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
+                Interaction::default(),
+                bevy::ui::FocusPolicy::Pass,
+                AssetNameLabel(entry.path.clone()),
+            ))
+            .id()
+    };
     let ty = commands
         .spawn((
             Text::new(type_label),
@@ -1961,7 +2340,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
     row
 }
 
-fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, fav: bool) -> Entity {
+fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, fav: bool, editing: bool) -> Entity {
     let card_w = (TILE_W * zoom).round();
     let thumb_h = card_w; // square preview, Unreal-style
     let icon_sz = (card_w * 0.42).round();
@@ -2115,19 +2494,26 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             ..default()
         })
         .id();
-    let name = commands
-        .spawn((
-            Text::new(entry.name.clone()),
-            ui_font(&fonts.ui, 10.0),
-            TextColor(rgb(text_primary())),
-            Node {
-                width: Val::Percent(100.0),
-                max_height: Val::Px(26.0),
-                overflow: Overflow::clip(),
-                ..default()
-            },
-        ))
-        .id();
+    let name = if editing {
+        rename_field(commands, fonts, entry)
+    } else {
+        commands
+            .spawn((
+                Text::new(entry.name.clone()),
+                ui_font(&fonts.ui, 10.0),
+                TextColor(rgb(text_primary())),
+                Node {
+                    width: Val::Percent(100.0),
+                    max_height: Val::Px(26.0),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                Interaction::default(),
+                bevy::ui::FocusPolicy::Pass,
+                AssetNameLabel(entry.path.clone()),
+            ))
+            .id()
+    };
     let ty = commands
         .spawn((
             Text::new(type_label),
@@ -2731,16 +3117,28 @@ fn section_toggle_click(
 
 fn tile_click(
     q: Query<(&Interaction, &AssetTile), Changed<Interaction>>,
+    names: Query<(&Interaction, &AssetNameLabel), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     project: Option<Res<renzora::core::CurrentProject>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
+    // While an inline rename is active, let clicks fall through to its text field
+    // (focus/caret) instead of re-selecting or navigating into the folder.
+    if state.renaming.is_some() {
+        return;
+    }
     let now = time.elapsed_secs_f64();
     let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let root = project.as_ref().map(|p| p.path.clone());
+    // Whether this item was *already* the sole selection before this click — the
+    // gate for explorer-style click-the-name-to-rename (so the click that first
+    // selects an item never renames). Captured before the loop mutates selection.
+    let prev_sole = (state.selection.len() == 1).then(|| state.selected.clone()).flatten();
+    // The name label pressed this frame (its tile is also Pressed via FocusPolicy::Pass).
+    let name_pressed = names.iter().find(|(i, _)| **i == Interaction::Pressed).map(|(_, n)| n.0.clone());
     for (interaction, tile) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -2751,6 +3149,11 @@ fn tile_click(
             .is_some_and(|(p, t)| p == &tile.path && now - t < 0.4);
         if double {
             state.last_click = None;
+            // A double-click opens/navigates — cancel any rename armed by its
+            // first click so the field doesn't pop up after we've opened the item,
+            // and drop the deferred single-select so release doesn't re-add it.
+            state.rename_arm = None;
+            state.pending_single_select = None;
             if tile.is_dir {
                 state.current = Some(tile.path.clone());
                 state.selected = None;
@@ -2759,11 +3162,33 @@ fn tile_click(
                 open_file(&cmds, &tile.path);
                 track_recent(&mut state, &tile.path, root.as_deref());
             }
+        } else if !ctrl
+            && !shift
+            && state.selection.len() > 1
+            && state.selection.contains(&tile.path)
+        {
+            // Pressing an item that's already part of a multi-selection: keep the
+            // whole selection intact so a drag can carry it (drag-to-viewport),
+            // and defer the collapse-to-single to release if this turns out to be
+            // a plain click rather than a drag.
+            state.pending_single_select = Some(tile.path.clone());
+            state.selected = Some(tile.path.clone());
+            state.last_click = Some((tile.path.clone(), now));
         } else {
             // Single click selects (ctrl toggles, shift range-selects); a second
             // click within 0.4s opens / navigates.
             state.click_select(&tile.path, ctrl, shift);
+            state.pending_single_select = None;
             state.last_click = Some((tile.path.clone(), now));
+        }
+    }
+    // Clicking the name label of the already-sole-selected item arms a rename.
+    // `last_click == Some(path)` confirms this was a single click (a double-click
+    // cleared it to None above), so double-click-to-open still wins.
+    if let Some(p) = name_pressed {
+        let single = state.last_click.as_ref().is_some_and(|(lp, _)| lp == &p);
+        if single && prev_sole.as_deref() == Some(p.as_path()) && state.rename_arm.is_none() {
+            state.rename_arm = Some((p, now));
         }
     }
 }

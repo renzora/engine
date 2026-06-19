@@ -29,6 +29,15 @@ const SORTS: [(&str, &str); 4] = [
     ("price_desc", "Price: High"),
 ];
 
+/// One cached page of store results, keyed by its query signature so navigating
+/// back to a page (or re-applying a search/sort) reuses it instead of re-hitting
+/// the network.
+struct CachedPage {
+    assets: Vec<AssetSummary>,
+    total: i64,
+    per_page: i64,
+}
+
 #[derive(Resource)]
 struct HubStoreData {
     search: String,
@@ -45,6 +54,12 @@ struct HubStoreData {
     cat_rx: Option<Receiver<Result<Vec<(String, String)>, String>>>,
     initialized: bool,
     dirty: bool,
+    /// Fetched pages keyed by `(search, category, sort, page)` hash. Persists for
+    /// the session — paging back/forward is a cache hit, not a request.
+    cache: std::collections::HashMap<u64, CachedPage>,
+    /// Query signature of the request currently in flight, so its response lands
+    /// in the right cache slot even if the user navigated on since.
+    pending_sig: Option<u64>,
 }
 
 impl Default for HubStoreData {
@@ -64,11 +79,23 @@ impl Default for HubStoreData {
             cat_rx: None,
             initialized: false,
             dirty: false,
+            cache: std::collections::HashMap::new(),
+            pending_sig: None,
         }
     }
 }
 
 impl HubStoreData {
+    /// Hash of the inputs that determine a page's contents.
+    fn query_sig(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.search.hash(&mut h);
+        self.category.hash(&mut h);
+        self.sort.hash(&mut h);
+        self.page.hash(&mut h);
+        h.finish()
+    }
     fn total_pages(&self) -> u32 {
         ((self.total as f32) / (self.per_page.max(1) as f32)).ceil() as u32
     }
@@ -369,6 +396,18 @@ fn poll_store(mut data: ResMut<HubStoreData>) {
         for r in got {
             match r {
                 Ok(resp) => {
+                    // Stash the freshly-fetched page under the query it was
+                    // requested for, so navigating back to it skips the network.
+                    if let Some(sig) = data.pending_sig.take() {
+                        data.cache.insert(
+                            sig,
+                            CachedPage {
+                                assets: resp.assets.clone(),
+                                total: resp.total,
+                                per_page: resp.per_page,
+                            },
+                        );
+                    }
                     data.assets = resp.assets;
                     data.total = resp.total;
                     data.per_page = resp.per_page;
@@ -469,12 +508,27 @@ fn request_store_thumbs(data: Res<HubStoreData>, mut thumbs: ResMut<HubThumbs>) 
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_assets(data: &mut HubStoreData) {
+    let sig = data.query_sig();
+    // Cache hit (e.g. paging back to a page already fetched) → apply instantly,
+    // no network round-trip.
+    if let Some(page) = data.cache.get(&sig) {
+        data.assets = page.assets.clone();
+        data.total = page.total;
+        data.per_page = page.per_page;
+        data.loading = false;
+        data.error = None;
+        data.asset_rx = None;
+        data.pending_sig = None;
+        return;
+    }
+
     let query = (!data.search.is_empty()).then(|| data.search.clone());
     let category = data.category.clone();
     let sort = data.sort.clone();
     let page = data.page;
     let (tx, rx) = unbounded();
     data.asset_rx = Some(rx);
+    data.pending_sig = Some(sig);
     data.loading = true;
     std::thread::spawn(move || {
         let result = renzora_auth::marketplace::list_assets(query.as_deref(), category.as_deref(), Some(&sort), page);
