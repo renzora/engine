@@ -156,6 +156,7 @@ fn detect_selection_keybindings(
     keybindings: Res<renzora::core::keybindings::KeyBindings>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     input_focus: Res<renzora::core::InputFocusState>,
+    select_all_claimed: Option<Res<renzora::core::SelectAllClaimed>>,
     selection: Res<EditorSelection>,
     entities_q: Query<(
         Entity,
@@ -176,8 +177,11 @@ fn detect_selection_keybindings(
         return;
     }
 
-    // SelectAll: pick every named, non-hidden-in-hierarchy entity.
-    if keybindings.just_pressed(EditorAction::SelectAll, &keyboard) {
+    // SelectAll: pick every named, non-hidden-in-hierarchy entity — unless the
+    // pointer is over a panel that owns Ctrl+A for its own selection (the asset
+    // browser's file grid), which handles the key itself.
+    let claimed = select_all_claimed.as_ref().is_some_and(|c| c.0);
+    if !claimed && keybindings.just_pressed(EditorAction::SelectAll, &keyboard) {
         let mut all = Vec::new();
         for (e, name, hide) in entities_q.iter() {
             if name.is_some() && hide.is_none() {

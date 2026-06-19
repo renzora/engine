@@ -342,6 +342,22 @@ pub struct Dock {
     pub tree: DockTree,
 }
 
+/// Run-condition: `true` while `id` is the active (visible) tab in its dock
+/// leaf — `false` when it's a background tab or not in the dock at all.
+///
+/// Gate a panel's per-frame *view* systems with `.run_if(panel_active("id"))` so
+/// they stand down while the panel isn't on screen. This is the systems-level
+/// companion to the reactive layer's hidden-pane skip: reactions/keyed-lists are
+/// gated automatically, but plain `Update` systems (directory scans, thumbnail
+/// loading, per-tile layout) need an explicit run-condition, or a backgrounded
+/// panel keeps burning frame time over entities nobody can see.
+///
+/// Gate only *view* work — leave a panel's always-on systems (e.g. the console's
+/// log capture, which must keep collecting while hidden) ungated.
+pub fn panel_active(id: &'static str) -> impl Fn(Option<Res<Dock>>) -> bool + Clone {
+    move |dock: Option<Res<Dock>>| dock.is_some_and(|d| d.tree.is_active_tab(id))
+}
+
 impl Default for Dock {
     fn default() -> Self {
         Self {

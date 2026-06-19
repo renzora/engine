@@ -180,6 +180,54 @@ fn entry_label(world: &World, target: Option<Entity>) -> String {
     format!("(unnamed) {target}")
 }
 
+/// True if a binding/list whose node is `node` should be skipped because it
+/// lives in a hidden dock tab — i.e. some **ancestor** is collapsed
+/// (`Display::None`). Inactive panes aren't laid out or painted, so recomputing
+/// their bindings/lists is pure waste — and it was real waste: a backgrounded
+/// heavy panel (e.g. the asset browser hashing a big folder) kept dragging the
+/// frame rate down even after switching away from it.
+///
+/// Only *ancestors* are checked, never `node` itself: a binding may toggle its
+/// own target's `Display` (e.g. `bind_display`), and skipping it when its own
+/// node is collapsed would strand it hidden forever — it could never run to
+/// un-hide itself.
+///
+/// `cache` memoizes results for one frame so shared ancestors (a panel's whole
+/// subtree resolves to the same answer) aren't re-walked per binding.
+fn has_hidden_ancestor(world: &World, node: Entity, cache: &mut HashMap<Entity, bool>) -> bool {
+    let Some(parent) = world.get::<ChildOf>(node).map(|c| c.parent()) else {
+        return false;
+    };
+    in_collapsed_subtree(world, parent, cache)
+}
+
+/// True if `start` or any ancestor has `Display::None`. Memoized per frame; a
+/// despawned `start` has no `Node`/parent and resolves to `false`.
+fn in_collapsed_subtree(world: &World, start: Entity, cache: &mut HashMap<Entity, bool>) -> bool {
+    let mut path: Vec<Entity> = Vec::new();
+    let mut e = start;
+    let result = loop {
+        if let Some(&v) = cache.get(&e) {
+            break v;
+        }
+        path.push(e);
+        let collapsed = world
+            .get::<bevy::ui::Node>(e)
+            .is_some_and(|n| n.display == bevy::ui::Display::None);
+        if collapsed {
+            break true;
+        }
+        match world.get::<ChildOf>(e) {
+            Some(c) => e = c.parent(),
+            None => break false,
+        }
+    };
+    for p in path {
+        cache.insert(p, result);
+    }
+    result
+}
+
 // ── Bindings (effects) ───────────────────────────────────────────────────────
 
 /// What one reaction run did — drives liveness and the change counters.
@@ -404,7 +452,16 @@ pub(crate) fn run_reactions(world: &mut World) {
     world.resource_scope(|world, mut reg: Mut<ReactionRegistry>| {
         let mut changed = 0usize;
         let mut total_us = 0.0f32;
+        let mut hidden_cache: HashMap<Entity, bool> = HashMap::default();
         reg.0.retain_mut(|entry| {
+            // Skip bindings whose pane is a hidden dock tab — they're not on
+            // screen, so recomputing them is wasted frame time. (Raw reactions
+            // with no target entity can't be located, so they always run.)
+            if let Some(target) = entry.meta.target {
+                if has_hidden_ancestor(world, target, &mut hidden_cache) {
+                    return true;
+                }
+            }
             let t0 = Instant::now();
             let outcome = (entry.f)(world);
             let us = t0.elapsed().as_secs_f32() * 1e6;
@@ -553,9 +610,17 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
     world.resource_scope(|world, mut reg: Mut<KeyedListRegistry>| {
         let mut total_us = 0.0f32;
         let mut rows_rebuilt = 0usize;
+        let mut hidden_cache: HashMap<Entity, bool> = HashMap::default();
         reg.0.retain_mut(|kl| {
             if world.get_entity(kl.container).is_err() {
                 return false;
+            }
+            // Hidden dock tab → don't run the snapshot. This is the big win: a
+            // backgrounded list (e.g. the asset browser hashing every file in a
+            // folder each frame) stops costing anything until it's shown again,
+            // where the snapshot re-runs and catches up.
+            if has_hidden_ancestor(world, kl.container, &mut hidden_cache) {
+                return true;
             }
             let t0 = Instant::now();
             let snap = (kl.snapshot)(world);

@@ -2228,6 +2228,46 @@ pub struct ImportRequested;
 #[derive(Resource)]
 pub struct ImportTargetDir(pub String);
 
+/// Set true while the pointer is over a panel that owns the `Ctrl/Cmd+A`
+/// shortcut for its own selection (currently the asset browser's file grid).
+///
+/// `Ctrl+A` is bound in several places — the hierarchy's "select all entities"
+/// and the asset browser's "select all files" both listen for it. Without a
+/// referee they'd fire together. So the panel under the pointer raises this flag
+/// and the global entity select-all stands down for that frame, letting the
+/// hovered panel handle the key. Absent/false → the entity select-all wins
+/// (e.g. `Ctrl+A` over the viewport still selects every entity).
+#[derive(Resource, Default)]
+pub struct SelectAllClaimed(pub bool);
+
+/// One split static mesh referenced by an assembly `.prefab`: a display name
+/// and the project-relative path to its `.glb`. The mesh's world transform is
+/// baked into the `.glb` itself, so the assembly entity sits at identity.
+#[derive(Clone, Debug)]
+pub struct AssemblyMeshEntry {
+    pub name: String,
+    pub model_path: String,
+}
+
+/// A request to write an assembly `.prefab` for a freshly split model.
+///
+/// The import worker runs off-thread and can't touch the `World`, but writing a
+/// prefab in the engine's scene format needs the type registry and the existing
+/// `save_prefab_source` serializer. So the worker hands the mesh list to the
+/// main thread via [`PendingAssemblyWrites`], where an engine system fulfills it.
+#[derive(Clone, Debug)]
+pub struct AssemblyWriteRequest {
+    /// Absolute path of the `.prefab` to write.
+    pub prefab_path: std::path::PathBuf,
+    /// The split meshes the assembly references, in source order.
+    pub entries: Vec<AssemblyMeshEntry>,
+}
+
+/// Queue of assembly `.prefab` files to write, drained by an engine system.
+/// See [`AssemblyWriteRequest`].
+#[derive(Resource, Default)]
+pub struct PendingAssemblyWrites(pub Vec<AssemblyWriteRequest>);
+
 /// Marker resource requesting the tutorial overlay to start.
 #[derive(Resource)]
 pub struct TutorialRequested;
@@ -2754,6 +2794,33 @@ impl BlueprintNode {
 
     pub fn get_input_value(&self, pin_name: &str) -> Option<&PinValue> {
         self.input_values.get(pin_name)
+    }
+}
+
+/// A resizable comment / group box drawn behind the nodes of a graph. Purely
+/// visual — no pins, never compiled — but dragging it moves the nodes it
+/// encloses, so it doubles as a group. Shared by every graph model (blueprint /
+/// material / particle) so the editor view can render, drag, resize and persist
+/// them uniformly.
+#[derive(Clone, Debug, Serialize, Deserialize, Reflect, PartialEq)]
+#[reflect(Default)]
+pub struct GraphComment {
+    pub id: u64,
+    /// `[x, y, w, h]` in canvas px.
+    pub rect: [f32; 4],
+    pub text: String,
+    /// RGB tint of the title bar / border.
+    pub color: [u8; 3],
+}
+
+impl Default for GraphComment {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            rect: [0.0, 0.0, 220.0, 140.0],
+            text: "Comment".to_string(),
+            color: [88, 110, 150],
+        }
     }
 }
 

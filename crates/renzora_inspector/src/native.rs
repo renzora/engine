@@ -126,9 +126,15 @@ pub fn register_native_inspector(app: &mut App) {
             asset_drop_highlight,
             inspector_filter_sync,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active("inspector")),
     );
-    app.add_systems(Update, rebuild_inspector.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        Update,
+        rebuild_inspector
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active("inspector")),
+    );
 }
 
 // ── Specs collected (under the exclusive borrow) before building ─────────────
