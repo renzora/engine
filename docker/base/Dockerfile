@@ -25,7 +25,7 @@
 #
 # Multi-arch: builds natively as linux/amd64 and linux/arm64 (Apple Silicon).
 # Arch-specific steps key off `uname -m` (x86_64 / aarch64).
-FROM rust:1.93.0-bookworm
+FROM rust:1.95.0-bookworm
 
 # ── System dependencies ──────────────────────────────────────────────────────
 # Native Linux build/link deps (the workspace links alsa + udev at build; X11/

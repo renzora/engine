@@ -70,7 +70,7 @@ So:
   Don't propose it, don't try to "fix" the link error by stripping the dylib.
 
 Pinned toolchain (single source of truth = `docker/base/Dockerfile`): **Rust
-1.93.0**, **Bevy 0.18**. The base image is the foundation every platform image
+1.95.0**, **Bevy 0.19**. The base image is the foundation every platform image
 builds `FROM`, so the Rust version lives there (a bump cascades to all
 platforms — see §3). CI (`.github/workflows/test.yml`) runs `cargo test` + `cargo
 clippy -D warnings` in the `base` image, excluding the vendored `bevy_*` /
