@@ -128,8 +128,9 @@ impl Material for GizmoMaterial {
         _key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
         if let Some(ref mut depth_stencil) = descriptor.depth_stencil {
-            depth_stencil.depth_compare = CompareFunction::Always;
-            depth_stencil.depth_write_enabled = false;
+            // wgpu 29: these `DepthStencilState` fields are now `Option`.
+            depth_stencil.depth_compare = Some(CompareFunction::Always);
+            depth_stencil.depth_write_enabled = Some(false);
         }
         // Gizmo meshes get mirrored via negative root scale when axes flip
         // to face the camera — disable backface culling so cone heads and

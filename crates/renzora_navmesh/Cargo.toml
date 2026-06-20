@@ -22,7 +22,7 @@ polyanya = { version = "0.16", features = ["serde"] }
 renzora_terrain = { path = "../renzora_terrain" }
 
 [dependencies.avian3d]
-version = "0.6.1"
+path = "../avian/crates/avian3d"
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
 

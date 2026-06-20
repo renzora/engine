@@ -43,7 +43,7 @@ pub fn tooltip(commands: &mut Commands, font: &Handle<Font>, label: &str, target
                 Text::new(label),
                 ui_font(font, 11.0),
                 TextColor(rgb(text_primary())),
-                TextLayout::new_with_no_wrap(),
+                TextLayout::no_wrap(),
             ));
         })
         .id();

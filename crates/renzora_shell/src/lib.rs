@@ -1484,8 +1484,8 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                         .spawn((
                             Text::new(glyph.to_string()),
                             TextFont {
-                                font: fonts.phosphor.clone(),
-                                font_size: 12.0,
+                                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                                font_size: bevy::text::FontSize::Px(12.0),
                                 ..default()
                             },
                             TextColor(rgb(color)),

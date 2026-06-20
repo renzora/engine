@@ -39,20 +39,9 @@ pub(crate) fn load_fonts(
     let Some(phosphor) = phosphor else {
         return;
     };
-    let ui = match Font::try_from_bytes(NOTO_SANS.to_vec()) {
-        Ok(font) => fonts.add(font),
-        Err(e) => {
-            error!("[ember] failed to load embedded Noto Sans: {e:?}");
-            Handle::default()
-        }
-    };
-    let mono = match Font::try_from_bytes(JETBRAINS_MONO.to_vec()) {
-        Ok(font) => fonts.add(font),
-        Err(e) => {
-            error!("[ember] failed to load embedded JetBrains Mono: {e:?}");
-            Handle::default()
-        }
-    };
+    // 0.19/Parley: `Font::try_from_bytes` (Result) → `Font::from_bytes` (infallible).
+    let ui = fonts.add(Font::from_bytes(NOTO_SANS.to_vec()));
+    let mono = fonts.add(Font::from_bytes(JETBRAINS_MONO.to_vec()));
     commands.insert_resource(EmberFonts {
         ui,
         phosphor: phosphor.0.clone(),
@@ -63,8 +52,8 @@ pub(crate) fn load_fonts(
 /// A `TextFont` in the UI font at the given (pre-scale) size.
 pub fn ui_font(font: &Handle<Font>, size: f32) -> TextFont {
     TextFont {
-        font: font.clone(),
-        font_size: size * TEXT_SCALE,
+        font: bevy::text::FontSource::Handle(font.clone()),
+        font_size: bevy::text::FontSize::Px(size * TEXT_SCALE),
         ..default()
     }
 }
@@ -92,8 +81,8 @@ pub fn icon_text(
             },
             Text::new(ch.to_string()),
             TextFont {
-                font: phosphor.clone(),
-                font_size: size,
+                font: bevy::text::FontSource::Handle(phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(size),
                 ..default()
             },
             TextColor(rgb(color)),

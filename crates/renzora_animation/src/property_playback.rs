@@ -241,7 +241,9 @@ pub fn apply_runtime_property_animation(world: &mut World) {
     let mut events: Vec<(Entity, String)> = Vec::new();
     let mut verbose = false;
     {
-        let (time, mut dbg, clips, mut animators) = sys.get_mut(world);
+        // Bevy 0.19: `SystemState::get_mut` is now fallible. These params always
+        // validate, so `.unwrap()` is safe.
+        let (time, mut dbg, clips, mut animators) = sys.get_mut(world).unwrap();
         let dt = time.delta_secs();
         let now = time.elapsed_secs();
         if now - dbg.last_log > 0.5 {

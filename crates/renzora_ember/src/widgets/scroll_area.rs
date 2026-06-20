@@ -258,8 +258,10 @@ fn content_h(kids: &Children, computed: &Query<&ComputedNode>, inv: f32) -> f32 
 pub(crate) fn scroll_wheel(
     mut wheel: MessageReader<MouseWheel>,
     capture: Res<super::drag_value::WheelOverDragValue>,
-    mut areas: Query<(Entity, &RelativeCursorPosition, &ComputedNode, &mut EmberScroll)>,
-    overlays: Query<(&RelativeCursorPosition, &ComputedNode, &Node), With<super::popup::OverlaySurface>>,
+    // 0.19: the UI stack index moved off `ComputedNode` into its own
+    // `ComputedStackIndex(u32)` component.
+    mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
+    overlays: Query<(&RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &Node), With<super::popup::OverlaySurface>>,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
 ) {
@@ -286,7 +288,7 @@ pub(crate) fn scroll_wheel(
         if modal_open && !under_overlay(e, &parents, &modals) {
             continue;
         }
-        let si = cn.stack_index;
+        let si = cn.0;
         if best.is_none_or(|(_, b)| si >= b) {
             best = Some((e, si));
         }
@@ -301,7 +303,7 @@ pub(crate) fn scroll_wheel(
     let overlay_above = overlays
         .iter()
         .filter(|(rcp, _, node)| rcp.cursor_over && node.display != Display::None)
-        .any(|(_, cn, _)| cn.stack_index > target_si);
+        .any(|(_, cn, _)| cn.0 > target_si);
     if overlay_above {
         return;
     }

@@ -168,7 +168,7 @@ fn gradient_sync(
     bars: Query<(&GradientData, &MaterialNode<GradientMaterial>), Changed<GradientData>>,
 ) {
     for (d, mat) in &bars {
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             let (colors, params) = pack(&d.stops);
             m.colors = colors;
             m.params = params;

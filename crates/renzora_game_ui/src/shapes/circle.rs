@@ -57,7 +57,7 @@ pub fn sync_circle_materials(
     mut materials: ResMut<Assets<CircleMaterial>>,
 ) {
     for (shape, mat_node) in &query {
-        if let Some(mat) = materials.get_mut(mat_node.id()) {
+        if let Some(mut mat) = materials.get_mut(mat_node.id()) {
             mat.color = shape.color.to_linear();
             mat.stroke_color = shape.stroke_color.to_linear();
             mat.params.x = shape.stroke_width;

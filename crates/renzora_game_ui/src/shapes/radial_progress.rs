@@ -65,7 +65,7 @@ pub fn sync_radial_progress_materials(
     mut materials: ResMut<Assets<RadialProgressMaterial>>,
 ) {
     for (shape, mat_node) in &query {
-        if let Some(mat) = materials.get_mut(mat_node.id()) {
+        if let Some(mut mat) = materials.get_mut(mat_node.id()) {
             mat.color = shape.color.to_linear();
             mat.bg_color = shape.bg_color.to_linear();
             mat.params = Vec4::new(shape.value, shape.thickness, 0.0, 0.0);

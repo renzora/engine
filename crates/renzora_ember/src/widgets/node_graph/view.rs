@@ -286,7 +286,7 @@ pub fn graph_node_view(
             Name::new("ngv-node-title"),
         ))
         .with_children(|p| {
-            p.spawn((Text::new(title.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(on_accent())), bevy::text::TextLayout::new_with_no_wrap()));
+            p.spawn((Text::new(title.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(on_accent())), bevy::text::TextLayout::no_wrap()));
         })
         .id();
     commands.entity(node).add_child(title_bar);
@@ -381,7 +381,7 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
         ))
         .id();
     let text = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_no_wrap(), bevy::ui::FocusPolicy::Pass))
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap(), bevy::ui::FocusPolicy::Pass))
         .id();
     let dot = commands
         .spawn((
@@ -610,7 +610,7 @@ fn ngv_preview(
         let b = c / isf - top_left;
         let (c1, c2) = control_points(a, b);
         let lin = rgb(col).to_linear();
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.ab = Vec4::new(a.x, a.y, c1.x, c1.y);
             m.cd = Vec4::new(c2.x, c2.y, b.x, b.y);
             m.color = Vec4::new(lin.red, lin.green, lin.blue, 0.7);
@@ -1101,7 +1101,7 @@ fn ngv_endpoints(mut materials: ResMut<Assets<CableMaterial>>, wires: Query<(&Ng
         let b = p3 - top_left;
         let (c1, c2) = control_points(a, b);
         let lin = rgb(wire_col).to_linear(); // wire takes the output pin's colour
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.ab = Vec4::new(a.x, a.y, c1.x, c1.y);
             m.cd = Vec4::new(c2.x, c2.y, b.x, b.y);
             m.color = Vec4::new(lin.red, lin.green, lin.blue, 1.0);

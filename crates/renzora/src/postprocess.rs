@@ -9,21 +9,13 @@
 
 use core::marker::PhantomData;
 
-use bevy::core_pipeline::{
-    core_3d::graph::{Core3d, Node3d},
-    FullscreenShader,
-};
-use bevy::ecs::query::QueryItem;
+use bevy::core_pipeline::{Core3d, Core3dSystems, FullscreenShader};
 use bevy::image::BevyDefault;
 use bevy::prelude::*;
 use bevy::render::{
     extract_component::{
         ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
         UniformComponentPlugin,
-    },
-    render_graph::{
-        InternedRenderLabel, InternedRenderSubGraph, NodeRunError, RenderGraphContext,
-        RenderGraphExt, RenderLabel, RenderSubGraph, ViewNode, ViewNodeRunner,
     },
     render_resource::{
         binding_types::{sampler, texture_2d, uniform_buffer},
@@ -35,7 +27,7 @@ use bevy::render::{
         TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
         TextureViewDescriptor,
     },
-    renderer::{RenderContext, RenderDevice},
+    renderer::{RenderContext, RenderDevice, ViewQuery},
     view::ViewTarget,
     Render, RenderApp, RenderStartup, RenderSystems,
 };
@@ -79,20 +71,6 @@ pub trait PostProcessEffect:
         false
     }
 
-    /// No longer used — effect ordering is determined by plugin registration order.
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![]
-    }
-
-    /// No longer used — all effects run in the Core3d sub-graph.
-    fn sub_graph() -> Option<InternedRenderSubGraph> {
-        Some(Core3d.intern())
-    }
-
-    /// No longer used — effects no longer have individual render graph nodes.
-    fn node_label() -> impl RenderLabel {
-        PostProcessLabel(core::any::type_name::<Self>())
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,18 +107,6 @@ impl<T: PostProcessEffect> Default for ExtractedExtraTexture<T> {
             id: None,
             _marker: PhantomData,
         }
-    }
-}
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-struct PostProcessLabel(&'static str);
-
-impl RenderLabel for PostProcessLabel
-where
-    Self: 'static + Send + Sync + Clone + Eq + core::fmt::Debug + core::hash::Hash,
-{
-    fn dyn_clone(&self) -> Box<dyn RenderLabel> {
-        Box::new(self.clone())
     }
 }
 
@@ -345,7 +311,7 @@ trait EffectHandler: Send + Sync + 'static {
         render_context: &mut RenderContext,
         view_target: &ViewTarget,
         view_entity: Entity,
-    ) -> Result<(), NodeRunError>;
+    ) -> Result<(), ()>;
 }
 
 struct TypedEffectHandler<T: PostProcessEffect>(PhantomData<T>);
@@ -357,7 +323,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
         render_context: &mut RenderContext,
         view_target: &ViewTarget,
         view_entity: Entity,
-    ) -> Result<(), NodeRunError> {
+    ) -> Result<(), ()> {
         // Skip if this view doesn't have the effect component
         let Some(settings_index) = world.get::<DynamicUniformIndex<T>>(view_entity) else {
             return Ok(());
@@ -367,7 +333,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
             return Ok(());
         };
         let pipeline_cache = world.resource::<PipelineCache>();
-        let pipeline_id = if view_target.is_hdr() {
+        let pipeline_id = if view_target.main_texture_format() == TextureFormat::Rgba16Float {
             pipeline.pipeline_id_hdr
         } else {
             pipeline.pipeline_id
@@ -421,6 +387,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
                                 depth_stencil_attachment: None,
                                 timestamp_writes: None,
                                 occlusion_query_set: None,
+                multiview_mask: None,
                             });
                         blit_pass.set_render_pipeline(blit_pipeline);
                         blit_pass.set_bind_group(0, &blit_bind_group, &[]);
@@ -458,6 +425,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             render_pass.set_render_pipeline(render_pipeline);
             render_pass.set_bind_group(0, &bind_group, &[settings_index.index()]);
@@ -487,6 +455,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         render_pass.set_render_pipeline(render_pipeline);
@@ -507,36 +476,22 @@ struct PostProcessRegistry {
     handlers: Vec<Box<dyn EffectHandler>>,
 }
 
-/// Render label for the single unified post-process node.
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-struct UnifiedPostProcess;
-
-impl RenderLabel for UnifiedPostProcess {
-    fn dyn_clone(&self) -> Box<dyn RenderLabel> {
-        Box::new(self.clone())
-    }
-}
-
-/// Single render graph node that processes all active post-process effects.
-/// Only effects whose component is present on the camera will execute.
-#[derive(Default)]
-struct UnifiedPostProcessNode;
-
-impl ViewNode for UnifiedPostProcessNode {
-    type ViewQuery = (Entity, &'static ViewTarget);
-
-    fn run<'w>(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (entity, view_target): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        let registry = world.resource::<PostProcessRegistry>();
-        for handler in &registry.handlers {
-            handler.execute(world, render_context, view_target, entity)?;
-        }
-        Ok(())
+/// 0.19: the unified post-process pass is now a render-world SYSTEM ordered in
+/// the `Core3d` schedule's `PostProcess` set (the render-graph node API was
+/// removed). `RenderContext` and `ViewQuery` are SystemParams; `&World` gives
+/// the type-erased effect handlers their read access. Encoded passes are
+/// auto-submitted when the system finishes. Only effects whose component is
+/// present on the camera execute.
+fn unified_post_process(
+    world: &World,
+    view: ViewQuery<&'static ViewTarget>,
+    mut render_context: RenderContext,
+) {
+    let entity = view.entity();
+    let view_target = view.into_inner();
+    let registry = world.resource::<PostProcessRegistry>();
+    for handler in &registry.handlers {
+        let _ = handler.execute(world, &mut render_context, view_target, entity);
     }
 }
 
@@ -559,24 +514,14 @@ impl Plugin for PostProcessCorePlugin {
         render_app.init_resource::<PostProcessRegistry>();
         render_app.add_systems(RenderStartup, init_snapshot_blit_pipeline);
 
-        render_app.add_render_graph_node::<ViewNodeRunner<UnifiedPostProcessNode>>(
+        // 0.19: register the unified post-process pass as a render system in the
+        // Core3d schedule's PostProcess set (this is where tonemapping runs, so
+        // our effects compose on top of the tonemapped frame — same ordering the
+        // old `Node3d::Tonemapping → UnifiedPostProcess` edge gave).
+        render_app.add_systems(
             Core3d,
-            UnifiedPostProcess,
+            unified_post_process.in_set(Core3dSystems::PostProcess),
         );
-
-        if let Some(mut render_graph) = render_app
-            .world_mut()
-            .get_resource_mut::<bevy::render::render_graph::RenderGraph>(
-        ) {
-            if let Some(graph) = render_graph.get_sub_graph_mut(Core3d) {
-                let _ = graph
-                    .try_add_node_edge(Node3d::Tonemapping.intern(), UnifiedPostProcess.intern());
-                let _ = graph.try_add_node_edge(
-                    UnifiedPostProcess.intern(),
-                    Node3d::EndMainPassPostProcessing.intern(),
-                );
-            }
-        }
     }
 }
 

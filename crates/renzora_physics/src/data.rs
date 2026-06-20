@@ -14,7 +14,7 @@ pub enum PhysicsBodyType {
 ///
 /// This component stores physics properties in a format that can be saved to scenes.
 /// At runtime (or in play mode), a backend system converts this into the actual
-/// physics engine components (Avian or Rapier).
+/// physics engine components (Avian).
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct PhysicsBodyData {

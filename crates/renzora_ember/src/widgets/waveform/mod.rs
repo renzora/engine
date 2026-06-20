@@ -147,7 +147,7 @@ fn waveform_sync(
 ) {
     for (wd, node) in &waves {
         if let Some(material) = wave_material(&wd.amps) {
-            if let Some(slot) = materials.get_mut(&node.0) {
+            if let Some(mut slot) = materials.get_mut(&node.0) {
                 *slot = material;
             }
         }

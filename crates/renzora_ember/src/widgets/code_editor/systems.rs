@@ -300,7 +300,7 @@ fn render_line(commands: &mut Commands, font: &Handle<Font>, num: usize, spans: 
             Text::new(""),
             mono(font, FONT_SIZE),
             TextColor(rgb(C_TEXT)),
-            TextLayout::new_with_no_wrap(),
+            TextLayout::no_wrap(),
             Node {
                 padding: UiRect::left(Val::Px(PAD)),
                 ..default()

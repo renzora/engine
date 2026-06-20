@@ -1735,7 +1735,7 @@ fn populate_leaf(
                 Text::new(title),
                 ui_font(font, 12.0),
                 TextColor(rgb(fg)),
-                bevy::text::TextLayout::new_with_no_wrap(),
+                bevy::text::TextLayout::no_wrap(),
             ))
             .id();
         let close = icon_text(commands, phosphor, "x", text_muted(), 11.0);

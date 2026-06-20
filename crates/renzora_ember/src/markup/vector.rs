@@ -537,7 +537,7 @@ fn vector_dial_sync(world: &mut World) {
         let f = frac(v, &spec);
         // Material value param.
         if let Some(node) = world.get::<MaterialNode<ArcMaterial>>(e).map(|n| n.0.clone()) {
-            if let Some(m) = world.resource_mut::<Assets<ArcMaterial>>().get_mut(&node) {
+            if let Some(mut m) = world.resource_mut::<Assets<ArcMaterial>>().get_mut(&node) {
                 m.params.x = f;
             }
         }

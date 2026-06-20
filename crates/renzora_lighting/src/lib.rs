@@ -95,7 +95,7 @@ fn sync_sun(
         let factor = sun_horizon_factor(sun.elevation);
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
         light.illuminance = sun.illuminance * factor;
-        light.shadows_enabled = sun.shadows_enabled && factor > 0.0;
+        light.shadow_maps_enabled = sun.shadows_enabled && factor > 0.0;
         *transform =
             Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
         commands.entity(entity).try_insert(SunDisk {

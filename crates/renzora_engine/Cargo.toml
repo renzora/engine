@@ -18,6 +18,7 @@ renzora_lighting = { path = "../renzora_lighting" }
 renzora_shader = { path = "../renzora_shader" }
 renzora_terrain = { path = "../renzora_terrain" }
 renzora_network = { path = "../renzora_network" }
+renzora_bsn = { path = "../renzora_bsn" }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_audio = { path = "../renzora_audio" }
 renzora_scripting = { path = "../renzora_scripting" }
@@ -27,7 +28,7 @@ ron = "0.8"
 serde = "1"
 thiserror = "2"
 toml = "0.8"
-avian3d = { version = "0.6", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }
+avian3d = { path = "../avian/crates/avian3d", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))'.dependencies]
 arboard = "3"

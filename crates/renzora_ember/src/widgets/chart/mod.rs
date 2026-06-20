@@ -334,7 +334,7 @@ fn chart_sync(
 ) {
     for (cd, node) in &charts {
         if let Some(material) = chart_material(cd) {
-            if let Some(slot) = materials.get_mut(&node.0) {
+            if let Some(mut slot) = materials.get_mut(&node.0) {
                 *slot = material;
             }
         }

@@ -9,7 +9,7 @@ editor = ["dep:renzora_editor_framework"]
 
 [dependencies]
 bevy = { workspace = true }
-bevy_light = "0.18"
+bevy_light = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora_editor_framework = { path = "../renzora_editor_framework", optional = true }
 renzora = { path = "../renzora", default-features = false }

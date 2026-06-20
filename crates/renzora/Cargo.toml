@@ -51,6 +51,18 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 ron = "0.8"
+# NOT a real dependency — a transitive-feature fix. naga is already pulled in by
+# `bevy_render` → `wgpu` → `naga 27`. On Bevy 0.19, wgpu-core does NOT enable
+# naga's own `termcolor` feature, but `codespan-reporting` ends up with ITS
+# `termcolor` feature on (its default). naga's error code then takes the
+# `not(termcolor)` branch (a `String` diagnostic buffer) and hands it to
+# codespan's `term::emit`, which — with codespan/termcolor ON — demands
+# `&mut dyn WriteColor`; `String` isn't `WriteColor`, so naga fails to compile.
+# Forcing naga's `termcolor` feature here (via cargo feature unification, since
+# `renzora` is the universal dependency) aligns the two: naga then uses
+# `NoColor<Vec<u8>>`, which IS `WriteColor`. No cycle risk — naga is a leaf
+# render dep, not a `renzora_*` crate. Remove if a future wgpu enables it.
+naga = { version = "27", features = ["termcolor"] }
 # Editor-contract derive/attribute macros (`Inspectable`, `post_process`),
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).

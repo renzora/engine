@@ -12,6 +12,7 @@
 
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponent;
+use bevy::render::sync_component::SyncComponent;
 use serde::{Deserialize, Serialize};
 
 // ── RT (screen-space GI) ──────────────────────────────────────────────────
@@ -54,6 +55,13 @@ impl Default for RtLighting {
             debug: RtDebugMode::Composite,
         }
     }
+}
+
+// 0.19: `ExtractComponent` now requires `SyncComponent` (ensures the entity is
+// synced to the render world). `Target` is what gets removed from the render
+// world when this component is removed — for a self-extracting component, Self.
+impl SyncComponent for RtLighting {
+    type Target = RtLighting;
 }
 
 impl ExtractComponent for RtLighting {
@@ -124,6 +132,10 @@ impl Default for LumenLighting {
             debug: LumenDebug::None,
         }
     }
+}
+
+impl SyncComponent for LumenLighting {
+    type Target = LumenLighting;
 }
 
 impl ExtractComponent for LumenLighting {

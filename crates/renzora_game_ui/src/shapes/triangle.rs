@@ -59,7 +59,7 @@ pub fn sync_triangle_materials(
     mut materials: ResMut<Assets<TriangleMaterial>>,
 ) {
     for (shape, mat_node) in &query {
-        if let Some(mat) = materials.get_mut(mat_node.id()) {
+        if let Some(mut mat) = materials.get_mut(mat_node.id()) {
             mat.color = shape.color.to_linear();
             mat.stroke_color = shape.stroke_color.to_linear();
             mat.params = Vec4::new(shape.stroke_width, shape.rotation.to_radians(), 0.0, 0.0);

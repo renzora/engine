@@ -103,7 +103,7 @@ pub fn foliage_uniform_update_system(
 ) {
     let t = time.elapsed_secs();
     for mat_handle in batch_query.iter() {
-        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+        if let Some(mut mat) = materials.get_mut(&mat_handle.0) {
             mat.uniforms.time = t;
         }
     }

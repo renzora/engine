@@ -627,12 +627,12 @@ fn directional_light_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     world
                         .get::<DirectionalLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
-                            l.shadows_enabled = v;
+                            l.shadow_maps_enabled = v;
                         }
                     }
                 },
@@ -720,12 +720,12 @@ fn point_light_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     world
                         .get::<PointLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<PointLight>(entity) {
-                            l.shadows_enabled = v;
+                            l.shadow_maps_enabled = v;
                         }
                     }
                 },
@@ -853,12 +853,12 @@ fn spot_light_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     world
                         .get::<SpotLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
-                            l.shadows_enabled = v;
+                            l.shadow_maps_enabled = v;
                         }
                     }
                 },
@@ -1207,7 +1207,7 @@ fn light_probe_entry() -> InspectorEntry {
         category: "lighting",
         has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(LightProbe);
+            world.entity_mut(entity).insert(LightProbe::default());
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<LightProbe>();

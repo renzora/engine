@@ -115,7 +115,7 @@ fn build_dropdown(
             TextColor(rgb(text_primary())),
             // Clip + truncate a too-long selection instead of wrapping it or
             // pushing the caret off the box.
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 flex_grow: 1.0,
                 min_width: Val::Px(0.0),
