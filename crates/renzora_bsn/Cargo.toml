@@ -1,0 +1,17 @@
+[package]
+name = "renzora_bsn"
+version = "0.1.0"
+edition = "2024"
+description = "Interim BSN scene (de)serializer for Renzora on Bevy 0.19. Reflection-based DynamicScene IR (ported from bevy_scene 0.18) with a BSN-flavored text format, isolated behind SceneSerializer so it can swap to first-party BSN (bevy#23576) later."
+
+[dependencies]
+# Reflection + ECS only — this crate is the scene IR + format layer. It does NOT
+# depend on any other renzora_* crate (no cycles): scene_io.rs in renzora_engine
+# drives it. The `bevy` umbrella gives bevy::ecs / bevy::reflect / bevy::asset.
+bevy = { workspace = true }
+ron = "0.8"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+[lints]
+workspace = true

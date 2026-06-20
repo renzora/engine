@@ -4,10 +4,14 @@
 
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::ecs::world::FilteredEntityRef;
-use bevy::light::AtmosphereEnvironmentMapLight;
-use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::{Atmosphere, AtmosphereEnvironmentMapLight};
+// Interim BSN scene IR + format (replaces Bevy 0.18's deleted DynamicScene/RON).
+use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
+use renzora_bsn::{DynamicEntity, DynamicScene, DynamicSceneBuilder};
+use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use renzora::console_log::*;
 use renzora::{
     CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData,
@@ -15,7 +19,6 @@ use renzora::{
     ViewportRenderTarget,
 };
 use renzora_lighting::Sun;
-use serde::de::DeserializeSeed;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -298,8 +301,8 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
     }
 
     let registry = type_registry.read();
-    let serialized = scene
-        .serialize(&registry)
+    let serialized = BsnSerializer
+        .serialize(&scene, &registry)
         .map_err(|e| format!("Scene serialization failed: {e}"))?;
 
     if let Some(parent) = path.parent() {
@@ -445,8 +448,8 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
     }
 
     let registry = type_registry.read();
-    let serialized = scene
-        .serialize(&registry)
+    let serialized = BsnSerializer
+        .serialize(&scene, &registry)
         .map_err(|e| format!("Scene serialization failed: {e}"))?;
 
     Ok(serialized)
@@ -542,55 +545,26 @@ pub fn save_current_scene(world: &mut World) {
 /// caller can surface a warning.
 fn deserialize_scene_lossy(
     world: &World,
-    ron: &str,
-) -> Result<(bevy::scene::DynamicScene, Vec<String>), String> {
+    text: &str,
+) -> Result<(DynamicScene, Vec<String>), String> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-    let mut current = ron.to_string();
-    let mut skipped: Vec<String> = Vec::new();
-
-    // Hard cap on the number of strip-and-retry rounds — protects against
-    // a pathological case where we keep getting the same error and can't
-    // make progress.
-    for _ in 0..256 {
-        let scene_deserializer = bevy::scene::serde::SceneDeserializer {
-            type_registry: &registry,
-        };
-        let mut ron_deserializer =
-            ron::Deserializer::from_str(&current).map_err(|e| format!("RON parse failed: {e}"))?;
-        match scene_deserializer.deserialize(&mut ron_deserializer) {
-            Ok(scene) => return Ok((scene, skipped)),
-            Err(e) => {
-                let msg = e.to_string();
-                let Some(type_path) = extract_unregistered_type(&msg) else {
-                    return Err(msg);
-                };
-                let Some(stripped) = strip_component_entry(&current, &type_path) else {
-                    return Err(format!(
-                        "could not locate `{}` to strip from scene RON: {}",
-                        type_path, msg
-                    ));
-                };
-                if stripped == current {
-                    return Err(format!(
-                        "stripping `{}` made no change; cannot recover: {}",
-                        type_path, msg
-                    ));
-                }
-                current = stripped;
-                if !skipped.iter().any(|s| s == &type_path) {
-                    skipped.push(type_path);
-                }
-            }
-        }
-    }
-    Err("scene deserialization made no progress after 256 retries".to_string())
+    // The interim BSN parser skips unregistered / un-deserializable components
+    // itself (returning their type paths), so the old RON strip-and-retry loop
+    // is unnecessary — a scene authored with a now-absent plugin still loads.
+    BsnSerializer
+        .deserialize_lossy(text, &registry)
+        .map_err(|e| e.to_string())
 }
 
 /// Pull the offending type path out of a Bevy/serde error message of the
 /// form "no registration found for `some::type::path`". Returns `None`
 /// if the error isn't of that shape — caller should surface the original
 /// error verbatim in that case.
+///
+/// Obsolete: the interim BSN parser skips unregistered components itself (see
+/// `deserialize_scene_lossy`). Retained with its tests pending removal.
+#[allow(dead_code)]
 fn extract_unregistered_type(error_message: &str) -> Option<String> {
     let needle = "no registration found for ";
     let pos = error_message.find(needle)?;
@@ -612,6 +586,10 @@ fn extract_unregistered_type(error_message: &str) -> Option<String> {
 /// commas are RON-tolerated (trailing commas allowed), and we never
 /// leave back-to-back commas because we consume one trailing comma when
 /// it's there.
+///
+/// Obsolete under the interim BSN format (no RON text surgery). Retained with
+/// its tests pending removal.
+#[allow(dead_code)]
 fn strip_component_entry(ron: &str, type_path: &str) -> Option<String> {
     let key = format!("\"{}\"", type_path);
     let key_pos = ron.find(&key)?;
@@ -699,7 +677,7 @@ fn strip_component_entry(ron: &str, type_path: &str) -> Option<String> {
 /// The `ChildOf` parent recorded on a serialized scene entity, if any. Read
 /// straight out of the reflected components — the scene isn't in the World yet,
 /// so we can't query it.
-fn scene_entity_parent(dyn_ent: &bevy::scene::DynamicEntity) -> Option<Entity> {
+fn scene_entity_parent(dyn_ent: &DynamicEntity) -> Option<Entity> {
     for comp in &dyn_ent.components {
         let is_child_of = comp
             .get_represented_type_info()
@@ -727,7 +705,7 @@ fn scene_entity_parent(dyn_ent: &bevy::scene::DynamicEntity) -> Option<Entity> {
 /// Cascades for free: a child of a pruned entity is pruned too, because its own
 /// chain still climbs to the same missing root. A well-formed scene has complete
 /// hierarchies, so nothing is dropped. Returns how many were pruned.
-fn prune_orphaned_entities(scene: &mut bevy::scene::DynamicScene) -> usize {
+fn prune_orphaned_entities(scene: &mut DynamicScene) -> usize {
     use std::collections::{HashMap, HashSet};
     let ids: HashSet<Entity> = scene.entities.iter().map(|e| e.entity).collect();
     if ids.is_empty() {
@@ -763,7 +741,7 @@ fn prune_orphaned_entities(scene: &mut bevy::scene::DynamicScene) -> usize {
 }
 
 /// Whether a serialized scene entity is a `bevy_ui` node (carries `Node`).
-fn scene_entity_is_ui(dyn_ent: &bevy::scene::DynamicEntity) -> bool {
+fn scene_entity_is_ui(dyn_ent: &DynamicEntity) -> bool {
     dyn_ent.components.iter().any(|c| {
         c.get_represented_type_info()
             .map(|ti| ti.type_path() == "bevy_ui::ui_node::Node")
@@ -1406,8 +1384,8 @@ pub fn save_prefab_source(
     }
 
     let registry = type_registry.read();
-    let serialized = scene
-        .serialize(&registry)
+    let serialized = BsnSerializer
+        .serialize(&scene, &registry)
         .map_err(|e| format!("Prefab serialization failed: {e}"))?;
 
     if let Some(parent) = source_path.parent() {
@@ -1839,8 +1817,8 @@ pub fn rehydrate_cameras(
                 DepthPrepass,
                 MotionVectorPrepass,
                 Atmosphere {
-                    bottom_radius: 6_360_000.0,
-                    top_radius: 6_460_000.0,
+                    inner_radius: 6_360_000.0,
+                    outer_radius: 6_460_000.0,
                     ground_albedo: Vec3::splat(0.3),
                     medium: medium_handle,
                 },
@@ -2222,7 +2200,9 @@ pub fn finish_mesh_instance_rehydrate(
         if let Some(scene) = scene_handle {
             commands.spawn((
                 Name::new("SceneRoot"),
-                bevy::scene::SceneRoot(scene),
+                // Bevy 0.19: glTF scenes are `Handle<WorldAsset>` and are
+                // instantiated via `WorldAssetRoot` (the old `SceneRoot` is gone).
+                bevy::world_serialization::WorldAssetRoot(scene),
                 Transform::default(),
                 Visibility::default(),
                 ChildOf(entity),
@@ -2240,7 +2220,7 @@ pub fn rehydrate_suns(mut query: Query<(&Sun, &mut DirectionalLight, &mut Transf
     for (sun, mut light, mut transform) in &mut query {
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
         light.illuminance = sun.illuminance;
-        light.shadows_enabled = sun.shadows_enabled;
+        light.shadow_maps_enabled = sun.shadows_enabled;
         *transform =
             Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
     }
