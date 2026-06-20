@@ -1,51 +1,52 @@
 use bevy::core_pipeline::prepass::ViewPrepassTextures;
-use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
-use bevy::render::render_graph::{NodeRunError, RenderGraphContext, ViewNode};
 use bevy::render::render_resource::*;
-use bevy::render::renderer::RenderContext;
+use bevy::render::renderer::{RenderContext, ViewQuery};
 use bevy::render::view::{ViewTarget, ViewUniformOffset, ViewUniforms};
 use std::sync::atomic::Ordering;
 
 use crate::prepare::{RtPipeline, RtViewResources};
 use renzora::RtLighting;
 
-#[derive(Default)]
-pub struct RtNode;
-
-impl ViewNode for RtNode {
-    type ViewQuery = (
+/// Ray-traced SSGI pass. Bevy 0.19: was `RtNode: ViewNode`; now a render system
+/// in the `Core3d` schedule (registered in `lib.rs`). `ViewQuery` silently
+/// skips views lacking these components.
+pub fn rt_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ViewUniformOffset,
         &'static ViewPrepassTextures,
         &'static RtViewResources,
         &'static RtLighting,
-    );
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, view_offset, prepass, resources, settings) = view.into_inner();
 
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, resources, settings): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if !settings.enabled || settings.intensity <= 0.0 {
-            return Ok(());
-        }
+    if !settings.enabled || settings.intensity <= 0.0 {
+        return;
+    }
 
-        let pipeline = world.resource::<RtPipeline>();
-        let pipeline_cache = world.resource::<PipelineCache>();
-        let view_uniforms = world.resource::<ViewUniforms>();
+    let pipeline = world.resource::<RtPipeline>();
+    let pipeline_cache = world.resource::<PipelineCache>();
+    let view_uniforms = world.resource::<ViewUniforms>();
 
-        let Some(render_pipeline) = pipeline_cache.get_render_pipeline(pipeline.pipeline_id) else {
-            return Ok(());
-        };
-        let Some(view_binding) = view_uniforms.uniforms.binding() else {
-            return Ok(());
-        };
-        let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
-        let Some(normal_view) = prepass.normal_view() else { return Ok(()); };
-        let Some(motion_view) = prepass.motion_vectors_view() else { return Ok(()); };
+    let Some(render_pipeline) = pipeline_cache.get_render_pipeline(pipeline.pipeline_id) else {
+        return;
+    };
+    let Some(view_binding) = view_uniforms.uniforms.binding() else {
+        return;
+    };
+    let Some(depth_view) = prepass.depth_view() else {
+        return;
+    };
+    let Some(normal_view) = prepass.normal_view() else {
+        return;
+    };
+    let Some(motion_view) = prepass.motion_vectors_view() else {
+        return;
+    };
 
         // Frame-count parity decides which history view is "previous"
         // (read) and which is "next" (written this frame). We use the
@@ -97,12 +98,10 @@ impl ViewNode for RtNode {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         render_pass.set_render_pipeline(render_pipeline);
         render_pass.set_bind_group(0, &bind_group, &[view_offset.offset]);
         render_pass.draw(0..3, 0..1);
-
-        Ok(())
-    }
 }

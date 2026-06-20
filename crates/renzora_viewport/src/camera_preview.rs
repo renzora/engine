@@ -9,7 +9,7 @@ use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrep
 use bevy::core_pipeline::Skybox;
 use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight};
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
 use renzora::core::{
@@ -110,7 +110,7 @@ pub fn resize_camera_preview(
     if state.current_size == requested {
         return;
     }
-    if let Some(image) = images.get_mut(&state.image_handle) {
+    if let Some(mut image) = images.get_mut(&state.image_handle) {
         image.resize(Extent3d {
             width: w,
             height: h,
@@ -232,7 +232,7 @@ pub fn update_camera_preview(
             // synthesize one from the baked atmosphere cubemap.
             let skybox = sb.cloned().or_else(|| {
                 generated.map(|g| Skybox {
-                    image: g.environment_map.clone(),
+                    image: Some(g.environment_map.clone()),
                     brightness: SHARED_SKY_BRIGHTNESS,
                     rotation: Quat::IDENTITY,
                 })

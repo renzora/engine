@@ -5,9 +5,11 @@ use bevy::core_pipeline::prepass::{
     DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
 };
 use bevy::light::AtmosphereEnvironmentMapLight;
-use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::Atmosphere;
+use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::window::{CursorGrabMode, CursorOptions};
 use renzora::core::{
     DefaultCamera, EditorCamera, EditorCamera2d, PlayModeCamera, PlayModeState, PlayState,
@@ -337,8 +339,8 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             DepthPrepass,
             MotionVectorPrepass,
             Atmosphere {
-                bottom_radius: 6_360_000.0,
-                top_radius: 6_460_000.0,
+                inner_radius: 6_360_000.0,
+                outer_radius: 6_460_000.0,
                 ground_albedo: Vec3::splat(0.3),
                 medium: medium_handle,
             },

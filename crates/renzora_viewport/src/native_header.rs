@@ -1955,8 +1955,9 @@ fn tool_button(
         .spawn((
             Text::new(glyph_str),
             TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 15.0,
+                // 0.19 Parley: font -> FontSource, font_size -> FontSize.
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(15.0),
                 ..default()
             },
             TextColor(rgb(text_primary())),

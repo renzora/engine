@@ -133,7 +133,7 @@ pub(crate) fn sync_render_target_to_reference(
     if render.current_size == requested {
         return;
     }
-    if let Some(image) = images.get_mut(&render.image_handle) {
+    if let Some(mut image) = images.get_mut(&render.image_handle) {
         image.resize(Extent3d {
             width: w,
             height: h,

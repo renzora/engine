@@ -10,7 +10,6 @@
 use core::marker::PhantomData;
 
 use bevy::core_pipeline::{Core3d, Core3dSystems, FullscreenShader};
-use bevy::image::BevyDefault;
 use bevy::prelude::*;
 use bevy::render::{
     extract_component::{
@@ -175,7 +174,7 @@ fn init_pipeline<T: PostProcessEffect>(
         fragment: Some(FragmentState {
             shader,
             targets: vec![Some(ColorTargetState {
-                format: TextureFormat::bevy_default(),
+                format: TextureFormat::Rgba8UnormSrgb, // 0.19: bevy_default() deprecated
                 blend: None,
                 write_mask: ColorWrites::ALL,
             })],
@@ -187,7 +186,7 @@ fn init_pipeline<T: PostProcessEffect>(
     desc.fragment.as_mut().unwrap().targets[0]
         .as_mut()
         .unwrap()
-        .format = ViewTarget::TEXTURE_FORMAT_HDR;
+        .format = TextureFormat::Rgba16Float; // 0.19: TEXTURE_FORMAT_HDR deprecated
     let pipeline_id_hdr = pipeline_cache.queue_render_pipeline(desc);
     commands.insert_resource(PostProcessPipeline::<T> {
         layout,

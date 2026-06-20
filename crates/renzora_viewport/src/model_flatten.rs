@@ -17,7 +17,7 @@
 
 use bevy::mesh::skinning::SkinnedMesh;
 use bevy::prelude::*;
-use bevy::scene::{SceneInstance, SceneRoot};
+use bevy::world_serialization::{WorldAssetRoot, WorldInstance};
 use std::collections::HashSet;
 
 /// Marker on the top-level entity of an imported model. The gizmo and
@@ -230,8 +230,8 @@ fn try_collapse_into_child(entity: Entity, world: &mut World, joint_set: &HashSe
     // Strip bevy_scene bookkeeping before despawn so the scene spawner
     // doesn't hold stale references.
     let mut entity_mut = world.entity_mut(entity);
-    entity_mut.remove::<SceneRoot>();
-    entity_mut.remove::<SceneInstance>();
+    entity_mut.remove::<WorldAssetRoot>();
+    entity_mut.remove::<WorldInstance>();
     entity_mut.despawn();
 
     let child_parent_after = world.get::<ChildOf>(child).map(|c| c.parent());

@@ -42,7 +42,7 @@ pub(crate) fn commit_sprite_drop(
             Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
             Res<ViewportState>,
         )> = SystemState::new(world);
-        let (camera_q, vp_state) = state.get(world);
+        let (camera_q, vp_state) = state.get(world).unwrap();
 
         let Ok((camera, cam_gt)) = camera_q.single() else {
             return;
@@ -67,7 +67,7 @@ pub(crate) fn commit_sprite_drop(
     let hit_entity = {
         let mut state: SystemState<Query<(Entity, &Sprite, &GlobalTransform)>> =
             SystemState::new(world);
-        let sprites = state.get(world);
+        let sprites = state.get(world).unwrap();
 
         let mut best: Option<(Entity, f32)> = None;
         for (entity, sprite, gt) in &sprites {

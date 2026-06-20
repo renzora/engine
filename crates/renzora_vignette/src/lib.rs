@@ -1,8 +1,6 @@
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy::prelude::*;
 use bevy::render::{
     extract_component::ExtractComponent,
-    render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
     render_resource::ShaderType,
 };
 use bevy::shader::ShaderRef;
@@ -44,16 +42,6 @@ impl Default for VignetteSettings {
 impl PostProcessEffect for VignetteSettings {
     fn fragment_shader() -> ShaderRef {
         "embedded://renzora_vignette/vignette.wgsl".into()
-    }
-    fn sub_graph() -> Option<InternedRenderSubGraph> {
-        Some(Core3d.intern())
-    }
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![
-            Node3d::Tonemapping.intern(),
-            Self::node_label().intern(),
-            Node3d::EndMainPassPostProcessing.intern(),
-        ]
     }
 }
 

@@ -12,9 +12,10 @@ use std::path::PathBuf;
 
 use bevy::asset::LoadState;
 use bevy::camera::primitives::Aabb;
+use bevy::gltf::GltfMaterialName;
 use bevy::pbr::MeshMaterial3d;
 use bevy::prelude::*;
-use bevy::scene::{SceneInstanceReady, SceneRoot};
+use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use bevy::window::PrimaryWindow;
 
 use renzora::core::{CurrentProject, EditorCamera, MeshInstanceData};
@@ -183,7 +184,7 @@ pub(crate) fn commit_model_drop(
             .unwrap_or_default();
         let mut scene_root_child: Option<Entity> = None;
         for child in candidate_children {
-            if world.get::<SceneRoot>(child).is_some() {
+            if world.get::<WorldAssetRoot>(child).is_some() {
                 scene_root_child = Some(child);
                 break;
             }
@@ -226,7 +227,7 @@ pub fn native_model_drop(
     window_query: Query<&Window, With<PrimaryWindow>>,
     mut commands: Commands,
     children_query: Query<&Children>,
-    scene_root_query: Query<(), With<SceneRoot>>,
+    scene_root_query: Query<(), With<WorldAssetRoot>>,
     selection: Option<Res<EditorSelection>>,
 ) {
     if !mouse.just_released(MouseButton::Left) {
@@ -563,7 +564,7 @@ pub fn spawn_loaded_gltfs(
         // flatten pass once the scene spawner has populated the subtree.
         commands.spawn((
             Name::new("SceneRoot"),
-            bevy::scene::SceneRoot(scene),
+            bevy::world_serialization::WorldAssetRoot(scene),
             Transform::default(),
             Visibility::default(),
             ChildOf(parent),
@@ -878,7 +879,7 @@ pub fn update_model_drag_ghost(
 
     commands.spawn((
         Name::new("SceneRoot"),
-        SceneRoot(scene),
+        WorldAssetRoot(scene),
         Transform::default(),
         Visibility::Inherited,
         ChildOf(root),
@@ -959,8 +960,13 @@ pub fn bind_material_refs(
     mut commands: Commands,
     pending_query: Query<(Entity, &PendingMaterialBinding, &MeshInstanceData)>,
     children_query: Query<&Children>,
+    // Bevy 0.19: glTF materials became a separate `GltfMaterial` asset, so the
+    // mesh's `StandardMaterial` AssetId no longer matches `gltf.materials` ids.
+    // Bevy instead tags each mesh entity with `GltfMaterialName` (the authored
+    // material name), which we match directly — more robust than the old
+    // by-id map. `MeshMaterial3d` is kept only to detect "has a material".
     mesh_mat_query: Query<
-        &MeshMaterial3d<StandardMaterial>,
+        (&MeshMaterial3d<StandardMaterial>, Option<&GltfMaterialName>),
         (
             With<Mesh3d>,
             Without<MaterialBindingDone>,
@@ -969,14 +975,12 @@ pub fn bind_material_refs(
     >,
     gltf_assets: Res<Assets<Gltf>>,
 ) {
-    use std::collections::HashMap;
-
     for (root_entity, pending, mesh_data) in pending_query.iter() {
-        let Some(gltf) = gltf_assets.get(&pending.gltf_handle) else {
+        if gltf_assets.get(&pending.gltf_handle).is_none() {
             // GLB still loading. Wait — `PendingMaterialBinding` holds the
             // handle so the asset is kept alive.
             continue;
-        };
+        }
 
         // Compute the materials directory relative to the project — the
         // `.material` files live next to the GLB at `<model_dir>/materials/`.
@@ -999,20 +1003,6 @@ pub fn bind_material_refs(
             format!("{}/materials", model_dir_rel)
         };
 
-        // Build lookup: every material handle in the GLB → its name. Named
-        // entries use the GLTF's authored name; unnamed entries fall back to
-        // `material_{index}` matching what `extract_glb_materials` produced
-        // and what the `.material` filename was therefore based on.
-        let mut name_by_id: HashMap<AssetId<StandardMaterial>, String> = HashMap::new();
-        for (name, handle) in gltf.named_materials.iter() {
-            name_by_id.insert(handle.id(), name.to_string());
-        }
-        for (i, handle) in gltf.materials.iter().enumerate() {
-            name_by_id
-                .entry(handle.id())
-                .or_insert_with(|| format!("material_{}", i));
-        }
-
         // Walk descendants and bind any meshes that haven't been bound yet.
         // The query filter ensures already-bound meshes are skipped; once
         // every descendant has been processed this loop is effectively a
@@ -1022,17 +1012,18 @@ pub fn bind_material_refs(
             if let Ok(kids) = children_query.get(entity) {
                 stack.extend(kids.iter());
             }
-            if let Ok(mat) = mesh_mat_query.get(entity) {
-                if let Some(name) = name_by_id.get(&mat.0.id()) {
-                    let safe = sanitize_material_name(name);
+            if let Ok((_mat, mat_name)) = mesh_mat_query.get(entity) {
+                if let Some(mat_name) = mat_name {
+                    // Bind to `<material name>.material` (the same name
+                    // `extract_glb_materials` used for the file).
+                    let safe = sanitize_material_name(&mat_name.0);
                     let path = format!("{}/{}.material", materials_dir_rel, safe);
                     commands
                         .entity(entity)
                         .insert((renzora::MaterialRef(path), MaterialBindingDone));
                 } else {
-                    // Mesh has a material handle the GLB didn't expose —
-                    // could happen with procedurally-spawned children. Mark
-                    // done so we don't keep retrying it.
+                    // Mesh has a material but no authored GLTF name (unnamed
+                    // material). Mark done so we don't keep retrying it.
                     commands.entity(entity).insert(MaterialBindingDone);
                 }
             }
@@ -1062,7 +1053,7 @@ pub fn bind_material_refs(
 /// arrive with the marker pre-attached), and add the same trio of markers
 /// the drop handler does so the binder + flatten + resolver chain runs.
 pub fn decorate_rehydrated_scene_on_ready(
-    trigger: On<SceneInstanceReady>,
+    trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     parents: Query<&ChildOf>,

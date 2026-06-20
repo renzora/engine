@@ -11,21 +11,17 @@
 //! distribution plugin, which installs `RtPlugin`; it is not a plugin on its
 //! own and is never statically linked into the host.
 
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::core_pipeline::{Core3d, Core3dSystems};
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponentPlugin;
-use bevy::render::render_graph::{RenderGraphExt, RenderLabel, ViewNodeRunner};
 use bevy::render::{Render, RenderApp, RenderSystems};
 use renzora::{RtLighting, RtLightingExternallyManaged};
 
 mod node;
 mod prepare;
 
-use node::RtNode;
+use node::rt_pass;
 use prepare::RtPipeline;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct RtLabel;
 
 #[derive(Default)]
 pub struct RtPlugin;
@@ -44,11 +40,10 @@ impl Plugin for RtPlugin {
                     Render,
                     prepare::prepare_rt_uniforms.in_set(RenderSystems::PrepareResources),
                 )
-                .add_render_graph_node::<ViewNodeRunner<RtNode>>(Core3d, RtLabel)
-                .add_render_graph_edges(
-                    Core3d,
-                    (Node3d::EndMainPass, RtLabel, Node3d::Tonemapping),
-                );
+                // Bevy 0.19: render graph → systems. RT-SSGI ran
+                // `EndMainPass → RT → Tonemapping`, i.e. after the main pass and
+                // before tonemapping → `Core3dSystems::EarlyPostProcess`.
+                .add_systems(Core3d, rt_pass.in_set(Core3dSystems::EarlyPostProcess));
         }
     }
 
@@ -88,7 +83,9 @@ fn sync_rt_lighting(
                     found = true;
                     break;
                 }
-                commands.entity(*target).insert(settings.clone());
+                // Bevy 0.19: `settings` is `Ref<RtLighting>`; clone the inner
+                // component, not the `Ref` (which isn't a Bundle).
+                commands.entity(*target).insert((*settings).clone());
                 found = true;
                 break;
             }

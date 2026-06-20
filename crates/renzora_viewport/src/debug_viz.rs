@@ -12,19 +12,17 @@
 //! Roughness/Metallic/UV Checker stay on the existing material-swap
 //! path because they need per-fragment material data.
 
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::core_pipeline::{Core3d, Core3dSystems};
 use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass, ViewPrepassTextures};
 use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
+use bevy::render::sync_component::SyncComponent;
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, texture_2d, texture_depth_2d, uniform_buffer,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
+use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bytemuck::{Pod, Zeroable};
@@ -36,6 +34,11 @@ use renzora::core::viewport_types::{ViewportSettings, VisualizationMode};
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct DebugVizMode {
     pub mode: VisualizationMode,
+}
+
+// Bevy 0.19: `ExtractComponent` now requires the `SyncComponent` supertrait.
+impl SyncComponent for DebugVizMode {
+    type Target = Self;
 }
 
 impl ExtractComponent for DebugVizMode {
@@ -69,8 +72,6 @@ pub struct DebugVizResources {
     config_buffer: Buffer,
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct DebugVizLabel;
 
 impl FromWorld for DebugVizPipeline {
     fn from_world(world: &mut World) -> Self {
@@ -107,7 +108,8 @@ impl FromWorld for DebugVizPipeline {
                 shader_defs: vec![],
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: ViewTarget::TEXTURE_FORMAT_HDR,
+                    // 0.19: TEXTURE_FORMAT_HDR deprecated.
+                    format: TextureFormat::Rgba16Float,
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
@@ -115,7 +117,7 @@ impl FromWorld for DebugVizPipeline {
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -184,81 +186,78 @@ pub fn prepare_debug_viz_uniforms(
     }
 }
 
-#[derive(Default)]
-pub struct DebugVizNode;
-
-impl ViewNode for DebugVizNode {
-    type ViewQuery = (
+/// Debug visualization pass (normals / depth). Bevy 0.19: was
+/// `DebugVizNode: ViewNode`; now a render system in the `Core3d` schedule.
+pub fn debug_viz_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ViewUniformOffset,
         &'static ViewPrepassTextures,
         &'static DebugVizResources,
         &'static DebugVizMode,
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, view_offset, prepass, resources, mode) = view.into_inner();
+
+    // Mode None: nothing to do, scene passes through normally.
+    if !matches!(
+        mode.mode,
+        VisualizationMode::Normals | VisualizationMode::Depth
+    ) {
+        return;
+    }
+
+    let pipeline = world.resource::<DebugVizPipeline>();
+    let pipeline_cache = world.resource::<PipelineCache>();
+    let view_uniforms = world.resource::<ViewUniforms>();
+
+    let Some(render_pipeline) = pipeline_cache.get_render_pipeline(pipeline.pipeline_id) else {
+        return;
+    };
+    let Some(view_binding) = view_uniforms.uniforms.binding() else {
+        return;
+    };
+    let Some(depth_view) = prepass.depth_view() else {
+        return;
+    };
+    let Some(normal_view) = prepass.normal_view() else {
+        return;
+    };
+
+    let post_process = view_target.post_process_write();
+
+    let bind_group = render_context.render_device().create_bind_group(
+        "debug_viz_bind_group",
+        &pipeline_cache.get_bind_group_layout(&pipeline.layout),
+        &BindGroupEntries::sequential((
+            post_process.source,
+            &pipeline.sampler,
+            depth_view,
+            normal_view,
+            view_binding.clone(),
+            resources.config_buffer.as_entire_binding(),
+        )),
     );
 
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, resources, mode): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        // Mode None: nothing to do, scene passes through normally.
-        if !matches!(
-            mode.mode,
-            VisualizationMode::Normals | VisualizationMode::Depth
-        ) {
-            return Ok(());
-        }
+    let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
+        label: Some("debug_viz_pass"),
+        color_attachments: &[Some(RenderPassColorAttachment {
+            view: post_process.destination,
+            depth_slice: None,
+            resolve_target: None,
+            ops: Operations::default(),
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
 
-        let pipeline = world.resource::<DebugVizPipeline>();
-        let pipeline_cache = world.resource::<PipelineCache>();
-        let view_uniforms = world.resource::<ViewUniforms>();
-
-        let Some(render_pipeline) = pipeline_cache.get_render_pipeline(pipeline.pipeline_id)
-        else {
-            return Ok(());
-        };
-        let Some(view_binding) = view_uniforms.uniforms.binding() else {
-            return Ok(());
-        };
-        let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
-        let Some(normal_view) = prepass.normal_view() else { return Ok(()); };
-
-        let post_process = view_target.post_process_write();
-
-        let bind_group = render_context.render_device().create_bind_group(
-            "debug_viz_bind_group",
-            &pipeline_cache.get_bind_group_layout(&pipeline.layout),
-            &BindGroupEntries::sequential((
-                post_process.source,
-                &pipeline.sampler,
-                depth_view,
-                normal_view,
-                view_binding.clone(),
-                resources.config_buffer.as_entire_binding(),
-            )),
-        );
-
-        let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
-            label: Some("debug_viz_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: post_process.destination,
-                depth_slice: None,
-                resolve_target: None,
-                ops: Operations::default(),
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-        });
-
-        render_pass.set_render_pipeline(render_pipeline);
-        render_pass.set_bind_group(0, &bind_group, &[view_offset.offset]);
-        render_pass.draw(0..3, 0..1);
-
-        Ok(())
-    }
+    render_pass.set_render_pipeline(render_pipeline);
+    render_pass.set_bind_group(0, &bind_group, &[view_offset.offset]);
+    render_pass.draw(0..3, 0..1);
 }
 
 #[derive(Default)]
@@ -277,10 +276,11 @@ impl Plugin for DebugVizPlugin {
                     Render,
                     prepare_debug_viz_uniforms.in_set(RenderSystems::PrepareResources),
                 )
-                .add_render_graph_node::<ViewNodeRunner<DebugVizNode>>(Core3d, DebugVizLabel)
-                .add_render_graph_edges(
+                // Bevy 0.19: render graph → systems. Ran after Tonemapping →
+                // `Core3dSystems::PostProcess`.
+                .add_systems(
                     Core3d,
-                    (Node3d::Tonemapping, DebugVizLabel, Node3d::EndMainPassPostProcessing),
+                    debug_viz_pass.in_set(Core3dSystems::PostProcess),
                 );
         }
     }
