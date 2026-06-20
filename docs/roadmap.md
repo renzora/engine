@@ -326,11 +326,8 @@ Planned and completed work across the Renzora engine; completed items link to th
 - Add world machine / advanced heightmap import formats
 - Add material LOD variants for terrain layers
 
-## Physics — Backends
-> Avian (`avian3d`) is the chosen, default, and only working backend (`renzora_physics`, `default = ["avian", ...]`). The Rapier backend (`backend/rapier.rs`) is a placeholder that `unimplemented!()`s on build — `bevy_rapier3d` has not released for Bevy 0.18, so all Rapier work below is blocked on that.
-- Complete the Rapier backend once `bevy_rapier3d` ships Bevy 0.18 support (currently a stub)
-- Implement Rapier physics pause/unpause (blocked on `bevy_rapier3d` 0.18)
-- Decide whether to drop the Rapier backend entirely now that Avian is the chosen backend
+## Physics
+> Avian (`avian3d`) is the engine's only physics backend (`renzora_physics`, `default = ["avian", ...]`). The former Rapier backend stub has been removed.
 - Add collision layer/group editor UI
 
 ## Camera System

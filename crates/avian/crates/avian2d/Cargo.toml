@@ -1,0 +1,208 @@
+[package]
+name = "avian2d"
+version = "0.7.0-dev"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Joona Aalto <jondolf.dev@gmail.com>"]
+description = "An ECS-driven physics engine for the Bevy game engine"
+documentation = "https://docs.rs/avian2d"
+repository = "https://github.com/avianphysics/avian"
+readme = "README.md"
+keywords = ["gamedev", "physics", "simulation", "bevy"]
+categories = ["game-development", "science", "simulation"]
+
+[features]
+default = [
+    "2d",
+    "f32",
+    "parry-f32",
+    "debug-plugin",
+    "xpbd_joints",
+    "parallel",
+    # "bevy_scene" dropped from defaults: Bevy 0.19 removed the runtime-scene API
+    # in the BSN rework, so avian's scene-collider path no longer compiles.
+    # Re-add once that integration is rewritten against 0.19 BSN.
+    "bevy_picking",
+]
+2d = []
+f32 = []
+f64 = []
+
+debug-plugin = ["bevy/bevy_gizmos", "bevy/bevy_render"]
+simd = ["parry2d?/simd-stable", "parry2d-f64?/simd-stable"]
+parallel = ["bevy/multi_threaded", "parry2d?/parallel", "parry2d-f64?/parallel"]
+enhanced-determinism = [
+    "dep:libm",
+    "bevy_math/libm",
+    "bevy_heavy/libm",
+    "parry2d?/enhanced-determinism",
+    "parry2d-f64?/enhanced-determinism",
+]
+
+default-collider = []
+# We unfortunately can't reuse the f32 and f64 features for this,
+# because Parry uses separate crates for f32 and f64.
+parry-f32 = ["f32", "dep:parry2d", "default-collider"]
+parry-f64 = ["f64", "dep:parry2d-f64", "default-collider"]
+
+# Enables the XPBD constraint solver for joints.
+xpbd_joints = []
+
+bevy_scene = ["bevy/bevy_scene"]
+bevy_picking = ["bevy/bevy_picking"]
+serialize = [
+    "dep:serde",
+    "bevy/serialize",
+    "glam_matrix_extras/serde",
+    "bevy_heavy/serialize",
+    "bevy_transform_interpolation/serialize",
+    "parry2d?/serde-serialize",
+    "parry2d-f64?/serde-serialize",
+    "smallvec/serde",
+    "bitflags/serde",
+]
+
+# Enables writing timer and counter information to the `DiagnosticsStore` in `bevy_diagnostic`.
+bevy_diagnostic = []
+
+# Enables the `PhysicsDiagnosticsUiPlugin` for visualizing physics diagnostics data with a debug UI.
+diagnostic_ui = ["bevy_diagnostic", "bevy/bevy_ui"]
+
+# Enables additional correctness checks and validation at the cost of worse performance.
+validate = []
+
+[lib]
+name = "avian2d"
+path = "../../src/lib.rs"
+required-features = ["2d"]
+bench = false
+
+[dependencies]
+avian_derive = { path = "../avian_derive", version = "0.2" }
+bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, features = ["std", "bevy_log"] }
+bevy_math = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, features = ["approx"] }
+glam_matrix_extras = { path = "../../../glam_matrix_extras", features = ["bevy_reflect"] }
+bevy_heavy = { path = "../../../bevy_heavy" }
+bevy_transform_interpolation = { path = "../../../bevy_transform_interpolation" }
+libm = { version = "0.2", optional = true }
+approx = "0.5"
+parry2d = { version = "0.27", optional = true }
+parry2d-f64 = { version = "0.27", optional = true }
+obvhs = { version = "0.3" }
+serde = { version = "1", features = ["derive"], optional = true }
+derive_more = "2"
+thiserror = "2"
+arrayvec = "0.7"
+smallvec = "1.15"
+itertools = "0.14"
+bitflags = "2.5.0"
+thread_local = { version = "1.1" }
+disqualified = { version = "1.0" }
+
+[dev-dependencies]
+# Trimmed for vendoring (see avian3d): dropped examples_common_2d +
+# bevy_mod_debugdump (crates.io Bevy 0.18 conflicts with workspace git 0.19).
+bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0" }
+bevy_heavy = { path = "../../../bevy_heavy", features = ["approx"] }
+glam = { version = "0.30", features = ["bytemuck"] }
+bytemuck = "1.19"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[lints]
+workspace = true
+
+[package.metadata.docs.rs]
+# Enable features when building the docs on docs.rs
+features = ["diagnostic_ui"]
+
+[[example]]
+name = "dynamic_character_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "kinematic_character_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "ccd"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "chain_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "collision_layers"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "custom_collider"
+required-features = ["2d"]
+
+[[example]]
+name = "determinism_2d"
+required-features = ["2d", "default-collider", "enhanced-determinism"]
+
+[[example]]
+name = "fixed_joint_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "interpolation"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "many_pyramids_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "many_shapes"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "move_and_slide_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "move_marbles"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "one_way_platform_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "picking_2d_in_perspective"
+required-features = ["2d", "debug-plugin", "bevy_picking"]
+
+[[example]]
+name = "prismatic_joint_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "pyramid_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "ray_caster"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "revolute_joint_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "joint_motors_2d"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "sensor"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "tumbler"
+required-features = ["2d", "default-collider"]
+
+[[example]]
+name = "debugdump_2d"
+required-features = ["2d", "debug-plugin"]

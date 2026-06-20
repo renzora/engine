@@ -9,7 +9,7 @@ Renzora's physics live in `renzora_physics`, which wraps **[Avian 3D](https://gi
 - In the **editor**, the companion `renzora_physics_editor` pauses the simulation at startup so your scene sits still until you press play.
 - In a **shipped game** the simulation runs immediately.
 
-> A Rapier backend is stubbed behind a `rapier` Cargo feature, but it is **not usable**: `bevy_rapier3d` has no release for Bevy 0.18. The default feature set is `["avian", "lua"]`, and enabling both backends (or neither) is a compile error. Avian is the only working backend today.
+> Avian is the engine's only physics backend. The default feature set is `["avian", "lua"]`; the data components below are backend-agnostic by design, but only the Avian backend is implemented.
 
 ## Physics components
 
