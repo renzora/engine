@@ -1,7 +1,8 @@
-//! Renzora networking crate — Lightyear-based multiplayer for dedicated server architecture.
+//! Renzora networking crate — from-scratch UDP multiplayer (client/server/host).
 //!
-//! On native platforms: full Lightyear UDP networking with client/server.
-//! On WASM: no-op stub (UDP sockets not available).
+//! On native platforms: a synchronous UDP transport (see [`transport`]) with a
+//! reliable RPC channel + connection lifecycle. On WASM: no-op stub (UDP
+//! sockets are unavailable).
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod client;
@@ -22,6 +23,8 @@ pub mod script_extension;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 pub mod status;
+#[cfg(not(target_arch = "wasm32"))]
+mod transport;
 
 pub use components::{
     NetworkId, NetworkOwner, NetworkPlayer, NetworkTransform, Networked, OwnerKind,
@@ -100,39 +103,29 @@ impl Plugin for NetworkPlugin {
             // protocol, the shared observers, and the RPC-send system so each
             // registers exactly once, after `ServerPlugins`. Here we add only
             // the client half; in pure-client mode we add everything.
+            // Host/listen-server (`--host`) runs BOTH plugin sets in one
+            // process. The host IS the server (its scripts run server-side), so
+            // it needs no separate local client link — `NetworkServerPlugin`
+            // (added after this) owns the script-action observer + RPC send.
             let host = app.world().contains_resource::<renzora::HostServer>();
 
-            // Lightyear client infrastructure
-            let tick_rate = app
-                .world()
-                .get_resource::<renzora::CurrentProject>()
-                .and_then(|p| p.config.network.as_ref())
-                .map(|n| n.tick_rate)
-                .unwrap_or(64);
-            let tick_duration = core::time::Duration::from_secs_f64(1.0 / tick_rate as f64);
-            app.add_plugins(lightyear::prelude::client::ClientPlugins { tick_duration });
-
-            // Client-side connection/status systems run in both client and host
-            // modes (the connect/disconnect systems are harmless no-ops on a
-            // host, which never dials out — its local client is wired by the
-            // server plugin).
+            // Client connection lifecycle + status. `process_pending_connect`
+            // builds a `NetworkClient` from a `PendingNetworkConnect` request;
+            // `client_poll` pumps it and delivers received RPCs to scripts.
             app.add_systems(
                 Update,
                 (
                     process_pending_connect,
                     process_pending_disconnect,
+                    client::client_poll,
                     client::update_network_status,
                     sync_network_bridge,
                 ),
             );
 
             if !host {
-                // Pure client: own the protocol, shared observers, and RPC send.
-                protocol::register_protocol(app);
-                // Script actions (decoupled — observes ScriptAction events).
+                // Pure client: own the script-action observer + RPC send.
                 app.add_observer(script_extension::handle_network_script_actions);
-                // Deliver received RPCs to local scripts.
-                app.add_observer(rpc::receive_and_relay_rpcs);
                 app.add_systems(Update, rpc::send_outgoing_rpcs);
             }
         }
@@ -145,19 +138,18 @@ impl Plugin for NetworkPlugin {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn process_pending_connect(world: &mut World) {
-    use lightyear::prelude::client::{Connect, NetcodeClient, NetcodeConfig};
-    use lightyear::prelude::{Authentication, LocalAddr, UdpIo};
-
-    let Some(pending) = world.remove_resource::<PendingNetworkConnect>() else {
+fn process_pending_connect(
+    mut commands: Commands,
+    pending: Option<Res<PendingNetworkConnect>>,
+    status: Option<Res<NetworkStatus>>,
+) {
+    let Some(pending) = pending else {
         return;
     };
-
-    if let Some(status) = world.get_resource::<NetworkStatus>() {
-        if status.is_connected() {
-            log::warn!("[network] Already connected — ignoring connect request");
-            return;
-        }
+    if status.is_some_and(|s| s.is_connected()) {
+        log::warn!("[network] Already connected — ignoring connect request");
+        commands.remove_resource::<PendingNetworkConnect>();
+        return;
     }
 
     let server_addr = format!("{}:{}", pending.address, pending.port)
@@ -168,64 +160,32 @@ fn process_pending_connect(world: &mut World) {
                 pending.port,
             )
         });
+    commands.remove_resource::<PendingNetworkConnect>();
 
     info!("[network] Connecting to {} ...", server_addr);
-
-    let auth = Authentication::Manual {
-        server_addr,
-        client_id: client::rand_client_id(),
-        private_key: [0u8; 32],
-        protocol_id: 0,
-    };
-
-    let netcode_client = match NetcodeClient::new(auth, NetcodeConfig::default()) {
-        Ok(c) => c,
-        Err(e) => {
-            log::error!("[network] Failed to create netcode client: {}", e);
-            return;
-        }
-    };
-
-    let local_addr: std::net::SocketAddr = "0.0.0.0:0".parse().unwrap();
-
-    let client_entity = world
-        .spawn((
-            UdpIo::default(),
-            LocalAddr(local_addr),
-            netcode_client,
-            Name::new("NetworkClient"),
-            renzora::HideInHierarchy,
-        ))
-        .id();
-
-    world.insert_resource(ActiveClientEntity(client_entity));
-    world.trigger(Connect {
-        entity: client_entity,
-    });
-
-    if let Some(mut status) = world.get_resource_mut::<NetworkStatus>() {
-        status.state = status::ConnectionState::Connecting;
+    match client::NetworkClient::connect(server_addr, client::rand_client_id()) {
+        // Status flips to Connecting → Connected via `update_network_status`.
+        Ok(client) => commands.insert_resource(client),
+        Err(e) => log::error!("[network] Failed to open client socket: {e}"),
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn process_pending_disconnect(world: &mut World) {
-    use lightyear::prelude::client::Disconnect;
-
-    let Some(_) = world.remove_resource::<PendingNetworkDisconnect>() else {
+fn process_pending_disconnect(
+    mut commands: Commands,
+    pending: Option<Res<PendingNetworkDisconnect>>,
+    mut client: Option<ResMut<client::NetworkClient>>,
+) {
+    if pending.is_none() {
         return;
-    };
-
-    if let Some(active) = world.remove_resource::<ActiveClientEntity>() {
-        info!("[network] Disconnecting client entity {:?}", active.0);
-        if world.get_entity(active.0).is_ok() {
-            world.trigger(Disconnect { entity: active.0 });
-        }
     }
-
-    if let Some(mut status) = world.get_resource_mut::<NetworkStatus>() {
-        status.state = status::ConnectionState::Disconnected;
+    if let Some(client) = client.as_mut() {
+        info!("[network] Disconnecting");
+        client.disconnect();
     }
+    commands.remove_resource::<client::NetworkClient>();
+    commands.remove_resource::<PendingNetworkDisconnect>();
+    // `update_network_status` flips the status to Disconnected next frame.
 }
 
 /// Sync the lightweight `NetworkBridge` resource from the full `NetworkStatus`.
