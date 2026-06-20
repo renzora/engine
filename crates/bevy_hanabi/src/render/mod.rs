@@ -8,6 +8,8 @@ use std::{
     vec,
 };
 
+// Bevy 0.19: HDR is a marker component on the view, not an `ExtractedView` field.
+use bevy::camera::Hdr;
 #[cfg(feature = "2d")]
 use bevy::core_pipeline::core_2d::{Transparent2d, CORE_2D_DEPTH_FORMAT};
 #[cfg(feature = "2d")]
@@ -36,7 +38,6 @@ use bevy::{
     render::{
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
-        render_graph::{Node, NodeRunError, RenderGraphContext, SlotInfo},
         render_phase::{
             Draw, DrawError, DrawFunctions, PhaseItemExtraIndex, SortedPhaseItem,
             TrackedRenderPass, ViewSortedRenderPhases,
@@ -46,8 +47,7 @@ use bevy::{
         sync_world::{MainEntity, RenderEntity, TemporaryRenderEntity},
         texture::GpuImage,
         view::{
-            ExtractedView, RenderVisibleEntities, ViewTarget, ViewUniform, ViewUniformOffset,
-            ViewUniforms,
+            ExtractedView, RenderVisibleEntities, ViewUniform, ViewUniformOffset, ViewUniforms,
         },
         Extract, MainWorld,
     },
@@ -868,7 +868,7 @@ impl SpecializedComputePipeline for DispatchIndirectPipeline {
             },
             shader_defs,
             entry_point: Some("main".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -1293,8 +1293,8 @@ impl FromWorld for UtilsPipeline {
 
         let pipeline_layout = render_device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("hanabi:pipeline_layout:utils"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let bind_group_layout_dyn = render_device.create_bind_group_layout(
@@ -1335,8 +1335,8 @@ impl FromWorld for UtilsPipeline {
 
         let pipeline_layout_dyn = render_device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("hanabi:pipeline_layout:utils_dyn"),
-            bind_group_layouts: &[&bind_group_layout_dyn],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout_dyn)],
+            immediate_size: 0,
         });
 
         let bind_group_layout_no_src = render_device.create_bind_group_layout(
@@ -1368,8 +1368,8 @@ impl FromWorld for UtilsPipeline {
         let pipeline_layout_no_src =
             render_device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("hanabi:pipeline_layout:utils_no_src"),
-                bind_group_layouts: &[&bind_group_layout_no_src],
-                push_constant_ranges: &[],
+                bind_group_layouts: &[Some(&bind_group_layout_no_src)],
+                immediate_size: 0,
             });
 
         let shader_code = include_str!("vfx_utils.wgsl");
@@ -1608,7 +1608,7 @@ impl SpecializedComputePipeline for ParticlesInitPipeline {
             shader: key.shader,
             shader_defs,
             entry_point: Some("main".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -1724,7 +1724,7 @@ impl SpecializedComputePipeline for ParticlesUpdatePipeline {
             shader: key.shader,
             shader_defs,
             entry_point: Some("main".into()),
-            push_constant_ranges: Vec::new(),
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -2043,9 +2043,9 @@ impl SpecializedRenderPipeline for ParticlesRenderPipeline {
         let depth_stencil_2d = DepthStencilState {
             format: CORE_2D_DEPTH_FORMAT,
             // Use depth buffer with alpha-masked particles, not with transparent ones
-            depth_write_enabled: false, // TODO - opaque/alphamask 2d
+            depth_write_enabled: Some(false), // wgpu 29: Option; TODO opaque/alphamask 2d
             // Bevy uses reverse-Z, so GreaterEqual really means closer
-            depth_compare: CompareFunction::GreaterEqual,
+            depth_compare: Some(CompareFunction::GreaterEqual),
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
         };
@@ -2055,13 +2055,13 @@ impl SpecializedRenderPipeline for ParticlesRenderPipeline {
             format: CORE_3D_DEPTH_FORMAT,
             // Use depth buffer with alpha-masked or opaque particles, not
             // with transparent ones
-            depth_write_enabled: matches!(
+            depth_write_enabled: Some(matches!(
                 key.alpha_mask,
                 ParticleRenderAlphaMaskPipelineKey::AlphaMask
                     | ParticleRenderAlphaMaskPipelineKey::Opaque
-            ),
+            )),
             // Bevy uses reverse-Z, so GreaterEqual really means closer
-            depth_compare: CompareFunction::GreaterEqual,
+            depth_compare: Some(CompareFunction::GreaterEqual),
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
         };
@@ -2080,10 +2080,12 @@ impl SpecializedRenderPipeline for ParticlesRenderPipeline {
         #[cfg(all(feature = "3d", not(feature = "2d")))]
         let depth_stencil = Some(depth_stencil_3d);
 
+        // Bevy 0.19 deprecated `ViewTarget::TEXTURE_FORMAT_HDR` /
+        // `TextureFormat::bevy_default()`; use the concrete formats they returned.
         let format = if key.hdr {
-            ViewTarget::TEXTURE_FORMAT_HDR
+            TextureFormat::Rgba16Float
         } else {
-            TextureFormat::bevy_default()
+            TextureFormat::Rgba8UnormSrgb
         };
 
         let hash = calc_func_id(&key);
@@ -2130,7 +2132,7 @@ impl SpecializedRenderPipeline for ParticlesRenderPipeline {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            push_constant_ranges: Vec::new(),
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         }
     }
@@ -5076,7 +5078,7 @@ pub struct QueueEffectsReadOnlyParams<'w, 's> {
 }
 
 fn emit_sorted_draw<T, F>(
-    views: &Query<(&RenderVisibleEntities, &ExtractedView, &Msaa)>,
+    views: &Query<(&RenderVisibleEntities, &ExtractedView, Has<Hdr>, &Msaa)>,
     render_phases: &mut ResMut<ViewSortedRenderPhases<T>>,
     view_entities: &mut FixedBitSet,
     sorted_effect_batches: &SortedEffectBatches,
@@ -5093,10 +5095,13 @@ fn emit_sorted_draw<T, F>(
 {
     trace!("emit_sorted_draw() {} views", views.iter().len());
 
-    for (visible_entities, view, msaa) in views.iter() {
+    for (visible_entities, view, hdr, msaa) in views.iter() {
         trace!(
             "Process new sorted view with {} visible particle effect entities",
-            visible_entities.len::<CompiledParticleEffect>()
+            // Bevy 0.19: `RenderVisibleEntities::len::<T>()` → `get::<T>()` + count.
+            visible_entities
+                .get::<CompiledParticleEffect>()
+                .map_or(0, |c| c.iter_visible().count())
         );
 
         let Some(render_phase) = render_phases.get_mut(&view.retained_view_entity) else {
@@ -5109,8 +5114,11 @@ fn emit_sorted_draw<T, F>(
 
             view_entities.clear();
             view_entities.extend(
+                // Bevy 0.19: `iter::<T>()` → `get::<T>()` then `iter_visible()`.
                 visible_entities
-                    .iter::<EffectVisibilityClass>()
+                    .get::<EffectVisibilityClass>()
+                    .into_iter()
+                    .flat_map(|c| c.iter_visible())
                     .map(|e| e.1.index_u32() as usize),
             );
         }
@@ -5205,7 +5213,7 @@ fn emit_sorted_draw<T, F>(
                 image_count,
                 alpha_mask,
                 flipbook,
-                view.hdr
+                hdr
             );
 
             // Add a draw pass for the effect batch
@@ -5234,7 +5242,7 @@ fn emit_sorted_draw<T, F>(
                     #[cfg(all(feature = "2d", feature = "3d"))]
                     pipeline_mode,
                     msaa_samples: msaa.samples(),
-                    hdr: view.hdr,
+                    hdr: hdr,
                 },
             );
             #[cfg(feature = "trace")]
@@ -5249,7 +5257,8 @@ fn emit_sorted_draw<T, F>(
                 effect_batch.spawner_base,
                 effect_batch.handle
             );
-            render_phase.add(make_phase_item(
+            // Bevy 0.19: sorted phases use `add_transient` (cleared each frame).
+            render_phase.add_transient(make_phase_item(
                 render_pipeline_id,
                 (draw_entity, MainEntity::from(Entity::PLACEHOLDER)),
                 draw_batch,
@@ -5261,7 +5270,7 @@ fn emit_sorted_draw<T, F>(
 
 #[cfg(feature = "3d")]
 fn emit_binned_draw<T, F, G>(
-    views: &Query<(&RenderVisibleEntities, &ExtractedView, &Msaa)>,
+    views: &Query<(&RenderVisibleEntities, &ExtractedView, Has<Hdr>, &Msaa)>,
     render_phases: &mut ResMut<ViewBinnedRenderPhases<T>>,
     view_entities: &mut FixedBitSet,
     sorted_effect_batches: &SortedEffectBatches,
@@ -5274,7 +5283,9 @@ fn emit_binned_draw<T, F, G>(
     make_bin_key: G,
     #[cfg(all(feature = "2d", feature = "3d"))] pipeline_mode: PipelineMode,
     alpha_mask: ParticleRenderAlphaMaskPipelineKey,
-    change_tick: &mut Tick,
+    // Bevy 0.19: the binned phase owns retention; the tick is no longer threaded
+    // into `add`. Kept for signature symmetry with the sorted-draw helper.
+    _change_tick: &mut Tick,
 ) where
     T: BinnedPhaseItem,
     F: Fn(CachedRenderPipelineId, &EffectDrawBatch, &ExtractedView) -> T::BatchSetKey,
@@ -5284,7 +5295,7 @@ fn emit_binned_draw<T, F, G>(
 
     trace!("emit_binned_draw() {} views", views.iter().len());
 
-    for (visible_entities, view, msaa) in views.iter() {
+    for (visible_entities, view, hdr, msaa) in views.iter() {
         trace!("Process new binned view (alpha_mask={:?})", alpha_mask);
 
         let Some(render_phase) = render_phases.get_mut(&view.retained_view_entity) else {
@@ -5297,8 +5308,11 @@ fn emit_binned_draw<T, F, G>(
 
             view_entities.clear();
             view_entities.extend(
+                // Bevy 0.19: `iter::<T>()` → `get::<T>()` then `iter_visible()`.
                 visible_entities
-                    .iter::<EffectVisibilityClass>()
+                    .get::<EffectVisibilityClass>()
+                    .into_iter()
+                    .flat_map(|c| c.iter_visible())
                     .map(|e| e.1.index_u32() as usize),
             );
         }
@@ -5386,7 +5400,7 @@ fn emit_binned_draw<T, F, G>(
                 image_count,
                 alpha_mask,
                 flipbook,
-                view.hdr
+                hdr
             );
 
             // Add a draw pass for the effect batch
@@ -5420,7 +5434,7 @@ fn emit_binned_draw<T, F, G>(
                     #[cfg(all(feature = "2d", feature = "3d"))]
                     pipeline_mode,
                     msaa_samples: msaa.samples(),
-                    hdr: view.hdr,
+                    hdr: hdr,
                 },
             );
             #[cfg(feature = "trace")]
@@ -5435,13 +5449,14 @@ fn emit_binned_draw<T, F, G>(
                 effect_batch.spawner_base,
                 effect_batch.handle
             );
+            // Bevy 0.19: `BinnedRenderPhase::add` dropped its trailing
+            // `change_tick` arg (the phase owns retention now).
             render_phase.add(
                 make_batch_set_key(render_pipeline_id, draw_batch, view),
                 make_bin_key(),
                 (draw_entity, draw_batch.main_entity),
                 InputUniformIndex::default(),
                 BinnedRenderPhaseType::NonMesh,
-                *change_tick,
             );
         }
     }
@@ -5449,7 +5464,7 @@ fn emit_binned_draw<T, F, G>(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn queue_effects(
-    views: Query<(&RenderVisibleEntities, &ExtractedView, &Msaa)>,
+    views: Query<(&RenderVisibleEntities, &ExtractedView, Has<Hdr>, &Msaa)>,
     effects_meta: Res<EffectsMeta>,
     mut render_pipeline: ResMut<ParticlesRenderPipeline>,
     mut specialized_render_pipelines: ResMut<SpecializedRenderPipelines<ParticlesRenderPipeline>>,
@@ -5576,6 +5591,13 @@ pub(crate) fn queue_effects(
                 &render_meshes,
                 &pipeline_cache,
                 |id, entity, batch, view| Transparent3d {
+                    // Bevy 0.19: `Transparent3d` gained `sorting_info`; the phase
+                    // recomputes `distance` from it each sort. Sort by the batch
+                    // center, no extra depth bias.
+                    sorting_info: bevy::core_pipeline::core_3d::TransparentSortingInfo3d::Sorted {
+                        mesh_center: batch.translation,
+                        depth_bias: 0.0,
+                    },
                     distance: view.rangefinder3d().distance(&batch.translation),
                     pipeline: id,
                     entity,
@@ -5616,8 +5638,8 @@ pub(crate) fn queue_effects(
                     pipeline: id,
                     draw_function: draw_effects_function_alpha_mask,
                     material_bind_group_index: None,
-                    vertex_slab: default(),
-                    index_slab: None,
+                    // Bevy 0.19: slabs bundled into MeshSlabs (particles have no mesh slabs).
+                    slabs: default(),
                 },
                 // Unused for now
                 || OpaqueNoLightmap3dBinKey {
@@ -5657,8 +5679,8 @@ pub(crate) fn queue_effects(
                     pipeline: id,
                     draw_function: draw_effects_function_opaque,
                     material_bind_group_index: None,
-                    vertex_slab: default(),
-                    index_slab: None,
+                    // Bevy 0.19: slabs bundled into MeshSlabs (particles have no mesh slabs).
+                    slabs: default(),
                     lightmap_slab: None,
                 },
                 // Unused for now
@@ -6485,7 +6507,8 @@ fn draw<'w>(
         views,
         sorted_effect_batches,
         effect_draw_batches,
-    ) = params.get(world);
+        // Bevy 0.19: `SystemState::get` is now fallible.
+    ) = params.get(world).unwrap();
     let view_uniform = views.get(view).unwrap();
     let effects_meta = effects_meta.into_inner();
     let effect_bind_groups = effect_bind_groups.into_inner();
@@ -6685,35 +6708,12 @@ impl Draw<Opaque3d> for DrawEffects {
     }
 }
 
-/// Render node to run the simulation sub-graph once per frame.
-///
-/// This node doesn't simulate anything by itself, but instead schedules the
-/// simulation sub-graph, where other nodes like [`VfxSimulateNode`] do the
-/// actual simulation.
-///
-/// The simulation sub-graph is scheduled to run before the [`CameraDriverNode`]
-/// renders all the views, such that rendered views have access to the
-/// just-simulated particles to render them.
-///
-/// [`CameraDriverNode`]: bevy::render::camera::CameraDriverNode
-pub(crate) struct VfxSimulateDriverNode;
-
-impl Node for VfxSimulateDriverNode {
-    fn run(
-        &self,
-        graph: &mut RenderGraphContext,
-        _render_context: &mut RenderContext,
-        _world: &World,
-    ) -> Result<(), NodeRunError> {
-        graph.run_sub_graph(
-            crate::plugin::simulate_graph::HanabiSimulateGraph,
-            vec![],
-            None,
-            Some("hanabi".to_string()),
-        )?;
-        Ok(())
-    }
-}
+// Bevy 0.19 removed the render graph + sub-graphs. The old `VfxSimulateDriverNode`
+// existed only to invoke the simulation sub-graph once per frame before the
+// camera driver; with the graph gone, that indirection disappears entirely.
+// `vfx_simulate` (the former `VfxSimulateNode`) now runs directly as a render
+// system in the global `RenderGraph` schedule, ordered before `camera_driver`
+// (see `plugin.rs`), which preserves "simulate all effects, then render views".
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum HanabiPipelineId {
@@ -6803,47 +6803,36 @@ impl<'a> HanabiComputePass<'a> {
 ///
 /// Runs inside the simulation sub-graph, looping over all extracted effect
 /// batches to simulate them.
-pub(crate) struct VfxSimulateNode {}
-
-impl VfxSimulateNode {
-    /// Create a new node for simulating the effects of the given world.
-    pub fn new(_world: &mut World) -> Self {
-        Self {}
-    }
-
-    /// Begin a new compute pass and return a wrapper with extra
-    /// functionalities.
-    pub fn begin_compute_pass<'encoder>(
-        &self,
-        label: &str,
-        pipeline_cache: &'encoder PipelineCache,
-        render_context: &'encoder mut RenderContext,
-    ) -> HanabiComputePass<'encoder> {
-        let compute_pass =
-            render_context
-                .command_encoder()
-                .begin_compute_pass(&ComputePassDescriptor {
-                    label: Some(label),
-                    timestamp_writes: None,
-                });
-        HanabiComputePass::new(pipeline_cache, compute_pass)
-    }
+/// Begin a new compute pass and return a wrapper with extra functionalities.
+/// (Bevy 0.18 this was `VfxSimulateNode::begin_compute_pass`; the node was
+/// stateless, so it's now a free function.)
+fn begin_compute_pass<'encoder>(
+    label: &str,
+    pipeline_cache: &'encoder PipelineCache,
+    render_context: &'encoder mut RenderContext,
+) -> HanabiComputePass<'encoder> {
+    let compute_pass = render_context
+        .command_encoder()
+        .begin_compute_pass(&ComputePassDescriptor {
+            label: Some(label),
+            timestamp_writes: None,
+        });
+    HanabiComputePass::new(pipeline_cache, compute_pass)
 }
 
-impl Node for VfxSimulateNode {
-    fn input(&self) -> Vec<SlotInfo> {
-        vec![]
-    }
-
-    fn update(&mut self, _world: &mut World) {}
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        trace!("VfxSimulateNode::run()");
+/// Simulate all particle effects on the GPU (init + update + sort compute
+/// passes). Bevy 0.19: this was `VfxSimulateNode: Node`; it's now a render
+/// system in the global `RenderGraph` schedule (the simulation is global, not
+/// per-view), ordered before `camera_driver` so views render just-simulated
+/// particles. `RenderContext` (a `Deferred` system param) replaces the old
+/// `&mut RenderContext` graph argument and auto-submits the encoded commands.
+pub(crate) fn vfx_simulate(world: &World, mut render_context: RenderContext) {
+    // Reborrow as `&mut RenderContext` so the body below — ported verbatim from
+    // the old node's `run` — keeps working unchanged (it passed this `&mut`
+    // around, relying on Rust's auto-reborrow at each call site).
+    let render_context = &mut render_context;
+    {
+        trace!("vfx_simulate()");
 
         let pipeline_cache = world.resource::<PipelineCache>();
         let effects_meta = world.resource::<EffectsMeta>();
@@ -6890,7 +6879,7 @@ impl Node for VfxSimulateNode {
         // some GPU resources are missing, which is expected when there's no effect but
         // is an error (and will log warnings/errors) otherwise.
         if sorted_effect_batches.is_empty() {
-            return Ok(());
+            return;
         }
 
         // Compute init pass
@@ -6898,7 +6887,7 @@ impl Node for VfxSimulateNode {
             trace!("init: loop over effect batches...");
 
             let mut compute_pass =
-                self.begin_compute_pass("hanabi:init", pipeline_cache, render_context);
+                begin_compute_pass("hanabi:init", pipeline_cache, render_context);
 
             // Bind group simparams@0 is common to everything, only set once per init pass
             compute_pass.set_bind_group(
@@ -7070,7 +7059,7 @@ impl Node for VfxSimulateNode {
             // Only start a compute pass if there's an effect; makes things clearer in
             // debugger.
             let mut compute_pass =
-                self.begin_compute_pass("hanabi:indirect_dispatch", pipeline_cache, render_context);
+                begin_compute_pass("hanabi:indirect_dispatch", pipeline_cache, render_context);
 
             // Dispatch indirect dispatch compute job
             trace!("record commands for indirect dispatch pipeline...");
@@ -7088,7 +7077,7 @@ impl Node for VfxSimulateNode {
                     //     .command_encoder()
                     //     .insert_debug_marker("ERROR:MissingIndirectBindGroup3");
                     // FIXME - Bevy doesn't allow returning custom errors here...
-                    return Ok(());
+                    return;
                 }
             }
 
@@ -7097,7 +7086,7 @@ impl Node for VfxSimulateNode {
                 .is_err()
             {
                 // FIXME - Bevy doesn't allow returning custom errors here...
-                return Ok(());
+                return;
             }
 
             //error!("FIXME - effect_metadata_buffer has gaps!!!! this won't work. len() is
@@ -7127,11 +7116,11 @@ impl Node for VfxSimulateNode {
                     .command_encoder()
                     .insert_debug_marker("ERROR:MissingUpdateIndirectBuffer");
                 // FIXME - Bevy doesn't allow returning custom errors here...
-                return Ok(());
+                return;
             };
 
             let mut compute_pass =
-                self.begin_compute_pass("hanabi:update", pipeline_cache, render_context);
+                begin_compute_pass("hanabi:update", pipeline_cache, render_context);
 
             // Bind group simparams@0 is common to everything, only set once per update pass
             compute_pass.set_bind_group(
@@ -7241,7 +7230,7 @@ impl Node for VfxSimulateNode {
         // Compute sort pass
         {
             let mut compute_pass =
-                self.begin_compute_pass("hanabi:sort", pipeline_cache, render_context);
+                begin_compute_pass("hanabi:sort", pipeline_cache, render_context);
 
             let effect_metadata_buffer = effects_meta.effect_metadata_buffer.buffer().unwrap();
             let indirect_buffer = sort_bind_groups.indirect_buffer().unwrap();
@@ -7289,7 +7278,7 @@ impl Node for VfxSimulateNode {
                         compute_pass.insert_debug_marker("ERROR:FailedToSetSortFillPipeline");
                         compute_pass.pop_debug_group();
                         // FIXME - Bevy doesn't allow returning custom errors here...
-                        return Ok(());
+                        return;
                     }
 
                     let spawner_base = effect_batch.spawner_base;
@@ -7337,7 +7326,7 @@ impl Node for VfxSimulateNode {
                         compute_pass.insert_debug_marker("ERROR:FailedToSetSortPipeline");
                         compute_pass.pop_debug_group();
                         // FIXME - Bevy doesn't allow returning custom errors here...
-                        return Ok(());
+                        return;
                     }
 
                     let Some(bind_group) = sort_bind_groups.sort_bind_group() else {
@@ -7367,7 +7356,7 @@ impl Node for VfxSimulateNode {
                         compute_pass.insert_debug_marker("ERROR:FailedToSetSortCopyPipeline");
                         compute_pass.pop_debug_group();
                         // FIXME - Bevy doesn't allow returning custom errors here...
-                        return Ok(());
+                        return;
                     }
 
                     let spawner_base = effect_batch.spawner_base;
@@ -7402,8 +7391,6 @@ impl Node for VfxSimulateNode {
                 }
             }
         }
-
-        Ok(())
     }
 }
 

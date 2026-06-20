@@ -34,7 +34,10 @@ use std::any::TypeId;
 
 use bevy::asset::load_internal_asset;
 use bevy::camera::visibility::{RenderLayers, VisibilitySystems};
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::anti_alias::fxaa::fxaa;
+use bevy::anti_alias::smaa::smaa;
+use bevy::core_pipeline::tonemapping::tonemapping;
+use bevy::core_pipeline::{Core3d, Core3dSystems};
 use bevy::mesh::MeshVertexAttribute;
 use bevy::pbr::{MeshInputUniform, MeshUniform};
 use bevy::prelude::TransformSystems;
@@ -44,7 +47,6 @@ use bevy::render::batching::no_gpu_preprocessing::{
     clear_batched_cpu_instance_buffers, write_batched_instance_buffer, BatchedInstanceBuffer,
 };
 use bevy::render::extract_component::UniformComponentPlugin;
-use bevy::render::render_graph::{EmptyNode, RenderGraphExt, RenderLabel, ViewNodeRunner};
 use bevy::render::render_phase::{
     sort_phase_system, AddRenderCommand, BinnedRenderPhasePlugin, DrawFunctions, PhaseItem,
     SortedRenderPhasePlugin,
@@ -57,8 +59,8 @@ use uniforms::extract_outlines;
 use uniforms::AlphaMaskBindGroups;
 use uniforms::RenderOutlineInstances;
 
-use crate::msaa::MsaaExtraWritebackNode;
-use crate::node::{OpaqueOutline, OutlineNode, StencilOutline, TransparentOutline};
+use crate::msaa::msaa_extra_writeback;
+use crate::node::{outline_pass, OpaqueOutline, StencilOutline, TransparentOutline};
 use crate::pipeline::{
     OutlinePipeline, COMMON_SHADER_HANDLE, FRAGMENT_SHADER_HANDLE, OUTLINE_SHADER_HANDLE,
 };
@@ -95,18 +97,6 @@ pub use generate::*;
 /// The direction to extrude the vertex when rendering the outline.
 pub const ATTRIBUTE_OUTLINE_NORMAL: MeshVertexAttribute =
     MeshVertexAttribute::new("Outline_Normal", 1585570526, VertexFormat::Float32x3);
-
-/// Labels for render graph nodes which draw outlines.
-#[derive(Copy, Clone, Debug, RenderLabel, Hash, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum NodeOutline {
-    /// This node writes back unsampled post-processing effects to the sampled attachment.
-    MsaaExtraWritebackPass,
-    /// This node runs after the main 3D passes and before the UI pass.
-    OutlinePass,
-    /// This node marks the end of the outline passes.
-    EndOutlinePasses,
-}
 
 /// A component for stenciling meshes during outline rendering.
 ///
@@ -465,26 +455,20 @@ impl Plugin for OutlinePlugin {
                 .in_set(RenderSystems::Cleanup)
                 .after(RenderSystems::Render),
         )
-        .add_render_graph_node::<ViewNodeRunner<MsaaExtraWritebackNode>>(
+        // Bevy 0.19: the render graph became systems in the `Core3d` schedule.
+        // The outline runs in the `PostProcess` set, after tonemapping (so it
+        // draws on the tonemapped frame) and before FXAA/SMAA (so the outline is
+        // anti-aliased) — the same ordering the old `Tonemapping → … → Fxaa/Smaa`
+        // graph edges gave. The MSAA writeback chains right before the outline.
+        .add_systems(
             Core3d,
-            NodeOutline::MsaaExtraWritebackPass,
-        )
-        .add_render_graph_node::<ViewNodeRunner<OutlineNode>>(Core3d, NodeOutline::OutlinePass)
-        .add_render_graph_node::<EmptyNode>(Core3d, NodeOutline::EndOutlinePasses)
-        // Outlining occurs after tone-mapping...
-        .add_render_graph_edges(
-            Core3d,
-            (
-                Node3d::Tonemapping,
-                NodeOutline::MsaaExtraWritebackPass,
-                NodeOutline::OutlinePass,
-                NodeOutline::EndOutlinePasses,
-                Node3d::EndMainPassPostProcessing,
-            ),
-        )
-        // ...and before any later anti-aliasing.
-        .add_render_graph_edge(Core3d, NodeOutline::EndOutlinePasses, Node3d::Fxaa)
-        .add_render_graph_edge(Core3d, NodeOutline::EndOutlinePasses, Node3d::Smaa);
+            (msaa_extra_writeback, outline_pass)
+                .chain()
+                .after(tonemapping)
+                .before(fxaa)
+                .before(smaa)
+                .in_set(Core3dSystems::PostProcess),
+        );
 
         #[cfg(feature = "reflect")]
         app.register_type::<OutlineStencil>()

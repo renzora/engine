@@ -132,11 +132,13 @@ use std::{
 use bevy::{
     math::{Vec2, Vec3, Vec4},
     reflect::{
+        // Bevy 0.19: `Struct`, `FieldIter`, `StructInfo` moved into the
+        // `reflect::structs` submodule (no longer re-exported at the root).
+        structs::{FieldIter, Struct, StructInfo},
         utility::{GenericTypePathCell, NonGenericTypeInfoCell},
-        ApplyError, FieldIter, FromReflect, FromType, GetTypeRegistration, NamedField,
-        PartialReflect, Reflect, ReflectDeserialize, ReflectFromReflect, ReflectMut, ReflectOwned,
-        ReflectRef, ReflectSerialize, Struct, StructInfo, TypeInfo, TypePath, TypeRegistration,
-        Typed,
+        ApplyError, FromReflect, FromType, GetTypeRegistration, NamedField, PartialReflect, Reflect,
+        ReflectDeserialize, ReflectFromReflect, ReflectMut, ReflectOwned, ReflectRef,
+        ReflectSerialize, TypeInfo, TypePath, TypeRegistration, Typed,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -791,6 +793,16 @@ impl Struct for Attribute {
         match index {
             0 => Some("name"),
             1 => Some("default_value"),
+            _ => None,
+        }
+    }
+
+    // Bevy 0.19: `Struct::index_of_name` is now a required method (the inverse
+    // of `name_at`).
+    fn index_of_name(&self, name: &str) -> Option<usize> {
+        match name {
+            "name" => Some(0),
+            "default_value" => Some(1),
             _ => None,
         }
     }

@@ -501,7 +501,9 @@ fn trigger_navmesh_build<Marker: Component, Obstacle: ObstacleSource>(
             let obstacles_local = dynamic_obstacles
                 .iter()
                 .filter_map(|(e, t, o)| {
-                    (!settings.ignore_obstacles.contains(&e)).then_some((*t, o.clone()))
+                    // Bevy 0.19: this (dynamic-obstacle) query yields `Ref<Obstacle>`,
+                    // so clone the inner obstacle — `o.clone()` would clone the `Ref`.
+                    (!settings.ignore_obstacles.contains(&e)).then_some((*t, (*o).clone()))
                 })
                 .collect::<Vec<_>>();
             let settings_local = settings.clone();
@@ -738,7 +740,7 @@ fn update_navmesh_asset(
                     navmeshes
                         .insert(&handle.0, navmesh)
                         .expect("Failed to update navmesh");
-                } else if let Some(navmesh) = navmeshes.get_mut(&handle.0) {
+                } else if let Some(mut navmesh) = navmeshes.get_mut(&handle.0) {
                     failed_stitches.extend(previously_failed);
                     failed_stitches.sort_unstable();
                     failed_stitches.dedup();

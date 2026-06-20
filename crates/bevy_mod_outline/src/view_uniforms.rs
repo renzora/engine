@@ -74,7 +74,7 @@ pub(crate) fn extract_outline_view_uniforms(
             let retained_view_entity = RetainedViewEntity::new(main_entity.into(), None, 0);
             stencil_phases.prepare_for_new_frame(retained_view_entity, GpuPreprocessingMode::None);
             opaque_phases.prepare_for_new_frame(retained_view_entity, GpuPreprocessingMode::None);
-            transparent_phases.insert_or_clear(retained_view_entity);
+            transparent_phases.prepare_for_new_frame(retained_view_entity);
         }
     }
 }

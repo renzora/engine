@@ -12,7 +12,11 @@ use crate::enums::{LeafBillboard, TreeType};
 // feature + that variant are dropped and we keep a single definition. serde
 // derives are added so `Tree` (which embeds this) survives renzora's
 // reflect-based scene (de)serialization via the `ReflectSerialize` path.
-#[derive(Resource, Component, Reflect, Debug, Clone, PartialEq, Serialize, Deserialize)]
+// Bevy 0.19: `Resource: Component`, so `#[derive(Resource)]` now also provides
+// the `Component` impl — deriving `Component` too is a conflicting-impl error.
+// We keep `Resource` (it gives us `Component` for free, so this stays usable as
+// both a resource and a per-entity component) and still reflect both.
+#[derive(Resource, Reflect, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[reflect(Resource, Component, Default, Serialize, Deserialize)]
 pub struct TreeMeshSettings {
     pub tree_type: TreeType,

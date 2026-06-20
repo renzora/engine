@@ -12,7 +12,7 @@ use bevy::{
     render::{mesh::allocator::MeshBufferSlice, render_resource::*, renderer::RenderDevice},
     utils::default,
 };
-use bytemuck::cast_slice_mut;
+use bytemuck::cast_slice;
 
 use super::{buffer_table::BufferTableId, BufferBindingSource};
 use crate::{
@@ -278,11 +278,12 @@ impl ParticleSlab {
         {
             // Scope get_mapped_range_mut() to force a drop before unmap()
             {
-                let slice: &mut [u8] = &mut particle_buffer
+                // wgpu 29: `BufferViewMut` is write-only. Filling with the u32
+                // sentinel 0xFFFFFFFF is the same as writing all-0xFF bytes.
+                let mut view = particle_buffer
                     .slice(..particle_capacity_bytes)
                     .get_mapped_range_mut();
-                let slice: &mut [u32] = cast_slice_mut(slice);
-                slice.fill(0xFFFFFFFF);
+                view.copy_from_slice(&vec![0xFFu8; particle_capacity_bytes as usize]);
             }
             particle_buffer.unmap();
         }
@@ -301,13 +302,16 @@ impl ParticleSlab {
         {
             // Scope get_mapped_range_mut() to force a drop before unmap()
             {
-                let slice: &mut [u8] = &mut indirect_index_buffer
+                // wgpu 29: `BufferViewMut` is write-only and can't be indexed, so
+                // build the u32 pattern on the CPU then copy it in one shot.
+                let mut data = vec![0u32; (capacity * 3) as usize];
+                for index in 0..capacity {
+                    data[3 * index as usize + 2] = index;
+                }
+                let mut view = indirect_index_buffer
                     .slice(..indirect_capacity_bytes)
                     .get_mapped_range_mut();
-                let slice: &mut [u32] = cast_slice_mut(slice);
-                for index in 0..capacity {
-                    slice[3 * index as usize + 2] = index;
-                }
+                view.copy_from_slice(cast_slice(&data));
             }
             indirect_index_buffer.unmap();
         }

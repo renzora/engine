@@ -39,10 +39,8 @@ jobs:
         run: cargo clippy --example flag
       - name: build moving example
         run: cargo clippy --example moving
-      - name: build rapier example
+      - name: build avian example
         run: cargo clippy --features avian_collisions --example avian_collision
-      - name: build rapier example
-        run: cargo clippy --features rapier_collisions --example rapier_collision
       - name: build anchors example
         run: cargo clippy --example anchors
 

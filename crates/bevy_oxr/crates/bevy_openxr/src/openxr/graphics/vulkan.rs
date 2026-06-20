@@ -80,6 +80,9 @@ unsafe impl GraphicsExt for openxr::Vulkan {
                     view_formats: vec![],
                 },
                 None,
+                // wgpu-hal 29: the swapchain image's memory is owned by OpenXR,
+                // not wgpu, so it must not try to free it.
+                wgpu_hal::vulkan::TextureMemory::External,
             )
         };
         let texture = unsafe {
@@ -416,6 +419,8 @@ fn init_from_instance_and_dev(
                 None,
                 &enabled_extensions,
                 wgpu_features,
+                // wgpu-hal 29 added a `limits` parameter — use the adapter's.
+                &wgpu_exposed_adapter.capabilities.limits,
                 &wgpu::MemoryHints::Performance,
                 family_info.queue_family_index,
                 0,

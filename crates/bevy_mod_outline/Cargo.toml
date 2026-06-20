@@ -6,18 +6,15 @@ license = "MIT OR Apache-2.0"
 description = "A mesh outlining plugin for Bevy."
 
 [dependencies]
-bevy = { version = "0.18", default-features = false, features = [
-    "std",
-    "async_executor",
-    "bevy_log",
-    "bevy_color",
-    "bevy_image",
-    "bevy_pbr",
-] }
+bevy = { workspace = true }
 bitfield = "0.15"
 thiserror = "2.0"
 nonmax = "0.5"
-wgpu-types = "27"
+# Match bevy 0.19's wgpu (29) — these types cross into bevy's render API.
+wgpu-types = "29"
+# Bevy 0.19's `SortedPhaseItem::recalculate_sort_keys` signature names
+# `indexmap::IndexMap`; same major version bevy resolves.
+indexmap = "2"
 
 [features]
 default = ["reflect"]

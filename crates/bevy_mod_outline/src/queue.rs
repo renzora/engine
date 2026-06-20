@@ -1,9 +1,9 @@
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::MotionVectorPrepass;
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::system::SystemChangeTick;
 use bevy::math::Mat3A;
-use bevy::pbr::ViewSpecializationTicks;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::render::mesh::allocator::MeshAllocator;
@@ -45,7 +45,11 @@ pub struct OutlineCache {
 
 #[derive(Default)]
 pub struct OutlineViewCache {
-    pub(crate) changed_tick: Tick,
+    // Bevy 0.19 removed `ViewSpecializationTicks` (the resource that told us when
+    // a view's pipeline-relevant settings changed). We instead remember the
+    // view's last `ViewPipelineKey` and re-specialize when it differs — a direct
+    // check of the thing that actually matters, rather than the old tick proxy.
+    pub(crate) view_key: Option<ViewPipelineKey>,
     pub(crate) entity_map: MainEntityHashMap<OutlineCacheEntry>,
 }
 
@@ -107,7 +111,6 @@ pub(crate) fn extract_outline_entities_changed(
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(crate) fn specialise_outlines(
     render_meshes: Res<RenderAssets<RenderMesh>>,
-    view_specialisation_ticks: Res<ViewSpecializationTicks>,
     mut outline_cache: ResMut<OutlineCache>,
     mut pipelines: ResMut<SpecializedMeshPipelines<OutlinePipeline>>,
     mut all_views: Local<HashSet<RetainedViewEntity>>,
@@ -118,6 +121,7 @@ pub(crate) fn specialise_outlines(
     views: Query<(
         &ExtractedView,
         Has<MotionVectorPrepass>,
+        Has<Hdr>,
         &Msaa,
         Option<&RenderLayers>,
     )>,
@@ -125,23 +129,25 @@ pub(crate) fn specialise_outlines(
 ) {
     all_views.clear();
 
-    for (view, motion_vector_prepass, msaa, view_mask) in &views {
+    for (view, motion_vector_prepass, hdr, msaa, view_mask) in &views {
         all_views.insert(view.retained_view_entity);
 
         let view_key = ViewPipelineKey::new()
             .with_msaa(*msaa)
-            .with_hdr_format(view.hdr)
+            // Bevy 0.19: HDR is a marker component on the view, not a field on
+            // `ExtractedView`.
+            .with_hdr_format(hdr)
             .with_motion_vector_prepass(motion_vector_prepass);
 
-        let view_tick = view_specialisation_ticks
-            .get(&view.retained_view_entity)
-            .unwrap();
         let outline_view_cache = outline_cache
             .view_map
             .entry(view.retained_view_entity)
             .or_default();
-        if view_tick.is_newer_than(outline_view_cache.changed_tick, ticks.this_run()) {
-            outline_view_cache.changed_tick = *view_tick;
+        // Re-specialize the whole view when its pipeline key changes (MSAA / HDR
+        // / motion-vector prepass) — replaces the old `ViewSpecializationTicks`
+        // newer-than-tick check.
+        if outline_view_cache.view_key != Some(view_key) {
+            outline_view_cache.view_key = Some(view_key);
             outline_view_cache.entity_map.clear();
         }
         let view_layers = view_mask.unwrap_or_default();
@@ -316,31 +322,40 @@ pub(crate) fn queue_outline_mesh(
                 continue; // Layer not enabled
             }
 
-            let (vertex_slab, index_slab) = mesh_allocator.mesh_slabs(&outline.mesh_id);
+            // Bevy 0.19: `mesh_slabs` now returns `Option<MeshSlabs>` (a struct
+            // bundling vertex + optional index slab) instead of a
+            // `(Option<SlabId>, Option<SlabId>)` tuple.
+            let mesh_slabs = mesh_allocator
+                .mesh_slabs(&outline.mesh_id)
+                .unwrap_or_default();
             let phase_type = if outline.automatic_batching {
                 BinnedRenderPhaseType::BatchableMesh
             } else {
                 BinnedRenderPhaseType::UnbatchableMesh
             };
 
+            // Bevy 0.19: the binned/sorted phases own their per-frame retention
+            // (`prepare_for_new_frame` drains transient items; re-`add` is an
+            // idempotent map insert). So the old `validate_cached_entity` skip +
+            // per-entity tick are gone — we simply (re)add every visible outlined
+            // entity each frame. `OutlineCacheEntry.changed_tick` is no longer
+            // consulted here.
             let Some(OutlineCacheEntry {
-                changed_tick,
                 stencil_pipeline_id,
                 volume_pipeline_id,
+                ..
             }) = outline_view_cache.entity_map.get(main_entity)
             else {
                 continue;
             };
 
             // Queue stencil pass if needed
-            if outline.stencil && !stencil_phase.validate_cached_entity(*main_entity, *changed_tick)
-            {
+            if outline.stencil {
                 stencil_phase.add(
                     OutlineBatchSetKey {
                         pipeline: *stencil_pipeline_id,
                         draw_function: draw_stencil,
-                        vertex_slab: vertex_slab.unwrap_or_default(),
-                        index_slab,
+                        slabs: mesh_slabs,
                     },
                     OutlineBinKey {
                         asset_id: outline.mesh_id,
@@ -349,7 +364,6 @@ pub(crate) fn queue_outline_mesh(
                     (render_entity, *main_entity),
                     InputUniformIndex::default(),
                     phase_type,
-                    *changed_tick,
                 );
             }
 
@@ -360,7 +374,8 @@ pub(crate) fn queue_outline_mesh(
 
                 if transparent {
                     let distance = rangefinder.distance_of(outline);
-                    transparent_phase.add(TransparentOutline {
+                    // Sorted phase: `add` → `add_transient` (cleared each frame).
+                    transparent_phase.add_transient(TransparentOutline {
                         entity: render_entity,
                         main_entity: *main_entity,
                         pipeline: *volume_pipeline_id,
@@ -368,15 +383,14 @@ pub(crate) fn queue_outline_mesh(
                         distance,
                         batch_range: 0..0,
                         extra_index: PhaseItemExtraIndex::None,
-                        indexed: index_slab.is_some(),
+                        indexed: mesh_slabs.index_slab_id.is_some(),
                     });
-                } else if !opaque_phase.validate_cached_entity(*main_entity, *changed_tick) {
+                } else {
                     opaque_phase.add(
                         OutlineBatchSetKey {
                             pipeline: *volume_pipeline_id,
                             draw_function: draw_opaque_outline,
-                            vertex_slab: vertex_slab.unwrap_or_default(),
-                            index_slab,
+                            slabs: mesh_slabs,
                         },
                         OutlineBinKey {
                             asset_id: outline.mesh_id,
@@ -385,7 +399,6 @@ pub(crate) fn queue_outline_mesh(
                         (render_entity, *main_entity),
                         InputUniformIndex::default(),
                         phase_type,
-                        *changed_tick,
                     );
                 }
             }

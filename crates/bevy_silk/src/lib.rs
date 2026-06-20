@@ -219,43 +219,11 @@
 //!
 //! ## Collisions
 //!
-//! Both [`bevy_rapier`] and [`avian`] are supported for cloth interactions
-//! with colliders. They can be enabled with the `rapier_collisions` and
-//! `avian_collisions` features respectively.
+//! [`avian`] is supported for cloth interactions with colliders, enabled with
+//! the `avian_collisions` feature.
 //!
 //! > Note: Collision support is still experimental for now and is not suited
 //! > for production use. Feedback is welcome!
-//!
-//! ### `bevy_rapier`
-//!
-//! Add `bevy_rapier3d::RapierPhysicsPlugin` to your app and a `ClothCollider`
-//! to your entity to enable collisions:
-//!
-//! ```rust
-//! use bevy::prelude::*;
-//! use bevy_silk::prelude::*;
-//!
-//! fn spawn(mut commands: Commands) {
-//!     commands.spawn((
-//!         // Add your mesh, material and your custom PBR data
-//!         // Mesh3d(...),
-//!         // MeshMaterial3d(...),
-//!         ClothBuilder::new(),
-//!         ClothCollider::default(),
-//!     ));
-//! }
-//! ```
-//!
-//! Three `bevy_rapier` components will be automatically inserted:
-//!
-//! * a `RigidBody::KinematicPositionBased`
-//! * a `Collider` which will be updated every frame to follow the cloth bounds
-//!   (AABB)
-//! * a `SolverGroup` set to 0 (`Group::NONE`) in everything, avoiding default
-//!   collision solving.
-//!
-//! You can customize what collisions will be checked by specifying
-//! `CollisionGroups`. (See the [`bevy_rapier` docs](https://rapier.rs/docs/user_guides/bevy_plugin/colliders#collision-groups-and-solver-groups)).
 //!
 //! ### `avian` (previously `bevy_xpbd`)
 //!
@@ -308,7 +276,6 @@
 //! If your simulation suffers from this you can specify a custom smooth
 //! value in `ClothConfig::acceleration_smoothing`.
 //!
-//! [`bevy_rapier`]: https://github.com/dimforge/bevy_rapier
 //! [`avian`]: https://github.com/Jondolf/avian
 #![forbid(unsafe_code)]
 #![warn(
@@ -350,7 +317,7 @@ use bevy::prelude::*;
 
 /// Prelude module, providing every public type of the lib
 pub mod prelude {
-    #[cfg(any(feature = "rapier_collisions", feature = "avian_collisions"))]
+    #[cfg(feature = "avian_collisions")]
     pub use crate::components::collider::ClothCollider;
     pub use crate::{
         components::{cloth_builder::ClothBuilder, cloth_rendering::NormalComputing},
@@ -383,10 +350,6 @@ impl Plugin for ClothPlugin {
             ),
         );
 
-        #[cfg(feature = "rapier_collisions")]
-        app.register_type::<ClothCollider>()
-            .add_systems(Update, systems::collisions::rapier::init_cloth_collider)
-            .add_systems(FixedUpdate, systems::collisions::rapier::handle_collisions);
         #[cfg(feature = "avian_collisions")]
         app.register_type::<ClothCollider>()
             .add_systems(Update, systems::collisions::avian::init_cloth_collider)

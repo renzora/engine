@@ -18,7 +18,6 @@ documentation = "https://docs.rs/bevy_silk"
 
 [features]
 default = []
-# rapier_collisions = ["bevy_rapier3d"]  # disabled until bevy_rapier3d supports Bevy 0.18
 avian_collisions = ["avian3d"]
 
 [dependencies]
@@ -26,55 +25,20 @@ avian_collisions = ["avian3d"]
 thiserror = "2.0"
 
 [dependencies.bevy]
-version = "0.18"
-default-features = false
-features = [
-    "bevy_render",
-    "bevy_mesh",
-    "bevy_asset",
-    "bevy_color",
-    "bevy_log",
-]
-
-# bevy_rapier3d 0.33 not yet released for Bevy 0.18
-# [dependencies.bevy_rapier3d]
-# version = "0.33"
-# optional = true
-# default-features = false
-# features = ["dim3", "async-collider"]
+workspace = true
 
 [dependencies.avian3d]
-version = "0.5"
+path = "../avian/crates/avian3d"
 optional = true
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
 
 [dev-dependencies]
-bevy-inspector-egui = "0.36"
 rand = "0.8"
-avian3d = "0.5"
-# bevy_rapier3d = "0.33"  # not yet released for Bevy 0.18
+avian3d = { path = "../avian/crates/avian3d" }
 
 [dev-dependencies.bevy]
-version = "0.18"
-features = [
-    "bevy_asset",
-    "bevy_winit",
-    "bevy_core_pipeline",
-    "bevy_pbr",
-    "bevy_render",
-    "bevy_sprite",
-    "bevy_sprite_render",
-    "bevy_camera",
-    "bevy_light",
-    "bevy_text",
-    "png",
-    "x11",
-    "tonemapping_luts",
-    "multi_threaded",
-    "reflect_auto_register",
-]
-default-features = false
+workspace = true
 
 [[example]]
 name = "balloon"
@@ -87,11 +51,6 @@ path = "examples/flag_example.rs"
 [[example]]
 name = "moving"
 path = "examples/moving_example.rs"
-
-[[example]]
-name = "rapier_collision"
-path = "examples/rapier_collision_example.rs"
-required-features = ["rapier_collisions"]
 
 [[example]]
 name = "avian_collision"

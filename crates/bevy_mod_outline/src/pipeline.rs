@@ -17,7 +17,6 @@ use bevy::render::render_resource::{
 use bevy::render::renderer::RenderDevice;
 use bevy::render::settings::WgpuSettings;
 use bevy::render::sync_world::MainEntity;
-use bevy::render::view::ViewTarget;
 use bevy::shader::ShaderDefVal;
 use bevy::{
     mesh::MeshVertexBufferLayoutRef,
@@ -27,7 +26,7 @@ use bevy::{
     },
 };
 use nonmax::NonMaxU32;
-use wgpu_types::{Backends, PushConstantRange, SamplerBindingType, TextureSampleType};
+use wgpu_types::{Backends, SamplerBindingType, TextureSampleType};
 
 use crate::pipeline_key::{DerivedPipelineKey, PassType};
 use crate::uniforms::{DepthMode, OutlineInstanceUniform, RenderOutlineInstances};
@@ -187,10 +186,13 @@ impl SpecializedMeshPipeline for OutlinePipeline {
                 vertex_defs.push(val.clone());
                 fragment_defs.push(val);
                 targets.push(Some(ColorTargetState {
+                    // Bevy 0.19 deprecated `ViewTarget::TEXTURE_FORMAT_HDR` and
+                    // `TextureFormat::bevy_default()` (it no longer encourages a
+                    // default format). Use the concrete formats they returned.
                     format: if key.hdr_format() {
-                        ViewTarget::TEXTURE_FORMAT_HDR
+                        TextureFormat::Rgba16Float
                     } else {
-                        TextureFormat::bevy_default()
+                        TextureFormat::Rgba8UnormSrgb
                     },
                     blend: Some(if key.transparent() {
                         BlendState::ALPHA_BLENDING
@@ -213,10 +215,11 @@ impl SpecializedMeshPipeline for OutlinePipeline {
             }
         }
         let depth_stencil = match key.pass_type() {
+            // wgpu 29: `depth_write_enabled` and `depth_compare` are now `Option`.
             PassType::Stencil | PassType::Volume => Some(DepthStencilState {
                 format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: CompareFunction::Greater,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(CompareFunction::Greater),
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             }),
@@ -224,14 +227,15 @@ impl SpecializedMeshPipeline for OutlinePipeline {
             PassType::FloodInit => None,
         };
         let buffers = vec![layout.0.get_layout(&buffer_attrs)?];
-        let mut push_constant_ranges = Vec::with_capacity(1);
-        // Proxy for webgl feature flag in bevy
-        if WgpuSettings::default().backends == Some(Backends::GL) {
-            push_constant_ranges.push(PushConstantRange {
-                stages: ShaderStages::VERTEX,
-                range: 0..4,
-            });
-        }
+        // Bevy 0.19: `RenderPipelineDescriptor` replaced `push_constant_ranges`
+        // with a single `immediate_size: u32` (immediate/push-constant byte size).
+        // The old code reserved a 4-byte vertex push-constant range for the GL
+        // backend (a webgl-feature proxy); express that as a 4-byte immediate size.
+        let immediate_size = if WgpuSettings::default().backends == Some(Backends::GL) {
+            4
+        } else {
+            0
+        };
         Ok(RenderPipelineDescriptor {
             vertex: VertexState {
                 shader: OUTLINE_SHADER_HANDLE,
@@ -261,7 +265,7 @@ impl SpecializedMeshPipeline for OutlinePipeline {
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            push_constant_ranges,
+            immediate_size,
             label: Some(Cow::Borrowed("outline_pipeline")),
             zero_initialize_workgroup_memory: false,
         })
@@ -274,13 +278,24 @@ impl GetBatchData for OutlinePipeline {
         SRes<MeshAllocator>,
         SRes<SkinUniforms>,
     );
-    type CompareData = (AssetId<Mesh>, Option<AssetId<Image>>);
+    // Bevy 0.19 split the single `CompareData` into two:
+    // - `BatchCompareData`: what makes two items batchable (same mesh + alpha
+    //   mask texture, as before).
+    // - `BatchSetCompareData`: what groups items into a multi-drawable batch
+    //   set. The outline never uses GPU multi-draw, so it's `()` (always equal),
+    //   making batching depend solely on `BatchCompareData` — same as the old
+    //   single-key behavior.
+    type BatchCompareData = (AssetId<Mesh>, Option<AssetId<Image>>);
+    type BatchSetCompareData = ();
     type BufferData = OutlineInstanceUniform;
 
     fn get_batch_data(
         (render_outlines, mesh_allocator, skin_uniforms): &SystemParamItem<Self::Param>,
         (_entity, main_entity): (Entity, MainEntity),
-    ) -> Option<(Self::BufferData, Option<Self::CompareData>)> {
+    ) -> Option<(
+        Self::BufferData,
+        Option<(Self::BatchSetCompareData, Self::BatchCompareData)>,
+    )> {
         let outline = render_outlines.get(&main_entity)?;
         let instance_data = outline.instance_data.prepare_instance(
             &outline.mesh_id,
@@ -291,7 +306,7 @@ impl GetBatchData for OutlinePipeline {
 
         // Only batch entities with the same mesh and alpha mask texture
         let batch_data = if outline.automatic_batching {
-            Some((outline.mesh_id, outline.alpha_mask_id))
+            Some(((), (outline.mesh_id, outline.alpha_mask_id)))
         } else {
             None
         };
@@ -319,7 +334,10 @@ impl GetFullBatchData for OutlinePipeline {
     fn get_index_and_compare_data(
         _param: &SystemParamItem<Self::Param>,
         _main_entity: MainEntity,
-    ) -> Option<(NonMaxU32, Option<Self::CompareData>)> {
+    ) -> Option<(
+        NonMaxU32,
+        Option<(Self::BatchSetCompareData, Self::BatchCompareData)>,
+    )> {
         unimplemented!("GPU batching is not used.");
     }
 

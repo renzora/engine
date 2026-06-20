@@ -13,17 +13,17 @@ gizmos = ["dep:bevy_gizmos", "dep:bevy_color"]
 reflect = ["dep:bevy_reflect"]
 
 [dependencies]
-bevy_ecs = { version = "0.18", default-features = false }
-bevy_math = { version = "0.18", default-features = false }
-bevy_render = { version = "0.18", default-features = false }
-bevy_app = { version = "0.18", default-features = false }
-bevy_reflect = { version = "0.18", default-features = false, optional = true }
-bevy_log = { version = "0.18", default-features = false }
-bevy_gizmos = { version = "0.18", default-features = false, optional = true }
-bevy_color = { version = "0.18", default-features = false, optional = true }
-bevy_transform = { version = "0.18", default-features = false }
-bevy_camera = { version = "0.18", default-features = false }
-bevy_derive = { version = "0.18", default-features = false }
+bevy_ecs = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_math = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_render = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_app = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_reflect = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, optional = true }
+bevy_log = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_gizmos = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, optional = true }
+bevy_color = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, optional = true }
+bevy_transform = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_camera = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_derive = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
 
 [lints.clippy]
 too_many_arguments = "allow"
