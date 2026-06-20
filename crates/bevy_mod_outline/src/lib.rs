@@ -39,7 +39,7 @@ use bevy::anti_alias::smaa::smaa;
 use bevy::core_pipeline::tonemapping::tonemapping;
 use bevy::core_pipeline::{Core3d, Core3dSystems};
 use bevy::mesh::MeshVertexAttribute;
-use bevy::pbr::{MeshInputUniform, MeshUniform};
+use bevy::pbr::{MeshInputUniform, MeshPipelineSystems, MeshUniform};
 use bevy::prelude::TransformSystems;
 use bevy::prelude::*;
 use bevy::render::batching::gpu_preprocessing::{self, GpuPreprocessingSupport};
@@ -54,15 +54,19 @@ use bevy::render::render_phase::{
 use bevy::render::render_resource::{SpecializedMeshPipelines, VertexFormat};
 use bevy::render::renderer::RenderDevice;
 use bevy::render::sync_component::SyncComponentPlugin;
-use bevy::render::{Render, RenderApp, RenderDebugFlags, RenderSystems};
+use bevy::render::texture::FallbackImage;
+use bevy::render::{
+    init_gpu_resource, Render, RenderApp, RenderDebugFlags, RenderStartup, RenderSystems,
+};
 use uniforms::extract_outlines;
-use uniforms::AlphaMaskBindGroups;
+use uniforms::init_alpha_mask_bind_groups;
 use uniforms::RenderOutlineInstances;
 
 use crate::msaa::msaa_extra_writeback;
 use crate::node::{outline_pass, OpaqueOutline, StencilOutline, TransparentOutline};
 use crate::pipeline::{
-    OutlinePipeline, COMMON_SHADER_HANDLE, FRAGMENT_SHADER_HANDLE, OUTLINE_SHADER_HANDLE,
+    init_outline_pipeline, OutlinePipeline, COMMON_SHADER_HANDLE, FRAGMENT_SHADER_HANDLE,
+    OUTLINE_SHADER_HANDLE,
 };
 use crate::pipeline_key::{compute_outline_key, ComputedOutlineKey};
 use crate::queue::{
@@ -484,8 +488,20 @@ impl Plugin for OutlinePlugin {
         render_app
             .init_resource::<RenderOutlineInstances>()
             .init_resource::<OutlineCache>()
-            .init_resource::<OutlinePipeline>()
-            .init_resource::<AlphaMaskBindGroups>();
+            // 0.19 moved render-resource init from `finish()` into `RenderStartup`
+            // systems. `OutlinePipeline` clones `MeshPipeline` (built by bevy's
+            // `init_mesh_pipeline` in the `MeshPipelineSystems` set), and
+            // `AlphaMaskBindGroups` reads both `OutlinePipeline` and `FallbackImage`
+            // (a `RenderStartup` GPU resource) — none exist at finish() anymore.
+            // Init them in `RenderStartup`: chained (alpha after pipeline) and
+            // anchored after the two upstream `RenderStartup` producers.
+            .add_systems(
+                RenderStartup,
+                (init_outline_pipeline, init_alpha_mask_bind_groups)
+                    .chain()
+                    .after(MeshPipelineSystems)
+                    .after(init_gpu_resource::<FallbackImage>),
+            );
 
         let render_device = render_app.world().resource::<RenderDevice>();
         let instance_buffer =

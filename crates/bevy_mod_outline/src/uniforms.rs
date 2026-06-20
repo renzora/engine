@@ -228,6 +228,15 @@ impl FromWorld for AlphaMaskBindGroups {
     }
 }
 
+/// Build [`AlphaMaskBindGroups`] in `RenderStartup` (chained after
+/// `init_outline_pipeline`), since its `from_world` reads both `OutlinePipeline`
+/// (now a `RenderStartup` resource) and `FallbackImage` (a 0.19 `RenderStartup`
+/// GPU resource) — neither exists at `Plugin::finish` time anymore.
+pub(crate) fn init_alpha_mask_bind_groups(world: &mut World) {
+    let bind_groups = AlphaMaskBindGroups::from_world(world);
+    world.insert_resource(bind_groups);
+}
+
 pub(crate) fn prepare_alpha_mask_bind_groups(
     mut alpha_mask_bind_groups: ResMut<AlphaMaskBindGroups>,
     render_device: Res<RenderDevice>,

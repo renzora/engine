@@ -96,6 +96,12 @@ impl SceneSerializer for BsnSerializer {
         let _ = writeln!(out, "{HEADER}");
 
         for entity in &scene.entities {
+            // A blank line + the entity's `Name` (if any) as a comment make the
+            // opaque numeric id navigable. Both are trivia the parser skips.
+            out.push('\n');
+            if let Some(name) = entity_name(entity, registry) {
+                let _ = writeln!(out, "// {name}");
+            }
             let _ = writeln!(out, "entity {} {{", entity.entity.to_bits());
             for component in &entity.components {
                 write_value(&mut out, "    ", component.as_ref(), registry)?;
@@ -104,6 +110,7 @@ impl SceneSerializer for BsnSerializer {
         }
 
         for resource in &scene.resources {
+            out.push('\n');
             out.push_str("resource ");
             write_value(&mut out, "", resource.as_ref(), registry)?;
         }
@@ -176,6 +183,21 @@ fn parse(
     }
 
     Ok(scene)
+}
+
+/// Best-effort `Name` of an entity, for the serialization comment above its
+/// block. Returns `None` if the entity has no `Name` (or it won't serialize).
+fn entity_name(entity: &DynamicEntity, registry: &TypeRegistry) -> Option<String> {
+    let component = entity
+        .components
+        .iter()
+        .find(|c| c.reflect_type_path() == "bevy_ecs::name::Name")?;
+    let serializer = TypedReflectSerializer::new(component.as_ref(), registry);
+    let s = ron::ser::to_string(&serializer).ok()?;
+    // `Name` serializes as a bare RON string (`"Cube"`); strip the quotes and
+    // flatten any newline so the `//` comment stays single-line.
+    let name = s.trim().trim_matches('"').replace('\n', " ");
+    (!name.is_empty()).then_some(name)
 }
 
 /// Emit one `type_path: <ron value>,` line at the given indent.

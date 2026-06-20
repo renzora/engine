@@ -247,7 +247,7 @@ fn instance_scene(world: &mut World, parent: Entity) {
     let file = {
         let mut dlg = rfd::FileDialog::new()
             .set_title("Instance Scene")
-            .add_filter("Scene File", &["ron"]);
+            .add_filter("Scene File", &["bsn"]);
         if let Some(ref dir) = scenes_dir {
             dlg = dlg.set_directory(dir);
         }

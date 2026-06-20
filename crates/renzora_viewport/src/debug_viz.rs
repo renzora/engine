@@ -12,7 +12,7 @@
 //! Roughness/Metallic/UV Checker stay on the existing material-swap
 //! path because they need per-fragment material data.
 
-use bevy::core_pipeline::{Core3d, Core3dSystems};
+use bevy::core_pipeline::Core3d;
 use bevy::core_pipeline::prepass::{DepthPrepass, NormalPrepass, ViewPrepassTextures};
 use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
@@ -276,11 +276,11 @@ impl Plugin for DebugVizPlugin {
                     Render,
                     prepare_debug_viz_uniforms.in_set(RenderSystems::PrepareResources),
                 )
-                // Bevy 0.19: render graph → systems. Ran after Tonemapping →
-                // `Core3dSystems::PostProcess`.
+                // A debug visualization drawn last → the shared `RenderPhase::Overlay`
+                // (after tonemapping + AA; the framework owns the placement).
                 .add_systems(
                     Core3d,
-                    debug_viz_pass.in_set(Core3dSystems::PostProcess),
+                    debug_viz_pass.in_set(renzora::RenderPhase::Overlay),
                 );
         }
     }

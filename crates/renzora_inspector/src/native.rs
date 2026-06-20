@@ -804,6 +804,10 @@ fn build_section(
     }
     if let Some((_, set_enabled)) = sec.enable {
         let sw = toggle_switch(commands, sec.enabled_now);
+        // Block the press from bubbling to the section header behind it, so
+        // flipping the enable switch doesn't also collapse/expand the section
+        // (same reason the lock/trash glyphs above set FocusPolicy::Block).
+        commands.entity(sw).insert(FocusPolicy::Block);
         let g = sec.enable.unwrap().0;
         bind_2way(
             commands,

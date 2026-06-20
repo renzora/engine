@@ -15,7 +15,8 @@
 //! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as `Off`;
 //! Phases 2-6 of `docs/renzora_lumen_plan.md` fill them in.
 
-use bevy::core_pipeline::{Core3d, Core3dSystems};
+use bevy::core_pipeline::Core3d;
+use renzora::RenderPhase;
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponentPlugin;
 use bevy::render::RenderApp;
@@ -45,23 +46,27 @@ pub(crate) enum LumenSystems {
 
 /// Encode the GI pipeline ordering (the old render-graph edges) on the render
 /// app's `Core3d` schedule. Called once from `LumenPlugin::build`.
+///
+/// All GI passes join the shared `renzora::RenderPhase::Gi` set, which the
+/// render-composition framework anchors in `EarlyPostProcess` BEFORE bevy's TAA
+/// (so the GI composite lands in the temporal history — otherwise SSGI flicker /
+/// SDF grey from a scrambled `post_process_write` ping-pong). Lumen never imports
+/// bevy's TAA; the framework owns that anchor. See `docs/render-composition.md`.
 fn configure_lumen_sets(render_app: &mut SubApp) {
-    use Core3dSystems::{EarlyPostProcess, PostProcess};
     use LumenSystems::*;
     // EndMainPass → Clear → Inject → GeometryInject → Resolve (chained).
     render_app.configure_sets(
         Core3d,
         (VoxelClear, VoxelInject, GeometryInject, VoxelResolve)
             .chain()
-            .in_set(EarlyPostProcess),
+            .in_set(RenderPhase::Gi),
     );
     // Resolve → Downsample (mip pyramid).
     render_app.configure_sets(
         Core3d,
-        VoxelDownsample.after(VoxelResolve).in_set(EarlyPostProcess),
+        VoxelDownsample.after(VoxelResolve).in_set(RenderPhase::Gi),
     );
     // Resolve → SR-Trace → SR-Blur → SR-Resolve → LumenTrace (chained).
-    // LumenTrace lives in EarlyPostProcess so it precedes Tonemapping (PostProcess).
     render_app.configure_sets(
         Core3d,
         (
@@ -72,10 +77,10 @@ fn configure_lumen_sets(render_app: &mut SubApp) {
         )
             .chain()
             .after(VoxelResolve)
-            .in_set(EarlyPostProcess),
+            .in_set(RenderPhase::Gi),
     );
-    // VoxelDebug runs after tonemapping.
-    render_app.configure_sets(Core3d, VoxelDebug.in_set(PostProcess));
+    // VoxelDebug is a post-tonemapping debug overlay.
+    render_app.configure_sets(Core3d, VoxelDebug.in_set(RenderPhase::Overlay));
 }
 
 mod geometry_voxelize;

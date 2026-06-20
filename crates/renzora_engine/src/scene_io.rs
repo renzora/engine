@@ -290,6 +290,23 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
                 if type_name.starts_with("avian3d::") {
                     return false;
                 }
+                // Transient render-world links + per-frame computed data that
+                // 0.19 made reflectable, so they now leak into saves. `RenderEntity`
+                // is a stale render-world id; the `Cascades*` blobs are recomputed
+                // shadow matrices each frame (they're what bloated this file to
+                // ~85 KB); `InheritedVisibility` is derived from `Visibility`
+                // (`ViewVisibility` is already denied above). All are re-added at
+                // runtime, so dropping them is lossless.
+                if matches!(
+                    type_name,
+                    "bevy_render::sync_world::RenderEntity"
+                        | "bevy_light::cascade::Cascades"
+                        | "bevy_camera::primitives::CascadesFrusta"
+                        | "bevy_camera::visibility::CascadesVisibleEntities"
+                        | "bevy_camera::visibility::InheritedVisibility"
+                ) {
+                    return false;
+                }
                 let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
                     component.as_partial_reflect(),
                     &registry,
@@ -1816,18 +1833,31 @@ pub fn rehydrate_cameras(
                 NormalPrepass,
                 DepthPrepass,
                 MotionVectorPrepass,
-                Atmosphere {
-                    inner_radius: 6_360_000.0,
-                    outer_radius: 6_460_000.0,
-                    ground_albedo: Vec3::splat(0.3),
-                    medium: medium_handle,
-                },
                 AtmosphereSettings::default(),
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
                     ..default()
                 },
                 Msaa::Off,
+            ));
+            // 0.19: `Atmosphere` belongs on a dedicated world entity, never the
+            // camera (else `world_to_atmosphere` rotates with the view and the
+            // sky glitches on pan). Spawn a runtime sky for the active camera.
+            // The entity's `GlobalTransform` IS the planet center, so place it
+            // 6,360 km below the origin (surface at Y=0) and give it NO
+            // `Transform` — a `Transform` would let propagation overwrite this
+            // back to the origin (camera underground → no sky). Named-but-not-
+            // `HideInHierarchy` so a scene clear recycles it instead of leaking
+            // one per load. See `renzora_atmosphere::AtmospherePlanet`.
+            commands.spawn((
+                Atmosphere {
+                    inner_radius: 6_360_000.0,
+                    outer_radius: 6_460_000.0,
+                    ground_albedo: Vec3::splat(0.3),
+                    medium: medium_handle,
+                },
+                GlobalTransform::from(Transform::from_translation(Vec3::NEG_Y * 6_360_000.0)),
+                Name::new("Sky Atmosphere"),
             ));
         }
 

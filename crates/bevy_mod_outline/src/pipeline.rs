@@ -108,6 +108,17 @@ impl FromWorld for OutlinePipeline {
     }
 }
 
+/// Build [`OutlinePipeline`] in `RenderStartup`, ordered after
+/// `MeshPipelineSystems` so bevy's `init_mesh_pipeline` has already inserted the
+/// [`MeshPipeline`] that `from_world` clones. Bevy 0.19 moved render-resource
+/// initialization out of `Plugin::finish` into `RenderStartup` systems, so
+/// `MeshPipeline` no longer exists at finish() time — initializing this resource
+/// there panicked on `get_resource::<MeshPipeline>().unwrap()`.
+pub(crate) fn init_outline_pipeline(world: &mut World) {
+    let pipeline = OutlinePipeline::from_world(world);
+    world.insert_resource(pipeline);
+}
+
 impl SpecializedMeshPipeline for OutlinePipeline {
     type Key = DerivedPipelineKey;
 

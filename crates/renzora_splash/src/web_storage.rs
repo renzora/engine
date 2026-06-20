@@ -77,22 +77,20 @@ pub fn create_web_project(name: &str) -> Result<CurrentProject, String> {
     let config = ProjectConfig {
         name: name.to_string(),
         version: "0.1.0".to_string(),
-        main_scene: "scenes/main.ron".to_string(),
+        main_scene: "scenes/main.bsn".to_string(),
         ..Default::default()
     };
 
-    let scene_content = "(
-  resources: {},
-  entities: {},
-)
-";
+    // Empty scene in the interim BSN format (see `renzora_bsn`); the old
+    // `(resources:{},entities:{})` RON is no longer a valid scene.
+    let scene_content = "// renzora interim bsn v1\n";
 
     let mut files = std::collections::HashMap::new();
     files.insert(
         "project.toml".to_string(),
         toml::to_string_pretty(&config).map_err(|e| e.to_string())?,
     );
-    files.insert("scenes/main.ron".to_string(), scene_content.to_string());
+    files.insert("scenes/main.bsn".to_string(), scene_content.to_string());
 
     let web_project = WebProject {
         slug: slug.clone(),

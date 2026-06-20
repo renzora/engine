@@ -934,6 +934,7 @@ const ASSET_EXTENSIONS: &[&str] = &[
     ".mp3",
     ".flac",
     // Scenes
+    ".bsn",
     ".ron",
     // Animations (clips + state machines, RON-based)
     ".anim",

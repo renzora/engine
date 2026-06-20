@@ -10,9 +10,8 @@ use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrep
 use bevy::core_pipeline::Skybox;
 use bevy::image::Image;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
-use bevy::light::atmosphere::ScatteringMedium;
 use bevy::light::{
-    Atmosphere, AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
+    AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
 };
 use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
@@ -47,13 +46,9 @@ use renzora::viewport_types::EditorCameraMatrix;
 pub fn spawn_editor_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
-    mut mediums: ResMut<Assets<ScatteringMedium>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
-
-    // One ScatteringMedium asset shared by every viewport camera's atmosphere.
-    let default_medium = mediums.add(ScatteringMedium::default());
 
     // Valid placeholder cubemap so the secondary cameras can carry an
     // `EnvironmentMapLight` from spawn (the IBL bind-group slots can't be added
@@ -124,15 +119,13 @@ pub fn spawn_editor_camera(
         // maps, and `share_sky_to_secondary_viewports` gives them the primary's
         // baked cubemap as a Skybox.
         if i == 0 {
+            // 0.19: the `Atmosphere` itself lives on a separate stationary
+            // "planet" entity managed by `renzora_atmosphere` (putting it on the
+            // camera makes the sky rotate with the view). The camera only carries
+            // `AtmosphereSettings` (the per-view render mode) + the IBL bake.
             entity.insert((
                 PrimaryViewportCamera,
                 EditorCamera,
-                Atmosphere {
-                    inner_radius: 6_360_000.0,
-                    outer_radius: 6_460_000.0,
-                    ground_albedo: Vec3::splat(0.3),
-                    medium: default_medium.clone(),
-                },
                 AtmosphereSettings::default(),
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,

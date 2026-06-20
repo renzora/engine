@@ -178,7 +178,11 @@ fn collect_ron_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
             if !is_dot {
                 collect_ron_files(&path, out);
             }
-        } else if path.extension().and_then(|x| x.to_str()) == Some("ron") {
+        } else if matches!(
+            path.extension().and_then(|x| x.to_str()),
+            Some("ron") | Some("bsn")
+        ) {
+            // `.bsn` = interim scene format; `.ron` = sidecars/config still in RON.
             out.push(path);
         }
     }

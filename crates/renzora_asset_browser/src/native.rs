@@ -1612,7 +1612,7 @@ fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
             ((150, 210, 120), "Texture")
         }
         "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
-        "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
+        "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
         "particle" => ((230, 160, 90), "Particle"),
         "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
         "html" => ((230, 120, 90), "Template"),
@@ -1648,7 +1648,7 @@ fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         "material" => "palette",
         "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
         "lua" | "rhai" | "rs" | "py" | "js" | "ts" => "code",
-        "scene" | "ron" | "scn" => "film-slate",
+        "scene" | "bsn" | "ron" | "scn" => "film-slate",
         "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
         "particle" => "sparkle",
         "blueprint" | "bp" => "blueprint",

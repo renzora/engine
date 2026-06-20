@@ -418,8 +418,8 @@ fn save_as_scene_system(world: &mut World) {
         let file = rfd::FileDialog::new()
             .set_title("Save Scene As")
             .set_directory(&scenes_dir)
-            .add_filter("Scene File", &["ron"])
-            .set_file_name("new_scene.ron")
+            .add_filter("Scene File", &["bsn"])
+            .set_file_name("new_scene.bsn")
             .save_file();
 
         let Some(file_path) = file else { return };
@@ -530,7 +530,7 @@ fn open_scene_system(world: &mut World) {
         let file = rfd::FileDialog::new()
             .set_title("Open Scene")
             .set_directory(&scenes_dir)
-            .add_filter("Scene File", &["ron"])
+            .add_filter("Scene File", &["bsn"])
             .pick_file();
 
         let Some(file_path) = file else { return };

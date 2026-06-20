@@ -11,7 +11,7 @@
 //! distribution plugin, which installs `RtPlugin`; it is not a plugin on its
 //! own and is never statically linked into the host.
 
-use bevy::core_pipeline::{Core3d, Core3dSystems};
+use bevy::core_pipeline::Core3d;
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponentPlugin;
 use bevy::render::{Render, RenderApp, RenderSystems};
@@ -40,10 +40,11 @@ impl Plugin for RtPlugin {
                     Render,
                     prepare::prepare_rt_uniforms.in_set(RenderSystems::PrepareResources),
                 )
-                // Bevy 0.19: render graph → systems. RT-SSGI ran
-                // `EndMainPass → RT → Tonemapping`, i.e. after the main pass and
-                // before tonemapping → `Core3dSystems::EarlyPostProcess`.
-                .add_systems(Core3d, rt_pass.in_set(Core3dSystems::EarlyPostProcess));
+                // RT-SSGI is global illumination → the shared `RenderPhase::Gi`
+                // (HDR, after the main pass, before TAA — the framework anchors it;
+                // this crate doesn't reference TAA/tonemapping). It and Lumen are
+                // mutually-exclusive GI backends, so sharing the phase is fine.
+                .add_systems(Core3d, rt_pass.in_set(renzora::RenderPhase::Gi));
         }
     }
 

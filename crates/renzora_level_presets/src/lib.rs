@@ -1307,10 +1307,10 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     let sun = renzora_lighting::Sun::default();
     let dir = sun.direction();
 
-    // SDF Low + intensity 0.4 is the night-scene-friendly default tuned
-    // alongside Phase 7 cone trace + distance falloff in renzora_lumen.
+    // SSGI (screen-space) is the shipping default GI tier — the SDF voxel path
+    // is reserved/unverified, so the default uses the screen-space backend.
     let lumen = renzora::LumenLighting {
-        quality: renzora::LumenQuality::SdfLow,
+        quality: renzora::LumenQuality::ScreenSpace,
         intensity: 0.4,
         specular_intensity: 1.0,
         debug: renzora::LumenDebug::None,
@@ -1330,17 +1330,8 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     // simply has no effect until the deferred path lands.
     let ssr = renzora_ssr::SsrSettings { enabled: false };
 
-    // Stylistic / situational effects — off by default, available via
-    // the inspector toggle.
-    let motion_blur = renzora_motion_blur::MotionBlurSettings {
-        enabled: false,
-        ..default()
-    };
-    let dof = renzora_dof::DepthOfFieldSettings {
-        enabled: false,
-        ..default()
-    };
-    // Vignette omitted from the spawn -- it's a cdylib distribution
+    // Motion blur + depth-of-field are omitted from the default spawn (add via
+    // the inspector if wanted). Vignette omitted from the spawn -- it's a cdylib distribution
     // plugin and can't be linked here without triggering a duplicate
     // `App::add_plugins` panic. Users can still add it via the
     // inspector's "Add Component" overlay; the inspector entry is
@@ -1381,8 +1372,6 @@ fn spawn_world_environment(world: &mut World) -> Entity {
             (
                 renzora_atmosphere::AtmosphereComponentSettings::default(),
                 renzora_clouds::CloudsData::default(),
-                renzora_distance_fog::DistanceFogSettings::default(),
-                renzora_volumetric_fog::VolumetricFogSettings::default(),
                 night_stars,
             ),
             // ── Camera response ──────────────────────────────────────
@@ -1395,7 +1384,6 @@ fn spawn_world_environment(world: &mut World) -> Entity {
                 // sees a properly-distributed mid-band and converges.
                 renzora_auto_exposure::AutoExposureSettings::default(),
                 renzora_tonemapping::TonemappingSettings::default(),
-                renzora_tonemapping::DebandDitherSettings::default(),
             ),
             // ── Image quality / post ─────────────────────────────────
             (
@@ -1403,9 +1391,6 @@ fn spawn_world_environment(world: &mut World) -> Entity {
                 renzora_ssao::SsaoSettings::default(),
                 ssr,
                 renzora_antialiasing::TaaSettings::default(),
-                renzora_antialiasing::CasSettings::default(),
-                motion_blur,
-                dof,
             ),
         ))
         .id()
