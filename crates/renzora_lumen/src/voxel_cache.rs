@@ -20,19 +20,16 @@
 //! later off-screen tracing won't see anything in voxels behind walls.
 //! That's a Phase 2.5 / Phase 3 scope item.
 
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::core_pipeline::Core3d;
 use bevy::core_pipeline::prepass::ViewPrepassTextures;
 use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, storage_buffer_sized, texture_2d, texture_depth_2d, texture_storage_3d, uniform_buffer,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
+use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::utils::default;
@@ -74,6 +71,11 @@ pub const VOXEL_RES_Z: u32 = VOXEL_RES * CASCADE_COUNT;
 pub struct VoxelCacheView {
     pub inject_active: bool,
     pub debug_active: bool,
+}
+
+// Bevy 0.19: ExtractComponent requires SyncComponent.
+impl bevy::render::sync_component::SyncComponent for VoxelCacheView {
+    type Target = Self;
 }
 
 impl ExtractComponent for VoxelCacheView {
@@ -233,7 +235,7 @@ impl FromWorld for VoxelCachePipelines {
             shader: inject_shader,
             shader_defs: vec![],
             entry_point: Some("inject".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -252,7 +254,7 @@ impl FromWorld for VoxelCachePipelines {
             shader: clear_shader,
             shader_defs: vec![],
             entry_point: Some("clear".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -274,7 +276,7 @@ impl FromWorld for VoxelCachePipelines {
             shader: resolve_shader,
             shader_defs: vec![],
             entry_point: Some("resolve".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -312,7 +314,7 @@ impl FromWorld for VoxelCachePipelines {
                 shader_defs: vec![],
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: ViewTarget::TEXTURE_FORMAT_HDR,
+                    format: TextureFormat::Rgba16Float, // 0.19: TEXTURE_FORMAT_HDR deprecated
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
@@ -320,7 +322,7 @@ impl FromWorld for VoxelCachePipelines {
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -454,43 +456,28 @@ pub fn prepare_voxel_resources(
     });
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct VoxelClearLabel;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct VoxelInjectLabel;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct VoxelResolveLabel;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct VoxelDebugLabel;
-
 /// Clear pass — zeros the per-frame accumulation buffer. Split from
 /// the visible-surface inject so other writers (e.g. geometry
-/// voxelization) can land between clear and resolve.
-#[derive(Default)]
-pub struct VoxelClearNode;
-
-impl ViewNode for VoxelClearNode {
-    type ViewQuery = &'static VoxelCacheView;
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        view: QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if !view.inject_active { return Ok(()); }
+/// voxelization) can land between clear and resolve. Bevy 0.19: was
+/// `VoxelClearNode: ViewNode`; now a render system (see `LumenSystems`).
+pub fn voxel_clear_pass(
+    world: &World,
+    view: ViewQuery<&'static VoxelCacheView>,
+    mut render_context: RenderContext,
+) {
+    let view = view.into_inner();
+    {
+        if !view.inject_active {
+            return;
+        }
         let _span = info_span!("voxel.clear").entered();
         let pipelines = world.resource::<VoxelCachePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
         let Some(clear_pl) = pipeline_cache.get_compute_pipeline(pipelines.clear_pipeline) else {
-            return Ok(());
+            return;
         };
         let bg = render_context.render_device().create_bind_group(
             "voxel_clear_bg",
@@ -511,7 +498,6 @@ impl ViewNode for VoxelClearNode {
         let entries = VOXEL_RES * VOXEL_RES * VOXEL_RES * CASCADE_COUNT * 5;
         let groups = entries.div_ceil(256);
         pass.dispatch_workgroups(groups, 1, 1);
-        Ok(())
     }
 }
 
@@ -519,29 +505,25 @@ impl ViewNode for VoxelClearNode {
 /// radiance texture as sum/count averages with temporal blending.
 /// Runs AFTER both the visible-surface inject and the geometry inject
 /// so all contributions for the frame are baked together.
-#[derive(Default)]
-pub struct VoxelResolveNode;
-
-impl ViewNode for VoxelResolveNode {
-    type ViewQuery = &'static VoxelCacheView;
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        view: QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        if !view.inject_active { return Ok(()); }
+pub fn voxel_resolve_pass(
+    world: &World,
+    view: ViewQuery<&'static VoxelCacheView>,
+    mut render_context: RenderContext,
+) {
+    let view = view.into_inner();
+    {
+        if !view.inject_active {
+            return;
+        }
         let _span = info_span!("voxel.resolve").entered();
         let pipelines = world.resource::<VoxelCachePipelines>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
         let Some(resolve_pl) = pipeline_cache.get_compute_pipeline(pipelines.resolve_pipeline)
         else {
-            return Ok(());
+            return;
         };
         let bg = render_context.render_device().create_bind_group(
             "voxel_resolve_bg",
@@ -564,30 +546,23 @@ impl ViewNode for VoxelResolveNode {
         pass.set_bind_group(0, &bg, &[]);
         // Z dimension covers all cascades (each `VOXEL_RES` deep, stacked).
         pass.dispatch_workgroups(VOXEL_RES / 4, VOXEL_RES / 4, VOXEL_RES_Z / 4);
-        Ok(())
     }
 }
 
-#[derive(Default)]
-pub struct VoxelInjectNode;
-
-impl ViewNode for VoxelInjectNode {
-    type ViewQuery = (
+pub fn voxel_inject_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ViewUniformOffset,
         &'static ViewPrepassTextures,
         &'static VoxelCacheView,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, view): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, view_offset, prepass, view) = view.into_inner();
+    {
         if !view.inject_active {
-            return Ok(());
+            return;
         }
         let _span = info_span!("voxel.inject").entered();
 
@@ -596,12 +571,12 @@ impl ViewNode for VoxelInjectNode {
         let view_uniforms = world.resource::<ViewUniforms>();
 
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
-            return Ok(());
+            return;
         };
-        let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
+        let Some(depth_view) = prepass.depth_view() else { return; };
 
         // Visible-surface inject only — clear runs before us, resolve
         // runs after us (and after the geometry inject between).
@@ -628,30 +603,23 @@ impl ViewNode for VoxelInjectNode {
             let size = view_target.main_texture().size();
             pass.dispatch_workgroups(size.width.div_ceil(8), size.height.div_ceil(8), 1);
         }
-        Ok(())
     }
 }
 
-#[derive(Default)]
-pub struct VoxelDebugNode;
-
-impl ViewNode for VoxelDebugNode {
-    type ViewQuery = (
+pub fn voxel_debug_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ViewUniformOffset,
         &'static ViewPrepassTextures,
         &'static VoxelCacheView,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, view): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, view_offset, prepass, view) = view.into_inner();
+    {
         if !view.debug_active {
-            return Ok(());
+            return;
         }
 
         let pipelines = world.resource::<VoxelCachePipelines>();
@@ -659,15 +627,15 @@ impl ViewNode for VoxelDebugNode {
         let view_uniforms = world.resource::<ViewUniforms>();
 
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
         let Some(pipeline) = pipeline_cache.get_render_pipeline(pipelines.debug_pipeline) else {
-            return Ok(());
+            return;
         };
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
-            return Ok(());
+            return;
         };
-        let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
+        let Some(depth_view) = prepass.depth_view() else { return; };
 
         let post_process = view_target.post_process_write();
         let bind_group = render_context.render_device().create_bind_group(
@@ -694,12 +662,11 @@ impl ViewNode for VoxelDebugNode {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         render_pass.set_render_pipeline(pipeline);
         render_pass.set_bind_group(0, &bind_group, &[view_offset.offset]);
         render_pass.draw(0..3, 0..1);
-
-        Ok(())
     }
 }
 
@@ -717,38 +684,21 @@ impl Plugin for VoxelCachePlugin {
         app.add_plugins(ExtractComponentPlugin::<VoxelCacheView>::default());
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            // Bevy 0.19: render graph → systems. Ordering (Clear → Inject →
+            // [GeometryInject] → Resolve, then Debug after tonemapping) is
+            // expressed via the shared `LumenSystems` sets in `lib.rs`.
             render_app
                 .add_systems(
                     Render,
                     prepare_voxel_resources.in_set(RenderSystems::PrepareResources),
                 )
-                .add_render_graph_node::<ViewNodeRunner<VoxelClearNode>>(Core3d, VoxelClearLabel)
-                .add_render_graph_node::<ViewNodeRunner<VoxelInjectNode>>(Core3d, VoxelInjectLabel)
-                .add_render_graph_node::<ViewNodeRunner<VoxelResolveNode>>(
-                    Core3d,
-                    VoxelResolveLabel,
-                )
-                .add_render_graph_node::<ViewNodeRunner<VoxelDebugNode>>(Core3d, VoxelDebugLabel)
-                // Pipeline: EndMainPass → Clear → Inject → (Geometry)
-                // → Resolve → Tonemapping → Debug. Geometry inject (in
-                // geometry_voxelize.rs) inserts itself between Inject
-                // and Resolve via its own edges.
-                .add_render_graph_edges(
+                .add_systems(
                     Core3d,
                     (
-                        Node3d::EndMainPass,
-                        VoxelClearLabel,
-                        VoxelInjectLabel,
-                        VoxelResolveLabel,
-                        Node3d::Tonemapping,
-                    ),
-                )
-                .add_render_graph_edges(
-                    Core3d,
-                    (
-                        Node3d::Tonemapping,
-                        VoxelDebugLabel,
-                        Node3d::EndMainPassPostProcessing,
+                        voxel_clear_pass.in_set(crate::LumenSystems::VoxelClear),
+                        voxel_inject_pass.in_set(crate::LumenSystems::VoxelInject),
+                        voxel_resolve_pass.in_set(crate::LumenSystems::VoxelResolve),
+                        voxel_debug_pass.in_set(crate::LumenSystems::VoxelDebug),
                     ),
                 );
         }

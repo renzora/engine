@@ -20,27 +20,19 @@
 //! `LumenTraceLabel` so the resolved buffer is available when the
 //! main composite pass samples it.
 
-use bevy::core_pipeline::core_3d::graph::Core3d;
+use bevy::core_pipeline::Core3d;
 use bevy::core_pipeline::prepass::ViewPrepassTextures;
-use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, texture_2d, texture_depth_2d, texture_storage_2d, uniform_buffer,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice};
+use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::utils::default;
 
-use crate::lumen_trace::LumenTraceLabel;
-use crate::voxel_cache::{VoxelCacheView, VoxelResolveLabel};
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct ScreenReflectionTraceLabel;
+use crate::voxel_cache::VoxelCacheView;
 
 #[derive(Resource)]
 pub struct ScreenReflectionPipeline {
@@ -179,7 +171,7 @@ impl FromWorld for ScreenReflectionPipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("trace".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -295,30 +287,24 @@ pub fn prepare_screen_reflection_resources(
     }
 }
 
-#[derive(Default)]
-pub struct ScreenReflectionTraceNode;
-
-impl ViewNode for ScreenReflectionTraceNode {
-    type ViewQuery = (
+pub fn screen_reflection_trace_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ViewUniformOffset,
         &'static ViewPrepassTextures,
         &'static ScreenReflectionResources,
         &'static VoxelCacheView,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, resources, view): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, view_offset, prepass, resources, view) = view.into_inner();
+    {
         // Same gate as the lumen_trace pass — only fire when GI is
         // actually active. Avoids wasting GPU time when the user
         // toggles Lumen quality to Off mid-frame.
         if !view.inject_active {
-            return Ok(());
+            return;
         }
         let _span = info_span!("lumen.specular_trace").entered();
 
@@ -328,16 +314,16 @@ impl ViewNode for ScreenReflectionTraceNode {
 
         let Some(compute_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id)
         else {
-            return Ok(());
+            return;
         };
         let Some(view_binding) = view_uniforms.uniforms.binding() else {
-            return Ok(());
+            return;
         };
         let Some(depth_view) = prepass.depth_view() else {
-            return Ok(());
+            return;
         };
         let Some(normal_view) = prepass.normal_view() else {
-            return Ok(());
+            return;
         };
 
         // Deferred G-buffer — same source as `lumen_trace`. Roughness
@@ -390,7 +376,6 @@ impl ViewNode for ScreenReflectionTraceNode {
         let dispatch_y = resources.size.height.div_ceil(8);
         pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
 
-        Ok(())
     }
 }
 
@@ -407,21 +392,9 @@ impl Plugin for ScreenReflectionPlugin {
                     Render,
                     prepare_screen_reflection_resources.in_set(RenderSystems::PrepareResources),
                 )
-                .add_render_graph_node::<ViewNodeRunner<ScreenReflectionTraceNode>>(
+                .add_systems(
                     Core3d,
-                    ScreenReflectionTraceLabel,
-                )
-                // Slot between the voxel cache resolve (so the cache
-                // has fresh radiance for any fallback paths the
-                // reflection blend might use) and the main lumen
-                // trace (which reads our output buffer).
-                .add_render_graph_edges(
-                    Core3d,
-                    (
-                        VoxelResolveLabel,
-                        ScreenReflectionTraceLabel,
-                        LumenTraceLabel,
-                    ),
+                    screen_reflection_trace_pass.in_set(crate::LumenSystems::ScreenReflectionTrace),
                 );
         }
     }
