@@ -30,6 +30,11 @@ pub struct Sun {
     pub illuminance: f32,
     /// Whether this light casts shadows.
     pub shadows_enabled: bool,
+    /// Whether this light casts screen-space **contact shadows** — small-scale
+    /// shadows where objects meet surfaces, filling in detail shadow maps miss.
+    /// Needs the camera's depth prepass + a `ContactShadows` component (the
+    /// editor/runtime cameras carry one). Bevy 0.19 built-in.
+    pub contact_shadows: bool,
     /// Angular diameter of the sun disc in degrees (Earth's sun ≈ 0.53°).
     pub angular_diameter: f32,
     /// Brightness multiplier for the sun disk (0 = no disk, 1 = physical, >1 = overexposed).
@@ -44,6 +49,7 @@ impl Default for Sun {
             color: Vec3::new(1.0, 0.95, 0.88),
             illuminance: 40_000.0,
             shadows_enabled: true,
+            contact_shadows: false,
             angular_diameter: 0.53,
             sun_disk_intensity: 1.0,
         }
@@ -96,6 +102,7 @@ fn sync_sun(
         light.color = Color::srgb(sun.color.x, sun.color.y, sun.color.z);
         light.illuminance = sun.illuminance * factor;
         light.shadow_maps_enabled = sun.shadows_enabled && factor > 0.0;
+        light.contact_shadows_enabled = sun.contact_shadows && factor > 0.0;
         *transform =
             Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, sun.direction()));
         commands.entity(entity).try_insert(SunDisk {

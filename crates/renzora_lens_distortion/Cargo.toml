@@ -1,0 +1,15 @@
+[package]
+name = "renzora_lens_distortion"
+version = "0.1.0"
+edition = "2021"
+
+# Lean runtime crate (a thin wrapper around bevy's built-in `LensDistortion`).
+# The inspector lives in the nested `renzora_lens_distortion_editor` crate.
+
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

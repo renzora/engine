@@ -1,0 +1,13 @@
+[package]
+name = "renzora_lens_distortion_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only inspector for renzora_lens_distortion. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_lens_distortion = { path = ".." }
+
+[lints]
+workspace = true

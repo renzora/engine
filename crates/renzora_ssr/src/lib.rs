@@ -7,11 +7,27 @@ use serde::{Deserialize, Serialize};
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SsrSettings {
     pub enabled: bool,
+    /// Assumed surface thickness for depth-buffer ray marching (world units).
+    pub thickness: f32,
+    /// Initial linear ray-march steps — quality vs. cost.
+    pub linear_steps: u32,
+    /// Binary-search refinement steps after the first hit — accuracy.
+    pub bisection_steps: u32,
+    /// Secant refinement for sharper, more accurate reflection hits.
+    pub use_secant: bool,
 }
 
 impl Default for SsrSettings {
+    // Mirrors bevy's `ScreenSpaceReflections::default()` so toggling on matches
+    // the built-in physically-based SSR look.
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            thickness: 0.25,
+            linear_steps: 10,
+            bisection_steps: 5,
+            use_secant: true,
+        }
     }
 }
 
@@ -48,9 +64,15 @@ fn sync_ssr(
                         );
                         commands.entity(*target).remove::<ScreenSpaceReflections>();
                     } else {
-                        commands
-                            .entity(*target)
-                            .insert(ScreenSpaceReflections::default());
+                        commands.entity(*target).insert(ScreenSpaceReflections {
+                            thickness: settings.thickness,
+                            linear_steps: settings.linear_steps,
+                            bisection_steps: settings.bisection_steps,
+                            use_secant: settings.use_secant,
+                            // perceptual-roughness / fadeout ranges keep bevy's
+                            // tuned defaults.
+                            ..default()
+                        });
                     }
                 } else {
                     commands.entity(*target).remove::<ScreenSpaceReflections>();

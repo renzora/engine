@@ -1328,7 +1328,10 @@ fn spawn_world_environment(world: &mut World) -> Entity {
     // SSR disabled — requires DeferredPrepass which we don't currently
     // attach to the editor camera. Inspector shows it; toggling on
     // simply has no effect until the deferred path lands.
-    let ssr = renzora_ssr::SsrSettings { enabled: false };
+    let ssr = renzora_ssr::SsrSettings {
+        enabled: false,
+        ..default()
+    };
 
     // Motion blur + depth-of-field are omitted from the default spawn (add via
     // the inspector if wanted). Vignette omitted from the spawn -- it's a cdylib distribution

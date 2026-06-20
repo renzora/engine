@@ -1838,6 +1838,8 @@ pub fn rehydrate_cameras(
                     intensity: 0.0,
                     ..default()
                 },
+                // ContactShadows intentionally omitted — see camera.rs (bevy 0.19
+                // deferred + area_light_luts bind-group-layout conflict).
                 Msaa::Off,
             ));
             // 0.19: `Atmosphere` belongs on a dedicated world entity, never the

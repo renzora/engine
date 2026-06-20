@@ -117,6 +117,8 @@ bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", features =
     "pbr_specular_textures", "experimental_pbr_pcss",
     "morph", "morph_animation",
     "bluenoise_texture", "dfg_lut", "area_light_luts",
+    # built-in post-process effect stack (vignette, lens distortion, chromatic aberration)
+    "bevy_post_process",
     # clipboard / fonts / ui
     "system_clipboard", "clipboard_image", "system_font_discovery", "ghost_nodes",
     # asset IO / processing

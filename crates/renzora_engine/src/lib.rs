@@ -96,6 +96,32 @@ fn ensure_deferred_prepass_on_cameras(
     }
 }
 
+/// Attach the `ContactShadows` receiver to FORWARD cameras only.
+///
+/// Bevy 0.19's *deferred* lighting pipeline doesn't wire up contact shadows
+/// (`prepare_deferred_lighting_pipelines` never queries `Has<ContactShadows>`,
+/// so the deferred pipeline's mesh-view layout omits the contact-shadows binding
+/// and mismatches the camera's bind group — an upstream bug, see the bevy docs
+/// which claim deferred support). The *forward* mesh pipeline specializes it
+/// correctly, so we only attach the receiver when the resolved mode is forward.
+/// A light's `contact_shadows_enabled` (e.g. the Sun's toggle) then takes effect
+/// on these views. Same cheap `Without<>` scan + before-first-render timing as
+/// [`ensure_deferred_prepass_on_cameras`].
+fn ensure_contact_shadows_on_forward_cameras(
+    rendering_mode: Res<ResolvedRenderingMode>,
+    cameras: Query<Entity, (With<Camera3d>, Without<bevy::pbr::ContactShadows>)>,
+    mut commands: Commands,
+) {
+    if rendering_mode.is_deferred() {
+        return;
+    }
+    for entity in &cameras {
+        commands
+            .entity(entity)
+            .try_insert(bevy::pbr::ContactShadows::default());
+    }
+}
+
 /// Pull the rendering mode from the just-loaded project and propagate
 /// it to `ResolvedRenderingMode` + `DefaultOpaqueRendererMethod`
 /// **before** the editor camera spawns. Runs as the first step of
@@ -349,7 +375,13 @@ impl Plugin for RuntimePlugin {
         // DeferredPrepass so its prepass queue includes the deferred
         // opaque phase. Covers editor previews/thumbnails that spawn
         // their own Camera3d entities without our explicit attachment.
-        app.add_systems(PostUpdate, ensure_deferred_prepass_on_cameras);
+        app.add_systems(
+            PostUpdate,
+            (
+                ensure_deferred_prepass_on_cameras,
+                ensure_contact_shadows_on_forward_cameras,
+            ),
+        );
 
         app.init_resource::<ViewportRenderTarget>()
             .init_resource::<renzora::core::viewport_types::Viewports>()

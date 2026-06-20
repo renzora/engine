@@ -7955,6 +7955,8 @@ dependencies = [
  "renzora_import_ui",
  "renzora_inspector",
  "renzora_keybindings",
+ "renzora_lens_distortion",
+ "renzora_lens_distortion_editor",
  "renzora_level_presets",
  "renzora_lighting",
  "renzora_lighting_editor",
@@ -8505,6 +8507,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_lens_distortion"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "serde",
+]
+
+[[package]]
+name = "renzora_lens_distortion_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_lens_distortion",
+]
+
+[[package]]
 name = "renzora_letterbox"
 version = "0.1.0"
 dependencies = [
@@ -9028,6 +9048,7 @@ dependencies = [
  "renzora_globals",
  "renzora_hanabi",
  "renzora_input",
+ "renzora_lens_distortion",
  "renzora_lighting",
  "renzora_motion_blur",
  "renzora_navmesh",
@@ -9576,9 +9597,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
  "serde",
 ]
 

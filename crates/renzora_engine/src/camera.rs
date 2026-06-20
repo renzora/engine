@@ -100,6 +100,12 @@ pub fn spawn_editor_camera(
             // covers every other `Camera3d` in the editor (previews,
             // thumbnails, etc.), so we don't special-case it here.
             (NormalPrepass, DepthPrepass, MotionVectorPrepass),
+            // NOTE: `bevy::pbr::ContactShadows` is NOT attached here. Bevy 0.19's
+            // deferred lighting pipeline doesn't wire it up (it claims the same
+            // `mesh_view` binding 16 as `area_light_luts`, tripping a wgpu layout
+            // mismatch) — an upstream bug. `ensure_contact_shadows_on_forward_
+            // cameras` (lib.rs) attaches it to FORWARD cameras only, where it
+            // works; the `Sun`'s contact-shadow toggle then takes effect there.
         ));
 
         // Only the PRIMARY camera carries the procedural sky + IBL. In Bevy

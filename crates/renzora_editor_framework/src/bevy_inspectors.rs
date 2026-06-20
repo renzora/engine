@@ -79,6 +79,25 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         },
     });
 
+    // Bevy 0.19 rectangular area light. Edited via the generic reflection
+    // inspector (color/intensity/range/width/height). `RectLight` requires
+    // Transform/Visibility (auto-added).
+    registry.register(EntityPreset {
+        id: "rect_light",
+        display_name: "Area Light",
+        icon: "square",
+        category: "lighting",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Area Light"),
+                    Transform::default(),
+                    RectLight::default(),
+                ))
+                .id()
+        },
+    });
+
     registry.register(EntityPreset {
         id: "ambient_light",
         display_name: "Ambient Light",
@@ -282,6 +301,14 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
         type_id: std::any::TypeId::of::<SpotLight>(),
         name: "Spot Light",
         icon: "flashlight",
+        color: [255, 200, 80],
+        priority: 90,
+        dynamic_icon_fn: None,
+    });
+    registry.register(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<RectLight>(),
+        name: "Area Light",
+        icon: "square",
         color: [255, 200, 80],
         priority: 90,
         dynamic_icon_fn: None,
