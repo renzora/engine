@@ -792,7 +792,7 @@ fn drag_ghost(
             Text::new(payload.name.clone()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Pickable::IGNORE,
         ))
         .id();
@@ -2350,7 +2350,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
                 Text::new(entry.name.clone()),
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_primary())),
-                bevy::text::TextLayout::new_with_no_wrap(),
+                bevy::text::TextLayout::no_wrap(),
                 Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
                 Interaction::default(),
                 bevy::ui::FocusPolicy::Pass,
@@ -2363,7 +2363,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
             Text::new(type_label),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node { width: Val::Px(96.0), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
         ))
         .id();
@@ -2372,7 +2372,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
             Text::new(if is_dir { String::new() } else { human_size(entry.size) }),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node { width: Val::Px(64.0), flex_shrink: 0.0, ..default() },
         ))
         .id();
@@ -2564,7 +2564,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             Text::new(type_label),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(renzora_ember::theme::text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 overflow: Overflow::clip(),
                 ..default()
@@ -2917,7 +2917,7 @@ fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 min_width: Val::Px(0.0),
                 overflow: Overflow::clip(),
@@ -3013,7 +3013,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
             Text::new(r.name.clone()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Pickable::IGNORE,
             Node {
                 min_width: Val::Px(0.0),

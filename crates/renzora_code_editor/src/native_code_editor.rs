@@ -252,7 +252,7 @@ fn tab_chip(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str,
     }
 
     let label_color = if active { text_primary() } else { text_muted() };
-    let label = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(label_color)), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let label = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(label_color)), bevy::text::TextLayout::no_wrap())).id();
     kids.push(label);
 
     // Close button (always available, even for modified tabs).

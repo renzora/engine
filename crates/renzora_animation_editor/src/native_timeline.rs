@@ -402,7 +402,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Center, justify_content: JustifyContent::Center, row_gap: Val::Px(10.0), ..default() })
         .id();
     let note_lbl = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center)))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::justify(bevy::text::Justify::Center)))
         .id();
     bind_text(commands, note_lbl, empty_msg);
     let create_btn = crate::setup::action_button(commands, fonts, "plus-circle", "Create Animation", crate::setup::CreateAnimBtn);
@@ -432,7 +432,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let add_track_ic = icon_text(commands, &fonts.phosphor, "plus", accent(), 10.0);
-    let add_track_lbl = commands.spawn((Text::new("Add Track"), ui_font(&fonts.ui, 10.0), TextColor(rgb(accent())), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let add_track_lbl = commands.spawn((Text::new("Add Track"), ui_font(&fonts.ui, 10.0), TextColor(rgb(accent())), bevy::text::TextLayout::no_wrap())).id();
     commands.entity(add_track).add_children(&[add_track_ic, add_track_lbl]);
     commands.entity(tl.header_corner).add_children(&[htitle, hspacer, add_track]);
     keyed_list(commands, tl.header_list, header_snapshot);
@@ -483,7 +483,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ClipCombo,
         ))
         .id();
-    let combo_v = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { min_width: Val::Px(96.0), max_width: Val::Px(150.0), overflow: Overflow::clip(), ..default() }, bevy::text::TextLayout::new_with_no_wrap())).id();
+    let combo_v = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { min_width: Val::Px(96.0), max_width: Val::Px(150.0), overflow: Overflow::clip(), ..default() }, bevy::text::TextLayout::no_wrap())).id();
     bind_text(commands, combo_v, |w| state(w).and_then(|s| s.selected_clip.clone()).unwrap_or_else(|| "Select clip…".into()));
     let combo_c = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 9.0);
     commands.entity(combo).add_children(&[combo_v, combo_c]);
@@ -550,7 +550,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
 
     // Selected-keyframe readout: "Rotation @ 1.33s = (…)".
-    let keyinfo = commands.spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(PROPERTY)), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let keyinfo = commands.spawn((Text::new(""), ui_font(&fonts.mono, 10.0), TextColor(rgb(PROPERTY)), bevy::text::TextLayout::no_wrap())).id();
     bind_text(commands, keyinfo, selected_key_label);
 
     let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
@@ -697,7 +697,7 @@ fn prop_header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, trac
         Some(l) => (l.to_string(), text_primary()),
         None => ("Select property…".to_string(), text_muted()),
     };
-    let combo_lbl = commands.spawn((Text::new(txt), ui_font(&fonts.ui, 11.0), TextColor(rgb(col)), bevy::text::TextLayout::new_with_no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
+    let combo_lbl = commands.spawn((Text::new(txt), ui_font(&fonts.ui, 11.0), TextColor(rgb(col)), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
     let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
     commands.entity(combo).add_children(&[combo_lbl, caret]);
 
@@ -726,7 +726,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &st
         .spawn((Node { width: Val::Percent(100.0), height: Val::Px(th), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(6.0)), ..default() }, BackgroundColor(rgb(bg))))
         .id();
     let bone = icon_text(commands, &fonts.phosphor, "bone", text_muted(), 10.0);
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
     let t = channel_letter(commands, fonts, "T", ht, TRANSLATION);
     let r = channel_letter(commands, fonts, "R", hr, ROTATION);
     let s = channel_letter(commands, fonts, "S", hs, SCALE);
@@ -1024,7 +1024,7 @@ fn marker_flag(commands: &mut Commands, fonts: &EmberFonts, time: f32, name: &st
     let flag = commands
         .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(1.0), top: Val::Px(0.0), padding: UiRect::axes(Val::Px(3.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(2.0)), ..default() }, BackgroundColor(rgb(MARKER)), bevy::ui::FocusPolicy::Pass))
         .id();
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 8.0), TextColor(rgb((25, 20, 30))), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 8.0), TextColor(rgb((25, 20, 30))), bevy::text::TextLayout::no_wrap())).id();
     commands.entity(flag).add_child(lbl);
     commands.entity(root).add_children(&[line, flag]);
     root

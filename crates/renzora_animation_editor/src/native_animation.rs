@@ -175,7 +175,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(""),
             ui_font(&fonts.ui, 13.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Center),
         ))
         .id();
     bind_text(commands, note_lbl, empty_headline);
@@ -184,7 +184,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(""),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Center),
         ))
         .id();
     bind_text(commands, hint_lbl, empty_hint);
@@ -282,7 +282,7 @@ fn info_row(
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 width: Val::Px(LABEL_W),
                 flex_shrink: 0.0,
@@ -296,7 +296,7 @@ fn info_row(
             Text::new(""),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(color)),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 flex_grow: 1.0,
                 min_width: Val::Px(0.0),
@@ -498,7 +498,7 @@ fn clip_row(
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 overflow: Overflow::clip(),
                 ..default()
@@ -637,7 +637,7 @@ fn bone_track_row(
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 width: Val::Px(LABEL_W),
                 flex_shrink: 0.0,
@@ -797,7 +797,7 @@ fn param_row_base(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name:
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 width: Val::Px(LABEL_W),
                 flex_shrink: 0.0,
@@ -1025,7 +1025,7 @@ fn static_row(
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 width: Val::Px(LABEL_W),
                 flex_shrink: 0.0,
@@ -1039,7 +1039,7 @@ fn static_row(
             Text::new(value.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(color)),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 flex_grow: 1.0,
                 min_width: Val::Px(0.0),

@@ -198,7 +198,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &st
         .spawn((Node { width: Val::Percent(100.0), height: Val::Px(th), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(6.0)), ..default() }, BackgroundColor(rgb(bg))))
         .id();
     let swatch = commands.spawn((Node { width: Val::Px(4.0), height: Val::Px((th - 10.0).max(4.0)), border_radius: BorderRadius::all(Val::Px(1.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(color)))).id();
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
     let mute = icon_btn(commands, fonts, if muted { "speaker-slash" } else { "speaker-high" }, if muted { text_muted() } else { text_primary() }, TrackBtn { track: idx, op: TrackOp::Mute });
     let lock = icon_btn(commands, fonts, if locked { "lock" } else { "lock-open" }, text_primary(), TrackBtn { track: idx, op: TrackOp::Lock });
     let del = icon_btn(commands, fonts, "trash", text_muted(), TrackBtn { track: idx, op: TrackOp::Delete });
@@ -259,7 +259,7 @@ fn clip_node(commands: &mut Commands, fonts: &EmberFonts, ti: usize, color: (u8,
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap())).id();
     commands.entity(clip).add_child(lbl);
     clip
 }

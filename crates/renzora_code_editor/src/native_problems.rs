@@ -95,7 +95,7 @@ fn problem_row(commands: &mut Commands, fonts: &EmberFonts, file_idx: usize, nam
         .id();
     let icon = icon_text(commands, &fonts.phosphor, "warning", close_red(), 14.0);
     let text_col = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() }).id();
-    let msg_lbl = commands.spawn((Text::new(msg.to_string()), ui_font(&fonts.mono, 11.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let msg_lbl = commands.spawn((Text::new(msg.to_string()), ui_font(&fonts.mono, 11.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap())).id();
     let location = match (line, col) {
         (Some(l), Some(c)) => format!("{}:{}:{}", name, l, c),
         (Some(l), None) => format!("{}:{}", name, l),

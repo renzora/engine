@@ -169,7 +169,7 @@ fn param_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
         ))
         .id();

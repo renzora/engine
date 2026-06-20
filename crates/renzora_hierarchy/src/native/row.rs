@@ -208,8 +208,8 @@ pub(crate) fn build_row(
             .spawn((
                 Text::new(glyph_str(glyph)),
                 TextFont {
-                    font: fonts.phosphor.clone(),
-                    font_size: 12.0,
+                    font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                    font_size: bevy::text::FontSize::Px(12.0),
                     ..default()
                 },
                 TextColor(rgb(color)),
@@ -232,8 +232,8 @@ pub(crate) fn build_row(
         .spawn((
             Text::new(glyph_str(s.icon)),
             TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 14.0,
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
             TextColor(s.icon_color),
@@ -277,7 +277,7 @@ pub(crate) fn build_row(
                 Text::new(&s.name),
                 ui_font(&fonts.ui, 13.0),
                 TextColor(label_color),
-                bevy::text::TextLayout::new_with_no_wrap(),
+                bevy::text::TextLayout::no_wrap(),
                 Pickable::IGNORE,
             ))
             .id();
@@ -287,8 +287,8 @@ pub(crate) fn build_row(
                 .spawn((
                     Text::new(glyph_str("star")),
                     TextFont {
-                        font: fonts.phosphor.clone(),
-                        font_size: 10.0,
+                        font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                        font_size: bevy::text::FontSize::Px(10.0),
                         ..default()
                     },
                     TextColor(Color::srgb_u8(255, 200, 80)),
@@ -525,8 +525,8 @@ fn badge_icon(
         .spawn((
             Text::new(glyph_str(glyph)),
             TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 12.0,
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(12.0),
                 ..default()
             },
             TextColor(color),
@@ -572,8 +572,8 @@ fn suffix_toggle(
         .spawn((
             Text::new(glyph_str(glyph)),
             TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 13.0,
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(13.0),
                 ..default()
             },
             TextColor(color),

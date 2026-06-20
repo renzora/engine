@@ -304,7 +304,7 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
             Text::new(preset.label()),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Center),
         ))
         .id();
 

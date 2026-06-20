@@ -56,7 +56,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, padding: UiRect::all(Val::Px(12.0)), ..default() })
         .id();
     let incompat_lbl = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center)))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::justify(bevy::text::Justify::Center)))
         .id();
     bind_text(commands, incompat_lbl, incompat_msg);
     commands.entity(incompat).add_child(incompat_lbl);
@@ -136,7 +136,7 @@ fn note(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
     let n = commands
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() })
         .id();
-    let l = commands.spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center))).id();
+    let l = commands.spawn((Text::new(text.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::justify(bevy::text::Justify::Center))).id();
     commands.entity(n).add_child(l);
     n
 }

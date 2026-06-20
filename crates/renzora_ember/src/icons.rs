@@ -42,7 +42,7 @@ impl Icon {
 }
 
 fn load_phosphor(mut fonts: ResMut<Assets<Font>>, mut commands: Commands) {
-    // 0.19/Parley: `Font::try_from_bytes` (Result) → `Font::from_bytes` (infallible).
+    // 0.19/Parley: `Font::from_bytes` (Result) → `Font::from_bytes` (infallible).
     let handle = fonts.add(Font::from_bytes(PHOSPHOR_TTF.to_vec()));
     commands.insert_resource(PhosphorFont(handle));
 }

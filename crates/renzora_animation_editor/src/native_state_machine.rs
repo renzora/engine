@@ -205,7 +205,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(""),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Center),
         ))
         .id();
     bind_text(commands, note_lbl, empty_msg);
@@ -283,7 +283,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(""),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 flex_grow: 1.0,
                 min_width: Val::Px(0.0),
@@ -987,7 +987,7 @@ fn combo_box(
             Text::new(""),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 flex_grow: 1.0,
                 min_width: Val::Px(0.0),

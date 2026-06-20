@@ -871,7 +871,7 @@ fn clip_node(
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();

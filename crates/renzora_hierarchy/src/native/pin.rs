@@ -245,8 +245,8 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
         .spawn((
             Text::new(icon_glyph(p.icon).unwrap_or('\u{E4C6}').to_string()),
             TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 14.0,
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
             TextColor(Color::srgb_u8(p.icon_color[0], p.icon_color[1], p.icon_color[2])),
@@ -263,7 +263,7 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
             Text::new(&p.name),
             ui_font(&fonts.ui, 13.0),
             TextColor(label_color),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 margin: UiRect::left(Val::Px(6.0)),
                 ..default()

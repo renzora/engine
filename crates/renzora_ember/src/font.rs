@@ -39,7 +39,7 @@ pub(crate) fn load_fonts(
     let Some(phosphor) = phosphor else {
         return;
     };
-    // 0.19/Parley: `Font::try_from_bytes` (Result) → `Font::from_bytes` (infallible).
+    // 0.19/Parley: `Font::from_bytes` (Result) → `Font::from_bytes` (infallible).
     let ui = fonts.add(Font::from_bytes(NOTO_SANS.to_vec()));
     let mono = fonts.add(Font::from_bytes(JETBRAINS_MONO.to_vec()));
     commands.insert_resource(EmberFonts {

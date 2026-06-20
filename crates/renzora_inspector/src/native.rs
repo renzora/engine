@@ -1221,7 +1221,7 @@ fn build_asset_field(
             Text::new("Drag asset here"),
             ui_font(&fonts.ui, 11.0),
             TextColor(c(renzora_ember::theme::text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             FocusPolicy::Pass,
         ))
         .id();
