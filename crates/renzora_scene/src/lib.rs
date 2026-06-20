@@ -737,7 +737,7 @@ fn tick_scene_load_progress(
     )>,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     children_q: Query<&Children>,
-    scene_roots: Query<Entity, With<SceneRoot>>,
+    scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
 ) {
     let Some(mut progress) = progress else { return };
 
@@ -916,7 +916,7 @@ fn tick_editor_load_progress(
     >,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     children_q: Query<&Children>,
-    scene_roots: Query<Entity, With<SceneRoot>>,
+    scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
 ) {
     // Two sub-counts feed the two-phase bar:
     //   * `pending_assets` — entities still carrying

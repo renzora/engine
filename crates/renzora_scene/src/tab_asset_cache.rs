@@ -241,7 +241,7 @@ pub fn pin_live_tab_handles(world: &mut World, tab_id: u64) {
     let mut mesh_handles: Vec<Handle<Mesh>> = Vec::new();
     let mut std_mat_handles: Vec<Handle<StandardMaterial>> = Vec::new();
     let mut graph_mat_handles: Vec<Handle<GraphMaterial>> = Vec::new();
-    let mut scene_handles: Vec<Handle<Scene>> = Vec::new();
+    let mut scene_handles: Vec<Handle<bevy::world_serialization::WorldAsset>> = Vec::new();
 
     {
         let mut q = world.query_filtered::<&Mesh3d, (Without<EditorCamera>, Without<HideInHierarchy>)>();
@@ -268,7 +268,7 @@ pub fn pin_live_tab_handles(world: &mut World, tab_id: u64) {
         }
     }
     {
-        let mut q = world.query_filtered::<&SceneRoot, (Without<EditorCamera>, Without<HideInHierarchy>)>();
+        let mut q = world.query_filtered::<&bevy::world_serialization::WorldAssetRoot, (Without<EditorCamera>, Without<HideInHierarchy>)>();
         for s in q.iter(world) {
             scene_handles.push(s.0.clone());
         }
@@ -508,10 +508,10 @@ pub struct SceneDiagSnapshot {
 /// well inside budget for a debug-only panel that the user can hide.
 pub fn update_scene_diag_snapshot(world: &mut World) {
     use bevy::ecs::system::SystemState;
-    use bevy::pbr::Atmosphere;
+    use bevy::light::Atmosphere;
     use bevy::light::AtmosphereEnvironmentMapLight;
     use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
-    use bevy::render::view::Hdr;
+    use bevy::camera::Hdr;
     use bevy::camera::RenderTarget;
     use renzora_shader::material::GraphMaterial;
     use renzora_shader::material::resolver::MaterialResolved;
@@ -525,7 +525,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
             &MeshMaterial3d<StandardMaterial>,
             (Without<EditorCamera>, Without<HideInHierarchy>),
         >>::new(world);
-        let q = state.get(world);
+        let q = state.get(world).unwrap();
         q.iter().map(|m| m.0.clone()).collect()
     };
 
@@ -600,7 +600,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
         code_shader_materials: world
             .get_resource::<Assets<CodeShaderMaterial>>()
             .map(Assets::len),
-        scenes: world.get_resource::<Assets<Scene>>().map_or(0, Assets::len),
+        scenes: world.get_resource::<Assets<bevy::world_serialization::WorldAsset>>().map_or(0, Assets::len),
         gltfs: world.get_resource::<Assets<Gltf>>().map_or(0, Assets::len),
         shaders: world.get_resource::<Assets<Shader>>().map_or(0, Assets::len),
         animation_clips: world
@@ -648,7 +648,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
                 With<renzora_engine::scene_io::PendingMeshInstanceRehydrate>,
             >,
             // Empty SceneRoots (bevy_scene didn't fill them).
-            Query<'w, 's, Entity, (With<SceneRoot>, Without<Children>)>,
+            Query<'w, 's, Entity, (With<bevy::world_serialization::WorldAssetRoot>, Without<Children>)>,
             // For B0004: every child with GlobalTransform → check parent
             // also has GlobalTransform.
             Query<'w, 's, (Entity, &'static ChildOf), With<GlobalTransform>>,
@@ -658,7 +658,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
 
         let mut state = SystemState::<EntityHealthParams>::new(world);
         let (all_q, mesh_no_mat_q, unresolved_q, pending_q, empty_root_q, gt_children_q, gt_lookup_q) =
-            state.get(world);
+            state.get(world).unwrap();
 
         let mut h = EntityHealth {
             total_entities: all_q.iter().count(),
@@ -701,7 +701,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
             ),
         >;
         let mut state = SystemState::<CameraParams>::new(world);
-        let q = state.get(world);
+        let q = state.get(world).unwrap();
         q.iter()
             .map(
                 |(

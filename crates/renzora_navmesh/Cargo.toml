@@ -18,7 +18,10 @@ ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
 vleue_navigator = { path = "../vleue_navigator", features = ["avian3d", "debug-with-gizmos"] }
-polyanya = { version = "0.16", features = ["serde"] }
+# Use the vendored polyanya (glam 0.32) so its `Mesh` type matches the one
+# vleue_navigator's `NavMesh::from_polyanya_mesh` expects (else two polyanya
+# versions in the graph → "different polyanya::Mesh" type error).
+polyanya = { path = "../polyanya", features = ["serde"] }
 renzora_terrain = { path = "../renzora_terrain" }
 
 [dependencies.avian3d]

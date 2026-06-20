@@ -25,7 +25,8 @@ use renzora_editor_framework::EditorSelection;
 ///
 /// Stored as a component on the `SceneCamera` entity so it persists in scene RON files.
 /// Editor-only: the runtime/server won't register this type (stripped at export).
-#[derive(Clone, Resource, Component, Reflect, serde::Serialize, serde::Deserialize)]
+// Bevy 0.19: Resource: Component, so deriving both conflicts.
+#[derive(Clone, Resource, Reflect, serde::Serialize, serde::Deserialize)]
 #[reflect(Component)]
 pub struct OrbitCameraState {
     /// The point the camera orbits around.

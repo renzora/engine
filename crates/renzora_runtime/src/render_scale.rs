@@ -182,7 +182,7 @@ fn apply_render_scale(
         state.image = Some(handle);
         state.size = desired;
     } else if state.size != desired {
-        if let Some(img) = state.image.as_ref().and_then(|h| images.get_mut(h)) {
+        if let Some(mut img) = state.image.as_ref().and_then(|h| images.get_mut(h)) {
             img.resize(Extent3d {
                 width: desired.x,
                 height: desired.y,

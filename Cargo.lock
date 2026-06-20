@@ -2532,16 +2532,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bvh2d"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2a56b2e919a2fadaedb1fc194ca730d9adbf030e9e9f26bb9e7d3621c4f6622"
-dependencies = [
- "glam 0.30.10",
- "serde",
-]
-
-[[package]]
 name = "bytecount"
 version = "0.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4191,7 +4181,6 @@ version = "0.30.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 dependencies = [
- "approx",
  "bytemuck",
  "serde_core",
 ]
@@ -6781,7 +6770,7 @@ checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 name = "polyanya"
 version = "0.16.1"
 dependencies = [
- "bvh2d 0.7.0",
+ "bvh2d",
  "codspeed-criterion-compat",
  "geo",
  "glam 0.32.1",
@@ -6796,24 +6785,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tracing-tracy",
-]
-
-[[package]]
-name = "polyanya"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a1cb0a84a11080ff93d943a023e9e386c34d3dcc3c988bc6785f990b1964277"
-dependencies = [
- "bvh2d 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "geo",
- "glam 0.30.10",
- "hashbrown 0.16.1",
- "log",
- "rerecast",
- "serde",
- "smallvec",
- "spade",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -8602,7 +8573,7 @@ dependencies = [
  "avian3d",
  "bevy",
  "mlua",
- "polyanya 0.16.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "polyanya",
  "renzora",
  "renzora_scripting",
  "renzora_terrain",
@@ -11337,7 +11308,7 @@ dependencies = [
  "bevy",
  "itertools 0.14.0",
  "log",
- "polyanya 0.16.1",
+ "polyanya",
  "rand 0.9.4",
  "serde",
  "serde_json",

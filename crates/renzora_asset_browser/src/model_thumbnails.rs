@@ -21,11 +21,11 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
-use bevy::scene::SceneInstanceReady;
+use bevy::world_serialization::WorldInstanceReady;
 
 use renzora::core::{CurrentProject, EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora_editor_framework::{model_thumb_path, ModelThumbnailRegistry};
@@ -93,7 +93,7 @@ struct PendingCapture {
     /// the parent + scene root. Once set, this is the parent we'll
     /// despawn (recursively) after the screenshot.
     parent: Option<Entity>,
-    /// `None` until the scene's `SceneInstanceReady` event fires and we
+    /// `None` until the scene's `WorldInstanceReady` event fires and we
     /// know the AABB. Once set, this is the camera we'll despawn after
     /// the screenshot.
     camera: Option<Entity>,
@@ -105,7 +105,7 @@ struct PendingCapture {
     /// Frames since this capture started. Used for the asset-load
     /// timeout so we don't spin forever on a missing/broken GLB.
     frames_waited: u32,
-    /// `Some(_)` once `SceneInstanceReady` fires (observer flips it).
+    /// `Some(_)` once `WorldInstanceReady` fires (observer flips it).
     /// Distinguishes "we know the subtree exists" from "we're still
     /// waiting on the spawn." The actual readiness check (AABBs done,
     /// transforms settled) is condition-based — see
@@ -121,7 +121,7 @@ struct PendingCapture {
 }
 
 // AABB readiness is condition-based, not frame-based. After
-// `SceneInstanceReady` fires we walk the subtree each frame and check
+// `WorldInstanceReady` fires we walk the subtree each frame and check
 // for any `Mesh3d` entity that's still missing `Aabb`. Once that
 // count drops to zero, `compute_aabb_system` has caught up and we can
 // trust the bounding-box union to reflect the full model.
@@ -172,7 +172,7 @@ impl CaptureCells {
 }
 
 /// Marker on the parent entity of a model-thumbnail capture so we can
-/// match the `SceneInstanceReady` event back to its job. `parent_index`
+/// match the `WorldInstanceReady` event back to its job. `parent_index`
 /// is the index into `PendingCaptures::jobs`; we compare directly
 /// rather than tracking entity IDs because Bevy may shuffle entities.
 #[derive(Component)]
@@ -363,11 +363,11 @@ fn tick_capture_lifecycle(
 
         // Phase 2: spawn committed?
         if !job.scene_ready {
-            // Defensive timeout: GLB spawned but SceneInstanceReady
+            // Defensive timeout: GLB spawned but WorldInstanceReady
             // never fires (empty scene, broken file, etc.).
             if job.frames_waited > ASSET_LOAD_TIMEOUT_FRAMES {
                 warn!(
-                    "[model_thumbnails] no SceneInstanceReady for {} after {} frames",
+                    "[model_thumbnails] no WorldInstanceReady for {} after {} frames",
                     job.model_path.display(),
                     job.frames_waited
                 );
@@ -563,13 +563,13 @@ fn place_capture_camera(
 }
 
 /// Spawn the parent + SceneRoot child + render target image + lights
-/// for a capture. Camera is added later by the `SceneInstanceReady`
+/// for a capture. Camera is added later by the `WorldInstanceReady`
 /// observer once it knows the model's AABB.
 fn spawn_capture_entities(
     commands: &mut Commands,
     images: &mut Assets<Image>,
     job: &mut PendingCapture,
-    scene_handle: Handle<bevy::scene::Scene>,
+    scene_handle: Handle<bevy::world_serialization::WorldAsset>,
 ) {
     let cell_origin = CaptureCells::cell_origin(job.cell_idx);
 
@@ -593,7 +593,7 @@ fn spawn_capture_entities(
     let render_image_handle = images.add(render_image);
     job.render_image = Some(render_image_handle.clone());
 
-    // Parent entity — holds the job marker so the SceneInstanceReady
+    // Parent entity — holds the job marker so the WorldInstanceReady
     // observer can find its way back to this capture by model_path.
     let parent = commands
         .spawn((
@@ -617,7 +617,7 @@ fn spawn_capture_entities(
     // thumbnail render layer via `RenderLayers` propagation.
     commands.spawn((
         Name::new("Model Thumbnail SceneRoot"),
-        bevy::scene::SceneRoot(scene_handle),
+        bevy::world_serialization::WorldAssetRoot(scene_handle),
         Transform::default(),
         Visibility::Visible,
         ChildOf(parent),
@@ -646,7 +646,7 @@ fn spawn_capture_entities(
         DirectionalLight {
             color: Color::srgb(1.0, 0.98, 0.95),
             illuminance: 12000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.6, 0.4, 0.0)),
@@ -660,7 +660,7 @@ fn spawn_capture_entities(
         DirectionalLight {
             color: Color::srgb(0.6, 0.7, 0.9),
             illuminance: 4000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, 0.3, -0.8, 0.0)),
@@ -701,7 +701,7 @@ fn spawn_capture_entities(
 ///    entities. Polling for "all `Mesh3d` in the subtree have `Aabb`"
 ///    is condition-based and doesn't depend on a magic frame count.
 fn on_scene_instance_ready(
-    trigger: On<SceneInstanceReady>,
+    trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     mut pending: ResMut<PendingCaptures>,
     parents: Query<&ChildOf>,
@@ -718,7 +718,7 @@ fn on_scene_instance_ready(
     let parent_entity = child_of.parent();
     let Ok(marker) = job_markers.get(parent_entity) else {
         // Not a model-thumbnail scene — some other system's
-        // SceneInstanceReady. Bail.
+        // WorldInstanceReady. Bail.
         return;
     };
 

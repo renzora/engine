@@ -22,6 +22,8 @@ fn tonemapping_to_mode(t: &Tonemapping) -> u32 {
         Tonemapping::SomewhatBoringDisplayTransform => 5,
         Tonemapping::TonyMcMapface => 6,
         Tonemapping::BlenderFilmic => 7,
+        // 0.19 added KhronosPbrNeutral.
+        Tonemapping::KhronosPbrNeutral => 8,
     }
 }
 

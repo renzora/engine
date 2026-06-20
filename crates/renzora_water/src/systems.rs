@@ -90,7 +90,7 @@ pub fn update_water_uniforms(
     }
 
     for (surface, mat_handle, _water_transform) in water_query.iter() {
-        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+        if let Some(mut mat) = materials.get_mut(&mat_handle.0) {
             mat.uniforms.time = t;
             mat.uniforms.sun_direction = Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, sun_intensity);
             sync_uniforms(surface, &mut mat.uniforms);

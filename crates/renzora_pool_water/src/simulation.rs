@@ -181,7 +181,7 @@ impl WaterSim {
 
     /// Upload current simulation state to GPU texture.
     pub fn upload(&self, images: &mut Assets<Image>) {
-        let Some(image) = images.get_mut(&self.texture_handle) else {
+        let Some(mut image) = images.get_mut(&self.texture_handle) else {
             return;
         };
         let data = image.data.as_mut().expect("image data");

@@ -522,7 +522,7 @@ fn sync_skybox(
             if let Some(ref cubemap_handle) = skybox_state.procedural_cubemap_handle {
                 for camera_entity in cameras.iter() {
                     commands.entity(camera_entity).try_insert(Skybox {
-                        image: cubemap_handle.clone(),
+                        image: Some(cubemap_handle.clone()), // 0.19: Skybox.image is Option
                         brightness: 1000.0,
                         rotation: Quat::IDENTITY,
                     });
@@ -551,7 +551,7 @@ fn sync_skybox(
                 if let Some(ref cubemap_handle) = skybox_state.cubemap_handle {
                     for camera_entity in cameras.iter() {
                         commands.entity(camera_entity).try_insert(Skybox {
-                            image: cubemap_handle.clone(),
+                            image: Some(cubemap_handle.clone()), // 0.19: Skybox.image is Option
                             brightness: pano.energy * 1000.0,
                             rotation: Quat::from_rotation_y(pano.rotation.to_radians()),
                         });
@@ -597,7 +597,7 @@ fn sync_skybox(
             if let Some(ref cubemap_handle) = skybox_state.tiled_cubemap_handle {
                 for camera_entity in cameras.iter() {
                     commands.entity(camera_entity).try_insert(Skybox {
-                        image: cubemap_handle.clone(),
+                        image: Some(cubemap_handle.clone()), // 0.19: Skybox.image is Option
                         brightness: 1000.0,
                         rotation: Quat::IDENTITY,
                     });

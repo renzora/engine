@@ -76,7 +76,7 @@ fn stick_sync(
     sticks: Query<(&StickData, &MaterialNode<StickMaterial>), Changed<StickData>>,
 ) {
     for (d, mat) in &sticks {
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.params = Vec4::new(d.x, d.y, 0.0, 0.0);
         }
     }

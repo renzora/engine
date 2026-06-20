@@ -165,7 +165,7 @@ fn sync_night_stars(
     if let Some(dome_entity) = state.entity {
         if commands.get_entity(dome_entity).is_ok() {
             if let Some(ref mat_handle) = state.material_handle {
-                if let Some(mat) = star_materials.get_mut(mat_handle) {
+                if let Some(mut mat) = star_materials.get_mut(mat_handle) {
                     mat.params_a = params_a;
                     mat.params_b = params_b;
                     mat.star_color = star_color;

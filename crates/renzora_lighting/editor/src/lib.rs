@@ -24,7 +24,7 @@ fn inspector_entry() -> InspectorEntry {
                 DirectionalLight {
                     color: Color::srgb(data.color.x, data.color.y, data.color.z),
                     illuminance: data.illuminance,
-                    shadows_enabled: data.shadows_enabled,
+                    shadow_maps_enabled: data.shadows_enabled,
                     ..default()
                 },
                 Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),

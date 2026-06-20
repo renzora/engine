@@ -7,7 +7,7 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera, MeshInstanceData};
@@ -204,7 +204,7 @@ pub fn setup_studio_preview(
         DirectionalLight {
             color: Color::srgb(1.0, 0.97, 0.92),
             illuminance: 6000.0,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, 0.5, 0.0)),
@@ -220,7 +220,7 @@ pub fn setup_studio_preview(
         DirectionalLight {
             color: Color::srgb(0.75, 0.82, 1.0),
             illuminance: 2500.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.3, -0.9, 0.0)),
@@ -236,7 +236,7 @@ pub fn setup_studio_preview(
         DirectionalLight {
             color: Color::srgb(0.85, 0.9, 1.0),
             illuminance: 1800.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.2, 3.0, 0.0)),
@@ -253,7 +253,7 @@ pub fn setup_studio_preview(
             color: Color::srgb(0.9, 0.9, 0.95),
             intensity: 50_000.0,
             range: 30.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_xyz(0.0, 4.0, 0.0),
@@ -358,7 +358,7 @@ pub fn resize_preview(mut preview: ResMut<StudioPreviewImage>, mut images: ResMu
     let w = rw.clamp(64, 3840);
     let h = rh.clamp(64, 2160);
 
-    if let Some(image) = images.get_mut(&preview.handle) {
+    if let Some(mut image) = images.get_mut(&preview.handle) {
         image.resize(Extent3d {
             width: w,
             height: h,
@@ -423,7 +423,7 @@ pub fn sync_preview_model(
     // Load the default scene directly from the GLB file
     let scene_path = format!("{}#Scene0", model_path);
     info!("[studio_preview] Loading scene from '{}'", scene_path);
-    let scene_handle: Handle<Scene> = asset_server.load(&scene_path);
+    let scene_handle: Handle<bevy::world_serialization::WorldAsset> = asset_server.load(&scene_path);
 
     // Spawn the preview model on the studio preview render layer
     let root = commands
@@ -441,7 +441,7 @@ pub fn sync_preview_model(
         .id();
 
     commands.spawn((
-        bevy::scene::SceneRoot(scene_handle),
+        bevy::world_serialization::WorldAssetRoot(scene_handle),
         Transform::default(),
         Visibility::Visible,
         InheritedVisibility::VISIBLE,

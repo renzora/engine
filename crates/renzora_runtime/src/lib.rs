@@ -146,7 +146,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     use bevy::window::{Window, WindowPlugin};
     let plugins = DefaultPlugins
             .set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
+                render_creation: RenderCreation::Automatic(Box::new(platform_wgpu_settings())),
                 ..default()
             })
             .set(ImagePlugin {
@@ -256,10 +256,10 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     app.add_plugins(
         DefaultPlugins
             .set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(WgpuSettings {
+                render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
                     backends: None,
                     ..default()
-                }),
+                })),
                 ..default()
             })
             .set(WindowPlugin {

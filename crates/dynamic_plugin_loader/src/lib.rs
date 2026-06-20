@@ -751,7 +751,6 @@ mod platform {
     /// installs (the caller keeps it in `DynamicPluginRegistry`).
     unsafe fn build_into_world(world: &mut World, create_fn: CreatePluginFn) -> HotLoadOutcome {
         use bevy::app::SubApp;
-        use bevy::render::render_graph::RenderGraph;
         use bevy::render::RenderApp;
 
         let plugin: Box<dyn bevy::app::Plugin> =
@@ -765,21 +764,15 @@ mod platform {
         let mut temp = App::empty();
 
         // Sentinel render sub-app: enough scaffolding that a render plugin's
-        // `build` runs without panicking — a `Schedules` for `add_systems`, and
-        // a `RenderGraph` carrying the `Core3d` sub-graph for the
-        // `add_render_graph_node` / edge calls the post-process framework makes.
+        // `build` runs without panicking. Bevy 0.19 replaced the render graph
+        // with schedules, so render plugins now call `add_systems(Core3d, …)` /
+        // `configure_sets(Core3d, …)` — both create the `Core3d` schedule lazily
+        // from `Schedules`, so initializing that resource is all the scaffolding
+        // we need (the old fake `RenderGraph` sub-graph is gone).
         let mut render_sub = SubApp::new();
         render_sub
             .world_mut()
             .init_resource::<bevy::ecs::schedule::Schedules>();
-        {
-            let mut graph = RenderGraph::default();
-            graph.add_sub_graph(
-                bevy::core_pipeline::core_3d::graph::Core3d,
-                RenderGraph::default(),
-            );
-            render_sub.world_mut().insert_resource(graph);
-        }
         let render_baseline = render_sub.world().components().len();
         temp.insert_sub_app(RenderApp, render_sub);
 

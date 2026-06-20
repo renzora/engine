@@ -1,4 +1,8 @@
-use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings, ScatteringMedium};
+// Bevy 0.19: `Atmosphere`/`ScatteringMedium` moved to `bevy::light`;
+// `AtmosphereMode`/`AtmosphereSettings` stay in `bevy::pbr`.
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::Atmosphere;
+use bevy::pbr::{AtmosphereMode, AtmosphereSettings};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -110,13 +114,15 @@ fn sync_atmosphere(
                 // these slots from spawn-time.
                 commands.entity(*target).insert((
                     Atmosphere {
-                        bottom_radius: settings.bottom_radius,
-                        top_radius,
+                        // 0.19: bottom/top_radius → inner/outer_radius.
+                        inner_radius: settings.bottom_radius,
+                        outer_radius: top_radius,
                         ground_albedo: Vec3::splat(ground_albedo),
                         medium: handle,
                     },
                     AtmosphereSettings {
-                        scene_units_to_m: settings.scene_units_to_m,
+                        // 0.19 removed `scene_units_to_m` (scale is now implicit
+                        // in the meter-based radii above).
                         rendering_method,
                         ..default()
                     },

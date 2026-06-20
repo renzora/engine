@@ -53,7 +53,7 @@ impl Material for GridMaterial {
         // occluded by scene meshes normally. Disable depth writes so
         // overlapping grid lines blend cleanly regardless of draw order.
         if let Some(ref mut depth_stencil) = descriptor.depth_stencil {
-            depth_stencil.depth_write_enabled = false;
+            depth_stencil.depth_write_enabled = Some(false); // wgpu 29: Option
         }
         Ok(())
     }
@@ -248,7 +248,7 @@ fn rebuild_grid_mesh(
         return;
     };
     let new_mesh = build_grid_mesh(&config);
-    if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
+    if let Some(mut mesh) = meshes.get_mut(&mesh_handle.0) {
         *mesh = new_mesh;
     }
 }
@@ -284,7 +284,7 @@ fn update_fade_distance(
     cfg.fade_end = new_end;
 
     for handle in &grid_entities {
-        if let Some(mat) = materials.get_mut(&handle.0) {
+        if let Some(mut mat) = materials.get_mut(&handle.0) {
             mat.fade_start = new_start;
             mat.fade_end = new_end;
         }

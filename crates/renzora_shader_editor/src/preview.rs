@@ -4,7 +4,7 @@
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 
@@ -149,7 +149,7 @@ fn setup_shader_preview(
         DirectionalLight {
             color: Color::WHITE,
             illuminance: 5000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 0.3, 0.0)),
@@ -216,7 +216,7 @@ fn update_shader_preview(
 
         // Update the preview quad's material with the new shader handle
         for mat_handle in preview_quad.iter() {
-            if let Some(mat) = materials.get_mut(&mat_handle.0) {
+            if let Some(mut mat) = materials.get_mut(&mat_handle.0) {
                 mat.shader_handle = handle.clone();
             }
         }

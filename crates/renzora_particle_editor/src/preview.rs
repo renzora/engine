@@ -6,7 +6,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::ui::ComputedNode;
@@ -175,7 +175,7 @@ fn setup_particle_preview(
         DirectionalLight {
             color: Color::srgb(1.0, 1.0, 1.0),
             illuminance: 5000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.5, 0.3, 0.0)),
@@ -636,7 +636,7 @@ fn resize_preview(mut img: ResMut<ParticlePreviewImage>, mut images: ResMut<Asse
     }
     let w = rw.clamp(64, 3840);
     let h = rh.clamp(64, 2160);
-    if let Some(image) = images.get_mut(&img.handle) {
+    if let Some(mut image) = images.get_mut(&img.handle) {
         image.resize(Extent3d {
             width: w,
             height: h,

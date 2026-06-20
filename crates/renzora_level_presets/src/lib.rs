@@ -230,7 +230,7 @@ fn spawn_level_sun(commands: &mut Commands, azimuth: f32, elevation: f32, illumi
         DirectionalLight {
             color: Color::srgb(1.0, 0.98, 0.95),
             illuminance,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         sun,
@@ -261,7 +261,7 @@ fn spawn_level_point_light(commands: &mut Commands, pos: Vec3, color: Color, int
         PointLight {
             color,
             intensity,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
     ));
@@ -1363,7 +1363,7 @@ fn spawn_world_environment(world: &mut World) -> Entity {
                 DirectionalLight {
                     color: Color::srgb(sun.color.x, sun.color.y, sun.color.z),
                     illuminance: sun.illuminance,
-                    shadows_enabled: sun.shadows_enabled,
+                    shadow_maps_enabled: sun.shadows_enabled,
                     ..default()
                 },
                 sun,
@@ -1462,7 +1462,7 @@ fn register_lighting_presets(app: &mut App) {
                     DirectionalLight {
                         color: Color::srgb(data.color.x, data.color.y, data.color.z),
                         illuminance: data.illuminance,
-                        shadows_enabled: data.shadows_enabled,
+                        shadow_maps_enabled: data.shadows_enabled,
                         ..default()
                     },
                     data,

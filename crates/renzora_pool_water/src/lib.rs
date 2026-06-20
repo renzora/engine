@@ -264,7 +264,7 @@ fn update_pool_water(
         }
 
         // Sync material uniforms
-        if let Some(mat) = materials.get_mut(&mat_handle.0) {
+        if let Some(mut mat) = materials.get_mut(&mat_handle.0) {
             mat.uniforms.light_direction = Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, 0.0);
             mat.uniforms.ior = pool.ior;
             mat.uniforms.fresnel_min = pool.fresnel_min;
