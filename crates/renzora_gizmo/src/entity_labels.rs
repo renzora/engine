@@ -9,7 +9,7 @@
 //! gizmos already use.
 
 use bevy::prelude::*;
-use renzora::core::viewport_types::ViewportSettings;
+use renzora::core::viewport_types::{LabelScope, ViewportSettings};
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
 use crate::LabelGizmoGroup;
@@ -21,9 +21,10 @@ pub fn draw_entity_labels(
     camera: Query<&GlobalTransform, With<EditorCamera>>,
     // `Without<EditorCamera>` keeps this disjoint from `camera` (both read
     // `GlobalTransform`); `Without<HideInHierarchy>` skips editor chrome,
-    // gizmo meshes, and light/camera icon helpers.
+    // gizmo meshes, and light/camera icon helpers. `Has<Mesh3d>`/`Has<ChildOf>`
+    // drive the `LabelScope` filter (mesh vs top-level).
     labeled: Query<
-        (Entity, &GlobalTransform, &Name),
+        (Entity, &GlobalTransform, &Name, Has<Mesh3d>, Has<ChildOf>),
         (Without<HideInHierarchy>, Without<EditorCamera>),
     >,
 ) {
@@ -42,7 +43,18 @@ pub fn draw_entity_labels(
         settings.label_color[2] as f32 / 255.0,
     );
 
-    for (entity, gt, name) in labeled.iter() {
+    for (entity, gt, name, has_mesh, has_parent) in labeled.iter() {
+        // Scope filter — which entities get a label.
+        let in_scope = match settings.label_scope {
+            LabelScope::All => true,
+            LabelScope::TopLevel => !has_parent,
+            LabelScope::Meshes => has_mesh,
+            LabelScope::Selected => Some(entity) == selected,
+        };
+        if !in_scope {
+            continue;
+        }
+
         let pos = gt.translation();
         let dist = cam_pos.distance(pos);
         if dist > max_dist {

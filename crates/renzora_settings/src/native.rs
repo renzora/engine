@@ -30,7 +30,9 @@ use renzora_ember::cursor_icon::HoverCursor;
 use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
 use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
-use renzora_viewport::settings::{CollisionGizmoVisibility, EditorCameraSource, ViewportSettings};
+use renzora_viewport::settings::{
+    CollisionGizmoVisibility, EditorCameraSource, LabelScope, ViewportSettings,
+};
 
 const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
@@ -1272,12 +1274,29 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
         |w, &v| w.resource_mut::<ViewportSettings>().show_labels = v,
     );
     settings_row(commands, fonts, body, 0, "Show Labels", t);
+    let scope_labels: Vec<&str> = LabelScope::ALL.iter().map(|s| s.label()).collect();
+    let dd = ctl_dropdown(
+        commands, fonts, &scope_labels,
+        LabelScope::ALL
+            .iter()
+            .position(|s| *s == vp.label_scope)
+            .unwrap_or(0),
+        |w| {
+            let cur = w.resource::<ViewportSettings>().label_scope;
+            LabelScope::ALL.iter().position(|s| *s == cur).unwrap_or(0)
+        },
+        |w, &i| {
+            let sc = LabelScope::ALL.get(i).copied().unwrap_or_default();
+            w.resource_mut::<ViewportSettings>().label_scope = sc;
+        },
+    );
+    settings_row(commands, fonts, body, 1, "Show On", dd);
     let dv = ctl_drag(
         commands, fonts, vp.label_size, 0.2, 5.0, 0.05,
         |w| w.resource::<ViewportSettings>().label_size,
         |w, &v| w.resource_mut::<ViewportSettings>().label_size = v,
     );
-    settings_row(commands, fonts, body, 1, "Label Size", dv);
+    settings_row(commands, fonts, body, 2, "Label Size", dv);
     let cf = color_field(
         commands,
         |w| {
@@ -1292,13 +1311,13 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
             ];
         },
     );
-    settings_row(commands, fonts, body, 2, "Label Color", cf);
+    settings_row(commands, fonts, body, 3, "Label Color", cf);
     let dv = ctl_drag(
         commands, fonts, vp.label_max_distance, 1.0, 500.0, 1.0,
         |w| w.resource::<ViewportSettings>().label_max_distance,
         |w, &v| w.resource_mut::<ViewportSettings>().label_max_distance = v,
     );
-    settings_row(commands, fonts, body, 3, "Max Distance", dv);
+    settings_row(commands, fonts, body, 4, "Max Distance", dv);
 
     let (sec, body) = section(commands, fonts, "gauge", "Performance", A_TEAL);
     commands.entity(col).add_child(sec);

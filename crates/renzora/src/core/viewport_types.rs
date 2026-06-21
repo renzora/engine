@@ -380,6 +380,47 @@ impl VisualizationMode {
     }
 }
 
+/// Which entities the in-viewport name-label overlay draws. Imported models
+/// nest hundreds of named sub-meshes under one root, so labeling everything
+/// (`All`) carpets dense scenes — the other scopes thin that out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelScope {
+    /// Every named, non-chrome entity (can be very busy in big models).
+    All,
+    /// Only top-level objects: a placed model's root and standalone
+    /// primitives/lights, not the sub-meshes parented beneath them.
+    #[default]
+    TopLevel,
+    /// Only entities that have an actual mesh (skips empty transform nodes).
+    Meshes,
+    /// Only the currently selected entity.
+    Selected,
+}
+
+impl LabelScope {
+    pub const ALL: &'static [LabelScope] =
+        &[Self::All, Self::TopLevel, Self::Meshes, Self::Selected];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "All Entities",
+            Self::TopLevel => "Top-Level Objects",
+            Self::Meshes => "Meshes Only",
+            Self::Selected => "Selected Only",
+        }
+    }
+
+    /// Parse from the persisted `{:?}` Debug string; unknown → default.
+    pub fn from_debug(s: &str) -> Self {
+        match s {
+            "All" => Self::All,
+            "Meshes" => Self::Meshes,
+            "Selected" => Self::Selected,
+            _ => Self::TopLevel,
+        }
+    }
+}
+
 /// Render feature toggles.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderToggles {
@@ -518,6 +559,8 @@ pub struct ViewportSettings {
     /// Max camera distance at which a label is drawn; farther entities are
     /// culled so big scenes don't carpet the view with text.
     pub label_max_distance: f32,
+    /// Which entities get a name label (all / top-level / meshes / selected).
+    pub label_scope: LabelScope,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
@@ -546,6 +589,7 @@ impl Default for ViewportSettings {
             label_size: 1.0,
             label_color: [217, 230, 255],
             label_max_distance: 40.0,
+            label_scope: LabelScope::default(),
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
@@ -592,6 +636,8 @@ pub struct PersistedViewportSettings {
     pub label_color: [u8; 3],
     #[serde(default = "default_label_max_distance")]
     pub label_max_distance: f32,
+    #[serde(default)]
+    pub label_scope: String,
     pub collision_always: bool,
     pub orthographic: bool,
     pub move_speed: f32,
@@ -641,6 +687,7 @@ impl PersistedViewportSettings {
             label_size: s.label_size,
             label_color: s.label_color,
             label_max_distance: s.label_max_distance,
+            label_scope: format!("{:?}", s.label_scope),
             collision_always: matches!(
                 s.collision_gizmo_visibility,
                 CollisionGizmoVisibility::Always
@@ -695,6 +742,7 @@ impl PersistedViewportSettings {
         s.label_size = self.label_size;
         s.label_color = self.label_color;
         s.label_max_distance = self.label_max_distance;
+        s.label_scope = LabelScope::from_debug(&self.label_scope);
         s.collision_gizmo_visibility = if self.collision_always {
             CollisionGizmoVisibility::Always
         } else {
@@ -797,6 +845,7 @@ mod tests {
             label_size: 2.5,
             label_color: [10, 20, 30],
             label_max_distance: 99.0,
+            label_scope: LabelScope::Selected,
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,
             projection_mode: ProjectionMode::Orthographic,
             viewport_mode: ViewportMode::default(),
@@ -851,6 +900,7 @@ mod tests {
         assert_eq!(original.label_size, restored.label_size);
         assert_eq!(original.label_color, restored.label_color);
         assert_eq!(original.label_max_distance, restored.label_max_distance);
+        assert_eq!(original.label_scope, restored.label_scope);
         assert!(matches!(
             restored.collision_gizmo_visibility,
             CollisionGizmoVisibility::Always
