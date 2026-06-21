@@ -347,6 +347,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(spot_light_entry());
     registry.register(rect_light_entry());
     registry.register(ambient_light_entry());
+    registry.register(text_font_entry());
     registry.register(camera_entry());
     registry.register(camera_presets_entry());
     registry.register(camera3d_entry());
@@ -1067,6 +1068,28 @@ fn ambient_light_entry() -> InspectorEntry {
                 },
             },
         ],
+    }
+}
+
+/// Bevy `TextFont` (the per-entity font of any text component). The fields are
+/// empty — a native drawer (`renzora_inspector`, `type_id = "text_font"`) renders
+/// the font picker (bound to the shared `FontRegistry`) + size.
+fn text_font_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "text_font",
+        display_name: "Text Font",
+        icon: "text-aa",
+        category: "rendering",
+        has_fn: |world, entity| world.get::<TextFont>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(TextFont::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<TextFont>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
     }
 }
 

@@ -8,6 +8,7 @@
 mod camera_presets;
 mod native;
 mod scripts;
+mod textfont;
 
 pub use native::asset_drop_field;
 
@@ -33,6 +34,7 @@ impl Plugin for InspectorPanelPlugin {
         native::register_native_inspector(app);
         scripts::register(app);
         camera_presets::register(app);
+        textfont::register(app);
     }
 }
 
