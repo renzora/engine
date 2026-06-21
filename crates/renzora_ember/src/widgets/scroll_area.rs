@@ -229,6 +229,17 @@ pub fn scroll_view_keyed(
     build_scroll(commands, content, None, false, false, Some(key.into()))
 }
 
+/// Like [`scroll_view_bar`] (always-visible bar) but its offset is remembered
+/// across rebuilds under `key` (via [`ScrollMemory`]) — so a panel that
+/// re-spawns its content doesn't snap the scroll back to the top.
+pub fn scroll_view_bar_keyed(
+    commands: &mut Commands,
+    content: Entity,
+    key: impl Into<String>,
+) -> Entity {
+    build_scroll(commands, content, None, false, true, Some(key.into()))
+}
+
 /// Like [`scroll_area`] (capped at `max_height`) but its offset persists across
 /// despawn/rebuild under `key` — see [`scroll_view_keyed`] for keying rules.
 pub fn scroll_area_keyed(

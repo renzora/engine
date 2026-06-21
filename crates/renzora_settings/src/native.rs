@@ -23,8 +23,8 @@ use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
 use renzora_ember::settings_sections::SettingsSectionRegistry;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown, scroll_view_bar, section, text_input, toggle_switch,
-    DragRange,
+    bind_text_input, drag_value, dropdown, scroll_view_bar, scroll_view_bar_keyed, section,
+    text_input, toggle_switch, DragRange, EmberTextInput,
 };
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
@@ -58,12 +58,12 @@ struct NativeSettingsState {
     /// so it re-spawns with the new palette (it's a separate root from the chrome
     /// and wouldn't otherwise pick up the change while open).
     built_theme: Option<String>,
-    /// Selected plugin settings section (its `SettingsSection::id`) when the
-    /// `Plugins` tab is active. Each registered plugin is its own sidebar
-    /// category, so the active tab alone isn't enough to know what to show.
-    active_plugin: Option<String>,
-    /// The `active_plugin` at last build, for the rebuild comparison.
-    built_plugin: Option<String>,
+    /// Sub-selection within the active tab — a section focus key for a split tab
+    /// (e.g. `"grid"` under Viewport) or a plugin section id under `Plugins`. The
+    /// tab disambiguates which, so one field serves both. `None` = whole tab.
+    active_sub: Option<String>,
+    /// The `active_sub` at last build, for the rebuild comparison.
+    built_sub: Option<String>,
 }
 
 /// Transient UI state for the Input tab (which action is expanded, whether a
@@ -79,12 +79,30 @@ struct NativeInputUi {
 struct NativeSettingsRoot;
 
 #[derive(Component)]
-struct NativeSettingsTabBtn(SettingsTab);
+struct NativeSettingsTabBtn(SettingsTab, Option<String>);
 
 /// Sidebar button for a single plugin settings section (its `SettingsSection::id`).
 /// Selecting it switches to the `Plugins` tab and shows only that section.
 #[derive(Component)]
 struct NativeSettingsPluginBtn(String);
+
+/// The sidebar's search box (an `EmberTextInput`); `filter_sidebar` reads its
+/// value to show/hide categories live.
+#[derive(Component)]
+struct SettingsSearchBox;
+
+/// Tags a sidebar category row with its group + label so `filter_sidebar` can
+/// match against the search query without rebuilding.
+#[derive(Component)]
+struct SettingsCatRow {
+    group: String,
+    label: String,
+}
+
+/// Tags a sidebar group header with its group name (hidden when the search hides
+/// every row in the group).
+#[derive(Component)]
+struct SettingsGroupTag(String);
 
 #[derive(Component)]
 struct NativeSettingsClose;
@@ -147,6 +165,7 @@ pub(crate) fn build(app: &mut App) {
             manage_native_settings,
             settings_tab_click,
             settings_plugin_click,
+            filter_sidebar,
             settings_close_click,
             theme_save_click,
             ember_theme_save_click,
@@ -173,6 +192,34 @@ pub(crate) fn build(app: &mut App) {
         (rebind_btn_click, rebind_capture, reset_bindings_click, input_listen_capture)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
+}
+
+/// Live-filter the sidebar categories by the search box text. Pure visibility
+/// toggling (no rebuild), so the search input keeps focus while typing. A group
+/// header hides when the query hides every category under it.
+fn filter_sidebar(
+    search: Query<&EmberTextInput, With<SettingsSearchBox>>,
+    mut rows: Query<(&SettingsCatRow, &mut Node), Without<SettingsGroupTag>>,
+    mut headers: Query<(&SettingsGroupTag, &mut Node), Without<SettingsCatRow>>,
+) {
+    let Ok(input) = search.single() else {
+        return;
+    };
+    let q = input.value.trim().to_lowercase();
+    let mut visible_groups: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (row, mut node) in &mut rows {
+        let show = q.is_empty()
+            || row.label.to_lowercase().contains(&q)
+            || row.group.to_lowercase().contains(&q);
+        node.display = if show { Display::Flex } else { Display::None };
+        if show {
+            visible_groups.insert(row.group.clone());
+        }
+    }
+    for (tag, mut node) in &mut headers {
+        let show = q.is_empty() || visible_groups.contains(&tag.0);
+        node.display = if show { Display::Flex } else { Display::None };
+    }
 }
 
 // ── Live font application ────────────────────────────────────────────────────
@@ -259,8 +306,8 @@ fn manage_native_settings(world: &mut World) {
     // Rebuild when the active theme switches so the overlay re-spawns with the
     // new palette (it's a separate root from the chrome).
     let theme_changed = st.built_theme != theme_name;
-    let plugin_changed = st.built_plugin != st.active_plugin;
-    let active_plugin = st.active_plugin.clone();
+    let plugin_changed = st.built_sub != st.active_sub;
+    let active_sub = st.active_sub.clone();
     let (root, built, dirty) = (st.root, st.built_tab, st.dirty || theme_changed || plugin_changed);
 
     if !open {
@@ -287,7 +334,7 @@ fn manage_native_settings(world: &mut World) {
         }
     }
 
-    let Some(new_root) = build_overlay(world, tab, active_plugin.as_deref()) else {
+    let Some(new_root) = build_overlay(world, tab, active_sub.as_deref()) else {
         // Fonts not ready yet — retry next frame.
         return;
     };
@@ -296,10 +343,10 @@ fn manage_native_settings(world: &mut World) {
     st.built_tab = Some(tab);
     st.dirty = false;
     st.built_theme = theme_name;
-    st.built_plugin = active_plugin;
+    st.built_sub = active_sub;
 }
 
-fn build_overlay(world: &mut World, tab: SettingsTab, active_plugin: Option<&str>) -> Option<Entity> {
+fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) -> Option<Entity> {
     let fonts = world.get_resource::<EmberFonts>().cloned()?;
     let settings = world.get_resource::<EditorSettings>()?.clone();
     let viewport = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
@@ -341,7 +388,7 @@ fn build_overlay(world: &mut World, tab: SettingsTab, active_plugin: Option<&str
             has_project,
             &input,
             sections,
-            active_plugin,
+            active_sub,
         )
     };
     queue.apply(world);
@@ -383,7 +430,7 @@ fn spawn_overlay(
     has_project: bool,
     input: &InputTabData,
     sections: Option<&SettingsSectionRegistry>,
-    active_plugin: Option<&str>,
+    active_sub: Option<&str>,
 ) -> Entity {
     // Full-screen scrim: blocks clicks behind the modal + dims slightly.
     let root = commands
@@ -435,7 +482,7 @@ fn spawn_overlay(
     let title = build_title_bar(commands, fonts);
     let body = build_body(
         commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project, input,
-        sections, active_plugin,
+        sections, active_sub,
     );
     commands.entity(panel).add_children(&[title, body]);
     root
@@ -492,13 +539,13 @@ fn build_body(
     has_project: bool,
     input: &InputTabData,
     sections: Option<&SettingsSectionRegistry>,
-    active_plugin: Option<&str>,
+    active_sub: Option<&str>,
 ) -> Entity {
-    let sidebar = build_sidebar(commands, fonts, tab, sections, active_plugin);
+    let sidebar = build_sidebar(commands, fonts, tab, sections, active_sub);
 
     let content_col = build_tab_content(
         commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project, input,
-        sections, active_plugin,
+        sections, active_sub,
     );
     let scroller = scroll_view_bar(commands, content_col);
 
@@ -533,36 +580,56 @@ fn build_body(
     body
 }
 
-/// Sidebar categories grouped under Unreal-style section headers. The flat tab
-/// set is unchanged; this only organises the navigation so related categories
-/// sit together (and leaves room to split tabs into finer categories later).
-const TAB_GROUPS: &[(&str, &[(SettingsTab, &str, &str)])] = &[
-    ("PROJECT", &[(SettingsTab::Project, "folder-open", "Project")]),
+/// Sidebar categories grouped under Unreal-style section headers. Each entry is
+/// `(tab, focus, icon, label)`; `focus` is the section key shown when a tab is
+/// split into finer categories (`None` = the whole tab as one page). The active
+/// category is `(EditorSettings.settings_tab, NativeSettingsState.active_sub)`.
+type Cat = (SettingsTab, Option<&'static str>, &'static str, &'static str);
+const CATS: &[(&str, &[Cat])] = &[
+    (
+        "PROJECT",
+        &[
+            (SettingsTab::Project, Some("project"), "folder-open", "Project"),
+            (SettingsTab::Project, Some("rendering"), "monitor", "Rendering"),
+            (SettingsTab::Project, Some("window"), "desktop", "Window"),
+            (SettingsTab::Project, Some("game_viewport"), "video-camera", "Game Viewport"),
+            (SettingsTab::Project, Some("rendering_2d"), "image-square", "2D Rendering"),
+        ],
+    ),
     (
         "APPEARANCE",
         &[
-            (SettingsTab::Interface, "text-aa", "Interface"),
-            (SettingsTab::Theme, "palette", "Theme"),
+            (SettingsTab::Interface, Some("fonts"), "text-aa", "Fonts"),
+            (SettingsTab::Interface, Some("display"), "monitor", "Display"),
+            (SettingsTab::Interface, Some("hierarchy"), "list-bullets", "Hierarchy"),
+            (SettingsTab::Theme, None, "palette", "Theme"),
         ],
     ),
     (
         "EDITOR",
         &[
-            (SettingsTab::Editor, "wrench", "Editor"),
-            (SettingsTab::Viewport, "cube", "Viewport"),
-            (SettingsTab::Scripting, "code", "Scripting"),
-            (SettingsTab::Assets, "desktop", "Assets"),
+            (SettingsTab::Editor, Some("developer"), "wrench", "Developer"),
+            (SettingsTab::Editor, Some("workspace"), "desktop", "UI Workspace"),
+            (SettingsTab::Editor, Some("renderer"), "monitor", "Renderer"),
+            (SettingsTab::Viewport, Some("grid"), "grid-four", "Grid"),
+            (SettingsTab::Viewport, Some("labels"), "text-aa", "Labels"),
+            (SettingsTab::Viewport, Some("performance"), "gauge", "Performance"),
+            (SettingsTab::Viewport, Some("camera"), "video-camera", "Camera"),
+            (SettingsTab::Viewport, Some("gizmos"), "bounding-box", "Gizmos"),
+            (SettingsTab::Scripting, Some("scripting"), "code", "Scripting"),
+            (SettingsTab::Scripting, Some("code_editor"), "code", "Code Editor"),
+            (SettingsTab::Assets, None, "desktop", "Assets"),
         ],
     ),
     (
         "CONTROLS",
         &[
-            (SettingsTab::Input, "game-controller", "Input"),
-            (SettingsTab::Shortcuts, "keyboard", "Shortcuts"),
+            (SettingsTab::Input, None, "game-controller", "Input"),
+            (SettingsTab::Shortcuts, None, "keyboard", "Shortcuts"),
         ],
     ),
     // The PLUGINS group is appended dynamically in `build_sidebar` — one entry
-    // per registered plugin settings section, not a single "Plugins" page.
+    // per registered plugin settings section.
 ];
 
 fn build_sidebar(
@@ -570,49 +637,108 @@ fn build_sidebar(
     fonts: &EmberFonts,
     active: SettingsTab,
     sections: Option<&SettingsSectionRegistry>,
-    active_plugin: Option<&str>,
+    active_sub: Option<&str>,
 ) -> Entity {
+    // Outer fixed-width column: search box (fixed) above the scrolling list.
     let sidebar = commands
         .spawn((
             Node {
                 width: Val::Px(SIDEBAR_W),
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
                 flex_shrink: 0.0,
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::window_bg())),
             Name::new("settings-sidebar"),
         ))
         .id();
+    // Search box — filters categories live (see `filter_sidebar`). The ember
+    // input defaults to `min_width: 180px` (wider than the 160px sidebar, so it
+    // spilled over the divider) — pin it to fill the column instead.
+    let search = text_input(commands, &fonts.ui, "Search…", "");
+    commands.entity(search).insert(SettingsSearchBox).queue(
+        |mut e: EntityWorldMut| {
+            if let Some(mut n) = e.get_mut::<Node>() {
+                n.min_width = Val::Px(0.0);
+                n.width = Val::Percent(100.0);
+            }
+        },
+    );
+    let search_wrap = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            Name::new("settings-search"),
+        ))
+        .id();
+    commands.entity(search_wrap).add_child(search);
+    commands.entity(sidebar).add_child(search_wrap);
+    // Inner scrollable list holding the rows.
+    let list = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(6.0)),
+                ..default()
+            },
+            Name::new("settings-sidebar-list"),
+        ))
+        .id();
     let mut kids = Vec::new();
-    for (gi, (group, tabs)) in TAB_GROUPS.iter().enumerate() {
+    for (gi, (group, cats)) in CATS.iter().enumerate() {
         // A little breathing room above every group but the first.
-        kids.push(sidebar_group_header(commands, fonts, group, gi > 0));
-        for &(tab, icon, label) in *tabs {
-            kids.push(sidebar_tab(commands, fonts, icon, label, tab, tab == active));
+        let header = sidebar_group_header(commands, fonts, group, gi > 0);
+        commands.entity(header).insert(SettingsGroupTag(group.to_string()));
+        kids.push(header);
+        for &(tab, focus, icon, label) in *cats {
+            // A category is active when both its tab and its section focus
+            // match the current selection.
+            let selected = tab == active && active_sub == focus;
+            let row = sidebar_tab(commands, fonts, icon, label, tab, focus, selected);
+            commands.entity(row).insert(SettingsCatRow {
+                group: group.to_string(),
+                label: label.to_string(),
+            });
+            kids.push(row);
         }
     }
     // PLUGINS group: one sidebar category per registered plugin section.
     let plugins = sections.map(|s| s.0.as_slice()).unwrap_or_default();
     if !plugins.is_empty() {
-        kids.push(sidebar_group_header(commands, fonts, "PLUGINS", true));
+        let header = sidebar_group_header(commands, fonts, "PLUGINS", true);
+        commands.entity(header).insert(SettingsGroupTag("PLUGINS".to_string()));
+        kids.push(header);
         for entry in plugins {
             let selected = active == SettingsTab::Plugins
-                && active_plugin == Some(entry.id.as_str());
-            kids.push(sidebar_plugin_tab(
+                && active_sub == Some(entry.id.as_str());
+            let row = sidebar_plugin_tab(
                 commands,
                 fonts,
                 &entry.icon,
                 &entry.title,
                 &entry.id,
                 selected,
-            ));
+            );
+            commands.entity(row).insert(SettingsCatRow {
+                group: "PLUGINS".to_string(),
+                label: entry.title.clone(),
+            });
+            kids.push(row);
         }
     }
-    commands.entity(sidebar).add_children(&kids);
+    commands.entity(list).add_children(&kids);
+    // Keyed so the sidebar keeps its scroll position when the overlay rebuilds
+    // (selecting a category re-spawns the overlay — without this it snaps to top).
+    let scroller = scroll_view_bar_keyed(commands, list, "settings-sidebar");
+    commands.entity(sidebar).add_child(scroller);
     sidebar
 }
 
@@ -651,6 +777,7 @@ fn sidebar_tab(
     icon: &str,
     label: &str,
     tab: SettingsTab,
+    focus: Option<&str>,
     active: bool,
 ) -> Entity {
     let icon_color = if active { accent() } else { text_muted() };
@@ -677,7 +804,7 @@ fn sidebar_tab(
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
-            NativeSettingsTabBtn(tab),
+            NativeSettingsTabBtn(tab, focus.map(String::from)),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("settings-tab"),
         ))
@@ -863,7 +990,7 @@ fn build_tab_content(
     has_project: bool,
     input: &InputTabData,
     sections: Option<&SettingsSectionRegistry>,
-    active_plugin: Option<&str>,
+    active_sub: Option<&str>,
 ) -> Entity {
     let col = commands
         .spawn((
@@ -877,29 +1004,33 @@ fn build_tab_content(
         .id();
 
     match tab {
-        SettingsTab::Project => tab_project(commands, fonts, col, scenes, has_project),
-        SettingsTab::Interface => tab_interface(commands, fonts, col, settings, custom),
-        SettingsTab::Editor => tab_editor(commands, fonts, col),
-        SettingsTab::Viewport => tab_viewport(commands, fonts, col, viewport),
-        SettingsTab::Scripting => tab_scripting(commands, fonts, col),
+        SettingsTab::Project => {
+            tab_project(commands, fonts, col, scenes, has_project, active_sub)
+        }
+        SettingsTab::Interface => {
+            tab_interface(commands, fonts, col, settings, custom, active_sub)
+        }
+        SettingsTab::Editor => tab_editor(commands, fonts, col, active_sub),
+        SettingsTab::Viewport => tab_viewport(commands, fonts, col, viewport, active_sub),
+        SettingsTab::Scripting => tab_scripting(commands, fonts, col, active_sub),
         SettingsTab::Assets => tab_assets(commands, fonts, col),
         SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
         SettingsTab::Shortcuts => tab_shortcuts(commands, fonts, col),
         SettingsTab::Input => tab_input(commands, fonts, col, input),
-        SettingsTab::Plugins => tab_plugins(commands, fonts, col, sections, active_plugin),
+        SettingsTab::Plugins => tab_plugins(commands, fonts, col, sections, active_sub),
     }
     col
 }
 
 /// The Plugins "tab" now shows a SINGLE plugin's section — the one selected in
-/// the sidebar (`active_plugin`), defaulting to the first registered section.
+/// the sidebar (`active_sub`), defaulting to the first registered section.
 /// Each plugin is its own sidebar category, so this never lists them all.
 fn tab_plugins(
     commands: &mut Commands,
     fonts: &EmberFonts,
     col: Entity,
     sections: Option<&SettingsSectionRegistry>,
-    active_plugin: Option<&str>,
+    active_sub: Option<&str>,
 ) {
     let entries = sections.map(|s| s.0.as_slice()).unwrap_or_default();
     if entries.is_empty() {
@@ -921,7 +1052,7 @@ fn tab_plugins(
         return;
     }
     // Render the selected section (or the first if nothing's selected yet).
-    let entry = active_plugin
+    let entry = active_sub
         .and_then(|id| entries.iter().find(|e| e.id == id))
         .unwrap_or(&entries[0]);
     let (sec, body) = section(commands, fonts, &entry.icon, &entry.title, A_TEAL);
@@ -944,6 +1075,7 @@ fn tab_project(
     col: Entity,
     scenes: &[String],
     has_project: bool,
+    focus: Option<&str>,
 ) {
     if !has_project {
         let lbl = commands
@@ -963,6 +1095,7 @@ fn tab_project(
 
     let (sec, body) = section(commands, fonts, "folder-open", "Project", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "project");
     let ti = text_input(commands, &fonts.ui, "Project name", "");
     bind_text_input(
         commands,
@@ -1010,6 +1143,7 @@ fn tab_project(
     // Rendering (3D pipeline).
     let (sec, body) = section(commands, fonts, "monitor", "Rendering", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "rendering");
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1042,6 +1176,7 @@ fn tab_project(
     // Window.
     let (sec, body) = section(commands, fonts, "desktop", "Window", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "window");
     let dv = proj_u32_drag(
         commands, fonts, 320.0, 7680.0,
         |c| c.window.width,
@@ -1101,6 +1236,7 @@ fn tab_project(
     // Viewport (render resolution).
     let (sec, body) = section(commands, fonts, "video-camera", "Viewport", A_PURPLE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "game_viewport");
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1172,6 +1308,7 @@ fn tab_project(
     // Rendering 2D.
     let (sec, body) = section(commands, fonts, "image-square", "Rendering 2D", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "rendering_2d");
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1233,15 +1370,31 @@ fn proj_u32_drag(
 
 // ── Interface ────────────────────────────────────────────────────────────────
 
+/// In a tab split into per-section categories, hide every section but the
+/// focused one (`focus == Some(key)`). With `focus == None` the whole tab shows.
+/// Sections stay parented (despawned with the panel — no leak) but get
+/// `Display::None`.
+fn focus_hide(commands: &mut Commands, sec: Entity, focus: Option<&str>, key: &str) {
+    if focus.is_some() && focus != Some(key) {
+        commands.entity(sec).queue(|mut e: EntityWorldMut| {
+            if let Some(mut n) = e.get_mut::<Node>() {
+                n.display = Display::None;
+            }
+        });
+    }
+}
+
 fn tab_interface(
     commands: &mut Commands,
     fonts: &EmberFonts,
     col: Entity,
     settings: &EditorSettings,
     custom: &[String],
+    focus: Option<&str>,
 ) {
     let (sec, body) = section(commands, fonts, "text-aa", "Fonts", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "fonts");
 
     // UI font: builtin labels + custom names.
     let ui_opts: Vec<String> = UiFont::BUILTIN
@@ -1294,6 +1447,7 @@ fn tab_interface(
 
     let (sec, body) = section(commands, fonts, "monitor", "Display", A_PURPLE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "display");
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1316,6 +1470,7 @@ fn tab_interface(
 
     let (sec, body) = section(commands, fonts, "list-bullets", "Hierarchy", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "hierarchy");
     let t = ctl_toggle(
         commands,
         settings.hierarchy_parent_stacking,
@@ -1388,9 +1543,10 @@ fn mono_font_from_index(i: usize, custom: &[String]) -> MonoFont {
 
 // ── Editor ───────────────────────────────────────────────────────────────────
 
-fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
+fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: Option<&str>) {
     let (sec, body) = section(commands, fonts, "wrench", "Developer", A_ORANGE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "developer");
     let t = ctl_toggle(
         commands,
         false, // corrected by bind_2way on first frame
@@ -1401,6 +1557,7 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
 
     let (sec, body) = section(commands, fonts, "desktop", "UI Workspace", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "workspace");
     let t = ctl_toggle(
         commands,
         true,
@@ -1411,6 +1568,7 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
 
     let (sec, body) = section(commands, fonts, "monitor", "Renderer", A_BLUE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "renderer");
     let avail: Vec<renzora::RendererBackend> = renzora::RendererBackend::available().to_vec();
     let labels: Vec<&str> = avail.iter().map(|b| b.label()).collect();
     let av1 = avail.clone();
@@ -1438,9 +1596,16 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
 
 // ── Viewport ─────────────────────────────────────────────────────────────────
 
-fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &ViewportSettings) {
+fn tab_viewport(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    col: Entity,
+    vp: &ViewportSettings,
+    focus: Option<&str>,
+) {
     let (sec, body) = section(commands, fonts, "grid-four", "Grid", A_GREEN);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "grid");
     let t = ctl_toggle(
         commands,
         vp.show_grid,
@@ -1484,6 +1649,7 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
     // Entity name labels (Bevy 0.19 stroke-font text gizmos).
     let (sec, body) = section(commands, fonts, "text-aa", "Labels", A_GREEN);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "labels");
     let t = ctl_toggle(
         commands,
         vp.show_labels,
@@ -1538,6 +1704,7 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
 
     let (sec, body) = section(commands, fonts, "gauge", "Performance", A_TEAL);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "performance");
     let t = ctl_toggle(
         commands,
         vp.vsync,
@@ -1548,6 +1715,7 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
 
     let (sec, body) = section(commands, fonts, "video-camera", "Camera", A_PURPLE);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "camera");
     let cam = &vp.camera;
     let dv = ctl_drag(
         commands, fonts, cam.move_speed, 1.0, 50.0, 0.5,
@@ -1611,6 +1779,7 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
 
     let (sec, body) = section(commands, fonts, "gauge", "Gizmos", A_TEAL);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "gizmos");
     let dd = ctl_dropdown(
         commands, fonts, &["Selected Only", "Always"],
         match vp.collision_gizmo_visibility {
@@ -1680,9 +1849,10 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
 
 // ── Scripting ────────────────────────────────────────────────────────────────
 
-fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
+fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: Option<&str>) {
     let (sec, body) = section(commands, fonts, "code", "Scripting", A_GREEN);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "scripting");
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().script_rerun_on_ready_on_reload,
@@ -1710,6 +1880,7 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
 
     let (sec, body) = section(commands, fonts, "code", "Code Editor", A_GREEN);
     commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "code_editor");
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().code_auto_close_pairs,
@@ -2774,16 +2945,25 @@ fn rebind_capture(keys: Res<ButtonInput<KeyCode>>, mut kb: ResMut<KeyBindings>) 
 fn settings_tab_click(
     btns: Query<(&Interaction, &NativeSettingsTabBtn), Changed<Interaction>>,
     mut settings: ResMut<EditorSettings>,
+    mut state: ResMut<NativeSettingsState>,
 ) {
     for (interaction, btn) in &btns {
-        if *interaction == Interaction::Pressed && settings.settings_tab != btn.0 {
-            settings.settings_tab = btn.0;
+        if *interaction == Interaction::Pressed {
+            if settings.settings_tab != btn.0 {
+                settings.settings_tab = btn.0;
+            }
+            // The button's focus key becomes the active sub-selection (a section
+            // within a split tab, or `None` for a whole-tab category). This also
+            // clears any previously selected plugin.
+            if state.active_sub != btn.1 {
+                state.active_sub = btn.1.clone();
+            }
         }
     }
 }
 
 /// Selecting a plugin sidebar category switches to the `Plugins` tab and records
-/// which section to show. The rebuild is driven by `active_plugin` changing
+/// which section to show. The rebuild is driven by `active_sub` changing
 /// (see `manage_native_settings`), so re-selecting the same plugin is a no-op.
 fn settings_plugin_click(
     btns: Query<(&Interaction, &NativeSettingsPluginBtn), Changed<Interaction>>,
@@ -2795,8 +2975,8 @@ fn settings_plugin_click(
             if settings.settings_tab != SettingsTab::Plugins {
                 settings.settings_tab = SettingsTab::Plugins;
             }
-            if state.active_plugin.as_deref() != Some(btn.0.as_str()) {
-                state.active_plugin = Some(btn.0.clone());
+            if state.active_sub.as_deref() != Some(btn.0.as_str()) {
+                state.active_sub = Some(btn.0.clone());
             }
         }
     }
