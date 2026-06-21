@@ -79,9 +79,12 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         },
     });
 
-    // Bevy 0.19 rectangular area light. Edited via the generic reflection
-    // inspector (color/intensity/range/width/height). `RectLight` requires
-    // Transform/Visibility (auto-added).
+    // Bevy 0.19 rectangular area light. Edited via `rect_light_entry()`
+    // (color/intensity/range/width/height). `RectLight` requires
+    // Transform/Visibility (auto-added). The rectangle lies in the local XY
+    // plane and emits toward local -Z, so an identity transform would sit it at
+    // the origin firing sideways (grazing the ground into a thin fan). Spawn it
+    // elevated and aimed straight down so it casts a recognizable rectangle.
     registry.register(EntityPreset {
         id: "rect_light",
         display_name: "Area Light",
@@ -91,7 +94,8 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
             world
                 .spawn((
                     Name::new("Area Light"),
-                    Transform::default(),
+                    Transform::from_xyz(0.0, 3.0, 0.0)
+                        .looking_at(Vec3::ZERO, Vec3::Z),
                     RectLight::default(),
                 ))
                 .id()
@@ -341,6 +345,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(directional_light_entry());
     registry.register(point_light_entry());
     registry.register(spot_light_entry());
+    registry.register(rect_light_entry());
     registry.register(ambient_light_entry());
     registry.register(camera_entry());
     registry.register(camera_presets_entry());
@@ -753,6 +758,123 @@ fn point_light_entry() -> InspectorEntry {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<PointLight>(entity) {
                             l.shadow_maps_enabled = v;
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
+fn rect_light_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "rect_light",
+        display_name: "Area Light",
+        icon: "square",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<RectLight>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(RectLight::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<RectLight>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world.get::<RectLight>(entity).map(|l| {
+                        let c = l.color.to_srgba();
+                        FieldValue::Color([c.red, c.green, c.blue])
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.color = Color::srgb(r, g, b);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Intensity",
+                field_type: FieldType::Float {
+                    speed: 100.0,
+                    min: 0.0,
+                    max: 10_000_000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.intensity = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Range",
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.range))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.range = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Width",
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.width))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.width = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Height",
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.height))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.height = v;
                         }
                     }
                 },
