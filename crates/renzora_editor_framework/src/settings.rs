@@ -58,6 +58,10 @@ impl SelectionGranularity {
 /// Available proportional (UI) font families.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UiFont {
+    /// The operating system's default UI font (Segoe UI on Windows, San
+    /// Francisco on macOS, …), resolved via Parley's system-font discovery.
+    /// Always available, so it's the reliable "change something" option.
+    System,
     Roboto,
     OpenSans,
     #[default]
@@ -69,6 +73,7 @@ pub enum UiFont {
 impl UiFont {
     pub fn label(&self) -> &str {
         match self {
+            Self::System => "System UI",
             Self::Roboto => "Roboto",
             Self::OpenSans => "Open Sans",
             Self::NotoSans => "Noto Sans",
@@ -76,10 +81,12 @@ impl UiFont {
         }
     }
 
-    pub const BUILTIN: &'static [UiFont] = &[Self::Roboto, Self::OpenSans, Self::NotoSans];
+    pub const BUILTIN: &'static [UiFont] =
+        &[Self::System, Self::Roboto, Self::OpenSans, Self::NotoSans];
 
     pub fn font_key(&self) -> &str {
         match self {
+            Self::System => "system",
             Self::Roboto => "roboto",
             Self::OpenSans => "open-sans",
             Self::NotoSans => "noto-sans",

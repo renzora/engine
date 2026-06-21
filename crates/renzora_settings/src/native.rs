@@ -138,6 +138,7 @@ pub(crate) fn build(app: &mut App) {
             settings_close_click,
             theme_save_click,
             ember_theme_save_click,
+            apply_font_settings,
         )
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
@@ -160,6 +161,74 @@ pub(crate) fn build(app: &mut App) {
         (rebind_btn_click, rebind_capture, reset_bindings_click, input_listen_capture)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
+}
+
+// ── Live font application ────────────────────────────────────────────────────
+
+/// Map the persisted [`UiFont`] choice to a renderable [`FontSource`]. Built-ins
+/// and custom project fonts resolve by family name via Parley's system-font
+/// discovery (`system_font_discovery` feature); `NotoSans` is the embedded
+/// default already loaded as a handle.
+fn ui_font_source(choice: &UiFont, fonts: &EmberFonts) -> bevy::text::FontSource {
+    use bevy::text::FontSource;
+    match choice {
+        UiFont::System => FontSource::SystemUi,
+        UiFont::NotoSans => fonts.default_ui.clone(),
+        UiFont::Roboto => FontSource::Family("Roboto".into()),
+        UiFont::OpenSans => FontSource::Family("Open Sans".into()),
+        UiFont::Custom(name) => FontSource::Family(name.as_str().into()),
+    }
+}
+
+/// As [`ui_font_source`], for the monospace/code font.
+fn mono_font_source(choice: &MonoFont, fonts: &EmberFonts) -> bevy::text::FontSource {
+    use bevy::text::FontSource;
+    match choice {
+        MonoFont::JetBrainsMono => fonts.default_mono.clone(),
+        MonoFont::FiraCode => FontSource::Family("Fira Code".into()),
+        MonoFont::SourceCodePro => FontSource::Family("Source Code Pro".into()),
+        MonoFont::Custom(name) => FontSource::Family(name.as_str().into()),
+    }
+}
+
+/// Apply the UI/code font choices from [`EditorSettings`] to [`EmberFonts`],
+/// live-rewriting every already-spawned text entity that still uses the old
+/// source so the whole editor restyles without a rebuild. UI and mono text are
+/// kept distinct by comparing against the *current* `EmberFonts.ui` / `.mono`,
+/// so icon (phosphor) text and 3D gizmo stroke text are never touched.
+fn apply_font_settings(
+    settings: Res<EditorSettings>,
+    fonts: Option<ResMut<EmberFonts>>,
+    mut text_q: Query<&mut TextFont>,
+) {
+    let Some(mut fonts) = fonts else {
+        return;
+    };
+    // `is_changed()` covers the first run too — the no-op early-outs below make
+    // that harmless (default choice resolves back to the current source).
+    if !settings.is_changed() {
+        return;
+    }
+    // Compute both before mutating so the immutable borrow of `fonts` is done.
+    let new_ui = ui_font_source(&settings.ui_font, &fonts);
+    let new_mono = mono_font_source(&settings.mono_font, &fonts);
+
+    if new_ui != fonts.ui {
+        let old = std::mem::replace(&mut fonts.ui, new_ui.clone());
+        for mut tf in &mut text_q {
+            if tf.font == old {
+                tf.font = new_ui.clone();
+            }
+        }
+    }
+    if new_mono != fonts.mono {
+        let old = std::mem::replace(&mut fonts.mono, new_mono.clone());
+        for mut tf in &mut text_q {
+            if tf.font == old {
+                tf.font = new_mono.clone();
+            }
+        }
+    }
 }
 
 // ── Lifecycle: spawn / despawn / rebuild on tab change ───────────────────────
@@ -1127,22 +1196,24 @@ fn ui_scale_index(v: f32) -> usize {
 
 fn ui_font_index(f: &UiFont, custom: &[String]) -> usize {
     match f {
-        UiFont::Roboto => 0,
-        UiFont::OpenSans => 1,
-        UiFont::NotoSans => 2,
+        UiFont::System => 0,
+        UiFont::Roboto => 1,
+        UiFont::OpenSans => 2,
+        UiFont::NotoSans => 3,
         UiFont::Custom(name) => {
-            3 + custom.iter().position(|n| n == name).unwrap_or(0)
+            4 + custom.iter().position(|n| n == name).unwrap_or(0)
         }
     }
 }
 
 fn ui_font_from_index(i: usize, custom: &[String]) -> UiFont {
     match i {
-        0 => UiFont::Roboto,
-        1 => UiFont::OpenSans,
-        2 => UiFont::NotoSans,
+        0 => UiFont::System,
+        1 => UiFont::Roboto,
+        2 => UiFont::OpenSans,
+        3 => UiFont::NotoSans,
         n => custom
-            .get(n - 3)
+            .get(n - 4)
             .map(|s| UiFont::Custom(s.clone()))
             .unwrap_or(UiFont::NotoSans),
     }
