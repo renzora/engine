@@ -12,10 +12,10 @@ use bevy::prelude::*;
 use renzora::core::viewport_types::ViewportSettings;
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
-use crate::OverlayGizmoGroup;
+use crate::LabelGizmoGroup;
 
 pub fn draw_entity_labels(
-    mut gizmos: Gizmos<OverlayGizmoGroup>,
+    mut gizmos: Gizmos<LabelGizmoGroup>,
     settings: Res<ViewportSettings>,
     selection: Res<EditorSelection>,
     camera: Query<&GlobalTransform, With<EditorCamera>>,
