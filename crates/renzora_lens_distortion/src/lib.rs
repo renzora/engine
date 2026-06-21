@@ -19,16 +19,26 @@ pub struct LensDistortionSettings {
     pub intensity: f32,
     /// Zoom factor that crops the stretched screen edges (1.0 = no zoom).
     pub scale: f32,
+    /// Per-axis distortion strength. `Vec2::ONE` = uniform radial; unequal axes
+    /// give anamorphic-style distortion; a `0.0` component disables that axis.
+    pub multiplier: Vec2,
+    /// Center of the distortion in UV space `[0,1]`; distortion radiates from here.
+    pub center: Vec2,
+    /// Sharpness of the distortion curve near the edges (indirect `k2`). `0.0` is
+    /// the natural look bevy recommends for most cases.
+    pub edge_curvature: f32,
 }
 
 impl Default for LensDistortionSettings {
-    // Mirrors `bevy::post_process::effect_stack::LensDistortion::default()` for the
-    // exposed fields; the multiplier/center/edge-curvature keep bevy's defaults.
+    // Mirrors `bevy::post_process::effect_stack::LensDistortion::default()`.
     fn default() -> Self {
         Self {
             enabled: true,
             intensity: 0.5,
             scale: 1.0,
+            multiplier: Vec2::ONE,
+            center: Vec2::splat(0.5),
+            edge_curvature: 0.0,
         }
     }
 }
@@ -37,7 +47,9 @@ fn lens_from(s: &LensDistortionSettings) -> LensDistortion {
     LensDistortion {
         intensity: s.intensity,
         scale: s.scale,
-        ..default()
+        multiplier: s.multiplier,
+        center: s.center,
+        edge_curvature: s.edge_curvature,
     }
 }
 
