@@ -348,6 +348,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(rect_light_entry());
     registry.register(ambient_light_entry());
     registry.register(text_font_entry());
+    registry.register(text_rich_entry());
     registry.register(camera_entry());
     registry.register(camera_presets_entry());
     registry.register(camera3d_entry());
@@ -1087,6 +1088,27 @@ fn text_font_entry() -> InspectorEntry {
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<TextFont>();
         }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+    }
+}
+
+/// Bevy rich text — the styled `TextSpan` runs under a `Text` / `Text2d`. The
+/// fields are empty; a native drawer (`renzora_inspector`, `type_id =
+/// "text_rich"`) lists the spans with per-run text + color + add/remove. Shown
+/// whenever the entity has a text component (not separately addable).
+fn text_rich_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "text_rich",
+        display_name: "Rich Text",
+        icon: "text-t",
+        category: "rendering",
+        has_fn: |world, entity| {
+            world.get::<Text>(entity).is_some() || world.get::<Text2d>(entity).is_some()
+        },
+        add_fn: None,
+        remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![],

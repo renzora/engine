@@ -7,6 +7,7 @@
 
 mod camera_presets;
 mod native;
+mod richtext;
 mod scripts;
 mod textfont;
 
@@ -35,6 +36,7 @@ impl Plugin for InspectorPanelPlugin {
         scripts::register(app);
         camera_presets::register(app);
         textfont::register(app);
+        richtext::register(app);
     }
 }
 
