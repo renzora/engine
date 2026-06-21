@@ -9,6 +9,7 @@
 //! [`SceneIconCache`] icon-position bookkeeping is retained for that future
 //! port.
 
+use bevy::light::{LightProbe, ParallaxCorrection};
 use bevy::prelude::*;
 
 use renzora::SceneCamera;
@@ -88,6 +89,7 @@ const SPOT_COLOR: Color = Color::srgb(1.0, 0.78, 0.35);
 const POINT_COLOR: Color = Color::srgb(1.0, 0.85, 0.35);
 const SUN_COLOR: Color = Color::srgb(1.0, 0.92, 0.55);
 const AREA_COLOR: Color = Color::srgb(0.55, 0.8, 1.0);
+const PROBE_COLOR: Color = Color::srgb(0.45, 0.95, 0.85);
 
 // ── Selection-only 3D wireframe extras ──────────────────────────────────────
 
@@ -98,6 +100,7 @@ pub fn draw_light_gizmos(
     spot_lights: Query<(Entity, &GlobalTransform, &SpotLight)>,
     dir_lights: Query<(Entity, &GlobalTransform, &DirectionalLight)>,
     rect_lights: Query<(Entity, &GlobalTransform, &RectLight)>,
+    probes: Query<(Entity, &GlobalTransform, Option<&ParallaxCorrection>), With<LightProbe>>,
 ) {
     let selected = selection.get();
 
@@ -122,6 +125,22 @@ pub fn draw_light_gizmos(
             gizmos.line(translation - hx - hy, translation + hx + hy, c);
             gizmos.line(translation - hx + hy, translation + hx - hy, c);
         }
+    }
+
+    // Reflection probes have no mesh either: draw the parallax-correction box
+    // for *every* probe (dim), brightening the selected one. The box is the
+    // probe's unit cube under its Transform (Auto/None), or scaled to the
+    // `Custom` half-extents (in probe space) — so it shows exactly the volume
+    // the cubemap is corrected against.
+    for (entity, gt, parallax) in probes.iter() {
+        let half = match parallax {
+            Some(ParallaxCorrection::Custom(v)) => *v,
+            _ => Vec3::splat(0.5),
+        };
+        let mut t = gt.compute_transform();
+        t.scale *= half * 2.0;
+        let is_selected = Some(entity) == selected;
+        gizmos.cube(t, with_alpha(PROBE_COLOR, if is_selected { 0.9 } else { 0.35 }));
     }
 
     let Some(selected) = selected else {

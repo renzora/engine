@@ -192,6 +192,7 @@ Budget the migration as: **bump vendored forks + port render-graph nodes + migra
 - **Solari (hardware ray tracing)**: this is the natural fit for Lumen's **`Hwrt` tier**, which is the *only* unbuilt GI tier. The voxel-cone tiers already ship — `LumenQuality::SdfLow`/`SdfHigh` drive the voxel-cone trace in `renzora_lumen`, and `ScreenSpace` delegates to `renzora_rt` SSGI. **`Hwrt` currently renders nothing**: `platform_wgpu_settings()` (`renzora_runtime/src/lib.rs`) requests only `POLYGON_MODE_LINE`, wgpu ray tracing is not enabled, and `bevy_solari` is not wired in. Solari is still experimental — watch it for the `Hwrt` tier *later*; don't build on it yet.
 - **Contiguous query access (SIMD)**: only `renzora_physics` plausibly benefits. (There is no `renzora_physics_playground` crate — it's just `renzora_physics`.) Profile first.
 - **BSN / next-gen scenes**: you have a custom RON scene + `renzora_blueprint` graph system. BSN is still maturing; watch but don't chase.
+- **Parallax-corrected reflection probes** ✅ DONE: `LightProbe` + `GeneratedEnvironmentMapLight` + `ParallaxCorrection` wired as a "Reflection Probe" spawn preset (`bevy_inspectors.rs`) with inspector entries (falloff / cubemap+intensity / correction mode+extents) and a teal box gizmo (`renzora_gizmo/light_gizmo.rs`). Cubemap is user-assigned; the probe is inert until set.
 
 ---
 

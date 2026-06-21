@@ -4,7 +4,8 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::light::{
-    EnvironmentMapLight, LightProbe, ParallaxCorrection, VolumetricLight,
+    EnvironmentMapLight, GeneratedEnvironmentMapLight, LightProbe, ParallaxCorrection,
+    VolumetricLight,
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
@@ -97,6 +98,35 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                     Transform::from_xyz(0.0, 3.0, 0.0)
                         .looking_at(Vec3::ZERO, Vec3::Z),
                     RectLight::default(),
+                ))
+                .id()
+        },
+    });
+
+    // Bevy 0.19 parallax-corrected reflection probe: a `LightProbe` +
+    // `GeneratedEnvironmentMapLight` (one source cubemap, GPU-filtered into
+    // diffuse+specular) bounded by the entity's Transform. `ParallaxCorrection`
+    // is added explicitly (Bevy would otherwise auto-add `Auto` once the filtered
+    // `EnvironmentMapLight` appears) so the box correction is editable from frame
+    // 0. The probe does nothing until a cubemap is assigned in the inspector; the
+    // default 4-unit box + intensity 1.0 give a sensible starting point.
+    registry.register(EntityPreset {
+        id: "reflection_probe",
+        display_name: "Reflection Probe",
+        icon: "globe",
+        category: "lighting",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Reflection Probe"),
+                    Transform::from_scale(Vec3::splat(4.0)),
+                    Visibility::default(),
+                    LightProbe::default(),
+                    GeneratedEnvironmentMapLight {
+                        intensity: 1.0,
+                        ..default()
+                    },
+                    ParallaxCorrection::Auto,
                 ))
                 .id()
         },
@@ -347,6 +377,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(spot_light_entry());
     registry.register(rect_light_entry());
     registry.register(ambient_light_entry());
+    registry.register(generated_environment_map_entry());
     registry.register(text_font_entry());
     registry.register(text_rich_entry());
     registry.register(camera_entry());
@@ -1115,6 +1146,214 @@ fn text_rich_entry() -> InspectorEntry {
     }
 }
 
+/// Bevy `LightProbe` — the bounds (via Transform) of a reflection probe /
+/// irradiance volume. `falloff` softens the influence toward the box edges.
+fn light_probe_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "light_probe",
+        display_name: "Light Probe",
+        icon: "globe",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(LightProbe::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<LightProbe>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![FieldDef {
+            name: "Falloff",
+            field_type: FieldType::Vec3 { speed: 0.01 },
+            get_fn: |world, entity| {
+                world
+                    .get::<LightProbe>(entity)
+                    .map(|p| FieldValue::Vec3(p.falloff.to_array()))
+            },
+            set_fn: |world, entity, val| {
+                if let FieldValue::Vec3(v) = val {
+                    if let Some(mut p) = world.get_mut::<LightProbe>(entity) {
+                        p.falloff = Vec3::from_array(v);
+                    }
+                }
+            },
+        }],
+    }
+}
+
+/// Bevy `ParallaxCorrection` — how a reflection probe's cubemap is box-corrected.
+/// `None` = infinite (no correction); `Auto` = the probe's Transform cube;
+/// `Custom` = manual half-extents (editing "Half Extents" switches to Custom).
+fn parallax_correction_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "parallax_correction",
+        display_name: "Parallax Correction",
+        icon: "bounding-box",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<ParallaxCorrection>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(ParallaxCorrection::Auto);
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<ParallaxCorrection>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Mode",
+                field_type: FieldType::Enum {
+                    options: &["None", "Auto", "Custom"],
+                },
+                get_fn: |world, entity| {
+                    world.get::<ParallaxCorrection>(entity).map(|p| {
+                        FieldValue::Enum(
+                            match p {
+                                ParallaxCorrection::None => "None",
+                                ParallaxCorrection::Auto => "Auto",
+                                ParallaxCorrection::Custom(_) => "Custom",
+                            }
+                            .to_string(),
+                        )
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Enum(s) = val {
+                        // Preserve existing custom extents when re-selecting Custom.
+                        let existing = world
+                            .get::<ParallaxCorrection>(entity)
+                            .and_then(|p| match p {
+                                ParallaxCorrection::Custom(v) => Some(*v),
+                                _ => None,
+                            })
+                            .unwrap_or(Vec3::splat(0.5));
+                        let next = match s.as_str() {
+                            "None" => ParallaxCorrection::None,
+                            "Custom" => ParallaxCorrection::Custom(existing),
+                            _ => ParallaxCorrection::Auto,
+                        };
+                        world.entity_mut(entity).insert(next);
+                    }
+                },
+            },
+            FieldDef {
+                name: "Half Extents",
+                field_type: FieldType::Vec3 { speed: 0.05 },
+                get_fn: |world, entity| {
+                    world.get::<ParallaxCorrection>(entity).map(|p| {
+                        let v = match p {
+                            ParallaxCorrection::Custom(v) => *v,
+                            _ => Vec3::splat(0.5),
+                        };
+                        FieldValue::Vec3(v.to_array())
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Vec3(v) = val {
+                        // Editing the extents implies Custom correction.
+                        world
+                            .entity_mut(entity)
+                            .insert(ParallaxCorrection::Custom(Vec3::from_array(v)));
+                    }
+                },
+            },
+        ],
+    }
+}
+
+/// Bevy `GeneratedEnvironmentMapLight` — a single source cubemap that the GPU
+/// filters into the diffuse + specular maps a reflection probe needs. Assign a
+/// cubemap image; `intensity` scales its contribution.
+fn generated_environment_map_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "generated_environment_map_light",
+        display_name: "Environment Map",
+        icon: "image",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<GeneratedEnvironmentMapLight>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(GeneratedEnvironmentMapLight {
+                intensity: 1.0,
+                ..default()
+            });
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<GeneratedEnvironmentMapLight>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Cubemap",
+                // Bevy's `GeneratedEnvironmentMapLight` filter requires an actual
+                // power-of-two *cube* texture (`compute_mip_count` asserts POT and
+                // reads the source's width). A 2D equirectangular `.exr`/`.hdr`
+                // would fail GPU validation, so only accept cube containers here;
+                // equirect→cubemap conversion is a separate pipeline.
+                field_type: FieldType::Asset {
+                    extensions: vec!["ktx2".into(), "dds".into()],
+                },
+                get_fn: |world, entity| {
+                    let path = world
+                        .get::<GeneratedEnvironmentMapLight>(entity)
+                        .and_then(|g| {
+                            world
+                                .resource::<AssetServer>()
+                                .get_path(g.environment_map.id())
+                                .map(|p| p.to_string())
+                        });
+                    Some(FieldValue::Asset(path))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Asset(path) = val {
+                        let server = world.resource::<AssetServer>().clone();
+                        let handle = match path {
+                            Some(p) if !p.is_empty() => server.load::<Image>(p),
+                            _ => Handle::default(),
+                        };
+                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
+                            g.environment_map = handle;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Intensity",
+                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10000.0 },
+                get_fn: |world, entity| {
+                    world
+                        .get::<GeneratedEnvironmentMapLight>(entity)
+                        .map(|g| FieldValue::Float(g.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(f) = val {
+                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
+                            g.intensity = f;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Affects Lightmaps",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<GeneratedEnvironmentMapLight>(entity)
+                        .map(|g| FieldValue::Bool(g.affects_lightmapped_mesh_diffuse))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(b) = val {
+                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
+                            g.affects_lightmapped_mesh_diffuse = b;
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
 fn camera_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "camera",
@@ -1386,124 +1625,6 @@ fn environment_map_light_entry() -> InspectorEntry {
                         );
                         if let Some(mut l) = world.get_mut::<EnvironmentMapLight>(entity) {
                             l.rotation = q;
-                        }
-                    }
-                },
-            },
-        ],
-    }
-}
-
-fn light_probe_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "light_probe",
-        display_name: "Light Probe",
-        icon: "broadcast",
-        category: "lighting",
-        has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(LightProbe::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<LightProbe>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Info",
-            field_type: FieldType::ReadOnly,
-            get_fn: |world, entity| {
-                world.get::<LightProbe>(entity).map(|_| {
-                    FieldValue::ReadOnly(
-                        "Marker — add an EnvironmentMapLight".to_string(),
-                    )
-                })
-            },
-            set_fn: |_, _, _| {},
-        }],
-    }
-}
-
-/// Bevy 0.19 parallax-corrected cubemaps. Bevy auto-adds
-/// `ParallaxCorrection::Auto` to every reflection probe, so this section
-/// usually appears already populated on a `LightProbe` + `EnvironmentMapLight`
-/// entity; it lets the user switch the correction off, back to Auto, or to
-/// Custom half-extent bounds (in probe space). Editing the bounds switches the
-/// mode to Custom.
-const PARALLAX_MODES: &[&str] = &["None", "Auto", "Custom"];
-
-fn parallax_correction_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "parallax_correction",
-        display_name: "Parallax Correction",
-        icon: "bounding-box",
-        category: "lighting",
-        has_fn: |world, entity| world.get::<ParallaxCorrection>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(ParallaxCorrection::Auto);
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<ParallaxCorrection>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "Mode",
-                field_type: FieldType::Enum {
-                    options: PARALLAX_MODES,
-                },
-                get_fn: |world, entity| {
-                    world.get::<ParallaxCorrection>(entity).map(|pc| {
-                        let label = match pc {
-                            ParallaxCorrection::None => "None",
-                            ParallaxCorrection::Auto => "Auto",
-                            ParallaxCorrection::Custom(_) => "Custom",
-                        };
-                        FieldValue::Enum(label.to_string())
-                    })
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Enum(label) = val {
-                        if let Some(mut pc) = world.get_mut::<ParallaxCorrection>(entity) {
-                            *pc = match label.as_str() {
-                                "None" => ParallaxCorrection::None,
-                                "Custom" => {
-                                    // Keep existing custom bounds; otherwise seed
-                                    // with the Auto-equivalent half-extents.
-                                    let bounds = match *pc {
-                                        ParallaxCorrection::Custom(b) => b,
-                                        _ => Vec3::splat(0.5),
-                                    };
-                                    ParallaxCorrection::Custom(bounds)
-                                }
-                                _ => ParallaxCorrection::Auto,
-                            };
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Custom Bounds",
-                field_type: FieldType::Vec3 { speed: 0.05 },
-                get_fn: |world, entity| {
-                    world.get::<ParallaxCorrection>(entity).map(|pc| {
-                        let b = match pc {
-                            ParallaxCorrection::Custom(b) => *b,
-                            // Auto ≡ Custom(splat(0.5)); show that so the field
-                            // is meaningful before the user switches to Custom.
-                            _ => Vec3::splat(0.5),
-                        };
-                        FieldValue::Vec3(b.to_array())
-                    })
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Vec3(v) = val {
-                        if let Some(mut pc) = world.get_mut::<ParallaxCorrection>(entity) {
-                            // Editing bounds implies Custom mode.
-                            *pc = ParallaxCorrection::Custom(Vec3::from_array(v));
                         }
                     }
                 },

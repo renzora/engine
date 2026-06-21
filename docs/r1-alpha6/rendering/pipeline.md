@@ -123,6 +123,27 @@ Beyond the `ScreenSpace` SSGI backend (`RtPlugin`), the voxel/trace/reflection t
 
 `LumenDebug` offers `None`, `IndirectOnly` (show only the indirect contribution), and `VoxelCache` (visualize the radiance cache). The live bake stats feed `LumenDiagState`, which the debugger's Lumen panel renders.
 
+## Reflection probes — parallax-corrected cubemaps
+
+For local reflections that screen-space reflections can't supply (off-screen
+geometry, interiors), the engine exposes Bevy 0.19's **parallax-corrected
+reflection probes**. Add one from **Add Entity → Lighting → Reflection Probe**;
+it spawns an entity with:
+
+- `LightProbe` — marks the probe and sets edge `Falloff`. The probe's
+  **Transform** (position + scale) is the box it influences.
+- `GeneratedEnvironmentMapLight` — a single source **cubemap** that the GPU
+  filters into the diffuse + specular maps the probe needs. Assign the cubemap
+  and tune `Intensity` in the inspector (the probe is inert until a cubemap is
+  set).
+- `ParallaxCorrection` — `None` (treat the reflection as infinitely far),
+  `Auto` (correct against the probe's Transform box — the default), or `Custom`
+  half-extents in probe space. Editing the extents switches to `Custom`.
+
+The editor draws the correction box as a teal wireframe gizmo (bright when the
+probe is selected) so you can size it against the room. Because these are stock
+Bevy components, a probe placed in the editor ships with the scene unchanged.
+
 ## Order-independent transparency — `renzora_oit`
 
 `renzora_oit` wraps Bevy's `OrderIndependentTransparencySettings` and is routed onto cameras via `EffectRouting` like any other effect:
