@@ -473,6 +473,9 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     info!("[runtime] foundation: PhysicsPlugin");
     app.add_plugins(renzora_physics::PhysicsPlugin);
 
+    // Font scripting: `action("set_ui_font"/"set_font", {name=...})`.
+    app.add_observer(handle_font_script_actions);
+
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image
     // via `ViewportRenderTarget`, separate concern). The plugin is
@@ -489,6 +492,74 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
         info!("[runtime] static plugin: {}", plugin.name);
         (plugin.install)(app);
     });
+}
+
+/// Resolve a font name to a render source for scripting. Prefers the editor's
+/// `FontRegistry` (named built-ins + project fonts); otherwise treats a value
+/// ending in `.ttf`/`.otf` or containing `/` as a project asset path and
+/// anything else as a system family name — so it also works in a shipped game.
+fn resolve_script_font(
+    name: &str,
+    registry: Option<&renzora_ember::font::FontRegistry>,
+    asset: &AssetServer,
+) -> bevy::text::FontSource {
+    use bevy::text::{Font, FontSource};
+    if let Some(r) = registry {
+        if let Some(src) = r.resolve(name) {
+            return src;
+        }
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".ttf") || lower.ends_with(".otf") || name.contains('/') {
+        FontSource::Handle(asset.load::<Font>(name.to_string()))
+    } else {
+        FontSource::Family(name.into())
+    }
+}
+
+/// Apply font script actions. Scripts call them via the always-available
+/// generic action helper:
+/// - `action("set_ui_font", {name="Inter"})` — swap the global UI font.
+/// - `action("set_font", {name="Inter"})` — set the script's own entity's font.
+/// `name` resolves through [`resolve_script_font`] (registry / asset path /
+/// system family). Runs in the editor and shipped games.
+fn handle_font_script_actions(
+    trigger: On<renzora::ScriptAction>,
+    registry: Option<Res<renzora_ember::font::FontRegistry>>,
+    asset: Res<AssetServer>,
+    mut fonts: Option<ResMut<renzora_ember::font::EmberFonts>>,
+    mut text_q: Query<&mut bevy::text::TextFont>,
+) {
+    let action = trigger.event();
+    if !matches!(action.name.as_str(), "set_ui_font" | "set_font") {
+        return;
+    }
+    let name = match action.args.get("name") {
+        Some(renzora::ScriptActionValue::String(s)) => s.clone(),
+        _ => return,
+    };
+    let src = resolve_script_font(&name, registry.as_deref(), &asset);
+
+    match action.name.as_str() {
+        "set_ui_font" => {
+            if let Some(fonts) = fonts.as_mut() {
+                if src != fonts.ui {
+                    let old = std::mem::replace(&mut fonts.ui, src.clone());
+                    for mut tf in &mut text_q {
+                        if tf.font == old {
+                            tf.font = src.clone();
+                        }
+                    }
+                }
+            }
+        }
+        "set_font" => {
+            if let Ok(mut tf) = text_q.get_mut(action.entity) {
+                tf.font = src;
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Build the full runtime app (rendering + all engine plugins).
