@@ -69,7 +69,9 @@ impl<T: Clone> Sourced<T> {
             }
         } else if let Some(v) = fallback {
             Sourced {
-                value: f(&v.clone().into()),
+                // Bevy 0.19: `v` is `Ref<V>`; deref before cloning so we clone
+                // the inner `V` (and `Into<U>` it), not the `Ref`.
+                value: f(&(*v).clone().into()),
                 source: Source::SetFallback,
             }
         } else if let Some(v) = inherit {
@@ -124,6 +126,13 @@ pub(crate) struct ComputedInternal {
 #[derive(Clone, Component, Default)]
 #[require(ComputedOutlineKey)]
 pub struct ComputedOutline(pub(crate) Option<ComputedInternal>);
+
+// Bevy 0.19: `SyncComponentPlugin::<C>` requires `C: SyncComponent`. These are
+// self-syncing render-world components (the whole component crosses), so the
+// removal `Target` is the component itself.
+impl bevy::render::sync_component::SyncComponent for ComputedOutline {
+    type Target = Self;
+}
 
 type OutlineComponents<'a> = (
     Ref<'a, InheritedVisibility>,

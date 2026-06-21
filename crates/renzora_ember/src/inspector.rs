@@ -50,7 +50,7 @@ pub fn inspector_stripe(row_index: usize) -> Color {
 /// declarative field renderer and native drawers use this so every row matches.
 pub fn inspector_row(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     control: Entity,
 ) -> Entity {
@@ -59,7 +59,7 @@ pub fn inspector_row(
             Text::new(label),
             ui_font(font, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
         ))
         .id();
     let label_col = commands

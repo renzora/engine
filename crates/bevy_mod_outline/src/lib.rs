@@ -34,9 +34,12 @@ use std::any::TypeId;
 
 use bevy::asset::load_internal_asset;
 use bevy::camera::visibility::{RenderLayers, VisibilitySystems};
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::anti_alias::fxaa::fxaa;
+use bevy::anti_alias::smaa::smaa;
+use bevy::core_pipeline::tonemapping::tonemapping;
+use bevy::core_pipeline::{Core3d, Core3dSystems};
 use bevy::mesh::MeshVertexAttribute;
-use bevy::pbr::{MeshInputUniform, MeshUniform};
+use bevy::pbr::{MeshInputUniform, MeshPipelineSystems, MeshUniform};
 use bevy::prelude::TransformSystems;
 use bevy::prelude::*;
 use bevy::render::batching::gpu_preprocessing::{self, GpuPreprocessingSupport};
@@ -44,7 +47,6 @@ use bevy::render::batching::no_gpu_preprocessing::{
     clear_batched_cpu_instance_buffers, write_batched_instance_buffer, BatchedInstanceBuffer,
 };
 use bevy::render::extract_component::UniformComponentPlugin;
-use bevy::render::render_graph::{EmptyNode, RenderGraphExt, RenderLabel, ViewNodeRunner};
 use bevy::render::render_phase::{
     sort_phase_system, AddRenderCommand, BinnedRenderPhasePlugin, DrawFunctions, PhaseItem,
     SortedRenderPhasePlugin,
@@ -52,15 +54,19 @@ use bevy::render::render_phase::{
 use bevy::render::render_resource::{SpecializedMeshPipelines, VertexFormat};
 use bevy::render::renderer::RenderDevice;
 use bevy::render::sync_component::SyncComponentPlugin;
-use bevy::render::{Render, RenderApp, RenderDebugFlags, RenderSystems};
+use bevy::render::texture::FallbackImage;
+use bevy::render::{
+    init_gpu_resource, Render, RenderApp, RenderDebugFlags, RenderStartup, RenderSystems,
+};
 use uniforms::extract_outlines;
-use uniforms::AlphaMaskBindGroups;
+use uniforms::init_alpha_mask_bind_groups;
 use uniforms::RenderOutlineInstances;
 
-use crate::msaa::MsaaExtraWritebackNode;
-use crate::node::{OpaqueOutline, OutlineNode, StencilOutline, TransparentOutline};
+use crate::msaa::msaa_extra_writeback;
+use crate::node::{outline_pass, OpaqueOutline, StencilOutline, TransparentOutline};
 use crate::pipeline::{
-    OutlinePipeline, COMMON_SHADER_HANDLE, FRAGMENT_SHADER_HANDLE, OUTLINE_SHADER_HANDLE,
+    init_outline_pipeline, OutlinePipeline, COMMON_SHADER_HANDLE, FRAGMENT_SHADER_HANDLE,
+    OUTLINE_SHADER_HANDLE,
 };
 use crate::pipeline_key::{compute_outline_key, ComputedOutlineKey};
 use crate::queue::{
@@ -95,18 +101,6 @@ pub use generate::*;
 /// The direction to extrude the vertex when rendering the outline.
 pub const ATTRIBUTE_OUTLINE_NORMAL: MeshVertexAttribute =
     MeshVertexAttribute::new("Outline_Normal", 1585570526, VertexFormat::Float32x3);
-
-/// Labels for render graph nodes which draw outlines.
-#[derive(Copy, Clone, Debug, RenderLabel, Hash, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum NodeOutline {
-    /// This node writes back unsampled post-processing effects to the sampled attachment.
-    MsaaExtraWritebackPass,
-    /// This node runs after the main 3D passes and before the UI pass.
-    OutlinePass,
-    /// This node marks the end of the outline passes.
-    EndOutlinePasses,
-}
 
 /// A component for stenciling meshes during outline rendering.
 ///
@@ -465,26 +459,20 @@ impl Plugin for OutlinePlugin {
                 .in_set(RenderSystems::Cleanup)
                 .after(RenderSystems::Render),
         )
-        .add_render_graph_node::<ViewNodeRunner<MsaaExtraWritebackNode>>(
+        // Bevy 0.19: the render graph became systems in the `Core3d` schedule.
+        // The outline runs in the `PostProcess` set, after tonemapping (so it
+        // draws on the tonemapped frame) and before FXAA/SMAA (so the outline is
+        // anti-aliased) — the same ordering the old `Tonemapping → … → Fxaa/Smaa`
+        // graph edges gave. The MSAA writeback chains right before the outline.
+        .add_systems(
             Core3d,
-            NodeOutline::MsaaExtraWritebackPass,
-        )
-        .add_render_graph_node::<ViewNodeRunner<OutlineNode>>(Core3d, NodeOutline::OutlinePass)
-        .add_render_graph_node::<EmptyNode>(Core3d, NodeOutline::EndOutlinePasses)
-        // Outlining occurs after tone-mapping...
-        .add_render_graph_edges(
-            Core3d,
-            (
-                Node3d::Tonemapping,
-                NodeOutline::MsaaExtraWritebackPass,
-                NodeOutline::OutlinePass,
-                NodeOutline::EndOutlinePasses,
-                Node3d::EndMainPassPostProcessing,
-            ),
-        )
-        // ...and before any later anti-aliasing.
-        .add_render_graph_edge(Core3d, NodeOutline::EndOutlinePasses, Node3d::Fxaa)
-        .add_render_graph_edge(Core3d, NodeOutline::EndOutlinePasses, Node3d::Smaa);
+            (msaa_extra_writeback, outline_pass)
+                .chain()
+                .after(tonemapping)
+                .before(fxaa)
+                .before(smaa)
+                .in_set(Core3dSystems::PostProcess),
+        );
 
         #[cfg(feature = "reflect")]
         app.register_type::<OutlineStencil>()
@@ -500,8 +488,20 @@ impl Plugin for OutlinePlugin {
         render_app
             .init_resource::<RenderOutlineInstances>()
             .init_resource::<OutlineCache>()
-            .init_resource::<OutlinePipeline>()
-            .init_resource::<AlphaMaskBindGroups>();
+            // 0.19 moved render-resource init from `finish()` into `RenderStartup`
+            // systems. `OutlinePipeline` clones `MeshPipeline` (built by bevy's
+            // `init_mesh_pipeline` in the `MeshPipelineSystems` set), and
+            // `AlphaMaskBindGroups` reads both `OutlinePipeline` and `FallbackImage`
+            // (a `RenderStartup` GPU resource) — none exist at finish() anymore.
+            // Init them in `RenderStartup`: chained (alpha after pipeline) and
+            // anchored after the two upstream `RenderStartup` producers.
+            .add_systems(
+                RenderStartup,
+                (init_outline_pipeline, init_alpha_mask_bind_groups)
+                    .chain()
+                    .after(MeshPipelineSystems)
+                    .after(init_gpu_resource::<FallbackImage>),
+            );
 
         let render_device = render_app.world().resource::<RenderDevice>();
         let instance_buffer =

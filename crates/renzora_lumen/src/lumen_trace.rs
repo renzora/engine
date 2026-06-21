@@ -10,21 +10,18 @@
 //! depth disocclusion to absorb per-frame trace noise. Pattern mirrors
 //! `renzora_rt`'s SSGI temporal accumulator.
 
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy::core_pipeline::Core3d;
 use bevy::core_pipeline::prepass::ViewPrepassTextures;
 use bevy::ecs::query::QueryItem;
 use bevy::light::EnvironmentMapLight;
 use bevy::prelude::*;
 use bevy::render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use bevy::render::render_asset::RenderAssets;
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, texture_2d, texture_3d, texture_cube, texture_depth_2d, uniform_buffer,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
+use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::texture::{FallbackImage, GpuImage};
 use bevy::render::view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms};
 use bevy::render::{Render, RenderApp, RenderSystems};
@@ -34,7 +31,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::screen_reflection::ScreenReflectionResources;
 use crate::voxel_cache::{
-    VoxelCacheResources, VoxelCacheView, VoxelGridUniform, VoxelResolveLabel,
+    VoxelCacheResources, VoxelCacheView, VoxelGridUniform,
 };
 use renzora::LumenLighting;
 
@@ -79,6 +76,11 @@ pub struct TraceConfig {
 pub struct LumenSkyCubemap {
     pub diffuse_map: Handle<Image>,
     pub intensity: f32,
+}
+
+// Bevy 0.19: ExtractComponent requires SyncComponent.
+impl bevy::render::sync_component::SyncComponent for LumenSkyCubemap {
+    type Target = Self;
 }
 
 impl ExtractComponent for LumenSkyCubemap {
@@ -156,9 +158,6 @@ impl Clone for LumenTraceResources {
         }
     }
 }
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct LumenTraceLabel;
 
 impl FromWorld for LumenTracePipeline {
     fn from_world(world: &mut World) -> Self {
@@ -265,7 +264,7 @@ impl FromWorld for LumenTracePipeline {
                 targets: vec![
                     // Target 0: composited scene + indirect → view target.
                     Some(ColorTargetState {
-                        format: ViewTarget::TEXTURE_FORMAT_HDR,
+                        format: TextureFormat::Rgba16Float, // 0.19: TEXTURE_FORMAT_HDR deprecated
                         blend: None,
                         write_mask: ColorWrites::ALL,
                     }),
@@ -280,7 +279,7 @@ impl FromWorld for LumenTracePipeline {
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -410,11 +409,11 @@ pub fn prepare_lumen_trace_uniforms(
     }
 }
 
-#[derive(Default)]
-pub struct LumenTraceNode;
-
-impl ViewNode for LumenTraceNode {
-    type ViewQuery = (
+/// Lumen final trace pass. Bevy 0.19: was `LumenTraceNode: ViewNode`; now a
+/// render system in `LumenSystems::LumenTrace` (before tonemapping).
+pub fn lumen_trace_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ViewUniformOffset,
         &'static ViewPrepassTextures,
@@ -422,35 +421,41 @@ impl ViewNode for LumenTraceNode {
         &'static LumenTraceResources,
         &'static ScreenReflectionResources,
         Option<&'static LumenSkyCubemap>,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (view_target, view_offset, prepass, view, resources, screen_reflection, sky): QueryItem<
-            Self::ViewQuery,
-        >,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (view_target, view_offset, prepass, view, resources, screen_reflection, sky) =
+        view.into_inner();
+    {
         // inject_active is true exactly when LumenQuality >= SdfLow,
         // which is also when the cache is being maintained and we
         // want this trace running.
-        if !view.inject_active { return Ok(()); }
+        if !view.inject_active {
+            return;
+        }
         let _span = info_span!("lumen.trace").entered();
 
         let pipeline = world.resource::<LumenTracePipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let view_uniforms = world.resource::<ViewUniforms>();
 
-        let Some(render_pipeline) = pipeline_cache.get_render_pipeline(pipeline.pipeline_id)
-        else { return Ok(()); };
-        let Some(view_binding) = view_uniforms.uniforms.binding() else { return Ok(()); };
-        let Some(depth_view) = prepass.depth_view() else { return Ok(()); };
-        let Some(normal_view) = prepass.normal_view() else { return Ok(()); };
-        let Some(motion_view) = prepass.motion_vectors_view() else { return Ok(()); };
+        let Some(render_pipeline) = pipeline_cache.get_render_pipeline(pipeline.pipeline_id) else {
+            return;
+        };
+        let Some(view_binding) = view_uniforms.uniforms.binding() else {
+            return;
+        };
+        let Some(depth_view) = prepass.depth_view() else {
+            return;
+        };
+        let Some(normal_view) = prepass.normal_view() else {
+            return;
+        };
+        let Some(motion_view) = prepass.motion_vectors_view() else {
+            return;
+        };
         let Some(cache_res) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
 
         // Look up the sky cubemap. If the env map isn't ready yet (first
@@ -527,12 +532,11 @@ impl ViewNode for LumenTraceNode {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         render_pass.set_render_pipeline(render_pipeline);
         render_pass.set_bind_group(0, &bind_group, &[view_offset.offset]);
         render_pass.draw(0..3, 0..1);
-
-        Ok(())
     }
 }
 
@@ -557,13 +561,11 @@ impl Plugin for LumenTracePlugin {
                     Render,
                     prepare_lumen_trace_uniforms.in_set(RenderSystems::PrepareResources),
                 )
-                .add_render_graph_node::<ViewNodeRunner<LumenTraceNode>>(Core3d, LumenTraceLabel)
-                // Runs after the voxel cache is resolved (so we read fresh
-                // data this frame) and before tonemapping so output lands
-                // in HDR scene space.
-                .add_render_graph_edges(
+                // Bevy 0.19: `LumenSystems::LumenTrace` (after VoxelResolve,
+                // before tonemapping — both encoded in the shared lib.rs sets).
+                .add_systems(
                     Core3d,
-                    (VoxelResolveLabel, LumenTraceLabel, Node3d::Tonemapping),
+                    lumen_trace_pass.in_set(crate::LumenSystems::LumenTrace),
                 );
         }
     }

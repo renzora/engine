@@ -24,7 +24,7 @@ fn inspector_entry() -> InspectorEntry {
                 DirectionalLight {
                     color: Color::srgb(data.color.x, data.color.y, data.color.z),
                     illuminance: data.illuminance,
-                    shadows_enabled: data.shadows_enabled,
+                    shadow_maps_enabled: data.shadows_enabled,
                     ..default()
                 },
                 Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
@@ -44,6 +44,7 @@ fn inspector_entry() -> InspectorEntry {
             renzora::float_field!("Angular Diameter", Sun, angular_diameter, 0.01, 0.0, 10.0),
             renzora::float_field!("Disk Intensity", Sun, sun_disk_intensity, 0.01, 0.0, 10.0),
             renzora::bool_field!("Shadows", Sun, shadows_enabled),
+            renzora::bool_field!("Contact Shadows", Sun, contact_shadows),
         ],
     }
 }

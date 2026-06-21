@@ -197,7 +197,7 @@ fn auto_generate_outline_normals(
                 if squelch.contains(id) {
                     // Suppress modification events created by this system
                     squelch.remove(id);
-                } else if let Some(mesh) = meshes.get_mut(*id) {
+                } else if let Some(mut mesh) = meshes.get_mut(*id) {
                     let _ = mesh.generate_outline_normals(&plugin.settings);
                     squelch.insert(*id);
                 }

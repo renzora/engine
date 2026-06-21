@@ -152,7 +152,7 @@ impl<'w, 's> UiStyleQuery<'w, 's> {
         });
 
         _ = self.text_fonts.get_mut(entity).map(|mut font| {
-            font.font_size = computed.font_size;
+            font.font_size = bevy::text::FontSize::Px(computed.font_size);
             if let Some(h) = computed.font.as_ref() {
                 let (handle, update_style) = match h {
                     FontReference::Handle(handle) => (handle.clone(), false),
@@ -164,8 +164,9 @@ impl<'w, 's> UiStyleQuery<'w, 's> {
                     // on every frame
                     computed.font = Some(FontReference::Handle(handle.clone()));
                 }
-                if font.font != handle {
-                    font.font = handle;
+                let new_font = bevy::text::FontSource::Handle(handle);
+                if font.font != new_font {
+                    font.font = new_font;
                 }
             }
         });
@@ -329,18 +330,18 @@ impl<'w, 's> UiStyleQuery<'w, 's> {
             }
             StyleAttr::FontSize(s) => {
                 _ = self.text_fonts.get_mut(entity).map(|mut txt| {
-                    txt.font_size = computed.font_size.lerp(*s, ratio);
+                    txt.font_size = bevy::text::FontSize::Px(computed.font_size.lerp(*s, ratio));
                 });
             }
             StyleAttr::Font(h) => {
                 _ = self.text_fonts.get_mut(entity).map(|mut txt| {
                     txt.font = match h {
                         FontReference::Handle(handle) => {
-                            handle.clone()
+                            bevy::text::FontSource::Handle(handle.clone())
                         }
                         FontReference::Path(path) => {
                             warn!("Font path `{path}` is being loaded during a transition, this is not recommended!");
-                            self.server.load(path)
+                            bevy::text::FontSource::Handle(self.server.load(path))
                         }
                     };
                 });

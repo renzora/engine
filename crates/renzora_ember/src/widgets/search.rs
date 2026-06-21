@@ -555,8 +555,8 @@ fn category_header_styled(
             .spawn((
                 Text::new(icon_glyph("caret-down").unwrap_or('v').to_string()),
                 TextFont {
-                    font: fonts.phosphor.clone(),
-                    font_size: 11.0,
+                    font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                    font_size: bevy::text::FontSize::Px(11.0),
                     ..default()
                 },
                 TextColor(rgb(placeholder())),
@@ -652,8 +652,8 @@ fn item_row(
         .spawn((
             Text::new(glyph.to_string()),
             TextFont {
-                font: fonts.phosphor.clone(),
-                font_size: 14.0,
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
             TextColor(rgb(accent)),

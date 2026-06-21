@@ -17,7 +17,7 @@ pub(crate) struct EmberRadio {
 /// selected at a time.
 pub fn radio_group(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     options: &[&str],
     selected: usize,
 ) -> Entity {

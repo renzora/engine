@@ -1,0 +1,16 @@
+[package]
+name = "examples_common_2d"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+use-debug-plugin = []
+
+[dependencies]
+bevy = { version = "0.18.0", default-features = false, features = ["2d", "ui"] }
+avian2d = { path = "../avian2d", default-features = false, features = [
+    "diagnostic_ui",
+] }
+
+[lints]
+workspace = true

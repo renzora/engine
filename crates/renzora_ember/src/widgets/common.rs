@@ -8,7 +8,7 @@ use crate::theme::*;
 /// A `Text` entity in the UI font at `size` and `color`.
 pub(crate) fn text_node(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     text: &str,
     size: f32,
     color: (u8, u8, u8),
@@ -28,7 +28,7 @@ pub(crate) fn format_num(v: f32) -> String {
 }
 
 /// A labeled row: a fixed-width label on the left, a control on the right.
-pub fn field(commands: &mut Commands, font: &Handle<Font>, label: &str, control: Entity) -> Entity {
+pub fn field(commands: &mut Commands, font: &bevy::text::FontSource, label: &str, control: Entity) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -89,7 +89,7 @@ pub fn swatch(commands: &mut Commands, color: (u8, u8, u8)) -> Entity {
 }
 
 /// A section heading.
-pub fn heading(commands: &mut Commands, font: &Handle<Font>, text: &str) -> Entity {
+pub fn heading(commands: &mut Commands, font: &bevy::text::FontSource, text: &str) -> Entity {
     commands
         .spawn((
             Text::new(text),

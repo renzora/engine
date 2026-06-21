@@ -14,7 +14,7 @@ use bevy::ui::widget::{NodeImageMode, TextShadow};
 use bevy::ui::{
     AlignContent, AlignItems, AlignSelf, Display, FlexDirection, FlexWrap, GlobalZIndex,
     GridAutoFlow, GridPlacement, GridTrack, JustifyContent, JustifyItems, JustifySelf, Outline,
-    Overflow, OverflowAxis, OverflowClipBox, OverflowClipMargin, PositionType, RepeatedGridTrack,
+    Overflow, OverflowAxis, VisualBox, OverflowClipMargin, PositionType, RepeatedGridTrack,
     ZIndex,
 };
 use bevy::{
@@ -694,16 +694,16 @@ where
     )(input)
 }
 
-fn parse_overflow_visual_box<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], OverflowClipBox, E>
+fn parse_overflow_visual_box<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], VisualBox, E>
 where
     E: ParseError<&'a [u8]> + ContextError<&'a [u8]>,
 {
     context(
-        "Is not a valid `OverflowClipBox`, try `content_box` `padding_box` `border_box`",
+        "Is not a valid `VisualBox`, try `content_box` `padding_box` `border_box`",
         alt((
-            map(tag("content_box"), |_| OverflowClipBox::ContentBox),
-            map(tag("padding_box"), |_| OverflowClipBox::PaddingBox),
-            map(tag("border_box"), |_| OverflowClipBox::BorderBox),
+            map(tag("content_box"), |_| VisualBox::ContentBox),
+            map(tag("padding_box"), |_| VisualBox::PaddingBox),
+            map(tag("border_box"), |_| VisualBox::BorderBox),
         )),
     )(input)
 }

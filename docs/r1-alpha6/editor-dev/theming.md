@@ -97,6 +97,17 @@ Each `StyleToken` is a box style with per-state fills plus geometry and text:
 | `border_width`, `radius` | `f32` | Border thickness, corner radius (px) |
 | `pad_x`, `pad_y` | `f32` | Inner padding (px) |
 | `text`, `text_muted` | `Rgba` | Foreground colors |
+| `weight` | `f32` | Variable-font weight for the widget's text (100–900, 400 = normal) |
+| `letter_spacing` | `f32` | Letter spacing in logical px (0 = font default; negatives tighten) |
+| `line_height` | `f32` | Line height as a multiple of the font size (1.2 = default) |
+
+The three typography fields are applied live by the `apply_themed_text` system,
+which writes `weight` onto the `TextFont` of the text directly under each themed
+widget and inserts `LetterSpacing` / `LineHeight` components. Font *size* is
+deliberately **not** in the token — it stays with each `ui_font(size)` call and
+the global UI font-size scale, so theming typography is additive and never
+fights existing sizing. All three are `serde(default)`, so themes saved before
+they existed still load.
 
 Beyond the per-`Role` tokens, `Theme` also has **bespoke multi-element styles** as direct fields — `node_graph` (`NodeGraphStyle`), `asset_tile` (`AssetTileStyle`), `dock` (`DockStyle`: leaf/tab-bar/divider/shadow chrome), `top_bar` / `doc_tabs` / `status_bar` (`BarStyle`), and `timeline` (`TimelineStyle`). These let one element (e.g. a node-graph cable) be retargeted without smearing across the rest of the widget.
 

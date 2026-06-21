@@ -21,8 +21,10 @@ anyhow = "1.0"
 bitflags = "2.3"
 bytemuck = { version = "1.5", features = ["derive", "must_cast"] }
 fixedbitset = "0.5"
-naga = { version = "27", features = ["wgsl-in"] }
-naga_oil = { version = "0.20", default-features = false, features = ["test_shader"] }
+# Match wgpu 29's naga (29). naga_oil 0.22 tracks naga 29; on 0.20 (naga 27) the
+# composed `naga::Module` was a different type than wgpu 29's `ShaderSource::Naga`.
+naga = { version = "29", features = ["wgsl-in"] }
+naga_oil = { version = "0.22", default-features = false, features = ["test_shader"] }
 rand = "0.9"
 rand_pcg = "0.9"
 ron = "0.8"
@@ -37,18 +39,12 @@ typetag = { version = "0.2", optional = true }
 futures = "0.3"
 
 [dependencies.bevy]
-version = "0.18"
-default-features = false
-features = [
-    "bevy_core_pipeline",
-    "bevy_render",
-    "bevy_asset",
-    "bevy_log",
-    "x11",
-]
+workspace = true
 
+# Match bevy 0.19's wgpu (29) — hanabi hands GPU buffers/pipelines to bevy's
+# render world, so a version skew makes those distinct types.
 [dependencies.wgpu]
-version = "27"
+version = "29"
 default-features = false
 features = [
     "wgsl",

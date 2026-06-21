@@ -15,11 +15,73 @@
 //! (`SdfLow`/`SdfHigh`/`Hwrt`) parse but currently render the same as `Off`;
 //! Phases 2-6 of `docs/renzora_lumen_plan.md` fill them in.
 
+use bevy::core_pipeline::Core3d;
+use renzora::RenderPhase;
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponentPlugin;
+use bevy::render::RenderApp;
 use renzora::{
     LumenDebug, LumenLighting, LumenQuality, RtDebugMode, RtLighting, RtLightingExternallyManaged,
 };
+
+/// Bevy 0.19: the render graph became systems, so the Lumen GI pipeline's
+/// node ordering (formerly render-graph edges across the sub-modules) is now
+/// expressed as this shared `SystemSet` chain in the `Core3d` schedule. Each
+/// pass system runs `.in_set(LumenSystems::…)`; `configure_lumen_sets` wires the
+/// dependencies. All run in `EarlyPostProcess` (after the main pass, before
+/// tonemapping) except `VoxelDebug`, which runs after tonemapping.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum LumenSystems {
+    VoxelClear,
+    VoxelInject,
+    GeometryInject,
+    VoxelResolve,
+    VoxelDownsample,
+    ScreenReflectionTrace,
+    ScreenReflectionBlur,
+    ScreenReflectionResolve,
+    LumenTrace,
+    VoxelDebug,
+}
+
+/// Encode the GI pipeline ordering (the old render-graph edges) on the render
+/// app's `Core3d` schedule. Called once from `LumenPlugin::build`.
+///
+/// All GI passes join the shared `renzora::RenderPhase::Gi` set, which the
+/// render-composition framework anchors in `EarlyPostProcess` BEFORE bevy's TAA
+/// (so the GI composite lands in the temporal history — otherwise SSGI flicker /
+/// SDF grey from a scrambled `post_process_write` ping-pong). Lumen never imports
+/// bevy's TAA; the framework owns that anchor. See `docs/render-composition.md`.
+fn configure_lumen_sets(render_app: &mut SubApp) {
+    use LumenSystems::*;
+    // EndMainPass → Clear → Inject → GeometryInject → Resolve (chained).
+    render_app.configure_sets(
+        Core3d,
+        (VoxelClear, VoxelInject, GeometryInject, VoxelResolve)
+            .chain()
+            .in_set(RenderPhase::Gi),
+    );
+    // Resolve → Downsample (mip pyramid).
+    render_app.configure_sets(
+        Core3d,
+        VoxelDownsample.after(VoxelResolve).in_set(RenderPhase::Gi),
+    );
+    // Resolve → SR-Trace → SR-Blur → SR-Resolve → LumenTrace (chained).
+    render_app.configure_sets(
+        Core3d,
+        (
+            ScreenReflectionTrace,
+            ScreenReflectionBlur,
+            ScreenReflectionResolve,
+            LumenTrace,
+        )
+            .chain()
+            .after(VoxelResolve)
+            .in_set(RenderPhase::Gi),
+    );
+    // VoxelDebug is a post-tonemapping debug overlay.
+    render_app.configure_sets(Core3d, VoxelDebug.in_set(RenderPhase::Overlay));
+}
 
 mod geometry_voxelize;
 mod lumen_trace;
@@ -78,6 +140,11 @@ impl Plugin for LumenPlugin {
         // pyramid, resolve bilateral-upsamples it to full res, trace
         // reads the resolved buffer.
         app.add_plugins(ScreenReflectionResolvePlugin);
+
+        // Wire the GI pass ordering (replaces the old render-graph edges).
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            configure_lumen_sets(render_app);
+        }
 
         // Editor-only: the inspectors (Lumen + RT) and the diagnostics snapshot
         // the debugger's Lumen panel reads. This plugin loads at Runtime scope

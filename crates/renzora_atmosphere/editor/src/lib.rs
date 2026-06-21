@@ -5,7 +5,8 @@
 //! registered `renzora::add!(AtmosphereEditorPlugin, Editor)` and linked only
 //! by the editor bundle.
 
-use bevy::pbr::{Atmosphere, AtmosphereSettings};
+use bevy::light::Atmosphere; // 0.19: moved to bevy::light
+use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
 use renzora::{AppEditorExt, InspectorEntry};
 use renzora_atmosphere::{AtmosphereComponentSettings, AtmosphereMediumHandle};

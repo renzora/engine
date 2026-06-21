@@ -325,7 +325,7 @@ fn asset_row(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, inst
         .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
         .id();
     let name = commands
-        .spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap(), Node { overflow: Overflow::clip(), ..default() }))
+        .spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..default() }))
         .id();
     let meta = commands
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() })

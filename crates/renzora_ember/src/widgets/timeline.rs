@@ -363,7 +363,7 @@ pub fn timeline(commands: &mut Commands, fonts: &EmberFonts, duration_sec: f32, 
                                 Text::new(label),
                                 ui_font(&fonts.ui, 10.0),
                                 TextColor(rgb((20, 20, 26))),
-                                TextLayout::new_with_no_wrap(),
+                                TextLayout::no_wrap(),
                             ));
                         })
                         .id();

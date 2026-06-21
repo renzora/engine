@@ -792,7 +792,7 @@ fn drag_ghost(
             Text::new(payload.name.clone()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Pickable::IGNORE,
         ))
         .id();
@@ -1612,7 +1612,7 @@ fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
             ((150, 210, 120), "Texture")
         }
         "glb" | "gltf" | "obj" | "fbx" => ((255, 170, 100), "Model"),
-        "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
+        "bsn" | "ron" | "scn" | "scene" => ((115, 191, 242), "Scene"),
         "particle" => ((230, 160, 90), "Particle"),
         "wav" | "ogg" | "mp3" | "flac" => ((200, 130, 230), "Audio"),
         "html" => ((230, 120, 90), "Template"),
@@ -1648,7 +1648,7 @@ fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         "material" => "palette",
         "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
         "lua" | "rhai" | "rs" | "py" | "js" | "ts" => "code",
-        "scene" | "ron" | "scn" => "film-slate",
+        "scene" | "bsn" | "ron" | "scn" => "film-slate",
         "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
         "particle" => "sparkle",
         "blueprint" | "bp" => "blueprint",
@@ -2350,7 +2350,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
                 Text::new(entry.name.clone()),
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_primary())),
-                bevy::text::TextLayout::new_with_no_wrap(),
+                bevy::text::TextLayout::no_wrap(),
                 Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
                 Interaction::default(),
                 bevy::ui::FocusPolicy::Pass,
@@ -2363,7 +2363,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
             Text::new(type_label),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node { width: Val::Px(96.0), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
         ))
         .id();
@@ -2372,7 +2372,7 @@ fn list_row(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, fav: boo
             Text::new(if is_dir { String::new() } else { human_size(entry.size) }),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node { width: Val::Px(64.0), flex_shrink: 0.0, ..default() },
         ))
         .id();
@@ -2564,7 +2564,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
             Text::new(type_label),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(renzora_ember::theme::text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 overflow: Overflow::clip(),
                 ..default()
@@ -2917,7 +2917,7 @@ fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 min_width: Val::Px(0.0),
                 overflow: Overflow::clip(),
@@ -2964,7 +2964,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
         let g = commands
             .spawn((
                 Text::new(glyph.to_string()),
-                ui_font(&fonts.phosphor, 10.0),
+                ui_font(&bevy::text::FontSource::Handle(fonts.phosphor.clone()), 10.0),
                 TextColor(rgb(text_muted())),
                 Pickable::IGNORE,
             ))
@@ -3013,7 +3013,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
             Text::new(r.name.clone()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Pickable::IGNORE,
             Node {
                 min_width: Val::Px(0.0),

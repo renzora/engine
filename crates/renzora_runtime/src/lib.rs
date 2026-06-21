@@ -189,7 +189,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     init_io_task_pool_with_large_stack();
     let plugins = DefaultPlugins
             .set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(platform_wgpu_settings()),
+                render_creation: RenderCreation::Automatic(Box::new(platform_wgpu_settings())),
                 ..default()
             })
             .set(ImagePlugin {
@@ -251,6 +251,18 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         ..default()
     });
     app.add_plugins(plugins);
+    // Render recovery (Bevy 0.19): by default any `RenderError` quits the app —
+    // which means a GPU device-loss (driver reset, GPU hang, or an XR headset
+    // disconnect / compositor reset) hard-crashes the editor or game. Override
+    // the handler so a `DeviceLost` instead *recreates* the renderer with the
+    // exact settings the engine booted with (`platform_wgpu_settings()`), and
+    // every other fault keeps the app alive but stops rendering rather than
+    // strobing on a persistent OOM/validation error. Only the GPU client path
+    // installs this; the headless server has no renderer.
+    {
+        use bevy::render::error_handler::RenderErrorHandler;
+        app.insert_resource(RenderErrorHandler(render_error_policy));
+    }
     if is_editor {
         app.add_systems(Startup, maximize_primary_window);
     } else {
@@ -264,6 +276,55 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         app.add_systems(Startup, apply_window_config);
         app.add_systems(Update, apply_window_icon);
     }
+}
+
+/// The renderer error policy (Bevy 0.19 `RenderErrorHandler`). It's a bare `fn`
+/// pointer (no captured state), so it rebuilds the recovery `RenderCreation`
+/// from the same `platform_wgpu_settings()` the app booted with — a recovered
+/// device keeps the engine's custom features (e.g. `POLYGON_MODE_LINE`) instead
+/// of silently falling back to Bevy defaults.
+fn render_error_policy(
+    error: &bevy::render::error_handler::RenderError,
+    _main_world: &mut bevy::prelude::World,
+    _render_world: &mut bevy::prelude::World,
+) -> bevy::render::error_handler::RenderErrorPolicy {
+    use bevy::render::error_handler::{ErrorType, RenderErrorPolicy};
+    use bevy::render::settings::RenderCreation;
+    match error.ty {
+        // Recoverable: the device went away (driver reset / GPU hang / XR
+        // compositor reset). Re-create the renderer and carry on — this is the
+        // one case worth surviving silently.
+        ErrorType::DeviceLost => {
+            RenderErrorPolicy::Recover(RenderCreation::Automatic(Box::new(platform_wgpu_settings())))
+        }
+        // Transient surface/swapchain faults are expected during legitimate
+        // reconfiguration — entering/leaving play mode, window resize, viewport
+        // render-target swaps — where the surface texture is destroyed mid-submit
+        // and re-acquired next frame. Tolerate those (`Ignore` drops the bad
+        // frame and carries on); crashing on them would kill the editor every
+        // time you press Esc out of play mode.
+        _ if is_transient_surface_error(&error.description) => RenderErrorPolicy::Ignore,
+        // Anything else is treated as a real bug: panic so the engine's crash
+        // hook (`renzora_engine::crash`) saves a report + shows the native crash
+        // window, rather than silently freezing (the old `StopRendering`) or
+        // strobing (`Ignore` on a persistent fault).
+        _ => panic!(
+            "Unrecoverable GPU render error ({:?}): {}",
+            error.ty, error.description
+        ),
+    }
+}
+
+/// Heuristic: is this render-validation error a transient surface/swapchain
+/// reconfiguration fault (destroyed surface texture, outdated/lost swapchain)
+/// rather than a real pipeline bug? Those self-resolve on the next frame, so we
+/// tolerate them instead of crashing.
+fn is_transient_surface_error(description: &str) -> bool {
+    let d = description.to_lowercase();
+    (d.contains("surface") && d.contains("destroyed"))
+        || d.contains("surface texture")
+        || d.contains("outdated")
+        || d.contains("has been destroyed")
 }
 
 /// Headless plugin set for the dedicated server (`renzora-runtime --server`).
@@ -304,10 +365,10 @@ pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     app.add_plugins(
         DefaultPlugins
             .set(RenderPlugin {
-                render_creation: RenderCreation::Automatic(WgpuSettings {
+                render_creation: RenderCreation::Automatic(Box::new(WgpuSettings {
                     backends: None,
                     ..default()
-                }),
+                })),
                 ..default()
             })
             .set(WindowPlugin {
@@ -521,6 +582,11 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     info!("[runtime] foundation: PhysicsPlugin");
     app.add_plugins(renzora_physics::PhysicsPlugin);
 
+    // Font scripting: `action("set_ui_font"/"set_font", {name=...})`.
+    app.add_observer(handle_font_script_actions);
+    // Shipped game adopts the project's default UI font.
+    app.add_systems(Update, apply_game_ui_font);
+
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image
     // via `ViewportRenderTarget`, separate concern). The plugin is
@@ -537,6 +603,118 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
         info!("[runtime] static plugin: {}", plugin.name);
         (plugin.install)(app);
     });
+}
+
+/// Resolve a font name to a render source for scripting. Prefers the editor's
+/// `FontRegistry` (named built-ins + project fonts); otherwise treats a value
+/// ending in `.ttf`/`.otf` or containing `/` as a project asset path and
+/// anything else as a system family name — so it also works in a shipped game.
+fn resolve_script_font(
+    name: &str,
+    registry: Option<&renzora_ember::font::FontRegistry>,
+    asset: &AssetServer,
+) -> bevy::text::FontSource {
+    use bevy::text::{Font, FontSource};
+    if let Some(r) = registry {
+        if let Some(src) = r.resolve(name) {
+            return src;
+        }
+    }
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".ttf") || lower.ends_with(".otf") || name.contains('/') {
+        FontSource::Handle(asset.load::<Font>(name.to_string()))
+    } else {
+        FontSource::Family(name.into())
+    }
+}
+
+/// Apply font script actions. Scripts call them via the always-available
+/// generic action helper:
+/// - `action("set_ui_font", {name="Inter"})` — swap the global UI font.
+/// - `action("set_font", {name="Inter"})` — set the script's own entity's font.
+/// `name` resolves through [`resolve_script_font`] (registry / asset path /
+/// system family). Runs in the editor and shipped games.
+fn handle_font_script_actions(
+    trigger: On<renzora::ScriptAction>,
+    registry: Option<Res<renzora_ember::font::FontRegistry>>,
+    asset: Res<AssetServer>,
+    mut fonts: Option<ResMut<renzora_ember::font::EmberFonts>>,
+    mut text_q: Query<&mut bevy::text::TextFont>,
+) {
+    let action = trigger.event();
+    if !matches!(action.name.as_str(), "set_ui_font" | "set_font") {
+        return;
+    }
+    let name = match action.args.get("name") {
+        Some(renzora::ScriptActionValue::String(s)) => s.clone(),
+        _ => return,
+    };
+    let src = resolve_script_font(&name, registry.as_deref(), &asset);
+
+    match action.name.as_str() {
+        "set_ui_font" => {
+            if let Some(fonts) = fonts.as_mut() {
+                if src != fonts.ui {
+                    let old = std::mem::replace(&mut fonts.ui, src.clone());
+                    for mut tf in &mut text_q {
+                        if tf.font == old {
+                            tf.font = src.clone();
+                        }
+                    }
+                }
+            }
+        }
+        "set_font" => {
+            if let Ok(mut tf) = text_q.get_mut(action.entity) {
+                tf.font = src;
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Apply the project's default UI font (`ProjectConfig.ui_font`) at game
+/// startup. Editor sessions use the per-user editor font (EditorSettings) and
+/// are skipped; only the shipped game adopts the project default. Runs once,
+/// after the project + fonts are ready.
+fn apply_game_ui_font(
+    mut done: Local<bool>,
+    session: Option<Res<renzora::EditorSession>>,
+    project: Option<Res<renzora::CurrentProject>>,
+    registry: Option<Res<renzora_ember::font::FontRegistry>>,
+    asset: Res<AssetServer>,
+    fonts: Option<ResMut<renzora_ember::font::EmberFonts>>,
+    mut text_q: Query<&mut bevy::text::TextFont>,
+) {
+    if *done {
+        return;
+    }
+    // Editor uses EditorSettings.ui_font — only the shipped game adopts the
+    // project default.
+    if session.map(|s| s.0).unwrap_or(false) {
+        *done = true;
+        return;
+    }
+    let Some(project) = project else {
+        return; // wait for the project to load
+    };
+    let Some(name) = project.config.ui_font.clone() else {
+        *done = true; // no project default → keep the embedded font
+        return;
+    };
+    let Some(mut fonts) = fonts else {
+        return; // fonts not ready
+    };
+    let src = resolve_script_font(&name, registry.as_deref(), &asset);
+    if src != fonts.ui {
+        let old = std::mem::replace(&mut fonts.ui, src.clone());
+        for mut tf in &mut text_q {
+            if tf.font == old {
+                tf.font = src.clone();
+            }
+        }
+    }
+    *done = true;
 }
 
 /// Build the full runtime app (rendering + all engine plugins).

@@ -191,7 +191,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new(""),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Center),
             bevy::picking::Pickable::IGNORE,
         ))
         .id();

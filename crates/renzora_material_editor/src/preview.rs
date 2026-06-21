@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use uuid::Uuid;
@@ -181,7 +181,7 @@ fn setup_material_preview(
         DirectionalLight {
             color: Color::srgb(1.0, 0.98, 0.95),
             illuminance: 6000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.6, 0.4, 0.0)),
@@ -197,7 +197,7 @@ fn setup_material_preview(
         DirectionalLight {
             color: Color::srgb(0.6, 0.7, 0.9),
             illuminance: 2000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, 0.3, -0.8, 0.0)),
@@ -421,7 +421,7 @@ fn update_preview_material(
     // Assign textures — unused slots get fallback (never None)
     let fb = &fallback.0;
     for mat_handle in preview_mesh.iter() {
-        let Some(material) = materials.get_mut(&mat_handle.0) else {
+        let Some(mut material) = materials.get_mut(&mat_handle.0) else {
             warn!("[material_preview] Could not get material asset for preview mesh");
             continue;
         };
@@ -479,7 +479,7 @@ fn update_preview_material(
     let default_slots =
         renzora_shader::material::instance::build_default_param_slots(&result.parameters);
     for mat_handle in preview_mesh.iter() {
-        if let Some(material) = materials.get_mut(&mat_handle.0) {
+        if let Some(mut material) = materials.get_mut(&mat_handle.0) {
             material.extension.shader_uuid = Some(preview_uuid);
             material.extension.params.slots = default_slots;
         }

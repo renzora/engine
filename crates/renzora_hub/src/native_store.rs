@@ -287,7 +287,7 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let who_icon = icon_text(commands, &fonts.phosphor, "user-circle", text_muted(), 14.0);
     let who_col = commands.spawn(Node { flex_direction: FlexDirection::Column, min_width: Val::Px(0.0), ..default() }).id();
     let who_caption = commands.spawn((Text::new("Signed in as"), ui_font(&fonts.ui, 8.5), TextColor(rgb(text_muted())))).id();
-    let who_name = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap(), Node { overflow: Overflow::clip(), ..default() })).id();
+    let who_name = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..default() })).id();
     bind_text(commands, who_name, |w| {
         w.get_resource::<AuthSession>().and_then(|s| s.user.as_ref().map(|u| u.username.clone())).unwrap_or_default()
     });
@@ -373,7 +373,7 @@ fn build_preview_banner(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     bind_display(commands, banner, |w| w.resource::<ThemePreview>().previewing.is_some());
     let eye = icon_text(commands, &fonts.phosphor, "eye", accent(), 13.0);
-    let label = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }, bevy::text::TextLayout::new_with_no_wrap())).id();
+    let label = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }, bevy::text::TextLayout::no_wrap())).id();
     bind_text(commands, label, |w| w.resource::<ThemePreview>().previewing.clone().map(|n| format!("Previewing theme: {n}")).unwrap_or_default());
     let install = pill_btn(commands, fonts, "Install Theme", rgb(GREEN), PreviewInstallBtn);
     let stop = pill_btn(commands, fonts, "Stop", rgb(hover_bg()), StopPreviewBtn);
@@ -546,7 +546,7 @@ fn asset_card(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary) -> 
     }
     // Info.
     let info = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), padding: UiRect::all(Val::Px(8.0)), ..default() }).id();
-    let name = commands.spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap(), Node { overflow: Overflow::clip(), ..default() })).id();
+    let name = commands.spawn((Text::new(a.name.clone()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..default() })).id();
 
     // Category with a leading tag icon.
     let cat_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), ..default() }).id();

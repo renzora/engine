@@ -50,7 +50,7 @@ pub fn setup_scene(
     commands.spawn((
         DirectionalLight {
             illuminance: 8_000.0,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, 0.4, 0.0)),

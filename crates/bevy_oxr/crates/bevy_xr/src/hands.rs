@@ -189,6 +189,7 @@ pub struct SpawnHandTracker<B: Bundle> {
 }
 
 impl<B: Bundle> Command for SpawnHandTracker<B> {
+    type Out = ();
     fn apply(self, world: &mut World) {
         let Some(executor) = world.remove_resource::<SpawnHandTrackerCommandExecutor>() else {
             warn!("no SpawnHandTracker executor defined, skipping handtracker creation");

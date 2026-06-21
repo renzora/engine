@@ -1,20 +1,26 @@
-//! Server-side networking plugin and systems.
+//! Server-side networking over the from-scratch UDP transport.
+//!
+//! [`NetworkServer`] owns the listening socket + one [`Peer`] per connected
+//! client. [`server_poll`] pumps it each frame: delivering received RPCs to the
+//! server's own scripts, fanning them out to the other clients, and reporting
+//! join/leave so scripts get `on_player_joined` / `on_player_left`.
+
+use std::collections::HashMap;
+use std::net::{SocketAddr, UdpSocket};
+use std::time::Instant;
 
 use bevy::prelude::*;
-use lightyear::prelude::server::*;
-use lightyear::prelude::*;
 
 use crate::components::*;
 use crate::config::NetworkConfig;
-use crate::protocol;
+use crate::messages::GameEvent;
 use crate::status::{ConnectedClient, ConnectionState, NetworkStatus};
+use crate::transport::{decode, encode, Packet, Peer, MAX_DATAGRAM};
 
-use core::time::Duration;
-
-/// Server-side networking plugin.
-///
-/// Adds Lightyear server plugins, auto-replication, connection handling,
-/// and spawns the server entity on startup.
+/// Server-side networking plugin. Binds the UDP socket on startup and runs the
+/// receive/relay loop. A dedicated server adds only this; a host/listen server
+/// adds it alongside `NetworkPlugin` (the host *is* the server — its scripts
+/// run server-side, so its RPCs broadcast to clients with no extra local link).
 pub struct NetworkServerPlugin {
     pub config: NetworkConfig,
 }
@@ -29,161 +35,196 @@ impl Plugin for NetworkServerPlugin {
     fn build(&self, app: &mut App) {
         info!("[network] NetworkServerPlugin (port {})", self.config.port);
 
-        let tick_duration = Duration::from_secs_f64(1.0 / self.config.tick_rate as f64);
-
-        app.add_plugins(ServerPlugins { tick_duration });
-
-        // Register protocol (must be after ServerPlugins)
-        protocol::register_protocol(app);
-
-        // Server status
-        let status = NetworkStatus {
+        app.insert_resource(NetworkStatus {
             is_server: true,
             state: ConnectionState::Connected,
             ..Default::default()
-        };
-        app.insert_resource(status);
-
-        // Store config for startup system
+        });
         app.insert_resource(ServerNetworkConfig(self.config.clone()));
 
-        // RPC: scripts running on the server can send (broadcast to all
-        // clients), and the server relays client→client RPCs while also
-        // delivering them to its own scripts. The outbound queue + inbox are
-        // init'd by `NetworkPlugin` (which builds before this in both paths).
-        // `NetworkPlugin` skips its own observer setup in server mode, so the
-        // script-action observer is added here for server-side scripts.
+        // Server-side scripts can send RPCs (broadcast to all clients). The
+        // outbound queue + inboxes are init'd by `NetworkPlugin`, which builds
+        // first in every path; it skips its own observer in server mode, so the
+        // script-action observer is added here.
         app.add_observer(crate::script_extension::handle_network_script_actions);
-        app.add_observer(crate::rpc::receive_and_relay_rpcs);
 
-        // Systems
-        app.init_resource::<ConnectedPeers>();
-        app.add_systems(Startup, spawn_server_entity);
+        app.add_systems(Startup, start_server);
         app.add_systems(
             Update,
-            (
-                auto_replicate_networked,
-                handle_new_clients,
-                handle_disconnects,
-                assign_network_ids,
-                crate::rpc::send_outgoing_rpcs,
-            ),
+            (server_poll, assign_network_ids, crate::rpc::send_outgoing_rpcs),
         );
-
-        // Host/listen-server: this process also plays. Once the server has
-        // started, spawn a local client linked to it; lightyear's host
-        // observers promote it to a `HostClient` (in-process, no UDP for the
-        // local player). The client half (`ClientPlugins`) was added by
-        // `NetworkPlugin`, which ran first because it builds during
-        // `add_engine_plugins` and this plugin is added afterwards.
-        if app.world().contains_resource::<renzora::HostServer>() {
-            info!("[network] Host mode — local player will join as a host client");
-            app.add_systems(Update, spawn_host_client);
-        }
     }
 }
 
-/// Resource holding the server config for the startup system.
+/// Holds the server config for the startup system.
 #[derive(Resource)]
 struct ServerNetworkConfig(NetworkConfig);
 
-/// The server entity spawned at startup. Used by host mode to link the local
-/// client to it. Harmless in dedicated-server mode (no system reads it).
+/// The active server transport. Present once `start_server` has bound the
+/// socket; its absence (bind failure) leaves the server inert but compiling.
 #[derive(Resource)]
-struct ServerEntity(Entity);
-
-/// Spawn the server entity with UDP IO and netcode, then trigger Start.
-fn spawn_server_entity(mut commands: Commands, config: Res<ServerNetworkConfig>) {
-    let addr = format!("0.0.0.0:{}", config.0.port)
-        .parse::<std::net::SocketAddr>()
-        .unwrap_or_else(|_| {
-            std::net::SocketAddr::new(
-                std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
-                config.0.port,
-            )
-        });
-
-    info!("[network] Spawning server entity on {}", addr);
-
-    let server_entity = commands
-        .spawn((
-            ServerUdpIo::default(),
-            LocalAddr(addr),
-            NetcodeServer::new(NetcodeConfig::default()),
-            Name::new("NetworkServer"),
-        ))
-        .id();
-
-    commands.insert_resource(ServerEntity(server_entity));
-
-    // Trigger the server to start listening
-    commands.trigger(Start {
-        entity: server_entity,
-    });
+pub struct NetworkServer {
+    socket: UdpSocket,
+    peers: HashMap<SocketAddr, Peer>,
 }
 
-/// Host mode only: once the server has had a few ticks to reach `Started`,
-/// spawn the local player's client as a `LinkOf` the server and connect it.
-/// Lightyear's host observers then promote it to a `HostClient`. Runs once.
-///
-/// The small frame delay mirrors the validated host-server recipe
-/// (`tests/host_server.rs`): the server must be started before the local
-/// client connects.
-fn spawn_host_client(
-    mut commands: Commands,
-    server: Option<Res<ServerEntity>>,
-    mut frames: Local<u32>,
-    mut done: Local<bool>,
-) {
-    use lightyear::prelude::{Client, Connect, LinkOf};
-
-    if *done {
-        return;
-    }
-    let Some(server) = server else {
-        return;
-    };
-    *frames += 1;
-    if *frames < 5 {
-        return;
-    }
-
-    info!(
-        "[network] Host mode: joining as local host client (server {:?})",
-        server.0
-    );
-    let client = commands
-        .spawn((
-            Client::default(),
-            LinkOf { server: server.0 },
-            Name::new("HostClient"),
-        ))
-        .id();
-    commands.trigger(Connect { entity: client });
-    *done = true;
+/// What [`NetworkServer::update`] observed this frame.
+#[derive(Default)]
+pub struct ServerUpdate {
+    /// `(sender client_id, event)` for every reliable event received.
+    pub events: Vec<(u64, GameEvent)>,
+    /// client_ids that connected this frame.
+    pub joined: Vec<u64>,
+    /// client_ids that disconnected (graceful or timed out) this frame.
+    pub left: Vec<u64>,
 }
 
-/// When an entity gains the `Networked` marker, set it up for replication:
-/// replicate to all clients, and (unless `NetworkTransform.interpolate` is
-/// false) mark it as an interpolation target so remote peers smooth its
-/// `Transform` between snapshots. `Transform` itself replicates because it's
-/// registered in the protocol.
-fn auto_replicate_networked(
-    mut commands: Commands,
-    query: Query<(Entity, Option<&NetworkTransform>), Added<Networked>>,
-) {
-    for (entity, net_tf) in &query {
-        let interpolate = net_tf.is_none_or(|nt| nt.interpolate);
-        let mut ec = commands.entity(entity);
-        ec.insert(Replicate::to_clients(NetworkTarget::All));
-        if interpolate {
-            ec.insert(InterpolationTarget::to_clients(NetworkTarget::All));
+impl NetworkServer {
+    /// Bind a non-blocking UDP socket on `0.0.0.0:port`.
+    pub fn bind(port: u16) -> std::io::Result<Self> {
+        let socket = UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, port))?;
+        socket.set_nonblocking(true)?;
+        Ok(Self {
+            socket,
+            peers: HashMap::new(),
+        })
+    }
+
+    /// Poll the socket: accept new clients, collect received events, and detect
+    /// disconnects/timeouts. Also acks, resends, and keep-alives.
+    pub fn update(&mut self) -> ServerUpdate {
+        let mut out = ServerUpdate::default();
+        let mut buf = [0u8; MAX_DATAGRAM];
+        loop {
+            let (n, addr) = match self.socket.recv_from(&mut buf) {
+                Ok(v) => v,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => break,
+            };
+            let Some(packet) = decode(&buf[..n]) else { continue };
+            match packet {
+                Packet::ConnectRequest { client_id } => {
+                    if !self.peers.contains_key(&addr) {
+                        self.peers.insert(addr, Peer::new(addr, client_id));
+                        out.joined.push(client_id);
+                        info!("[network] Client connected: id={} addr={}", client_id, addr);
+                    }
+                    // Always (re-)accept — the accept datagram may have been lost.
+                    if let Some(peer) = self.peers.get_mut(&addr) {
+                        peer.last_recv = Instant::now();
+                        let _ = self.socket.send_to(
+                            &encode(&Packet::ConnectAccept { client_id }),
+                            addr,
+                        );
+                    }
+                }
+                Packet::Reliable { seq, event } => {
+                    if let Some(peer) = self.peers.get_mut(&addr) {
+                        peer.last_recv = Instant::now();
+                        if peer.on_reliable(&self.socket, seq) {
+                            out.events.push((peer.client_id, event));
+                        }
+                    }
+                }
+                Packet::Ack { seq } => {
+                    if let Some(peer) = self.peers.get_mut(&addr) {
+                        peer.last_recv = Instant::now();
+                        peer.on_ack(seq);
+                    }
+                }
+                Packet::KeepAlive => {
+                    if let Some(peer) = self.peers.get_mut(&addr) {
+                        peer.last_recv = Instant::now();
+                    }
+                }
+                Packet::Disconnect => {
+                    if let Some(peer) = self.peers.remove(&addr) {
+                        info!("[network] Client disconnected: id={}", peer.client_id);
+                        out.left.push(peer.client_id);
+                    }
+                }
+                Packet::ConnectAccept { .. } => {}
+            }
         }
-        info!("[network] Auto-replicate entity {:?} (interpolate={})", entity, interpolate);
+
+        // Time out silent peers.
+        let timed_out: Vec<SocketAddr> = self
+            .peers
+            .iter()
+            .filter(|(_, p)| p.timed_out())
+            .map(|(a, _)| *a)
+            .collect();
+        for addr in timed_out {
+            if let Some(peer) = self.peers.remove(&addr) {
+                info!("[network] Client timed out: id={}", peer.client_id);
+                out.left.push(peer.client_id);
+            }
+        }
+
+        for peer in self.peers.values_mut() {
+            peer.tick(&self.socket);
+        }
+        out
+    }
+
+    /// Reliably send an event to every connected client, optionally skipping
+    /// one (used to avoid echoing a relayed RPC back to its sender).
+    pub fn broadcast(&mut self, event: GameEvent, except: Option<u64>) {
+        for peer in self.peers.values_mut() {
+            if Some(peer.client_id) != except {
+                peer.send_reliable(&self.socket, event.clone());
+            }
+        }
     }
 }
 
-/// Assign `NetworkId` to newly networked entities that don't have one yet.
+/// Bind the server socket at startup.
+fn start_server(mut commands: Commands, config: Res<ServerNetworkConfig>) {
+    match NetworkServer::bind(config.0.port) {
+        Ok(server) => {
+            info!("[network] Server listening on 0.0.0.0:{}", config.0.port);
+            commands.insert_resource(server);
+        }
+        Err(e) => error!("[network] Failed to bind server socket: {e}"),
+    }
+}
+
+/// Per-frame: pump the server, deliver RPCs to local scripts + relay to other
+/// clients, and report join/leave to scripts and status.
+fn server_poll(
+    server: Option<ResMut<NetworkServer>>,
+    mut inbox: ResMut<renzora::ScriptRpcInbox>,
+    mut lifecycle: ResMut<renzora::ScriptNetLifecycleInbox>,
+    mut status: ResMut<NetworkStatus>,
+) {
+    let Some(mut server) = server else { return };
+    let update = server.update();
+
+    for (from, event) in update.events {
+        inbox.pending.push(renzora::IncomingRpc {
+            name: event.name.clone(),
+            args: crate::rpc::args_from_bytes(&event.data),
+            from,
+        });
+        // Fan out to the other clients (client→server→clients).
+        server.broadcast(event, Some(from));
+    }
+
+    for id in update.joined {
+        status.connected_clients.push(ConnectedClient {
+            client_id: id,
+            rtt_ms: 0.0,
+        });
+        lifecycle.pending.push(renzora::NetPlayerEvent { id, joined: true });
+    }
+    for id in update.left {
+        status.connected_clients.retain(|c| c.client_id != id);
+        lifecycle.pending.push(renzora::NetPlayerEvent { id, joined: false });
+    }
+}
+
+/// Assign a `NetworkId` to newly networked entities that lack one. (Full
+/// transform/state replication remains TODO — this just stamps the id.)
 fn assign_network_ids(
     mut commands: Commands,
     query: Query<Entity, (With<Networked>, Without<NetworkId>)>,
@@ -192,52 +233,5 @@ fn assign_network_ids(
     for entity in &query {
         *next_id += 1;
         commands.entity(entity).insert(NetworkId(*next_id));
-    }
-}
-
-/// Connection-entity → peer id, kept so a disconnect can report the right id
-/// to `on_player_left` after the connection's components are gone.
-#[derive(Resource, Default)]
-struct ConnectedPeers(std::collections::HashMap<Entity, u64>);
-
-/// A client connected (`Added<Connected>` on a `ClientOf` link): record it,
-/// update status, and queue `on_player_joined(id)` for scripts. The id is the
-/// real lightyear peer id, so it matches the `from` a script sees in `on_rpc`.
-fn handle_new_clients(
-    query: Query<(Entity, &RemoteId), (Added<Connected>, With<ClientOf>)>,
-    mut status: ResMut<NetworkStatus>,
-    mut peers: ResMut<ConnectedPeers>,
-    mut lifecycle: ResMut<renzora::ScriptNetLifecycleInbox>,
-) {
-    for (entity, remote) in &query {
-        let id = crate::rpc::peer_id_to_u64(remote.0);
-        info!("[network] Client connected: entity={:?} id={}", entity, id);
-        peers.0.insert(entity, id);
-        status.connected_clients.push(ConnectedClient {
-            client_id: id,
-            rtt_ms: 0.0,
-        });
-        lifecycle
-            .pending
-            .push(renzora::NetPlayerEvent { id, joined: true });
-    }
-}
-
-/// A client disconnected (`Connected` removed): queue `on_player_left(id)` and
-/// drop it from status. Uses the tracked id since the connection is gone.
-fn handle_disconnects(
-    mut removed: RemovedComponents<Connected>,
-    mut status: ResMut<NetworkStatus>,
-    mut peers: ResMut<ConnectedPeers>,
-    mut lifecycle: ResMut<renzora::ScriptNetLifecycleInbox>,
-) {
-    for entity in removed.read() {
-        if let Some(id) = peers.0.remove(&entity) {
-            info!("[network] Client disconnected: entity={:?} id={}", entity, id);
-            status.connected_clients.retain(|c| c.client_id != id);
-            lifecycle
-                .pending
-                .push(renzora::NetPlayerEvent { id, joined: false });
-        }
     }
 }

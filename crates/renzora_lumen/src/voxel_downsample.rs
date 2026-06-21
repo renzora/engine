@@ -15,26 +15,19 @@
 //! pairs `(2k, 2k+1)` always land in the same cascade's Z range. No
 //! cascade-aware indexing needed in the shader.
 
-use bevy::core_pipeline::core_3d::graph::Core3d;
-use bevy::ecs::query::QueryItem;
+use bevy::core_pipeline::Core3d;
 use bevy::prelude::*;
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, texture_3d, texture_storage_3d,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice};
+use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
 use bevy::render::RenderApp;
 use bevy::utils::default;
 
 use crate::voxel_cache::{
-    VoxelCacheResources, VoxelCacheView, VoxelResolveLabel, VOXEL_MIP_COUNT, VOXEL_RES,
+    VoxelCacheResources, VoxelCacheView, VOXEL_MIP_COUNT, VOXEL_RES,
 };
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct VoxelDownsampleLabel;
 
 #[derive(Resource)]
 pub struct VoxelDownsamplePipeline {
@@ -90,7 +83,7 @@ impl FromWorld for VoxelDownsamplePipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("downsample".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -102,31 +95,27 @@ impl FromWorld for VoxelDownsamplePipeline {
     }
 }
 
-#[derive(Default)]
-pub struct VoxelDownsampleNode;
-
-impl ViewNode for VoxelDownsampleNode {
-    type ViewQuery = &'static VoxelCacheView;
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        view: QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+/// Voxel mip-pyramid downsample. Bevy 0.19: was `VoxelDownsampleNode: ViewNode`;
+/// now a render system in `LumenSystems::VoxelDownsample` (after VoxelResolve).
+pub fn voxel_downsample_pass(
+    world: &World,
+    view: ViewQuery<&'static VoxelCacheView>,
+    mut render_context: RenderContext,
+) {
+    let view = view.into_inner();
+    {
         if !view.inject_active {
-            return Ok(());
+            return;
         }
         let _span = info_span!("voxel.downsample").entered();
 
         let pipeline = world.resource::<VoxelDownsamplePipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(compute) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
-            return Ok(());
+            return;
         };
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
 
         let layout = pipeline_cache.get_bind_group_layout(&pipeline.layout);
@@ -163,8 +152,6 @@ impl ViewNode for VoxelDownsampleNode {
             let dispatch_z = dst_z.div_ceil(4);
             pass.dispatch_workgroups(dispatch_xy, dispatch_xy, dispatch_z);
         }
-
-        Ok(())
     }
 }
 
@@ -176,19 +163,12 @@ impl Plugin for VoxelDownsamplePlugin {
         bevy::asset::embedded_asset!(app, "voxel_downsample.wgsl");
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
-            render_app
-                .add_render_graph_node::<ViewNodeRunner<VoxelDownsampleNode>>(
-                    Core3d,
-                    VoxelDownsampleLabel,
-                )
-                // Slot right after the resolve fills mip 0. Other
-                // consumers (screen-space reflection trace, lumen
-                // trace) come later in the graph and read the
-                // finished pyramid.
-                .add_render_graph_edges(
-                    Core3d,
-                    (VoxelResolveLabel, VoxelDownsampleLabel),
-                );
+            // Bevy 0.19: `LumenSystems::VoxelDownsample` (after VoxelResolve, per
+            // the shared lib.rs set ordering).
+            render_app.add_systems(
+                Core3d,
+                voxel_downsample_pass.in_set(crate::LumenSystems::VoxelDownsample),
+            );
         }
     }
 

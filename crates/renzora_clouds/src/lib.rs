@@ -225,7 +225,7 @@ fn sync_clouds(
     if let Some(dome_entity) = clouds_state.entity {
         if commands.get_entity(dome_entity).is_ok() {
             if let Some(ref mat_handle) = clouds_state.material_handle {
-                if let Some(mat) = cloud_materials.get_mut(mat_handle) {
+                if let Some(mut mat) = cloud_materials.get_mut(mat_handle) {
                     mat.params_a = params_a;
                     mat.params_b = params_b;
                     mat.cloud_color = cloud_color;

@@ -18,25 +18,25 @@ tracing = { version = "0.1", optional = true }
 log = "0.4.27"
 
 [dependencies.avian2d]
-version = "0.5"
+path = "../avian/crates/avian2d"
 features = ["2d", "f32", "parry-f32"]
 default-features = false
 optional = true
 
 [dependencies.avian3d]
-version = "0.6.1"
+path = "../avian/crates/avian3d"
 features = ["3d", "f32", "parry-f32"]
 default-features = false
 optional = true
 
 [dependencies.polyanya]
-version = "0.16.0"
+# Vendored at crates/polyanya with glam bumped 0.30 → 0.32 (bevy 0.19's glam),
+# so polyanya's `Vec2`/`Coords` and bevy's `Vec2` are the same type.
+path = "../polyanya"
 features = ["serde"]
 
 [dependencies.bevy]
-version = "0.18.0"
-features = ["bevy_render", "bevy_asset", "bevy_log"]
-default-features = false
+workspace = true
 
 [dev-dependencies]
 rand = "0.9"
@@ -44,11 +44,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [dev-dependencies.polyanya]
-version = "0.16.0"
+path = "../polyanya"
 features = ["serde"]
 
 [dev-dependencies.bevy]
-version = "0.18.0"
+workspace = true
 
 [features]
 default = ["debug-with-gizmos"]

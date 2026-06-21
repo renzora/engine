@@ -1,0 +1,16 @@
+[package]
+name = "bvh2d"
+description = "A fast BVH using SAH for 2d"
+version = "0.7.0"
+edition = "2021"
+readme = "README.md"
+repository = "https://github.com/mockersf/bvh2d"
+documentation = "https://docs.rs/crate/bvh2d"
+license = "MIT"
+
+[features]
+serde = ["glam/serde", "dep:serde"]
+
+[dependencies]
+glam = "0.30"
+serde = { version = "1.0", features = ["derive"], optional = true }

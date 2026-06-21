@@ -1,6 +1,6 @@
 use bevy::{
     camera::visibility::RenderLayers,
-    math::Affine3,
+    math::{Affine3, Affine3Ext},
     mesh::skinning::SkinnedMesh,
     pbr::SkinUniforms,
     platform::collections::HashMap,
@@ -161,7 +161,8 @@ pub(crate) fn extract_outlines(
             automatic_batching: !no_automatic_batching
                 && computed.mode.value.draw_mode == DrawMode::Extrude,
             instance_data: OutlineInstanceUniform {
-                world_from_local: Affine3::from(&transform.affine()).to_transpose(),
+                // Bevy 0.19: `Affine3: From<Affine3A>` is by value, not by ref.
+                world_from_local: Affine3::from(transform.affine()).to_transpose(),
                 world_plane_origin: computed.depth.value.world_plane_origin,
                 world_plane_offset: computed.depth.value.world_plane_offset,
                 stencil_offset: computed.stencil.value.offset,
@@ -225,6 +226,15 @@ impl FromWorld for AlphaMaskBindGroups {
             ),
         }
     }
+}
+
+/// Build [`AlphaMaskBindGroups`] in `RenderStartup` (chained after
+/// `init_outline_pipeline`), since its `from_world` reads both `OutlinePipeline`
+/// (now a `RenderStartup` resource) and `FallbackImage` (a 0.19 `RenderStartup`
+/// GPU resource) — neither exists at `Plugin::finish` time anymore.
+pub(crate) fn init_alpha_mask_bind_groups(world: &mut World) {
+    let bind_groups = AlphaMaskBindGroups::from_world(world);
+    world.insert_resource(bind_groups);
 }
 
 pub(crate) fn prepare_alpha_mask_bind_groups(

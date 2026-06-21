@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-use crate::extension::ScriptExtensionCommand;
-
 // Re-export from renzora for backwards compatibility
 pub use renzora::{CharacterCommand, CharacterCommandQueue};
 
@@ -556,10 +554,6 @@ pub enum ScriptCommand {
         callback: String,
     },
 
-    // === Extension (legacy) ===
-    /// Custom command from a script extension. Downcasted by the extension's
-    /// command processor via `as_any()`.
-    Extension(Box<dyn ScriptExtensionCommand>),
 }
 
 // Re-export PropertyValue from renzora for backwards compatibility

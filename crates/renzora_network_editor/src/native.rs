@@ -102,7 +102,7 @@ fn centered(
                 Text::new(sub.to_string()),
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(MUTED)),
-                bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+                bevy::text::TextLayout::justify(bevy::text::Justify::Center),
             ))
             .id();
         kids.push(s);

@@ -8,7 +8,7 @@ use super::common::text_node;
 use super::text_input::text_input;
 
 /// A floating-label field (label floated above a filled input).
-pub fn floating_label(commands: &mut Commands, font: &Handle<Font>, label: &str, value: &str) -> Entity {
+pub fn floating_label(commands: &mut Commands, font: &bevy::text::FontSource, label: &str, value: &str) -> Entity {
     let col = commands
         .spawn((
             Node {

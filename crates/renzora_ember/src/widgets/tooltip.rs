@@ -11,7 +11,7 @@ pub(crate) struct EmberTooltip {
 }
 
 /// Wraps `target` so hovering it reveals a tooltip bubble above.
-pub fn tooltip(commands: &mut Commands, font: &Handle<Font>, label: &str, target: Entity) -> Entity {
+pub fn tooltip(commands: &mut Commands, font: &bevy::text::FontSource, label: &str, target: Entity) -> Entity {
     let wrap = commands
         .spawn((
             Node {
@@ -43,7 +43,7 @@ pub fn tooltip(commands: &mut Commands, font: &Handle<Font>, label: &str, target
                 Text::new(label),
                 ui_font(font, 11.0),
                 TextColor(rgb(text_primary())),
-                TextLayout::new_with_no_wrap(),
+                TextLayout::no_wrap(),
             ));
         })
         .id();

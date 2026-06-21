@@ -4,7 +4,8 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::light::{
-    EnvironmentMapLight, LightProbe, VolumetricLight,
+    EnvironmentMapLight, GeneratedEnvironmentMapLight, LightProbe, ParallaxCorrection,
+    VolumetricLight,
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
@@ -74,6 +75,55 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                     Name::new("Spot Light"),
                     Transform::default(),
                     SpotLight::default(),
+                ))
+                .id()
+        },
+    });
+
+    // Bevy 0.19 rectangular area light. Edited via `rect_light_entry()`
+    // (color/intensity/range/width/height). `RectLight` requires
+    // Transform/Visibility (auto-added). The rectangle lies in the local XY
+    // plane and emits toward local -Z, so an identity transform would sit it at
+    // the origin firing sideways (grazing the ground into a thin fan). Spawn it
+    // elevated and aimed straight down so it casts a recognizable rectangle.
+    registry.register(EntityPreset {
+        id: "rect_light",
+        display_name: "Rect Light",
+        icon: "square",
+        category: "lighting",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Rect Light"),
+                    Transform::from_xyz(0.0, 3.0, 0.0)
+                        .looking_at(Vec3::ZERO, Vec3::Z),
+                    RectLight::default(),
+                ))
+                .id()
+        },
+    });
+
+    // Bevy 0.19 parallax-corrected reflection probe: a `LightProbe` bounded by
+    // the entity's Transform, with a `ReflectionProbeSource` (the authored
+    // cubemap/HDR path). The GPU `GeneratedEnvironmentMapLight` is **not** added
+    // here — `renzora_environment_map` attaches it only once a valid power-of-two
+    // cube is ready, because bevy's filter would otherwise run on the 1×1 default
+    // handle and spam GPU validation errors. `ParallaxCorrection::Auto` is set
+    // explicitly so the box is editable from frame 0.
+    registry.register(EntityPreset {
+        id: "reflection_probe",
+        display_name: "Reflection Probe",
+        icon: "globe",
+        category: "lighting",
+        spawn_fn: |world| {
+            world
+                .spawn((
+                    Name::new("Reflection Probe"),
+                    Transform::from_scale(Vec3::splat(4.0)),
+                    Visibility::default(),
+                    LightProbe::default(),
+                    ParallaxCorrection::Auto,
+                    renzora::core::ReflectionProbeSource::default(),
                 ))
                 .id()
         },
@@ -287,6 +337,14 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
         dynamic_icon_fn: None,
     });
     registry.register(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<RectLight>(),
+        name: "Rect Light",
+        icon: "square",
+        color: [255, 200, 80],
+        priority: 90,
+        dynamic_icon_fn: None,
+    });
+    registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<AmbientLight>(),
         name: "Ambient Light",
         icon: "sun-dim",
@@ -314,13 +372,18 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(directional_light_entry());
     registry.register(point_light_entry());
     registry.register(spot_light_entry());
+    registry.register(rect_light_entry());
     registry.register(ambient_light_entry());
+    registry.register(generated_environment_map_entry());
+    registry.register(text_font_entry());
+    registry.register(text_rich_entry());
     registry.register(camera_entry());
     registry.register(camera_presets_entry());
     registry.register(camera3d_entry());
     registry.register(mesh3d_entry());
     registry.register(environment_map_light_entry());
     registry.register(light_probe_entry());
+    registry.register(parallax_correction_entry());
     registry.register(lightmap_entry());
     registry.register(volumetric_light_entry());
     // `volumetric_fog_entry()` removed -- `renzora_volumetric_fog` now
@@ -627,12 +690,12 @@ fn directional_light_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     world
                         .get::<DirectionalLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<DirectionalLight>(entity) {
-                            l.shadows_enabled = v;
+                            l.shadow_maps_enabled = v;
                         }
                     }
                 },
@@ -720,12 +783,129 @@ fn point_light_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     world
                         .get::<PointLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<PointLight>(entity) {
-                            l.shadows_enabled = v;
+                            l.shadow_maps_enabled = v;
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
+fn rect_light_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "rect_light",
+        display_name: "Rect Light",
+        icon: "square",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<RectLight>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(RectLight::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<RectLight>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Color",
+                field_type: FieldType::Color,
+                get_fn: |world, entity| {
+                    world.get::<RectLight>(entity).map(|l| {
+                        let c = l.color.to_srgba();
+                        FieldValue::Color([c.red, c.green, c.blue])
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Color([r, g, b]) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.color = Color::srgb(r, g, b);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Intensity",
+                field_type: FieldType::Float {
+                    speed: 100.0,
+                    min: 0.0,
+                    max: 10_000_000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.intensity = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Range",
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.range))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.range = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Width",
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.width))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.width = v;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Height",
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: 0.0,
+                    max: 1000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<RectLight>(entity)
+                        .map(|l| FieldValue::Float(l.height))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut l) = world.get_mut::<RectLight>(entity) {
+                            l.height = v;
                         }
                     }
                 },
@@ -853,12 +1033,12 @@ fn spot_light_entry() -> InspectorEntry {
                 get_fn: |world, entity| {
                     world
                         .get::<SpotLight>(entity)
-                        .map(|l| FieldValue::Bool(l.shadows_enabled))
+                        .map(|l| FieldValue::Bool(l.shadow_maps_enabled))
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::Bool(v) = val {
                         if let Some(mut l) = world.get_mut::<SpotLight>(entity) {
-                            l.shadows_enabled = v;
+                            l.shadow_maps_enabled = v;
                         }
                     }
                 },
@@ -912,6 +1092,262 @@ fn ambient_light_entry() -> InspectorEntry {
                     if let FieldValue::Float(v) = val {
                         if let Some(mut l) = world.get_mut::<AmbientLight>(entity) {
                             l.brightness = v;
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
+/// Bevy `TextFont` (the per-entity font of any text component). The fields are
+/// empty — a native drawer (`renzora_inspector`, `type_id = "text_font"`) renders
+/// the font picker (bound to the shared `FontRegistry`) + size.
+fn text_font_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "text_font",
+        display_name: "Text Font",
+        icon: "text-aa",
+        category: "rendering",
+        has_fn: |world, entity| world.get::<TextFont>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(TextFont::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<TextFont>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+    }
+}
+
+/// Bevy rich text — the styled `TextSpan` runs under a `Text` / `Text2d`. The
+/// fields are empty; a native drawer (`renzora_inspector`, `type_id =
+/// "text_rich"`) lists the spans with per-run text + color + add/remove. Shown
+/// whenever the entity has a text component (not separately addable).
+fn text_rich_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "text_rich",
+        display_name: "Rich Text",
+        icon: "text-t",
+        category: "rendering",
+        has_fn: |world, entity| {
+            world.get::<Text>(entity).is_some() || world.get::<Text2d>(entity).is_some()
+        },
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![],
+    }
+}
+
+/// Bevy `LightProbe` — a reflection probe (bounds via Transform). Carries the
+/// authored cubemap **Source** + **Intensity** (`ReflectionProbeSource`, which
+/// is what persists) and the influence **Falloff**. The GPU
+/// `GeneratedEnvironmentMapLight` is attached by `renzora_environment_map` only
+/// once a valid cube is ready, so it's not edited directly here.
+fn light_probe_entry() -> InspectorEntry {
+    use renzora::core::ReflectionProbeSource;
+    InspectorEntry {
+        type_id: "light_probe",
+        display_name: "Reflection Probe",
+        icon: "globe",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert((LightProbe::default(), ReflectionProbeSource::default()));
+        }),
+        remove_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .remove::<(LightProbe, ReflectionProbeSource, GeneratedEnvironmentMapLight)>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                // Equirect `.exr`/`.hdr`/`.png` (reprojected to a POT cube) or a
+                // `.ktx2`/`.dds` cube container. Stored on `ReflectionProbeSource`
+                // so it persists; the GPU cube is regenerated on load.
+                name: "Source (HDR / Cube)",
+                field_type: FieldType::Asset {
+                    extensions: vec![
+                        "exr".into(),
+                        "hdr".into(),
+                        "png".into(),
+                        "ktx2".into(),
+                        "dds".into(),
+                    ],
+                },
+                get_fn: |world, entity| {
+                    let path = world
+                        .get::<ReflectionProbeSource>(entity)
+                        .map(|s| s.path.clone())
+                        .filter(|s| !s.is_empty());
+                    Some(FieldValue::Asset(path))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Asset(path) = val {
+                        let intensity = world
+                            .get::<ReflectionProbeSource>(entity)
+                            .map(|s| s.intensity)
+                            .unwrap_or(1.0);
+                        world.entity_mut(entity).insert(ReflectionProbeSource {
+                            path: path.unwrap_or_default(),
+                            intensity,
+                        });
+                    }
+                },
+            },
+            FieldDef {
+                name: "Intensity",
+                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10000.0 },
+                get_fn: |world, entity| {
+                    world
+                        .get::<ReflectionProbeSource>(entity)
+                        .map(|s| FieldValue::Float(s.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(f) = val {
+                        if let Some(mut s) = world.get_mut::<ReflectionProbeSource>(entity) {
+                            s.intensity = f;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Falloff",
+                field_type: FieldType::Vec3 { speed: 0.01 },
+                get_fn: |world, entity| {
+                    world
+                        .get::<LightProbe>(entity)
+                        .map(|p| FieldValue::Vec3(p.falloff.to_array()))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Vec3(v) = val {
+                        if let Some(mut p) = world.get_mut::<LightProbe>(entity) {
+                            p.falloff = Vec3::from_array(v);
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
+/// Bevy `ParallaxCorrection` — how a reflection probe's cubemap is box-corrected.
+/// `None` = infinite (no correction); `Auto` = the probe's Transform cube;
+/// `Custom` = manual half-extents (editing "Half Extents" switches to Custom).
+fn parallax_correction_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "parallax_correction",
+        display_name: "Parallax Correction",
+        icon: "bounding-box",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<ParallaxCorrection>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world.entity_mut(entity).insert(ParallaxCorrection::Auto);
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<ParallaxCorrection>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Mode",
+                field_type: FieldType::Enum {
+                    options: &["None", "Auto", "Custom"],
+                },
+                get_fn: |world, entity| {
+                    world.get::<ParallaxCorrection>(entity).map(|p| {
+                        FieldValue::Enum(
+                            match p {
+                                ParallaxCorrection::None => "None",
+                                ParallaxCorrection::Auto => "Auto",
+                                ParallaxCorrection::Custom(_) => "Custom",
+                            }
+                            .to_string(),
+                        )
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Enum(s) = val {
+                        // Preserve existing custom extents when re-selecting Custom.
+                        let existing = world
+                            .get::<ParallaxCorrection>(entity)
+                            .and_then(|p| match p {
+                                ParallaxCorrection::Custom(v) => Some(*v),
+                                _ => None,
+                            })
+                            .unwrap_or(Vec3::splat(0.5));
+                        let next = match s.as_str() {
+                            "None" => ParallaxCorrection::None,
+                            "Custom" => ParallaxCorrection::Custom(existing),
+                            _ => ParallaxCorrection::Auto,
+                        };
+                        world.entity_mut(entity).insert(next);
+                    }
+                },
+            },
+            FieldDef {
+                name: "Half Extents",
+                field_type: FieldType::Vec3 { speed: 0.05 },
+                get_fn: |world, entity| {
+                    world.get::<ParallaxCorrection>(entity).map(|p| {
+                        let v = match p {
+                            ParallaxCorrection::Custom(v) => *v,
+                            _ => Vec3::splat(0.5),
+                        };
+                        FieldValue::Vec3(v.to_array())
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Vec3(v) = val {
+                        // Editing the extents implies Custom correction.
+                        world
+                            .entity_mut(entity)
+                            .insert(ParallaxCorrection::Custom(Vec3::from_array(v)));
+                    }
+                },
+            },
+        ],
+    }
+}
+
+/// Bevy `GeneratedEnvironmentMapLight` — the GPU side of a reflection probe,
+/// attached automatically by `renzora_environment_map` once a valid cube is
+/// ready (source + intensity are edited on the probe's `ReflectionProbeSource`,
+/// not here). Shown when present so the niche `affects_lightmapped` toggle is
+/// reachable; not directly addable (adding it with no cube fails GPU validation).
+fn generated_environment_map_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "generated_environment_map_light",
+        display_name: "Environment Map",
+        icon: "image",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<GeneratedEnvironmentMapLight>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Affects Lightmaps",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world
+                        .get::<GeneratedEnvironmentMapLight>(entity)
+                        .map(|g| FieldValue::Bool(g.affects_lightmapped_mesh_diffuse))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(b) = val {
+                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
+                            g.affects_lightmapped_mesh_diffuse = b;
                         }
                     }
                 },
@@ -1196,36 +1632,6 @@ fn environment_map_light_entry() -> InspectorEntry {
                 },
             },
         ],
-    }
-}
-
-fn light_probe_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "light_probe",
-        display_name: "Light Probe",
-        icon: "broadcast",
-        category: "lighting",
-        has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(LightProbe);
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<LightProbe>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Info",
-            field_type: FieldType::ReadOnly,
-            get_fn: |world, entity| {
-                world.get::<LightProbe>(entity).map(|_| {
-                    FieldValue::ReadOnly(
-                        "Marker — add an EnvironmentMapLight".to_string(),
-                    )
-                })
-            },
-            set_fn: |_, _, _| {},
-        }],
     }
 }
 

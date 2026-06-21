@@ -47,7 +47,7 @@ pub(crate) fn pick_mesh_under_pointer(
         Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
         Res<ViewportState>,
     )> = SystemState::new(world);
-    let (mut ray_cast, camera_q, vp_state) = state.get_mut(world);
+    let (mut ray_cast, camera_q, vp_state) = state.get_mut(world).unwrap();
 
     let (camera, camera_transform) = camera_q.iter().next()?;
 

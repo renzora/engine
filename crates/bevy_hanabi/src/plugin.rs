@@ -2,6 +2,8 @@
 use bevy::core_pipeline::core_2d::Transparent2d;
 #[cfg(feature = "3d")]
 use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
+// Bevy 0.19: the global render-schedule system the particle sim orders before.
+use bevy::core_pipeline::schedule::camera_driver;
 use bevy::{
     asset::uuid_handle,
     camera::visibility::VisibilitySystems,
@@ -9,10 +11,11 @@ use bevy::{
     render::{
         extract_component::ExtractComponentPlugin,
         render_asset::prepare_assets,
-        render_graph::RenderGraph,
         render_phase::DrawFunctions,
         render_resource::{SpecializedComputePipelines, SpecializedRenderPipelines},
-        renderer::{RenderAdapterInfo, RenderDevice},
+        // Bevy 0.19: `RenderGraph`/`RenderGraphSystems` are now the global
+        // render schedule + its system sets (not the old graph resource).
+        renderer::{RenderAdapterInfo, RenderDevice, RenderGraph, RenderGraphSystems},
         texture::GpuImage,
         view::prepare_view_uniforms,
         Render, RenderApp, RenderSystems,
@@ -42,7 +45,7 @@ use crate::{
         ParticlesInitPipeline, ParticlesRenderPipeline, ParticlesUpdatePipeline,
         PropertyBindGroups, PropertyCache, RenderDebugSettings, ShaderCache, SimParams,
         SortBindGroups, SortedEffectBatches, StorageType as _, UtilsPipeline,
-        VfxSimulateDriverNode, VfxSimulateNode,
+        vfx_simulate,
     },
     spawn::{self, Random},
     tick_spawners,
@@ -102,32 +105,11 @@ pub enum EffectSystems {
     PrepareBindGroups,
 }
 
-pub mod main_graph {
-    pub mod node {
-        use bevy::render::render_graph::RenderLabel;
-
-        /// Label for the simulation driver node running the simulation graph.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, RenderLabel)]
-        pub struct HanabiDriverNode;
-    }
-}
-
-pub mod simulate_graph {
-    use bevy::render::render_graph::RenderSubGraph;
-
-    /// Name of the simulation sub-graph.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, RenderSubGraph)]
-    pub struct HanabiSimulateGraph;
-
-    pub mod node {
-        use bevy::render::render_graph::RenderLabel;
-
-        /// Label for the simulation node (init and update compute passes;
-        /// view-independent).
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, RenderLabel)]
-        pub struct HanabiSimulateNode;
-    }
-}
+// Bevy 0.19 removed the render graph + sub-graphs, so the old `main_graph` /
+// `simulate_graph` render-graph label modules (HanabiDriverNode /
+// HanabiSimulateGraph / HanabiSimulateNode) are gone. The simulation now runs as
+// the `vfx_simulate` render system in the global `RenderGraph` schedule — see
+// the `add_systems(RenderGraph, …)` call in `build()`.
 
 const HANABI_COMMON_TEMPLATE_HANDLE: Handle<Shader> =
     uuid_handle!("626E7AD3-4E54-487E-B796-9A90E34CC1EC");
@@ -567,24 +549,19 @@ impl Plugin for HanabiPlugin {
                 .add(draw_particles);
         }
 
-        // Add the simulation sub-graph. This render graph runs once per frame no matter
-        // how many cameras/views are active (view-independent).
-        let mut simulate_graph = RenderGraph::default();
-        let simulate_node = VfxSimulateNode::new(render_app.world_mut());
-        simulate_graph.add_node(simulate_graph::node::HanabiSimulateNode, simulate_node);
-        let mut graph = render_app
-            .world_mut()
-            .get_resource_mut::<RenderGraph>()
-            .unwrap();
-        graph.add_sub_graph(simulate_graph::HanabiSimulateGraph, simulate_graph);
-
-        // Add the simulation driver node which executes the simulation sub-graph. It
-        // runs before the camera driver, since rendering needs to access simulated
-        // particles.
-        graph.add_node(main_graph::node::HanabiDriverNode, VfxSimulateDriverNode {});
-        graph.add_node_edge(
-            main_graph::node::HanabiDriverNode,
-            bevy::render::graph::CameraDriverLabel,
+        // Run the GPU particle simulation once per frame. Bevy 0.19 replaced the
+        // render graph with schedules: `vfx_simulate` is a global render system
+        // in the top-level `RenderGraph` schedule (the simulation is
+        // view-independent, so it does NOT belong in the per-view `Core3d`
+        // schedule). It must run in `RenderGraphSystems::Render` (the set whose
+        // command buffers get submitted) and `.before(camera_driver)` so each
+        // view renders just-simulated particles — the same ordering the old
+        // driver-node → CameraDriver edge gave.
+        render_app.add_systems(
+            RenderGraph,
+            vfx_simulate
+                .in_set(RenderGraphSystems::Render)
+                .before(camera_driver),
         );
     }
 }

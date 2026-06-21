@@ -204,7 +204,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Left),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Left),
             Node { width: Val::Percent(100.0), ..default() },
         ))
         .id();
@@ -255,7 +255,7 @@ where
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
         ))
         .id();
     commands.entity(row).add_children(&[cb, lbl]);
@@ -405,7 +405,7 @@ fn volume_card(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, name
             Text::new("Debug Draw"),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
         ))
         .id();
     let rebuild = button(commands, &fonts.ui, "Rebuild");

@@ -8,7 +8,7 @@ use crate::theme::*;
 use super::common::text_node;
 
 /// A titled card (themed `Card` container with a heading + body).
-pub fn card(commands: &mut Commands, font: &Handle<Font>, title: &str, body: &str) -> Entity {
+pub fn card(commands: &mut Commands, font: &bevy::text::FontSource, title: &str, body: &str) -> Entity {
     let c = commands
         .spawn((
             Node {

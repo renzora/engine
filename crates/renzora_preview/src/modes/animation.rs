@@ -34,9 +34,9 @@ fn handle_animation_commands(
                     commands.entity(entity).insert(Visibility::Hidden);
                 }
 
-                let scene_handle: Handle<Scene> = asset_server.load(&event.url);
+                let scene_handle: Handle<bevy::world_serialization::WorldAsset> = asset_server.load(&event.url);
                 commands.spawn((
-                    SceneRoot(scene_handle.clone()),
+                    bevy::world_serialization::WorldAssetRoot(scene_handle.clone()),
                     Transform::IDENTITY,
                     PreviewModel,
                 ));

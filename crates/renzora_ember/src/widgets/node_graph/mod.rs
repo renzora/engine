@@ -220,7 +220,7 @@ fn update_grid(
         let pan = view.pan / isf; // logical → physical px
         let spacing = GRID_SPACING / isf;
         let dot_r = (1.5 * view.zoom.sqrt()) / isf;
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.view = Vec4::new(view.zoom, pan.x, pan.y, spacing);
             m.size = Vec4::new(dot_r, 0.0, 0.0, 0.0);
             m.bg = Vec4::new(bg.red, bg.green, bg.blue, 1.0);
@@ -731,7 +731,7 @@ pub(crate) fn update_endpoints(
         let p0 = fgt.translation - top_left;
         let p3 = tgt.translation - top_left;
         let (p1, p2) = control_points(p0, p3);
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.ab = Vec4::new(p0.x, p0.y, p1.x, p1.y);
             m.cd = Vec4::new(p2.x, p2.y, p3.x, p3.y);
             m.color = Vec4::new(accent.red, accent.green, accent.blue, 1.0);

@@ -7,8 +7,10 @@
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
-use ring::rand::SystemRandom;
-use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
+use p256::ecdsa::signature::Signer as _;
+use p256::ecdsa::SigningKey;
+use p256::pkcs8::{DecodePrivateKey as _, EncodePrivateKey as _};
+use p256::SecretKey;
 
 const CHUNK_SIZE: usize = 1024 * 1024; // 1 MB
 const EOCD_SIG: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
@@ -21,9 +23,10 @@ const ECDSA_SHA256_ID: u32 = 0x0201;
 pub fn sign_apk(apk_path: &Path) -> io::Result<()> {
     let (pkcs8_der, cert_der) = load_or_generate_key()?;
 
-    let rng = SystemRandom::new();
-    let key_pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &pkcs8_der, &rng)
+    // PKCS8 (de)serialization lives on `SecretKey`; derive the ECDSA signer from it.
+    let secret_key = SecretKey::from_pkcs8_der(&pkcs8_der)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("Bad signing key: {e}")))?;
+    let signing_key = SigningKey::from(&secret_key);
 
     let apk_data = std::fs::read(apk_path)?;
 
@@ -47,17 +50,21 @@ pub fn sign_apk(apk_path: &Path) -> io::Result<()> {
     // Build the signed-data structure
     let signed_data = build_signed_data(&content_digest, &cert_der);
 
-    // Sign signed_data with ECDSA P-256 SHA-256
-    let sig = key_pair
-        .sign(&rng, &signed_data)
+    // Sign signed_data with ECDSA P-256 SHA-256 (RFC 6979 deterministic).
+    // APK v2 (algo 0x0201) wants the ASN.1 DER ECDSA-Sig-Value, which `to_der`
+    // produces; the fixed-size form would be rejected.
+    let signature: p256::ecdsa::Signature = signing_key
+        .try_sign(&signed_data)
         .map_err(|_| io::Error::other("ECDSA signing failed"))?;
+    let sig = signature.to_der();
 
-    // Public key in SubjectPublicKeyInfo DER format (from the certificate)
-    // Build SPKI wrapper for the EC public key
-    let spki = build_ec_spki(key_pair.public_key().as_ref());
+    // Public key as the uncompressed SEC1 point (0x04 || X || Y), the form
+    // `build_ec_spki` wraps into a SubjectPublicKeyInfo.
+    let verifying_point = signing_key.verifying_key().to_encoded_point(false);
+    let spki = build_ec_spki(verifying_point.as_bytes());
 
     // Assemble the v2 signer block and the full APK Signing Block
-    let v2_block = build_v2_block(&signed_data, sig.as_ref(), &spki);
+    let v2_block = build_v2_block(&signed_data, sig.as_bytes(), &spki);
     let signing_block = build_signing_block(&v2_block);
 
     // Write the signed APK: [entries][signing block][CD][EOCD']
@@ -115,7 +122,19 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
 
     bevy::log::info!("Generating debug signing key...");
 
-    let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+    // Generate the P-256 key with RustCrypto, then drive rcgen's certificate
+    // builder through its crypto-free `RemoteKeyPair` path so the cert is signed
+    // by this very key without rcgen ever pulling `ring`/`aws-lc-rs`.
+    let secret_key = SecretKey::random(&mut rand_core::OsRng);
+    let pkcs8_der = secret_key
+        .to_pkcs8_der()
+        .map_err(|e| io::Error::other(format!("PKCS8 encode failed: {e}")))?
+        .as_bytes()
+        .to_vec();
+    let signing_key = SigningKey::from(&secret_key);
+
+    let remote = P256RemoteKey::new(signing_key);
+    let key_pair = rcgen::KeyPair::from_remote(Box::new(remote))
         .map_err(|e| io::Error::other(format!("Keygen failed: {e}")))?;
 
     let mut params = rcgen::CertificateParams::default();
@@ -133,7 +152,6 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
         .self_signed(&key_pair)
         .map_err(|e| io::Error::other(format!("Cert gen failed: {e}")))?;
 
-    let pkcs8_der = key_pair.serialize_der();
     let cert_der = cert.der().to_vec();
 
     std::fs::write(&key_path, &pkcs8_der)?;
@@ -141,6 +159,44 @@ fn load_or_generate_key() -> io::Result<(Vec<u8>, Vec<u8>)> {
 
     bevy::log::info!("Debug signing key saved to {}", dir.display());
     Ok((pkcs8_der, cert_der))
+}
+
+/// Bridges our RustCrypto `p256` signing key into rcgen's bring-your-own-crypto
+/// `RemoteKeyPair` trait, so certificate signing is done by this key and rcgen
+/// never links `ring`/`aws-lc-rs`.
+struct P256RemoteKey {
+    key: SigningKey,
+    /// Uncompressed SEC1 public point (0x04 || X || Y); rcgen wraps it in SPKI.
+    public_key: Vec<u8>,
+}
+
+impl P256RemoteKey {
+    fn new(key: SigningKey) -> Self {
+        let public_key = key
+            .verifying_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec();
+        Self { key, public_key }
+    }
+}
+
+impl rcgen::RemoteKeyPair for P256RemoteKey {
+    fn public_key(&self) -> &[u8] {
+        &self.public_key
+    }
+
+    fn sign(&self, msg: &[u8]) -> Result<Vec<u8>, rcgen::Error> {
+        // rcgen hands us the raw TBSCertificate; ECDSA-with-SHA256 hashes it
+        // internally and the X.509 signature value is the ASN.1 DER Sig-Value.
+        let sig: p256::ecdsa::Signature =
+            self.key.try_sign(msg).map_err(|_| rcgen::Error::RemoteKeyError)?;
+        Ok(sig.to_der().as_bytes().to_vec())
+    }
+
+    fn algorithm(&self) -> &'static rcgen::SignatureAlgorithm {
+        &rcgen::PKCS_ECDSA_P256_SHA256
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -172,27 +228,27 @@ fn find_eocd(data: &[u8]) -> io::Result<usize> {
 // ---------------------------------------------------------------------------
 
 fn compute_content_digest(entries: &[u8], cd: &[u8], eocd: &[u8]) -> Vec<u8> {
-    use ring::digest::{Context, SHA256};
+    use sha2::{Digest, Sha256};
 
     let mut chunk_digests = Vec::new();
     let mut chunk_count: u32 = 0;
 
     for section in [entries, cd, eocd] {
         for chunk in section.chunks(CHUNK_SIZE) {
-            let mut ctx = Context::new(&SHA256);
-            ctx.update(&[0xa5]);
-            ctx.update(&(chunk.len() as u32).to_le_bytes());
+            let mut ctx = Sha256::new();
+            ctx.update([0xa5]);
+            ctx.update((chunk.len() as u32).to_le_bytes());
             ctx.update(chunk);
-            chunk_digests.extend_from_slice(ctx.finish().as_ref());
+            chunk_digests.extend_from_slice(&ctx.finalize());
             chunk_count += 1;
         }
     }
 
-    let mut ctx = Context::new(&SHA256);
-    ctx.update(&[0x5a]);
-    ctx.update(&chunk_count.to_le_bytes());
+    let mut ctx = Sha256::new();
+    ctx.update([0x5a]);
+    ctx.update(chunk_count.to_le_bytes());
     ctx.update(&chunk_digests);
-    ctx.finish().as_ref().to_vec()
+    ctx.finalize().to_vec()
 }
 
 // ---------------------------------------------------------------------------
@@ -405,24 +461,24 @@ mod tests {
     /// 0x5a-prefixed hash over the chunk-digest concatenation. Literal
     /// constants on purpose, so production drift gets caught.
     fn spec_digest(sections: &[&[u8]]) -> Vec<u8> {
-        use ring::digest::{Context, SHA256};
+        use sha2::{Digest, Sha256};
         let mut chunk_digests = Vec::new();
         let mut count: u32 = 0;
         for section in sections {
             for chunk in section.chunks(1024 * 1024) {
-                let mut ctx = Context::new(&SHA256);
-                ctx.update(&[0xa5]);
-                ctx.update(&(chunk.len() as u32).to_le_bytes());
+                let mut ctx = Sha256::new();
+                ctx.update([0xa5]);
+                ctx.update((chunk.len() as u32).to_le_bytes());
                 ctx.update(chunk);
-                chunk_digests.extend_from_slice(ctx.finish().as_ref());
+                chunk_digests.extend_from_slice(&ctx.finalize());
                 count += 1;
             }
         }
-        let mut ctx = Context::new(&SHA256);
-        ctx.update(&[0x5a]);
-        ctx.update(&count.to_le_bytes());
+        let mut ctx = Sha256::new();
+        ctx.update([0x5a]);
+        ctx.update(count.to_le_bytes());
         ctx.update(&chunk_digests);
-        ctx.finish().as_ref().to_vec()
+        ctx.finalize().to_vec()
     }
 
     #[test]

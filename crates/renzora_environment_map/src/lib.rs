@@ -25,6 +25,8 @@ use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedE
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
+mod probe;
+
 /// User-authored settings for sky-driven image-based lighting. Attach to
 /// any non-camera entity (typically a "World Environment") and the plugin
 /// routes its values onto every active camera via `EffectRouting`.
@@ -255,6 +257,10 @@ impl Plugin for EnvironmentMapPlugin {
             )
                 .chain(),
         );
+        // Reflection probes: resolve each probe's authored source path into the
+        // POT cubemap its `GeneratedEnvironmentMapLight` needs (runs in the
+        // editor and the shipped game).
+        app.add_systems(Update, probe::apply_reflection_probe_source);
     }
 }
 

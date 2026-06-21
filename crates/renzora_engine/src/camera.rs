@@ -10,14 +10,16 @@ use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrep
 use bevy::core_pipeline::Skybox;
 use bevy::image::Image;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
-use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight};
-use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::light::{
+    AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
+};
+use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
 use bevy::render::render_resource::{
     Extent3d, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
     TextureViewDimension,
 };
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
 use renzora::core::PlayModeState;
 use renzora::viewport_types::EditorCameraMatrix;
@@ -44,13 +46,9 @@ use renzora::viewport_types::EditorCameraMatrix;
 pub fn spawn_editor_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
-    mut mediums: ResMut<Assets<ScatteringMedium>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
-
-    // One ScatteringMedium asset shared by every viewport camera's atmosphere.
-    let default_medium = mediums.add(ScatteringMedium::default());
 
     // Valid placeholder cubemap so the secondary cameras can carry an
     // `EnvironmentMapLight` from spawn (the IBL bind-group slots can't be added
@@ -102,6 +100,12 @@ pub fn spawn_editor_camera(
             // covers every other `Camera3d` in the editor (previews,
             // thumbnails, etc.), so we don't special-case it here.
             (NormalPrepass, DepthPrepass, MotionVectorPrepass),
+            // NOTE: `bevy::pbr::ContactShadows` is NOT attached here. Bevy 0.19's
+            // deferred lighting pipeline doesn't wire it up (it claims the same
+            // `mesh_view` binding 16 as `area_light_luts`, tripping a wgpu layout
+            // mismatch) — an upstream bug. `ensure_contact_shadows_on_forward_
+            // cameras` (lib.rs) attaches it to FORWARD cameras only, where it
+            // works; the `Sun`'s contact-shadow toggle then takes effect there.
         ));
 
         // Only the PRIMARY camera carries the procedural sky + IBL. In Bevy
@@ -121,15 +125,13 @@ pub fn spawn_editor_camera(
         // maps, and `share_sky_to_secondary_viewports` gives them the primary's
         // baked cubemap as a Skybox.
         if i == 0 {
+            // 0.19: the `Atmosphere` itself lives on a separate stationary
+            // "planet" entity managed by `renzora_atmosphere` (putting it on the
+            // camera makes the sky rotate with the view). The camera only carries
+            // `AtmosphereSettings` (the per-view render mode) + the IBL bake.
             entity.insert((
                 PrimaryViewportCamera,
                 EditorCamera,
-                Atmosphere {
-                    bottom_radius: 6_360_000.0,
-                    top_radius: 6_460_000.0,
-                    ground_albedo: Vec3::splat(0.3),
-                    medium: default_medium.clone(),
-                },
                 AtmosphereSettings::default(),
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
@@ -233,10 +235,11 @@ pub fn share_sky_to_secondary_viewports(
     };
     let image = &generated.environment_map;
     for (entity, skybox) in &secondary {
-        let up_to_date = skybox.is_some_and(|s| s.image.id() == image.id());
+        // Bevy 0.19: `Skybox.image` is now `Option<Handle<Image>>`.
+        let up_to_date = skybox.is_some_and(|s| s.image.as_ref() == Some(image));
         if !up_to_date {
             commands.entity(entity).insert(Skybox {
-                image: image.clone(),
+                image: Some(image.clone()),
                 brightness: SHARED_SKY_BRIGHTNESS,
                 rotation: Quat::IDENTITY,
             });

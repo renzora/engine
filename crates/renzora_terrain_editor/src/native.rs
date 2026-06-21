@@ -979,7 +979,7 @@ fn material_drop_zone(commands: &mut Commands, fonts: &EmberFonts, layer: usize)
             Text::new(""),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();

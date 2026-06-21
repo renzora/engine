@@ -27,7 +27,26 @@ members = [
     "crates/bevy_procedural_tree",
     "crates/bevy_silk",
     "crates/vleue_navigator",
+    # vleue_navigator's pathfinding deps, vendored to bump their glam 0.30 → 0.32
+    # (bevy 0.19's glam). Upstream polyanya 0.16.1 is the latest and still pins
+    # glam 0.30, which would otherwise clash with bevy's glam (two `Vec2` types).
+    "crates/polyanya",
+    "crates/bvh2d",
+    # Avian physics closure. `avian/` is its own nested workspace (like
+    # `bevy_oxr`), referenced by path; these three are its ecosystem deps,
+    # already ported to Bevy 0.19 upstream, kept as members so they share the
+    # one workspace Bevy via `workspace = true`.
+    "crates/bevy_heavy",
+    "crates/bevy_transform_interpolation",
+    "crates/glam_matrix_extras",
 ]
+# `crates/avian` is a vendored NESTED workspace — its avian2d/avian3d crates use
+# `workspace = true` against avian's OWN [workspace.dependencies]. Exclude it so
+# cargo doesn't absorb those crates into THIS workspace (which would make their
+# `workspace = true` resolve here and fail). It's pulled in by path from the
+# physics consumers. (bevy_oxr is the same shape but uses explicit versions, so
+# it doesn't trip the inheritance lookup.)
+exclude = ["crates/avian"]
 # Crates parked under `disabled/` are intentionally outside the `crates/*`
 # glob so they don't enter the workspace. `disabled/renzora_vr_editor`
 # references items in `renzora_xr` that no longer exist
@@ -51,7 +70,68 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 # which `plugin_bevy_hash()` checks at dlopen time). Mobile/wasm builds
 # under `cargo build -p <mobile_crate>` only see their own dep tree
 # (resolver = "2") and stay clean of dynamic_linking.
-bevy = { version = "0.18", features = ["bluenoise_texture", "experimental_pbr_pcss", "jpeg", "serialize"] }
+# Bevy feature policy — ABI-stability driven (read before touching this list).
+# Plugins dlopen against ONE shared `bevy_dylib`; its compiled feature set IS
+# the API surface every plugin can reach AND an input to the ABI hash. So we
+# enable a deliberately MAXIMAL-but-valid set here, once: "everything a plugin
+# could practically want" minus the three things that physically cannot be
+# blanket-enabled — (1) mutually-exclusive backends, (2) platform-specific
+# features, (3) dev/CI/trace features. Per-target backend choices live in the
+# `wasm` feature below and the mobile crates, not here. Widening this set later
+# costs an intra-version ABI bump, so we front-load it.
+#
+# Deliberately OMITTED (each would be an ABI bump to add — do it with eyes open):
+#   meshlet, meshlet_processor, bevy_solari       experimental / heavy / ray-traced
+#   dlss, force_disable_dlss                      NVIDIA proprietary SDK
+#   trace*, detailed_trace, bevy_dev_tools,       dev/CI only (trace backends are
+#     bevy_ci_testing, bevy_debug_stepping,         mutually exclusive anyway)
+#     bevy_ui_debug, debug, *glam_assert,
+#     embedded_watcher, hotpatching, track_location, schedule_data
+#   zstd_c, reflect_auto_register_static,         superseded by the chosen
+#     default_no_std / critical-section / libm / web   std + zstd_rust variants
+#   statically-linked-dxc, spirv_shader_passthrough, raw_vulkan_init   per-backend
+#   webgl2/webgpu/x11/wayland/android-*/accesskit_unix   per-target (see wasm/mobile)
+#
+# SOURCE: 0.19.0 final is tagged on GitHub (v0.19.0) but not yet published to
+# crates.io (only 0.19.0-rc.3 is). We depend on the tagged release directly via
+# git so we ship on FINAL, not the RC. The `bevy` umbrella pulls its sub-crates
+# from the same checkout, so the tree stays internally consistent. Swap to a
+# plain crates.io `version = "0.19"` once published (then the git source drops).
+bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", features = [
+    "serialize",
+    # extra engine subsystems
+    "bevy_remote", "bevy_feathers", "bevy_settings", "sysinfo_plugin",
+    "bevy_camera_controller", "free_camera", "pan_camera",
+    # reflection extras
+    "reflect_functions", "reflect_documentation",
+    # all shader languages
+    "shader_format_glsl", "shader_format_spirv", "shader_format_wesl",
+    # all image formats
+    "bmp", "dds", "exr", "ff", "gif", "ico", "jpeg", "pnm", "qoi", "tga",
+    "tiff", "webp", "zlib", "basis-universal", "compressed_image_saver",
+    # all audio formats
+    "audio-all-formats",
+    # PBR / rendering detail
+    "pbr_transmission_textures", "pbr_clustered_decals", "pbr_light_textures",
+    "pbr_multi_layer_material_textures", "pbr_anisotropy_texture",
+    "pbr_specular_textures", "experimental_pbr_pcss",
+    "morph", "morph_animation",
+    "bluenoise_texture", "dfg_lut", "area_light_luts",
+    # built-in post-process effect stack (vignette, lens distortion, chromatic aberration)
+    "bevy_post_process",
+    # clipboard / fonts / ui
+    "system_clipboard", "clipboard_image", "system_font_discovery", "ghost_nodes",
+    # asset IO / processing
+    "asset_processor", "file_watcher", "http", "https", "web_asset_cache",
+] }
+# Individual Bevy sub-crates that some vendored ecosystem crates depend on
+# directly (not via the `bevy` umbrella). Same git tag as `bevy` above so they
+# resolve from the one v0.19.0 checkout — preserving a single Bevy across the
+# dlopen boundary.
+bevy_math = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_reflect = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_light = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_picking = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
 log = "0.4"
 
 [package]
@@ -131,13 +211,3 @@ strip = "symbols"
 
 [lints]
 workspace = true
-
-# Replace lightyear's (never-enabled) optional Steam transport with an empty
-# stub so the vulnerable `steamworks 0.12` chain (RUSTSEC-2026-0121) drops out
-# of Cargo.lock — there is no semver-compatible upgrade path while
-# aeronet_steam 0.19 pins `steamworks ^0.12`. Cargo locks every optional dep
-# of every resolved crate, enabled or not, so without the patch the alert
-# sticks around despite the code never being compiled. Details + revert
-# instructions in crates/stubs/lightyear_steam.
-[patch.crates-io]
-lightyear_steam = { path = "crates/stubs/lightyear_steam" }

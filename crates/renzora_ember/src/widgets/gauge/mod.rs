@@ -112,7 +112,7 @@ pub(crate) fn arc_sync(
     arcs: Query<(&ArcData, &MaterialNode<ArcMaterial>), Changed<ArcData>>,
 ) {
     for (d, mat) in &arcs {
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.params.x = d.value.clamp(0.0, 1.0);
         }
     }

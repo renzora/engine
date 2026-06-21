@@ -423,7 +423,7 @@ pub fn terrain_chunk_mesh_update_system(
             continue;
         };
         let new_mesh = generate_chunk_mesh(terrain, &chunk);
-        if let Some(mesh) = meshes.get_mut(&mesh_handle.0) {
+        if let Some(mut mesh) = meshes.get_mut(&mesh_handle.0) {
             *mesh = new_mesh;
         }
         // Re-inserting triggers Changed<CollisionShapeData>, which makes the

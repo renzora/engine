@@ -123,6 +123,35 @@ Beyond the `ScreenSpace` SSGI backend (`RtPlugin`), the voxel/trace/reflection t
 
 `LumenDebug` offers `None`, `IndirectOnly` (show only the indirect contribution), and `VoxelCache` (visualize the radiance cache). The live bake stats feed `LumenDiagState`, which the debugger's Lumen panel renders.
 
+## Reflection probes — parallax-corrected cubemaps
+
+For local reflections that screen-space reflections can't supply (off-screen
+geometry, interiors), the engine exposes Bevy 0.19's **parallax-corrected
+reflection probes**. Add one from **Add Entity → Lighting → Reflection Probe**;
+it spawns an entity with:
+
+- `LightProbe` — marks the probe and sets edge `Falloff`. The probe's
+  **Transform** (position + scale) is the box it influences.
+- `ReflectionProbeSource` — the authored **Source (HDR / Cube)** + `Intensity`,
+  edited in the inspector. An equirectangular `.exr`/`.hdr`/`.png` is reprojected
+  into the power-of-two `Rgba16Float` cubemap bevy's filter requires (a
+  `.ktx2`/`.dds` cube container is used directly). Only this component persists;
+  the probe is inert until a source is set.
+- `ParallaxCorrection` — `None` (treat the reflection as infinitely far),
+  `Auto` (correct against the probe's Transform box — the default), or `Custom`
+  half-extents in probe space. Editing the extents switches to `Custom`.
+
+`renzora_environment_map` watches `ReflectionProbeSource`, loads/reprojects the
+image, and **only then** attaches the GPU `GeneratedEnvironmentMapLight` with the
+finished cube. This ordering matters: bevy's environment-map filter runs the
+moment that component exists and asserts a power-of-two cube, so attaching it
+with an unset (1×1) handle would spam GPU validation errors — the engine sidesteps
+that by adding it only once a valid cube is ready.
+
+The editor draws the correction box as a teal wireframe gizmo (bright when the
+probe is selected) so you can size it against the room. The authored source path
+persists with the scene and the cube is regenerated on load.
+
 ## Order-independent transparency — `renzora_oit`
 
 `renzora_oit` wraps Bevy's `OrderIndependentTransparencySettings` and is routed onto cameras via `EffectRouting` like any other effect:

@@ -418,8 +418,8 @@ fn save_as_scene_system(world: &mut World) {
         let file = rfd::FileDialog::new()
             .set_title("Save Scene As")
             .set_directory(&scenes_dir)
-            .add_filter("Scene File", &["ron"])
-            .set_file_name("new_scene.ron")
+            .add_filter("Scene File", &["bsn"])
+            .set_file_name("new_scene.bsn")
             .save_file();
 
         let Some(file_path) = file else { return };
@@ -530,7 +530,7 @@ fn open_scene_system(world: &mut World) {
         let file = rfd::FileDialog::new()
             .set_title("Open Scene")
             .set_directory(&scenes_dir)
-            .add_filter("Scene File", &["ron"])
+            .add_filter("Scene File", &["bsn"])
             .pick_file();
 
         let Some(file_path) = file else { return };
@@ -737,7 +737,7 @@ fn tick_scene_load_progress(
     )>,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     children_q: Query<&Children>,
-    scene_roots: Query<Entity, With<SceneRoot>>,
+    scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
 ) {
     let Some(mut progress) = progress else { return };
 
@@ -916,7 +916,7 @@ fn tick_editor_load_progress(
     >,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     children_q: Query<&Children>,
-    scene_roots: Query<Entity, With<SceneRoot>>,
+    scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
 ) {
     // Two sub-counts feed the two-phase bar:
     //   * `pending_assets` — entities still carrying

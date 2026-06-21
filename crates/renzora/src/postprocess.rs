@@ -9,21 +9,19 @@
 
 use core::marker::PhantomData;
 
-use bevy::core_pipeline::{
-    core_3d::graph::{Core3d, Node3d},
-    FullscreenShader,
-};
-use bevy::ecs::query::QueryItem;
-use bevy::image::BevyDefault;
+// Bevy built-in post-process systems used as fixed ORDERING ANCHORS by the
+// render-composition layer (see `RenderPhase`). The framework is the one place
+// that imports these — individual effect crates never do; they just pick a phase.
+use bevy::anti_alias::fxaa::fxaa;
+use bevy::anti_alias::smaa::smaa;
+use bevy::anti_alias::taa::temporal_anti_alias;
+use bevy::core_pipeline::tonemapping::tonemapping;
+use bevy::core_pipeline::{Core3d, Core3dSystems, FullscreenShader};
 use bevy::prelude::*;
 use bevy::render::{
     extract_component::{
         ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
         UniformComponentPlugin,
-    },
-    render_graph::{
-        InternedRenderLabel, InternedRenderSubGraph, NodeRunError, RenderGraphContext,
-        RenderGraphExt, RenderLabel, RenderSubGraph, ViewNode, ViewNodeRunner,
     },
     render_resource::{
         binding_types::{sampler, texture_2d, uniform_buffer},
@@ -35,7 +33,7 @@ use bevy::render::{
         TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
         TextureViewDescriptor,
     },
-    renderer::{RenderContext, RenderDevice},
+    renderer::{RenderContext, RenderDevice, ViewQuery},
     view::ViewTarget,
     Render, RenderApp, RenderStartup, RenderSystems,
 };
@@ -79,20 +77,6 @@ pub trait PostProcessEffect:
         false
     }
 
-    /// No longer used — effect ordering is determined by plugin registration order.
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![]
-    }
-
-    /// No longer used — all effects run in the Core3d sub-graph.
-    fn sub_graph() -> Option<InternedRenderSubGraph> {
-        Some(Core3d.intern())
-    }
-
-    /// No longer used — effects no longer have individual render graph nodes.
-    fn node_label() -> impl RenderLabel {
-        PostProcessLabel(core::any::type_name::<Self>())
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -129,18 +113,6 @@ impl<T: PostProcessEffect> Default for ExtractedExtraTexture<T> {
             id: None,
             _marker: PhantomData,
         }
-    }
-}
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-struct PostProcessLabel(&'static str);
-
-impl RenderLabel for PostProcessLabel
-where
-    Self: 'static + Send + Sync + Clone + Eq + core::fmt::Debug + core::hash::Hash,
-{
-    fn dyn_clone(&self) -> Box<dyn RenderLabel> {
-        Box::new(self.clone())
     }
 }
 
@@ -209,7 +181,7 @@ fn init_pipeline<T: PostProcessEffect>(
         fragment: Some(FragmentState {
             shader,
             targets: vec![Some(ColorTargetState {
-                format: TextureFormat::bevy_default(),
+                format: TextureFormat::Rgba8UnormSrgb, // 0.19: bevy_default() deprecated
                 blend: None,
                 write_mask: ColorWrites::ALL,
             })],
@@ -221,7 +193,7 @@ fn init_pipeline<T: PostProcessEffect>(
     desc.fragment.as_mut().unwrap().targets[0]
         .as_mut()
         .unwrap()
-        .format = ViewTarget::TEXTURE_FORMAT_HDR;
+        .format = TextureFormat::Rgba16Float; // 0.19: TEXTURE_FORMAT_HDR deprecated
     let pipeline_id_hdr = pipeline_cache.queue_render_pipeline(desc);
     commands.insert_resource(PostProcessPipeline::<T> {
         layout,
@@ -345,7 +317,51 @@ trait EffectHandler: Send + Sync + 'static {
         render_context: &mut RenderContext,
         view_target: &ViewTarget,
         view_entity: Entity,
-    ) -> Result<(), NodeRunError>;
+    ) -> Result<(), ()>;
+}
+
+/// A custom render pass a plugin can slot into the render-composition pipeline.
+///
+/// Implement this on a (usually unit) struct, then register it with
+/// [`RenderCompositionAppExt::add_render_pass`] into a [`RenderPhase`]. `run` is
+/// called once per view, in phase + `order` sequence, from the render world:
+/// - read your pipeline / bind-group / extracted-data **resources** from `world`,
+/// - record GPU work on `render_context` (its command encoder is auto-submitted),
+/// - read/write the camera color via `view_target` (`post_process_write()` gives
+///   the source+destination ping-pong, exactly like the built-in effects),
+/// - self-skip views that don't carry your per-entity component (check `world`/
+///   `view_entity`) so an inactive pass costs nothing.
+///
+/// For a simple full-screen *fragment* effect prefer `PostProcessPlugin<T>`
+/// (define a `PostProcessEffect` with a shader); this trait is for full control
+/// (compute passes, custom attachments, multi-draw, …).
+pub trait RenderPass: Send + Sync + 'static {
+    /// Record this pass for one view. See [`RenderPass`] for the contract.
+    fn run(
+        &self,
+        world: &World,
+        render_context: &mut RenderContext,
+        view_target: &ViewTarget,
+        view_entity: Entity,
+    );
+}
+
+/// Bridges a public [`RenderPass`] into the internal `EffectHandler` the registry
+/// stores (a distinct newtype, so there's no blanket-impl coherence conflict with
+/// `TypedEffectHandler`).
+struct RenderPassAdapter<P: RenderPass>(P);
+
+impl<P: RenderPass> EffectHandler for RenderPassAdapter<P> {
+    fn execute(
+        &self,
+        world: &World,
+        render_context: &mut RenderContext,
+        view_target: &ViewTarget,
+        view_entity: Entity,
+    ) -> Result<(), ()> {
+        self.0.run(world, render_context, view_target, view_entity);
+        Ok(())
+    }
 }
 
 struct TypedEffectHandler<T: PostProcessEffect>(PhantomData<T>);
@@ -357,7 +373,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
         render_context: &mut RenderContext,
         view_target: &ViewTarget,
         view_entity: Entity,
-    ) -> Result<(), NodeRunError> {
+    ) -> Result<(), ()> {
         // Skip if this view doesn't have the effect component
         let Some(settings_index) = world.get::<DynamicUniformIndex<T>>(view_entity) else {
             return Ok(());
@@ -367,7 +383,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
             return Ok(());
         };
         let pipeline_cache = world.resource::<PipelineCache>();
-        let pipeline_id = if view_target.is_hdr() {
+        let pipeline_id = if view_target.main_texture_format() == TextureFormat::Rgba16Float {
             pipeline.pipeline_id_hdr
         } else {
             pipeline.pipeline_id
@@ -421,6 +437,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
                                 depth_stencil_attachment: None,
                                 timestamp_writes: None,
                                 occlusion_query_set: None,
+                multiview_mask: None,
                             });
                         blit_pass.set_render_pipeline(blit_pipeline);
                         blit_pass.set_bind_group(0, &blit_bind_group, &[]);
@@ -458,6 +475,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
             render_pass.set_render_pipeline(render_pipeline);
             render_pass.set_bind_group(0, &bind_group, &[settings_index.index()]);
@@ -487,6 +505,7 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
 
         render_pass.set_render_pipeline(render_pipeline);
@@ -501,47 +520,141 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
 // Unified render graph node
 // ---------------------------------------------------------------------------
 
-/// Registry of all registered post-process effect handlers.
+pub use crate::RenderPhase;
+
+/// One registered render pass — the DATA the render-composition layer orders.
+/// `id`/`phase`/`order`/`enabled` are public so a future render-pipeline node
+/// editor can read and rewrite them at runtime; `handler` is the type-erased
+/// executor (a `PostProcessEffect`'s pass, or any custom pass).
+pub struct RenderPassEntry {
+    /// Stable identifier (for the editor + reorder); e.g. `"effect.vignette"`.
+    pub id: &'static str,
+    /// Which ordering phase this pass runs in.
+    pub phase: RenderPhase,
+    /// Sort key within the phase — lower runs first. User-editable later.
+    pub order: f32,
+    /// Global on/off (per-ENTITY gating stays component-driven in the handler).
+    pub enabled: bool,
+    handler: Box<dyn EffectHandler>,
+}
+
+/// The central, data-driven render-pass registry (render world). Passes are kept
+/// sorted by `(phase, order)`; the per-phase dispatcher systems iterate it.
+/// Replaces the old flat `PostProcessRegistry` — same one-system-per-phase model
+/// the unified post-process already used, generalized to every phase so GI,
+/// reflections, and post-process effects all compose in one defined order.
 #[derive(Resource, Default)]
-struct PostProcessRegistry {
-    handlers: Vec<Box<dyn EffectHandler>>,
+pub struct RenderComposition {
+    passes: Vec<RenderPassEntry>,
 }
 
-/// Render label for the single unified post-process node.
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-struct UnifiedPostProcess;
+impl RenderComposition {
+    /// Register a pre-built entry, keeping the list ordered by `(phase, order)`.
+    pub fn add(&mut self, entry: RenderPassEntry) {
+        self.passes.push(entry);
+        self.passes
+            .sort_by(|a, b| a.phase.cmp(&b.phase).then(a.order.total_cmp(&b.order)));
+    }
 
-impl RenderLabel for UnifiedPostProcess {
-    fn dyn_clone(&self) -> Box<dyn RenderLabel> {
-        Box::new(self.clone())
+    /// Register a custom [`RenderPass`] into a phase. The usual entry point for
+    /// plugin authors (via [`RenderCompositionAppExt::add_render_pass`]).
+    pub fn add_pass(
+        &mut self,
+        id: &'static str,
+        phase: RenderPhase,
+        order: f32,
+        pass: impl RenderPass,
+    ) {
+        self.add(RenderPassEntry {
+            id,
+            phase,
+            order,
+            enabled: true,
+            handler: Box::new(RenderPassAdapter(pass)),
+        });
+    }
+
+    /// Read-only view of the registered passes (for an editor / inspector).
+    pub fn passes(&self) -> &[RenderPassEntry] {
+        &self.passes
     }
 }
 
-/// Single render graph node that processes all active post-process effects.
-/// Only effects whose component is present on the camera will execute.
-#[derive(Default)]
-struct UnifiedPostProcessNode;
+/// Render-app extension for registering a custom [`RenderPass`] into the
+/// composition pipeline. Call on the render sub-app:
+///
+/// ```ignore
+/// app.sub_app_mut(RenderApp)
+///     .add_systems(RenderStartup, init_my_pipeline)   // your GPU resources
+///     .add_render_pass("myplugin.glow", RenderPhase::HdrPost, 0.0, MyGlowPass);
+/// ```
+pub trait RenderCompositionAppExt {
+    /// Slot `pass` into `phase` (lower `order` runs first within the phase).
+    fn add_render_pass(
+        &mut self,
+        id: &'static str,
+        phase: RenderPhase,
+        order: f32,
+        pass: impl RenderPass,
+    ) -> &mut Self;
+}
 
-impl ViewNode for UnifiedPostProcessNode {
-    type ViewQuery = (Entity, &'static ViewTarget);
+impl RenderCompositionAppExt for SubApp {
+    fn add_render_pass(
+        &mut self,
+        id: &'static str,
+        phase: RenderPhase,
+        order: f32,
+        pass: impl RenderPass,
+    ) -> &mut Self {
+        // The dispatcher + phase anchoring are installed by `PostProcessCorePlugin`
+        // (present whenever any post-process effect is registered). Ensure the
+        // registry exists so a pass can be added before that plugin's build runs.
+        self.world_mut()
+            .get_resource_or_insert_with(RenderComposition::default)
+            .add_pass(id, phase, order, pass);
+        self
+    }
+}
 
-    fn run<'w>(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (entity, view_target): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
-        let registry = world.resource::<PostProcessRegistry>();
-        for handler in &registry.handlers {
-            handler.execute(world, render_context, view_target, entity)?;
+/// Run every enabled pass registered to `phase`, in order, for one view. Each
+/// handler self-skips views without its per-entity component, so an inactive
+/// effect costs nothing. Encoded passes are auto-submitted when the system ends.
+fn run_phase(
+    world: &World,
+    view: ViewQuery<&'static ViewTarget>,
+    render_context: &mut RenderContext,
+    phase: RenderPhase,
+) {
+    let entity = view.entity();
+    let view_target = view.into_inner();
+    let composition = world.resource::<RenderComposition>();
+    for entry in composition.passes.iter() {
+        if entry.phase == phase && entry.enabled {
+            let _ = entry
+                .handler
+                .execute(world, render_context, view_target, entity);
         }
-        Ok(())
     }
+}
+
+// One dispatcher per phase — each runs `.in_set(RenderPhase::X)`, so it inherits
+// that phase's position relative to the bevy anchors (configured once below).
+fn dispatch_gi(world: &World, view: ViewQuery<&'static ViewTarget>, mut ctx: RenderContext) {
+    run_phase(world, view, &mut ctx, RenderPhase::Gi);
+}
+fn dispatch_hdr_post(world: &World, view: ViewQuery<&'static ViewTarget>, mut ctx: RenderContext) {
+    run_phase(world, view, &mut ctx, RenderPhase::HdrPost);
+}
+fn dispatch_ldr_post(world: &World, view: ViewQuery<&'static ViewTarget>, mut ctx: RenderContext) {
+    run_phase(world, view, &mut ctx, RenderPhase::LdrPost);
+}
+fn dispatch_overlay(world: &World, view: ViewQuery<&'static ViewTarget>, mut ctx: RenderContext) {
+    run_phase(world, view, &mut ctx, RenderPhase::Overlay);
 }
 
 // ---------------------------------------------------------------------------
-// Core plugin (added once, sets up the unified node)
+// Core plugin (added once, sets up the render-composition pipeline)
 // ---------------------------------------------------------------------------
 
 struct PostProcessCorePlugin;
@@ -556,27 +669,56 @@ impl Plugin for PostProcessCorePlugin {
             return;
         };
 
-        render_app.init_resource::<PostProcessRegistry>();
+        render_app.init_resource::<RenderComposition>();
         render_app.add_systems(RenderStartup, init_snapshot_blit_pipeline);
 
-        render_app.add_render_graph_node::<ViewNodeRunner<UnifiedPostProcessNode>>(
-            Core3d,
-            UnifiedPostProcess,
-        );
+        // The canonical pipeline, configured in ONE place: position renzora's
+        // phases around bevy's built-in post-process anchors. This is the only
+        // spot that imports `temporal_anti_alias` / `tonemapping`; every effect
+        // crate just picks a `RenderPhase`. (Ordering against an anchor that
+        // isn't in the schedule — e.g. TAA plugin absent — is a harmless no-op.)
+        use Core3dSystems::{EarlyPostProcess, PostProcess};
+        render_app
+            .configure_sets(
+                Core3d,
+                RenderPhase::Gi
+                    .in_set(EarlyPostProcess)
+                    .before(temporal_anti_alias),
+            )
+            .configure_sets(
+                Core3d,
+                RenderPhase::HdrPost
+                    .in_set(EarlyPostProcess)
+                    .after(temporal_anti_alias),
+            )
+            .configure_sets(
+                Core3d,
+                RenderPhase::LdrPost
+                    .in_set(PostProcess)
+                    .after(tonemapping)
+                    .before(fxaa)
+                    .before(smaa),
+            )
+            .configure_sets(
+                Core3d,
+                RenderPhase::Overlay
+                    .in_set(PostProcess)
+                    .after(fxaa)
+                    .after(smaa)
+                    .after(RenderPhase::LdrPost),
+            );
 
-        if let Some(mut render_graph) = render_app
-            .world_mut()
-            .get_resource_mut::<bevy::render::render_graph::RenderGraph>(
-        ) {
-            if let Some(graph) = render_graph.get_sub_graph_mut(Core3d) {
-                let _ = graph
-                    .try_add_node_edge(Node3d::Tonemapping.intern(), UnifiedPostProcess.intern());
-                let _ = graph.try_add_node_edge(
-                    UnifiedPostProcess.intern(),
-                    Node3d::EndMainPassPostProcessing.intern(),
-                );
-            }
-        }
+        // The per-phase dispatchers. The existing post-process effects register
+        // into `LdrPost` (unchanged: they still compose on the tonemapped frame).
+        render_app.add_systems(
+            Core3d,
+            (
+                dispatch_gi.in_set(RenderPhase::Gi),
+                dispatch_hdr_post.in_set(RenderPhase::HdrPost),
+                dispatch_ldr_post.in_set(RenderPhase::LdrPost),
+                dispatch_overlay.in_set(RenderPhase::Overlay),
+            ),
+        );
     }
 }
 
@@ -691,11 +833,17 @@ impl<T: PostProcessEffect> Plugin for PostProcessPlugin<T> {
         // Initialize this effect's GPU pipeline
         render_app.add_systems(RenderStartup, init_pipeline::<T>);
 
-        // Register the type-erased handler with the unified node
+        // Register this effect as an `LdrPost` pass (post-tonemapping), the same
+        // stage the unified post-process always ran in — behavior unchanged.
         render_app
             .world_mut()
-            .resource_mut::<PostProcessRegistry>()
-            .handlers
-            .push(Box::new(TypedEffectHandler::<T>(PhantomData)));
+            .resource_mut::<RenderComposition>()
+            .add(RenderPassEntry {
+                id: core::any::type_name::<T>(),
+                phase: RenderPhase::LdrPost,
+                order: 0.0,
+                enabled: true,
+                handler: Box::new(TypedEffectHandler::<T>(PhantomData)),
+            });
     }
 }

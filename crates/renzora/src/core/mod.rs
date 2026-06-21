@@ -562,6 +562,12 @@ pub struct ProjectConfig {
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
     pub console_logging: bool,
+    /// Default UI font for the shipped game — a name resolved by the font
+    /// registry, a project `fonts/` path (e.g. `"fonts/Inter.ttf"`), or a system
+    /// family. Applied at runtime startup (the game's ember UI uses it); `None`
+    /// keeps the embedded default. Shipped (not the editor-stripped section).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_font: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<NetworkProjectConfig>,
     /// Editor-only preferences (viewport toggles, camera speed, snap, etc.).
@@ -575,7 +581,7 @@ impl Default for ProjectConfig {
         Self {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
-            main_scene: "scenes/main.ron".to_string(),
+            main_scene: "scenes/main.bsn".to_string(),
             editor_last_scene: None,
             icon: None,
             autoload: Vec::new(),
@@ -584,6 +590,7 @@ impl Default for ProjectConfig {
             rendering_2d: Rendering2dConfig::default(),
             rendering: RenderingConfig::default(),
             console_logging: false,
+            ui_font: None,
             network: None,
             editor: None,
         }
@@ -771,9 +778,71 @@ pub struct Node2d;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteImagePath(pub String);
 
+/// A reflection probe's authored environment source — the *persistent* side of a
+/// parallax-corrected cubemap probe.
+///
+/// Bevy's `GeneratedEnvironmentMapLight` is the runtime GPU side: its filter
+/// **runs the moment that component exists** and demands a **power-of-two cube**
+/// texture, so attaching it with an unset (1×1 default) or equirectangular
+/// handle spams GPU validation errors. To avoid that, a probe carries *this*
+/// component instead, and `renzora_environment_map` only inserts
+/// `GeneratedEnvironmentMapLight` **once a valid cube is ready** — loading the
+/// `path`, reprojecting an equirect `.exr`/`.hdr` into a POT cube (or using a
+/// `.ktx2`/`.dds` cube directly), and applying `intensity`. Only this component
+/// persists in the scene; the cube is regenerated on load.
+#[derive(Component, Reflect, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct ReflectionProbeSource {
+    /// Project-relative path to the source image (equirect HDR or cube container).
+    pub path: String,
+    /// Strength multiplier applied to the probe's reflections (cd/m²).
+    pub intensity: f32,
+}
+
+impl Default for ReflectionProbeSource {
+    fn default() -> Self {
+        Self { path: String::new(), intensity: 1.0 }
+    }
+}
+
 /// Marker component to hide an entity (and its children) from the hierarchy panel.
 #[derive(Component)]
 pub struct HideInHierarchy;
+
+/// Canonical render-pass ordering phases for the Bevy 0.19 `Core3d` schedule —
+/// the centralized "render composition" pipeline (see `docs/render-composition.md`
+/// and `renzora::postprocess`). Bevy deleted the render graph in 0.19 and moved
+/// to system ordering; this enum is the single shared vocabulary so renzora's
+/// many view-target passes (GI, reflections, post-process, …) slot into a known
+/// order instead of each hardcoding `.before(some_other_system)`.
+///
+/// Phases are interleaved with bevy's own post-process systems, which act as
+/// fixed anchors (the render-composition framework places these phases around
+/// them in ONE place):
+///
+/// ```text
+/// MainPass ─ Gi ─ [bevy TAA] ─ HdrPost ─ [bevy tonemapping] ─ LdrPost ─ [fxaa/smaa] ─ Overlay
+/// ```
+///
+/// A render pass joins a phase with `.in_set(renzora::RenderPhase::Gi)` (for a
+/// system pass) or by registering a handler in that phase (data-driven, for the
+/// future node-graph pipeline editor) — and never references another pass.
+#[derive(
+    bevy::ecs::schedule::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub enum RenderPhase {
+    /// HDR/linear, after the main 3D pass and BEFORE temporal AA: global
+    /// illumination composite, screen-space reflections. Running before TAA is
+    /// what puts GI in the temporal history (otherwise: SSGI flicker / SDF grey).
+    Gi,
+    /// HDR, after temporal AA: bloom, depth-of-field, motion blur.
+    HdrPost,
+    /// LDR, after tonemapping: color grading, vignette, and the rest of the
+    /// unified post-process effects.
+    LdrPost,
+    /// Final overlays (debug visualizations, gizmo composites) — after AA.
+    Overlay,
+}
 
 /// Editor viewport gate: this scene entity was force-hidden because no
 /// viewport panel is visible, and the stored value is its *authored*

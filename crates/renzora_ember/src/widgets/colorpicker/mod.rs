@@ -194,7 +194,7 @@ fn picker_sync(
     surfaces: Query<(&PickerData, &MaterialNode<PickerMaterial>), Changed<PickerData>>,
 ) {
     for (d, mat) in &surfaces {
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             m.params = Vec4::new(d.mode, d.hue, 0.0, 0.0);
         }
     }

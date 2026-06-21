@@ -16,8 +16,19 @@ toml = "0.8"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
 zip = "2"
-rcgen = "0.13"
-ring = "0.17"
+# APK signer crypto (ECDSA P-256 + SHA-256), pure-Rust RustCrypto stack — see
+# apk_signer.rs. We deliberately AVOID `ring`/`aws-lc-rs`: on Bevy 0.19 `ring`
+# is pulled into the shared `bevy_dylib` by bevy_asset's HTTP loader, and rustls
+# only exercises its primitives, so ring's signature-algorithm statics are
+# dead-code-eliminated from the dylib — leaving the editor's signer unable to
+# link against them ("undefined symbol: ring::…::ED25519"). RustCrypto sidesteps
+# the dylib entirely and needs no C/cmake toolchain (the build container has
+# neither, ruling out aws-lc-rs). `rcgen` runs crypto-free via its bring-your-
+# own-key `RemoteKeyPair` path, signing through the same `p256` key.
+rcgen = { version = "0.13", default-features = false }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
+sha2 = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
 ureq = "3"
 serde_json = "1"
 

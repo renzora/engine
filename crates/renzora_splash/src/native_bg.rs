@@ -55,7 +55,7 @@ fn bg_sync(
 ) {
     let t = time.elapsed_secs();
     for (cn, mat) in &nodes {
-        if let Some(m) = materials.get_mut(&mat.0) {
+        if let Some(mut m) = materials.get_mut(&mat.0) {
             let size = cn.size();
             let aspect = if size.y > 0.0 { size.x / size.y } else { 1.0 };
             m.params = Vec4::new(t, aspect, 0.0, 0.0);

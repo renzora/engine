@@ -190,7 +190,7 @@ fn light_bundle(
             color: Color::linear_rgb(l.color[0], l.color[1], l.color[2]),
             intensity: l.intensity,
             range: l.range,
-            shadows_enabled: l.shadows,
+            shadow_maps_enabled: l.shadows,
             ..default()
         },
         ParticleLightFlicker {
@@ -232,7 +232,7 @@ pub fn sync_hanabi_effects(
         let effect_asset = build_complete_effect(&definition);
 
         if let Some(synced) = maybe_synced {
-            if let Some(existing) = effects.get_mut(&synced.effect_handle) {
+            if let Some(mut existing) = effects.get_mut(&synced.effect_handle) {
                 *existing = effect_asset;
             }
         } else {
@@ -425,7 +425,7 @@ pub fn hot_reload_saved_effects(
                 let effect_asset = build_complete_effect(&definition);
 
                 if let Some(synced) = maybe_synced {
-                    if let Some(existing) = effects.get_mut(&synced.effect_handle) {
+                    if let Some(mut existing) = effects.get_mut(&synced.effect_handle) {
                         *existing = effect_asset;
                     }
                 }

@@ -42,13 +42,9 @@ impl Icon {
 }
 
 fn load_phosphor(mut fonts: ResMut<Assets<Font>>, mut commands: Commands) {
-    match Font::try_from_bytes(PHOSPHOR_TTF.to_vec()) {
-        Ok(font) => {
-            let handle = fonts.add(font);
-            commands.insert_resource(PhosphorFont(handle));
-        }
-        Err(e) => warn!("renzora_hui: failed to load embedded Phosphor font: {e}"),
-    }
+    // 0.19/Parley: `Font::from_bytes` (Result) → `Font::from_bytes` (infallible).
+    let handle = fonts.add(Font::from_bytes(PHOSPHOR_TTF.to_vec()));
+    commands.insert_resource(PhosphorFont(handle));
 }
 
 /// Resolve `<icon>` entities: look up the glyph, render it in the Phosphor
@@ -67,8 +63,8 @@ fn apply_icons(
         let mut ec = commands.entity(entity);
         ec.insert(Text::new(glyph.to_string()));
         ec.insert(TextFont {
-            font: font.0.clone(),
-            font_size: icon.size,
+            font: bevy::text::FontSource::Handle(font.0.clone()),
+            font_size: bevy::text::FontSize::Px(icon.size),
             ..default()
         });
         if let Some(c) = icon.color {

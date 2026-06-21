@@ -99,6 +99,7 @@ editor = [
     "dep:renzora_environment_map_editor",
     "dep:renzora_ssao_editor",
     "dep:renzora_ssr_editor",
+    "dep:renzora_lens_distortion_editor",
     "dep:renzora_auto_exposure_editor",
     "dep:renzora_oit_editor",
     "dep:renzora_skybox_editor",
@@ -207,6 +208,8 @@ renzora_ssao            = { path = "../renzora_ssao" }
 renzora_ssao_editor     = { path = "../renzora_ssao/editor", optional = true }
 renzora_ssr             = { path = "../renzora_ssr" }
 renzora_ssr_editor      = { path = "../renzora_ssr/editor", optional = true }
+renzora_lens_distortion = { path = "../renzora_lens_distortion" }
+renzora_lens_distortion_editor = { path = "../renzora_lens_distortion/editor", optional = true }
 renzora_auto_exposure   = { path = "../renzora_auto_exposure" }
 renzora_auto_exposure_editor = { path = "../renzora_auto_exposure/editor", optional = true }
 renzora_oit             = { path = "../renzora_oit" }

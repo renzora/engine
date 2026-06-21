@@ -633,14 +633,20 @@ fn text_font_entry() -> InspectorEntry {
                 max: 512.0,
             },
             get_fn: |world, entity| {
-                world
-                    .get::<TextFont>(entity)
-                    .map(|f| FieldValue::Float(f.font_size))
+                world.get::<TextFont>(entity).map(|f| {
+                    // 0.19: `font_size` is a `FontSize` enum; every variant wraps
+                    // an f32, so extract it for the numeric inspector field.
+                    use bevy::text::FontSize::*;
+                    let px = match f.font_size {
+                        Px(x) | Vw(x) | Vh(x) | VMin(x) | VMax(x) | Rem(x) => x,
+                    };
+                    FieldValue::Float(px)
+                })
             },
             set_fn: |world, entity, val| {
                 if let FieldValue::Float(v) = val {
                     if let Some(mut f) = world.get_mut::<TextFont>(entity) {
-                        f.font_size = v;
+                        f.font_size = bevy::text::FontSize::Px(v);
                     }
                     write_attr_to_markup(world, entity, "font_size", &trim_float(v));
                 }

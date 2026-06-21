@@ -51,6 +51,23 @@ Different settings get different controls, picked automatically to match the val
 - **Remove** — click the **trash** button in a component's header.
 - **Turn off** — flip the header toggle to disable a component without removing it.
 
+## Text & fonts
+
+Any entity with text exposes two text sections:
+
+- **Text Font** — pick the **Font** from a dropdown that auto-populates from your
+  project's `fonts/` folder (drop a `.ttf`/`.otf` there and it appears) plus the
+  built-in faces. Set the **Size**, and — for variable fonts — the **Weight**
+  (100–900), **Width** (condensed ↔ expanded), **Spacing** (letter spacing, in
+  px), and **Line** height (× font size).
+- **Rich Text** — build *styled spans*: multiple runs of text on one line, each
+  with its own text and color. Click **Add span** to append a run, edit its text
+  and R/G/B inline, and use the **trash** button to remove it. Spans render in
+  order after the base text, so you can mix colors and weights in a single label.
+
+Fonts you use are saved into the scene and packed into the exported game (only
+the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha6/exporting/overview)).
+
 ## Script properties
 
 Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rhai` file from the Asset Browser onto the **Drop to add script** target, or click **Add Script** to pick one from your project. A **Script** section then appears.

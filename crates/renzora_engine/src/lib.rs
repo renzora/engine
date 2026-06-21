@@ -96,6 +96,68 @@ fn ensure_deferred_prepass_on_cameras(
     }
 }
 
+/// Attach the `ContactShadows` receiver to FORWARD cameras only.
+///
+/// Bevy 0.19's *deferred* lighting pipeline doesn't wire up contact shadows
+/// (`prepare_deferred_lighting_pipelines` never queries `Has<ContactShadows>`,
+/// so the deferred pipeline's mesh-view layout omits the contact-shadows binding
+/// and mismatches the camera's bind group — an upstream bug, see the bevy docs
+/// which claim deferred support). The *forward* mesh pipeline specializes it
+/// correctly, so we only attach the receiver when the resolved mode is forward.
+/// A light's `contact_shadows_enabled` (e.g. the Sun's toggle) then takes effect
+/// on these views. Same cheap `Without<>` scan + before-first-render timing as
+/// [`ensure_deferred_prepass_on_cameras`].
+///
+/// `Without<IsolatedCamera>` is load-bearing: contact shadows are a main-view
+/// feature, and the offscreen utility cameras (material/model thumbnails, studio
+/// previews, env bakes, the game-UI canvas) all carry `IsolatedCamera`. Attaching
+/// `ContactShadows` to one of those — e.g. the material-thumbnail capture camera —
+/// makes its mesh-view bind group expose binding 16 (`ContactShadowsUniform`)
+/// while that render path's `pbr_opaque_mesh_pipeline` specializes *without* the
+/// `CONTACT_SHADOWS` key (binding 16 absent), so wgpu hard-quits with a layout
+/// mismatch. `renzora_skybox`/`renzora_night_stars` exclude these same cameras.
+fn ensure_contact_shadows_on_forward_cameras(
+    rendering_mode: Res<ResolvedRenderingMode>,
+    add_cameras: Query<
+        Entity,
+        (
+            With<Camera3d>,
+            Without<bevy::pbr::ContactShadows>,
+            Without<IsolatedCamera>,
+            Without<DeferredPrepass>,
+        ),
+    >,
+    // Cameras that must NOT keep `ContactShadows`: a deferred prepass (whose
+    // lighting pipeline omits binding 16) or an isolated utility view.
+    conflicting: Query<
+        Entity,
+        (
+            With<bevy::pbr::ContactShadows>,
+            Or<(With<DeferredPrepass>, With<IsolatedCamera>)>,
+        ),
+    >,
+    mut commands: Commands,
+) {
+    // Strip `ContactShadows` from any camera it conflicts with, no matter how it
+    // got there — a Forward→Deferred mode switch, a `DeferredPrepass` attached
+    // later (e.g. for SSR), or a scene that saved the component while forward.
+    // Without this, such a camera's mesh-view bind group exposes binding 16
+    // while the deferred lighting pipeline's layout omits it → wgpu hard-crash.
+    for entity in &conflicting {
+        commands
+            .entity(entity)
+            .remove::<bevy::pbr::ContactShadows>();
+    }
+    if rendering_mode.is_deferred() {
+        return;
+    }
+    for entity in &add_cameras {
+        commands
+            .entity(entity)
+            .try_insert(bevy::pbr::ContactShadows::default());
+    }
+}
+
 /// Pull the rendering mode from the just-loaded project and propagate
 /// it to `ResolvedRenderingMode` + `DefaultOpaqueRendererMethod`
 /// **before** the editor camera spawns. Runs as the first step of
@@ -159,6 +221,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::SpriteImagePath>()
+            .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<Sun>();
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -349,7 +412,13 @@ impl Plugin for RuntimePlugin {
         // DeferredPrepass so its prepass queue includes the deferred
         // opaque phase. Covers editor previews/thumbnails that spawn
         // their own Camera3d entities without our explicit attachment.
-        app.add_systems(PostUpdate, ensure_deferred_prepass_on_cameras);
+        app.add_systems(
+            PostUpdate,
+            (
+                ensure_deferred_prepass_on_cameras,
+                ensure_contact_shadows_on_forward_cameras,
+            ),
+        );
 
         app.init_resource::<ViewportRenderTarget>()
             .init_resource::<renzora::core::viewport_types::Viewports>()

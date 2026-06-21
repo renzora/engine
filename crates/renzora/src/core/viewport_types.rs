@@ -380,6 +380,47 @@ impl VisualizationMode {
     }
 }
 
+/// Which entities the in-viewport name-label overlay draws. Imported models
+/// nest hundreds of named sub-meshes under one root, so labeling everything
+/// (`All`) carpets dense scenes — the other scopes thin that out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelScope {
+    /// Every named, non-chrome entity (can be very busy in big models).
+    All,
+    /// Only top-level objects: a placed model's root and standalone
+    /// primitives/lights, not the sub-meshes parented beneath them.
+    #[default]
+    TopLevel,
+    /// Only entities that have an actual mesh (skips empty transform nodes).
+    Meshes,
+    /// Only the currently selected entity.
+    Selected,
+}
+
+impl LabelScope {
+    pub const ALL: &'static [LabelScope] =
+        &[Self::All, Self::TopLevel, Self::Meshes, Self::Selected];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::All => "All Entities",
+            Self::TopLevel => "Top-Level Objects",
+            Self::Meshes => "Meshes Only",
+            Self::Selected => "Selected Only",
+        }
+    }
+
+    /// Parse from the persisted `{:?}` Debug string; unknown → default.
+    pub fn from_debug(s: &str) -> Self {
+        match s {
+            "All" => Self::All,
+            "Meshes" => Self::Meshes,
+            "Selected" => Self::Selected,
+            _ => Self::TopLevel,
+        }
+    }
+}
+
 /// Render feature toggles.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderToggles {
@@ -505,6 +546,21 @@ pub struct ViewportSettings {
     pub show_axis_gizmo: bool,
     /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
     pub show_scene_icons: bool,
+    /// Toggle for in-viewport entity name labels (drawn with Bevy's stroke-font
+    /// text gizmos above each named scene entity). Off by default to avoid
+    /// clutter — it's an opt-in debug/orientation overlay.
+    pub show_labels: bool,
+    /// Size multiplier for entity name labels (`1.0` = the default auto size,
+    /// which is itself distance-scaled to stay roughly screen-constant).
+    pub label_size: f32,
+    /// Base RGB colour (0–255) for entity name labels. The selected entity is
+    /// always drawn gold regardless, as a selection cue.
+    pub label_color: [u8; 3],
+    /// Max camera distance at which a label is drawn; farther entities are
+    /// culled so big scenes don't carpet the view with text.
+    pub label_max_distance: f32,
+    /// Which entities get a name label (all / top-level / meshes / selected).
+    pub label_scope: LabelScope,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
@@ -529,6 +585,11 @@ impl Default for ViewportSettings {
             grid_color_2d: [255, 255, 255, 18],
             show_axis_gizmo: true,
             show_scene_icons: true,
+            show_labels: false,
+            label_size: 1.0,
+            label_color: [217, 230, 255],
+            label_max_distance: 40.0,
+            label_scope: LabelScope::default(),
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
@@ -567,6 +628,16 @@ pub struct PersistedViewportSettings {
     pub show_axis_gizmo: bool,
     #[serde(default = "default_true")]
     pub show_scene_icons: bool,
+    #[serde(default)]
+    pub show_labels: bool,
+    #[serde(default = "default_label_size")]
+    pub label_size: f32,
+    #[serde(default = "default_label_color")]
+    pub label_color: [u8; 3],
+    #[serde(default = "default_label_max_distance")]
+    pub label_max_distance: f32,
+    #[serde(default)]
+    pub label_scope: String,
     pub collision_always: bool,
     pub orthographic: bool,
     pub move_speed: f32,
@@ -612,6 +683,11 @@ impl PersistedViewportSettings {
             grid_color_2d: s.grid_color_2d,
             show_axis_gizmo: s.show_axis_gizmo,
             show_scene_icons: s.show_scene_icons,
+            show_labels: s.show_labels,
+            label_size: s.label_size,
+            label_color: s.label_color,
+            label_max_distance: s.label_max_distance,
+            label_scope: format!("{:?}", s.label_scope),
             collision_always: matches!(
                 s.collision_gizmo_visibility,
                 CollisionGizmoVisibility::Always
@@ -662,6 +738,11 @@ impl PersistedViewportSettings {
         s.grid_color_2d = self.grid_color_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
         s.show_scene_icons = self.show_scene_icons;
+        s.show_labels = self.show_labels;
+        s.label_size = self.label_size;
+        s.label_color = self.label_color;
+        s.label_max_distance = self.label_max_distance;
+        s.label_scope = LabelScope::from_debug(&self.label_scope);
         s.collision_gizmo_visibility = if self.collision_always {
             CollisionGizmoVisibility::Always
         } else {
@@ -711,6 +792,18 @@ fn default_grid_color_2d() -> [u8; 4] {
     [255, 255, 255, 18]
 }
 
+fn default_label_size() -> f32 {
+    1.0
+}
+
+fn default_label_color() -> [u8; 3] {
+    [217, 230, 255]
+}
+
+fn default_label_max_distance() -> f32 {
+    40.0
+}
+
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
 /// The runtime ignores this section, and `renzora_export` strips it from
 /// shipped builds.
@@ -748,6 +841,11 @@ mod tests {
             grid_color_2d: [128, 200, 255, 60],
             show_axis_gizmo: false,
             show_scene_icons: false,
+            show_labels: true,
+            label_size: 2.5,
+            label_color: [10, 20, 30],
+            label_max_distance: 99.0,
+            label_scope: LabelScope::Selected,
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,
             projection_mode: ProjectionMode::Orthographic,
             viewport_mode: ViewportMode::default(),
@@ -798,6 +896,11 @@ mod tests {
         assert_eq!(original.show_subgrid, restored.show_subgrid);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
+        assert_eq!(original.show_labels, restored.show_labels);
+        assert_eq!(original.label_size, restored.label_size);
+        assert_eq!(original.label_color, restored.label_color);
+        assert_eq!(original.label_max_distance, restored.label_max_distance);
+        assert_eq!(original.label_scope, restored.label_scope);
         assert!(matches!(
             restored.collision_gizmo_visibility,
             CollisionGizmoVisibility::Always

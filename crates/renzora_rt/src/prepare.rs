@@ -104,7 +104,8 @@ impl FromWorld for RtPipeline {
                 targets: vec![
                     // Target 0: composited scene+indirect → view target.
                     Some(ColorTargetState {
-                        format: ViewTarget::TEXTURE_FORMAT_HDR,
+                        // 0.19: TEXTURE_FORMAT_HDR deprecated.
+                        format: TextureFormat::Rgba16Float,
                         blend: None,
                         write_mask: ColorWrites::ALL,
                     }),
@@ -119,7 +120,7 @@ impl FromWorld for RtPipeline {
             primitive: PrimitiveState::default(),
             depth_stencil: None,
             multisample: MultisampleState::default(),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 

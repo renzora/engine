@@ -20,12 +20,8 @@
 //! pass reads from `temp` and writes into mip `N` of the colour
 //! pyramid. Standard separable-Gaussian dance.
 
-use bevy::core_pipeline::core_3d::graph::Core3d;
-use bevy::ecs::query::QueryItem;
+use bevy::core_pipeline::Core3d;
 use bevy::prelude::*;
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, texture_2d, texture_storage_2d,
 };
@@ -37,19 +33,15 @@ use bevy::render::render_resource::{
     TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
 };
 use bevy::shader::ShaderDefVal;
-use bevy::render::renderer::{RenderContext, RenderDevice};
+use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
 use bevy::render::view::ViewTarget;
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::utils::default;
 
-use crate::lumen_trace::LumenTraceLabel;
 use crate::screen_reflection::{
-    ScreenReflectionResources, ScreenReflectionTraceLabel, REFLECTION_MIP_COUNT,
+    ScreenReflectionResources, REFLECTION_MIP_COUNT,
 };
 use crate::voxel_cache::VoxelCacheView;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct ScreenReflectionBlurLabel;
 
 #[derive(Resource)]
 pub struct ScreenReflectionBlurPipeline {
@@ -120,7 +112,7 @@ impl FromWorld for ScreenReflectionBlurPipeline {
                 shader: shader.clone(),
                 shader_defs: vec![ShaderDefVal::Bool("HORIZONTAL".into(), true)],
                 entry_point: Some("blur".into()),
-                push_constant_ranges: vec![],
+                immediate_size: 0,
                 zero_initialize_workgroup_memory: false,
             });
         let vertical_pipeline = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -129,7 +121,7 @@ impl FromWorld for ScreenReflectionBlurPipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("blur".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -196,26 +188,20 @@ pub fn prepare_blur_resources(
     }
 }
 
-#[derive(Default)]
-pub struct ScreenReflectionBlurNode;
-
-impl ViewNode for ScreenReflectionBlurNode {
-    type ViewQuery = (
+pub fn screen_reflection_blur_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewTarget,
         &'static ScreenReflectionResources,
         &'static ScreenReflectionBlurResources,
         &'static VoxelCacheView,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (_view_target, refl, blur, view): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (_view_target, refl, blur, view) = view.into_inner();
+    {
         if !view.inject_active {
-            return Ok(());
+            return;
         }
         let _span = info_span!("lumen.specular_blur").entered();
 
@@ -225,11 +211,11 @@ impl ViewNode for ScreenReflectionBlurNode {
         let Some(h_pipeline) =
             pipeline_cache.get_compute_pipeline(pipeline.horizontal_pipeline)
         else {
-            return Ok(());
+            return;
         };
         let Some(v_pipeline) = pipeline_cache.get_compute_pipeline(pipeline.vertical_pipeline)
         else {
-            return Ok(());
+            return;
         };
         let layout = pipeline_cache.get_bind_group_layout(&pipeline.layout);
 
@@ -283,7 +269,6 @@ impl ViewNode for ScreenReflectionBlurNode {
             pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
         }
 
-        Ok(())
     }
 }
 
@@ -300,20 +285,9 @@ impl Plugin for ScreenReflectionBlurPlugin {
                     Render,
                     prepare_blur_resources.in_set(RenderSystems::PrepareResources),
                 )
-                .add_render_graph_node::<ViewNodeRunner<ScreenReflectionBlurNode>>(
+                .add_systems(
                     Core3d,
-                    ScreenReflectionBlurLabel,
-                )
-                // Slot between the trace (so we have raw mip 0 to
-                // pyramid-ify) and the main lumen trace (which samples
-                // the pyramid).
-                .add_render_graph_edges(
-                    Core3d,
-                    (
-                        ScreenReflectionTraceLabel,
-                        ScreenReflectionBlurLabel,
-                        LumenTraceLabel,
-                    ),
+                    screen_reflection_blur_pass.in_set(crate::LumenSystems::ScreenReflectionBlur),
                 );
         }
     }

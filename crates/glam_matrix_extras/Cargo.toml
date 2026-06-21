@@ -1,0 +1,64 @@
+[package]
+name = "glam_matrix_extras"
+version = "0.3.0-dev"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Joona Aalto <jondolf.dev@gmail.com>"]
+description = "Matrix types and utilities for Glam."
+documentation = "https://docs.rs/glam_matrix_extras"
+repository = "https://github.com/Jondolf/glam_matrix_extras"
+readme = "README.md"
+keywords = ["gamedev", "math", "matrix"]
+categories = ["game-development", "science", "simulation"]
+
+[features]
+default = ["std", "f32", "f64"]
+
+# Enable single-precision floating point types.
+f32 = []
+
+# Enable double-precision floating point types.
+f64 = []
+
+# Enable reflection using `bevy_reflect`.
+bevy_reflect = ["dep:bevy_reflect", "bevy_reflect/glam"]
+
+# Enable data serialization/deserialization using `serde`.
+serde = ["dep:serde", "glam/serde"]
+
+# Enable `approx` to approximate floating point equality comparisons and assertions for types.
+approx = ["dep:approx", "glam/approx"]
+
+# Enable libm mathematical functions for glam types to ensure consistent outputs
+# across platforms at the cost of losing hardware-level optimization using intrinsics.
+libm = ["dep:libm", "glam/libm"]
+
+# Enable libm mathematical functions as a fallback for no_std environments.
+# Can be overridden with std feature.
+nostd-libm = ["dep:libm", "glam/nostd-libm"]
+
+# Enable the Rust standard library.
+std = ["glam/std"]
+
+[dependencies]
+# Math
+approx = { version = "0.5", optional = true, default-features = false }
+glam = { version = "0.32", default-features = false }
+libm = { version = "0.2", optional = true }
+
+# Reflection
+bevy_reflect = { workspace = true, optional = true }
+serde = { version = "1.0", optional = true, features = ["serde_derive"] }
+
+[dev-dependencies]
+# Enable some features for testing.
+glam_matrix_extras = { path = "./", features = ["f32", "f64", "approx"] }
+
+# Random number generation
+rand = { version = "0.10", default-features = false }
+rand_chacha = { version = "0.10", default-features = false }
+
+[lints.clippy]
+alloc_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+std_instead_of_core = "warn"

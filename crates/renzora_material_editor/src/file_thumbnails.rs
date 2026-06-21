@@ -23,7 +23,7 @@ use bevy::camera::visibility::RenderLayers;
 use bevy::camera::RenderTarget;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
 use uuid::Uuid;
@@ -849,7 +849,7 @@ fn setup_shared_thumbnail_lights(mut commands: Commands) {
         DirectionalLight {
             color: Color::srgb(1.0, 0.98, 0.95),
             illuminance: 6000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.6, 0.4, 0.0)),
@@ -862,7 +862,7 @@ fn setup_shared_thumbnail_lights(mut commands: Commands) {
         DirectionalLight {
             color: Color::srgb(0.6, 0.7, 0.9),
             illuminance: 2000.0,
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, 0.3, -0.8, 0.0)),

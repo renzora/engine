@@ -94,8 +94,8 @@ pub fn exit_edit_mode(
     if let Some(target) = mesh_selection.target.take() {
         mesh_selection.clear();
         if let (Ok(edit), Ok(mesh3d)) = (edit_q.get(target), mesh_q.get(target)) {
-            if let Some(mesh) = meshes.get_mut(&mesh3d.0) {
-                edit.bake_to_mesh(mesh);
+            if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
+                edit.bake_to_mesh(&mut mesh);
             }
         }
         commands.entity(target).remove::<EditMesh>();
@@ -645,8 +645,8 @@ pub fn bake_if_dirty(
         if !edit.dirty {
             continue;
         }
-        if let Some(mesh) = meshes.get_mut(&mesh3d.0) {
-            edit.bake_to_mesh(mesh);
+        if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
+            edit.bake_to_mesh(&mut mesh);
         }
         edit.dirty = false;
     }

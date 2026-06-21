@@ -129,15 +129,19 @@ fn build_card(commands: &mut Commands, fonts: &EmberFonts, id: &'static str, tit
     let glyph = commands
         .spawn((
             Text::new(glyph_ch.to_string()),
-            TextFont { font: fonts.phosphor.clone(), font_size: 22.0, ..default() },
+            TextFont {
+                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                font_size: bevy::text::FontSize::Px(22.0),
+                ..default()
+            },
             TextColor(rgb(text_primary())),
         ))
         .id();
     let text_col = commands
         .spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() })
         .id();
-    let t = commands.spawn((Text::new(title.to_string()), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap())).id();
-    let d = commands.spawn((Text::new(desc.to_string()), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_no_wrap())).id();
+    let t = commands.spawn((Text::new(title.to_string()), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap())).id();
+    let d = commands.spawn((Text::new(desc.to_string()), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap())).id();
     commands.entity(text_col).add_children(&[t, d]);
     commands.entity(card).add_children(&[glyph, text_col]);
     card

@@ -15,7 +15,7 @@ pub(crate) struct EmberMultiItem {
 
 /// A multi-select list: clicking a row toggles its own selected state.
 /// `selected` gives the initial state per item (missing entries default off).
-pub fn multi_select(commands: &mut Commands, font: &Handle<Font>, items: &[&str], selected: &[bool]) -> Entity {
+pub fn multi_select(commands: &mut Commands, font: &bevy::text::FontSource, items: &[&str], selected: &[bool]) -> Entity {
     let group = commands
         .spawn((
             Node {

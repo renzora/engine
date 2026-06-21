@@ -30,11 +30,8 @@ fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
     play_mode.is_none_or(|pm| !pm.is_editing())
 }
 
-#[cfg(not(any(feature = "avian", feature = "rapier")))]
-compile_error!("renzora_physics requires either the `avian` or `rapier` feature");
-
-#[cfg(all(feature = "avian", feature = "rapier"))]
-compile_error!("renzora_physics: enable only one of `avian` or `rapier`, not both");
+#[cfg(not(feature = "avian"))]
+compile_error!("renzora_physics requires the `avian` feature");
 
 /// Physics plugin that delegates to the selected backend.
 ///
@@ -61,9 +58,6 @@ impl Plugin for PhysicsPlugin {
 
         #[cfg(feature = "avian")]
         app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
-
-        #[cfg(feature = "rapier")]
-        app.add_plugins(backend::rapier::RapierBackendPlugin { start_paused });
 
         app.add_systems(Update, (auto_init_physics, sync_physics_data));
         app.add_systems(
@@ -285,8 +279,6 @@ fn handle_physics_script_actions(
             commands
                 .entity(target)
                 .insert(avian3d::prelude::ConstantForce(vec));
-            #[cfg(feature = "rapier")]
-            { /* TODO: rapier apply_force */ }
         }
         "apply_impulse" => {
             #[cfg(feature = "avian")]
@@ -298,16 +290,12 @@ fn handle_physics_script_actions(
                     .entity(target)
                     .insert(avian3d::prelude::LinearVelocity(vec));
             }
-            #[cfg(feature = "rapier")]
-            { /* TODO: rapier apply_impulse */ }
         }
         "set_velocity" => {
             #[cfg(feature = "avian")]
             commands
                 .entity(target)
                 .insert(avian3d::prelude::LinearVelocity(vec));
-            #[cfg(feature = "rapier")]
-            { /* TODO: rapier set_velocity */ }
         }
         _ => {}
     }
@@ -319,8 +307,6 @@ fn handle_physics_script_actions(
 pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &PhysicsBodyData) {
     #[cfg(feature = "avian")]
     backend::avian::spawn_physics_body(commands, entity, body_data);
-    #[cfg(feature = "rapier")]
-    backend::rapier::spawn_physics_body(commands, entity, body_data);
 }
 
 /// Spawn collider components on an entity.
@@ -331,16 +317,12 @@ pub fn spawn_collision_shape(
 ) {
     #[cfg(feature = "avian")]
     backend::avian::spawn_collision_shape(commands, entity, shape_data);
-    #[cfg(feature = "rapier")]
-    backend::rapier::spawn_collision_shape(commands, entity, shape_data);
 }
 
 /// Remove all physics components from an entity.
 pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
     #[cfg(feature = "avian")]
     backend::avian::despawn_physics_components(commands, entity);
-    #[cfg(feature = "rapier")]
-    backend::rapier::despawn_physics_components(commands, entity);
 }
 
 /// Spawn all physics components for an entity that has PhysicsBodyData and/or CollisionShapeData.
@@ -453,10 +435,6 @@ pub fn unpause(world: &mut World) {
             time.unpause();
         }
     }
-    #[cfg(feature = "rapier")]
-    {
-        // TODO: rapier unpause
-    }
 }
 
 /// Pause the physics simulation.
@@ -469,9 +447,5 @@ pub fn pause(world: &mut World) {
         if let Some(mut time) = world.get_resource_mut::<Time<avian3d::prelude::Physics>>() {
             time.pause();
         }
-    }
-    #[cfg(feature = "rapier")]
-    {
-        // TODO: rapier pause
     }
 }

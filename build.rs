@@ -14,7 +14,7 @@ fn main() {
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
-    let hash_input = format!("{pkg_version}-{rustc_ver}-bevy0.18");
+    let hash_input = format!("{pkg_version}-{rustc_ver}-bevy0.19");
     let build_hash = simple_hash(&hash_input);
     println!("cargo:rustc-env=RENZORA_ENGINE_VERSION={pkg_version}");
     println!("cargo:rustc-env=RENZORA_BUILD_HASH={build_hash}");

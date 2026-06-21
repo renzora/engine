@@ -8,7 +8,7 @@ use crate::theme::rgb;
 use super::tone::Tone;
 
 /// A small pill badge in a semantic tone.
-pub fn badge(commands: &mut Commands, font: &Handle<Font>, text: &str, tone: Tone) -> Entity {
+pub fn badge(commands: &mut Commands, font: &bevy::text::FontSource, text: &str, tone: Tone) -> Entity {
     commands
         .spawn((
             Node {

@@ -15,7 +15,7 @@ pub fn create_project(
     let config = ProjectConfig {
         name: name.to_string(),
         version: "0.1.0".to_string(),
-        main_scene: "scenes/main.ron".to_string(),
+        main_scene: "scenes/main.bsn".to_string(),
         ..Default::default()
     };
 
@@ -23,12 +23,11 @@ pub fn create_project(
     let config_content = toml::to_string_pretty(&config)?;
     std::fs::write(&config_path, config_content)?;
 
-    let scene_content = r#"(
-  resources: {},
-  entities: {},
-)
-"#;
-    let scene_path = path.join("scenes").join("main.ron");
+    // An empty scene in the interim BSN format (a header comment + no `entity`
+    // blocks). The old `(resources:{},entities:{})` was 0.18 RON, which the BSN
+    // loader rejects — see `renzora_bsn`.
+    let scene_content = "// renzora interim bsn v1\n";
+    let scene_path = path.join("scenes").join("main.bsn");
     std::fs::write(&scene_path, scene_content)?;
 
     Ok(CurrentProject {

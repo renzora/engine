@@ -48,9 +48,9 @@ pub fn render(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     for (cloth, mut rendering, mut aabb, transform, handle) in &mut cloth_query {
-        if let Some(mesh) = meshes.get_mut(handle) {
+        if let Some(mut mesh) = meshes.get_mut(handle) {
             rendering.update_positions(cloth.compute_vertex_positions(transform));
-            rendering.apply(mesh);
+            rendering.apply(&mut mesh);
             // TODO set_if_neq
             *aabb = rendering.compute_aabb();
         } else {

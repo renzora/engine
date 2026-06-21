@@ -184,7 +184,7 @@ fn shape_tile(
             Text::new(name),
             ui_font(&fonts.ui, 9.5),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center),
+            bevy::text::TextLayout::justify(bevy::text::Justify::Center),
             Node { max_width: Val::Px(TILE_W - 4.0), overflow: Overflow::clip(), ..default() },
         ))
         .id();

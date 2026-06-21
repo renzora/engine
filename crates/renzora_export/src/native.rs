@@ -178,7 +178,11 @@ fn collect_ron_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
             if !is_dot {
                 collect_ron_files(&path, out);
             }
-        } else if path.extension().and_then(|x| x.to_str()) == Some("ron") {
+        } else if matches!(
+            path.extension().and_then(|x| x.to_str()),
+            Some("ron") | Some("bsn")
+        ) {
+            // `.bsn` = interim scene format; `.ron` = sidecars/config still in RON.
             out.push(path);
         }
     }
@@ -309,7 +313,7 @@ fn platform_button(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> 
     });
     let ic = icon_text(commands, &fonts.phosphor, platform_icon(p), text_primary(), 18.0);
     commands.entity(ic).insert(FocusPolicy::Pass);
-    let nm = commands.spawn((Text::new(p.display_name().to_string()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::new_with_no_wrap())).id();
+    let nm = commands.spawn((Text::new(p.display_name().to_string()), ui_font(&fonts.ui, 12.5), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
     let dot = commands.spawn((Node { width: Val::Px(8.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(text_muted())), FocusPolicy::Pass)).id();
     bind_bg(commands, dot, move |w| {
         let installed = w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p));
@@ -534,7 +538,7 @@ fn build_plugins(commands: &mut Commands, fonts: &EmberFonts, pane: Entity) {
 fn build_icon(commands: &mut Commands, fonts: &EmberFonts, pane: Entity) {
     let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(4.0)), ..default() }, Name::new("icon-row"))).id();
     let lbl = txt(commands, fonts, "Icon:", 12.0, text_muted());
-    let path = commands.spawn((Text::new("None".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::new_with_no_wrap())).id();
+    let path = commands.spawn((Text::new("None".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
     bind_text(commands, path, |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.icon_path.clone()).unwrap_or_else(|| "None".to_string()));
     let clear = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), IconClearBtn, cursor())).id();
     let clx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 12.0);

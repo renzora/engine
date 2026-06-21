@@ -9,6 +9,7 @@
 //! [`SceneIconCache`] icon-position bookkeeping is retained for that future
 //! port.
 
+use bevy::light::{LightProbe, ParallaxCorrection};
 use bevy::prelude::*;
 
 use renzora::SceneCamera;
@@ -87,6 +88,8 @@ pub fn update_scene_icon_cache(
 const SPOT_COLOR: Color = Color::srgb(1.0, 0.78, 0.35);
 const POINT_COLOR: Color = Color::srgb(1.0, 0.85, 0.35);
 const SUN_COLOR: Color = Color::srgb(1.0, 0.92, 0.55);
+const AREA_COLOR: Color = Color::srgb(0.55, 0.8, 1.0);
+const PROBE_COLOR: Color = Color::srgb(0.45, 0.95, 0.85);
 
 // ── Selection-only 3D wireframe extras ──────────────────────────────────────
 
@@ -96,8 +99,51 @@ pub fn draw_light_gizmos(
     point_lights: Query<(Entity, &GlobalTransform, &PointLight)>,
     spot_lights: Query<(Entity, &GlobalTransform, &SpotLight)>,
     dir_lights: Query<(Entity, &GlobalTransform, &DirectionalLight)>,
+    rect_lights: Query<(Entity, &GlobalTransform, &RectLight)>,
+    probes: Query<(Entity, &GlobalTransform, Option<&ParallaxCorrection>), With<LightProbe>>,
 ) {
-    let Some(selected) = selection.get() else {
+    let selected = selection.get();
+
+    // Area lights have no mesh and no scene icon, so — unlike the other light
+    // gizmos — draw the rectangle for *every* RectLight (dim), brightening the
+    // selected one. The rect lies in the light's local XY plane and emits along
+    // local -Z, mirroring bevy's own `rect_light_gizmo`.
+    for (entity, gt, rect) in rect_lights.iter() {
+        let (_, rotation, translation) = gt.to_scale_rotation_translation();
+        let size = Vec2::new(rect.width.max(0.001), rect.height.max(0.001));
+        let is_selected = Some(entity) == selected;
+        let c = with_alpha(AREA_COLOR, if is_selected { 0.95 } else { 0.45 });
+        gizmos.rect(Isometry3d::new(translation, rotation), size, c);
+        // Emission-direction arrow (local -Z), short like bevy's.
+        let dir = rotation * Vec3::NEG_Z;
+        draw_arrow(&mut gizmos, translation, dir, 0.6, c);
+        // Diagonals make the panel read clearly as a filled emitter when
+        // selected, without cluttering every unselected light.
+        if is_selected {
+            let hx = rotation * (Vec3::X * size.x * 0.5);
+            let hy = rotation * (Vec3::Y * size.y * 0.5);
+            gizmos.line(translation - hx - hy, translation + hx + hy, c);
+            gizmos.line(translation - hx + hy, translation + hx - hy, c);
+        }
+    }
+
+    // Reflection probes have no mesh either: draw the parallax-correction box
+    // for *every* probe (dim), brightening the selected one. The box is the
+    // probe's unit cube under its Transform (Auto/None), or scaled to the
+    // `Custom` half-extents (in probe space) — so it shows exactly the volume
+    // the cubemap is corrected against.
+    for (entity, gt, parallax) in probes.iter() {
+        let half = match parallax {
+            Some(ParallaxCorrection::Custom(v)) => *v,
+            _ => Vec3::splat(0.5),
+        };
+        let mut t = gt.compute_transform();
+        t.scale *= half * 2.0;
+        let is_selected = Some(entity) == selected;
+        gizmos.cube(t, with_alpha(PROBE_COLOR, if is_selected { 0.9 } else { 0.35 }));
+    }
+
+    let Some(selected) = selected else {
         return;
     };
 

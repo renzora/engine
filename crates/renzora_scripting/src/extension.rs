@@ -29,14 +29,6 @@ impl ExtensionData {
     }
 }
 
-// ── Extension command trait ──────────────────────────────────────────────
-
-/// Trait for custom commands produced by script extensions.
-/// Implement this on your command struct, then wrap it with
-/// `ScriptCommand::Extension(Box::new(MyCommand { ... }))`.
-pub trait ScriptExtensionCommand: Send + Sync + std::fmt::Debug + 'static {
-    fn as_any(&self) -> &dyn Any;
-}
 
 // ── Script extension trait ───────────────────────────────────────────────
 
@@ -55,7 +47,8 @@ pub trait ScriptExtension: Send + Sync + 'static {
     fn populate_context(&self, world: &World, entity: Entity, data: &mut ExtensionData);
 
     /// Register custom Lua functions. Called once per Lua state creation.
-    /// Use `push_command(ScriptCommand::Extension(...))` for custom commands.
+    /// Queue world mutations with `push_command(ScriptCommand::Action { .. })`,
+    /// then apply them with an `add_observer(On<ScriptAction>)` handler.
     #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn register_lua_functions(&self, _lua: &mlua::Lua) {}
 

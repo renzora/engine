@@ -17,16 +17,12 @@
 //!     inside-mesh "solid air" isn't represented. Phase 5's ray tracer
 //!     will need an additional alpha/density signal.
 
-use bevy::core_pipeline::core_3d::graph::Core3d;
-use bevy::ecs::query::QueryItem;
+use bevy::core_pipeline::Core3d;
 use bevy::prelude::*;
 use bevy::mesh::{Indices, Mesh, VertexAttributeValues};
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{storage_buffer_read_only_sized, storage_buffer_sized, uniform_buffer};
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue};
+use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::Extract;
 use bevy::render::{Render, RenderApp, RenderSystems};
 use bytemuck::{Pod, Zeroable};
@@ -364,7 +360,7 @@ impl FromWorld for GeometryInjectPipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("inject".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -491,39 +487,34 @@ pub fn prepare_geometry_sample_buffer(
     buffer.count = extracted.0.len() as u32;
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct GeometryInjectLabel;
-
-#[derive(Default)]
-pub struct GeometryInjectNode;
-
-impl ViewNode for GeometryInjectNode {
-    type ViewQuery = &'static VoxelCacheView;
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        view: QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+/// Geometry inject pass. Bevy 0.19: was `GeometryInjectNode: ViewNode`; now a
+/// render system in `LumenSystems::GeometryInject` (between Inject and Resolve).
+pub fn geometry_inject_pass(
+    world: &World,
+    view: ViewQuery<&'static VoxelCacheView>,
+    mut render_context: RenderContext,
+) {
+    let view = view.into_inner();
+    {
         if !view.inject_active {
-            return Ok(());
+            return;
         }
         let buffer = world.resource::<GeometrySampleBuffer>();
         if buffer.count == 0 {
-            return Ok(());
+            return;
         }
-        let Some(sample_buf) = buffer.buffer.as_ref() else { return Ok(()); };
+        let Some(sample_buf) = buffer.buffer.as_ref() else {
+            return;
+        };
         let _span = info_span!("geometry.inject").entered();
 
         let pipeline = world.resource::<GeometryInjectPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(compute) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
-            return Ok(());
+            return;
         };
         let Some(resources) = world.get_resource::<VoxelCacheResources>() else {
-            return Ok(());
+            return;
         };
 
         let bg = render_context.render_device().create_bind_group(
@@ -547,7 +538,6 @@ impl ViewNode for GeometryInjectNode {
         // 64 threads per workgroup.
         let groups = buffer.count.div_ceil(64);
         pass.dispatch_workgroups(groups, 1, 1);
-        Ok(())
     }
 }
 
@@ -567,23 +557,12 @@ impl Plugin for GeometryVoxelizePlugin {
                 Render,
                 prepare_geometry_sample_buffer.in_set(RenderSystems::PrepareResources),
             );
-            render_app
-                .add_render_graph_node::<ViewNodeRunner<GeometryInjectNode>>(
-                    Core3d,
-                    GeometryInjectLabel,
-                )
-                // Pipeline order: Clear → VoxelInject (visible) →
-                // GeometryInject → Resolve. We slot between Inject and
-                // Resolve so all contributions land in the accum buffer
-                // before the single resolve drains them.
-                .add_render_graph_edges(
-                    Core3d,
-                    (
-                        crate::voxel_cache::VoxelInjectLabel,
-                        GeometryInjectLabel,
-                        crate::voxel_cache::VoxelResolveLabel,
-                    ),
-                );
+            // Bevy 0.19: slots into `LumenSystems::GeometryInject`, which the
+            // shared set ordering in `lib.rs` places between Inject and Resolve.
+            render_app.add_systems(
+                Core3d,
+                geometry_inject_pass.in_set(crate::LumenSystems::GeometryInject),
+            );
         }
     }
 

@@ -313,10 +313,12 @@ impl Plugin for DockPlugin {
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
             .init_resource::<TabDrag>()
+            .init_resource::<crate::font::FontRegistry>()
             .add_systems(
                 Update,
                 (
                     crate::font::load_fonts,
+                    crate::font::scan_project_fonts,
                     divider_drag,
                     tab_drag,
                     apply_tab_switch,
@@ -919,7 +921,7 @@ fn tab_drag(
     }
 }
 
-fn spawn_ghost(commands: &mut Commands, font: &Handle<Font>, id: &str, cursor: Vec2) -> Entity {
+fn spawn_ghost(commands: &mut Commands, font: &bevy::text::FontSource, id: &str, cursor: Vec2) -> Entity {
     let (title, icon) = tab_meta(id);
     let ghost = commands
         .spawn((
@@ -1256,7 +1258,7 @@ fn tab_close_click(
 
 fn build_tree(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
     parent: Option<ParentSplit>,
     path: Vec<bool>,
@@ -1549,7 +1551,7 @@ pub(crate) fn apply_dock_style(
 
 fn build_leaf(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
     parent: Option<ParentSplit>,
     tabs: &[String],
@@ -1659,7 +1661,7 @@ fn add_panel_click(
 
 fn populate_leaf(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
     parent: Option<ParentSplit>,
     leaf: Entity,
@@ -1735,7 +1737,7 @@ fn populate_leaf(
                 Text::new(title),
                 ui_font(font, 12.0),
                 TextColor(rgb(fg)),
-                bevy::text::TextLayout::new_with_no_wrap(),
+                bevy::text::TextLayout::no_wrap(),
             ))
             .id();
         let close = icon_text(commands, phosphor, "x", text_muted(), 11.0);

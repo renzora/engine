@@ -255,8 +255,8 @@ pub fn update_render_toggles(
 
     if is_default {
         for (id, state) in &original_states.states {
-            if let Some(m) = materials.get_mut(*id) {
-                state.apply_to(m);
+            if let Some(mut m) = materials.get_mut(*id) {
+                state.apply_to(&mut m);
             }
         }
         return;
@@ -264,11 +264,11 @@ pub fn update_render_toggles(
 
     for id in ids {
         let original = original_states.states.get(&id).cloned();
-        let Some(material) = materials.get_mut(id) else {
+        let Some(mut material) = materials.get_mut(id) else {
             continue;
         };
         if let Some(ref orig) = original {
-            orig.apply_to(material);
+            orig.apply_to(&mut material);
         }
         if !toggles.lighting {
             material.unlit = true;
@@ -314,7 +314,7 @@ fn apply_swap_generic<M: Material>(
     if changed {
         last_viz.mode = Some(mode_idx);
         for dbg_handle in cache.map.values() {
-            if let Some(dbg) = debug_materials.get_mut(dbg_handle) {
+            if let Some(mut dbg) = debug_materials.get_mut(dbg_handle) {
                 dbg.params.config.x = mode_idx;
             }
         }
@@ -344,7 +344,7 @@ fn apply_swap_generic<M: Material>(
             })
             .clone();
 
-        if let Some(dbg) = debug_materials.get_mut(&dbg_handle) {
+        if let Some(mut dbg) = debug_materials.get_mut(&dbg_handle) {
             dbg.params.config.x = mode_idx;
         }
 
@@ -449,8 +449,8 @@ pub fn update_shadow_settings(
 
     // Spot lights are few; they just follow the global toggle.
     for mut light in spot_lights.iter_mut() {
-        if light.shadows_enabled != shadows_on {
-            light.shadows_enabled = shadows_on;
+        if light.shadow_maps_enabled != shadows_on {
+            light.shadow_maps_enabled = shadows_on;
         }
     }
 
@@ -473,8 +473,8 @@ pub fn update_shadow_settings(
     };
     for (entity, mut light) in directional_lights.iter_mut() {
         let want = dir_casters.contains(&entity);
-        if light.shadows_enabled != want {
-            light.shadows_enabled = want;
+        if light.shadow_maps_enabled != want {
+            light.shadow_maps_enabled = want;
         }
     }
 
@@ -502,8 +502,8 @@ pub fn update_shadow_settings(
 
     for (entity, _, mut light) in point_lights.iter_mut() {
         let want = casters.contains(&entity);
-        if light.shadows_enabled != want {
-            light.shadows_enabled = want;
+        if light.shadow_maps_enabled != want {
+            light.shadow_maps_enabled = want;
         }
     }
 }

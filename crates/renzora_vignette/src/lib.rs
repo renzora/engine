@@ -1,59 +1,107 @@
-use bevy::core_pipeline::core_3d::graph::{Core3d, Node3d};
+//! Vignette — a thin wrapper around **Bevy 0.19's built-in `Vignette`**
+//! (`bevy::post_process`), replacing renzora's old custom WGSL vignette.
+//!
+//! Follows the same settings→sync→camera pattern as the other bevy-built-in
+//! wrappers (`renzora_ssr`, `renzora_bloom_effect`): `VignetteSettings` is
+//! authored on a `WorldEnvironment`-style entity and routed onto cameras by
+//! `sync_vignette`, which toggles bevy's `Vignette` component. The bevy
+//! post-process effect stack (`PostProcessPlugin`) renders it.
+
+use bevy::post_process::effect_stack::Vignette;
 use bevy::prelude::*;
-use bevy::render::{
-    extract_component::ExtractComponent,
-    render_graph::{InternedRenderLabel, InternedRenderSubGraph, RenderLabel, RenderSubGraph},
-    render_resource::ShaderType,
-};
-use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "editor")]
-use renzora_editor_framework::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry};
-use renzora_postprocess::PostProcessEffect;
+use renzora::{AppEditorExt, InspectorEntry};
 
-#[derive(Component, Clone, Copy, Reflect, Serialize, Deserialize, ShaderType, ExtractComponent)]
+/// Authored vignette settings, routed to cameras as a bevy `Vignette`.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
-#[extract_component_filter(With<Camera3d>)]
 pub struct VignetteSettings {
+    pub enabled: bool,
+    /// Strength of the darkening at the edges.
     pub intensity: f32,
+    /// Radius (0..1) at which the vignette starts.
     pub radius: f32,
+    /// Falloff softness from the radius to the corners.
     pub smoothness: f32,
-    pub color_r: f32,
-    pub color_g: f32,
-    pub color_b: f32,
-    pub _padding1: f32,
-    pub enabled: f32,
+    /// 0 = elliptical (follows aspect), 1 = circular.
+    pub roundness: f32,
+    /// Vignette tint (linear RGB; black is the classic look).
+    pub color: Vec3,
+    /// Compensates the darkening in the very corners.
+    pub edge_compensation: f32,
 }
 
 impl Default for VignetteSettings {
+    // Mirrors `bevy::post_process::Vignette::default()`.
     fn default() -> Self {
         Self {
-            intensity: 0.3,
-            radius: 0.9,
-            smoothness: 0.3,
-            color_r: 0.0,
-            color_g: 0.0,
-            color_b: 0.0,
-            _padding1: 0.0,
-            enabled: 1.0,
+            enabled: true,
+            intensity: 1.0,
+            radius: 0.75,
+            smoothness: 5.0,
+            roundness: 1.0,
+            color: Vec3::ZERO,
+            edge_compensation: 1.0,
         }
     }
 }
 
-impl PostProcessEffect for VignetteSettings {
-    fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_vignette/vignette.wgsl".into()
+fn vignette_from(s: &VignetteSettings) -> Vignette {
+    Vignette {
+        intensity: s.intensity,
+        radius: s.radius,
+        smoothness: s.smoothness,
+        roundness: s.roundness,
+        color: Color::srgb(s.color.x, s.color.y, s.color.z),
+        edge_compensation: s.edge_compensation,
+        center: Vec2::new(0.5, 0.5),
     }
-    fn sub_graph() -> Option<InternedRenderSubGraph> {
-        Some(Core3d.intern())
+}
+
+fn sync_vignette(
+    mut commands: Commands,
+    sources: Query<(Entity, Ref<VignetteSettings>)>,
+    routing: Res<renzora::EffectRouting>,
+) {
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        let mut found = false;
+        for &src in source_list {
+            if let Ok((_, settings)) = sources.get(src) {
+                if !routing_changed && !settings.is_changed() {
+                    found = true;
+                    break;
+                }
+                if settings.enabled {
+                    commands.entity(*target).insert(vignette_from(&settings));
+                } else {
+                    commands.entity(*target).remove::<Vignette>();
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found && routing_changed {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<Vignette>();
+            }
+        }
     }
-    fn node_edges() -> Vec<InternedRenderLabel> {
-        vec![
-            Node3d::Tonemapping.intern(),
-            Self::node_label().intern(),
-            Node3d::EndMainPassPostProcessing.intern(),
-        ]
+}
+
+fn cleanup_vignette(
+    mut commands: Commands,
+    mut removed: RemovedComponents<VignetteSettings>,
+    routing: Res<renzora::EffectRouting>,
+) {
+    if removed.read().next().is_some() {
+        for (target, _) in routing.iter() {
+            if let Ok(mut ec) = commands.get_entity(*target) {
+                ec.remove::<Vignette>();
+            }
+        }
     }
 }
 
@@ -63,108 +111,41 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "vignette",
         display_name: "Vignette",
         icon: "aperture",
-        // "post_process" isn't in the theme's category color map — it
-        // falls through to the "transform" color. "effects" matches the
-        // theme and visually groups Vignette with the other stylistic
-        // post-process effects.
         category: "effects",
         has_fn: |world, entity| world.get::<VignetteSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(VignetteSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<VignetteSettings>();
+            world
+                .entity_mut(entity)
+                .remove::<(VignetteSettings, Vignette)>();
         }),
         is_enabled_fn: Some(|world, entity| {
             world
                 .get::<VignetteSettings>(entity)
-                .map(|s| s.enabled > 0.5)
+                .map(|s| s.enabled)
                 .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
             if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
-                s.enabled = if val { 1.0 } else { 0.0 };
+                s.enabled = val;
             }
         }),
         fields: vec![
-            FieldDef {
-                name: "Intensity",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 5.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<VignetteSettings>(entity)
-                        .map(|s| FieldValue::Float(s.intensity))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
-                            s.intensity = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Radius",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 2.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<VignetteSettings>(entity)
-                        .map(|s| FieldValue::Float(s.radius))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
-                            s.radius = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Smoothness",
-                field_type: FieldType::Float {
-                    speed: 0.01,
-                    min: 0.0,
-                    max: 2.0,
-                },
-                get_fn: |world, entity| {
-                    world
-                        .get::<VignetteSettings>(entity)
-                        .map(|s| FieldValue::Float(s.smoothness))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
-                            s.smoothness = v;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Color",
-                field_type: FieldType::Color,
-                get_fn: |world, entity| {
-                    world
-                        .get::<VignetteSettings>(entity)
-                        .map(|s| FieldValue::Color([s.color_r, s.color_g, s.color_b]))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Color([r, g, b]) = val {
-                        if let Some(mut s) = world.get_mut::<VignetteSettings>(entity) {
-                            s.color_r = r;
-                            s.color_g = g;
-                            s.color_b = b;
-                        }
-                    }
-                },
-            },
+            renzora::float_field!("Intensity", VignetteSettings, intensity, 0.01, 0.0, 5.0),
+            renzora::float_field!("Radius", VignetteSettings, radius, 0.01, 0.0, 2.0),
+            renzora::float_field!("Smoothness", VignetteSettings, smoothness, 0.05, 0.0, 20.0),
+            renzora::float_field!("Roundness", VignetteSettings, roundness, 0.01, 0.0, 1.0),
+            renzora::vec3_color_field!("Color", VignetteSettings, color),
+            renzora::float_field!(
+                "Edge Compensation",
+                VignetteSettings,
+                edge_compensation,
+                0.01,
+                0.0,
+                2.0
+            ),
         ],
     }
 }
@@ -174,10 +155,9 @@ pub struct VignettePlugin;
 
 impl Plugin for VignettePlugin {
     fn build(&self, app: &mut App) {
-        info!("[runtime] VignettePlugin");
-        bevy::asset::embedded_asset!(app, "vignette.wgsl");
+        info!("[runtime] VignettePlugin (bevy built-in)");
         app.register_type::<VignetteSettings>();
-        app.add_plugins(renzora_postprocess::PostProcessPlugin::<VignetteSettings>::default());
+        app.add_systems(Update, (sync_vignette, cleanup_vignette));
         #[cfg(feature = "editor")]
         app.register_inspector(inspector_entry());
     }

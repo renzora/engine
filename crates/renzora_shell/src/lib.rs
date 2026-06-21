@@ -872,7 +872,7 @@ fn process_exit_request(
     req: Option<Res<ExitRequest>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
     fonts: Option<Res<EmberFonts>>,
-    queue: Option<ResMut<WindowActionQueue>>,
+    mut exit: MessageWriter<AppExit>,
     open: Query<(), With<ExitPromptRoot>>,
     mut commands: Commands,
 ) {
@@ -887,10 +887,13 @@ fn process_exit_request(
 
     let dirty = tabs.as_ref().is_some_and(|t| any_unsaved(t));
     // Nothing unsaved (or we can't render the prompt) → exit straight away.
+    // Write `AppExit` here in `Update` (not via the `WindowAction::Close` queue,
+    // which `apply_window_actions` drains in `Last`) so the exit event already
+    // exists by the time the `Last`-scheduled `kill_on_app_exit` reads it —
+    // otherwise the two `Last` systems race and the fast-exit is missed,
+    // falling back to the slow World teardown.
     if !dirty || fonts.is_none() {
-        if let Some(mut queue) = queue {
-            queue.push(WindowAction::Close);
-        }
+        exit.write(AppExit::Success);
         return;
     }
     let fonts = fonts.unwrap();
@@ -965,7 +968,7 @@ fn exit_prompt_buttons(
     discard: Query<&Interaction, (Changed<Interaction>, With<ExitPromptDiscard>)>,
     cancel: Query<&Interaction, (Changed<Interaction>, With<ExitPromptCancel>)>,
     roots: Query<Entity, With<ExitPromptRoot>>,
-    queue: Option<ResMut<WindowActionQueue>>,
+    mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
 ) {
     let save = save.iter().any(|i| *i == Interaction::Pressed);
@@ -986,9 +989,7 @@ fn exit_prompt_buttons(
         commands.insert_resource(renzora::core::SaveSceneRequested);
         commands.insert_resource(PendingExitAfterSave);
     } else if discard {
-        if let Some(mut queue) = queue {
-            queue.push(WindowAction::Close);
-        }
+        exit.write(AppExit::Success);
     }
     // cancel → nothing else; the close is abandoned.
 }
@@ -1001,7 +1002,7 @@ fn pending_exit_after_save(
     save_req: Option<Res<renzora::core::SaveSceneRequested>>,
     save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
-    queue: Option<ResMut<WindowActionQueue>>,
+    mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
 ) {
     if pending.is_none() {
@@ -1015,9 +1016,7 @@ fn pending_exit_after_save(
 
     let still_dirty = tabs.is_some_and(|t| any_unsaved(&t));
     if !still_dirty {
-        if let Some(mut queue) = queue {
-            queue.push(WindowAction::Close);
-        }
+        exit.write(AppExit::Success);
     }
     // else: save failed or Save-As was cancelled → stay open, don't lose work.
 }
@@ -1484,8 +1483,8 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
                         .spawn((
                             Text::new(glyph.to_string()),
                             TextFont {
-                                font: fonts.phosphor.clone(),
-                                font_size: 12.0,
+                                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
+                                font_size: bevy::text::FontSize::Px(12.0),
                                 ..default()
                             },
                             TextColor(rgb(color)),
@@ -1510,7 +1509,7 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
 
 /// The top bar: File/Edit/View/Help on the left, the layout ribbon centered,
 /// action buttons on the right.
-fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
+fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -1695,7 +1694,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
 /// `index`; dragging reorders, right-click renames/removes (see [`ribbon_interact`]).
 fn ribbon_item(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     index: usize,
     active: bool,
@@ -1795,7 +1794,7 @@ fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
 
 /// Inline rename field for a ribbon tab (mirrors the native hierarchy's). Seeded
 /// with the current name; committed by [`ribbon_rename_commit`].
-fn build_ribbon_rename_field(commands: &mut Commands, font: &Handle<Font>, index: usize, name: &str) -> Entity {
+fn build_ribbon_rename_field(commands: &mut Commands, font: &bevy::text::FontSource, index: usize, name: &str) -> Entity {
     let input = text_input(commands, font, "Name", name);
     commands.entity(input).insert((
         RibbonRenameInput(index),
@@ -1814,7 +1813,7 @@ fn build_ribbon_rename_field(commands: &mut Commands, font: &Handle<Font>, index
 
 /// The document tab strip: the open documents (`DocumentTabState`, shared with
 /// the egui editor) rendered reactively, plus an add-document button.
-fn build_doc_tabs(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
+fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -2203,7 +2202,7 @@ struct OpenTopMenu {
 /// An interactive top-bar menu title (File/Edit/View/Help).
 fn top_menu_item(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     kind: TopMenuKind,
 ) -> Entity {
@@ -2240,7 +2239,7 @@ fn top_menu_item(
 
 /// The account menu title (left bar, after Help). Identical styling to the other
 /// top menus, but its label is reactive (the signed-in username, or "Sign In").
-fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
+fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let item = commands
         .spawn((
             Node {

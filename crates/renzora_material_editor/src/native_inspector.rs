@@ -348,7 +348,7 @@ fn prop_label(commands: &mut Commands, fonts: &EmberFonts, name: &str) -> Entity
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() },
         ))
         .id()
@@ -399,7 +399,7 @@ fn tex_display(v: Option<PinValue>) -> (String, bool) {
 
 fn texture_field(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, pin: &str) -> Entity {
     let path_text = commands
-        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_no_wrap(), bevy::ui::FocusPolicy::Pass))
+        .spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap(), bevy::ui::FocusPolicy::Pass))
         .id();
     let n = pin.to_string();
     bind_with(commands, path_text, move |w| tex_display(pin_value(w, node_id, &n)), |w, e, (text, has): &(String, bool)| {

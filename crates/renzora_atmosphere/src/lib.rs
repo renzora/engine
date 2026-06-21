@@ -1,4 +1,8 @@
-use bevy::pbr::{Atmosphere, AtmosphereMode, AtmosphereSettings, ScatteringMedium};
+// Bevy 0.19: `Atmosphere`/`ScatteringMedium` moved to `bevy::light`;
+// `AtmosphereMode`/`AtmosphereSettings` stay in `bevy::pbr`.
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::Atmosphere;
+use bevy::pbr::{AtmosphereMode, AtmosphereSettings};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -27,26 +31,44 @@ impl Default for AtmosphereComponentSettings {
     }
 }
 
-/// Stores the ScatteringMedium handle so we don't recreate it every frame.
+/// Tracks the `ScatteringMedium` asset for an atmosphere source so we don't
+/// recreate it every frame.
 #[derive(Component)]
 pub struct AtmosphereMediumHandle(Handle<ScatteringMedium>);
 
-/// Sync atmosphere settings from a `WorldEnvironment`-style source entity
-/// onto every camera the routing table targets.
+/// Marker for the single dedicated entity that carries the bevy `Atmosphere`.
 ///
-/// Bevy 0.18 freezes the camera's bind group layout the first frame the
-/// camera renders, with atmosphere bindings present iff the `Atmosphere`
-/// component existed at that moment. This function therefore *replaces
-/// values* rather than adding/removing components — adding atmosphere at
-/// runtime crashes wgpu with a 20-vs-23 binding mismatch, and removing it
-/// breaks any subsequent re-add. The camera spawn site is responsible for
-/// attaching the components up front (see `renzora_engine::camera`); we
-/// just keep them in sync with whatever the user authored.
+/// **Why this can't live on the World Environment / camera (0.19 architecture,
+/// load-bearing).** 0.18 had `Atmosphere` as a *camera* component. 0.19 makes
+/// the entity's `GlobalTransform` the **planet center**: `extract_atmosphere`
+/// stores `world_to_atmosphere = inverse(global_transform)`, and an `on_add`
+/// hook drops a fresh atmosphere to `(0, -inner_radius, 0)` so the scene sits on
+/// the planet surface. That means the host entity must (a) be *stationary* and
+/// (b) have NO `Transform` (a `Transform` would let propagation overwrite the
+/// hook's planet-center `GlobalTransform` back to the origin → camera 6,360 km
+/// underground → no sky). Renzora's World Environment entity fails both: it
+/// carries a rotation `Transform` (it aims the sun's `DirectionalLight`), which
+/// would also tilt the whole sky. So the authored `AtmosphereComponentSettings`
+/// stays on the World Environment, but the actual `Atmosphere` lives here, on a
+/// hidden transform-free entity we own.
+#[derive(Component)]
+pub struct AtmospherePlanet;
+
+/// Planet-center `GlobalTransform`: `inner_radius` below the origin so world
+/// `Y = 0` is the surface (matches bevy's `Atmosphere` on-add default).
+fn planet_transform(inner_radius: f32) -> GlobalTransform {
+    GlobalTransform::from(Transform::from_translation(Vec3::NEG_Y * inner_radius))
+}
+
+/// Drives the sky from the World Environment entity carrying
+/// `AtmosphereComponentSettings`: maintains one hidden [`AtmospherePlanet`]
+/// entity that holds the real `Atmosphere`, and mirrors the render mode onto the
+/// routed cameras' `AtmosphereSettings`.
 ///
-/// `enabled = false` becomes a no-op — there's no clean "disable" path in
-/// Bevy 0.18's atmosphere. The user-facing toggle effectively means "stop
-/// updating from this source," and the camera retains its last-known
-/// values (or its spawn defaults if no source ever drove it).
+/// `enabled = false` genuinely turns the sky OFF — 0.19 re-extracts `Atmosphere`
+/// every frame and the render node `ViewQuery`-skips cameras without it (no
+/// bind-group-layout lock like 0.18), so we just strip `Atmosphere` from the
+/// planet.
 fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
@@ -55,84 +77,109 @@ fn sync_atmosphere(
         Ref<AtmosphereComponentSettings>,
         Option<&AtmosphereMediumHandle>,
     )>,
-    existing: Query<&Atmosphere>,
+    planet: Query<(Entity, Has<Atmosphere>), With<AtmospherePlanet>>,
+    mut cam_settings: Query<&mut AtmosphereSettings>,
     routing: Res<renzora::EffectRouting>,
 ) {
     let routing_changed = routing.is_changed();
+
+    // Reconcile, don't patch: derive the sky strictly from "is there a routed,
+    // still-existing, ENABLED source?". This makes removing the source entity,
+    // removing the `AtmosphereComponentSettings` component, AND toggling
+    // `enabled` all tear the sky down uniformly — no event bookkeeping that can
+    // miss a despawn. The first such source drives the sky; collect every camera
+    // routed to it so they share its render mode.
+    let mut active_src = None;
+    let mut targets: Vec<Entity> = Vec::new();
     for (target, source_list) in routing.iter() {
-        // `Atmosphere` can't be added at runtime (Bevy specializes the bind
-        // group layout at first render). So only *update* cameras that already
-        // carry it — i.e. the dedicated environment/bake camera. Other routed
-        // cameras (extra viewports, previews) share that camera's baked sky via
-        // a `Skybox` instead of getting their own atmosphere pass.
-        if existing.get(*target).is_err() {
-            continue;
-        }
         for &src in source_list {
-            if let Ok((entity, settings, existing_handle)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() {
-                    break;
-                }
+            let Ok((entity, settings, _)) = sources.get(src) else {
+                continue;
+            };
+            if active_src.is_none() && settings.enabled {
+                active_src = Some(entity);
+            }
+            if active_src == Some(entity) {
+                targets.push(*target);
+            }
+            break;
+        }
+    }
 
-                // Reuse the camera's existing atmosphere medium handle
-                // when present so the GPU resource stays valid; only
-                // allocate a fresh one when this is a brand-new source.
-                let handle = if let Some(h) = existing_handle {
-                    h.0.clone()
-                } else if let Ok(atmo) = existing.get(*target) {
-                    atmo.medium.clone()
-                } else {
-                    let h = mediums.add(ScatteringMedium::default());
-                    commands
-                        .entity(entity)
-                        .insert(AtmosphereMediumHandle(h.clone()));
-                    h
-                };
+    let planet_entity = planet.iter().next();
+    let have_sky = planet_entity.is_some_and(|(_, has)| has);
 
-                let rendering_method = match settings.mode {
-                    1 => AtmosphereMode::Raymarched,
-                    _ => AtmosphereMode::LookupTexture,
-                };
+    let Some(src) = active_src else {
+        // No enabled source (removed / despawned / disabled) → strip the sky.
+        // 0.19 re-extracts `Atmosphere` every frame and `ViewQuery`-skips cameras
+        // without it, so removing the component is a clean "off".
+        if have_sky {
+            if let Some((planet_e, _)) = planet_entity {
+                commands.entity(planet_e).remove::<Atmosphere>();
+            }
+        }
+        return;
+    };
 
-                // `enabled = false` collapses the atmosphere to a sliver
-                // and zeroes ground albedo — Bevy 0.18 won't let us strip
-                // the components without crashing the deferred pipeline,
-                // so this is the closest thing we have to "atmosphere
-                // off." IBL is handled separately by EnvironmentMapPlugin.
-                let (ground_albedo, top_radius) = if settings.enabled {
-                    (settings.ground_albedo, settings.top_radius)
-                } else {
-                    (0.0, settings.bottom_radius + 1.0)
-                };
+    let Ok((_, settings, existing_handle)) = sources.get(src) else {
+        return;
+    };
 
-                // `insert` replaces the existing components in place — no
-                // bind group layout change because the camera already had
-                // these slots from spawn-time.
-                commands.entity(*target).insert((
-                    Atmosphere {
-                        bottom_radius: settings.bottom_radius,
-                        top_radius,
-                        ground_albedo: Vec3::splat(ground_albedo),
-                        medium: handle,
-                    },
-                    AtmosphereSettings {
-                        scene_units_to_m: settings.scene_units_to_m,
-                        rendering_method,
-                        ..default()
-                    },
-                ));
-                break;
+    // Only rebuild on an actual change (or when the sky isn't up yet) — this
+    // system otherwise runs every frame for the reconcile above.
+    if !have_sky || routing_changed || settings.is_changed() {
+        let handle = if let Some(h) = existing_handle {
+            h.0.clone()
+        } else {
+            let h = mediums.add(ScatteringMedium::default());
+            commands
+                .entity(src)
+                .insert(AtmosphereMediumHandle(h.clone()));
+            h
+        };
+
+        let atmosphere = Atmosphere {
+            // 0.18 `bottom_radius`/`top_radius` → 0.19 `inner_radius`/
+            // `outer_radius` (meters; 0.19 dropped `scene_units_to_m`).
+            inner_radius: settings.bottom_radius,
+            outer_radius: settings.top_radius,
+            ground_albedo: Vec3::splat(settings.ground_albedo),
+            medium: handle,
+        };
+        // Explicit planet-center transform (tracks radius edits; the on-add hook
+        // only fires once). No `Transform`, so propagation never overwrites it.
+        let xform = planet_transform(settings.bottom_radius);
+
+        if let Some((planet_e, _)) = planet_entity {
+            commands.entity(planet_e).insert((atmosphere, xform));
+        } else {
+            commands.spawn((
+                AtmospherePlanet,
+                atmosphere,
+                xform,
+                Name::new("Sky Atmosphere"),
+                renzora::HideInHierarchy,
+            ));
+        }
+
+        // Mirror the render mode onto every camera routed to this source.
+        let rendering_method = match settings.mode {
+            1 => AtmosphereMode::Raymarched,
+            _ => AtmosphereMode::LookupTexture,
+        };
+        for &target in &targets {
+            if let Ok(mut s) = cam_settings.get_mut(target) {
+                // `AtmosphereMode` isn't `PartialEq`; just assign.
+                s.rendering_method = rendering_method;
             }
         }
     }
 }
 
-/// When the source `AtmosphereComponentSettings` is removed (entity
-/// despawn or component removed via inspector), drop our medium-handle
-/// bookkeeping. We deliberately do NOT remove `Atmosphere` /
-/// `AtmosphereSettings` / `AtmosphereEnvironmentMapLight` / `Msaa` from
-/// the target cameras — see `sync_atmosphere` for the why. The camera
-/// keeps rendering with its last-applied (or spawn-default) atmosphere.
+/// Drop the medium bookkeeping when `AtmosphereComponentSettings` is removed from
+/// a surviving entity (the sky itself is torn down by `sync_atmosphere`'s
+/// reconcile). A despawned source takes its components with it, so nothing to do
+/// there.
 fn cleanup_atmosphere(
     mut commands: Commands,
     mut removed: RemovedComponents<AtmosphereComponentSettings>,

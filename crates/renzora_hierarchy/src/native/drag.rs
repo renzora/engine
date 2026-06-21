@@ -222,7 +222,7 @@ pub(crate) fn hier_drag_tooltip(
             Text::new(text),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(renzora_ember::theme::text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Pickable::IGNORE,
             HierDragTooltipText,
         ))

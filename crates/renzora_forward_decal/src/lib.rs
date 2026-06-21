@@ -39,7 +39,7 @@ fn sync_decals(
         if settings.enabled {
             if let Ok(handle) = handles.get(entity) {
                 // Update existing material
-                if let Some(mat) = materials.get_mut(&handle.0) {
+                if let Some(mut mat) = materials.get_mut(&handle.0) {
                     mat.base.base_color = settings.base_color;
                     mat.extension.depth_fade_factor = settings.depth_fade_factor;
                 }

@@ -385,7 +385,7 @@ fn clip_block(
             Text::new(slot.path.clone()),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(text_muted())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 flex_grow: 1.0,
                 min_width: Val::Px(0.0),

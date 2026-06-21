@@ -69,6 +69,9 @@ impl Plugin for ViewportPlugin {
             .insert_resource(WireframeConfig {
                 global: false,
                 default_color: bevy::color::Color::WHITE,
+                // 0.19: new fields.
+                default_line_width: 2.0,
+                default_topology: bevy::pbr::wireframe::WireframeTopology::default(),
             })
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
@@ -463,7 +466,7 @@ fn resolve_viewport_slots(
             UVec2::splat(UNDOCKED_TARGET_SIZE)
         };
         if slot.current_size != requested {
-            if let Some(image) = slot.image.as_ref().and_then(|h| images.get_mut(h)) {
+            if let Some(mut image) = slot.image.as_ref().and_then(|h| images.get_mut(h)) {
                 image.resize(Extent3d {
                     width: requested.x,
                     height: requested.y,

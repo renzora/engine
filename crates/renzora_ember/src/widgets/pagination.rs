@@ -13,7 +13,7 @@ pub(crate) struct EmberPage {
 }
 
 /// A pagination control: numbered page buttons, one active.
-pub fn pagination(commands: &mut Commands, font: &Handle<Font>, pages: usize, active: usize) -> Entity {
+pub fn pagination(commands: &mut Commands, font: &bevy::text::FontSource, pages: usize, active: usize) -> Entity {
     let group = commands
         .spawn((
             Node {

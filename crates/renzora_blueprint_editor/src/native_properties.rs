@@ -76,7 +76,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let note = commands
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, padding: UiRect::all(Val::Px(16.0)), ..default() })
         .id();
-    let note_lbl = commands.spawn((Text::new("Select a node to edit its properties"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::new_with_justify(bevy::text::Justify::Center))).id();
+    let note_lbl = commands.spawn((Text::new("Select a node to edit its properties"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::justify(bevy::text::Justify::Center))).id();
     commands.entity(note).add_child(note_lbl);
     bind_display(commands, note, |w| !resolvable(w));
 
@@ -192,7 +192,7 @@ fn input_pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_i
     // Connection icon + label + type badge.
     let conn = icon_text(commands, &fonts.phosphor, if connected { "plugs-connected" } else { "plug" }, if connected { accent() } else { text_muted() }, 11.0);
     let label = commands
-        .spawn((Text::new(pin.label.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::new_with_no_wrap(), Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() }))
+        .spawn((Text::new(pin.label.clone()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), bevy::text::TextLayout::no_wrap(), Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, overflow: Overflow::clip(), ..default() }))
         .id();
     let cell = editor_cell(commands);
 

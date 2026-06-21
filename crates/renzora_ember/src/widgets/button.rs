@@ -13,7 +13,7 @@ use crate::theme::*;
 pub(crate) struct EmberButton;
 
 /// A clickable button with hover/press color states.
-pub fn button(commands: &mut Commands, font: &Handle<Font>, label: &str) -> Entity {
+pub fn button(commands: &mut Commands, font: &bevy::text::FontSource, label: &str) -> Entity {
     let b = commands
         .spawn((
             Node {

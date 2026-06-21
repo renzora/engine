@@ -6,7 +6,7 @@ use crate::font::ui_font;
 use crate::theme::*;
 
 /// A line of text made of colored `(text, color)` runs.
-pub fn rich_text(commands: &mut Commands, font: &Handle<Font>, runs: &[(&str, (u8, u8, u8))]) -> Entity {
+pub fn rich_text(commands: &mut Commands, font: &bevy::text::FontSource, runs: &[(&str, (u8, u8, u8))]) -> Entity {
     let root = commands
         .spawn((
             Text::new(""),

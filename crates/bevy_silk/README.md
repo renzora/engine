@@ -230,43 +230,11 @@ fn main() {
 
 ## Collisions
 
-Both [`bevy_rapier`] and [`avian`] are supported for cloth interactions
-with colliders. They can be enabled with the `rapier_collisions` and
-`avian_collisions` features respectively.
+[`avian`] is supported for cloth interactions with colliders, enabled with
+the `avian_collisions` feature.
 
 > Note: Collision support is still experimental for now and is not suited
 > for production use. Feedback is welcome!
-
-### `bevy_rapier`
-
-Add `bevy_rapier3d::RapierPhysicsPlugin` to your app and a `ClothCollider`
-to your entity to enable collisions:
-
-```rust
-use bevy::prelude::*;
-use bevy_silk::prelude::*;
-
-fn spawn(mut commands: Commands) {
-    commands.spawn((
-        // Add your mesh, material and your custom PBR data
-        // Mesh3d(...),
-        // MeshMaterial3d(...),
-        ClothBuilder::new(),
-        ClothCollider::default(),
-    ));
-}
-```
-
-Three `bevy_rapier` components will be automatically inserted:
-
-* a `RigidBody::KinematicPositionBased`
-* a `Collider` which will be updated every frame to follow the cloth bounds
-  (AABB)
-* a `SolverGroup` set to 0 (`Group::NONE`) in everything, avoiding default
-  collision solving.
-
-You can customize what collisions will be checked by specifying
-`CollisionGroups`. (See the [`bevy_rapier` docs](https://rapier.rs/docs/user_guides/bevy_plugin/colliders#collision-groups-and-solver-groups)).
 
 ### `avian` (previously `bevy_xpbd`)
 
@@ -319,7 +287,6 @@ framerate drops suddenly gravity and wind get much stronger.
 If your simulation suffers from this you can specify a custom smooth
 value in `ClothConfig::acceleration_smoothing`.
 
-[`bevy_rapier`]: https://github.com/dimforge/bevy_rapier
 [`avian`]: https://github.com/Jondolf/avian
 
 <!-- cargo-sync-readme end -->
@@ -346,14 +313,10 @@ value in `ClothConfig::acceleration_smoothing`.
 
     run `cargo run --example moving`
 
-4. [`bevy_rapier`] collision example
+4. [`avian`] collision example
 
-    run `cargo run --example rapier_collision --features rapier_collisions`
+    run `cargo run --example avian_collision --features avian_collisions`
 
-5. [`bevy_xpbd`] collision example
-
-    run `cargo run --example xpbd_collision --features xpbd_collisions`
-
-6. Anchors example
+5. Anchors example
 
     run `cargo run --example anchors`

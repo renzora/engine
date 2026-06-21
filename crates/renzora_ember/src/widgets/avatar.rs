@@ -6,7 +6,7 @@ use crate::font::ui_font;
 use crate::theme::rgb;
 
 /// A circular avatar showing initials on a colored disc.
-pub fn avatar(commands: &mut Commands, font: &Handle<Font>, initials: &str, color: (u8, u8, u8)) -> Entity {
+pub fn avatar(commands: &mut Commands, font: &bevy::text::FontSource, initials: &str, color: (u8, u8, u8)) -> Entity {
     commands
         .spawn((
             Node {

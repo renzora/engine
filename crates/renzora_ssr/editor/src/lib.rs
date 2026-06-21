@@ -36,7 +36,12 @@ fn ssr_entry() -> InspectorEntry {
                 s.enabled = val;
             }
         }),
-        fields: vec![],
+        fields: vec![
+            renzora::float_field!("Thickness", SsrSettings, thickness, 0.01, 0.0, 5.0),
+            renzora::int_field!("Linear Steps", SsrSettings, linear_steps, u32, 1.0, 1.0, 64.0),
+            renzora::int_field!("Bisection Steps", SsrSettings, bisection_steps, u32, 1.0, 0.0, 16.0),
+            renzora::bool_field!("Secant Refine", SsrSettings, use_secant),
+        ],
     }
 }
 

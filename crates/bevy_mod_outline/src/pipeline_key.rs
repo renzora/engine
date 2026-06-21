@@ -252,6 +252,11 @@ impl From<DerivedPipelineKey> for MeshPipelineKey {
 #[derive(Clone, Component, Default)]
 pub(crate) struct ComputedOutlineKey(pub(crate) EntityPipelineKey);
 
+// Bevy 0.19: required by `SyncComponentPlugin::<ComputedOutlineKey>` (self-sync).
+impl bevy::render::sync_component::SyncComponent for ComputedOutlineKey {
+    type Target = Self;
+}
+
 #[allow(clippy::type_complexity)]
 pub(crate) fn compute_outline_key(
     mut query: Query<

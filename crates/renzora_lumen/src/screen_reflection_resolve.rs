@@ -12,28 +12,20 @@
 //! `lumen_trace` samples directly with a single
 //! `textureSampleLevel(resolved, uv, 0)` for the specular composite.
 
-use bevy::core_pipeline::core_3d::graph::Core3d;
+use bevy::core_pipeline::Core3d;
 use bevy::core_pipeline::prepass::ViewPrepassTextures;
-use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
-use bevy::render::render_graph::{
-    NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
-};
 use bevy::render::render_resource::binding_types::{
     sampler, texture_2d, texture_depth_2d, texture_storage_2d,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice};
+use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
 use bevy::render::RenderApp;
 use bevy::utils::default;
 
-use crate::lumen_trace::{LumenTraceLabel, LumenTracePipeline};
+use crate::lumen_trace::LumenTracePipeline;
 use crate::screen_reflection::ScreenReflectionResources;
-use crate::screen_reflection_blur::ScreenReflectionBlurLabel;
 use crate::voxel_cache::VoxelCacheView;
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct ScreenReflectionResolveLabel;
 
 #[derive(Resource)]
 pub struct ScreenReflectionResolvePipeline {
@@ -96,7 +88,7 @@ impl FromWorld for ScreenReflectionResolvePipeline {
             shader,
             shader_defs: vec![],
             entry_point: Some("resolve".into()),
-            push_constant_ranges: vec![],
+            immediate_size: 0,
             zero_initialize_workgroup_memory: false,
         });
 
@@ -108,25 +100,19 @@ impl FromWorld for ScreenReflectionResolvePipeline {
     }
 }
 
-#[derive(Default)]
-pub struct ScreenReflectionResolveNode;
-
-impl ViewNode for ScreenReflectionResolveNode {
-    type ViewQuery = (
+pub fn screen_reflection_resolve_pass(
+    world: &World,
+    view: ViewQuery<(
         &'static ViewPrepassTextures,
         &'static ScreenReflectionResources,
         &'static VoxelCacheView,
-    );
-
-    fn run(
-        &self,
-        _graph: &mut RenderGraphContext,
-        render_context: &mut RenderContext,
-        (prepass, refl, view): QueryItem<Self::ViewQuery>,
-        world: &World,
-    ) -> Result<(), NodeRunError> {
+    )>,
+    mut render_context: RenderContext,
+) {
+    let (prepass, refl, view) = view.into_inner();
+    {
         if !view.inject_active {
-            return Ok(());
+            return;
         }
         let _span = info_span!("lumen.specular_resolve").entered();
 
@@ -134,13 +120,13 @@ impl ViewNode for ScreenReflectionResolveNode {
         let pipeline_cache = world.resource::<PipelineCache>();
 
         let Some(compute) = pipeline_cache.get_compute_pipeline(pipeline.pipeline_id) else {
-            return Ok(());
+            return;
         };
         let Some(depth_view) = prepass.depth_view() else {
-            return Ok(());
+            return;
         };
         let Some(normal_view) = prepass.normal_view() else {
-            return Ok(());
+            return;
         };
 
         // Same G-buffer fallback used by lumen_trace + screen_reflection
@@ -177,7 +163,6 @@ impl ViewNode for ScreenReflectionResolveNode {
         let dispatch_y = refl.resolved_size.height.div_ceil(8);
         pass.dispatch_workgroups(dispatch_x, dispatch_y, 1);
 
-        Ok(())
     }
 }
 
@@ -190,20 +175,9 @@ impl Plugin for ScreenReflectionResolvePlugin {
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
-                .add_render_graph_node::<ViewNodeRunner<ScreenReflectionResolveNode>>(
+                .add_systems(
                     Core3d,
-                    ScreenReflectionResolveLabel,
-                )
-                // Slot after the blur (so the pyramid is fully built)
-                // and before lumen_trace (which samples the resolved
-                // full-res output).
-                .add_render_graph_edges(
-                    Core3d,
-                    (
-                        ScreenReflectionBlurLabel,
-                        ScreenReflectionResolveLabel,
-                        LumenTraceLabel,
-                    ),
+                    screen_reflection_resolve_pass.in_set(crate::LumenSystems::ScreenReflectionResolve),
                 );
         }
     }

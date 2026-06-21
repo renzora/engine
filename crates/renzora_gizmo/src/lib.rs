@@ -9,6 +9,7 @@
 mod camera_gizmo;
 pub mod collider_gizmo;
 pub mod collider_handles;
+mod entity_labels;
 mod grid_2d;
 mod light_gizmo;
 pub mod modal_transform;
@@ -128,8 +129,9 @@ impl Material for GizmoMaterial {
         _key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
         if let Some(ref mut depth_stencil) = descriptor.depth_stencil {
-            depth_stencil.depth_compare = CompareFunction::Always;
-            depth_stencil.depth_write_enabled = false;
+            // wgpu 29: these `DepthStencilState` fields are now `Option`.
+            depth_stencil.depth_compare = Some(CompareFunction::Always);
+            depth_stencil.depth_write_enabled = Some(false);
         }
         // Gizmo meshes get mirrored via negative root scale when axes flip
         // to face the camera — disable backface culling so cone heads and
@@ -369,6 +371,21 @@ impl Plugin for GizmoPlugin {
                     ..default()
                 },
             )
+            .insert_gizmo_config(
+                LabelGizmoGroup,
+                GizmoConfig {
+                    // Always on top (near-plane depth) so labels read over the
+                    // geometry they annotate. Thinner lines than the transform
+                    // handles keep the stroke text legible rather than chunky.
+                    depth_bias: -1.0,
+                    line: GizmoLineConfig {
+                        width: 1.5,
+                        ..default()
+                    },
+                    render_layers: RenderLayers::layer(1),
+                    ..default()
+                },
+            )
             .init_resource::<GizmoMode>()
             .init_resource::<GizmoState>()
             .init_resource::<BoxSelectionState>()
@@ -437,6 +454,15 @@ impl Plugin for GizmoPlugin {
             .add_systems(
                 Update,
                 light_gizmo::draw_light_gizmos
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
+            )
+            // Entity name labels (Bevy 0.19 stroke-font text gizmos), gated on
+            // the Overlays → "Labels" toggle inside the system itself.
+            .add_systems(
+                Update,
+                entity_labels::draw_entity_labels
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
@@ -880,6 +906,16 @@ pub struct OverlayGizmoGroup;
 #[derive(Default, Reflect, GizmoConfigGroup)]
 #[reflect(Default)]
 pub struct TransformGizmoGroup;
+
+/// Dedicated group for entity name labels (stroke-font text gizmos). Kept
+/// separate from `OverlayGizmoGroup` because that group's `depth_bias` is
+/// toggled at runtime by the `selection_boundary_on_top` setting
+/// (`update_selection_gizmo_depth`) — sharing it would make labels disappear
+/// behind meshes whenever the user turns the selection box's on-top off.
+/// Labels are always-on-top regardless.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub struct LabelGizmoGroup;
 
 fn draw_line_gizmos(
     mut gizmos: Gizmos<TransformGizmoGroup>,

@@ -24,7 +24,7 @@ pub(crate) struct EmberStepButton {
 }
 
 /// A number stepper: `[−] value [+]`. Returns the container.
-pub fn number_stepper(commands: &mut Commands, font: &Handle<Font>, value: f32, step: f32) -> Entity {
+pub fn number_stepper(commands: &mut Commands, font: &bevy::text::FontSource, value: f32, step: f32) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -61,7 +61,7 @@ pub fn number_stepper(commands: &mut Commands, font: &Handle<Font>, value: f32, 
 
 fn step_button(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     stepper: Entity,
     label: &str,
     dir: f32,

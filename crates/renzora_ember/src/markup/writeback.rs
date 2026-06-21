@@ -59,10 +59,16 @@ pub fn write_attr_to_markup(world: &mut World, entity: Entity, attr_ident: &str,
         .map(|cp| cp.path.clone());
 
     let mut templates = world.resource_mut::<Assets<HtmlTemplate>>();
-    let Some(template) = templates.get_mut(&handle) else {
+    let Some(mut template) = templates.get_mut(&handle) else {
         warn!("renzora_hui writeback: HtmlTemplate not loaded for handle");
         return;
     };
+    // 0.19: `Assets::get_mut` yields `AssetMut` (a change-tracked smart pointer)
+    // which can't do disjoint field borrows the way `&mut T` can. Reborrow to a
+    // plain `&mut HtmlTemplate` so `template.root` (held by `node`) and
+    // `template.source` can be borrowed separately below. The deref_mut here
+    // still flags the asset as changed.
+    let template = &mut *template;
 
     // Walk to the target XNode by descent.
     let Some(node) = walk_node_mut(&mut template.root, &path) else {

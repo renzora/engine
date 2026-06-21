@@ -15,7 +15,7 @@ use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::reflect::TypePath;
 use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureFormat, TextureUsages};
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::shader::ShaderRef;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
@@ -183,7 +183,7 @@ fn update_glitch(
     }
     glitch.amount = (glitch.amount - time.delta_secs() / 0.45).max(0.0);
     for mat in &views {
-        if let Some(m) = mats.get_mut(&mat.0) {
+        if let Some(mut m) = mats.get_mut(&mat.0) {
             m.params = Vec4::new(t, glitch.amount, 0.0, 0.0);
         }
     }

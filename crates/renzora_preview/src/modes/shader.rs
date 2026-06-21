@@ -115,7 +115,7 @@ fn handle_shader_commands(
                             let shader_handle = cache.get_or_insert(&wgsl, &label, &mut shaders);
 
                             for mat_handle in mat_q.iter() {
-                                if let Some(mat) = code_materials.get_mut(&mat_handle.0) {
+                                if let Some(mut mat) = code_materials.get_mut(&mat_handle.0) {
                                     mat.shader_handle = shader_handle.clone();
                                 }
                             }

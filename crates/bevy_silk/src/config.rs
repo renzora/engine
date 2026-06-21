@@ -27,7 +27,10 @@ pub enum AccelerationSmoothing {
 /// Used as a resource, it is used as a global configuration for every cloth
 /// entity. Used as a component on a cloth entity, it overrides the global
 /// values for that cloth.
-#[derive(Debug, Clone, Component, Reflect, Resource)]
+// Bevy 0.19: `Resource: Component`, so `#[derive(Resource)]` already provides
+// the `Component` impl — deriving both conflicts. Keep `Resource` (it covers the
+// component use as a per-cloth override too).
+#[derive(Debug, Clone, Reflect, Resource)]
 #[reflect(Component)]
 pub struct ClothConfig {
     /// Custom gravity, classic (0, -9.81, 0) is used by default

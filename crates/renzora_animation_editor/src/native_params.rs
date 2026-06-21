@@ -420,7 +420,7 @@ fn row_label(commands: &mut Commands, fonts: &EmberFonts, name: &str) -> Entity 
             Text::new(name.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 width: Val::Px(LABEL_W),
                 flex_grow: 1.0,

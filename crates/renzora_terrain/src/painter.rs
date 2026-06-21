@@ -187,7 +187,7 @@ pub fn rebuild_painter_layer_meshes_system(
 
         let mesh = build_layer_mesh_from_terrain(terrain, layer, &chunks);
         if let Some(h) = existing_mesh {
-            if let Some(m) = meshes.get_mut(&h.0) {
+            if let Some(mut m) = meshes.get_mut(&h.0) {
                 *m = mesh;
             }
         } else {

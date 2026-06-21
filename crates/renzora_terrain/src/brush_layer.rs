@@ -249,7 +249,7 @@ pub fn regenerate_brush_layer_mesh_system(
 
         let mesh = build_brush_layer_mesh(terrain, &layer, &chunks);
         if let Some(mh) = mesh_handle {
-            if let Some(m) = meshes.get_mut(&mh.0) {
+            if let Some(mut m) = meshes.get_mut(&mh.0) {
                 *m = mesh;
             }
         } else {

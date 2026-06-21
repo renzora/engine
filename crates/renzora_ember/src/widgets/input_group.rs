@@ -8,7 +8,7 @@ use super::common::text_node;
 use super::text_input::text_input;
 
 /// An input group: a static addon (prefix) joined to a text input.
-pub fn input_group(commands: &mut Commands, font: &Handle<Font>, addon: &str, placeholder: &str) -> Entity {
+pub fn input_group(commands: &mut Commands, font: &bevy::text::FontSource, addon: &str, placeholder: &str) -> Entity {
     let group = commands
         .spawn((
             Node {

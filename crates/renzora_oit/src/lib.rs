@@ -37,8 +37,11 @@ fn sync_oit(
                 if settings.enabled {
                     commands.entity(*target).insert(Msaa::Off).insert(
                         OrderIndependentTransparencySettings {
-                            layer_count: settings.layer_count,
+                            // 0.19: `layer_count` → `sorted_fragment_max_count`;
+                            // the new `fragments_per_pixel_average` takes its default.
+                            sorted_fragment_max_count: settings.layer_count as u32,
                             alpha_threshold: settings.alpha_threshold,
+                            ..default()
                         },
                     );
                 } else {

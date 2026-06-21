@@ -1,0 +1,16 @@
+[package]
+name = "examples_common_3d"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+use-debug-plugin = []
+
+[dependencies]
+bevy = { version = "0.18.0", default-features = false, features = ["3d", "ui"] }
+avian3d = { path = "../avian3d", default-features = false, features = [
+    "diagnostic_ui",
+] }
+
+[lints]
+workspace = true

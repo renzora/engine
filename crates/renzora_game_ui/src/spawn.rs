@@ -448,7 +448,7 @@ fn spawn_text(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new("Hello World"),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 16.0,
+                font_size: bevy::text::FontSize::Px(16.0),
                 ..default()
             },
             UiTextStyle {
@@ -664,7 +664,7 @@ fn spawn_checkbox(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(data.label.clone()),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -745,7 +745,7 @@ fn spawn_toggle(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(data.label.clone()),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -856,7 +856,7 @@ fn spawn_radio_button(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(data.label.clone()),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -911,7 +911,7 @@ fn spawn_dropdown(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(display_text),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -925,7 +925,7 @@ fn spawn_dropdown(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new("▼"),
             TextColor(Color::srgba(0.6, 0.6, 0.6, 1.0)),
             TextFont {
-                font_size: 10.0,
+                font_size: bevy::text::FontSize::Px(10.0),
                 ..default()
             },
         ))
@@ -981,7 +981,7 @@ fn spawn_text_input(world: &mut World, r: &Ref) -> Entity {
                 Color::WHITE
             }),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -1014,7 +1014,7 @@ fn spawn_tooltip(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(data.text.clone()),
             TextColor(data.text_color),
             TextFont {
-                font_size: 12.0,
+                font_size: bevy::text::FontSize::Px(12.0),
                 ..default()
             },
         ))
@@ -1074,7 +1074,7 @@ fn spawn_modal(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(data.title.clone()),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 18.0,
+                font_size: bevy::text::FontSize::Px(18.0),
                 ..default()
             },
         ))
@@ -1137,7 +1137,7 @@ fn spawn_draggable_window(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(data.title.clone()),
             TextColor(Color::WHITE),
             TextFont {
-                font_size: 13.0,
+                font_size: bevy::text::FontSize::Px(13.0),
                 ..default()
             },
         ))
@@ -1398,7 +1398,7 @@ fn spawn_keybind_row(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(action),
             TextColor(label_color),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -1418,7 +1418,7 @@ fn spawn_keybind_row(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(binding),
             TextColor(key_text),
             TextFont {
-                font_size: 13.0,
+                font_size: bevy::text::FontSize::Px(13.0),
                 ..default()
             },
         ))
@@ -1462,7 +1462,7 @@ fn spawn_settings_row(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(label_text),
             TextColor(label_color),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -1475,7 +1475,7 @@ fn spawn_settings_row(world: &mut World, r: &Ref) -> Entity {
             bevy::ui::widget::Text::new(value_text),
             TextColor(Color::srgba(0.7, 0.7, 0.7, 1.0)),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -1611,7 +1611,7 @@ fn spawn_number_input(world: &mut World, r: &Ref) -> Entity {
             Text::new("-"),
             TextColor(data.text_color),
             TextFont {
-                font_size: 16.0,
+                font_size: bevy::text::FontSize::Px(16.0),
                 ..default()
             },
         ))
@@ -1631,7 +1631,7 @@ fn spawn_number_input(world: &mut World, r: &Ref) -> Entity {
             Text::new(format!("{:.*}", data.precision as usize, data.value)),
             TextColor(data.text_color),
             TextFont {
-                font_size: 14.0,
+                font_size: bevy::text::FontSize::Px(14.0),
                 ..default()
             },
         ))
@@ -1652,7 +1652,7 @@ fn spawn_number_input(world: &mut World, r: &Ref) -> Entity {
             Text::new("+"),
             TextColor(data.text_color),
             TextFont {
-                font_size: 16.0,
+                font_size: bevy::text::FontSize::Px(16.0),
                 ..default()
             },
         ))

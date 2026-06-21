@@ -17,7 +17,7 @@ pub(crate) fn list_scenes(dir: &std::path::Path) -> Vec<PathBuf> {
     };
     for entry in read.flatten() {
         let p = entry.path();
-        if p.extension().and_then(|s| s.to_str()) == Some("ron") {
+        if p.extension().and_then(|s| s.to_str()) == Some("bsn") {
             out.push(p);
         }
     }
@@ -40,9 +40,9 @@ pub(crate) fn unique_scene_path(dir: &std::path::Path, base: &str) -> PathBuf {
     let mut i = 0u32;
     loop {
         let name = if i == 0 {
-            format!("{base}.ron")
+            format!("{base}.bsn")
         } else {
-            format!("{base}_{i}.ron")
+            format!("{base}_{i}.bsn")
         };
         let p = dir.join(&name);
         if !p.exists() {

@@ -67,7 +67,7 @@ pub fn sync_rectangle_materials(
     mut materials: ResMut<Assets<RectangleMaterial>>,
 ) {
     for (shape, mat_node) in &query {
-        if let Some(mat) = materials.get_mut(mat_node.id()) {
+        if let Some(mut mat) = materials.get_mut(mat_node.id()) {
             let new_mat = RectangleMaterial::from_shape(shape);
             mat.color = new_mat.color;
             mat.stroke_color = new_mat.stroke_color;

@@ -91,7 +91,7 @@ pub fn asset_tile(
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::new_with_no_wrap(),
+            bevy::text::TextLayout::no_wrap(),
             Node {
                 padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)),
                 ..default()

@@ -1,0 +1,74 @@
+[package]
+name = "bevy_heavy"
+version = "0.5.0-dev"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Joona Aalto <jondolf.dev@gmail.com>"]
+description = "Mass property computation for Bevy's geometric primitives."
+documentation = "https://docs.rs/bevy_heavy"
+repository = "https://github.com/Jondolf/bevy_heavy"
+readme = "README.md"
+keywords = ["gamedev", "physics", "simulation", "math", "bevy"]
+categories = ["game-development", "science", "mathematics", "simulation"]
+
+[features]
+default = ["std", "2d", "3d", "bevy_reflect"]
+
+# Enable 2D functionality.
+2d = ["bevy_math/alloc"]
+
+# Enable 3D functionality.
+3d = ["bevy_math/alloc"]
+
+# Enable reflection using `bevy_reflect`.
+bevy_reflect = [
+    "dep:bevy_reflect",
+    "bevy_math/bevy_reflect",
+    "glam_matrix_extras/bevy_reflect",
+]
+
+# Enable data serialization/deserialization using `serde`.
+serialize = ["dep:serde", "bevy_math/serialize", "glam_matrix_extras/serde"]
+
+# Enable `approx` to approximate floating point equality comparisons and assertions for types.
+approx = ["dep:approx", "bevy_math/approx", "glam_matrix_extras/approx"]
+
+# Enable libm mathematical functions for glam types to ensure consistent outputs
+# across platforms at the cost of losing hardware-level optimization using intrinsics.
+libm = ["bevy_math/libm", "glam_matrix_extras/libm"]
+
+# Enable libm mathematical functions as a fallback for no_std environments.
+# Can be overridden with std feature.
+nostd-libm = ["bevy_math/nostd-libm", "glam_matrix_extras/nostd-libm"]
+
+# Enable the Rust standard library.
+std = ["bevy_math/std", "glam_matrix_extras/std"]
+
+[dependencies]
+# Math
+approx = { version = "0.5", optional = true }
+bevy_math = { workspace = true }
+glam_matrix_extras = { path = "../glam_matrix_extras", default-features = false, features = [
+    "f32",
+] }
+
+# Serialization
+bevy_reflect = { workspace = true, optional = true }
+serde = { version = "1.0", default-features = false, optional = true }
+
+[dev-dependencies]
+# Enable `approx` for testing.
+bevy_heavy = { path = ".", features = ["approx"] }
+
+# Math
+approx = { version = "0.5", default-features = false }
+bevy_math = { workspace = true, features = ["std", "approx", "rand"] }
+
+# Random number generation
+rand = { version = "0.10", default-features = false }
+rand_chacha = { version = "0.10", default-features = false }
+
+[lints.clippy]
+alloc_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+std_instead_of_core = "warn"

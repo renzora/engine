@@ -202,26 +202,36 @@ pub fn terrain_layer_texture_system(
     }
     layer_tex.flags = flags;
 
-    // Replace array images
-    if let Some(img) = images.get_mut(&layer_tex.albedo_array) {
-        *img = albedo;
+    // Replace array images, else add. Bevy 0.19: `Assets::get_mut` returns
+    // `AssetMut` (which impls `Drop`), so the `if let Some(..)` scrutinee's
+    // borrow of `images` lives into the `else` branch → it would conflict with
+    // `images.add(..)` (E0499). Probe presence with the immutable `get` (whose
+    // borrow ends at the `;`) so the mutable borrow is never held across `add`.
+    if images.get(&layer_tex.albedo_array).is_some() {
+        if let Some(mut img) = images.get_mut(&layer_tex.albedo_array) {
+            *img = albedo;
+        }
     } else {
         layer_tex.albedo_array = images.add(albedo);
     }
-    if let Some(img) = images.get_mut(&layer_tex.normal_array) {
-        *img = normal;
+    if images.get(&layer_tex.normal_array).is_some() {
+        if let Some(mut img) = images.get_mut(&layer_tex.normal_array) {
+            *img = normal;
+        }
     } else {
         layer_tex.normal_array = images.add(normal);
     }
-    if let Some(img) = images.get_mut(&layer_tex.arm_array) {
-        *img = arm;
+    if images.get(&layer_tex.arm_array).is_some() {
+        if let Some(mut img) = images.get_mut(&layer_tex.arm_array) {
+            *img = arm;
+        }
     } else {
         layer_tex.arm_array = images.add(arm);
     }
 
     // Update all active materials
     for active in active_query.iter() {
-        if let Some(mat) = splatmap_materials.get_mut(&active.material_handle) {
+        if let Some(mut mat) = splatmap_materials.get_mut(&active.material_handle) {
             mat.layer_albedo_array = layer_tex.albedo_array.clone();
             mat.layer_normal_array = layer_tex.normal_array.clone();
             mat.layer_arm_array = layer_tex.arm_array.clone();
@@ -393,19 +403,19 @@ pub fn splatmap_upload_system(
             // Update splatmap A (layers 0-3)
             let pixels_a =
                 splatmap_to_rgba8_a(&surface.splatmap_weights, surface.splatmap_resolution);
-            if let Some(image) = images.get_mut(&active.splatmap_a_handle) {
+            if let Some(mut image) = images.get_mut(&active.splatmap_a_handle) {
                 image.data = Some(pixels_a);
             }
 
             // Update splatmap B (layers 4-7)
             let pixels_b =
                 splatmap_to_rgba8_b(&surface.splatmap_weights, surface.splatmap_resolution);
-            if let Some(image) = images.get_mut(&active.splatmap_b_handle) {
+            if let Some(mut image) = images.get_mut(&active.splatmap_b_handle) {
                 image.data = Some(pixels_b);
             }
 
             // Update material properties (layer colors/props may have changed)
-            if let Some(mat) = splatmap_materials.get_mut(&active.material_handle) {
+            if let Some(mut mat) = splatmap_materials.get_mut(&active.material_handle) {
                 let updated = build_splatmap_material(
                     &surface,
                     active.splatmap_a_handle.clone(),

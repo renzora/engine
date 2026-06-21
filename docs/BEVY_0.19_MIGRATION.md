@@ -217,6 +217,8 @@ Change `bevy0.18` → `bevy0.19` so the build hash distinguishes 0.18-built arti
 
 Then do a clean `--workspace` rebuild (`cargo build-all`) so the binary, the `renzora_editor` bundle, the shared `bevy_dylib`, and all dlopen plugins land on one matching ABI.
 
+**New 0.19 ABI hash (pinned):** the rebuild moved the `bevy_dylib` cargo-metadata hash from `6f39727ed2dbbb6c` (0.18) → **`d0b0839f4fb45a22`** (0.19). This is the new stable value, recorded in `CLAUDE.md §3`; hold it stable from here. (Per-target: each platform's `bevy_dylib` carries its own hash; this is the host/Linux build value.)
+
 Budget the migration as: **bump vendored forks + port render-graph nodes + migrate text + ABI rebuild**, then harvest the payoffs below.
 
 ---
@@ -263,7 +265,11 @@ Budget the migration as: **bump vendored forks + port render-graph nodes + migra
 
 **Payoff:** removes a large maintenance surface; even partial adoption helps.
 
-### T1.4 Render Recovery → stop XR from hard-crashing on device loss
+### T1.4 Render Recovery → stop XR from hard-crashing on device loss ✅ DONE
+
+**Implemented:** `render_error_policy` fn + `RenderErrorHandler(render_error_policy)` inserted in `add_default_rendering` (`renzora_runtime/src/lib.rs`, GPU-client path only — the headless server has no renderer). `DeviceLost` → `Recover(RenderCreation::Automatic(platform_wgpu_settings()))` (rebuilds the renderer with the engine's real settings, keeping custom features); OOM/Validation/Internal → `StopRendering` (keep the window alive, no crash, no strobing). Default Bevy behaviour was to `AppExit::error()` on any `RenderError`.
+
+
 
 **0.19 feature:** typed render errors + `RenderErrorHandler` / `RenderErrorPolicy` (`Recover` / `StopRendering` / `Ignore`).
 
@@ -367,6 +373,7 @@ These don't remove code; they expose 0.19 capabilities the engine simply lacked.
 - **Observer Run Conditions**: where observers currently self-gate with an early `return`, a run condition is tidier. Pure cleanup.
 - **Self-Referential Relationships**: only relevant if a relationship in the graph/hierarchy needs to legitimately point at itself — rare in the current model. Note and move on.
 - **Accessible Label Component**: attach a11y labels to editor widgets (buttons, panels, inspector fields) independent of their visible text. Aligns with the photosensitivity/accessibility notes already in T1.4; do it as an editor-wide pass, not per-feature.
+- **Parallax-corrected reflection probes** ✅ DONE: `LightProbe` + `GeneratedEnvironmentMapLight` + `ParallaxCorrection` wired as a "Reflection Probe" spawn preset with inspector entries (falloff / source HDR+intensity / correction mode+extents), a teal box gizmo, and equirect→cubemap conversion (`renzora_environment_map`). The GPU light is attached only once a valid cube exists.
 
 ---
 
@@ -383,18 +390,18 @@ These don't remove code; they expose 0.19 capabilities the engine simply lacked.
 
 ## Forced-change audit checklist
 
-- [ ] Vendored forks bumped to 0.19: `bevy_hanabi`, `bevy_silk`, `bevy_oxr`, `bevy_mod_outline`, `vleue_navigator`, `bevy_hui` (parser)
-- [ ] `crates/renzora/src/postprocess.rs` — `UnifiedPostProcessNode` → render system
-- [ ] `crates/renzora_rt/src/node.rs` — `RtNode` → render system
-- [ ] `crates/renzora_viewport/src/debug_viz.rs` — `DebugVizNode` → render system
-- [ ] **PBSSR decision (§T1.4-R) made before** touching the screen-reflection nodes (a win deletes three of them)
-- [ ] `crates/renzora_lumen/*` — the `ViewNode` impls (voxel cache ×4, trace, geometry voxelize, downsample, and screen-reflection trace/blur/resolve **unless replaced by PBSSR**) → render systems
-- [ ] Richer-text knobs (letter spacing / variable weight / responsive sizing) surfaced in `renzora_ember/src/font.rs` + Theme typography during the Parley pass
-- [ ] `EditableText` adopted for caret/selection in `code_editor` (and shared single-line inputs)
-- [ ] Contact shadows exposed in the light inspector drawer
-- [ ] New-capability rendering wired: rectangular area lights, parallax-corrected reflection probes, text gizmos
-- [ ] Vendored-fork render-graph nodes ported (`bevy_mod_outline`, `bevy_hanabi`)
-- [ ] All `bevy_ui` `Text` / `TextFont` sites migrated to Parley (`FontSize`, `FontSource`) — `renzora_ember` first (esp. `src/font.rs`), then `renzora_game_ui`, `renzora_shell`, `renzora_hierarchy`, `renzora_viewport`, `renzora_settings`, `renzora_editor_framework`, `renzora_ember/.../code_editor`
-- [ ] `build.rs:17` — `bevy0.18` → `bevy0.19` in the `RENZORA_BUILD_HASH` input
-- [ ] `docker/base/Dockerfile` Rust version checked/bumped if 0.19 needs newer rustc (no `rust-toolchain.toml` exists)
-- [ ] Clean `--workspace` rebuild of binary + `renzora_editor` bundle + `bevy_dylib` + all dlopen plugins (re-syncs `plugin_bevy_hash` + `RENZORA_BUILD_HASH`)
+- [x] Vendored forks bumped to 0.19: `bevy_hanabi`, `bevy_silk`, `bevy_oxr`, `bevy_mod_outline`, `vleue_navigator`, `bevy_hui` (parser)
+- [x] `crates/renzora/src/postprocess.rs` — `UnifiedPostProcessNode` → render system
+- [x] `crates/renzora_rt/src/node.rs` — `RtNode` → render system
+- [x] `crates/renzora_viewport/src/debug_viz.rs` — `DebugVizNode` → render system
+- [x] **PBSSR decision (§T1.4-R) made** — built-in PBSSR adopted (`renzora_ssr` tunables); lumen screen-reflection pipeline kept
+- [x] `crates/renzora_lumen/*` — all **ten** `ViewNode` impls (voxel cache ×4, trace, geometry voxelize, downsample, screen-reflection trace/blur/resolve) → render systems — replaced by the `RenderPhase`/`RenderComposition` framework (no `ViewNode` impls remain in first-party source)
+- [x] Richer-text knobs (letter spacing / variable weight / width / responsive sizing) surfaced in `renzora_ember/src/font.rs` + Theme typography (`StyleToken`) during the Parley pass
+- [ ] `EditableText` adopted for caret/selection in `code_editor` (and shared single-line inputs) — *still pending*
+- [x] Contact shadows exposed in the light inspector drawer (Sun toggle + camera `ContactShadows`; forward-only, stripped from deferred cameras)
+- [x] New-capability rendering wired: rectangular area lights, parallax-corrected reflection probes, text gizmos
+- [x] Vendored-fork render-graph nodes ported (`bevy_mod_outline`, `bevy_hanabi`)
+- [x] All `bevy_ui` `Text` / `TextFont` sites migrated to Parley (`FontSize`, `FontSource`) — `renzora_ember` first (esp. `src/font.rs`), then `renzora_game_ui`, `renzora_shell`, `renzora_hierarchy`, `renzora_viewport`, `renzora_settings`, `renzora_editor_framework`, `renzora_ember/.../code_editor`
+- [x] `build.rs:17` — `bevy0.18` → `bevy0.19` in the `RENZORA_BUILD_HASH` input
+- [x] `docker/base/Dockerfile` Rust version checked/bumped if 0.19 needs newer rustc (no `rust-toolchain.toml` exists) — bumped 1.93.0 → 1.95.0
+- [x] Clean `--workspace` rebuild of binary + `renzora_editor` bundle + `bevy_dylib` + all dlopen plugins (re-syncs `plugin_bevy_hash` + `RENZORA_BUILD_HASH`) — new pinned ABI hash `d0b0839f4fb45a22`

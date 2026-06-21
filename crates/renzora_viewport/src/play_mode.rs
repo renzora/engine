@@ -5,9 +5,11 @@ use bevy::core_pipeline::prepass::{
     DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
 };
 use bevy::light::AtmosphereEnvironmentMapLight;
-use bevy::pbr::{Atmosphere, AtmosphereSettings, ScatteringMedium};
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::Atmosphere;
+use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
+use bevy::camera::Hdr;
 use bevy::window::{CursorGrabMode, CursorOptions};
 use renzora::core::{
     DefaultCamera, EditorCamera, EditorCamera2d, PlayModeCamera, PlayModeState, PlayState,
@@ -19,6 +21,19 @@ use renzora_editor_framework::EditorSettings;
 use crate::external_runtime::{
     self, find_runtime_binary, replace_child, spawn_runtime, ExternalRuntime,
 };
+
+/// Snapshot of which editor cameras (`EditorCamera` / `EditorCamera2d`) were
+/// active when play mode was entered, so [`exit_play_mode`] reactivates exactly
+/// those — not both flavours (which would collide at order -1 on the viewport
+/// image). Inserted on enter, consumed on exit.
+#[derive(Resource)]
+struct PrePlayActiveEditorCameras(Vec<Entity>);
+
+/// A persistent strong handle to the play camera's `ScatteringMedium` so the
+/// atmosphere asset survives play→editor teardown (see [`enter_play_mode`]).
+/// Created once, reused for every subsequent play session.
+#[derive(Resource)]
+struct PlayAtmosphereMedium(Handle<ScatteringMedium>);
 
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
@@ -242,6 +257,18 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
         console_info("PlayMode", format!("Disabling editor camera {:?}", entity));
     }
+    // Snapshot which editor cameras were *active* before play so exit can
+    // restore exactly those. Re-enabling **both** the 3D and 2D editor cameras
+    // on exit (the old behaviour) left two active cameras sharing order -1 on the
+    // viewport image → "Camera order ambiguities" + a torn-down surface texture
+    // on the play→editor swap.
+    let was_active: Vec<Entity> = editor_entities
+        .iter()
+        .chain(editor_2d_entities.iter())
+        .copied()
+        .filter(|e| world.get::<Camera>(*e).map(|c| c.is_active).unwrap_or(false))
+        .collect();
+    world.insert_resource(PrePlayActiveEditorCameras(was_active));
     for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
         if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
             camera.is_active = false;
@@ -305,9 +332,22 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     // editor 3D camera. None of this applies to a 2D camera, which uses
     // its own pipeline and has no atmosphere bind group.
     if !is_2d_camera {
-        let medium_handle = world
-            .resource_mut::<Assets<ScatteringMedium>>()
-            .add(ScatteringMedium::default());
+        // Reuse one persistent `ScatteringMedium` across play sessions instead of
+        // creating a fresh asset each time. `exit_play_mode` removes the game
+        // camera's `Atmosphere`, which would drop the only strong handle and GC
+        // the asset — but the render world (pipelined, a frame behind) still
+        // references it, so `prepare_atmosphere_bind_groups` would panic
+        // ("ScatteringMedium missing"). Holding the handle in a resource keeps
+        // the asset alive through the swap.
+        let medium_handle = if let Some(existing) = world.get_resource::<PlayAtmosphereMedium>() {
+            existing.0.clone()
+        } else {
+            let h = world
+                .resource_mut::<Assets<ScatteringMedium>>()
+                .add(ScatteringMedium::default());
+            world.insert_resource(PlayAtmosphereMedium(h.clone()));
+            h
+        };
         // Match the editor camera's far plane (100km, see
         // `renzora_engine::camera::spawn_editor_camera`). Default
         // Bevy `PerspectiveProjection` has `far: 1000.0`, which clips
@@ -337,8 +377,8 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             DepthPrepass,
             MotionVectorPrepass,
             Atmosphere {
-                bottom_radius: 6_360_000.0,
-                top_radius: 6_460_000.0,
+                inner_radius: 6_360_000.0,
+                outer_radius: 6_460_000.0,
                 ground_albedo: Vec3::splat(0.3),
                 medium: medium_handle,
             },
@@ -449,8 +489,12 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         }
     }
 
-    // Re-enable both editor camera flavours and restore their render
-    // targets. Either could have been deactivated on entry.
+    // Restore the editor cameras' render targets, but only re-activate the ones
+    // that were active before play (snapshot from `enter_play_mode`). Re-enabling
+    // both 3D and 2D would leave two cameras at order -1 on the viewport image —
+    // an order ambiguity that also surfaces as a destroyed surface texture on the
+    // swap. Fall back to all editor cameras if the snapshot is missing (e.g. play
+    // was entered before this field existed).
     let viewport_image = world
         .get_resource::<ViewportRenderTarget>()
         .and_then(|vrt| vrt.image.clone());
@@ -459,20 +503,27 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
     let mut editor_2d_q = world.query_filtered::<Entity, With<EditorCamera2d>>();
     let editor_2d_entities: Vec<Entity> = editor_2d_q.iter(world).collect();
+
+    let was_active = world
+        .remove_resource::<PrePlayActiveEditorCameras>()
+        .map(|r| r.0);
     for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
-        console_info(
-            "PlayMode",
-            format!("Re-enabling editor camera {:?}", entity),
-        );
-    }
-    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
-        if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
-            camera.is_active = true;
-        }
+        // Re-point every editor camera at the viewport image (cheap + keeps the
+        // target consistent), but only the previously-active ones get switched on.
         if let Some(ref img) = viewport_image {
             world
                 .entity_mut(*entity)
                 .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
+        }
+        let activate = match &was_active {
+            Some(list) => list.contains(entity),
+            None => true,
+        };
+        if activate {
+            console_info("PlayMode", format!("Re-enabling editor camera {:?}", entity));
+            if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
+                camera.is_active = true;
+            }
         }
     }
 

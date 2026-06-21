@@ -456,7 +456,8 @@ pub fn pack_project_filtered(
 
 /// Extensions to include when packing a server rpak (no rendering assets).
 pub const SERVER_EXTENSIONS: &[&str] = &[
-    "ron",       // scenes
+    "ron",       // scenes (legacy)
+    "bsn",       // scenes (current format)
     "lua",       // scripts
     "rhai",      // scripts
     "blueprint", // visual scripting
@@ -631,6 +632,22 @@ impl RpakPacker {
                 }
             }
         }
+
+        // Same for `.bsn` scenes (the current format, with unquoted type-paths).
+        let bsn_keys: Vec<String> = self
+            .entries
+            .keys()
+            .filter(|k| k.ends_with(".bsn"))
+            .cloned()
+            .collect();
+        for key in bsn_keys {
+            if let Some(data) = self.entries.get(&key) {
+                if let Ok(input) = std::str::from_utf8(data) {
+                    let stripped = strip_bsn_components_by_prefix(input, EDITOR_ONLY_PREFIXES);
+                    self.entries.insert(key, stripped.into_bytes());
+                }
+            }
+        }
     }
 
     /// Strip visual-only components from all `.ron` scene files in the archive.
@@ -658,7 +675,45 @@ impl RpakPacker {
                 }
             }
         }
+
+        // Same for `.bsn` scenes (unquoted, line-based; keep-list semantics).
+        let bsn_keys: Vec<String> = self
+            .entries
+            .keys()
+            .filter(|k| k.ends_with(".bsn"))
+            .cloned()
+            .collect();
+        for key in bsn_keys {
+            if let Some(data) = self.entries.get(&key) {
+                if let Ok(input) = std::str::from_utf8(data) {
+                    let stripped = strip_bsn_visual_components(input);
+                    self.entries.insert(key, stripped.into_bytes());
+                }
+            }
+        }
     }
+}
+
+/// `.bsn` counterpart of [`strip_visual_components`]: keep structural lines
+/// (entity headers, braces, comments) and component lines whose unquoted
+/// type-path matches a [`SERVER_KEEP_PREFIXES`] prefix; drop the rest.
+fn strip_bsn_visual_components(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for line in input.lines() {
+        let keep = match line.trim_start().split_once(": ") {
+            // A component line — keep only server-relevant ones.
+            Some((key, _)) if key.contains("::") => {
+                SERVER_KEEP_PREFIXES.iter().any(|p| key.starts_with(p))
+            }
+            // Structural line (entity / `{` / `}` / comment / blank) — keep.
+            _ => true,
+        };
+        if keep {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 /// Remove component entries from a Bevy scene RON whose type paths
@@ -760,6 +815,31 @@ fn strip_visual_components(input: &str) -> String {
 /// Remove component entries whose type paths start with any of the given prefixes.
 ///
 /// Used by `strip_for_runtime` to remove editor-only components.
+/// Like [`strip_components_by_prefix`] but for `.bsn` scenes, where each
+/// component is its own line `    <type::path>: <value>,` with an UNQUOTED
+/// type-path (RON uses quoted map keys; BSN does not, so the quote-scanning
+/// pass would never match). Drops whole lines whose type-path starts with any
+/// prefix. Component values are single-line in the interim BSN format, and the
+/// only `": "` (colon-space) on a line separates the type-path from its value
+/// (RON values inside use `:` without a space), so a simple split is safe.
+fn strip_bsn_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
+    let mut out = String::with_capacity(input.len());
+    for line in input.lines() {
+        let drop = line
+            .trim_start()
+            .split_once(": ")
+            .map(|(key, _)| {
+                key.contains("::") && strip_prefixes.iter().any(|p| key.starts_with(p))
+            })
+            .unwrap_or(false);
+        if !drop {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 fn strip_components_by_prefix(input: &str, strip_prefixes: &[&str]) -> String {
     let bytes = input.as_bytes();
     let len = bytes.len();
@@ -934,6 +1014,7 @@ const ASSET_EXTENSIONS: &[&str] = &[
     ".mp3",
     ".flac",
     // Scenes
+    ".bsn",
     ".ron",
     // Animations (clips + state machines, RON-based)
     ".anim",

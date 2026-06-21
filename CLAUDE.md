@@ -70,7 +70,7 @@ So:
   Don't propose it, don't try to "fix" the link error by stripping the dylib.
 
 Pinned toolchain (single source of truth = `docker/base/Dockerfile`): **Rust
-1.93.0**, **Bevy 0.18**. The base image is the foundation every platform image
+1.95.0**, **Bevy 0.19**. The base image is the foundation every platform image
 builds `FROM`, so the Rust version lives there (a bump cascades to all
 platforms — see §3). CI (`.github/workflows/test.yml`) runs `cargo test` + `cargo
 clippy -D warnings` in the `base` image, excluding the vendored `bevy_*` /
@@ -95,18 +95,22 @@ e.g. `bevy_dylib-<hash>.dll`.
 ### Current stable ABI hash
 
 ```
-STABLE ABI HASH (Bevy 0.18, r1-alpha6): 6f39727ed2dbbb6c
+STABLE ABI HASH (Bevy 0.19, bevy-0.19-migration): d0b0839f4fb45a22
 ```
+
+> The Bevy 0.18 hash was `6f39727ed2dbbb6c`; the 0.19 upgrade moved it to
+> `d0b0839f4fb45a22` (expected — a Bevy version bump always rehashes the ABI).
+> This is now the pinned 0.19 value; hold it stable from here.
 
 **On every `renzora run` / `renzora build`:** check the hash of the generated
 `bevy_dylib` (it's embedded in the host binary's imports and is the suffix of
 the copied `bevy_dylib-<hash>.<ext>`). 
 
-- If it **matches** `6f39727ed2dbbb6c` → good, the plugin ABI is stable and all
+- If it **matches** `d0b0839f4fb45a22` → good, the plugin ABI is stable and all
   existing community plugins keep loading.
 - If it **differs** → **stop and inform the user.** Explain the likely cause and
   that every existing distribution plugin will now fail the ABI check until
-  rebuilt. Keeping the hash at `6f39727ed2dbbb6c` is important for plugin ABI
+  rebuilt. Keeping the hash at `d0b0839f4fb45a22` is important for plugin ABI
   stability — do not let it drift casually.
 
 Things that change the hash: a Bevy version bump, a change to `bevy`'s enabled
@@ -121,18 +125,16 @@ cargo-metadata hash (the triple is folded in), so the macOS, Windows, and Linux
 artifacts naturally differ from each other and from `6f39727ed2dbbb6c`. The pin
 applies per platform; compare a platform's hash to its own prior value.
 
-### Bevy 0.19 (expected, not yet done)
+### Bevy 0.19 (done — hash re-pinned)
 
-When Bevy is upgraded to 0.19 the hash **will** change — this is **normal and
-expected**, not a regression. When it happens:
-
-1. Record the new 0.19 hash in this table.
-2. Then hold it stable the same way (don't let it drift after it's pinned).
+The 0.19 upgrade rehashed the ABI, as expected (a version bump always does).
+The new value is **pinned** below; hold it stable from here (don't let it drift
+after it's pinned).
 
 | Engine / Bevy | Stable ABI hash |
 |---|---|
 | r1-alpha6 / Bevy 0.18 | `6f39727ed2dbbb6c` |
-| Bevy 0.19 | _TBD — record here on upgrade_ |
+| bevy-0.19-migration / Bevy 0.19 | `d0b0839f4fb45a22` |
 
 See `docs/BEVY_0.19_MIGRATION.md` for migration context.
 

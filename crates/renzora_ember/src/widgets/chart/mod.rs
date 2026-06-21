@@ -181,7 +181,7 @@ fn chart_node(commands: &mut Commands, values: &[f32], width: f32, height: f32) 
     outer
 }
 
-fn axis_label(commands: &mut Commands, font: &Handle<Font>, text: &str, top: bool) -> Entity {
+fn axis_label(commands: &mut Commands, font: &bevy::text::FontSource, text: &str, top: bool) -> Entity {
     commands
         .spawn((
             Text::new(text),
@@ -334,7 +334,7 @@ fn chart_sync(
 ) {
     for (cd, node) in &charts {
         if let Some(material) = chart_material(cd) {
-            if let Some(slot) = materials.get_mut(&node.0) {
+            if let Some(mut slot) = materials.get_mut(&node.0) {
                 *slot = material;
             }
         }
