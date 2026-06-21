@@ -87,13 +87,13 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
     // elevated and aimed straight down so it casts a recognizable rectangle.
     registry.register(EntityPreset {
         id: "rect_light",
-        display_name: "Area Light",
+        display_name: "Rect Light",
         icon: "square",
         category: "lighting",
         spawn_fn: |world| {
             world
                 .spawn((
-                    Name::new("Area Light"),
+                    Name::new("Rect Light"),
                     Transform::from_xyz(0.0, 3.0, 0.0)
                         .looking_at(Vec3::ZERO, Vec3::Z),
                     RectLight::default(),
@@ -311,7 +311,7 @@ pub fn register_bevy_icons(registry: &mut ComponentIconRegistry) {
     });
     registry.register(ComponentIconEntry {
         type_id: std::any::TypeId::of::<RectLight>(),
-        name: "Area Light",
+        name: "Rect Light",
         icon: "square",
         color: [255, 200, 80],
         priority: 90,
@@ -770,7 +770,7 @@ fn point_light_entry() -> InspectorEntry {
 fn rect_light_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "rect_light",
-        display_name: "Area Light",
+        display_name: "Rect Light",
         icon: "square",
         category: "lighting",
         has_fn: |world, entity| world.get::<RectLight>(entity).is_some(),
