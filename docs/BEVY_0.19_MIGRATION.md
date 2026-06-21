@@ -105,6 +105,8 @@ Change `bevy0.18` → `bevy0.19` so the build hash distinguishes 0.18-built arti
 
 Then do a clean `--workspace` rebuild (`cargo build-all`) so the binary, the `renzora_editor` bundle, the shared `bevy_dylib`, and all dlopen plugins land on one matching ABI.
 
+**New 0.19 ABI hash (pinned):** the rebuild moved the `bevy_dylib` cargo-metadata hash from `6f39727ed2dbbb6c` (0.18) → **`d0b0839f4fb45a22`** (0.19). This is the new stable value, recorded in `CLAUDE.md §3`; hold it stable from here. (Per-target: each platform's `bevy_dylib` carries its own hash; this is the host/Linux build value.)
+
 Budget the migration as: **bump vendored forks + port render-graph nodes + migrate text + ABI rebuild**, then harvest the payoffs below.
 
 ---
@@ -206,8 +208,8 @@ Budget the migration as: **bump vendored forks + port render-graph nodes + migra
 - [ ] `crates/renzora_rt/src/node.rs` — `RtNode` → render system
 - [ ] `crates/renzora_viewport/src/debug_viz.rs` — `DebugVizNode` → render system
 - [ ] `crates/renzora_lumen/*` — all **ten** `ViewNode` impls (voxel cache ×4, trace, geometry voxelize, downsample, screen-reflection trace/blur/resolve) → render systems
-- [ ] Vendored-fork render-graph nodes ported (`bevy_mod_outline`, `bevy_hanabi`)
-- [ ] All `bevy_ui` `Text` / `TextFont` sites migrated to Parley (`FontSize`, `FontSource`) — `renzora_ember` first (esp. `src/font.rs`), then `renzora_game_ui`, `renzora_shell`, `renzora_hierarchy`, `renzora_viewport`, `renzora_settings`, `renzora_editor_framework`, `renzora_ember/.../code_editor`
-- [ ] `build.rs:17` — `bevy0.18` → `bevy0.19` in the `RENZORA_BUILD_HASH` input
-- [ ] `docker/base/Dockerfile` Rust version checked/bumped if 0.19 needs newer rustc (no `rust-toolchain.toml` exists)
-- [ ] Clean `--workspace` rebuild of binary + `renzora_editor` bundle + `bevy_dylib` + all dlopen plugins (re-syncs `plugin_bevy_hash` + `RENZORA_BUILD_HASH`)
+- [x] Vendored-fork render-graph nodes ported (`bevy_mod_outline`, `bevy_hanabi`)
+- [x] All `bevy_ui` `Text` / `TextFont` sites migrated to Parley (`FontSize`, `FontSource`) — `renzora_ember` first (esp. `src/font.rs`), then `renzora_game_ui`, `renzora_shell`, `renzora_hierarchy`, `renzora_viewport`, `renzora_settings`, `renzora_editor_framework`, `renzora_ember/.../code_editor`
+- [x] `build.rs:17` — `bevy0.18` → `bevy0.19` in the `RENZORA_BUILD_HASH` input
+- [x] `docker/base/Dockerfile` Rust version checked/bumped if 0.19 needs newer rustc (no `rust-toolchain.toml` exists) — bumped 1.93.0 → 1.95.0
+- [x] Clean `--workspace` rebuild of binary + `renzora_editor` bundle + `bevy_dylib` + all dlopen plugins (re-syncs `plugin_bevy_hash` + `RENZORA_BUILD_HASH`) — new pinned ABI hash `d0b0839f4fb45a22`
