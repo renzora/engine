@@ -316,6 +316,27 @@ fn apply_font_settings(
             }
         }
     }
+
+    // Font Size: a global multiplier relative to the 14px default. New text
+    // picks it up via `ui_font` (which reads the global scale); existing UI/mono
+    // text is rescaled here by the ratio of the change so sizes track the slider.
+    let new_scale = (settings.font_size / 14.0).clamp(0.1, 4.0);
+    let old_scale = renzora_ember::font::ui_font_scale();
+    if (new_scale - old_scale).abs() > f32::EPSILON {
+        let ratio = new_scale / old_scale;
+        renzora_ember::font::set_ui_font_scale(new_scale);
+        let ui_src = fonts.ui.clone();
+        let mono_src = fonts.mono.clone();
+        for mut tf in &mut text_q {
+            // Only editor text built through `ui_font` (UI or code font) — the
+            // source match excludes icon glyphs (phosphor) and 3D gizmo text.
+            if tf.font == ui_src || tf.font == mono_src {
+                if let bevy::text::FontSize::Px(px) = &mut tf.font_size {
+                    *px *= ratio;
+                }
+            }
+        }
+    }
 }
 
 // ── Lifecycle: spawn / despawn / rebuild on tab change ───────────────────────

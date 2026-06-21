@@ -17,6 +17,23 @@ const JETBRAINS_MONO: &[u8] = include_bytes!("../embedded/JetBrainsMono-Regular.
 /// Slight global down-scale so text matches the editor's size.
 const TEXT_SCALE: f32 = 0.92;
 
+/// Global UI font-size multiplier, driven by the editor's "Font Size" setting
+/// (relative to the 14px default). Stored as an `f32`'s bits in an atomic so the
+/// free-function [`ui_font`] can read it without a `World`. `1.0` = default.
+static UI_FONT_SCALE: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0x3f80_0000); // 1.0_f32
+
+/// Current global UI font-size multiplier (see [`UI_FONT_SCALE`]).
+pub fn ui_font_scale() -> f32 {
+    f32::from_bits(UI_FONT_SCALE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// Set the global UI font-size multiplier. New text built via [`ui_font`] picks
+/// it up immediately; existing text is rescaled by `apply_font_settings`.
+pub fn set_ui_font_scale(scale: f32) {
+    UI_FONT_SCALE.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The fonts ember renders with. `ui` = the proportional UI font (Noto by
 /// default, user-changeable via the theme); `mono` = the monospace font;
 /// `phosphor` = the icon font.
@@ -69,7 +86,7 @@ pub(crate) fn load_fonts(
 pub fn ui_font(font: &FontSource, size: f32) -> TextFont {
     TextFont {
         font: font.clone(),
-        font_size: FontSize::Px(size * TEXT_SCALE),
+        font_size: FontSize::Px(size * TEXT_SCALE * ui_font_scale()),
         ..default()
     }
 }
@@ -114,6 +131,39 @@ pub struct FontRegistry {
 }
 
 impl FontRegistry {
+    /// The always-present built-in entries: the embedded default + generic
+    /// families. Shared by the editor (disk) and game (VFS) scanners so the
+    /// option set is identical. `default_ui` is the embedded UI font source.
+    pub fn builtin_entries(default_ui: FontSource) -> Vec<FontEntry> {
+        vec![
+            FontEntry {
+                name: "Default".into(),
+                source: default_ui,
+                origin: FontOrigin::Embedded,
+            },
+            FontEntry {
+                name: "System UI".into(),
+                source: FontSource::SystemUi,
+                origin: FontOrigin::Generic,
+            },
+            FontEntry {
+                name: "Sans Serif".into(),
+                source: FontSource::SansSerif,
+                origin: FontOrigin::Generic,
+            },
+            FontEntry {
+                name: "Serif".into(),
+                source: FontSource::Serif,
+                origin: FontOrigin::Generic,
+            },
+            FontEntry {
+                name: "Monospace".into(),
+                source: FontSource::Monospace,
+                origin: FontOrigin::Generic,
+            },
+        ]
+    }
+
     /// Resolve a font name to its render source (`None` if unknown).
     pub fn resolve(&self, name: &str) -> Option<FontSource> {
         self.entries
@@ -197,33 +247,7 @@ pub(crate) fn scan_project_fonts(
     }
 
     // Rebuild the list: built-ins first, then project fonts.
-    let mut entries = vec![
-        FontEntry {
-            name: "Default".into(),
-            source: ember.default_ui.clone(),
-            origin: FontOrigin::Embedded,
-        },
-        FontEntry {
-            name: "System UI".into(),
-            source: FontSource::SystemUi,
-            origin: FontOrigin::Generic,
-        },
-        FontEntry {
-            name: "Sans Serif".into(),
-            source: FontSource::SansSerif,
-            origin: FontOrigin::Generic,
-        },
-        FontEntry {
-            name: "Serif".into(),
-            source: FontSource::Serif,
-            origin: FontOrigin::Generic,
-        },
-        FontEntry {
-            name: "Monospace".into(),
-            source: FontSource::Monospace,
-            origin: FontOrigin::Generic,
-        },
-    ];
+    let mut entries = FontRegistry::builtin_entries(ember.default_ui.clone());
 
     let mut loaded: std::collections::HashMap<String, Handle<Font>> =
         std::collections::HashMap::new();
