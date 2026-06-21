@@ -208,6 +208,18 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         ..default()
     });
     app.add_plugins(plugins);
+    // Render recovery (Bevy 0.19): by default any `RenderError` quits the app —
+    // which means a GPU device-loss (driver reset, GPU hang, or an XR headset
+    // disconnect / compositor reset) hard-crashes the editor or game. Override
+    // the handler so a `DeviceLost` instead *recreates* the renderer with the
+    // exact settings the engine booted with (`platform_wgpu_settings()`), and
+    // every other fault keeps the app alive but stops rendering rather than
+    // strobing on a persistent OOM/validation error. Only the GPU client path
+    // installs this; the headless server has no renderer.
+    {
+        use bevy::render::error_handler::RenderErrorHandler;
+        app.insert_resource(RenderErrorHandler(render_error_policy));
+    }
     if is_editor {
         app.add_systems(Startup, maximize_primary_window);
     } else {
@@ -220,6 +232,31 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         // the editor's own window.
         app.add_systems(Startup, apply_window_config);
         app.add_systems(Update, apply_window_icon);
+    }
+}
+
+/// The renderer error policy (Bevy 0.19 `RenderErrorHandler`). It's a bare `fn`
+/// pointer (no captured state), so it rebuilds the recovery `RenderCreation`
+/// from the same `platform_wgpu_settings()` the app booted with — a recovered
+/// device keeps the engine's custom features (e.g. `POLYGON_MODE_LINE`) instead
+/// of silently falling back to Bevy defaults.
+fn render_error_policy(
+    error: &bevy::render::error_handler::RenderError,
+    _main_world: &mut bevy::prelude::World,
+    _render_world: &mut bevy::prelude::World,
+) -> bevy::render::error_handler::RenderErrorPolicy {
+    use bevy::render::error_handler::{ErrorType, RenderErrorPolicy};
+    use bevy::render::settings::RenderCreation;
+    match error.ty {
+        // Recoverable: the device went away (driver reset / GPU hang / XR
+        // compositor reset). Re-create the renderer and carry on.
+        ErrorType::DeviceLost => {
+            RenderErrorPolicy::Recover(RenderCreation::Automatic(Box::new(platform_wgpu_settings())))
+        }
+        // OOM / validation / internal faults usually recur if we just retry, so
+        // recovering would risk hazardous rapid flashing. Keep the window alive
+        // (no crash) but stop rendering; Bevy has already logged the error.
+        _ => RenderErrorPolicy::StopRendering,
     }
 }
 

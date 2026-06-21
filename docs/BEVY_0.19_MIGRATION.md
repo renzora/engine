@@ -153,7 +153,11 @@ Budget the migration as: **bump vendored forks + port render-graph nodes + migra
 
 **Payoff:** removes a large maintenance surface; even partial adoption helps.
 
-### T1.4 Render Recovery → stop XR from hard-crashing on device loss
+### T1.4 Render Recovery → stop XR from hard-crashing on device loss ✅ DONE
+
+**Implemented:** `render_error_policy` fn + `RenderErrorHandler(render_error_policy)` inserted in `add_default_rendering` (`renzora_runtime/src/lib.rs`, GPU-client path only — the headless server has no renderer). `DeviceLost` → `Recover(RenderCreation::Automatic(platform_wgpu_settings()))` (rebuilds the renderer with the engine's real settings, keeping custom features); OOM/Validation/Internal → `StopRendering` (keep the window alive, no crash, no strobing). Default Bevy behaviour was to `AppExit::error()` on any `RenderError`.
+
+
 
 **0.19 feature:** typed render errors + `RenderErrorHandler` / `RenderErrorPolicy` (`Recover` / `StopRendering` / `Ignore`).
 
