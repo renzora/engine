@@ -2,52 +2,13 @@
 //!
 //! # Overview
 //!
-//! - [`script_extension_command!`] — auto-implements `ScriptExtensionCommand` on a command enum
 //! - [`dual_register!`] — defines script functions once, generates both Lua and Rhai bindings
 //! - Helper functions for context setup (`lua_set_map`, `rhai_set_map`, etc.)
-//! - [`push_ext_command`] — shorthand for pushing extension commands
-
-// ── script_extension_command! ────────────────────────────────────────────
-
-/// Auto-implements `ScriptExtensionCommand` for a command enum.
-///
-/// ```ignore
-/// script_extension_command! {
-///     #[derive(Debug)]
-///     pub enum MyCommand {
-///         SetValue { key: String, value: f32 },
-///         DoAction { target: u64 },
-///     }
-/// }
-/// ```
-#[macro_export]
-macro_rules! script_extension_command {
-    (
-        $(#[$meta:meta])*
-        $vis:vis enum $name:ident {
-            $($body:tt)*
-        }
-    ) => {
-        $(#[$meta])*
-        $vis enum $name {
-            $($body)*
-        }
-
-        impl $crate::extension::ScriptExtensionCommand for $name {
-            fn as_any(&self) -> &dyn std::any::Any {
-                self
-            }
-        }
-    };
-}
-
-// ── push_ext_command ─────────────────────────────────────────────────────
-
-/// Push a command from a `ScriptExtensionCommand` implementor.
-/// Shorthand for `push_command(ScriptCommand::Extension(Box::new(cmd)))`.
-pub fn push_ext_command(cmd: impl crate::extension::ScriptExtensionCommand) {
-    crate::backends::push_command(crate::ScriptCommand::Extension(Box::new(cmd)));
-}
+//!
+//! To mutate the world from a script function, queue a
+//! `ScriptCommand::Action { name, args, .. }` and apply it with an
+//! `add_observer(On<ScriptAction>)` handler (see `renzora_physics` /
+//! `renzora_runtime`'s font actions).
 
 // ── Context setup helpers ────────────────────────────────────────────────
 
@@ -136,25 +97,22 @@ pub fn rhai_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash
 /// # Example
 ///
 /// ```ignore
-/// use renzora_scripting::macros::push_ext_command;
+/// use renzora_scripting::backends::push_command;
+/// use renzora_scripting::ScriptCommand;
+/// use std::collections::HashMap;
 ///
 /// renzora_scripting::dual_register! {
 ///     lua_fn = register_my_lua,
 ///     rhai_fn = register_my_rhai,
 ///
-///     fn my_set(name: String, value: f64) {
-///         push_ext_command(MyCommand::Set {
-///             key: name, value: value as f32,
-///         });
-///     }
-///
-///     fn my_action(target_id: i64, name: String) {
-///         push_ext_command(MyCommand::DoAction {
-///             target: target_id as u64, name,
-///         });
+///     fn my_action(name: String, value: f64) {
+///         let mut args = HashMap::new();
+///         args.insert("value".into(), renzora::ScriptActionValue::Float(value as f32));
+///         push_command(ScriptCommand::Action { name, target_entity: None, args });
 ///     }
 /// }
 /// ```
+/// A matching `add_observer(On<ScriptAction>)` handler then applies the action.
 ///
 /// This generates `register_my_lua(lua: &mlua::Lua)` and
 /// `register_my_rhai(engine: &mut rhai::Engine)` with all functions registered.
