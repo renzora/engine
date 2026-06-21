@@ -317,9 +317,11 @@ fn apply_font_settings(
         }
     }
 
-    // Font Size: a global multiplier relative to the 14px default. New text
-    // picks it up via `ui_font` (which reads the global scale); existing UI/mono
-    // text is rescaled here by the ratio of the change so sizes track the slider.
+    // Font Size: a global multiplier relative to the 14px design reference (the
+    // size the `ui_font(..)` call sites were tuned at; the default setting is
+    // 17 → ~1.21x). New text picks it up via `ui_font` (which reads the global
+    // scale); existing UI/mono text is rescaled here by the ratio of the change
+    // so sizes track the slider.
     let new_scale = (settings.font_size / 14.0).clamp(0.1, 4.0);
     let old_scale = renzora_ember::font::ui_font_scale();
     if (new_scale - old_scale).abs() > f32::EPSILON {

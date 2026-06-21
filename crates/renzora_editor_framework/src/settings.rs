@@ -212,7 +212,7 @@ impl Default for EditorSettings {
             selection_highlight_mode: SelectionHighlightMode::default(),
             selection_granularity: SelectionGranularity::default(),
             selection_boundary_on_top: false,
-            font_size: 14.0,
+            font_size: 17.0,
             ui_scale: renzora::load_ui_scale(),
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
