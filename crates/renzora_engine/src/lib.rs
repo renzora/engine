@@ -201,6 +201,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::SpriteImagePath>()
+            .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<Sun>();
 
         // Register the .rmip asset loader so import-baked mipmapped

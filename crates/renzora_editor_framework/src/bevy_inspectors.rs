@@ -103,13 +103,13 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
         },
     });
 
-    // Bevy 0.19 parallax-corrected reflection probe: a `LightProbe` +
-    // `GeneratedEnvironmentMapLight` (one source cubemap, GPU-filtered into
-    // diffuse+specular) bounded by the entity's Transform. `ParallaxCorrection`
-    // is added explicitly (Bevy would otherwise auto-add `Auto` once the filtered
-    // `EnvironmentMapLight` appears) so the box correction is editable from frame
-    // 0. The probe does nothing until a cubemap is assigned in the inspector; the
-    // default 4-unit box + intensity 1.0 give a sensible starting point.
+    // Bevy 0.19 parallax-corrected reflection probe: a `LightProbe` bounded by
+    // the entity's Transform, with a `ReflectionProbeSource` (the authored
+    // cubemap/HDR path). The GPU `GeneratedEnvironmentMapLight` is **not** added
+    // here — `renzora_environment_map` attaches it only once a valid power-of-two
+    // cube is ready, because bevy's filter would otherwise run on the 1×1 default
+    // handle and spam GPU validation errors. `ParallaxCorrection::Auto` is set
+    // explicitly so the box is editable from frame 0.
     registry.register(EntityPreset {
         id: "reflection_probe",
         display_name: "Reflection Probe",
@@ -122,11 +122,8 @@ pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
                     Transform::from_scale(Vec3::splat(4.0)),
                     Visibility::default(),
                     LightProbe::default(),
-                    GeneratedEnvironmentMapLight {
-                        intensity: 1.0,
-                        ..default()
-                    },
                     ParallaxCorrection::Auto,
+                    renzora::core::ReflectionProbeSource::default(),
                 ))
                 .id()
         },
@@ -1146,39 +1143,99 @@ fn text_rich_entry() -> InspectorEntry {
     }
 }
 
-/// Bevy `LightProbe` — the bounds (via Transform) of a reflection probe /
-/// irradiance volume. `falloff` softens the influence toward the box edges.
+/// Bevy `LightProbe` — a reflection probe (bounds via Transform). Carries the
+/// authored cubemap **Source** + **Intensity** (`ReflectionProbeSource`, which
+/// is what persists) and the influence **Falloff**. The GPU
+/// `GeneratedEnvironmentMapLight` is attached by `renzora_environment_map` only
+/// once a valid cube is ready, so it's not edited directly here.
 fn light_probe_entry() -> InspectorEntry {
+    use renzora::core::ReflectionProbeSource;
     InspectorEntry {
         type_id: "light_probe",
-        display_name: "Light Probe",
+        display_name: "Reflection Probe",
         icon: "globe",
         category: "lighting",
         has_fn: |world, entity| world.get::<LightProbe>(entity).is_some(),
         add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(LightProbe::default());
+            world
+                .entity_mut(entity)
+                .insert((LightProbe::default(), ReflectionProbeSource::default()));
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<LightProbe>();
+            world
+                .entity_mut(entity)
+                .remove::<(LightProbe, ReflectionProbeSource, GeneratedEnvironmentMapLight)>();
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Falloff",
-            field_type: FieldType::Vec3 { speed: 0.01 },
-            get_fn: |world, entity| {
-                world
-                    .get::<LightProbe>(entity)
-                    .map(|p| FieldValue::Vec3(p.falloff.to_array()))
-            },
-            set_fn: |world, entity, val| {
-                if let FieldValue::Vec3(v) = val {
-                    if let Some(mut p) = world.get_mut::<LightProbe>(entity) {
-                        p.falloff = Vec3::from_array(v);
+        fields: vec![
+            FieldDef {
+                // Equirect `.exr`/`.hdr`/`.png` (reprojected to a POT cube) or a
+                // `.ktx2`/`.dds` cube container. Stored on `ReflectionProbeSource`
+                // so it persists; the GPU cube is regenerated on load.
+                name: "Source (HDR / Cube)",
+                field_type: FieldType::Asset {
+                    extensions: vec![
+                        "exr".into(),
+                        "hdr".into(),
+                        "png".into(),
+                        "ktx2".into(),
+                        "dds".into(),
+                    ],
+                },
+                get_fn: |world, entity| {
+                    let path = world
+                        .get::<ReflectionProbeSource>(entity)
+                        .map(|s| s.path.clone())
+                        .filter(|s| !s.is_empty());
+                    Some(FieldValue::Asset(path))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Asset(path) = val {
+                        let intensity = world
+                            .get::<ReflectionProbeSource>(entity)
+                            .map(|s| s.intensity)
+                            .unwrap_or(1.0);
+                        world.entity_mut(entity).insert(ReflectionProbeSource {
+                            path: path.unwrap_or_default(),
+                            intensity,
+                        });
                     }
-                }
+                },
             },
-        }],
+            FieldDef {
+                name: "Intensity",
+                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10000.0 },
+                get_fn: |world, entity| {
+                    world
+                        .get::<ReflectionProbeSource>(entity)
+                        .map(|s| FieldValue::Float(s.intensity))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(f) = val {
+                        if let Some(mut s) = world.get_mut::<ReflectionProbeSource>(entity) {
+                            s.intensity = f;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Falloff",
+                field_type: FieldType::Vec3 { speed: 0.01 },
+                get_fn: |world, entity| {
+                    world
+                        .get::<LightProbe>(entity)
+                        .map(|p| FieldValue::Vec3(p.falloff.to_array()))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Vec3(v) = val {
+                        if let Some(mut p) = world.get_mut::<LightProbe>(entity) {
+                            p.falloff = Vec3::from_array(v);
+                        }
+                    }
+                },
+            },
+        ],
     }
 }
 
@@ -1262,9 +1319,11 @@ fn parallax_correction_entry() -> InspectorEntry {
     }
 }
 
-/// Bevy `GeneratedEnvironmentMapLight` — a single source cubemap that the GPU
-/// filters into the diffuse + specular maps a reflection probe needs. Assign a
-/// cubemap image; `intensity` scales its contribution.
+/// Bevy `GeneratedEnvironmentMapLight` — the GPU side of a reflection probe,
+/// attached automatically by `renzora_environment_map` once a valid cube is
+/// ready (source + intensity are edited on the probe's `ReflectionProbeSource`,
+/// not here). Shown when present so the niche `affects_lightmapped` toggle is
+/// reachable; not directly addable (adding it with no cube fails GPU validation).
 fn generated_environment_map_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "generated_environment_map_light",
@@ -1272,68 +1331,11 @@ fn generated_environment_map_entry() -> InspectorEntry {
         icon: "image",
         category: "lighting",
         has_fn: |world, entity| world.get::<GeneratedEnvironmentMapLight>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(GeneratedEnvironmentMapLight {
-                intensity: 1.0,
-                ..default()
-            });
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<GeneratedEnvironmentMapLight>();
-        }),
+        add_fn: None,
+        remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
-            FieldDef {
-                name: "Cubemap",
-                // Bevy's `GeneratedEnvironmentMapLight` filter requires an actual
-                // power-of-two *cube* texture (`compute_mip_count` asserts POT and
-                // reads the source's width). A 2D equirectangular `.exr`/`.hdr`
-                // would fail GPU validation, so only accept cube containers here;
-                // equirect→cubemap conversion is a separate pipeline.
-                field_type: FieldType::Asset {
-                    extensions: vec!["ktx2".into(), "dds".into()],
-                },
-                get_fn: |world, entity| {
-                    let path = world
-                        .get::<GeneratedEnvironmentMapLight>(entity)
-                        .and_then(|g| {
-                            world
-                                .resource::<AssetServer>()
-                                .get_path(g.environment_map.id())
-                                .map(|p| p.to_string())
-                        });
-                    Some(FieldValue::Asset(path))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Asset(path) = val {
-                        let server = world.resource::<AssetServer>().clone();
-                        let handle = match path {
-                            Some(p) if !p.is_empty() => server.load::<Image>(p),
-                            _ => Handle::default(),
-                        };
-                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
-                            g.environment_map = handle;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Intensity",
-                field_type: FieldType::Float { speed: 0.05, min: 0.0, max: 10000.0 },
-                get_fn: |world, entity| {
-                    world
-                        .get::<GeneratedEnvironmentMapLight>(entity)
-                        .map(|g| FieldValue::Float(g.intensity))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(f) = val {
-                        if let Some(mut g) = world.get_mut::<GeneratedEnvironmentMapLight>(entity) {
-                            g.intensity = f;
-                        }
-                    }
-                },
-            },
             FieldDef {
                 name: "Affects Lightmaps",
                 field_type: FieldType::Bool,

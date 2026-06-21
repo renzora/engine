@@ -778,6 +778,33 @@ pub struct Node2d;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteImagePath(pub String);
 
+/// A reflection probe's authored environment source — the *persistent* side of a
+/// parallax-corrected cubemap probe.
+///
+/// Bevy's `GeneratedEnvironmentMapLight` is the runtime GPU side: its filter
+/// **runs the moment that component exists** and demands a **power-of-two cube**
+/// texture, so attaching it with an unset (1×1 default) or equirectangular
+/// handle spams GPU validation errors. To avoid that, a probe carries *this*
+/// component instead, and `renzora_environment_map` only inserts
+/// `GeneratedEnvironmentMapLight` **once a valid cube is ready** — loading the
+/// `path`, reprojecting an equirect `.exr`/`.hdr` into a POT cube (or using a
+/// `.ktx2`/`.dds` cube directly), and applying `intensity`. Only this component
+/// persists in the scene; the cube is regenerated on load.
+#[derive(Component, Reflect, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct ReflectionProbeSource {
+    /// Project-relative path to the source image (equirect HDR or cube container).
+    pub path: String,
+    /// Strength multiplier applied to the probe's reflections (cd/m²).
+    pub intensity: f32,
+}
+
+impl Default for ReflectionProbeSource {
+    fn default() -> Self {
+        Self { path: String::new(), intensity: 1.0 }
+    }
+}
+
 /// Marker component to hide an entity (and its children) from the hierarchy panel.
 #[derive(Component)]
 pub struct HideInHierarchy;
