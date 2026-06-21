@@ -203,11 +203,11 @@ Budget the migration as: **bump vendored forks + port render-graph nodes + migra
 
 ## Forced-change audit checklist
 
-- [ ] Vendored forks bumped to 0.19: `bevy_hanabi`, `bevy_silk`, `bevy_oxr`, `bevy_mod_outline`, `vleue_navigator`, `bevy_hui` (parser)
-- [ ] `crates/renzora/src/postprocess.rs` — `UnifiedPostProcessNode` → render system
-- [ ] `crates/renzora_rt/src/node.rs` — `RtNode` → render system
-- [ ] `crates/renzora_viewport/src/debug_viz.rs` — `DebugVizNode` → render system
-- [ ] `crates/renzora_lumen/*` — all **ten** `ViewNode` impls (voxel cache ×4, trace, geometry voxelize, downsample, screen-reflection trace/blur/resolve) → render systems
+- [x] Vendored forks bumped to 0.19: `bevy_hanabi`, `bevy_silk`, `bevy_oxr`, `bevy_mod_outline`, `vleue_navigator`, `bevy_hui` (parser)
+- [x] `crates/renzora/src/postprocess.rs` — `UnifiedPostProcessNode` → render system
+- [x] `crates/renzora_rt/src/node.rs` — `RtNode` → render system
+- [x] `crates/renzora_viewport/src/debug_viz.rs` — `DebugVizNode` → render system
+- [x] `crates/renzora_lumen/*` — all **ten** `ViewNode` impls (voxel cache ×4, trace, geometry voxelize, downsample, screen-reflection trace/blur/resolve) → render systems — replaced by the `RenderPhase`/`RenderComposition` framework (no `ViewNode` impls remain in first-party source)
 - [x] Vendored-fork render-graph nodes ported (`bevy_mod_outline`, `bevy_hanabi`)
 - [x] All `bevy_ui` `Text` / `TextFont` sites migrated to Parley (`FontSize`, `FontSource`) — `renzora_ember` first (esp. `src/font.rs`), then `renzora_game_ui`, `renzora_shell`, `renzora_hierarchy`, `renzora_viewport`, `renzora_settings`, `renzora_editor_framework`, `renzora_ember/.../code_editor`
 - [x] `build.rs:17` — `bevy0.18` → `bevy0.19` in the `RENZORA_BUILD_HASH` input
