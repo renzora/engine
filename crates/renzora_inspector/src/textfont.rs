@@ -4,7 +4,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::text::{FontSize, FontWeight, LetterSpacing, LineHeight, TextFont};
+use bevy::text::{FontSize, FontWeight, FontWidth, LetterSpacing, LineHeight, TextFont};
 
 use renzora_ember::font::{ui_font, EmberFonts, FontRegistry};
 use renzora_ember::reactive::bind_2way;
@@ -48,6 +48,11 @@ fn current_size(w: &World, e: Entity) -> f32 {
 
 fn current_weight(w: &World, e: Entity) -> f32 {
     w.get::<TextFont>(e).map(|tf| tf.weight.0 as f32).unwrap_or(400.0)
+}
+
+/// Variable-font width (1.0 = normal, 0.75 = condensed, 1.25 = expanded).
+fn current_width(w: &World, e: Entity) -> f32 {
+    w.get::<TextFont>(e).map(|tf| tf.width.0).unwrap_or(1.0)
 }
 
 /// Letter spacing in px (defaults to 0 when the optional component is absent).
@@ -105,6 +110,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
     let registry = world.get_resource::<FontRegistry>().cloned();
     let size_init = current_size(world, entity);
     let weight_init = current_weight(world, entity);
+    let width_init = current_width(world, entity);
     let ls_init = current_letter_spacing(world, entity);
     let lh_init = current_line_height(world, entity);
 
@@ -162,6 +168,21 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
             );
             let weight_row = labeled_row(&mut commands, &fonts, "Weight", wd);
 
+            // Width (variable fonts; 0.75 condensed … 1.25 expanded).
+            let xd = drag_value(&mut commands, &fonts.ui, "", value_text(), width_init, 0.02);
+            commands.entity(xd).insert(DragRange { min: 0.5, max: 2.0 });
+            bind_2way::<f32, _, _>(
+                &mut commands,
+                xd,
+                move |w| current_width(w, entity),
+                move |w, &v| {
+                    if let Some(mut tf) = w.get_mut::<TextFont>(entity) {
+                        tf.width = FontWidth(v);
+                    }
+                },
+            );
+            let width_row = labeled_row(&mut commands, &fonts, "Width", xd);
+
             // Letter spacing (px) — a standalone LetterSpacing component, inserted
             // on edit if absent.
             let ld = drag_value(&mut commands, &fonts.ui, "", value_text(), ls_init, 0.1);
@@ -195,7 +216,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
 
             commands
                 .entity(root)
-                .add_children(&[font_row, size_row, weight_row, ls_row, lh_row]);
+                .add_children(&[font_row, size_row, weight_row, width_row, ls_row, lh_row]);
         }
         root
     };
