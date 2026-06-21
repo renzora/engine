@@ -14,8 +14,7 @@ use renzora::{
     WindowMode,
 };
 use renzora_editor_framework::{
-    CustomFonts, EditorSettings, MonoFont, SelectionGranularity, SelectionHighlightMode,
-    SettingsTab, UiFont,
+    EditorSettings, MonoFont, SelectionGranularity, SelectionHighlightMode, SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
@@ -166,6 +165,7 @@ pub(crate) fn build(app: &mut App) {
             settings_tab_click,
             settings_plugin_click,
             filter_sidebar,
+            refresh_settings_on_font_change,
             settings_close_click,
             theme_save_click,
             ember_theme_save_click,
@@ -228,25 +228,51 @@ fn filter_sidebar(
 /// and custom project fonts resolve by family name via Parley's system-font
 /// discovery (`system_font_discovery` feature); `NotoSans` is the embedded
 /// default already loaded as a handle.
-fn ui_font_source(choice: &UiFont, fonts: &EmberFonts) -> bevy::text::FontSource {
+fn ui_font_source(
+    choice: &UiFont,
+    fonts: &EmberFonts,
+    registry: &renzora_ember::font::FontRegistry,
+) -> bevy::text::FontSource {
     use bevy::text::FontSource;
     match choice {
         UiFont::System => FontSource::SystemUi,
         UiFont::NotoSans => fonts.default_ui.clone(),
         UiFont::Roboto => FontSource::Family("Roboto".into()),
         UiFont::OpenSans => FontSource::Family("Open Sans".into()),
-        UiFont::Custom(name) => FontSource::Family(name.as_str().into()),
+        // A project `fonts/` file: use its loaded handle; fall back to a family
+        // lookup if the registry hasn't scanned it (yet) or it's a system name.
+        UiFont::Custom(name) => registry
+            .resolve(name)
+            .unwrap_or_else(|| FontSource::Family(name.as_str().into())),
     }
 }
 
 /// As [`ui_font_source`], for the monospace/code font.
-fn mono_font_source(choice: &MonoFont, fonts: &EmberFonts) -> bevy::text::FontSource {
+fn mono_font_source(
+    choice: &MonoFont,
+    fonts: &EmberFonts,
+    registry: &renzora_ember::font::FontRegistry,
+) -> bevy::text::FontSource {
     use bevy::text::FontSource;
     match choice {
         MonoFont::JetBrainsMono => fonts.default_mono.clone(),
         MonoFont::FiraCode => FontSource::Family("Fira Code".into()),
         MonoFont::SourceCodePro => FontSource::Family("Source Code Pro".into()),
-        MonoFont::Custom(name) => FontSource::Family(name.as_str().into()),
+        MonoFont::Custom(name) => registry
+            .resolve(name)
+            .unwrap_or_else(|| FontSource::Family(name.as_str().into())),
+    }
+}
+
+/// When the font registry changes (a font added to / removed from the project
+/// `fonts/` folder), mark the settings overlay dirty so an open panel rebuilds
+/// and the font dropdowns re-list. Harmless when the panel is closed.
+fn refresh_settings_on_font_change(
+    registry: Res<renzora_ember::font::FontRegistry>,
+    mut state: ResMut<NativeSettingsState>,
+) {
+    if registry.is_changed() {
+        state.dirty = true;
     }
 }
 
@@ -257,20 +283,22 @@ fn mono_font_source(choice: &MonoFont, fonts: &EmberFonts) -> bevy::text::FontSo
 /// so icon (phosphor) text and 3D gizmo stroke text are never touched.
 fn apply_font_settings(
     settings: Res<EditorSettings>,
+    registry: Res<renzora_ember::font::FontRegistry>,
     fonts: Option<ResMut<EmberFonts>>,
     mut text_q: Query<&mut TextFont>,
 ) {
     let Some(mut fonts) = fonts else {
         return;
     };
-    // `is_changed()` covers the first run too — the no-op early-outs below make
-    // that harmless (default choice resolves back to the current source).
-    if !settings.is_changed() {
+    // Re-apply when the choice changes OR when the registry changes (a project
+    // font may have just finished loading, so the chosen name now resolves). The
+    // no-op early-outs below make the first/extra runs harmless.
+    if !settings.is_changed() && !registry.is_changed() {
         return;
     }
     // Compute both before mutating so the immutable borrow of `fonts` is done.
-    let new_ui = ui_font_source(&settings.ui_font, &fonts);
-    let new_mono = mono_font_source(&settings.mono_font, &fonts);
+    let new_ui = ui_font_source(&settings.ui_font, &fonts, &registry);
+    let new_mono = mono_font_source(&settings.mono_font, &fonts, &registry);
 
     if new_ui != fonts.ui {
         let old = std::mem::replace(&mut fonts.ui, new_ui.clone());
@@ -350,9 +378,11 @@ fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) 
     let fonts = world.get_resource::<EmberFonts>().cloned()?;
     let settings = world.get_resource::<EditorSettings>()?.clone();
     let viewport = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
+    // Project-folder fonts come from the live registry, so the dropdowns
+    // auto-populate as fonts are dropped into `<project>/fonts/`.
     let custom = world
-        .get_resource::<CustomFonts>()
-        .map(|c| c.names.clone())
+        .get_resource::<renzora_ember::font::FontRegistry>()
+        .map(|r| r.project_names())
         .unwrap_or_default();
     let themes = world
         .get_resource::<ThemeManager>()

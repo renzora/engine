@@ -313,10 +313,12 @@ impl Plugin for DockPlugin {
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
             .init_resource::<TabDrag>()
+            .init_resource::<crate::font::FontRegistry>()
             .add_systems(
                 Update,
                 (
                     crate::font::load_fonts,
+                    crate::font::scan_project_fonts,
                     divider_drag,
                     tab_drag,
                     apply_tab_switch,

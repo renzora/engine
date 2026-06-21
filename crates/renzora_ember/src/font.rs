@@ -74,6 +74,205 @@ pub fn ui_font(font: &FontSource, size: f32) -> TextFont {
     }
 }
 
+// ── Font registry (built-ins + project `fonts/` folder) ─────────────────────
+
+/// Where a registry font comes from — for grouping / icons in a picker.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FontOrigin {
+    /// Embedded in the binary (the default Noto).
+    Embedded,
+    /// A generic family resolved by the OS via Parley (System UI, Sans, …).
+    Generic,
+    /// A `.ttf` / `.otf` discovered in the project's `fonts/` folder.
+    Project,
+}
+
+/// One selectable font.
+#[derive(Clone)]
+pub struct FontEntry {
+    /// Display + lookup name (file stem for project fonts).
+    pub name: String,
+    /// How to render it.
+    pub source: FontSource,
+    pub origin: FontOrigin,
+}
+
+/// The live list of fonts available to every UI font picker. Built-ins are
+/// always present; project `fonts/*.{ttf,otf}` are scanned + loaded by
+/// [`scan_project_fonts`] and appended, so dropdowns auto-populate when a font
+/// is dropped into the folder. Runtime-safe, so the editor and a shipped game
+/// share one registry.
+#[derive(Resource, Default, Clone)]
+pub struct FontRegistry {
+    pub entries: Vec<FontEntry>,
+    /// Project `fonts/` dir at last scan (change detection).
+    scanned_dir: Option<std::path::PathBuf>,
+    /// Signature (file set + mtimes) of that dir at last scan.
+    dir_sig: u64,
+    /// Loaded project-font handles, kept alive + reused across rescans.
+    loaded: std::collections::HashMap<String, Handle<Font>>,
+}
+
+impl FontRegistry {
+    /// Resolve a font name to its render source (`None` if unknown).
+    pub fn resolve(&self, name: &str) -> Option<FontSource> {
+        self.entries
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| e.source.clone())
+    }
+
+    /// Display names of just the project-folder fonts (the "custom" section of
+    /// a picker).
+    pub fn project_names(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .filter(|e| e.origin == FontOrigin::Project)
+            .map(|e| e.name.clone())
+            .collect()
+    }
+}
+
+/// A cheap hash of the `fonts/` folder (`.ttf`/`.otf` filenames + mtimes) so the
+/// scanner can skip work unless something actually changed.
+fn font_dir_signature(dir: &std::path::Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        let mut items: Vec<(String, u64)> = rd
+            .flatten()
+            .filter_map(|e| {
+                let p = e.path();
+                let ext = p
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_ascii_lowercase());
+                if !matches!(ext.as_deref(), Some("ttf") | Some("otf")) {
+                    return None;
+                }
+                let name = p.file_name()?.to_str()?.to_string();
+                let mtime = e
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                Some((name, mtime))
+            })
+            .collect();
+        items.sort();
+        items.hash(&mut h);
+    }
+    h.finish()
+}
+
+/// Keep [`FontRegistry`] in sync with the project's `fonts/` folder: load new
+/// `.ttf`/`.otf` files into `Assets<Font>` and drop removed ones. Polls the
+/// folder a few times a second (throttled) so dropping a font in is picked up
+/// live without a per-frame `read_dir`.
+pub(crate) fn scan_project_fonts(
+    mut tick: Local<u32>,
+    mut registry: ResMut<FontRegistry>,
+    mut fonts: ResMut<Assets<Font>>,
+    ember: Option<Res<EmberFonts>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    *tick = tick.wrapping_add(1);
+    // First population runs immediately; afterwards poll ~twice a second.
+    if !registry.entries.is_empty() && *tick % 30 != 0 {
+        return;
+    }
+    let Some(ember) = ember else {
+        return; // fonts not ready yet
+    };
+
+    let dir = project.as_ref().map(|p| p.path.join("fonts"));
+    let sig = dir.as_deref().map(font_dir_signature).unwrap_or(0);
+    if !registry.entries.is_empty()
+        && registry.scanned_dir.as_deref() == dir.as_deref()
+        && registry.dir_sig == sig
+    {
+        return; // nothing changed
+    }
+
+    // Rebuild the list: built-ins first, then project fonts.
+    let mut entries = vec![
+        FontEntry {
+            name: "Default".into(),
+            source: ember.default_ui.clone(),
+            origin: FontOrigin::Embedded,
+        },
+        FontEntry {
+            name: "System UI".into(),
+            source: FontSource::SystemUi,
+            origin: FontOrigin::Generic,
+        },
+        FontEntry {
+            name: "Sans Serif".into(),
+            source: FontSource::SansSerif,
+            origin: FontOrigin::Generic,
+        },
+        FontEntry {
+            name: "Serif".into(),
+            source: FontSource::Serif,
+            origin: FontOrigin::Generic,
+        },
+        FontEntry {
+            name: "Monospace".into(),
+            source: FontSource::Monospace,
+            origin: FontOrigin::Generic,
+        },
+    ];
+
+    let mut loaded: std::collections::HashMap<String, Handle<Font>> =
+        std::collections::HashMap::new();
+    if let Some(dir) = &dir {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            let mut files: Vec<std::path::PathBuf> = rd
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    matches!(
+                        p.extension()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_ascii_lowercase())
+                            .as_deref(),
+                        Some("ttf") | Some("otf")
+                    )
+                })
+                .collect();
+            files.sort();
+            for path in files {
+                let name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("font")
+                    .to_string();
+                // Reuse the handle if already loaded so we don't re-read bytes.
+                let handle = registry.loaded.get(&name).cloned().or_else(|| {
+                    std::fs::read(&path)
+                        .ok()
+                        .map(|bytes| fonts.add(Font::from_bytes(bytes)))
+                });
+                if let Some(handle) = handle {
+                    entries.push(FontEntry {
+                        name: name.clone(),
+                        source: FontSource::Handle(handle.clone()),
+                        origin: FontOrigin::Project,
+                    });
+                    loaded.insert(name, handle);
+                }
+            }
+        }
+    }
+
+    registry.entries = entries;
+    registry.loaded = loaded;
+    registry.scanned_dir = dir;
+    registry.dir_sig = sig;
+}
+
 /// Resolve a Phosphor icon name (e.g. `"caret-down"`) to its glyph char, for
 /// binding an icon that changes at runtime. Returns `None` for unknown names.
 pub use crate::phosphor_map::icon_glyph;
