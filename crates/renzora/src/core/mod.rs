@@ -562,6 +562,12 @@ pub struct ProjectConfig {
     /// `log::*` output. No effect on Linux/macOS where stdout is always live.
     #[serde(default, skip_serializing_if = "is_false")]
     pub console_logging: bool,
+    /// Default UI font for the shipped game — a name resolved by the font
+    /// registry, a project `fonts/` path (e.g. `"fonts/Inter.ttf"`), or a system
+    /// family. Applied at runtime startup (the game's ember UI uses it); `None`
+    /// keeps the embedded default. Shipped (not the editor-stripped section).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_font: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<NetworkProjectConfig>,
     /// Editor-only preferences (viewport toggles, camera speed, snap, etc.).
@@ -584,6 +590,7 @@ impl Default for ProjectConfig {
             rendering_2d: Rendering2dConfig::default(),
             rendering: RenderingConfig::default(),
             console_logging: false,
+            ui_font: None,
             network: None,
             editor: None,
         }

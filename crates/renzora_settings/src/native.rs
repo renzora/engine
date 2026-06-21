@@ -1056,7 +1056,7 @@ fn build_tab_content(
 
     match tab {
         SettingsTab::Project => {
-            tab_project(commands, fonts, col, scenes, has_project, active_sub)
+            tab_project(commands, fonts, col, scenes, custom, has_project, active_sub)
         }
         SettingsTab::Interface => {
             tab_interface(commands, fonts, col, settings, custom, active_sub)
@@ -1125,6 +1125,7 @@ fn tab_project(
     fonts: &EmberFonts,
     col: Entity,
     scenes: &[String],
+    custom: &[String],
     has_project: bool,
     focus: Option<&str>,
 ) {
@@ -1190,6 +1191,39 @@ fn tab_project(
         },
     );
     settings_row(commands, fonts, body, 1, "Boot Scene", dd);
+
+    // Default UI font for the shipped game (ProjectConfig.ui_font). "Default"
+    // keeps the embedded font; other entries are generics + project fonts.
+    let mut font_opts: Vec<String> = ["Default", "System UI", "Sans Serif", "Serif", "Monospace"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    font_opts.extend(custom.iter().cloned());
+    let font_refs: Vec<&str> = font_opts.iter().map(|s| s.as_str()).collect();
+    let fo1 = font_opts.clone();
+    let fo2 = font_opts.clone();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &font_refs,
+        0,
+        move |w| match w
+            .get_resource::<CurrentProject>()
+            .and_then(|c| c.config.ui_font.clone())
+        {
+            Some(name) => fo1.iter().position(|n| *n == name).unwrap_or(0),
+            None => 0,
+        },
+        move |w, &i| {
+            // Index 0 = "Default" → None (embedded font).
+            let val = if i == 0 { None } else { fo2.get(i).cloned() };
+            if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                cp.config.ui_font = val;
+            }
+            save_project(w);
+        },
+    );
+    settings_row(commands, fonts, body, 2, "Game UI Font", dd);
 
     // Rendering (3D pipeline).
     let (sec, body) = section(commands, fonts, "monitor", "Rendering", A_BLUE);

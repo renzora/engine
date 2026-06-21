@@ -475,6 +475,8 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
 
     // Font scripting: `action("set_ui_font"/"set_font", {name=...})`.
     app.add_observer(handle_font_script_actions);
+    // Shipped game adopts the project's default UI font.
+    app.add_systems(Update, apply_game_ui_font);
 
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image
@@ -560,6 +562,50 @@ fn handle_font_script_actions(
         }
         _ => {}
     }
+}
+
+/// Apply the project's default UI font (`ProjectConfig.ui_font`) at game
+/// startup. Editor sessions use the per-user editor font (EditorSettings) and
+/// are skipped; only the shipped game adopts the project default. Runs once,
+/// after the project + fonts are ready.
+fn apply_game_ui_font(
+    mut done: Local<bool>,
+    session: Option<Res<renzora::EditorSession>>,
+    project: Option<Res<renzora::CurrentProject>>,
+    registry: Option<Res<renzora_ember::font::FontRegistry>>,
+    asset: Res<AssetServer>,
+    fonts: Option<ResMut<renzora_ember::font::EmberFonts>>,
+    mut text_q: Query<&mut bevy::text::TextFont>,
+) {
+    if *done {
+        return;
+    }
+    // Editor uses EditorSettings.ui_font — only the shipped game adopts the
+    // project default.
+    if session.map(|s| s.0).unwrap_or(false) {
+        *done = true;
+        return;
+    }
+    let Some(project) = project else {
+        return; // wait for the project to load
+    };
+    let Some(name) = project.config.ui_font.clone() else {
+        *done = true; // no project default → keep the embedded font
+        return;
+    };
+    let Some(mut fonts) = fonts else {
+        return; // fonts not ready
+    };
+    let src = resolve_script_font(&name, registry.as_deref(), &asset);
+    if src != fonts.ui {
+        let old = std::mem::replace(&mut fonts.ui, src.clone());
+        for mut tf in &mut text_q {
+            if tf.font == old {
+                tf.font = src.clone();
+            }
+        }
+    }
+    *done = true;
 }
 
 /// Build the full runtime app (rendering + all engine plugins).
