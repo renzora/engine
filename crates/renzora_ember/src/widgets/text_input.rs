@@ -61,7 +61,7 @@ pub(crate) fn caret(commands: &mut Commands) -> Entity {
 /// entry + backspace; no cursor/selection yet).
 pub fn text_input(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     placeholder: &str,
     value: &str,
 ) -> Entity {
@@ -71,7 +71,7 @@ pub fn text_input(
 /// A [`text_input`] whose value renders masked (`••••`) — for passwords.
 pub fn password_input(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     placeholder: &str,
     value: &str,
 ) -> Entity {
@@ -80,7 +80,7 @@ pub fn password_input(
 
 fn build_input(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     placeholder: &str,
     value: &str,
     password: bool,

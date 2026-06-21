@@ -50,7 +50,7 @@ pub fn inspector_stripe(row_index: usize) -> Color {
 /// declarative field renderer and native drawers use this so every row matches.
 pub fn inspector_row(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     control: Entity,
 ) -> Entity {

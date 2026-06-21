@@ -22,7 +22,7 @@ pub(crate) struct EmberTabBar {
 /// `labels` and `panels` must be the same length.
 pub fn tabs(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     labels: &[&str],
     panels: Vec<Entity>,
 ) -> Entity {

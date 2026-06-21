@@ -98,9 +98,9 @@ pub(crate) struct CodeViewport {
     editor: Entity,
 }
 
-fn mono(font: &Handle<Font>, size: f32) -> TextFont {
+fn mono(font: &bevy::text::FontSource, size: f32) -> TextFont {
     TextFont {
-        font: bevy::text::FontSource::Handle(font.clone()),
+        font: font.clone(),
         font_size: bevy::text::FontSize::Px(size),
         ..default()
     }

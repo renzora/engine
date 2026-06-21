@@ -2964,7 +2964,7 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
         let g = commands
             .spawn((
                 Text::new(glyph.to_string()),
-                ui_font(&fonts.phosphor, 10.0),
+                ui_font(&bevy::text::FontSource::Handle(fonts.phosphor.clone()), 10.0),
                 TextColor(rgb(text_muted())),
                 Pickable::IGNORE,
             ))

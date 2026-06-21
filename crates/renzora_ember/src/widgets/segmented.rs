@@ -16,7 +16,7 @@ pub(crate) struct EmberSegment {
 /// A segmented control (a row of buttons, one selected). Returns the container.
 pub fn segmented(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     options: &[&str],
     selected: usize,
 ) -> Entity {

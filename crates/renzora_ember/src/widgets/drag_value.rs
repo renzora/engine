@@ -91,7 +91,7 @@ const GESTURE_GAP: f32 = 0.18;
 /// insert a [`DragRange`] to clamp the scrub and show the bottom slider line.
 pub fn drag_value(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     axis: &str,
     axis_color: (u8, u8, u8),
     value: f32,
@@ -105,7 +105,7 @@ pub fn drag_value(
 /// into the surrounding fill rather than read as its own dark field.
 pub fn drag_value_flat(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     axis: &str,
     axis_color: (u8, u8, u8),
     value: f32,
@@ -117,7 +117,7 @@ pub fn drag_value_flat(
 #[allow(clippy::too_many_arguments)]
 fn drag_value_impl(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     axis: &str,
     axis_color: (u8, u8, u8),
     value: f32,

@@ -3,7 +3,7 @@
 //! reused from `renzora_hui` (folded into ember later).
 
 use bevy::prelude::*;
-use bevy::text::Font;
+use bevy::text::{Font, FontSize, FontSource};
 
 use crate::theme::rgb;
 
@@ -17,13 +17,23 @@ const JETBRAINS_MONO: &[u8] = include_bytes!("../embedded/JetBrainsMono-Regular.
 /// Slight global down-scale so text matches the editor's size.
 const TEXT_SCALE: f32 = 0.92;
 
-/// The fonts ember renders with. `ui` = Noto (proportional); `phosphor` = the
-/// Phosphor icon font. Inserted once both are ready.
+/// The fonts ember renders with. `ui` = the proportional UI font (Noto by
+/// default, user-changeable via the theme); `mono` = the monospace font;
+/// `phosphor` = the icon font.
+///
+/// `ui`/`mono` are [`FontSource`]s (not raw handles) so the UI font can be a
+/// loaded asset (`Handle`), a system/loaded family by name (`Family`), or a
+/// generic category (`SansSerif`, `SystemUi`, …) — Bevy 0.19's Parley backend
+/// resolves all three. The default embedded Noto/JetBrains handles are kept in
+/// `default_ui`/`default_mono` so "reset to default" never needs to reload them
+/// and so the live font-swap can tell UI text apart from icon/mono text.
 #[derive(Resource, Clone)]
 pub struct EmberFonts {
-    pub ui: Handle<Font>,
+    pub ui: FontSource,
     pub phosphor: Handle<Font>,
-    pub mono: Handle<Font>,
+    pub mono: FontSource,
+    pub default_ui: FontSource,
+    pub default_mono: FontSource,
 }
 
 /// Build [`EmberFonts`] once the Phosphor font (loaded by HUI) is available.
@@ -40,20 +50,26 @@ pub(crate) fn load_fonts(
         return;
     };
     // 0.19/Parley: `Font::from_bytes` (Result) → `Font::from_bytes` (infallible).
-    let ui = fonts.add(Font::from_bytes(NOTO_SANS.to_vec()));
-    let mono = fonts.add(Font::from_bytes(JETBRAINS_MONO.to_vec()));
+    let ui = FontSource::Handle(fonts.add(Font::from_bytes(NOTO_SANS.to_vec())));
+    let mono = FontSource::Handle(fonts.add(Font::from_bytes(JETBRAINS_MONO.to_vec())));
     commands.insert_resource(EmberFonts {
-        ui,
+        ui: ui.clone(),
         phosphor: phosphor.0.clone(),
-        mono,
+        mono: mono.clone(),
+        default_ui: ui,
+        default_mono: mono,
     });
 }
 
-/// A `TextFont` in the UI font at the given (pre-scale) size.
-pub fn ui_font(font: &Handle<Font>, size: f32) -> TextFont {
+/// A `TextFont` in the given font source at the given (pre-scale) size.
+///
+/// Takes a [`FontSource`] so callers pass `&fonts.ui` / `&fonts.mono` (now
+/// source-typed) and the UI font can be swapped to any family/generic at
+/// runtime. Existing call sites are unchanged — they already passed `&fonts.ui`.
+pub fn ui_font(font: &FontSource, size: f32) -> TextFont {
     TextFont {
-        font: bevy::text::FontSource::Handle(font.clone()),
-        font_size: bevy::text::FontSize::Px(size * TEXT_SCALE),
+        font: font.clone(),
+        font_size: FontSize::Px(size * TEXT_SCALE),
         ..default()
     }
 }

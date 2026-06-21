@@ -919,7 +919,7 @@ fn tab_drag(
     }
 }
 
-fn spawn_ghost(commands: &mut Commands, font: &Handle<Font>, id: &str, cursor: Vec2) -> Entity {
+fn spawn_ghost(commands: &mut Commands, font: &bevy::text::FontSource, id: &str, cursor: Vec2) -> Entity {
     let (title, icon) = tab_meta(id);
     let ghost = commands
         .spawn((
@@ -1256,7 +1256,7 @@ fn tab_close_click(
 
 fn build_tree(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
     parent: Option<ParentSplit>,
     path: Vec<bool>,
@@ -1549,7 +1549,7 @@ pub(crate) fn apply_dock_style(
 
 fn build_leaf(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
     parent: Option<ParentSplit>,
     tabs: &[String],
@@ -1659,7 +1659,7 @@ fn add_panel_click(
 
 fn populate_leaf(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
     parent: Option<ParentSplit>,
     leaf: Entity,

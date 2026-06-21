@@ -14,7 +14,7 @@ use super::*;
 /// A titled panel column — the shell of each gallery category panel.
 fn panel_column(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     title: &str,
     rows: Vec<Entity>,
 ) -> Entity {

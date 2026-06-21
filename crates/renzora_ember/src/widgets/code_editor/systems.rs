@@ -266,7 +266,7 @@ pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes
     }
 }
 
-fn render_line(commands: &mut Commands, font: &Handle<Font>, num: usize, spans: &[(String, Color)]) -> Entity {
+fn render_line(commands: &mut Commands, font: &bevy::text::FontSource, num: usize, spans: &[(String, Color)]) -> Entity {
     let row = commands
         .spawn((
             Node {

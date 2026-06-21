@@ -15,7 +15,7 @@ pub(crate) struct EmberListItem {
 /// A vertical list group of selectable rows (`items`); `active` starts selected.
 pub fn list_group(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     items: &[&str],
     active: usize,
 ) -> Entity {

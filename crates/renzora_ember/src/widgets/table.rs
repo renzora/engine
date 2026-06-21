@@ -6,7 +6,7 @@ use crate::theme::*;
 
 use super::common::text_node;
 
-fn table_row(commands: &mut Commands, font: &Handle<Font>, cells: &[&str], header: bool) -> Entity {
+fn table_row(commands: &mut Commands, font: &bevy::text::FontSource, cells: &[&str], header: bool) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -44,7 +44,7 @@ fn table_row(commands: &mut Commands, font: &Handle<Font>, cells: &[&str], heade
 }
 
 /// A simple data table: a header row over data rows (equal-width columns).
-pub fn table(commands: &mut Commands, font: &Handle<Font>, headers: &[&str], rows: &[&[&str]]) -> Entity {
+pub fn table(commands: &mut Commands, font: &bevy::text::FontSource, headers: &[&str], rows: &[&[&str]]) -> Entity {
     let t = commands
         .spawn((
             Node {

@@ -10,7 +10,7 @@ use super::common::text_node;
 /// the right.
 pub fn property_row(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     control: Entity,
 ) -> Entity {

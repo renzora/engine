@@ -26,7 +26,7 @@ fn frac(value: f32, min: f32, max: f32) -> f32 {
 }
 
 /// A spin-slider showing `value` in `[min, max]`. Drag to scrub by `step`/px.
-pub fn spin_slider(commands: &mut Commands, font: &Handle<Font>, label: &str, value: f32, min: f32, max: f32) -> Entity {
+pub fn spin_slider(commands: &mut Commands, font: &bevy::text::FontSource, label: &str, value: f32, min: f32, max: f32) -> Entity {
     let row = commands
         .spawn((
             Node {

@@ -54,7 +54,7 @@ pub(crate) fn manage_crash_overlay(world: &mut World) {
 
 fn line(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     text: &str,
     color: (u8, u8, u8),
     size: f32,

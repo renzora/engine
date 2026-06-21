@@ -1510,7 +1510,7 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
 
 /// The top bar: File/Edit/View/Help on the left, the layout ribbon centered,
 /// action buttons on the right.
-fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
+fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -1695,7 +1695,7 @@ fn build_top_bar(commands: &mut Commands, font: &Handle<Font>) -> Entity {
 /// `index`; dragging reorders, right-click renames/removes (see [`ribbon_interact`]).
 fn ribbon_item(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     index: usize,
     active: bool,
@@ -1795,7 +1795,7 @@ fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
 
 /// Inline rename field for a ribbon tab (mirrors the native hierarchy's). Seeded
 /// with the current name; committed by [`ribbon_rename_commit`].
-fn build_ribbon_rename_field(commands: &mut Commands, font: &Handle<Font>, index: usize, name: &str) -> Entity {
+fn build_ribbon_rename_field(commands: &mut Commands, font: &bevy::text::FontSource, index: usize, name: &str) -> Entity {
     let input = text_input(commands, font, "Name", name);
     commands.entity(input).insert((
         RibbonRenameInput(index),
@@ -1814,7 +1814,7 @@ fn build_ribbon_rename_field(commands: &mut Commands, font: &Handle<Font>, index
 
 /// The document tab strip: the open documents (`DocumentTabState`, shared with
 /// the egui editor) rendered reactively, plus an add-document button.
-fn build_doc_tabs(commands: &mut Commands, _font: &Handle<Font>) -> Entity {
+fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -2203,7 +2203,7 @@ struct OpenTopMenu {
 /// An interactive top-bar menu title (File/Edit/View/Help).
 fn top_menu_item(
     commands: &mut Commands,
-    font: &Handle<Font>,
+    font: &bevy::text::FontSource,
     label: &str,
     kind: TopMenuKind,
 ) -> Entity {
@@ -2240,7 +2240,7 @@ fn top_menu_item(
 
 /// The account menu title (left bar, after Help). Identical styling to the other
 /// top menus, but its label is reactive (the signed-in username, or "Sign In").
-fn account_menu_item(commands: &mut Commands, font: &Handle<Font>) -> Entity {
+fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
     let item = commands
         .spawn((
             Node {

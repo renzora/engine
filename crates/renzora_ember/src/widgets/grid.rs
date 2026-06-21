@@ -6,7 +6,7 @@ use crate::font::ui_font;
 use crate::theme::*;
 
 /// A uniform grid of `count` cells across `columns` flexible columns.
-pub fn grid(commands: &mut Commands, font: &Handle<Font>, count: usize, columns: usize) -> Entity {
+pub fn grid(commands: &mut Commands, font: &bevy::text::FontSource, count: usize, columns: usize) -> Entity {
     let g = commands
         .spawn((
             Node {

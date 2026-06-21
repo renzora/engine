@@ -11,7 +11,7 @@ use super::text_input::{caret, EmberTextInput};
 
 /// A multi-line text area (reuses the text-input focus/typing systems; Enter
 /// inserts a newline).
-pub fn textarea(commands: &mut Commands, font: &Handle<Font>, placeholder: &str, value: &str) -> Entity {
+pub fn textarea(commands: &mut Commands, font: &bevy::text::FontSource, placeholder: &str, value: &str) -> Entity {
     let empty = value.is_empty();
     let box_e = commands
         .spawn((

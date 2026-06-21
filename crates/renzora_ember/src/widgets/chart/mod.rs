@@ -181,7 +181,7 @@ fn chart_node(commands: &mut Commands, values: &[f32], width: f32, height: f32) 
     outer
 }
 
-fn axis_label(commands: &mut Commands, font: &Handle<Font>, text: &str, top: bool) -> Entity {
+fn axis_label(commands: &mut Commands, font: &bevy::text::FontSource, text: &str, top: bool) -> Entity {
     commands
         .spawn((
             Text::new(text),
