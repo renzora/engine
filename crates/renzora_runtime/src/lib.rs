@@ -473,14 +473,6 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     info!("[runtime] foundation: PhysicsPlugin");
     app.add_plugins(renzora_physics::PhysicsPlugin);
 
-    // Project fonts: a shipped game has no on-disk project (the editor's
-    // ember `scan_project_fonts` reads the disk folder), so load the bundled
-    // `fonts/` from the rpak VFS into the shared registry. No-op in the editor
-    // (no archive). Init the registry here so the game has it even without the
-    // editor's DockPlugin.
-    app.init_resource::<renzora_ember::font::FontRegistry>();
-    app.add_systems(Update, scan_packed_fonts);
-
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image
     // via `ViewportRenderTarget`, separate concern). The plugin is
@@ -497,59 +489,6 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
         info!("[runtime] static plugin: {}", plugin.name);
         (plugin.install)(app);
     });
-}
-
-/// One-shot scan of a packed game's `fonts/` folder from the rpak VFS, into the
-/// shared [`FontRegistry`](renzora_ember::font::FontRegistry). The editor reads
-/// the on-disk folder (ember's `scan_project_fonts`); a shipped game has no disk
-/// project, so its bundled fonts come from the archive. No-op when there's no
-/// archive (editor / `--project` disk runs — the disk scanner covers those).
-fn scan_packed_fonts(
-    mut done: Local<bool>,
-    vfs: Option<Res<renzora_engine::Vfs>>,
-    mut registry: ResMut<renzora_ember::font::FontRegistry>,
-    mut fonts: ResMut<Assets<bevy::text::Font>>,
-    ember: Option<Res<renzora_ember::font::EmberFonts>>,
-) {
-    use bevy::text::{Font, FontSource};
-    use renzora_ember::font::{FontEntry, FontOrigin, FontRegistry};
-    if *done {
-        return;
-    }
-    let Some(vfs) = vfs else { return };
-    let Some(archive) = vfs.archive() else {
-        return; // disk run → the editor's disk scanner handles it
-    };
-    let default_ui = ember
-        .as_ref()
-        .map(|e| e.default_ui.clone())
-        .unwrap_or(FontSource::SansSerif);
-    let mut entries = FontRegistry::builtin_entries(default_ui);
-    let keys: Vec<String> = archive
-        .paths()
-        .filter(|p| {
-            let l = p.to_ascii_lowercase();
-            p.starts_with("fonts/") && (l.ends_with(".ttf") || l.ends_with(".otf"))
-        })
-        .map(|p| p.to_string())
-        .collect();
-    for key in keys {
-        if let Some(bytes) = vfs.read(&key) {
-            let name = std::path::Path::new(&key)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("font")
-                .to_string();
-            let handle = fonts.add(Font::from_bytes(bytes));
-            entries.push(FontEntry {
-                name,
-                source: FontSource::Handle(handle),
-                origin: FontOrigin::Project,
-            });
-        }
-    }
-    registry.entries = entries;
-    *done = true;
 }
 
 /// Build the full runtime app (rendering + all engine plugins).

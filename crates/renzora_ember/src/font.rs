@@ -126,8 +126,6 @@ pub struct FontRegistry {
     scanned_dir: Option<std::path::PathBuf>,
     /// Signature (file set + mtimes) of that dir at last scan.
     dir_sig: u64,
-    /// Loaded project-font handles, kept alive + reused across rescans.
-    loaded: std::collections::HashMap<String, Handle<Font>>,
 }
 
 impl FontRegistry {
@@ -224,7 +222,7 @@ fn font_dir_signature(dir: &std::path::Path) -> u64 {
 pub(crate) fn scan_project_fonts(
     mut tick: Local<u32>,
     mut registry: ResMut<FontRegistry>,
-    mut fonts: ResMut<Assets<Font>>,
+    asset_server: Res<AssetServer>,
     ember: Option<Res<EmberFonts>>,
     project: Option<Res<renzora::core::CurrentProject>>,
 ) {
@@ -246,11 +244,13 @@ pub(crate) fn scan_project_fonts(
         return; // nothing changed
     }
 
-    // Rebuild the list: built-ins first, then project fonts.
+    // Rebuild the list: built-ins first, then project fonts. We discover the
+    // file names on disk (for the picker list) but LOAD each through the asset
+    // server by its project-relative path — so the handle is path-backed. That
+    // matters downstream: the path is what the scene `.bsn` records for a
+    // `TextFont`, what the exporter's reference trace packs, and what a shipped
+    // game loads from the rpak (no game-side font scanner needed).
     let mut entries = FontRegistry::builtin_entries(ember.default_ui.clone());
-
-    let mut loaded: std::collections::HashMap<String, Handle<Font>> =
-        std::collections::HashMap::new();
     if let Some(dir) = &dir {
         if let Ok(rd) = std::fs::read_dir(dir) {
             let mut files: Vec<std::path::PathBuf> = rd
@@ -268,31 +268,24 @@ pub(crate) fn scan_project_fonts(
                 .collect();
             files.sort();
             for path in files {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("font")
-                    .to_string();
-                // Reuse the handle if already loaded so we don't re-read bytes.
-                let handle = registry.loaded.get(&name).cloned().or_else(|| {
-                    std::fs::read(&path)
-                        .ok()
-                        .map(|bytes| fonts.add(Font::from_bytes(bytes)))
+                let (Some(stem), Some(file)) = (
+                    path.file_stem().and_then(|s| s.to_str()),
+                    path.file_name().and_then(|s| s.to_str()),
+                ) else {
+                    continue;
+                };
+                // Project-relative asset path (asset_server dedupes by path).
+                let handle = asset_server.load::<Font>(format!("fonts/{file}"));
+                entries.push(FontEntry {
+                    name: stem.to_string(),
+                    source: FontSource::Handle(handle),
+                    origin: FontOrigin::Project,
                 });
-                if let Some(handle) = handle {
-                    entries.push(FontEntry {
-                        name: name.clone(),
-                        source: FontSource::Handle(handle.clone()),
-                        origin: FontOrigin::Project,
-                    });
-                    loaded.insert(name, handle);
-                }
             }
         }
     }
 
     registry.entries = entries;
-    registry.loaded = loaded;
     registry.scanned_dir = dir;
     registry.dir_sig = sig;
 }
