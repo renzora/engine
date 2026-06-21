@@ -2279,13 +2279,20 @@ fn widget_num_row(commands: &mut Commands, fonts: &EmberFonts, body: Entity, idx
     use bevy::reflect::GetPath;
     use renzora_ember::style::Theme as EmberTheme;
     let p = path.clone();
+    // Typography fields need bespoke ranges; geometry (border/radius/pad) is 0..64.
+    let (min, max, step) = match path.rsplit('.').next().unwrap_or("") {
+        "weight" => (100.0, 900.0, 25.0),
+        "letter_spacing" => (-20.0, 50.0, 0.1),
+        "line_height" => (0.5, 4.0, 0.05),
+        _ => (0.0, 64.0, 0.5),
+    };
     let dv = ctl_drag(
         commands,
         fonts,
         0.0,
-        0.0,
-        64.0,
-        0.5,
+        min,
+        max,
+        step,
         move |w| {
             w.resource::<EmberTheme>()
                 .path::<f32>(p.as_str())

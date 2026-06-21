@@ -41,7 +41,7 @@ impl Plugin for ThemePlugin {
             .register_type::<BarStyle>()
             .register_type::<TimelineStyle>()
             .register_type::<Rgba>()
-            .add_systems(Update, apply_theme);
+            .add_systems(Update, (apply_theme, apply_themed_text));
     }
 }
 
@@ -163,6 +163,24 @@ pub struct StyleToken {
     pub pad_y: f32,
     pub text: Rgba,
     pub text_muted: Rgba,
+    // Typography is `serde(default)` so themes saved before these fields existed
+    // still load (missing → the normal-weight / no-spacing / 1.2-line defaults).
+    /// Variable-font weight applied to this widget's text (100–900, 400 = normal).
+    #[serde(default = "default_weight")]
+    pub weight: f32,
+    /// Letter spacing in logical px (0 = font default).
+    #[serde(default)]
+    pub letter_spacing: f32,
+    /// Line height as a multiple of the font size (1.2 = default).
+    #[serde(default = "default_line_height")]
+    pub line_height: f32,
+}
+
+fn default_weight() -> f32 {
+    400.0
+}
+fn default_line_height() -> f32 {
+    1.2
 }
 
 impl StyleToken {
@@ -181,6 +199,9 @@ impl StyleToken {
             pad_y: 0.0,
             text: Rgba::rgb(text_primary()),
             text_muted: Rgba::rgb(text_muted()),
+            weight: 400.0,
+            letter_spacing: 0.0,
+            line_height: 1.2,
         }
     }
     fn hover(mut self, c: Rgba) -> Self {
@@ -681,6 +702,40 @@ pub fn apply_theme(
         node.padding = UiRect::axes(Val::Px(token.pad_x), Val::Px(token.pad_y));
         if let Some(mut bc) = border {
             *bc = BorderColor::all(token.border_for(styled.state));
+        }
+    }
+}
+
+/// Apply per-widget-type rich typography — variable-font **weight**, **letter
+/// spacing** and **line height** — from the active [`Theme`]'s [`StyleToken`] to
+/// the text directly under each themed widget. Font *size* is deliberately left
+/// to the per-call `ui_font` size + the global font-size scale, so this is
+/// additive and never overrides existing sizing. Re-runs when the theme changes
+/// or a widget's `Styled` changes.
+pub fn apply_themed_text(
+    theme: Res<Theme>,
+    styled: Query<(Ref<Styled>, &Children)>,
+    mut text_q: Query<&mut bevy::text::TextFont>,
+    mut commands: Commands,
+) {
+    let repaint_all = theme.is_changed();
+    for (s, children) in &styled {
+        if !repaint_all && !s.is_changed() {
+            continue;
+        }
+        let token = theme.token(s.role);
+        let weight = bevy::text::FontWeight(token.weight.round().clamp(1.0, 1000.0) as u16);
+        for child in children.iter() {
+            if !text_q.contains(child) {
+                continue;
+            }
+            if let Ok(mut tf) = text_q.get_mut(child) {
+                tf.weight = weight;
+            }
+            commands.entity(child).insert((
+                bevy::text::LetterSpacing::Px(token.letter_spacing),
+                bevy::text::LineHeight::RelativeToFont(token.line_height),
+            ));
         }
     }
 }
