@@ -118,20 +118,40 @@ fn ensure_deferred_prepass_on_cameras(
 /// mismatch. `renzora_skybox`/`renzora_night_stars` exclude these same cameras.
 fn ensure_contact_shadows_on_forward_cameras(
     rendering_mode: Res<ResolvedRenderingMode>,
-    cameras: Query<
+    add_cameras: Query<
         Entity,
         (
             With<Camera3d>,
             Without<bevy::pbr::ContactShadows>,
             Without<IsolatedCamera>,
+            Without<DeferredPrepass>,
+        ),
+    >,
+    // Cameras that must NOT keep `ContactShadows`: a deferred prepass (whose
+    // lighting pipeline omits binding 16) or an isolated utility view.
+    conflicting: Query<
+        Entity,
+        (
+            With<bevy::pbr::ContactShadows>,
+            Or<(With<DeferredPrepass>, With<IsolatedCamera>)>,
         ),
     >,
     mut commands: Commands,
 ) {
+    // Strip `ContactShadows` from any camera it conflicts with, no matter how it
+    // got there — a Forward→Deferred mode switch, a `DeferredPrepass` attached
+    // later (e.g. for SSR), or a scene that saved the component while forward.
+    // Without this, such a camera's mesh-view bind group exposes binding 16
+    // while the deferred lighting pipeline's layout omits it → wgpu hard-crash.
+    for entity in &conflicting {
+        commands
+            .entity(entity)
+            .remove::<bevy::pbr::ContactShadows>();
+    }
     if rendering_mode.is_deferred() {
         return;
     }
-    for entity in &cameras {
+    for entity in &add_cameras {
         commands
             .entity(entity)
             .try_insert(bevy::pbr::ContactShadows::default());

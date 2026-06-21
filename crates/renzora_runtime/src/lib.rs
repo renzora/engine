@@ -249,15 +249,39 @@ fn render_error_policy(
     use bevy::render::settings::RenderCreation;
     match error.ty {
         // Recoverable: the device went away (driver reset / GPU hang / XR
-        // compositor reset). Re-create the renderer and carry on.
+        // compositor reset). Re-create the renderer and carry on — this is the
+        // one case worth surviving silently.
         ErrorType::DeviceLost => {
             RenderErrorPolicy::Recover(RenderCreation::Automatic(Box::new(platform_wgpu_settings())))
         }
-        // OOM / validation / internal faults usually recur if we just retry, so
-        // recovering would risk hazardous rapid flashing. Keep the window alive
-        // (no crash) but stop rendering; Bevy has already logged the error.
-        _ => RenderErrorPolicy::StopRendering,
+        // Transient surface/swapchain faults are expected during legitimate
+        // reconfiguration — entering/leaving play mode, window resize, viewport
+        // render-target swaps — where the surface texture is destroyed mid-submit
+        // and re-acquired next frame. Tolerate those (`Ignore` drops the bad
+        // frame and carries on); crashing on them would kill the editor every
+        // time you press Esc out of play mode.
+        _ if is_transient_surface_error(&error.description) => RenderErrorPolicy::Ignore,
+        // Anything else is treated as a real bug: panic so the engine's crash
+        // hook (`renzora_engine::crash`) saves a report + shows the native crash
+        // window, rather than silently freezing (the old `StopRendering`) or
+        // strobing (`Ignore` on a persistent fault).
+        _ => panic!(
+            "Unrecoverable GPU render error ({:?}): {}",
+            error.ty, error.description
+        ),
     }
+}
+
+/// Heuristic: is this render-validation error a transient surface/swapchain
+/// reconfiguration fault (destroyed surface texture, outdated/lost swapchain)
+/// rather than a real pipeline bug? Those self-resolve on the next frame, so we
+/// tolerate them instead of crashing.
+fn is_transient_surface_error(description: &str) -> bool {
+    let d = description.to_lowercase();
+    (d.contains("surface") && d.contains("destroyed"))
+        || d.contains("surface texture")
+        || d.contains("outdated")
+        || d.contains("has been destroyed")
 }
 
 /// Headless plugin set for the dedicated server (`renzora-runtime --server`).
