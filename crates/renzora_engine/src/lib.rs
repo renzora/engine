@@ -107,9 +107,25 @@ fn ensure_deferred_prepass_on_cameras(
 /// A light's `contact_shadows_enabled` (e.g. the Sun's toggle) then takes effect
 /// on these views. Same cheap `Without<>` scan + before-first-render timing as
 /// [`ensure_deferred_prepass_on_cameras`].
+///
+/// `Without<IsolatedCamera>` is load-bearing: contact shadows are a main-view
+/// feature, and the offscreen utility cameras (material/model thumbnails, studio
+/// previews, env bakes, the game-UI canvas) all carry `IsolatedCamera`. Attaching
+/// `ContactShadows` to one of those — e.g. the material-thumbnail capture camera —
+/// makes its mesh-view bind group expose binding 16 (`ContactShadowsUniform`)
+/// while that render path's `pbr_opaque_mesh_pipeline` specializes *without* the
+/// `CONTACT_SHADOWS` key (binding 16 absent), so wgpu hard-quits with a layout
+/// mismatch. `renzora_skybox`/`renzora_night_stars` exclude these same cameras.
 fn ensure_contact_shadows_on_forward_cameras(
     rendering_mode: Res<ResolvedRenderingMode>,
-    cameras: Query<Entity, (With<Camera3d>, Without<bevy::pbr::ContactShadows>)>,
+    cameras: Query<
+        Entity,
+        (
+            With<Camera3d>,
+            Without<bevy::pbr::ContactShadows>,
+            Without<IsolatedCamera>,
+        ),
+    >,
     mut commands: Commands,
 ) {
     if rendering_mode.is_deferred() {
