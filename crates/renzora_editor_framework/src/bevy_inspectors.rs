@@ -4,7 +4,7 @@
 //! regardless of which engine plugins are loaded.
 
 use bevy::light::{
-    EnvironmentMapLight, LightProbe, VolumetricLight,
+    EnvironmentMapLight, LightProbe, ParallaxCorrection, VolumetricLight,
 };
 use bevy::pbr::Lightmap;
 use bevy::prelude::*;
@@ -353,6 +353,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     registry.register(mesh3d_entry());
     registry.register(environment_map_light_entry());
     registry.register(light_probe_entry());
+    registry.register(parallax_correction_entry());
     registry.register(lightmap_entry());
     registry.register(volumetric_light_entry());
     // `volumetric_fog_entry()` removed -- `renzora_volumetric_fog` now
@@ -1375,6 +1376,94 @@ fn light_probe_entry() -> InspectorEntry {
             },
             set_fn: |_, _, _| {},
         }],
+    }
+}
+
+/// Bevy 0.19 parallax-corrected cubemaps. Bevy auto-adds
+/// `ParallaxCorrection::Auto` to every reflection probe, so this section
+/// usually appears already populated on a `LightProbe` + `EnvironmentMapLight`
+/// entity; it lets the user switch the correction off, back to Auto, or to
+/// Custom half-extent bounds (in probe space). Editing the bounds switches the
+/// mode to Custom.
+const PARALLAX_MODES: &[&str] = &["None", "Auto", "Custom"];
+
+fn parallax_correction_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "parallax_correction",
+        display_name: "Parallax Correction",
+        icon: "bounding-box",
+        category: "lighting",
+        has_fn: |world, entity| world.get::<ParallaxCorrection>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert(ParallaxCorrection::Auto);
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<ParallaxCorrection>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Mode",
+                field_type: FieldType::Enum {
+                    options: PARALLAX_MODES,
+                },
+                get_fn: |world, entity| {
+                    world.get::<ParallaxCorrection>(entity).map(|pc| {
+                        let label = match pc {
+                            ParallaxCorrection::None => "None",
+                            ParallaxCorrection::Auto => "Auto",
+                            ParallaxCorrection::Custom(_) => "Custom",
+                        };
+                        FieldValue::Enum(label.to_string())
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Enum(label) = val {
+                        if let Some(mut pc) = world.get_mut::<ParallaxCorrection>(entity) {
+                            *pc = match label.as_str() {
+                                "None" => ParallaxCorrection::None,
+                                "Custom" => {
+                                    // Keep existing custom bounds; otherwise seed
+                                    // with the Auto-equivalent half-extents.
+                                    let bounds = match *pc {
+                                        ParallaxCorrection::Custom(b) => b,
+                                        _ => Vec3::splat(0.5),
+                                    };
+                                    ParallaxCorrection::Custom(bounds)
+                                }
+                                _ => ParallaxCorrection::Auto,
+                            };
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Custom Bounds",
+                field_type: FieldType::Vec3 { speed: 0.05 },
+                get_fn: |world, entity| {
+                    world.get::<ParallaxCorrection>(entity).map(|pc| {
+                        let b = match pc {
+                            ParallaxCorrection::Custom(b) => *b,
+                            // Auto ≡ Custom(splat(0.5)); show that so the field
+                            // is meaningful before the user switches to Custom.
+                            _ => Vec3::splat(0.5),
+                        };
+                        FieldValue::Vec3(b.to_array())
+                    })
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Vec3(v) = val {
+                        if let Some(mut pc) = world.get_mut::<ParallaxCorrection>(entity) {
+                            // Editing bounds implies Custom mode.
+                            *pc = ParallaxCorrection::Custom(Vec3::from_array(v));
+                        }
+                    }
+                },
+            },
+        ],
     }
 }
 
