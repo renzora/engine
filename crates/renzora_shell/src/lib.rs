@@ -872,7 +872,7 @@ fn process_exit_request(
     req: Option<Res<ExitRequest>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
     fonts: Option<Res<EmberFonts>>,
-    queue: Option<ResMut<WindowActionQueue>>,
+    mut exit: MessageWriter<AppExit>,
     open: Query<(), With<ExitPromptRoot>>,
     mut commands: Commands,
 ) {
@@ -887,10 +887,13 @@ fn process_exit_request(
 
     let dirty = tabs.as_ref().is_some_and(|t| any_unsaved(t));
     // Nothing unsaved (or we can't render the prompt) → exit straight away.
+    // Write `AppExit` here in `Update` (not via the `WindowAction::Close` queue,
+    // which `apply_window_actions` drains in `Last`) so the exit event already
+    // exists by the time the `Last`-scheduled `kill_on_app_exit` reads it —
+    // otherwise the two `Last` systems race and the fast-exit is missed,
+    // falling back to the slow World teardown.
     if !dirty || fonts.is_none() {
-        if let Some(mut queue) = queue {
-            queue.push(WindowAction::Close);
-        }
+        exit.write(AppExit::Success);
         return;
     }
     let fonts = fonts.unwrap();
@@ -965,7 +968,7 @@ fn exit_prompt_buttons(
     discard: Query<&Interaction, (Changed<Interaction>, With<ExitPromptDiscard>)>,
     cancel: Query<&Interaction, (Changed<Interaction>, With<ExitPromptCancel>)>,
     roots: Query<Entity, With<ExitPromptRoot>>,
-    queue: Option<ResMut<WindowActionQueue>>,
+    mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
 ) {
     let save = save.iter().any(|i| *i == Interaction::Pressed);
@@ -986,9 +989,7 @@ fn exit_prompt_buttons(
         commands.insert_resource(renzora::core::SaveSceneRequested);
         commands.insert_resource(PendingExitAfterSave);
     } else if discard {
-        if let Some(mut queue) = queue {
-            queue.push(WindowAction::Close);
-        }
+        exit.write(AppExit::Success);
     }
     // cancel → nothing else; the close is abandoned.
 }
@@ -1001,7 +1002,7 @@ fn pending_exit_after_save(
     save_req: Option<Res<renzora::core::SaveSceneRequested>>,
     save_as_req: Option<Res<renzora::core::SaveAsSceneRequested>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
-    queue: Option<ResMut<WindowActionQueue>>,
+    mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
 ) {
     if pending.is_none() {
@@ -1015,9 +1016,7 @@ fn pending_exit_after_save(
 
     let still_dirty = tabs.is_some_and(|t| any_unsaved(&t));
     if !still_dirty {
-        if let Some(mut queue) = queue {
-            queue.push(WindowAction::Close);
-        }
+        exit.write(AppExit::Success);
     }
     // else: save failed or Save-As was cancelled → stay open, don't lose work.
 }
