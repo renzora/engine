@@ -1262,6 +1262,44 @@ fn tab_viewport(commands: &mut Commands, fonts: &EmberFonts, col: Entity, vp: &V
     );
     settings_row(commands, fonts, body, 3, "2D Grid Color", cf);
 
+    // Entity name labels (Bevy 0.19 stroke-font text gizmos).
+    let (sec, body) = section(commands, fonts, "text-aa", "Labels", A_GREEN);
+    commands.entity(col).add_child(sec);
+    let t = ctl_toggle(
+        commands,
+        vp.show_labels,
+        |w| w.resource::<ViewportSettings>().show_labels,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_labels = v,
+    );
+    settings_row(commands, fonts, body, 0, "Show Labels", t);
+    let dv = ctl_drag(
+        commands, fonts, vp.label_size, 0.2, 5.0, 0.05,
+        |w| w.resource::<ViewportSettings>().label_size,
+        |w, &v| w.resource_mut::<ViewportSettings>().label_size = v,
+    );
+    settings_row(commands, fonts, body, 1, "Label Size", dv);
+    let cf = color_field(
+        commands,
+        |w| {
+            let c = w.resource::<ViewportSettings>().label_color;
+            [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0]
+        },
+        |w, rgb| {
+            w.resource_mut::<ViewportSettings>().label_color = [
+                (rgb[0] * 255.0).round() as u8,
+                (rgb[1] * 255.0).round() as u8,
+                (rgb[2] * 255.0).round() as u8,
+            ];
+        },
+    );
+    settings_row(commands, fonts, body, 2, "Label Color", cf);
+    let dv = ctl_drag(
+        commands, fonts, vp.label_max_distance, 1.0, 500.0, 1.0,
+        |w| w.resource::<ViewportSettings>().label_max_distance,
+        |w, &v| w.resource_mut::<ViewportSettings>().label_max_distance = v,
+    );
+    settings_row(commands, fonts, body, 3, "Max Distance", dv);
+
     let (sec, body) = section(commands, fonts, "gauge", "Performance", A_TEAL);
     commands.entity(col).add_child(sec);
     let t = ctl_toggle(

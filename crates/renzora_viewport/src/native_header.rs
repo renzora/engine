@@ -817,6 +817,7 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     kids.push(toggle_row!(commands, fonts, "Sub-grid", show_subgrid));
     kids.push(toggle_row!(commands, fonts, "Axis Gizmo", show_axis_gizmo));
     kids.push(toggle_row!(commands, fonts, "Scene Icons", show_scene_icons));
+    kids.push(toggle_row!(commands, fonts, "Labels", show_labels));
 
     kids.push(separator_row(commands));
     kids.push(section_label(commands, fonts, "Collision Gizmos"));

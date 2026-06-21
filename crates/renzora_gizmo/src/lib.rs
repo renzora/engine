@@ -9,6 +9,7 @@
 mod camera_gizmo;
 pub mod collider_gizmo;
 pub mod collider_handles;
+mod entity_labels;
 mod grid_2d;
 mod light_gizmo;
 pub mod modal_transform;
@@ -438,6 +439,15 @@ impl Plugin for GizmoPlugin {
             .add_systems(
                 Update,
                 light_gizmo::draw_light_gizmos
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor))
+                    .run_if(renzora::core::not_in_play_mode)
+                    .run_if(renzora::core::in_three_view),
+            )
+            // Entity name labels (Bevy 0.19 stroke-font text gizmos), gated on
+            // the Overlays → "Labels" toggle inside the system itself.
+            .add_systems(
+                Update,
+                entity_labels::draw_entity_labels
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode)
                     .run_if(renzora::core::in_three_view),
