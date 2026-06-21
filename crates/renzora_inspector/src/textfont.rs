@@ -4,7 +4,7 @@
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::text::{FontSize, TextFont};
+use bevy::text::{FontSize, FontWeight, LetterSpacing, LineHeight, TextFont};
 
 use renzora_ember::font::{ui_font, EmberFonts, FontRegistry};
 use renzora_ember::reactive::bind_2way;
@@ -46,6 +46,30 @@ fn current_size(w: &World, e: Entity) -> f32 {
         .unwrap_or(14.0)
 }
 
+fn current_weight(w: &World, e: Entity) -> f32 {
+    w.get::<TextFont>(e).map(|tf| tf.weight.0 as f32).unwrap_or(400.0)
+}
+
+/// Letter spacing in px (defaults to 0 when the optional component is absent).
+fn current_letter_spacing(w: &World, e: Entity) -> f32 {
+    w.get::<LetterSpacing>(e)
+        .map(|ls| match *ls {
+            LetterSpacing::Px(v) => v,
+            LetterSpacing::Rem(v) => v,
+        })
+        .unwrap_or(0.0)
+}
+
+/// Line height as a multiple of the font size (defaults to 1.2 when absent).
+fn current_line_height(w: &World, e: Entity) -> f32 {
+    w.get::<LineHeight>(e)
+        .map(|lh| match *lh {
+            LineHeight::RelativeToFont(v) => v,
+            LineHeight::Px(v) => v,
+        })
+        .unwrap_or(1.2)
+}
+
 /// A `label : control` row.
 fn labeled_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, control: Entity) -> Entity {
     let lbl = commands
@@ -76,10 +100,13 @@ fn labeled_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, control
 }
 
 fn textfont_native(world: &mut World, entity: Entity) -> Entity {
-    // Snapshot resources before borrowing the World for `Commands`.
+    // Snapshot resources + initial values before borrowing the World.
     let fonts = world.get_resource::<EmberFonts>().cloned();
     let registry = world.get_resource::<FontRegistry>().cloned();
     let size_init = current_size(world, entity);
+    let weight_init = current_weight(world, entity);
+    let ls_init = current_letter_spacing(world, entity);
+    let lh_init = current_line_height(world, entity);
 
     let mut queue = CommandQueue::default();
     let root = {
@@ -120,7 +147,55 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
             );
             let size_row = labeled_row(&mut commands, &fonts, "Size", dv);
 
-            commands.entity(root).add_children(&[font_row, size_row]);
+            // Weight (variable fonts; 100–900). TextFont.weight is FontWeight(u16).
+            let wd = drag_value(&mut commands, &fonts.ui, "", value_text(), weight_init, 25.0);
+            commands.entity(wd).insert(DragRange { min: 100.0, max: 900.0 });
+            bind_2way::<f32, _, _>(
+                &mut commands,
+                wd,
+                move |w| current_weight(w, entity),
+                move |w, &v| {
+                    if let Some(mut tf) = w.get_mut::<TextFont>(entity) {
+                        tf.weight = FontWeight(v.round().clamp(1.0, 1000.0) as u16);
+                    }
+                },
+            );
+            let weight_row = labeled_row(&mut commands, &fonts, "Weight", wd);
+
+            // Letter spacing (px) — a standalone LetterSpacing component, inserted
+            // on edit if absent.
+            let ld = drag_value(&mut commands, &fonts.ui, "", value_text(), ls_init, 0.1);
+            commands.entity(ld).insert(DragRange { min: -20.0, max: 50.0 });
+            bind_2way::<f32, _, _>(
+                &mut commands,
+                ld,
+                move |w| current_letter_spacing(w, entity),
+                move |w, &v| {
+                    if let Ok(mut em) = w.get_entity_mut(entity) {
+                        em.insert(LetterSpacing::Px(v));
+                    }
+                },
+            );
+            let ls_row = labeled_row(&mut commands, &fonts, "Spacing", ld);
+
+            // Line height (× font size) — standalone LineHeight component.
+            let hd = drag_value(&mut commands, &fonts.ui, "", value_text(), lh_init, 0.05);
+            commands.entity(hd).insert(DragRange { min: 0.5, max: 4.0 });
+            bind_2way::<f32, _, _>(
+                &mut commands,
+                hd,
+                move |w| current_line_height(w, entity),
+                move |w, &v| {
+                    if let Ok(mut em) = w.get_entity_mut(entity) {
+                        em.insert(LineHeight::RelativeToFont(v));
+                    }
+                },
+            );
+            let lh_row = labeled_row(&mut commands, &fonts, "Line", hd);
+
+            commands
+                .entity(root)
+                .add_children(&[font_row, size_row, weight_row, ls_row, lh_row]);
         }
         root
     };
