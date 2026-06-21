@@ -58,6 +58,12 @@ struct NativeSettingsState {
     /// so it re-spawns with the new palette (it's a separate root from the chrome
     /// and wouldn't otherwise pick up the change while open).
     built_theme: Option<String>,
+    /// Selected plugin settings section (its `SettingsSection::id`) when the
+    /// `Plugins` tab is active. Each registered plugin is its own sidebar
+    /// category, so the active tab alone isn't enough to know what to show.
+    active_plugin: Option<String>,
+    /// The `active_plugin` at last build, for the rebuild comparison.
+    built_plugin: Option<String>,
 }
 
 /// Transient UI state for the Input tab (which action is expanded, whether a
@@ -74,6 +80,11 @@ struct NativeSettingsRoot;
 
 #[derive(Component)]
 struct NativeSettingsTabBtn(SettingsTab);
+
+/// Sidebar button for a single plugin settings section (its `SettingsSection::id`).
+/// Selecting it switches to the `Plugins` tab and shows only that section.
+#[derive(Component)]
+struct NativeSettingsPluginBtn(String);
 
 #[derive(Component)]
 struct NativeSettingsClose;
@@ -135,6 +146,7 @@ pub(crate) fn build(app: &mut App) {
         (
             manage_native_settings,
             settings_tab_click,
+            settings_plugin_click,
             settings_close_click,
             theme_save_click,
             ember_theme_save_click,
@@ -247,7 +259,9 @@ fn manage_native_settings(world: &mut World) {
     // Rebuild when the active theme switches so the overlay re-spawns with the
     // new palette (it's a separate root from the chrome).
     let theme_changed = st.built_theme != theme_name;
-    let (root, built, dirty) = (st.root, st.built_tab, st.dirty || theme_changed);
+    let plugin_changed = st.built_plugin != st.active_plugin;
+    let active_plugin = st.active_plugin.clone();
+    let (root, built, dirty) = (st.root, st.built_tab, st.dirty || theme_changed || plugin_changed);
 
     if !open {
         if let Some(r) = root {
@@ -262,7 +276,7 @@ fn manage_native_settings(world: &mut World) {
         return;
     }
 
-    // Already built for this tab and nothing structural changed → nothing to do.
+    // Already built for this tab/plugin and nothing structural changed → skip.
     if root.is_some() && built == Some(tab) && !dirty {
         return;
     }
@@ -273,7 +287,7 @@ fn manage_native_settings(world: &mut World) {
         }
     }
 
-    let Some(new_root) = build_overlay(world, tab) else {
+    let Some(new_root) = build_overlay(world, tab, active_plugin.as_deref()) else {
         // Fonts not ready yet — retry next frame.
         return;
     };
@@ -282,9 +296,10 @@ fn manage_native_settings(world: &mut World) {
     st.built_tab = Some(tab);
     st.dirty = false;
     st.built_theme = theme_name;
+    st.built_plugin = active_plugin;
 }
 
-fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
+fn build_overlay(world: &mut World, tab: SettingsTab, active_plugin: Option<&str>) -> Option<Entity> {
     let fonts = world.get_resource::<EmberFonts>().cloned()?;
     let settings = world.get_resource::<EditorSettings>()?.clone();
     let viewport = world.get_resource::<ViewportSettings>().cloned().unwrap_or_default();
@@ -326,6 +341,7 @@ fn build_overlay(world: &mut World, tab: SettingsTab) -> Option<Entity> {
             has_project,
             &input,
             sections,
+            active_plugin,
         )
     };
     queue.apply(world);
@@ -367,6 +383,7 @@ fn spawn_overlay(
     has_project: bool,
     input: &InputTabData,
     sections: Option<&SettingsSectionRegistry>,
+    active_plugin: Option<&str>,
 ) -> Entity {
     // Full-screen scrim: blocks clicks behind the modal + dims slightly.
     let root = commands
@@ -418,7 +435,7 @@ fn spawn_overlay(
     let title = build_title_bar(commands, fonts);
     let body = build_body(
         commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project, input,
-        sections,
+        sections, active_plugin,
     );
     commands.entity(panel).add_children(&[title, body]);
     root
@@ -475,12 +492,13 @@ fn build_body(
     has_project: bool,
     input: &InputTabData,
     sections: Option<&SettingsSectionRegistry>,
+    active_plugin: Option<&str>,
 ) -> Entity {
-    let sidebar = build_sidebar(commands, fonts, tab);
+    let sidebar = build_sidebar(commands, fonts, tab, sections, active_plugin);
 
     let content_col = build_tab_content(
         commands, fonts, tab, settings, viewport, custom, themes, scenes, has_project, input,
-        sections,
+        sections, active_plugin,
     );
     let scroller = scroll_view_bar(commands, content_col);
 
@@ -515,20 +533,45 @@ fn build_body(
     body
 }
 
-const TABS: &[(SettingsTab, &str, &str)] = &[
-    (SettingsTab::Project, "folder-open", "Project"),
-    (SettingsTab::Interface, "text-aa", "Interface"),
-    (SettingsTab::Editor, "wrench", "Editor"),
-    (SettingsTab::Viewport, "cube", "Viewport"),
-    (SettingsTab::Scripting, "code", "Scripting"),
-    (SettingsTab::Assets, "desktop", "Assets"),
-    (SettingsTab::Input, "game-controller", "Input"),
-    (SettingsTab::Shortcuts, "keyboard", "Shortcuts"),
-    (SettingsTab::Theme, "palette", "Theme"),
-    (SettingsTab::Plugins, "plug", "Plugins"),
+/// Sidebar categories grouped under Unreal-style section headers. The flat tab
+/// set is unchanged; this only organises the navigation so related categories
+/// sit together (and leaves room to split tabs into finer categories later).
+const TAB_GROUPS: &[(&str, &[(SettingsTab, &str, &str)])] = &[
+    ("PROJECT", &[(SettingsTab::Project, "folder-open", "Project")]),
+    (
+        "APPEARANCE",
+        &[
+            (SettingsTab::Interface, "text-aa", "Interface"),
+            (SettingsTab::Theme, "palette", "Theme"),
+        ],
+    ),
+    (
+        "EDITOR",
+        &[
+            (SettingsTab::Editor, "wrench", "Editor"),
+            (SettingsTab::Viewport, "cube", "Viewport"),
+            (SettingsTab::Scripting, "code", "Scripting"),
+            (SettingsTab::Assets, "desktop", "Assets"),
+        ],
+    ),
+    (
+        "CONTROLS",
+        &[
+            (SettingsTab::Input, "game-controller", "Input"),
+            (SettingsTab::Shortcuts, "keyboard", "Shortcuts"),
+        ],
+    ),
+    // The PLUGINS group is appended dynamically in `build_sidebar` — one entry
+    // per registered plugin settings section, not a single "Plugins" page.
 ];
 
-fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts, active: SettingsTab) -> Entity {
+fn build_sidebar(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    active: SettingsTab,
+    sections: Option<&SettingsSectionRegistry>,
+    active_plugin: Option<&str>,
+) -> Entity {
     let sidebar = commands
         .spawn((
             Node {
@@ -545,11 +588,61 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts, active: SettingsTa
         ))
         .id();
     let mut kids = Vec::new();
-    for &(tab, icon, label) in TABS {
-        kids.push(sidebar_tab(commands, fonts, icon, label, tab, tab == active));
+    for (gi, (group, tabs)) in TAB_GROUPS.iter().enumerate() {
+        // A little breathing room above every group but the first.
+        kids.push(sidebar_group_header(commands, fonts, group, gi > 0));
+        for &(tab, icon, label) in *tabs {
+            kids.push(sidebar_tab(commands, fonts, icon, label, tab, tab == active));
+        }
+    }
+    // PLUGINS group: one sidebar category per registered plugin section.
+    let plugins = sections.map(|s| s.0.as_slice()).unwrap_or_default();
+    if !plugins.is_empty() {
+        kids.push(sidebar_group_header(commands, fonts, "PLUGINS", true));
+        for entry in plugins {
+            let selected = active == SettingsTab::Plugins
+                && active_plugin == Some(entry.id.as_str());
+            kids.push(sidebar_plugin_tab(
+                commands,
+                fonts,
+                &entry.icon,
+                &entry.title,
+                &entry.id,
+                selected,
+            ));
+        }
     }
     commands.entity(sidebar).add_children(&kids);
     sidebar
+}
+
+/// A small uppercase muted section header that introduces a sidebar group.
+fn sidebar_group_header(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label: &str,
+    pad_top: bool,
+) -> Entity {
+    commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::new(
+                    Val::Px(8.0),
+                    Val::Px(0.0),
+                    Val::Px(if pad_top { 10.0 } else { 2.0 }),
+                    Val::Px(2.0),
+                ),
+                ..default()
+            },
+            Name::new("settings-group-header"),
+            children![(
+                Text::new(label),
+                ui_font(&fonts.ui, 10.0),
+                TextColor(rgb(text_muted())),
+            )],
+        ))
+        .id()
 }
 
 fn sidebar_tab(
@@ -592,6 +685,61 @@ fn sidebar_tab(
     // Active → highlighted; otherwise a themed hover wash.
     renzora_ember::reactive::bind_bg(commands, row, move |w| {
         if active {
+            rgb(tab_active())
+        } else if matches!(
+            w.get::<Interaction>(row),
+            Some(Interaction::Hovered) | Some(Interaction::Pressed)
+        ) {
+            rgb(tab_hover())
+        } else {
+            Color::NONE
+        }
+    });
+    commands.entity(row).add_children(&[ico, lbl]);
+    row
+}
+
+/// A sidebar row for one plugin settings section — like [`sidebar_tab`] but it
+/// carries the section id and routes through [`NativeSettingsPluginBtn`].
+fn sidebar_plugin_tab(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    id: &str,
+    selected: bool,
+) -> Entity {
+    let icon_color = if selected { accent() } else { text_muted() };
+    let txt_color = if selected { text_primary() } else { text_muted() };
+    let ico = icon_text(commands, &fonts.phosphor, icon, icon_color, 14.0);
+    let lbl = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(txt_color)),
+        ))
+        .id();
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(30.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(10.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            NativeSettingsPluginBtn(id.to_string()),
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("settings-plugin-tab"),
+        ))
+        .id();
+    renzora_ember::reactive::bind_bg(commands, row, move |w| {
+        if selected {
             rgb(tab_active())
         } else if matches!(
             w.get::<Interaction>(row),
@@ -715,6 +863,7 @@ fn build_tab_content(
     has_project: bool,
     input: &InputTabData,
     sections: Option<&SettingsSectionRegistry>,
+    active_plugin: Option<&str>,
 ) -> Entity {
     let col = commands
         .spawn((
@@ -737,18 +886,20 @@ fn build_tab_content(
         SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
         SettingsTab::Shortcuts => tab_shortcuts(commands, fonts, col),
         SettingsTab::Input => tab_input(commands, fonts, col, input),
-        SettingsTab::Plugins => tab_plugins(commands, fonts, col, sections),
+        SettingsTab::Plugins => tab_plugins(commands, fonts, col, sections, active_plugin),
     }
     col
 }
 
-/// The Plugins tab: every section plugins registered via
-/// `register_settings_section`, each wrapped in the standard section chrome.
+/// The Plugins "tab" now shows a SINGLE plugin's section — the one selected in
+/// the sidebar (`active_plugin`), defaulting to the first registered section.
+/// Each plugin is its own sidebar category, so this never lists them all.
 fn tab_plugins(
     commands: &mut Commands,
     fonts: &EmberFonts,
     col: Entity,
     sections: Option<&SettingsSectionRegistry>,
+    active_plugin: Option<&str>,
 ) {
     let entries = sections.map(|s| s.0.as_slice()).unwrap_or_default();
     if entries.is_empty() {
@@ -769,19 +920,14 @@ fn tab_plugins(
         commands.entity(col).add_child(lbl);
         return;
     }
-    for (i, entry) in entries.iter().enumerate() {
-        let (sec, body) = section(commands, fonts, &entry.icon, &entry.title, A_TEAL);
-        if i > 0 {
-            commands.entity(sec).queue(|mut e: EntityWorldMut| {
-                if let Some(mut n) = e.get_mut::<Node>() {
-                    n.margin.top = Val::Px(12.0);
-                }
-            });
-        }
-        commands.entity(col).add_child(sec);
-        let content = (entry.build)(commands, fonts);
-        commands.entity(body).add_child(content);
-    }
+    // Render the selected section (or the first if nothing's selected yet).
+    let entry = active_plugin
+        .and_then(|id| entries.iter().find(|e| e.id == id))
+        .unwrap_or(&entries[0]);
+    let (sec, body) = section(commands, fonts, &entry.icon, &entry.title, A_TEAL);
+    commands.entity(col).add_child(sec);
+    let content = (entry.build)(commands, fonts);
+    commands.entity(body).add_child(content);
 }
 
 // ── Project ──────────────────────────────────────────────────────────────────
@@ -2632,6 +2778,26 @@ fn settings_tab_click(
     for (interaction, btn) in &btns {
         if *interaction == Interaction::Pressed && settings.settings_tab != btn.0 {
             settings.settings_tab = btn.0;
+        }
+    }
+}
+
+/// Selecting a plugin sidebar category switches to the `Plugins` tab and records
+/// which section to show. The rebuild is driven by `active_plugin` changing
+/// (see `manage_native_settings`), so re-selecting the same plugin is a no-op.
+fn settings_plugin_click(
+    btns: Query<(&Interaction, &NativeSettingsPluginBtn), Changed<Interaction>>,
+    mut settings: ResMut<EditorSettings>,
+    mut state: ResMut<NativeSettingsState>,
+) {
+    for (interaction, btn) in &btns {
+        if *interaction == Interaction::Pressed {
+            if settings.settings_tab != SettingsTab::Plugins {
+                settings.settings_tab = SettingsTab::Plugins;
+            }
+            if state.active_plugin.as_deref() != Some(btn.0.as_str()) {
+                state.active_plugin = Some(btn.0.clone());
+            }
         }
     }
 }
