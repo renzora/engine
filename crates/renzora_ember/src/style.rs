@@ -732,7 +732,12 @@ pub fn apply_themed_text(
             if let Ok(mut tf) = text_q.get_mut(child) {
                 tf.weight = weight;
             }
-            commands.entity(child).insert((
+            // `try_insert`, not `insert`: this insert is deferred, and themed UI
+            // text is despawned/rebuilt constantly (a panel rebuild between this
+            // system running and the command applying). A plain `insert` on an
+            // entity that despawned in that window panics the app — `try_insert`
+            // silently skips it.
+            commands.entity(child).try_insert((
                 bevy::text::LetterSpacing::Px(token.letter_spacing),
                 bevy::text::LineHeight::RelativeToFont(token.line_height),
             ));
