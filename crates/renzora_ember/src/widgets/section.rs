@@ -25,6 +25,51 @@ pub struct Section {
     caret: Entity,
 }
 
+impl Section {
+    /// Is the section currently expanded?
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+
+    /// The body node this header shows/hides.
+    pub fn body(&self) -> Entity {
+        self.body
+    }
+
+    /// The caret glyph this header flips.
+    pub fn caret(&self) -> Entity {
+        self.caret
+    }
+
+    /// Set the open flag (callers that drive sections programmatically are
+    /// responsible for updating the body `display` + caret glyph — or use
+    /// [`set_section_open`], which does both).
+    pub fn set_open(&mut self, open: bool) {
+        self.open = open;
+    }
+}
+
+/// Open or collapse a section programmatically: flips the [`Section`] flag and
+/// reconciles its body visibility + caret glyph (the same effect a header click
+/// has). Lets panels drive their sections in bulk (e.g. the inspector's
+/// expand/collapse-all button) without rebuilding them.
+pub fn set_section_open(
+    section: &mut Section,
+    open: bool,
+    nodes: &mut Query<&mut Node>,
+    texts: &mut Query<&mut Text>,
+) {
+    section.open = open;
+    if let Ok(mut n) = nodes.get_mut(section.body) {
+        n.display = if open { Display::Flex } else { Display::None };
+    }
+    if let Ok(mut t) = texts.get_mut(section.caret) {
+        if let Some(g) = icon_glyph(if open { "caret-down" } else { "caret-right" }) {
+            t.0 = g.to_string();
+        }
+    }
+}
+
 /// Build a collapsible section with a colored header (caret + `accent`-colored
 /// `icon` + `title`) over a padded body. Returns `(root, body)` — add content to
 /// `body`. Use [`section_with_header`] when you need to add header affordances
@@ -51,12 +96,29 @@ pub fn section_with_header(
     accent: (u8, u8, u8),
     header_bg: (u8, u8, u8),
 ) -> (Entity, Entity, Entity) {
+    section_with_header_open(commands, fonts, icon, title, accent, header_bg, true)
+}
+
+/// Like [`section_with_header`] but with an explicit initial `open` state, so a
+/// caller can build a section that starts collapsed (the inspector uses this to
+/// honor its "expand by default" preference). The header still toggles on click.
+pub fn section_with_header_open(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    title: &str,
+    accent: (u8, u8, u8),
+    header_bg: (u8, u8, u8),
+    open: bool,
+) -> (Entity, Entity, Entity) {
     let body = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(2.0),
+                // Start hidden when collapsed; `section_toggle` flips this on click.
+                display: if open { Display::Flex } else { Display::None },
                 padding: UiRect {
                     left: Val::Px(8.0),
                     top: Val::Px(4.0),
@@ -68,7 +130,8 @@ pub fn section_with_header(
             Name::new("section-body"),
         ))
         .id();
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 12.0);
+    let caret_glyph = if open { "caret-down" } else { "caret-right" };
+    let caret = icon_text(commands, &fonts.phosphor, caret_glyph, text_muted(), 12.0);
     let ico = icon_text(commands, &fonts.phosphor, icon, accent, 14.0);
     let heading = commands
         .spawn((
@@ -90,11 +153,7 @@ pub fn section_with_header(
             },
             BackgroundColor(rgb(header_bg)),
             Interaction::default(),
-            Section {
-                open: true,
-                body,
-                caret,
-            },
+            Section { open, body, caret },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("section-header"),
         ))

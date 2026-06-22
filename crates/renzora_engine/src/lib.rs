@@ -158,6 +158,46 @@ fn ensure_contact_shadows_on_forward_cameras(
     }
 }
 
+/// Render-world companion to [`ensure_contact_shadows_on_forward_cameras`] that
+/// closes a one-frame wgpu crash window in Bevy 0.19's contact-shadows path.
+///
+/// Bevy decides a mesh pipeline's `CONTACT_SHADOWS` key in
+/// `check_views_need_specialization` (render set `PrepareAssets`) by testing for
+/// a `ViewContactShadowsUniformOffset` on the view — but that offset isn't
+/// written until `prepare_contact_shadows_settings` (set `PrepareResources`,
+/// which the set chain `ExtractCommands → PrepareAssets → … → Prepare` runs
+/// *later* the same frame). So the first frame a forward camera gains
+/// `ContactShadows`, the opaque mesh pipeline specializes WITHOUT binding 16,
+/// while that same frame's mesh-view bind group *does* emit binding 16. wgpu
+/// validates the two layouts, finds binding 16 in the bind group but not the
+/// pipeline, and hard-crashes ("Assigned entry with binding 16 not found in
+/// expected bind group layout").
+///
+/// Our `PostUpdate` guard attaches `ContactShadows` reactively to the already
+/// live editor camera, so it hits this window every time. Seeding a placeholder
+/// offset *before* `check_views_need_specialization` makes the pipeline key
+/// include `CONTACT_SHADOWS` from frame one; `prepare_contact_shadows_settings`
+/// overwrites the real value later the same frame, before the bind group is
+/// built. Fixes the crash for reactive attach, camera spawn, and
+/// Forward↔Deferred switches alike.
+fn seed_contact_shadows_offset(
+    mut commands: Commands,
+    views: Query<
+        Entity,
+        (
+            With<bevy::render::view::ExtractedView>,
+            With<bevy::pbr::ContactShadows>,
+            Without<bevy::pbr::ViewContactShadowsUniformOffset>,
+        ),
+    >,
+) {
+    for entity in &views {
+        commands
+            .entity(entity)
+            .insert(bevy::pbr::ViewContactShadowsUniformOffset(0));
+    }
+}
+
 /// Pull the rendering mode from the just-loaded project and propagate
 /// it to `ResolvedRenderingMode` + `DefaultOpaqueRendererMethod`
 /// **before** the editor camera spawns. Runs as the first step of
@@ -222,6 +262,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::SpriteImagePath>()
             .register_type::<renzora::core::ReflectionProbeSource>()
+            .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
 
         // Register the .rmip asset loader so import-baked mipmapped
@@ -419,6 +460,19 @@ impl Plugin for RuntimePlugin {
                 ensure_contact_shadows_on_forward_cameras,
             ),
         );
+
+        // Render-world half of the contact-shadows fix: seed the view's
+        // `ViewContactShadowsUniformOffset` before Bevy reads it to pick the
+        // mesh pipeline key, so the pipeline and the bind group agree on binding
+        // 16 from the first frame. See `seed_contact_shadows_offset` for the race.
+        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+            render_app.add_systems(
+                bevy::render::Render,
+                seed_contact_shadows_offset
+                    .in_set(bevy::render::RenderSystems::PrepareAssets)
+                    .before(bevy::pbr::check_views_need_specialization),
+            );
+        }
 
         app.init_resource::<ViewportRenderTarget>()
             .init_resource::<renzora::core::viewport_types::Viewports>()

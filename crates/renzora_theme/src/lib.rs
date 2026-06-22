@@ -131,6 +131,10 @@ pub struct Theme {
     /// Viewport colors
     #[serde(default)]
     pub viewport: ViewportColors,
+
+    /// Code-editor syntax highlighting + chrome colors
+    #[serde(default)]
+    pub syntax: SyntaxColors,
 }
 
 impl Default for Theme {
@@ -443,6 +447,81 @@ impl Default for MaterialColors {
             connection_preview: ThemeColor::new(255, 255, 100),
             selection_rect_fill: ThemeColor::with_alpha(100, 150, 255, 30),
             selection_rect_stroke: ThemeColor::new(100, 150, 255),
+        }
+    }
+}
+
+/// Code-editor colors: syntax token categories plus editor chrome (gutter,
+/// current line, selection, caret).
+///
+/// Token field names follow common syntax-highlighting categories (keyword,
+/// type, function, …) so themes ported from other editors map cleanly. The
+/// editor consumes these through ember's process-wide `SyntaxPalette` (mapped by
+/// the theme bridge), exactly like the rest of the UI palette.
+///
+/// Chrome colors that overlay text (current line, selection, indent guide,
+/// bracket/find highlights) carry an alpha channel; token colors are opaque.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SyntaxColors {
+    // ── Token categories ──
+    /// Default foreground (identifiers, plain text).
+    pub normal: ThemeColor,
+    pub keyword: ThemeColor,
+    /// `type` is a Rust keyword, so the field is a raw identifier; the TOML key
+    /// is still the clean `type`.
+    pub r#type: ThemeColor,
+    pub function: ThemeColor,
+    pub number: ThemeColor,
+    pub string: ThemeColor,
+    pub comment: ThemeColor,
+    pub operator: ThemeColor,
+    pub constant: ThemeColor,
+    pub punctuation: ThemeColor,
+
+    // ── Editor chrome ──
+    /// Gutter line numbers (inactive lines).
+    pub line_number: ThemeColor,
+    /// Gutter line number for the caret's line.
+    pub line_number_active: ThemeColor,
+    /// Highlight behind the caret's line.
+    pub current_line: ThemeColor,
+    /// Selection highlight fill.
+    pub selection: ThemeColor,
+    /// Caret/cursor color.
+    pub cursor: ThemeColor,
+    /// Indentation guide rules.
+    pub indent_guide: ThemeColor,
+    /// Matching-bracket highlight.
+    pub bracket_match: ThemeColor,
+    /// Find/search match highlight.
+    pub find_match: ThemeColor,
+}
+
+impl Default for SyntaxColors {
+    fn default() -> Self {
+        // Dark defaults — reproduce the editor's original hardcoded token palette
+        // (so existing projects look identical before anyone touches a theme).
+        Self {
+            normal: ThemeColor::new(208, 208, 222),
+            keyword: ThemeColor::new(230, 100, 90),
+            r#type: ThemeColor::new(240, 190, 80),
+            function: ThemeColor::new(160, 210, 110),
+            number: ThemeColor::new(210, 140, 200),
+            string: ThemeColor::new(170, 210, 130),
+            comment: ThemeColor::new(120, 120, 135),
+            operator: ThemeColor::new(198, 198, 212),
+            constant: ThemeColor::new(210, 140, 200),
+            punctuation: ThemeColor::new(170, 170, 184),
+            line_number: ThemeColor::new(110, 110, 122),
+            line_number_active: ThemeColor::new(200, 200, 212),
+            current_line: ThemeColor::with_alpha(255, 255, 255, 12),
+            // Matches the editor's previous srgba(0.31, 0.55, 1.0, 0.30) selection.
+            selection: ThemeColor::with_alpha(79, 140, 255, 76),
+            cursor: ThemeColor::new(80, 140, 255),
+            indent_guide: ThemeColor::with_alpha(255, 255, 255, 16),
+            bracket_match: ThemeColor::with_alpha(120, 170, 255, 90),
+            find_match: ThemeColor::with_alpha(240, 200, 90, 110),
         }
     }
 }

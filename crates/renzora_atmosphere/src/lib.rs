@@ -31,11 +31,6 @@ impl Default for AtmosphereComponentSettings {
     }
 }
 
-/// Tracks the `ScatteringMedium` asset for an atmosphere source so we don't
-/// recreate it every frame.
-#[derive(Component)]
-pub struct AtmosphereMediumHandle(Handle<ScatteringMedium>);
-
 /// Marker for the single dedicated entity that carries the bevy `Atmosphere`.
 ///
 /// **Why this can't live on the World Environment / camera (0.19 architecture,
@@ -72,11 +67,18 @@ fn planet_transform(inner_radius: f32) -> GlobalTransform {
 fn sync_atmosphere(
     mut commands: Commands,
     mut mediums: ResMut<Assets<ScatteringMedium>>,
-    sources: Query<(
-        Entity,
-        Ref<AtmosphereComponentSettings>,
-        Option<&AtmosphereMediumHandle>,
-    )>,
+    // Two persistent `ScatteringMedium`s — `(real, transparent)` — created ONCE
+    // and reused for the app's life. Holding them here (not as components on the
+    // source) keeps the assets alive so toggling never recreates a buffer (the
+    // old flicker + `create_buffer_with_data` "buffer invalid" crash). The
+    // transparent one is the sky's "off" (see the selection below).
+    mut media: Local<Option<(Handle<ScatteringMedium>, Handle<ScatteringMedium>)>>,
+    // The `(source entity, enabled)` last applied to the resident planet. Lets us
+    // re-apply the correct medium when the source *reappears* (World Environment
+    // removed then re-added) — its `is_changed()` flag has lapsed by the time the
+    // routing re-includes it, so a value-change gate alone misses the transition.
+    mut applied: Local<Option<(Entity, bool)>>,
+    sources: Query<(Entity, Ref<AtmosphereComponentSettings>)>,
     planet: Query<(Entity, Has<Atmosphere>), With<AtmospherePlanet>>,
     mut cam_settings: Query<&mut AtmosphereSettings>,
     routing: Res<renzora::EffectRouting>,
@@ -89,15 +91,20 @@ fn sync_atmosphere(
     // `enabled` all tear the sky down uniformly — no event bookkeeping that can
     // miss a despawn. The first such source drives the sky; collect every camera
     // routed to it so they share its render mode.
-    let mut active_src = None;
+    // First routed source carrying `AtmosphereComponentSettings` wins —
+    // regardless of `enabled`. A *disabled* source still drives the resident
+    // atmosphere (to the transparent medium); it is never removed.
+    let mut active_src: Option<Entity> = None;
+    let mut src_enabled = false;
     let mut targets: Vec<Entity> = Vec::new();
     for (target, source_list) in routing.iter() {
         for &src in source_list {
-            let Ok((entity, settings, _)) = sources.get(src) else {
+            let Ok((entity, settings)) = sources.get(src) else {
                 continue;
             };
-            if active_src.is_none() && settings.enabled {
+            if active_src.is_none() {
                 active_src = Some(entity);
+                src_enabled = settings.enabled;
             }
             if active_src == Some(entity) {
                 targets.push(*target);
@@ -109,46 +116,60 @@ fn sync_atmosphere(
     let planet_entity = planet.iter().next();
     let have_sky = planet_entity.is_some_and(|(_, has)| has);
 
-    let Some(src) = active_src else {
-        // No enabled source (removed / despawned / disabled) → strip the sky.
-        // 0.19 re-extracts `Atmosphere` every frame and `ViewQuery`-skips cameras
-        // without it, so removing the component is a clean "off".
-        if have_sky {
-            if let Some((planet_e, _)) = planet_entity {
-                commands.entity(planet_e).remove::<Atmosphere>();
-            }
-        }
-        return;
+    // Two persistent mediums (created once). `render_sky` composites
+    // `framebuffer * transmittance + inscattering`, so the transparent medium
+    // (zero density → transmittance 1, inscattering 0) makes the resident
+    // atmosphere show whatever's behind it (clear color / skybox) = the sky
+    // "off", with NO component removal → no crash.
+    let (real, transparent) = media
+        .get_or_insert_with(|| {
+            (
+                mediums.add(ScatteringMedium::default()),
+                mediums.add(ScatteringMedium::default().with_density_multiplier(0.0)),
+            )
+        })
+        .clone();
+
+    // Resolve the desired sky from the source. A *disabled* source AND **no
+    // source at all** (the whole World Environment was deleted) both map to the
+    // transparent medium — so deleting the entity turns the sky off exactly like
+    // the toggle does, and `Atmosphere` is still never removed (which would
+    // crash). `key` is the applied state we reconcile against.
+    let source = active_src.and_then(|s| sources.get(s).ok());
+    let (handle, inner, outer, ground, mode, settings_changed, key) = match &source {
+        Some((e, settings)) => (
+            if src_enabled { real } else { transparent },
+            settings.bottom_radius,
+            settings.top_radius,
+            settings.ground_albedo,
+            settings.mode,
+            settings.is_changed(),
+            Some((*e, src_enabled)),
+        ),
+        // No source: only act if a planet already exists — don't spawn one just
+        // to hide it. Default radii are fine; a transparent atmosphere shows the
+        // background regardless of geometry.
+        None if have_sky => (transparent, 6_360_000.0, 6_460_000.0, 0.3, 0, false, None),
+        None => return,
     };
 
-    let Ok((_, settings, existing_handle)) = sources.get(src) else {
-        return;
-    };
-
-    // Only rebuild on an actual change (or when the sky isn't up yet) — this
-    // system otherwise runs every frame for the reconcile above.
-    if !have_sky || routing_changed || settings.is_changed() {
-        let handle = if let Some(h) = existing_handle {
-            h.0.clone()
-        } else {
-            let h = mediums.add(ScatteringMedium::default());
-            commands
-                .entity(src)
-                .insert(AtmosphereMediumHandle(h.clone()));
-            h
-        };
-
+    // Rebuild the planet's `Atmosphere` on first build, a real value change, OR
+    // when the applied `(source, enabled)` key differs — the last catches the
+    // source reappearing (remove/re-add, whose `is_changed()` lapses before
+    // routing re-includes it) AND disappearing (→ transparent/off). NOT gated on
+    // `routing_changed` alone: camera-set churn shouldn't re-fire the on-add hook.
+    if !have_sky || settings_changed || *applied != key {
+        *applied = key;
         let atmosphere = Atmosphere {
-            // 0.18 `bottom_radius`/`top_radius` → 0.19 `inner_radius`/
-            // `outer_radius` (meters; 0.19 dropped `scene_units_to_m`).
-            inner_radius: settings.bottom_radius,
-            outer_radius: settings.top_radius,
-            ground_albedo: Vec3::splat(settings.ground_albedo),
+            // 0.18 `bottom_radius`/`top_radius` → 0.19 `inner_radius`/`outer_radius`.
+            inner_radius: inner,
+            outer_radius: outer,
+            ground_albedo: Vec3::splat(ground),
             medium: handle,
         };
-        // Explicit planet-center transform (tracks radius edits; the on-add hook
-        // only fires once). No `Transform`, so propagation never overwrites it.
-        let xform = planet_transform(settings.bottom_radius);
+        // Explicit planet-center transform. No `Transform`, so propagation never
+        // overwrites it.
+        let xform = planet_transform(inner);
 
         if let Some((planet_e, _)) = planet_entity {
             commands.entity(planet_e).insert((atmosphere, xform));
@@ -161,9 +182,11 @@ fn sync_atmosphere(
                 renzora::HideInHierarchy,
             ));
         }
+    }
 
-        // Mirror the render mode onto every camera routed to this source.
-        let rendering_method = match settings.mode {
+    // Mirror the render mode onto routed cameras — only when a source drives it.
+    if source.is_some() && (routing_changed || settings_changed) {
+        let rendering_method = match mode {
             1 => AtmosphereMode::Raymarched,
             _ => AtmosphereMode::LookupTexture,
         };
@@ -176,21 +199,6 @@ fn sync_atmosphere(
     }
 }
 
-/// Drop the medium bookkeeping when `AtmosphereComponentSettings` is removed from
-/// a surviving entity (the sky itself is torn down by `sync_atmosphere`'s
-/// reconcile). A despawned source takes its components with it, so nothing to do
-/// there.
-fn cleanup_atmosphere(
-    mut commands: Commands,
-    mut removed: RemovedComponents<AtmosphereComponentSettings>,
-) {
-    for entity in removed.read() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<AtmosphereMediumHandle>();
-        }
-    }
-}
-
 #[derive(Default)]
 pub struct AtmospherePlugin;
 
@@ -198,7 +206,7 @@ impl Plugin for AtmospherePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] AtmospherePlugin");
         app.register_type::<AtmosphereComponentSettings>();
-        app.add_systems(Update, (sync_atmosphere, cleanup_atmosphere));
+        app.add_systems(Update, sync_atmosphere);
     }
 }
 

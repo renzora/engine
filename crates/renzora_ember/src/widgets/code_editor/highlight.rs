@@ -1,13 +1,8 @@
 //! Single-pass keyword highlighter — splits a line into colored token runs.
-//! No parser; mirrors the editor's keyword/type palette.
+//! No parser; pulls token colors from the active theme's [`SyntaxPalette`] so
+//! the fallback tokenizer recolors with the theme like everything else.
 
-pub(crate) const C_TEXT: (u8, u8, u8) = (208, 208, 222);
-const C_KEYWORD: (u8, u8, u8) = (230, 100, 90);
-const C_TYPE: (u8, u8, u8) = (240, 190, 80);
-const C_FN: (u8, u8, u8) = (160, 210, 110);
-const C_NUM: (u8, u8, u8) = (210, 140, 200);
-const C_STR: (u8, u8, u8) = (170, 210, 130);
-const C_COMMENT: (u8, u8, u8) = (120, 120, 135);
+use crate::theme::syntax_palette;
 
 const KEYWORDS: &[&str] = &[
     "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for",
@@ -21,8 +16,10 @@ const TYPES: &[&str] = &[
     "Commands", "Query", "Node",
 ];
 
-/// Split a line into colored `(text, color)` token runs.
+/// Split a line into colored `(text, color)` token runs, coloring from the
+/// active theme's [`SyntaxPalette`].
 pub(crate) fn tokenize(line: &str) -> Vec<(String, (u8, u8, u8))> {
+    let sp = syntax_palette();
     let chars: Vec<char> = line.chars().collect();
     let n = chars.len();
     let mut out: Vec<(String, (u8, u8, u8))> = Vec::new();
@@ -32,14 +29,14 @@ pub(crate) fn tokenize(line: &str) -> Vec<(String, (u8, u8, u8))> {
         let c = chars[i];
         if c == '/' && i + 1 < n && chars[i + 1] == '/' {
             if !normal.is_empty() {
-                out.push((std::mem::take(&mut normal), C_TEXT));
+                out.push((std::mem::take(&mut normal), sp.normal));
             }
-            out.push((chars[i..].iter().collect(), C_COMMENT));
+            out.push((chars[i..].iter().collect(), sp.comment));
             return out;
         }
         if c == '"' {
             if !normal.is_empty() {
-                out.push((std::mem::take(&mut normal), C_TEXT));
+                out.push((std::mem::take(&mut normal), sp.normal));
             }
             let mut s = String::from('"');
             i += 1;
@@ -51,12 +48,12 @@ pub(crate) fn tokenize(line: &str) -> Vec<(String, (u8, u8, u8))> {
                     break;
                 }
             }
-            out.push((s, C_STR));
+            out.push((s, sp.string));
             continue;
         }
         if c.is_alphanumeric() || c == '_' {
             if !normal.is_empty() {
-                out.push((std::mem::take(&mut normal), C_TEXT));
+                out.push((std::mem::take(&mut normal), sp.normal));
             }
             let start = i;
             while i < n && (chars[i].is_alphanumeric() || chars[i] == '_') {
@@ -64,15 +61,15 @@ pub(crate) fn tokenize(line: &str) -> Vec<(String, (u8, u8, u8))> {
             }
             let word: String = chars[start..i].iter().collect();
             let color = if word.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-                C_NUM
+                sp.number
             } else if KEYWORDS.contains(&word.as_str()) {
-                C_KEYWORD
+                sp.keyword
             } else if TYPES.contains(&word.as_str()) {
-                C_TYPE
+                sp.type_
             } else if i < n && chars[i] == '(' {
-                C_FN
+                sp.function
             } else {
-                C_TEXT
+                sp.normal
             };
             out.push((word, color));
             continue;
@@ -81,7 +78,7 @@ pub(crate) fn tokenize(line: &str) -> Vec<(String, (u8, u8, u8))> {
         i += 1;
     }
     if !normal.is_empty() {
-        out.push((normal, C_TEXT));
+        out.push((normal, sp.normal));
     }
     out
 }

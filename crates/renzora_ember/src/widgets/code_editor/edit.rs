@@ -20,6 +20,91 @@ pub(crate) fn sel_range(ed: &CodeEditor) -> ((usize, usize), (usize, usize)) {
     }
 }
 
+/// If the caret sits next to a bracket, returns that bracket's cell and its
+/// matching bracket's cell as `((line, col), (line, col))`, for highlighting.
+/// Prefers the bracket immediately *left* of the caret (like most editors), then
+/// the one to the right. Scans nesting-aware across lines, bounded so a huge
+/// unbalanced file can't stall the render.
+pub(crate) fn bracket_match(ed: &CodeEditor) -> Option<((usize, usize), (usize, usize))> {
+    /// Max chars scanned before giving up (keeps render O(1)-ish on big files).
+    const SCAN_CAP: usize = 100_000;
+    const OPEN: [char; 3] = ['(', '[', '{'];
+    const CLOSE: [char; 3] = [')', ']', '}'];
+
+    let cur: Vec<char> = ed.text.get(ed.cursor_line)?.chars().collect();
+    // Candidate bracket cell: left of the caret first, else right.
+    let pick = |col: usize| -> Option<(usize, char)> {
+        cur.get(col).copied().filter(|c| OPEN.contains(c) || CLOSE.contains(c)).map(|c| (col, c))
+    };
+    let (bcol, bch) = ed.cursor_col.checked_sub(1).and_then(&pick).or_else(|| pick(ed.cursor_col))?;
+
+    let (open_ch, close_ch) = match bch {
+        '(' | ')' => ('(', ')'),
+        '[' | ']' => ('[', ']'),
+        _ => ('{', '}'),
+    };
+    let forward = OPEN.contains(&bch);
+    let mut depth = 0i32;
+    let mut scanned = 0usize;
+    let here = (ed.cursor_line, bcol);
+
+    if forward {
+        let (mut l, mut c) = (ed.cursor_line, bcol);
+        loop {
+            let chars: Vec<char> = ed.text[l].chars().collect();
+            while c < chars.len() {
+                match chars[c] {
+                    ch if ch == open_ch => depth += 1,
+                    ch if ch == close_ch => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some((here, (l, c)));
+                        }
+                    }
+                    _ => {}
+                }
+                c += 1;
+                scanned += 1;
+                if scanned > SCAN_CAP {
+                    return None;
+                }
+            }
+            l += 1;
+            if l >= ed.text.len() {
+                return None;
+            }
+            c = 0;
+        }
+    } else {
+        let (mut l, mut c) = (ed.cursor_line, bcol as isize);
+        loop {
+            let chars: Vec<char> = ed.text[l].chars().collect();
+            while c >= 0 {
+                match chars[c as usize] {
+                    ch if ch == close_ch => depth += 1,
+                    ch if ch == open_ch => {
+                        depth -= 1;
+                        if depth == 0 {
+                            return Some((here, (l, c as usize)));
+                        }
+                    }
+                    _ => {}
+                }
+                c -= 1;
+                scanned += 1;
+                if scanned > SCAN_CAP {
+                    return None;
+                }
+            }
+            if l == 0 {
+                return None;
+            }
+            l -= 1;
+            c = ed.text[l].chars().count() as isize - 1;
+        }
+    }
+}
+
 /// Apply one key (with `shift` held) to the document; sets `dirty` and keeps the
 /// cursor on-screen.
 pub(crate) fn edit(ed: &mut CodeEditor, key: &Key, shift: bool) {

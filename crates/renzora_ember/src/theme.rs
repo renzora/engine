@@ -193,6 +193,85 @@ pub fn rgb((r, g, b): (u8, u8, u8)) -> Color {
     Color::srgb_u8(r, g, b)
 }
 
+/// An sRGBA byte quad as a bevy `Color` (straight, unmultiplied alpha).
+pub fn rgba([r, g, b, a]: [u8; 4]) -> Color {
+    Color::srgba(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a as f32 / 255.0)
+}
+
+// ── Code-editor syntax palette ───────────────────────────────────────────────
+//
+// The code editor resolves its token + chrome colors through this process-wide
+// palette, exactly like the rest of the UI resolves [`Palette`]. The theme
+// bridge maps the editor's `ThemeManager` (`Theme::syntax`) into it on theme
+// change, so swapping/editing a theme recolors code without the widget knowing
+// about `renzora_theme`. Token colors are opaque triples; chrome colors that
+// overlay text (current line, selection, …) carry alpha.
+
+/// Live code-editor colors. Defaults reproduce the editor's original dark token
+/// palette so the editor looks unchanged until a theme overrides it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SyntaxPalette {
+    // Token categories
+    pub normal: (u8, u8, u8),
+    pub keyword: (u8, u8, u8),
+    pub type_: (u8, u8, u8),
+    pub function: (u8, u8, u8),
+    pub number: (u8, u8, u8),
+    pub string: (u8, u8, u8),
+    pub comment: (u8, u8, u8),
+    pub operator: (u8, u8, u8),
+    pub constant: (u8, u8, u8),
+    pub punctuation: (u8, u8, u8),
+    // Editor chrome
+    pub line_number: (u8, u8, u8),
+    pub line_number_active: (u8, u8, u8),
+    pub current_line: [u8; 4],
+    pub selection: [u8; 4],
+    pub cursor: (u8, u8, u8),
+    pub indent_guide: [u8; 4],
+    pub bracket_match: [u8; 4],
+    pub find_match: [u8; 4],
+}
+
+impl Default for SyntaxPalette {
+    fn default() -> Self {
+        Self {
+            normal: (208, 208, 222),
+            keyword: (230, 100, 90),
+            type_: (240, 190, 80),
+            function: (160, 210, 110),
+            number: (210, 140, 200),
+            string: (170, 210, 130),
+            comment: (120, 120, 135),
+            operator: (198, 198, 212),
+            constant: (210, 140, 200),
+            punctuation: (170, 170, 184),
+            line_number: (110, 110, 122),
+            line_number_active: (200, 200, 212),
+            current_line: [255, 255, 255, 12],
+            selection: [79, 140, 255, 76],
+            cursor: (80, 140, 255),
+            indent_guide: [255, 255, 255, 16],
+            bracket_match: [120, 170, 255, 90],
+            find_match: [240, 200, 90, 110],
+        }
+    }
+}
+
+static SYNTAX: LazyLock<RwLock<SyntaxPalette>> = LazyLock::new(|| RwLock::new(SyntaxPalette::default()));
+
+/// Replace the live syntax palette (called by the theme bridge on theme change).
+pub fn set_syntax_palette(p: SyntaxPalette) {
+    if let Ok(mut g) = SYNTAX.write() {
+        *g = p;
+    }
+}
+
+/// The current code-editor syntax palette.
+pub fn syntax_palette() -> SyntaxPalette {
+    SYNTAX.read().map(|g| *g).unwrap_or_default()
+}
+
 // ── Per-widget-type style (geometry + typography + colors) ───────────────────
 //
 // The full style system: every widget *type* has an editable [`WidgetStyle`]

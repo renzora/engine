@@ -29,7 +29,17 @@ In a section header you'll find:
 
 Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Name**, **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
 
-At the very top is an **Add** button and a **filter box** — start typing a component name to hide everything else. There's a second Add button at the bottom of the list for convenience.
+At the very top is a component **filter dropdown**, a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click it once to open every section, again to collapse them all; it resets when you select a different object. (The bottom of the list has an **Add Component** button.)
+
+### Which sections start open
+
+By default, only the **Name**, **Transform**, and **Scripts** sections start expanded when you select something — everything else starts collapsed so a busy object stays scannable. You can change this in **Settings → Interface → Inspector → Default Expand**:
+
+- **Essentials Only** *(default)* — Name, Transform, and Scripts open; the rest closed.
+- **All Open** — every section starts expanded.
+- **All Closed** — every section starts collapsed.
+
+This sets the *starting* state each time the Inspector rebuilds for a new selection — you can still fold any section by hand, and the expand/collapse-all button overrides it for the current object.
 
 > Your edits apply live. Drag a value or flip a toggle and the change takes effect immediately — no Apply button, no waiting.
 

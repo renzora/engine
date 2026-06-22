@@ -1,4 +1,3 @@
-use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -58,9 +57,10 @@ fn sync_tonemapping(
                 } else {
                     Tonemapping::None
                 };
-                commands.entity(*target).insert(tm).insert(Exposure {
-                    ev100: settings.ev100,
-                });
+                // Tonemapping = the picture-formation curve only. Exposure (ev100)
+                // is a CAMERA lens attribute now (edited in the Camera section,
+                // driven by Auto Exposure when on) — tonemapping no longer touches it.
+                commands.entity(*target).insert(tm);
                 break;
             }
         }
@@ -126,7 +126,13 @@ fn cleanup_tonemapping(
     if removed.read().next().is_some() {
         for (target, _) in routing.iter() {
             if let Ok(mut ec) = commands.get_entity(*target) {
-                ec.insert((Tonemapping::default(), Exposure::default()));
+                // Removing the component means "no tone curve", not "reset to
+                // the default curve". `Tonemapping::default()` is TonyMcMapface
+                // — identical to what was already showing — so the old code made
+                // removal look like a no-op. `None` is the visibly-off state and
+                // matches `enabled: false` in sync, so toggling and removing now
+                // agree, and removal is as obvious as bloom disappearing.
+                ec.insert(Tonemapping::None);
             }
         }
     }

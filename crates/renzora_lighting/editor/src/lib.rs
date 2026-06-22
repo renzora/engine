@@ -17,23 +17,12 @@ fn inspector_entry() -> InspectorEntry {
         icon: "sun-horizon",
         category: "lighting",
         has_fn: |world, entity| world.get::<Sun>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            let data = Sun::default();
-            let dir = data.direction();
-            world.entity_mut(entity).insert((
-                DirectionalLight {
-                    color: Color::srgb(data.color.x, data.color.y, data.color.z),
-                    illuminance: data.illuminance,
-                    shadow_maps_enabled: data.shadows_enabled,
-                    ..default()
-                },
-                Transform::from_rotation(Quat::from_rotation_arc(Vec3::NEG_Z, dir)),
-                data,
-            ));
-        }),
-        remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(Sun, DirectionalLight)>();
-        }),
+        // A light is an ENTITY, not a component you bolt onto something else —
+        // it needs its own transform. Add one via "Add Entity → Sun" (the
+        // `world_environment` / `sun` entity presets), and delete it by deleting
+        // its entity. So no component add/remove here (and no trash button).
+        add_fn: None,
+        remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![

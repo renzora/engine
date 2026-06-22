@@ -111,6 +111,39 @@ fn sync_auto_exposure(
     }
 }
 
+/// Route the source camera's manual `Exposure.ev100` onto every viewport
+/// target camera. In the editor the entity you select/edit (the scene
+/// camera) is the *source*, while the camera that actually renders is a
+/// separate viewport *target* — so an edit to `Exposure` on the source
+/// has no visible effect unless we copy it across, exactly like bloom and
+/// tonemapping are routed. In a shipped game the source *is* the render
+/// camera (`src == target`), so we skip — the edit already landed on it,
+/// and re-inserting `Exposure` onto itself would spin change-detection
+/// forever (same component type in and out, unlike the *Settings wrappers).
+fn sync_exposure(
+    sources: Query<Ref<Exposure>>,
+    routing: Res<renzora::EffectRouting>,
+    mut commands: Commands,
+) {
+    let routing_changed = routing.is_changed();
+    for (target, source_list) in routing.iter() {
+        for &src in source_list {
+            if src == *target {
+                break; // source is the render camera itself — nothing to route
+            }
+            if let Ok(exposure) = sources.get(src) {
+                if !routing_changed && !exposure.is_changed() {
+                    break;
+                }
+                commands
+                    .entity(*target)
+                    .insert(Exposure { ev100: exposure.ev100 });
+                break;
+            }
+        }
+    }
+}
+
 fn cleanup_auto_exposure(
     mut commands: Commands,
     mut removed: RemovedComponents<AutoExposureSettings>,
@@ -161,7 +194,12 @@ impl Plugin for AutoExposurePlugin {
         app.register_type::<AutoExposureSettings>();
         app.add_systems(
             Update,
-            (sync_auto_exposure, cleanup_auto_exposure, mirror_camera_ev),
+            (
+                sync_auto_exposure,
+                cleanup_auto_exposure,
+                sync_exposure,
+                mirror_camera_ev,
+            ),
         );
     }
 }

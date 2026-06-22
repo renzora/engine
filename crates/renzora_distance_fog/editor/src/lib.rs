@@ -1,63 +1,53 @@
-//! Editor-only half of `renzora_distance_fog` — the Distance Fog inspector
-//! entry plus the native (bevy_ui) drawer.
+//! Editor-only half of `renzora_distance_fog` — the **Fog** section of the
+//! `WorldEnvironment` inspector.
 //!
-//! `renzora_distance_fog` compiles lean (no `editor` feature, no egui-phosphor,
-//! no renzora_ember). This crate holds the inspector (renzora editor contract +
-//! Phosphor icon) and the native drawer (renzora_ember), registered
-//! `renzora::add!(DistanceFogEditorPlugin, Editor)` and linked only by the
-//! editor bundle.
+//! Fog is no longer a separately-addable component. It's a section of the one
+//! `WorldEnvironment` (see `docs/world-environment-spec.md`): the entry shows
+//! whenever the selected entity has a `WorldEnvironment`, its enable toggle
+//! drives `WorldEnvironment::fog.enabled`, and the native drawer edits the fog
+//! sub-section. No add/remove — it's intrinsic to the environment.
 
-use bevy::pbr::DistanceFog;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
-use renzora_distance_fog::DistanceFogSettings;
+use renzora::{AppEditorExt, InspectorEntry, WorldEnvironment};
 
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
-        type_id: "distance_fog",
-        display_name: "Distance Fog",
+        type_id: "world_env_fog",
+        display_name: "Fog",
         icon: "cloud-fog",
         category: "rendering",
-        has_fn: |world, entity| world.get::<DistanceFogSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(DistanceFogSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(DistanceFogSettings, DistanceFog)>();
-        }),
+        has_fn: |world, entity| world.get::<WorldEnvironment>(entity).is_some(),
+        // Intrinsic to the WorldEnvironment — not added or removed on its own.
+        add_fn: None,
+        remove_fn: None,
         is_enabled_fn: Some(|world, entity| {
             world
-                .get::<DistanceFogSettings>(entity)
-                .map(|s| s.enabled)
+                .get::<WorldEnvironment>(entity)
+                .map(|e| e.fog.enabled)
                 .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<DistanceFogSettings>(entity) {
-                s.enabled = val;
+            if let Some(mut e) = world.get_mut::<WorldEnvironment>(entity) {
+                e.fog.enabled = val;
             }
         }),
         fields: vec![],
     }
 }
 
-/// Native (bevy_ui) inspector drawer — the bevy_ui analog of `fog_custom_ui`.
-/// Demonstrates custom UI that declarative fields can't compose: a "Light Color"
-/// swatch built from three separate float channels, plus bound numeric rows.
+/// Native (bevy_ui) drawer for the fog section: a light-color picker plus bound
+/// numeric rows, all editing `WorldEnvironment::fog`.
 fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
     use renzora_ember::inspector::{color_field, inspector_body, inspector_row, inspector_stripe};
     use renzora_ember::reactive::bind_2way;
     use renzora_ember::widgets::{drag_value, DragRange};
 
     // Read initial values up front (inspector_body borrows World).
-    let Some(s) = world.get::<DistanceFogSettings>(entity) else {
+    let Some(e) = world.get::<WorldEnvironment>(entity) else {
         return world.spawn(Node::default()).id();
     };
-    let (start, end, density, exponent) =
-        (s.start, s.end, s.density, s.directional_light_exponent);
+    let f = &e.fog;
+    let (start, end, density, exponent) = (f.start, f.end, f.density, f.directional_light_exponent);
 
     inspector_body(world, move |commands, fonts| {
         let col = commands
@@ -71,32 +61,23 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
             .id();
         let mut kids: Vec<Entity> = Vec::new();
 
-        // "Light Color" → a proper HSV picker, two-way bound to the three
-        // directional-light channels.
+        // "Light Color" → HSV picker, two-way bound to the directional-light tint.
         let color = color_field(
             commands,
             move |w| {
-                w.get::<DistanceFogSettings>(entity)
-                    .map(|s| {
-                        [
-                            s.directional_light_color_r,
-                            s.directional_light_color_g,
-                            s.directional_light_color_b,
-                        ]
-                    })
+                w.get::<WorldEnvironment>(entity)
+                    .map(|e| e.fog.directional_light_color)
                     .unwrap_or([0.0; 3])
             },
             move |w, rgb: [f32; 3]| {
-                if let Some(mut s) = w.get_mut::<DistanceFogSettings>(entity) {
-                    s.directional_light_color_r = rgb[0];
-                    s.directional_light_color_g = rgb[1];
-                    s.directional_light_color_b = rgb[2];
+                if let Some(mut e) = w.get_mut::<WorldEnvironment>(entity) {
+                    e.fog.directional_light_color = rgb;
                 }
             },
         );
         kids.push(inspector_row(commands, &fonts.ui, "Light Color", color));
 
-        // Bound numeric rows (label + scrubbable value, two-way bound).
+        // Bound numeric rows (label + scrubbable value).
         macro_rules! frow {
             ($label:expr, $field:ident, $init:expr, $speed:expr, $min:expr, $max:expr) => {{
                 let dv = drag_value(commands, &fonts.ui, "", (210, 210, 220), $init, $speed);
@@ -104,10 +85,14 @@ fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
                 bind_2way(
                     commands,
                     dv,
-                    move |w| w.get::<DistanceFogSettings>(entity).map(|s| s.$field).unwrap_or(0.0),
+                    move |w| {
+                        w.get::<WorldEnvironment>(entity)
+                            .map(|e| e.fog.$field)
+                            .unwrap_or(0.0)
+                    },
                     move |w, v: &f32| {
-                        if let Some(mut s) = w.get_mut::<DistanceFogSettings>(entity) {
-                            s.$field = *v;
+                        if let Some(mut e) = w.get_mut::<WorldEnvironment>(entity) {
+                            e.fog.$field = *v;
                         }
                     },
                 );
@@ -137,9 +122,7 @@ impl Plugin for DistanceFogEditorPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] DistanceFogEditorPlugin");
         app.register_inspector(inspector_entry());
-        // The bevy_ui inspector uses this native drawer (conditional/composed
-        // UI that declarative fields can't express).
-        app.register_native_inspector_ui("distance_fog", fog_native_ui);
+        app.register_native_inspector_ui("world_env_fog", fog_native_ui);
     }
 }
 

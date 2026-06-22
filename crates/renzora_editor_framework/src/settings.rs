@@ -55,6 +55,38 @@ impl SelectionGranularity {
     }
 }
 
+/// Which inspector component sections start expanded when the inspector is
+/// (re)built for a freshly selected entity.
+///
+/// The inspector rebuilds its section list on every selection / component-set
+/// change, so this is the *initial* open state each time — the user can still
+/// collapse/expand any section by hand, and the expand/collapse-all button
+/// overrides it for the current view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InspectorExpandDefault {
+    /// Only the most-edited components (Name, Transform, Scripts) start open;
+    /// everything else starts collapsed so long inspectors stay scannable.
+    #[default]
+    Essentials,
+    /// Every component starts open.
+    AllOpen,
+    /// Every component starts collapsed.
+    AllClosed,
+}
+
+impl InspectorExpandDefault {
+    pub const ALL: &'static [InspectorExpandDefault] =
+        &[Self::Essentials, Self::AllOpen, Self::AllClosed];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Essentials => "Essentials Only",
+            Self::AllOpen => "All Open",
+            Self::AllClosed => "All Closed",
+        }
+    }
+}
+
 /// Available proportional (UI) font families.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UiFont {
@@ -186,6 +218,9 @@ pub struct EditorSettings {
     pub ui_preview_by_default: bool,
     /// Pin expanded ancestor rows to the top of the hierarchy as you scroll.
     pub hierarchy_parent_stacking: bool,
+    /// Which component sections start expanded when the inspector is built for a
+    /// newly selected entity.
+    pub inspector_expand_default: InspectorExpandDefault,
     /// Whether the settings overlay is open
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
@@ -227,6 +262,7 @@ impl Default for EditorSettings {
             renderer_backend: renzora::load_renderer_backend(),
             ui_preview_by_default: true,
             hierarchy_parent_stacking: true,
+            inspector_expand_default: InspectorExpandDefault::default(),
             show_settings: false,
             plugins_dir: "plugins".to_string(),
             code_auto_close_pairs: true,

@@ -195,7 +195,9 @@ pub use markdown::*;
 pub use rich_text::*;
 pub use overlay::*;
 pub use scroll_area::*;
-pub use section::{section, section_with_header, Section};
+pub use section::{
+    section, section_with_header, section_with_header_open, set_section_open, Section,
+};
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;

@@ -15,7 +15,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "depth_of_field",
         display_name: "Depth of Field",
         icon: "camera",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<DepthOfFieldSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world

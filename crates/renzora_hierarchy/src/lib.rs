@@ -162,6 +162,13 @@ fn detect_selection_keybindings(
         Entity,
         Option<&bevy::prelude::Name>,
         Option<&renzora::core::HideInHierarchy>,
+        // Mirror the hierarchy tree's chrome filter: an entity with a bevy_ui
+        // `Node` is the editor's own dock/panel/widget unless it's authored
+        // game UI (`UiCanvas`/`UiWidget`). SelectAll must skip the former, or a
+        // follow-up Delete despawns the whole editor UI.
+        Has<bevy::ui::Node>,
+        Has<renzora_game_ui::UiCanvas>,
+        Has<renzora_game_ui::UiWidget>,
     )>,
     mut vis_q: Query<&mut bevy::prelude::Visibility>,
     mut rename_req: ResMut<RenameRequest>,
@@ -183,8 +190,9 @@ fn detect_selection_keybindings(
     let claimed = select_all_claimed.as_ref().is_some_and(|c| c.0);
     if !claimed && keybindings.just_pressed(EditorAction::SelectAll, &keyboard) {
         let mut all = Vec::new();
-        for (e, name, hide) in entities_q.iter() {
-            if name.is_some() && hide.is_none() {
+        for (e, name, hide, is_node, is_canvas, is_widget) in entities_q.iter() {
+            let is_chrome = is_node && !is_canvas && !is_widget;
+            if name.is_some() && hide.is_none() && !is_chrome {
                 all.push(e);
             }
         }
@@ -215,8 +223,9 @@ fn detect_selection_keybindings(
     if keybindings.just_pressed(EditorAction::IsolateSelected, &keyboard) {
         let sel: std::collections::HashSet<Entity> = selection.get_all().into_iter().collect();
         if !sel.is_empty() {
-            for (e, name, hide) in entities_q.iter() {
-                if name.is_none() || hide.is_some() {
+            for (e, name, hide, is_node, is_canvas, is_widget) in entities_q.iter() {
+                let is_chrome = is_node && !is_canvas && !is_widget;
+                if name.is_none() || hide.is_some() || is_chrome {
                     continue;
                 }
                 if let Ok(mut v) = vis_q.get_mut(e) {

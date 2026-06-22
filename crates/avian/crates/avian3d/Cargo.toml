@@ -83,8 +83,8 @@ bench = false
 
 [dependencies]
 avian_derive = { path = "../avian_derive", version = "0.2" }
-bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, features = ["std", "bevy_log"] }
-bevy_math = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false, features = ["approx"] }
+bevy = { version = "0.19", default-features = false, features = ["std", "bevy_log"] }
+bevy_math = { version = "0.19", default-features = false, features = ["approx"] }
 glam_matrix_extras = { path = "../../../glam_matrix_extras", features = ["bevy_reflect"] }
 bevy_heavy = { path = "../../../bevy_heavy" }
 bevy_transform_interpolation = { path = "../../../bevy_transform_interpolation" }
@@ -106,7 +106,7 @@ disqualified = { version = "1.0" }
 # Trimmed for vendoring: dropped examples_common_3d + bevy_mod_debugdump (both
 # pull a crates.io Bevy 0.18 that conflicts with the workspace git 0.19). Avian's
 # examples/benches aren't built here — we consume it purely as a library.
-bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0" }
+bevy = { version = "0.19" }
 bevy_heavy = { path = "../../../bevy_heavy", features = ["approx"] }
 criterion = { version = "0.8", features = ["html_reports"] }
 rand = "0.9"

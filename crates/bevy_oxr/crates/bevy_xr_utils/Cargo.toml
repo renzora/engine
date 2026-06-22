@@ -9,17 +9,17 @@ description = "utils for bevy_mod_xr and bevy_mod_openxr"
 [dependencies]
 bevy_mod_xr = { path = "../bevy_xr", version = "0.5.0" }
 bevy_mod_openxr = { path = "../bevy_openxr", version = "0.5.0" }
-bevy_ecs = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_app = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_transform = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_color = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_gizmos = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_log = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_derive = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_math = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+bevy_ecs = { version = "0.19", default-features = false }
+bevy_app = { version = "0.19", default-features = false }
+bevy_transform = { version = "0.19", default-features = false }
+bevy_color = { version = "0.19", default-features = false }
+bevy_gizmos = { version = "0.19", default-features = false }
+bevy_log = { version = "0.19", default-features = false }
+bevy_derive = { version = "0.19", default-features = false }
+bevy_math = { version = "0.19", default-features = false }
 
 [dev-dependencies]
-bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0" }
+bevy = { version = "0.19" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 openxr = "0.21.1"

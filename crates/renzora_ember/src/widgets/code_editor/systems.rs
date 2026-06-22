@@ -5,27 +5,85 @@ use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::MouseWheel;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
+use bevy::text::{FontSize, TextLayoutInfo};
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use crate::font::EmberFonts;
 use crate::theme::*;
 
-use super::edit::{edit, has_selection, sel_range};
-use super::highlight::{tokenize, C_TEXT};
-use super::{
-    mono, CodeEditor, CodeViewport, CARET_H, FONT_SIZE, GUTTER_SIZE, GUTTER_W, LINE_H, PAD,
-};
+use super::edit::{bracket_match, edit, has_selection, sel_range};
+use super::highlight::tokenize;
+use super::{mono, CodeEditor, CodeProbe, CodeViewport, Metrics, PAD, PROBE_LEN, TAB_WIDTH};
+
+/// Recompute each editor's derived metrics; flag a re-render when they change
+/// (the zoom level moved, or the line count crossed a gutter digit boundary).
+pub(crate) fn code_metrics(mut editors: Query<&mut CodeEditor>) {
+    for mut ed in &mut editors {
+        if ed.recompute_metrics() {
+            ed.dirty = true;
+        }
+    }
+}
+
+/// Measure the active mono font's real advance from a hidden probe, so carets
+/// land correctly for any monospace font — not only 0.6em ones. Keeps the
+/// probe's font + size matched to the editor, then reads its laid-out width.
+/// Scale-invariant and tightly guarded: a bad/early measurement is ignored and
+/// the editor keeps the [`super::DEFAULT_ADVANCE`] fallback (no regression).
+pub(crate) fn code_probe(
+    fonts: Option<Res<EmberFonts>>,
+    mut probes: Query<(&mut TextFont, &TextLayoutInfo, &CodeProbe)>,
+    mut editors: Query<&mut CodeEditor>,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    for (mut tf, info, probe) in &mut probes {
+        let Ok(mut ed) = editors.get_mut(probe.editor) else {
+            continue;
+        };
+        // Keep the probe matched to the editor's font + size; remeasure next
+        // frame once the layout reflects the change.
+        let want_size = FontSize::Px(ed.font_size);
+        if tf.font != fonts.mono || tf.font_size != want_size {
+            tf.font = fonts.mono.clone();
+            tf.font_size = want_size;
+            continue;
+        }
+        // `info.size` is physical px; compute the em-ratio in a scale-invariant
+        // way (physical advance / physical em) so the result is independent of
+        // the window scale factor.
+        let sf = if info.scale_factor > 0.0 { info.scale_factor } else { 1.0 };
+        let em_physical = ed.font_size * sf;
+        if em_physical <= 0.0 {
+            continue;
+        }
+        let ratio = (info.size.x / PROBE_LEN) / em_physical;
+        // Only accept values in a sane monospace band (rejects empty layouts,
+        // fallback fonts, and any unit mismatch).
+        if (0.50..=0.72).contains(&ratio) && (ratio - ed.advance_ratio).abs() > 0.001 {
+            ed.advance_ratio = ratio;
+            ed.dirty = true;
+        }
+    }
+}
 
 pub(crate) fn code_measure(
     viewports: Query<(&ComputedNode, &CodeViewport)>,
     mut editors: Query<&mut CodeEditor>,
 ) {
     for (cn, vp) in &viewports {
-        let h = cn.size().y * cn.inverse_scale_factor();
-        let vis = ((h / LINE_H).floor() as usize).max(1);
+        let size = cn.size() * cn.inverse_scale_factor();
         if let Ok(mut ed) = editors.get_mut(vp.editor) {
+            let vis = ((size.y / ed.line_h).floor() as usize).max(1);
             if ed.visible != vis {
                 ed.visible = vis;
+                ed.dirty = true;
+            }
+            // Full-width overlays (current-line highlight) need the viewport
+            // width; re-render when it changes (panel resize).
+            if (ed.view_w - size.x).abs() > 0.5 {
+                ed.view_w = size.x;
                 ed.dirty = true;
             }
         }
@@ -75,8 +133,8 @@ pub(crate) fn code_pointer(
         if e != editor || !ed.focused || ed.char_w <= 0.0 {
             continue;
         }
-        let line = (ed.scroll + (local.y / LINE_H) as usize).min(ed.text.len().saturating_sub(1));
-        let col = (((local.x - GUTTER_W - PAD) / ed.char_w).round().max(0.0)) as usize;
+        let line = (ed.scroll + (local.y / ed.line_h) as usize).min(ed.text.len().saturating_sub(1));
+        let col = (((local.x - ed.gutter_w - PAD) / ed.char_w).round().max(0.0)) as usize;
         ed.cursor_line = line;
         ed.cursor_col = col.min(ed.text[line].chars().count());
         if just && !shift {
@@ -164,6 +222,7 @@ pub(crate) fn code_render(
             continue;
         }
         ed.dirty = false;
+        let m = ed.metrics();
         let body = ed.body;
         if let Ok(kids) = children.get(body) {
             for c in kids.iter() {
@@ -173,15 +232,72 @@ pub(crate) fn code_render(
         let start = ed.scroll;
         let end = (start + ed.visible + 1).min(ed.text.len());
 
-        // Selection highlight rects (added first → behind the text).
+        // Underlay (added first → furthest back): current-line highlight, then
+        // indent guides on top of it.
+        let mut underlay: Vec<Entity> = Vec::new();
+        if ed.cursor_line >= start && ed.cursor_line < end && ed.view_w > 0.0 {
+            let rect = commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(0.0),
+                        top: Val::Px((ed.cursor_line - start) as f32 * m.line_h),
+                        width: Val::Px(ed.view_w),
+                        height: Val::Px(m.line_h),
+                        ..default()
+                    },
+                    BackgroundColor(rgba(syntax_palette().current_line)),
+                    bevy::ui::FocusPolicy::Pass,
+                    Name::new("code-current-line"),
+                ))
+                .id();
+            underlay.push(rect);
+        }
+        let guide_color = rgba(syntax_palette().indent_guide);
+        for l in start..end {
+            // Leading-whitespace columns (tab counts as TAB_WIDTH); each full
+            // TAB_WIDTH is one indent level.
+            let mut cols = 0usize;
+            for c in ed.text[l].chars() {
+                match c {
+                    ' ' => cols += 1,
+                    '\t' => cols += TAB_WIDTH,
+                    _ => break,
+                }
+            }
+            let level = cols / TAB_WIDTH;
+            // Interior stops only (skip the gutter edge and the text start).
+            for i in 1..level {
+                let x = m.gutter_w + m.pad + (i * TAB_WIDTH) as f32 * m.char_w;
+                let rect = commands
+                    .spawn((
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(x),
+                            top: Val::Px((l - start) as f32 * m.line_h),
+                            width: Val::Px(1.0),
+                            height: Val::Px(m.line_h),
+                            ..default()
+                        },
+                        BackgroundColor(guide_color),
+                        bevy::ui::FocusPolicy::Pass,
+                        Name::new("code-indent-guide"),
+                    ))
+                    .id();
+                underlay.push(rect);
+            }
+        }
+        commands.entity(body).add_children(&underlay);
+
+        // Selection highlight rects (added next → behind the text).
         let mut sel_rects: Vec<Entity> = Vec::new();
         if has_selection(&ed) {
             let ((sl, sc), (el, ec)) = sel_range(&ed);
             for l in sl.max(start)..=el.min(end.saturating_sub(1)) {
                 let ca = if l == sl { sc } else { 0 };
                 let cb = if l == el { ec } else { ed.text[l].chars().count() };
-                let w = (cb.saturating_sub(ca) as f32 * ed.char_w)
-                    .max(if l < el { ed.char_w * 0.5 } else { 0.0 });
+                let w = (cb.saturating_sub(ca) as f32 * m.char_w)
+                    .max(if l < el { m.char_w * 0.5 } else { 0.0 });
                 if w <= 0.0 {
                     continue;
                 }
@@ -189,13 +305,13 @@ pub(crate) fn code_render(
                     .spawn((
                         Node {
                             position_type: PositionType::Absolute,
-                            left: Val::Px(GUTTER_W + PAD + ca as f32 * ed.char_w),
-                            top: Val::Px((l - start) as f32 * LINE_H),
+                            left: Val::Px(m.gutter_w + m.pad + ca as f32 * m.char_w),
+                            top: Val::Px((l - start) as f32 * m.line_h),
                             width: Val::Px(w),
-                            height: Val::Px(LINE_H),
+                            height: Val::Px(m.line_h),
                             ..default()
                         },
-                        BackgroundColor(Color::srgba(0.31, 0.55, 1.0, 0.30)),
+                        BackgroundColor(rgba(syntax_palette().selection)),
                         bevy::ui::FocusPolicy::Pass,
                         Name::new("code-selection"),
                     ))
@@ -204,6 +320,35 @@ pub(crate) fn code_render(
             }
         }
         commands.entity(body).add_children(&sel_rects);
+
+        // Matching-bracket highlight (above the selection, below the text).
+        if !has_selection(&ed) {
+            if let Some((a, b)) = bracket_match(&ed) {
+                let mut brackets: Vec<Entity> = Vec::new();
+                for (bl, bc) in [a, b] {
+                    if bl < start || bl >= end {
+                        continue;
+                    }
+                    let rect = commands
+                        .spawn((
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(m.gutter_w + m.pad + bc as f32 * m.char_w),
+                                top: Val::Px((bl - start) as f32 * m.line_h),
+                                width: Val::Px(m.char_w),
+                                height: Val::Px(m.line_h),
+                                ..default()
+                            },
+                            BackgroundColor(rgba(syntax_palette().bracket_match)),
+                            bevy::ui::FocusPolicy::Pass,
+                            Name::new("code-bracket-match"),
+                        ))
+                        .id();
+                    brackets.push(rect);
+                }
+                commands.entity(body).add_children(&brackets);
+            }
+        }
 
         // Color the visible lines. With a host highlighter we thread the
         // cross-line state from the top of the file (cheap; only on `dirty`),
@@ -229,7 +374,7 @@ pub(crate) fn code_render(
                         off = end_b;
                     }
                     if off < line.len() && line.is_char_boundary(off) {
-                        out.push((line[off..].to_string(), rgb(C_TEXT)));
+                        out.push((line[off..].to_string(), rgb(syntax_palette().normal)));
                     }
                     out
                 })
@@ -243,9 +388,32 @@ pub(crate) fn code_render(
         let rows: Vec<Entity> = line_spans
             .iter()
             .enumerate()
-            .map(|(k, spans)| render_line(&mut commands, &fonts.mono, start + k + 1, spans))
+            .map(|(k, spans)| render_line(&mut commands, &fonts.mono, m, start + k + 1, spans))
             .collect();
         commands.entity(body).add_children(&rows);
+    }
+}
+
+/// Repaint editors when the syntax palette changes. Live theme-color edits
+/// update the palette but don't rebuild the panel, so without this a color
+/// change wouldn't show until the next keystroke/scroll. Marks the visible lines
+/// dirty (token/selection/gutter colors are respawned on render) and refreshes
+/// the persistent caret fill, which is only set at spawn.
+pub(crate) fn code_theme_watch(
+    mut last: Local<Option<SyntaxPalette>>,
+    mut editors: Query<&mut CodeEditor>,
+    mut bg: Query<&mut BackgroundColor>,
+) {
+    let sp = syntax_palette();
+    if *last == Some(sp) {
+        return;
+    }
+    *last = Some(sp);
+    for mut ed in &mut editors {
+        ed.dirty = true;
+        if let Ok(mut c) = bg.get_mut(ed.caret) {
+            c.0 = rgb(sp.cursor);
+        }
     }
 }
 
@@ -255,23 +423,25 @@ pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes
         let Ok(mut n) = nodes.get_mut(ed.caret) else {
             continue;
         };
+        let m = ed.metrics();
         let visible = ed.cursor_line >= ed.scroll && ed.cursor_line < ed.scroll + ed.visible;
-        if ed.focused && on && visible && ed.char_w > 0.0 {
+        if ed.focused && on && visible && m.char_w > 0.0 {
             n.display = Display::Flex;
-            n.left = Val::Px(GUTTER_W + PAD + ed.cursor_col as f32 * ed.char_w);
-            n.top = Val::Px((ed.cursor_line - ed.scroll) as f32 * LINE_H + (LINE_H - CARET_H) / 2.0);
+            n.height = Val::Px(m.caret_h);
+            n.left = Val::Px(m.gutter_w + m.pad + ed.cursor_col as f32 * m.char_w);
+            n.top = Val::Px((ed.cursor_line - ed.scroll) as f32 * m.line_h + (m.line_h - m.caret_h) / 2.0);
         } else {
             n.display = Display::None;
         }
     }
 }
 
-fn render_line(commands: &mut Commands, font: &bevy::text::FontSource, num: usize, spans: &[(String, Color)]) -> Entity {
+fn render_line(commands: &mut Commands, font: &bevy::text::FontSource, m: Metrics, num: usize, spans: &[(String, Color)]) -> Entity {
     let row = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
-                height: Val::Px(LINE_H),
+                height: Val::Px(m.line_h),
                 align_items: AlignItems::Center,
                 ..default()
             },
@@ -280,7 +450,7 @@ fn render_line(commands: &mut Commands, font: &bevy::text::FontSource, num: usiz
         .id();
     let gutter = commands
         .spawn((Node {
-            width: Val::Px(GUTTER_W),
+            width: Val::Px(m.gutter_w),
             height: Val::Percent(100.0),
             align_items: AlignItems::Center,
             justify_content: JustifyContent::FlexEnd,
@@ -290,19 +460,19 @@ fn render_line(commands: &mut Commands, font: &bevy::text::FontSource, num: usiz
         .with_children(|p| {
             p.spawn((
                 Text::new(format!("{num}")),
-                mono(font, GUTTER_SIZE),
-                TextColor(rgb(placeholder())),
+                mono(font, m.gutter_size),
+                TextColor(rgb(syntax_palette().line_number)),
             ));
         })
         .id();
     let line_text = commands
         .spawn((
             Text::new(""),
-            mono(font, FONT_SIZE),
-            TextColor(rgb(C_TEXT)),
+            mono(font, m.font_size),
+            TextColor(rgb(syntax_palette().normal)),
             TextLayout::no_wrap(),
             Node {
-                padding: UiRect::left(Val::Px(PAD)),
+                padding: UiRect::left(Val::Px(m.pad)),
                 ..default()
             },
         ))
@@ -311,7 +481,7 @@ fn render_line(commands: &mut Commands, font: &bevy::text::FontSource, num: usiz
         .iter()
         .map(|(s, color)| {
             commands
-                .spawn((TextSpan::new(s.clone()), mono(font, FONT_SIZE), TextColor(*color)))
+                .spawn((TextSpan::new(s.clone()), mono(font, m.font_size), TextColor(*color)))
                 .id()
         })
         .collect();

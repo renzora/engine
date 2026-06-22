@@ -9,7 +9,7 @@ use bevy::light::Atmosphere; // 0.19: moved to bevy::light
 use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
 use renzora::{AppEditorExt, InspectorEntry};
-use renzora_atmosphere::{AtmosphereComponentSettings, AtmosphereMediumHandle};
+use renzora_atmosphere::AtmosphereComponentSettings;
 
 fn inspector_entry() -> InspectorEntry {
     InspectorEntry {
@@ -24,12 +24,14 @@ fn inspector_entry() -> InspectorEntry {
                 .insert(AtmosphereComponentSettings::default());
         }),
         remove_fn: Some(|world, entity| {
-            world.entity_mut(entity).remove::<(
-                AtmosphereComponentSettings,
-                Atmosphere,
-                AtmosphereSettings,
-                AtmosphereMediumHandle,
-            )>();
+            // Removing the source settings is what tears the sky down:
+            // `sync_atmosphere` reconciles "no enabled source → strip the planet
+            // `Atmosphere`". `Atmosphere`/`AtmosphereSettings` live on the planet
+            // and cameras (not here), but removing them is a harmless no-op on
+            // this entity and keeps the intent explicit.
+            world
+                .entity_mut(entity)
+                .remove::<(AtmosphereComponentSettings, Atmosphere, AtmosphereSettings)>();
         }),
         is_enabled_fn: Some(|world, entity| {
             world

@@ -92,12 +92,10 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 #   statically-linked-dxc, spirv_shader_passthrough, raw_vulkan_init   per-backend
 #   webgl2/webgpu/x11/wayland/android-*/accesskit_unix   per-target (see wasm/mobile)
 #
-# SOURCE: 0.19.0 final is tagged on GitHub (v0.19.0) but not yet published to
-# crates.io (only 0.19.0-rc.3 is). We depend on the tagged release directly via
-# git so we ship on FINAL, not the RC. The `bevy` umbrella pulls its sub-crates
-# from the same checkout, so the tree stays internally consistent. Swap to a
-# plain crates.io `version = "0.19"` once published (then the git source drops).
-bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", features = [
+# SOURCE: Bevy 0.19 is published on crates.io. The `bevy` umbrella pulls its
+# sub-crates as matching 0.19.x registry deps, so the tree stays internally
+# consistent — one Bevy across the dlopen boundary.
+bevy = { version = "0.19", features = [
     "serialize",
     # extra engine subsystems
     "bevy_remote", "bevy_feathers", "bevy_settings", "sysinfo_plugin",
@@ -125,13 +123,13 @@ bevy = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", features =
     "asset_processor", "file_watcher", "http", "https", "web_asset_cache",
 ] }
 # Individual Bevy sub-crates that some vendored ecosystem crates depend on
-# directly (not via the `bevy` umbrella). Same git tag as `bevy` above so they
-# resolve from the one v0.19.0 checkout — preserving a single Bevy across the
-# dlopen boundary.
-bevy_math = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_reflect = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_light = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
-bevy_picking = { git = "https://github.com/bevyengine/bevy", tag = "v0.19.0", default-features = false }
+# directly (not via the `bevy` umbrella). Same 0.19 line as `bevy` above so they
+# resolve to the one 0.19.x release — preserving a single Bevy across the dlopen
+# boundary.
+bevy_math = { version = "0.19", default-features = false }
+bevy_reflect = { version = "0.19", default-features = false }
+bevy_light = { version = "0.19", default-features = false }
+bevy_picking = { version = "0.19", default-features = false }
 log = "0.4"
 
 [package]

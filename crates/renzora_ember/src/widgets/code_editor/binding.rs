@@ -24,6 +24,9 @@ pub struct CodeBindingSpec {
     pub load: Box<dyn Fn(&World) -> String + Send + Sync>,
     pub store: Box<dyn Fn(&mut World, &str) + Send + Sync>,
     pub make_highlighter: Box<dyn Fn(&World) -> Highlighter + Send + Sync>,
+    /// Optional live code-font size (logical px), e.g. the host's zoom level. Read
+    /// every sync and pushed onto the editor; `None` keeps the widget default.
+    pub font_size: Option<Box<dyn Fn(&World) -> f32 + Send + Sync>>,
 }
 
 #[derive(Component)]
@@ -79,6 +82,17 @@ pub(crate) fn code_sync(world: &mut World) {
             (spec.store)(world, &joined);
             if let Some(mut ed) = world.get_mut::<CodeEditor>(e) {
                 ed.content_dirty = false;
+            }
+        }
+
+        // Push the host's live font size (zoom). `code_metrics` picks up the
+        // change next and recomputes the derived metrics + flags a re-render.
+        if let Some(fs) = spec.font_size.as_ref() {
+            let size = fs(world).clamp(6.0, 48.0);
+            if let Some(mut ed) = world.get_mut::<CodeEditor>(e) {
+                if (ed.font_size - size).abs() > f32::EPSILON {
+                    ed.font_size = size;
+                }
             }
         }
 

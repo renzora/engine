@@ -113,11 +113,46 @@ Beyond the per-`Role` tokens, `Theme` also has **bespoke multi-element styles** 
 
 > `Rgba` is the theme color type: sRGBA bytes serialized to/from `#RRGGBB` / `#RRGGBBAA`. `Rgba::rgb((r,g,b))` builds an opaque color; `.color()` converts to a bevy `Color`.
 
+### Code-editor syntax colors — `theme::SyntaxPalette`
+
+The built-in code editor resolves its token and chrome colors through a second
+process-wide palette in `renzora_ember::theme`, `SyntaxPalette`, set the same way
+as `Palette` (a `LazyLock<RwLock<…>>` via `set_syntax_palette`, read with
+`syntax_palette()`). This keeps the editor widget language- *and* theme-agnostic:
+it never depends on `renzora_theme`; the bridge pushes colors in.
+
+The colors come from a theme's `[syntax]` section (`renzora_theme::SyntaxColors`).
+Token categories are opaque; chrome colors that overlay text carry alpha:
+
+| Group | Keys |
+|---|---|
+| Tokens | `normal`, `keyword`, `type`, `function`, `number`, `string`, `comment`, `operator`, `constant`, `punctuation` |
+| Chrome | `line_number`, `line_number_active`, `current_line`, `selection`, `cursor`, `indent_guide`, `bracket_match`, `find_match` |
+
+```toml
+# themes/cyberpunk.toml — code colors
+[syntax]
+normal   = "#DCDCFF"
+keyword  = "#FF3250"
+type     = "#FFC800"
+function = "#00FFC8"
+string   = "#00FF64"
+comment  = "#5A5A78"
+selection = "#4F8CFF4D"   # RGBA — alpha keeps the text legible under it
+cursor    = "#00FFC8"
+```
+
+Editing any of these in **Settings → Theme → Syntax Tokens / Editor Chrome**
+recolors the open editor live: the edit lands in `ThemeManager.active_theme`,
+the bridge maps it into `SyntaxPalette`, and a watcher in the code-editor widget
+repaints the visible lines and caret. Omitting `[syntax]` keeps the built-in
+dark token palette (Light themes ship a tuned light variant).
+
 ### Theme files — `themes/*.toml`
 
 Custom editor themes are TOML files under the project's `themes/` directory. A single `themes/<name>.toml` can hold **two kinds of sections**, and each loader reads only its own sections and ignores the rest:
 
-1. **Editor color sections** (`[meta]`, `[semantic]`, `[surfaces]`, `[text]`, `[widgets]`, `[panels]`, `[categories]`, `[material]`, `[viewport]`) — parsed into `renzora_theme::Theme` by `ThemeManager`. The bridge maps these into the ember `Palette`.
+1. **Editor color sections** (`[meta]`, `[semantic]`, `[surfaces]`, `[text]`, `[widgets]`, `[panels]`, `[categories]`, `[material]`, `[viewport]`, `[syntax]`) — parsed into `renzora_theme::Theme` by `ThemeManager`. The bridge maps these into the ember `Palette` (and, for `[syntax]`, the `SyntaxPalette`).
 2. **Ember per-widget style sections** (`[button]`, `[input]`, `[dock]`, `[node_graph]`, …) — parsed into `renzora_ember::style::Theme` by `Theme::from_toml`.
 
 `Theme::from_toml` **cascades**: it deep-merges your file over the palette-derived defaults, so a theme only needs to specify the elements it overrides (a whole `[button]` table, or just `button.bg`):
@@ -187,6 +222,7 @@ shadow      = true
 `renzora_shell`'s `theme_bridge` system glues the layers together each frame:
 
 - It maps `ThemeManager.active_theme` (a `renzora_theme::Theme`) into an ember `Palette` via `palette_from_theme` and pushes it with `set_palette` — e.g. `surfaces.window → window_bg`, `surfaces.panel → panel_bg`, `surfaces.extreme → header_bg`, `semantic.accent → accent`, `panels.tab_active → tab_active`.
+- It likewise maps the theme's `[syntax]` section into the ember `SyntaxPalette` via `syntax_palette_from_theme` + `set_syntax_palette`, so the code editor recolors on theme switch *and* on live syntax-color edits (tracked separately so a syntax-only edit doesn't churn the main palette).
 - On a theme **switch**, it rebuilds the ember `style::Theme` with `build_ember_theme` (which calls `Theme::from_toml` on the same `themes/<name>.toml`) and `insert_resource`s it, then despawns and re-spawns the chrome so palette-derived widgets pick up the new colors. `apply_theme` then repaints every `Styled` widget live.
 - Individual color edits update the palette but do **not** rebuild (that would close the color picker every frame).
 

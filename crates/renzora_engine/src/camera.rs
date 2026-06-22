@@ -13,7 +13,7 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::light::{
     AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
 };
-use bevy::pbr::AtmosphereSettings;
+use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use bevy::render::render_resource::{
     Extent3d, TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
@@ -81,6 +81,17 @@ pub fn spawn_editor_camera(
             RenderLayers::from_layers(&[0, 1]),
             Name::new(format!("Editor Camera {i}")),
             Hdr,
+            // Resident, no-op distance fog. `DistanceFog` is mesh-view binding 13;
+            // keeping it on the camera from spawn means binding 13 is always in
+            // PBR's layout. The `WorldEnvironment` fog reconcile only *updates*
+            // this component, never adds/removes it — toggling its presence would
+            // restructure the shared layout and crash wgpu. Density 0 = no fog.
+            DistanceFog {
+                color: Color::NONE,
+                directional_light_color: Color::NONE,
+                directional_light_exponent: 8.0,
+                falloff: FogFalloff::Exponential { density: 0.0 },
+            },
             // Atmosphere/sky binds depth as non-multisampled (binding 13);
             // any MSAA on the same camera trips a wgpu validation crash.
             Msaa::Off,
@@ -100,12 +111,16 @@ pub fn spawn_editor_camera(
             // covers every other `Camera3d` in the editor (previews,
             // thumbnails, etc.), so we don't special-case it here.
             (NormalPrepass, DepthPrepass, MotionVectorPrepass),
-            // NOTE: `bevy::pbr::ContactShadows` is NOT attached here. Bevy 0.19's
-            // deferred lighting pipeline doesn't wire it up (it claims the same
-            // `mesh_view` binding 16 as `area_light_luts`, tripping a wgpu layout
-            // mismatch) — an upstream bug. `ensure_contact_shadows_on_forward_
-            // cameras` (lib.rs) attaches it to FORWARD cameras only, where it
-            // works; the `Sun`'s contact-shadow toggle then takes effect there.
+            // NOTE: `bevy::pbr::ContactShadows` is NOT attached here. Contact
+            // shadows live at `mesh_view` binding 16; the *forward* opaque mesh
+            // pipeline specializes the `CONTACT_SHADOWS` key (so its layout has
+            // binding 16), but the deferred lighting pipeline does not — attach
+            // it to a deferred camera and its bind group exposes binding 16 while
+            // the pipeline's layout omits it, a wgpu hard-crash.
+            // `ensure_contact_shadows_on_forward_cameras` (lib.rs) attaches it to
+            // FORWARD cameras only, where it works; the `Sun`'s contact-shadow
+            // toggle then takes effect there. (`seed_contact_shadows_offset`
+            // closes the separate first-frame specialization race.)
         ));
 
         // Only the PRIMARY camera carries the procedural sky + IBL. In Bevy

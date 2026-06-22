@@ -20,6 +20,7 @@ impl Theme {
             categories: CategoryColors::default(),
             material: MaterialColors::default(),
             viewport: ViewportColors::default(),
+            syntax: SyntaxColors::default(),
         }
     }
 
@@ -164,6 +165,29 @@ impl Theme {
                 gizmo_y: ThemeColor::new(60, 200, 60),
                 gizmo_z: ThemeColor::new(60, 60, 220),
                 gizmo_selected: ThemeColor::new(220, 200, 0),
+            },
+            // A readable light code theme: near-black text on the light panel,
+            // saturated-but-dark token hues so they stay legible on a pale
+            // background (the dark theme's pastel tokens would wash out).
+            syntax: SyntaxColors {
+                normal: ThemeColor::new(36, 41, 51),
+                keyword: ThemeColor::new(167, 41, 130),
+                r#type: ThemeColor::new(141, 98, 26),
+                function: ThemeColor::new(54, 96, 191),
+                number: ThemeColor::new(155, 66, 46),
+                string: ThemeColor::new(48, 132, 70),
+                comment: ThemeColor::new(140, 146, 156),
+                operator: ThemeColor::new(72, 78, 88),
+                constant: ThemeColor::new(155, 66, 46),
+                punctuation: ThemeColor::new(92, 98, 108),
+                line_number: ThemeColor::new(168, 172, 180),
+                line_number_active: ThemeColor::new(60, 64, 72),
+                current_line: ThemeColor::with_alpha(0, 0, 0, 12),
+                selection: ThemeColor::with_alpha(38, 108, 200, 56),
+                cursor: ThemeColor::new(38, 108, 200),
+                indent_guide: ThemeColor::with_alpha(0, 0, 0, 18),
+                bracket_match: ThemeColor::with_alpha(38, 108, 200, 72),
+                find_match: ThemeColor::with_alpha(220, 170, 40, 110),
             },
         }
     }

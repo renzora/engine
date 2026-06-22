@@ -14,7 +14,8 @@ use renzora::{
     WindowMode,
 };
 use renzora_editor_framework::{
-    EditorSettings, MonoFont, SelectionGranularity, SelectionHighlightMode, SettingsTab, UiFont,
+    EditorSettings, InspectorExpandDefault, MonoFont, SelectionGranularity, SelectionHighlightMode,
+    SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
@@ -655,6 +656,7 @@ const CATS: &[(&str, &[Cat])] = &[
             (SettingsTab::Interface, Some("fonts"), "text-aa", "Fonts"),
             (SettingsTab::Interface, Some("display"), "monitor", "Display"),
             (SettingsTab::Interface, Some("hierarchy"), "list-bullets", "Hierarchy"),
+            (SettingsTab::Interface, Some("inspector"), "sliders", "Inspector"),
             (SettingsTab::Theme, None, "palette", "Theme"),
         ],
     ),
@@ -1565,6 +1567,39 @@ fn tab_interface(
         |w, &v| w.resource_mut::<EditorSettings>().hierarchy_parent_stacking = v,
     );
     settings_row(commands, fonts, body, 0, "Parent Stacking", t);
+
+    let (sec, body) = section(commands, fonts, "sliders", "Inspector", A_PURPLE);
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "inspector");
+    let labels: Vec<&str> = InspectorExpandDefault::ALL.iter().map(|m| m.label()).collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &labels,
+        inspector_expand_index(settings.inspector_expand_default),
+        |w| inspector_expand_index(w.resource::<EditorSettings>().inspector_expand_default),
+        |w, &i| {
+            w.resource_mut::<EditorSettings>().inspector_expand_default = InspectorExpandDefault::ALL
+                .get(i)
+                .copied()
+                .unwrap_or_default();
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Default Expand", dd);
+    note_row(
+        commands,
+        fonts,
+        body,
+        "Which component sections start open when you select an entity. \
+         \"Essentials Only\" keeps Name, Transform, and Scripts open.",
+    );
+}
+
+fn inspector_expand_index(v: InspectorExpandDefault) -> usize {
+    InspectorExpandDefault::ALL
+        .iter()
+        .position(|m| *m == v)
+        .unwrap_or(0)
 }
 
 /// Fixed UI-scale steps. Discrete choices instead of a drag value: the UI
@@ -2106,6 +2141,33 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
     theme_color_row(commands, fonts, body, 1, "Drop Line", |t| t.panels.drop_line, |t, c| t.panels.drop_line = c);
     theme_color_row(commands, fonts, body, 2, "Tab Active", |t| t.panels.tab_active, |t, c| t.panels.tab_active = c);
     theme_color_row(commands, fonts, body, 3, "Tab Inactive", |t| t.panels.tab_inactive, |t, c| t.panels.tab_inactive = c);
+
+    // Code-editor syntax token colors. Edits route through `ThemeManager` →
+    // the shell theme bridge → ember's `SyntaxPalette`, so the open code editor
+    // recolors live.
+    let (sec, body) = section(commands, fonts, "palette", "Syntax Tokens", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Normal", |t| t.syntax.normal, |t, c| t.syntax.normal = c);
+    theme_color_row(commands, fonts, body, 1, "Keyword", |t| t.syntax.keyword, |t, c| t.syntax.keyword = c);
+    theme_color_row(commands, fonts, body, 2, "Type", |t| t.syntax.r#type, |t, c| t.syntax.r#type = c);
+    theme_color_row(commands, fonts, body, 3, "Function", |t| t.syntax.function, |t, c| t.syntax.function = c);
+    theme_color_row(commands, fonts, body, 4, "Number", |t| t.syntax.number, |t, c| t.syntax.number = c);
+    theme_color_row(commands, fonts, body, 5, "String", |t| t.syntax.string, |t, c| t.syntax.string = c);
+    theme_color_row(commands, fonts, body, 6, "Comment", |t| t.syntax.comment, |t, c| t.syntax.comment = c);
+    theme_color_row(commands, fonts, body, 7, "Operator", |t| t.syntax.operator, |t, c| t.syntax.operator = c);
+    theme_color_row(commands, fonts, body, 8, "Constant", |t| t.syntax.constant, |t, c| t.syntax.constant = c);
+    theme_color_row(commands, fonts, body, 9, "Punctuation", |t| t.syntax.punctuation, |t, c| t.syntax.punctuation = c);
+
+    let (sec, body) = section(commands, fonts, "palette", "Editor Chrome", A_VIOLET);
+    commands.entity(col).add_child(sec);
+    theme_color_row(commands, fonts, body, 0, "Line Number", |t| t.syntax.line_number, |t, c| t.syntax.line_number = c);
+    theme_color_row(commands, fonts, body, 1, "Active Line No.", |t| t.syntax.line_number_active, |t, c| t.syntax.line_number_active = c);
+    theme_color_row(commands, fonts, body, 2, "Current Line", |t| t.syntax.current_line, |t, c| t.syntax.current_line = c);
+    theme_color_row(commands, fonts, body, 3, "Selection", |t| t.syntax.selection, |t, c| t.syntax.selection = c);
+    theme_color_row(commands, fonts, body, 4, "Cursor", |t| t.syntax.cursor, |t, c| t.syntax.cursor = c);
+    theme_color_row(commands, fonts, body, 5, "Indent Guide", |t| t.syntax.indent_guide, |t, c| t.syntax.indent_guide = c);
+    theme_color_row(commands, fonts, body, 6, "Bracket Match", |t| t.syntax.bracket_match, |t, c| t.syntax.bracket_match = c);
+    theme_color_row(commands, fonts, body, 7, "Find Match", |t| t.syntax.find_match, |t, c| t.syntax.find_match = c);
 
     // ── Per-widget style editor ──────────────────────────────────────────────
     // Walk the ember `Theme` via reflection: every widget type → a section, every

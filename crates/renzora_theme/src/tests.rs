@@ -133,6 +133,20 @@ fn all_color_group_defaults_valid() {
     let _ = CategoryColors::default();
     let _ = MaterialColors::default();
     let _ = ViewportColors::default();
+    let _ = SyntaxColors::default();
+}
+
+#[test]
+fn syntax_colors_roundtrip() {
+    // The `type` field is a raw identifier; confirm it (and an alpha-bearing
+    // chrome color) survive a TOML roundtrip with the clean key name.
+    let theme = Theme::dark();
+    let toml_str = toml::to_string_pretty(&theme).unwrap();
+    assert!(toml_str.contains("type ="), "syntax.type should serialize as `type`");
+    let restored: Theme = toml::from_str(&toml_str).unwrap();
+    assert_eq!(theme.syntax.r#type, restored.syntax.r#type);
+    assert_eq!(theme.syntax.keyword, restored.syntax.keyword);
+    assert_eq!(theme.syntax.selection, restored.syntax.selection);
 }
 
 // =============================================================================

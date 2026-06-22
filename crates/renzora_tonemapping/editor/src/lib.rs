@@ -6,7 +6,6 @@
 //! registered `renzora::add!(TonemappingEditorPlugin, Editor)` and linked only by
 //! the editor bundle.
 
-use bevy::camera::Exposure;
 use bevy::core_pipeline::tonemapping::{DebandDither, Tonemapping};
 use bevy::prelude::*;
 use renzora::{AppEditorExt, InspectorEntry};
@@ -32,20 +31,18 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "tonemapping",
         display_name: "Tonemapping",
         icon: "sun",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<TonemappingSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             let mode = world
                 .get::<Tonemapping>(entity)
                 .map(tonemapping_to_mode)
                 .unwrap_or(6);
-            let ev100 = world
-                .get::<Exposure>(entity)
-                .map(|e| e.ev100)
-                .unwrap_or(9.7);
+            // `ev100` is vestigial — exposure moved to the Camera lens section.
+            // Keep a sane default on the back-compat field.
             world.entity_mut(entity).insert(TonemappingSettings {
                 mode,
-                ev100,
+                ev100: 9.7,
                 enabled: true,
             });
         }),
@@ -53,7 +50,7 @@ fn inspector_entry() -> InspectorEntry {
             world
                 .entity_mut(entity)
                 .remove::<TonemappingSettings>()
-                .insert((Tonemapping::default(), Exposure::default()));
+                .insert(Tonemapping::default());
         }),
         is_enabled_fn: Some(|world, entity| {
             world
@@ -82,7 +79,6 @@ fn inspector_entry() -> InspectorEntry {
                     "Blender Filmic"
                 ]
             ),
-            renzora::float_field!("EV100", TonemappingSettings, ev100, 0.1, -16.0, 16.0),
         ],
     }
 }
@@ -92,7 +88,7 @@ fn deband_dither_entry() -> InspectorEntry {
         type_id: "deband_dither",
         display_name: "Deband Dither",
         icon: "gradient",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<DebandDitherSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world

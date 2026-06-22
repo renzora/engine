@@ -100,6 +100,7 @@ fn theme_bridge(
     project: Option<Res<renzora::CurrentProject>>,
     mut last_name: Local<Option<String>>,
     mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
+    mut last_syntax: Local<Option<renzora_ember::theme::SyntaxPalette>>,
     mut last_themes: Local<Option<Vec<String>>>,
     roots: Query<Entity, With<ShellRoot>>,
     mut dirty: ResMut<DockDirty>,
@@ -110,6 +111,14 @@ fn theme_bridge(
     if last_pal.as_ref() != Some(&pal) {
         renzora_ember::theme::set_palette(pal);
         *last_pal = Some(pal);
+    }
+
+    // Map the theme's syntax colors into the code editor's palette. Tracked
+    // separately so a syntax-only edit pushes through without churning `pal`.
+    let syn = syntax_palette_from_theme(&tm.active_theme);
+    if last_syntax.as_ref() != Some(&syn) {
+        renzora_ember::theme::set_syntax_palette(syn);
+        *last_syntax = Some(syn);
     }
 
     // The status-bar theme dropup is built once (when the chrome spawns) from a
@@ -209,6 +218,37 @@ fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette
         hover_bg: tc(&t.panels.item_hover),
         card_bg: tc(&t.panels.item_bg),
         tree_line: tc(&t.panels.tree_line),
+    }
+}
+
+/// Map a theme's `syntax` section into the code editor's [`SyntaxPalette`].
+/// Token colors drop alpha (they're opaque); chrome colors that overlay text
+/// keep their full RGBA.
+fn syntax_palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::SyntaxPalette {
+    fn tc(c: &renzora_theme::ThemeColor) -> (u8, u8, u8) {
+        let [r, g, b, _] = c.0;
+        (r, g, b)
+    }
+    let s = &t.syntax;
+    renzora_ember::theme::SyntaxPalette {
+        normal: tc(&s.normal),
+        keyword: tc(&s.keyword),
+        type_: tc(&s.r#type),
+        function: tc(&s.function),
+        number: tc(&s.number),
+        string: tc(&s.string),
+        comment: tc(&s.comment),
+        operator: tc(&s.operator),
+        constant: tc(&s.constant),
+        punctuation: tc(&s.punctuation),
+        line_number: tc(&s.line_number),
+        line_number_active: tc(&s.line_number_active),
+        current_line: s.current_line.0,
+        selection: s.selection.0,
+        cursor: tc(&s.cursor),
+        indent_guide: s.indent_guide.0,
+        bracket_match: s.bracket_match.0,
+        find_match: s.find_match.0,
     }
 }
 

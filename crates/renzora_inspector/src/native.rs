@@ -21,15 +21,15 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::{
-    EditorCommands, EditorSelection, FieldType, FieldValue, InspectorRegistry,
-    NativeInspectorDrawer, NativeInspectorRegistry,
+    EditorCommands, EditorSelection, EditorSettings, FieldType, FieldValue, InspectorExpandDefault,
+    InspectorRegistry, NativeInspectorDrawer, NativeInspectorRegistry,
 };
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown_with_icons, scroll_view, text_input, toggle_switch,
-    DragRange, EmberTextInput, Popup,
+    bind_text_input, drag_value, dropdown_with_icons, scroll_view, set_section_open, text_input,
+    toggle_switch, DragRange, EmberTextInput, Popup, Section,
 };
 use renzora_theme::ThemeManager;
 
@@ -61,6 +61,20 @@ struct NativeInspectorState {
     /// (`None` = show all components). ANDed with `filter`.
     selected: Option<String>,
 }
+
+/// Marks the inspector's expand/collapse-all button in the top bar.
+#[derive(Component)]
+struct ExpandAllButton;
+
+/// Marks the glyph inside the expand/collapse-all button, so a sync system can
+/// keep it showing "expand" vs "collapse" as sections open and close.
+#[derive(Component)]
+struct ExpandAllGlyph;
+
+/// Marks an inspector component-section header, so the expand/collapse-all
+/// button can drive just these sections (not other panels' sections).
+#[derive(Component)]
+struct InspectorSectionHeader;
 
 /// Stable host for the component-filter dropdown. The ember `dropdown` widget
 /// bakes its options in at build time, so `rebuild_inspector` despawns this
@@ -125,6 +139,8 @@ pub fn register_native_inspector(app: &mut App) {
             asset_clear_click,
             asset_drop_highlight,
             inspector_filter_sync,
+            expand_all_click,
+            sync_expand_glyph,
         )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
@@ -185,6 +201,9 @@ struct SectionSpec {
     /// Category-derived header background + accent (icon tint).
     header_bg: (u8, u8, u8),
     accent: (u8, u8, u8),
+    /// Whether this section starts expanded (per the expand-default policy /
+    /// expand-all override, computed in [`collect_sections`]).
+    open: bool,
     fields: Vec<FieldSpec>,
 }
 
@@ -268,6 +287,38 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },
     ));
+    // Expand / collapse-all toggle: forces every section open or closed for the
+    // current view. Its glyph reflects the live state — "expand" when anything
+    // could still open, "collapse" once everything is forced open.
+    let expand_btn = commands
+        .spawn((
+            Node {
+                flex_shrink: 0.0,
+                width: Val::Px(26.0),
+                height: Val::Px(24.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            Interaction::default(),
+            FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ExpandAllButton,
+            Name::new("inspector-expand-all"),
+        ))
+        .id();
+    let glyph = phosphor_glyph(
+        commands,
+        fonts,
+        "arrows-out-line-vertical",
+        renzora_ember::theme::text_muted(),
+        15.0,
+    );
+    // `sync_expand_glyph` flips this between expand/collapse as sections change.
+    commands.entity(glyph).insert(ExpandAllGlyph);
+    commands.entity(expand_btn).add_child(glyph);
+
     let bar = commands
         .spawn((
             Node {
@@ -282,7 +333,7 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("inspector-top-bar"),
         ))
         .id();
-    commands.entity(bar).add_children(&[dropdown_host, input]);
+    commands.entity(bar).add_children(&[dropdown_host, input, expand_btn]);
     bind_display(commands, bar, |w| inspected_entity(w).is_some());
     bar
 }
@@ -520,6 +571,10 @@ fn inspector_signature(
         s.filter.hash(&mut h);
         s.selected.hash(&mut h);
     }
+    // Changing the default-expand policy re-applies it to the current view.
+    if let Some(s) = world.get_resource::<EditorSettings>() {
+        (s.inspector_expand_default as u8).hash(&mut h);
+    }
     match entity {
         Some(e) => {
             1u8.hash(&mut h);
@@ -550,6 +605,24 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         .get_resource::<NativeInspectorState>()
         .map(|s| (s.filter.clone(), s.selected.clone()))
         .unwrap_or_default();
+
+    // Initial expand state per section, from the user's `inspector_expand_default`
+    // policy (Essentials keeps only Name/Transform/Scripts open). After build the
+    // expand/collapse-all button drives sections live (see `expand_all_click`).
+    let expand_policy = world
+        .get_resource::<EditorSettings>()
+        .map(|s| s.inspector_expand_default)
+        .unwrap_or_default();
+    let section_open = |title: &str| -> bool {
+        match expand_policy {
+            InspectorExpandDefault::AllOpen => true,
+            InspectorExpandDefault::AllClosed => false,
+            InspectorExpandDefault::Essentials => {
+                matches!(title, "Name" | "Transform" | "Scripts")
+            }
+        }
+    };
+
     let mut out = Vec::new();
     for entry in reg.iter() {
         if !(entry.has_fn)(world, entity) {
@@ -588,6 +661,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 enabled_now,
                 header_bg,
                 accent,
+                open: section_open(entry.display_name),
                 fields: Vec::new(),
             });
             continue;
@@ -604,6 +678,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 enabled_now,
                 header_bg,
                 accent,
+                open: section_open(entry.display_name),
                 fields: Vec::new(),
             });
             continue;
@@ -672,6 +747,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             enabled_now,
             header_bg,
             accent,
+            open: section_open(entry.display_name),
             fields,
         });
     }
@@ -753,14 +829,16 @@ fn build_section(
     // Compose the shared ember section (caret · accent icon · title + colored
     // header + ember-owned collapse); override the body padding to the inspector's
     // tighter spacing and add the lock/enable/trash affordances to the header.
-    let (root, header, body) = renzora_ember::widgets::section_with_header(
+    let (root, header, body) = renzora_ember::widgets::section_with_header_open(
         commands,
         fonts,
         sec.icon,
         sec.title,
         sec.accent,
         sec.header_bg,
+        sec.open,
     );
+    commands.entity(header).insert(InspectorSectionHeader);
     commands.entity(body).insert(Node {
         width: Val::Percent(100.0),
         flex_direction: FlexDirection::Column,
@@ -1462,6 +1540,50 @@ fn lock_click(
     }
 }
 
+/// Expand/collapse-all button: drives the live section headers directly (no
+/// rebuild, so it's instant and can't flicker). Smart toggle — if *any* section
+/// is collapsed, open them all; otherwise collapse them all.
+fn expand_all_click(
+    q: Query<&Interaction, (With<ExpandAllButton>, Changed<Interaction>)>,
+    mut sections: Query<&mut Section, With<InspectorSectionHeader>>,
+    mut nodes: Query<&mut Node>,
+    mut texts: Query<&mut Text>,
+) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let target_open = sections.iter().any(|s| !s.is_open());
+    for mut sec in &mut sections {
+        if sec.is_open() != target_open {
+            set_section_open(&mut sec, target_open, &mut nodes, &mut texts);
+        }
+    }
+}
+
+/// Keep the expand-all button's glyph reflecting the current state: a "collapse"
+/// icon once every section is open, an "expand" icon otherwise.
+fn sync_expand_glyph(
+    sections: Query<&Section, With<InspectorSectionHeader>>,
+    mut glyph: Query<&mut Text, With<ExpandAllGlyph>>,
+) {
+    // No sections (nothing selected) → leave it on the default "expand" glyph.
+    let all_open = !sections.is_empty() && sections.iter().all(|s| s.is_open());
+    let name = if all_open {
+        "arrows-in-line-vertical"
+    } else {
+        "arrows-out-line-vertical"
+    };
+    let Some(g) = renzora_ember::font::icon_glyph(name) else {
+        return;
+    };
+    let g = g.to_string();
+    for mut t in &mut glyph {
+        if t.0 != g {
+            t.0 = g.clone();
+        }
+    }
+}
+
 fn add_button_click(
     q: Query<&Interaction, (With<AddButton>, Changed<Interaction>)>,
     cmds: Option<Res<EditorCommands>>,
@@ -1520,10 +1642,20 @@ fn open_add_component(world: &mut World) {
         })
         .unwrap_or_default();
 
+    // Per-camera effects only render on a `Camera3d`: the curated `"camera"`
+    // image-quality set (tonemapping, exposure, bloom, DOF, AA, …) and the open
+    // `"post_process"` shader effects (rain, glitch, CRT, … — they carry an
+    // `extract_component_filter(With<Camera3d>)`). Offer them only when a camera
+    // is selected, so they don't show on a cube where they'd silently do nothing.
+    let is_camera = world.get::<Camera3d>(entity).is_some();
+
     let mut entries: Vec<renzora_ember::widgets::SearchEntry> = Vec::new();
     for (label, icon, category, has_fn, add_fn) in specs {
         if has_fn(world, entity) {
             continue; // already present
+        }
+        if matches!(category, "camera" | "post_process") && !is_camera {
+            continue; // per-camera effect on a non-camera entity
         }
         entries.push(renzora_ember::widgets::SearchEntry::new(
             icon,

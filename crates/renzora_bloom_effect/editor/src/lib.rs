@@ -15,7 +15,9 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "bloom",
         display_name: "Bloom",
         icon: "sparkle",
-        category: "rendering",
+        // `"camera"` → only offered in Add Component when a camera is selected
+        // (per-camera image quality; seeded on the scene camera, routed to views).
+        category: "camera",
         has_fn: |world, entity| world.get::<BloomSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(BloomSettings::default());

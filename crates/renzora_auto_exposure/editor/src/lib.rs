@@ -15,7 +15,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "auto_exposure",
         display_name: "Auto Exposure",
         icon: "sun",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<AutoExposureSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world

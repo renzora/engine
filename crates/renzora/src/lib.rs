@@ -42,6 +42,11 @@ pub use core::*;
 pub mod gi;
 pub use gi::*;
 
+// `WorldEnvironment` — the unified environment contract type (see its module
+// doc + docs/world-environment-spec.md). Shared dylib, same boundary reason.
+pub mod world_environment;
+pub use world_environment::*;
+
 // ── Dynamic plugin FFI macro ────────────────────────────────────────────
 // `renzora::add!(MyPlugin)` exports the FFI symbols a Renzora editor /
 // runtime loader needs to instantiate the plugin from a `.dll` / `.so` /

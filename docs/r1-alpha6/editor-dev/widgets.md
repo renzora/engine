@@ -112,6 +112,22 @@ let ng = node_graph(commands, fonts);
 
 > The **Gallery** workspace in the editor is a living catalog of this widget set — open it to see every widget rendered live with its current theme.
 
+### Code editor (`code_editor`)
+
+The `code_editor` widget is a monospace, syntax-highlighted, editable text view. It owns no document model: the host crate attaches a `CodeBindingSpec` (via `bind_code`) of closures that shuttle text in and out — `doc_key` (document identity), `load`, `store`, `make_highlighter` (a per-language tokenizer producing colored `CodeToken` runs), and an optional `font_size` (the live zoom). `renzora_code_editor` wires this to its `CodeEditorState` (open files, active tab, zoom).
+
+**Languages.** The tokenizer (`renzora_code_editor::highlight`) covers Lua, Rhai, Rust, WGSL, Python, Shell, SQL, JSON, TOML, **BSN** (the `.bsn` scene format — `//` / `/* */` comments, `entity`/`resource` keywords, PascalCase component type paths), and **HTML** (`.html`/`.htm` markup UI — tag names, attributes, quoted values, `&entities;`, and `<!-- -->` comments that thread across lines), picked by file extension. Cross-line state (block comments, HTML comments) threads between lines as an opaque `u32` so a comment opened off-screen still colors correctly when scrolled into view.
+
+**Colors are themed.** Every token color and editor-chrome color comes from the active theme's `[syntax]` section via ember's `SyntaxPalette` — see *Theming → Code-editor syntax colors*. Editing them in Settings → Theme recolors the open editor live.
+
+**Editor chrome.** Each render lays absolute-positioned overlays into the body in back-to-front order: the **current-line highlight** (`current_line`, full viewport width), **indent guides** (`indent_guide`, a vertical rule at each interior indent stop — `TAB_WIDTH` = 4 cols), the **selection** rects (`selection`), and **matching-bracket** boxes (`bracket_match`, shown when the caret is next to a bracket and has no selection; the match is found nesting-aware across lines, bounded so a huge file can't stall the render). Then the colored text rows paint on top.
+
+**Sizing is zoom-aware.** All metrics — line height, gutter width, caret height, and the character advance — are derived from the live `font_size` (logical px) the host pushes through the binding (`CodeEditorState.font_size`, driven by Ctrl +/- and the Settings code-font size). There are no hardcoded pixel sizes.
+
+**Advance is measured, not assumed.** Rather than hardcoding a 0.6em advance, a hidden probe (`code_probe`) reads the active mono font's real laid-out width from its `TextLayoutInfo` and feeds the per-font advance ratio back, so Fira Code / Source Code Pro / custom mono fonts get pixel-correct carets. The measurement is scale-invariant and tightly guarded — a bad/early reading falls back to 0.6 with no regression.
+
+**Monospace is intentional.** Bevy 0.19's `PositionedGlyph` exposes a glyph's pixel position but *not* its source character/cluster index, so an arbitrary glyph can't be mapped back to a column — which is what proportional-font click/caret hit-testing would need across our multi-token text. Monospace keeps column ↔ pixel math exact and matches every real code editor; ligature mono fonts still work, since a ligature keeps the combined cell advance.
+
 ### Reactive values
 
 Builders run once; dynamic values are wired through `renzora_ember::reactive`. A slider stores its value in a `Bound<f32>` so `bind_2way` can read and write it; text is driven with `bind_text`, visibility with `bind_display`, and variable-length lists with `keyed_list`. See *Building Editor Panels → Reactive content* for the full helper table — the same helpers drive widget contents.

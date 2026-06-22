@@ -1439,6 +1439,29 @@ fn camera_entry() -> InspectorEntry {
                     }
                 },
             },
+            // Manual exposure — a lens attribute, alongside FOV. Reads/writes the
+            // camera's `Exposure.ev100`. When Auto Exposure is enabled it overrides
+            // this each frame (so this is the manual value, used when AE is off).
+            FieldDef {
+                name: "EV100",
+                field_type: FieldType::Float {
+                    speed: 0.05,
+                    min: -10.0,
+                    max: 20.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<bevy::camera::Exposure>(entity)
+                        .map(|e| FieldValue::Float(e.ev100))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut e) = world.get_mut::<bevy::camera::Exposure>(entity) {
+                            e.ev100 = v;
+                        }
+                    }
+                },
+            },
             FieldDef {
                 name: "Resolution",
                 field_type: FieldType::Enum {

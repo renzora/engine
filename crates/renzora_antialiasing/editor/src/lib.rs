@@ -23,7 +23,7 @@ fn fxaa_entry() -> InspectorEntry {
         type_id: "fxaa",
         display_name: "FXAA",
         icon: "grid-four",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<FxaaSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(FxaaSettings::default());
@@ -88,7 +88,7 @@ fn smaa_entry() -> InspectorEntry {
         type_id: "smaa",
         display_name: "SMAA",
         icon: "grid-four",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<SmaaSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(SmaaSettings::default());
@@ -133,7 +133,7 @@ fn taa_entry() -> InspectorEntry {
         type_id: "taa",
         display_name: "TAA",
         icon: "grid-four",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<TaaSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(TaaSettings::default());
@@ -163,7 +163,7 @@ fn cas_entry() -> InspectorEntry {
         type_id: "cas",
         display_name: "Sharpening (CAS)",
         icon: "diamonds-four",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<CasSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(CasSettings::default());

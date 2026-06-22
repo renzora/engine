@@ -5,35 +5,28 @@
 //! registered `renzora::add!(SsaoEditorPlugin, Editor)` and linked only by the
 //! editor bundle.
 
-use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::prelude::*;
-use renzora::{AppEditorExt, InspectorEntry};
-use renzora_ssao::SsaoSettings;
+use renzora::{AppEditorExt, InspectorEntry, WorldEnvironment};
 
 fn ssao_entry() -> InspectorEntry {
     InspectorEntry {
-        type_id: "ssao",
+        type_id: "world_env_ssao",
         display_name: "SSAO",
         icon: "circle-half",
         category: "rendering",
-        has_fn: |world, entity| world.get::<SsaoSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(SsaoSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(SsaoSettings, ScreenSpaceAmbientOcclusion)>();
-        }),
+        has_fn: |world, entity| world.get::<WorldEnvironment>(entity).is_some(),
+        // Intrinsic to the WorldEnvironment — not added or removed on its own.
+        add_fn: None,
+        remove_fn: None,
         is_enabled_fn: Some(|world, entity| {
             world
-                .get::<SsaoSettings>(entity)
-                .map(|s| s.enabled)
+                .get::<WorldEnvironment>(entity)
+                .map(|e| e.ssao.enabled)
                 .unwrap_or(false)
         }),
         set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<SsaoSettings>(entity) {
-                s.enabled = val;
+            if let Some(mut e) = world.get_mut::<WorldEnvironment>(entity) {
+                e.ssao.enabled = val;
             }
         }),
         fields: vec![],

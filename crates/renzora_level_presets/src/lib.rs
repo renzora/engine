@@ -70,13 +70,55 @@ impl Plugin for LevelPresetsPlugin {
         register_lighting_presets(app);
 
         use renzora::SplashState;
+        app.register_type::<CameraEffectsSeeded>();
         app.add_systems(
             Update,
-            process_level_commands.run_if(in_state(SplashState::Editor)),
+            (
+                process_level_commands,
+                // Camera-bucket effects live on the scene camera; seed each once.
+                seed_camera_effects,
+            )
+                .run_if(in_state(SplashState::Editor)),
         );
 
         // Native (ember/bevy_ui) panel content.
         app.add_plugins(native::NativeLevelPresets);
+    }
+}
+
+/// One-shot marker: this scene camera has had its default image-quality effects
+/// (the "camera bucket": bloom, …) seeded. Serialized so a *reloaded* scene
+/// isn't re-seeded — its saved effects load instead — while a fresh camera, or a
+/// pre-migration scene that kept these on the environment, gets seeded once.
+/// After seeding they're normal removable components.
+#[derive(Component, Clone, Copy, Default, Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct CameraEffectsSeeded;
+
+/// Seed each scene camera's default image-quality effects **once** (they live on
+/// the camera now, not the World Environment). The [`CameraEffectsSeeded`] marker
+/// makes this idempotent and removal-safe: the user can delete any of them
+/// afterward and they won't come back. Covers every spawn path (presets,
+/// starters) plus pre-migration scenes. The existing `EffectRouting` fans the
+/// effect from the camera (a routing source) to the viewport cameras.
+fn seed_camera_effects(
+    mut commands: Commands,
+    cams: Query<Entity, (With<SceneCamera>, Without<CameraEffectsSeeded>)>,
+) {
+    for cam in &cams {
+        commands.entity(cam).insert((
+            CameraEffectsSeeded,
+            // The default-ON camera image-quality set (matches what the stock
+            // scene used to carry on the World Environment). DOF / motion blur /
+            // FXAA / SMAA / CAS / deband stay OFF by default — added per-camera.
+            renzora_bloom_effect::BloomSettings::default(),
+            renzora_auto_exposure::AutoExposureSettings::default(),
+            renzora_tonemapping::TonemappingSettings::default(),
+            renzora_antialiasing::TaaSettings::default(),
+            // Manual exposure (lens attribute, edited in the Camera section). The
+            // tuned 9.7 preserves the stock look; Auto Exposure overrides it when on.
+            bevy::camera::Exposure { ev100: 9.7 },
+        ));
     }
 }
 
@@ -1377,24 +1419,18 @@ fn spawn_world_environment(world: &mut World) -> Entity {
                 renzora_clouds::CloudsData::default(),
                 night_stars,
             ),
-            // ── Camera response ──────────────────────────────────────
-            (
-                // AE re-enabled: now wraps Bevy's histogram-based AE
-                // (filters out darkest 10% / brightest 10% of pixels),
-                // which handles dark/sparse scenes properly. The old
-                // log-average driver would peg dark scenes at range_min
-                // and blow the frame to white; the histogram approach
-                // sees a properly-distributed mid-band and converges.
-                renzora_auto_exposure::AutoExposureSettings::default(),
-                renzora_tonemapping::TonemappingSettings::default(),
-            ),
-            // ── Image quality / post ─────────────────────────────────
-            (
-                renzora_bloom_effect::BloomSettings::default(),
-                renzora_ssao::SsaoSettings::default(),
-                ssr,
-                renzora_antialiasing::TaaSettings::default(),
-            ),
+            // ── Screen-space reflections (still a WorldEnvironment effect) ──
+            // The camera image-quality set — auto-exposure, tonemapping, bloom,
+            // TAA — migrated to the CAMERA bucket (seeded onto each `SceneCamera`
+            // by `seed_camera_effects`), no longer on the environment. SSAO went
+            // to `WorldEnvironment.ssao` (slice 2). Only SSR remains here.
+            (ssr,),
+            // ── Unified environment (slice 1: fog) ───────────────────
+            // The `WorldEnvironment` reconcile owns the resident camera-side
+            // env state. It currently drives only fog (disabled by default —
+            // matches the stock fog-less scene); more sections migrate here in
+            // later slices. See docs/world-environment-spec.md.
+            (renzora::WorldEnvironment::default(),),
         ))
         .id()
 }

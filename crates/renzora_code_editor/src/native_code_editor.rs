@@ -37,7 +37,7 @@ struct CodeContentRoot;
 /// Text/code extensions accepted by drop-to-open. Mirrors the asset browser's
 /// code-editor-backed kinds.
 const CODE_EXTENSIONS: &[&str] = &[
-    "lua", "rhai", "rs", "py", "js", "ts", "wgsl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "css",
+    "lua", "rhai", "rs", "py", "js", "ts", "wgsl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "htm", "css", "bsn",
 ];
 
 /// A tab chip → selects open_files[idx] on click.
@@ -174,25 +174,30 @@ fn binding_spec() -> CodeBindingSpec {
                 .map(|f| Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()))
                 .unwrap_or(Language::PlainText);
             Box::new(move |line: &str, st: u32| {
-                let incoming = if st == 1 { LineState::BlockComment } else { LineState::Normal };
-                let (spans, out) = highlight_line(line, lang, incoming);
+                let (spans, out) = highlight_line(line, lang, LineState::from_u32(st));
                 let toks: Vec<CodeToken> = spans.into_iter().map(|(len, kind)| CodeToken { len: len as usize, color: kind_color(kind) }).collect();
-                (toks, if matches!(out, LineState::BlockComment) { 1 } else { 0 })
+                (toks, out.to_u32())
             })
         }),
+        // The editor's live zoom (Ctrl +/-, Settings code-font size).
+        font_size: Some(Box::new(|w: &World| {
+            w.get_resource::<CodeEditorState>().map(|s| s.font_size).unwrap_or(14.0)
+        })),
     }
 }
 
-/// Token category → bevy color (mirrors ember's built-in palette).
+/// Token category → bevy color, resolved from the active theme's syntax palette
+/// so swapping/editing a theme recolors code live.
 fn kind_color(k: TokenKind) -> Color {
+    let sp = syntax_palette();
     let (r, g, b) = match k {
-        TokenKind::Normal => (208, 208, 222),
-        TokenKind::Keyword => (230, 100, 90),
-        TokenKind::Type => (240, 190, 80),
-        TokenKind::Function => (160, 210, 110),
-        TokenKind::Number => (210, 140, 200),
-        TokenKind::String => (170, 210, 130),
-        TokenKind::Comment => (120, 120, 135),
+        TokenKind::Normal => sp.normal,
+        TokenKind::Keyword => sp.keyword,
+        TokenKind::Type => sp.type_,
+        TokenKind::Function => sp.function,
+        TokenKind::Number => sp.number,
+        TokenKind::String => sp.string,
+        TokenKind::Comment => sp.comment,
     };
     Color::srgb_u8(r, g, b)
 }
@@ -349,6 +354,8 @@ fn status_text(world: &World) -> String {
         Language::Sql => "SQL",
         Language::Json => "JSON",
         Language::Toml => "TOML",
+        Language::Bsn => "BSN",
+        Language::Html => "HTML",
         Language::PlainText => "Text",
     };
     let modified = if f.is_modified { "  \u{25cf} unsaved" } else { "" };

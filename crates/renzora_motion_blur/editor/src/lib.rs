@@ -15,7 +15,7 @@ fn inspector_entry() -> InspectorEntry {
         type_id: "motion_blur",
         display_name: "Motion Blur",
         icon: "wind",
-        category: "rendering",
+        category: "camera",
         has_fn: |world, entity| world.get::<MotionBlurSettings>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world
