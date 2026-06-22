@@ -95,22 +95,28 @@ e.g. `bevy_dylib-<hash>.dll`.
 ### Current stable ABI hash
 
 ```
-STABLE ABI HASH (Bevy 0.19, bevy-0.19-migration): d0b0839f4fb45a22
+STABLE ABI HASH (Bevy 0.19, crates.io source): eb7a819cba90e0c8
 ```
 
 > The Bevy 0.18 hash was `6f39727ed2dbbb6c`; the 0.19 upgrade moved it to
 > `d0b0839f4fb45a22` (expected — a Bevy version bump always rehashes the ABI).
-> This is now the pinned 0.19 value; hold it stable from here.
+> Switching the Bevy dependency from the git tag `v0.19.0` to the crates.io
+> `0.19` release then moved it again to `eb7a819cba90e0c8`. The *code* is
+> identical (same 0.19.0 release), but the cargo metadata hash folds in the
+> dependency **source** (`git+…#rev` vs `registry+…`), so the source change
+> rehashes the ABI even with byte-identical code — and every plugin built
+> against the git-sourced dylib must be rebuilt. `eb7a819cba90e0c8` is now the
+> pinned value; hold it stable from here.
 
 **On every `renzora run` / `renzora build`:** check the hash of the generated
 `bevy_dylib` (it's embedded in the host binary's imports and is the suffix of
 the copied `bevy_dylib-<hash>.<ext>`). 
 
-- If it **matches** `d0b0839f4fb45a22` → good, the plugin ABI is stable and all
+- If it **matches** `eb7a819cba90e0c8` → good, the plugin ABI is stable and all
   existing community plugins keep loading.
 - If it **differs** → **stop and inform the user.** Explain the likely cause and
   that every existing distribution plugin will now fail the ABI check until
-  rebuilt. Keeping the hash at `d0b0839f4fb45a22` is important for plugin ABI
+  rebuilt. Keeping the hash at `eb7a819cba90e0c8` is important for plugin ABI
   stability — do not let it drift casually.
 
 Things that change the hash: a Bevy version bump, a change to `bevy`'s enabled
@@ -122,19 +128,22 @@ with **none** of those is a red flag worth investigating.
 
 Note the hash is **per-target**: each platform's `bevy_dylib` carries its own
 cargo-metadata hash (the triple is folded in), so the macOS, Windows, and Linux
-artifacts naturally differ from each other and from `6f39727ed2dbbb6c`. The pin
+artifacts naturally differ from each other and from `eb7a819cba90e0c8`. The pin
 applies per platform; compare a platform's hash to its own prior value.
 
 ### Bevy 0.19 (done — hash re-pinned)
 
-The 0.19 upgrade rehashed the ABI, as expected (a version bump always does).
-The new value is **pinned** below; hold it stable from here (don't let it drift
-after it's pinned).
+The 0.19 upgrade rehashed the ABI, as expected (a version bump always does), and
+the later git→crates.io source switch rehashed it once more (cargo folds the
+dependency source into the metadata hash, so identical code at a different source
+still moves it). The current value is **pinned** below; hold it stable from here
+(don't let it drift after it's pinned).
 
-| Engine / Bevy | Stable ABI hash |
-|---|---|
-| r1-alpha6 / Bevy 0.18 | `6f39727ed2dbbb6c` |
-| bevy-0.19-migration / Bevy 0.19 | `d0b0839f4fb45a22` |
+| Engine / Bevy | Source | Stable ABI hash |
+|---|---|---|
+| r1-alpha6 / Bevy 0.18 | git tag | `6f39727ed2dbbb6c` |
+| bevy-0.19-migration / Bevy 0.19 | git tag `v0.19.0` | `d0b0839f4fb45a22` |
+| r1-alpha6 / Bevy 0.19 | crates.io `0.19` | `eb7a819cba90e0c8` |
 
 See `docs/BEVY_0.19_MIGRATION.md` for migration context.
 
@@ -281,7 +290,7 @@ Domain functions belong in that domain crate's extension.
   host) both need crosses the dylib boundary and must have one definition.
 - **Two plugins, not one "both" plugin,** when a feature needs editor tooling +
   runtime behaviour.
-- **Keep the ABI hash pinned** (`6f39727ed2dbbb6c`) and flag any unexpected drift.
+- **Keep the ABI hash pinned** (`eb7a819cba90e0c8`) and flag any unexpected drift.
 - **Docs are part of "done."** A feature without its `docs/r1-alpha6/` update is
   unfinished.
 - **Verify before contradicting the user** about working-tree state; check the
