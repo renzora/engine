@@ -88,9 +88,9 @@ const FILTER_ALL: &str = "All components";
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<NativeInspectorState>();
-    // `scroll: false` — we manage scrolling ourselves so the top bar (Add
-    // Component + filter) and the bottom Add Component button stay *fixed* while
-    // only the component list scrolls.
+    // `scroll: false` — we manage scrolling ourselves so the top bar (filter
+    // dropdown + filter input) and the Add Component row beneath it stay *fixed*
+    // while only the component list scrolls.
     app.register_panel_content("inspector", false, |commands, fonts| {
         let root = commands
             .spawn((
@@ -104,8 +104,10 @@ pub fn register_native_inspector(app: &mut App) {
                 Name::new("inspector-panel"),
             ))
             .id();
-        // Fixed top bar: Add Component button + filter input to its right.
+        // Fixed top bar: component-filter dropdown + filter input + expand-all.
         let top = build_top_bar(commands, fonts);
+        // Fixed Add Component row, pinned directly under the top bar.
+        let add_row = build_add_row(commands, fonts);
         // Scrolling component list (`InspectorRoot` is despawned/repopulated by
         // `rebuild_inspector`; the bars around it are stable).
         let content = commands
@@ -122,9 +124,7 @@ pub fn register_native_inspector(app: &mut App) {
             ))
             .id();
         let scroll = scroll_view(commands, content);
-        // Fixed bottom Add Component button.
-        let bottom = build_bottom_add(commands, fonts);
-        commands.entity(root).add_children(&[top, scroll, bottom]);
+        commands.entity(root).add_children(&[top, add_row, scroll]);
         root
     });
     app.add_systems(
@@ -257,7 +257,7 @@ fn present_components(world: &World, entity: Entity) -> Vec<(&'static str, &'sta
 
 /// The fixed top bar: a component-filter dropdown on the left + the
 /// component-filter text input to its right. (The Add Component button lives in
-/// the bottom bar.) Hidden when nothing is selected.
+/// the row directly below.) Hidden when nothing is selected.
 fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // A stable host for the component-filter dropdown. The dropdown itself is
     // (re)built by `rebuild_inspector` from the components currently on the
@@ -401,9 +401,9 @@ fn build_filter_dropdown(
     dd
 }
 
-/// The fixed bottom bar: a full-width Add Component button. Hidden when nothing
-/// is selected.
-fn build_bottom_add(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// The fixed Add Component row, pinned under the top bar: a full-width Add
+/// Component button. Hidden when nothing is selected.
+fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let btn = add_bar(commands, fonts);
     let bar = commands
         .spawn((
@@ -413,7 +413,7 @@ fn build_bottom_add(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 flex_shrink: 0.0,
                 ..default()
             },
-            Name::new("inspector-bottom-bar"),
+            Name::new("inspector-add-row"),
         ))
         .id();
     commands.entity(bar).add_child(btn);
