@@ -161,6 +161,19 @@ How routing works:
 
 See the [Post-Processing](/docs/r1-alpha5/rendering/post-processing) page for the full effect catalog (~53 effects) and their fields.
 
+## Auto Exposure (keeping night dark)
+
+`AutoExposureSettings` wraps Bevy's histogram auto-exposure: it meters the scene and animates the camera's exposure so the average pixel lands on middle gray (eye adaptation). Because it *always* targets middle gray, a genuinely dark night scene gets **brightened** — physically faithful, but usually not the night look you want.
+
+Two extra knobs shape the response without touching daytime, via Bevy's exposure-compensation curve:
+
+| Field | Meaning |
+|---|---|
+| **Keep Night Dark** (`keep_dark_strength`, 0–1) | How much dark scenes resist being lifted to middle gray. `0` = vanilla Bevy AE (night washes out); `1` ≈ the metered darkness is preserved (night stays night). Default `0.7`. |
+| **Keep-Dark Pivot (EV)** (`keep_dark_pivot_ev`) | The metered brightness (EV-100) at/above which **no** compensation is applied, so daytime is left exactly as before. Compensation ramps in below it. Default `2.0`. Raise it if nights still wash out; lower it if dusk/interiors get too dark. |
+
+The curve is flat (zero) from the pivot upward and ramps negative below it, so the day exposure you already like is unchanged while night is pulled back down. Both knobs are live — tune them in the inspector (Auto Exposure section) without rebuilding.
+
 ## Camera shake from scripts
 
 The one camera-facing script function is `screen_shake(intensity, duration)`. It is registered in **both** backends:

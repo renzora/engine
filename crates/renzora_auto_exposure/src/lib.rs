@@ -9,6 +9,14 @@
 //! would max out exposure when the scene was mostly empty, blowing the
 //! frame to white).
 //!
+//! Because AE *always* targets middle gray, a genuinely dark night scene
+//! gets *brightened* (washed out) — correct "eye adaptation", but not what
+//! you want for night. The fix is Bevy's exposure-**compensation curve**:
+//! it maps metered scene brightness → an exposure offset. We build one that
+//! is flat (no change) for bright daytime metering and ramps negative for
+//! dark metering, so night stays dark while day is untouched. See
+//! [`build_compensation_curve`].
+//!
 //! This crate just authors user-facing settings on a `WorldEnvironment`
 //! source entity and routes them onto every camera via `EffectRouting`.
 //! The compute shader, smoothing, percentile filter, and exponential
@@ -19,7 +27,10 @@
 //! enabling AutoExposureSettings on any entity Just Works.
 
 use bevy::camera::Exposure;
-use bevy::post_process::auto_exposure::{AutoExposure, AutoExposurePlugin as BevyAePlugin};
+use bevy::math::{cubic_splines::LinearSpline, vec2};
+use bevy::post_process::auto_exposure::{
+    AutoExposure, AutoExposureCompensationCurve, AutoExposurePlugin as BevyAePlugin,
+};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +59,28 @@ pub struct AutoExposureSettings {
     /// this band animate exponentially (slow, smooth); larger changes
     /// use the linear `speed_*` rates. 1.5 = Bevy default.
     pub exponential_transition_distance: f32,
+    /// How strongly to keep dark (night) scenes dark instead of letting
+    /// auto-exposure lift them to middle gray. `0.0` = pure Bevy AE (a night
+    /// scene is brightened — washed out); `1.0` ≈ the metered darkness is
+    /// preserved (night stays night). Implemented as the exposure-compensation
+    /// curve: flat (no change) at/above `keep_dark_pivot_ev` so daytime is
+    /// untouched, ramping negative below it.
+    #[serde(default = "default_keep_dark_strength")]
+    pub keep_dark_strength: f32,
+    /// Metered scene brightness (EV-100, the histogram average) at/above which
+    /// NO dark-compensation is applied — daytime stays exactly as Bevy AE
+    /// renders it. Below it, compensation ramps in. Raise it if nights still
+    /// wash out; lower it if dusk / interiors get too dark.
+    #[serde(default = "default_keep_dark_pivot")]
+    pub keep_dark_pivot_ev: f32,
     pub enabled: bool,
+}
+
+fn default_keep_dark_strength() -> f32 {
+    0.7
+}
+fn default_keep_dark_pivot() -> f32 {
+    2.0
 }
 
 impl Default for AutoExposureSettings {
@@ -64,8 +96,74 @@ impl Default for AutoExposureSettings {
             filter_low: 0.10,
             filter_high: 0.90,
             exponential_transition_distance: 1.5,
+            keep_dark_strength: default_keep_dark_strength(),
+            keep_dark_pivot_ev: default_keep_dark_pivot(),
             enabled: true,
         }
+    }
+}
+
+/// Cached compensation-curve asset, rebuilt only when the curve-shaping
+/// settings change (so we don't churn an asset every frame).
+#[derive(Resource, Default)]
+struct AeCompensation {
+    handle: Handle<AutoExposureCompensationCurve>,
+    key: Option<(u32, u32, u32, u32)>,
+}
+
+/// (Re)build the exposure-compensation curve when its shaping inputs change.
+///
+/// The curve maps metered scene log-luminance (EV-100, x) → exposure
+/// compensation in F-stops (y): flat `0` from `keep_dark_pivot_ev` upward
+/// (daytime metering untouched), ramping down to `-strength*(pivot-range_min)`
+/// at the dark end so dark/night scenes aren't lifted to middle gray. A larger
+/// `keep_dark_strength` darkens night harder; a higher `keep_dark_pivot_ev`
+/// pulls more of the dim range down.
+fn build_compensation_curve(
+    sources: Query<&AutoExposureSettings>,
+    mut curves: ResMut<Assets<AutoExposureCompensationCurve>>,
+    mut comp: ResMut<AeCompensation>,
+) {
+    // One AE source drives the look (the World Environment); prefer an enabled
+    // one, else just the first present.
+    let Some(s) = sources
+        .iter()
+        .find(|s| s.enabled)
+        .or_else(|| sources.iter().next())
+    else {
+        return;
+    };
+    let key = (
+        s.keep_dark_strength.to_bits(),
+        s.keep_dark_pivot_ev.to_bits(),
+        s.range_min.to_bits(),
+        s.range_max.to_bits(),
+    );
+    if comp.key == Some(key) {
+        return;
+    }
+
+    // A SINGLE linear segment from `(range_min, comp_lo)` up to `(pivot, 0)`.
+    // The compensation curve clamps metered values to its x-range, so this one
+    // segment already gives the "flat above the pivot, ramp below" behaviour:
+    // metered EV ≥ pivot → 0 (daytime untouched), metered EV ≤ range_min →
+    // comp_lo (night kept dark), linear in between. One segment is also what
+    // keeps `from_curve` happy — its discontinuity check compares consecutive
+    // segment joins with *exact float equality*, which a multi-segment curve
+    // (off-round compensation values) trips with `DiscontinuityFound`.
+    let lo = s.range_min;
+    let top = s.range_max.max(lo + 0.002);
+    let pivot = s.keep_dark_pivot_ev.clamp(lo + 0.001, top);
+    let strength = s.keep_dark_strength.max(0.0);
+    let comp_lo = -strength * (pivot - lo);
+    let points = vec![vec2(lo, comp_lo), vec2(pivot, 0.0)];
+
+    match AutoExposureCompensationCurve::from_curve(LinearSpline::new(points)) {
+        Ok(curve) => {
+            comp.handle = curves.add(curve);
+            comp.key = Some(key);
+        }
+        Err(e) => warn!("[auto_exposure] compensation curve build failed: {e:?}"),
     }
 }
 
@@ -77,13 +175,17 @@ fn sync_auto_exposure(
     mut commands: Commands,
     sources: Query<(Entity, Ref<AutoExposureSettings>)>,
     routing: Res<renzora::EffectRouting>,
+    comp: Res<AeCompensation>,
 ) {
     let routing_changed = routing.is_changed();
+    // Re-apply when the compensation curve was rebuilt too, otherwise a tuning
+    // change wouldn't reach the camera until the settings themselves changed.
+    let comp_changed = comp.is_changed();
     for (target, source_list) in routing.iter() {
         let mut found = false;
         for &src in source_list {
             if let Ok((_, settings)) = sources.get(src) {
-                if !routing_changed && !settings.is_changed() {
+                if !routing_changed && !comp_changed && !settings.is_changed() {
                     found = true;
                     break;
                 }
@@ -94,6 +196,7 @@ fn sync_auto_exposure(
                         speed_brighten: settings.speed_brighten,
                         speed_darken: settings.speed_darken,
                         exponential_transition_distance: settings.exponential_transition_distance,
+                        compensation_curve: comp.handle.clone(),
                         ..default()
                     });
                 } else {
@@ -190,17 +293,17 @@ impl Plugin for AutoExposurePlugin {
         if !app.is_plugin_added::<BevyAePlugin>() {
             app.add_plugins(BevyAePlugin);
         }
+        // The compensation-curve asset is normally registered by Bevy's AE
+        // plugin; init it defensively (idempotent) so building a curve can't
+        // panic on a missing `Assets` resource.
+        app.init_asset::<AutoExposureCompensationCurve>();
         app.init_resource::<renzora::core::CameraExposureState>();
+        app.init_resource::<AeCompensation>();
         app.register_type::<AutoExposureSettings>();
-        app.add_systems(
-            Update,
-            (
-                sync_auto_exposure,
-                cleanup_auto_exposure,
-                sync_exposure,
-                mirror_camera_ev,
-            ),
-        );
+        // Build the curve before applying AE so a freshly rebuilt curve reaches
+        // the camera the same frame.
+        app.add_systems(Update, (build_compensation_curve, sync_auto_exposure).chain());
+        app.add_systems(Update, (cleanup_auto_exposure, sync_exposure, mirror_camera_ev));
     }
 }
 

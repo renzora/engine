@@ -47,6 +47,8 @@ fn inspector_entry() -> InspectorEntry {
             renzora::float_field!("Filter Low (%)", AutoExposureSettings, filter_low, 0.01, 0.0, 0.5),
             renzora::float_field!("Filter High (%)", AutoExposureSettings, filter_high, 0.01, 0.5, 1.0),
             renzora::float_field!("Anti-Jitter Band", AutoExposureSettings, exponential_transition_distance, 0.05, 0.0, 5.0),
+            renzora::float_field!("Keep Night Dark", AutoExposureSettings, keep_dark_strength, 0.05, 0.0, 1.0),
+            renzora::float_field!("Keep-Dark Pivot (EV)", AutoExposureSettings, keep_dark_pivot_ev, 0.1, -8.0, 16.0),
         ],
     }
 }
