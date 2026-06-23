@@ -374,7 +374,19 @@ impl<T: PostProcessEffect> EffectHandler for TypedEffectHandler<T> {
         view_target: &ViewTarget,
         view_entity: Entity,
     ) -> Result<(), ()> {
-        // Skip if this view doesn't have the effect component
+        // Skip if this view doesn't actually carry the effect component. We gate
+        // on `T` ITSELF — not just `DynamicUniformIndex<T>` — because Bevy 0.19's
+        // retained render world keeps the uniform index (and the per-effect
+        // `ComponentUniforms<T>` GPU buffer) alive after the component has been
+        // extracted away. Gating only on the stale index kept this pass running
+        // with frozen uniforms after the user removed the effect: a "ghost" of
+        // the dead effect composited over the live frame, flickering as the stale
+        // buffer's binding came and went. The extracted `T` *is* cleared when the
+        // source is gone (verified: render-world count drops to 0), so it's the
+        // reliable presence signal.
+        if world.get::<T>(view_entity).is_none() {
+            return Ok(());
+        }
         let Some(settings_index) = world.get::<DynamicUniformIndex<T>>(view_entity) else {
             return Ok(());
         };
