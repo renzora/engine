@@ -16,7 +16,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    bind_text_input, checkbox, drag_value, dropdown, radio_group, scroll_area, spinner, text_input, OverlaySurface,
+    checkbox, drag_value, dropdown, radio_group, scroll_area, spinner, OverlaySurface,
 };
 
 use renzora_import::settings::UpAxis;
@@ -32,10 +32,12 @@ pub(crate) fn register(app: &mut App) {
         Update,
         (
             manage_import_modal,
+            manage_import_toast,
             file_browse_click,
-            dest_browse_click,
+            dest_folder_click,
             import_click,
             cancel_click,
+            toast_dismiss_click,
             remove_file_click,
         ),
     );
@@ -47,8 +49,10 @@ pub(crate) fn register(app: &mut App) {
 struct ImportRoot;
 #[derive(Component)]
 struct FileBrowseBtn;
-#[derive(Component)]
-struct DestBrowseBtn;
+/// A row in the destination folder tree. Holds the project-relative path it
+/// targets (forward-slashed, `""` = project root).
+#[derive(Component, Clone)]
+struct DestFolderRow(String);
 #[derive(Component)]
 struct ImportBtn;
 #[derive(Component)]
@@ -59,6 +63,12 @@ struct RemoveFileBtn(PathBuf);
 struct FilesContainer;
 #[derive(Component)]
 struct LogContainer;
+/// Root of the corner progress toast shown after the modal closes on Import.
+#[derive(Component)]
+struct ToastRoot;
+/// The toast's close/dismiss button.
+#[derive(Component)]
+struct ToastDismissBtn;
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -93,11 +103,17 @@ struct Init {
     scale: f32,
     up_axis: usize,
     layout: usize,
-    target_dir: String,
+    /// Project directory tree for the destination picker: (rel_path, depth, name),
+    /// `rel_path` forward-slashed and relative to the project root (`""` = root).
+    dest_folders: Vec<(String, usize, String)>,
 }
 impl Init {
     fn read(world: &World) -> Self {
         let s = world.resource::<ImportOverlayState>();
+        let dest_folders = world
+            .get_resource::<renzora::core::CurrentProject>()
+            .map(|p| scan_dest_dirs(&p.path))
+            .unwrap_or_default();
         Self {
             scale: s.settings.scale,
             up_axis: match s.settings.up_axis {
@@ -109,7 +125,7 @@ impl Init {
                 ImportLayout::PerFileFolder => 0,
                 ImportLayout::Combined => 1,
             },
-            target_dir: s.target_directory.clone(),
+            dest_folders,
         }
     }
 }
@@ -204,31 +220,42 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
 fn build_files(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
     let sec = section(commands);
     let head = section_label(commands, fonts, "files", "Files");
-    // File list frame.
-    let list = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }, FilesContainer)).id();
-    keyed_list(commands, list, files_snapshot);
-    let scroll = scroll_area(commands, list, 120.0);
+    // File list frame — a column so the list, the empty hint and the
+    // drop/browse row all stack *inside* the bordered card.
     let frame = commands
         .spawn((
-            Node { width: Val::Percent(100.0), padding: UiRect::all(Val::Px(8.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(8.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(rgb(border())),
         ))
         .id();
+
+    let list = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }, FilesContainer)).id();
+    keyed_list(commands, list, files_snapshot);
+    let scroll = scroll_area(commands, list, 120.0);
     commands.entity(frame).add_child(scroll);
     // Empty hint (shown when no files).
     let empty = txt(commands, fonts, "No files added yet", 11.0, text_muted());
     bind_display(commands, empty, |w| w.get_resource::<ImportOverlayState>().is_some_and(|s| s.pending_files.is_empty()));
     commands.entity(frame).add_child(empty);
 
-    // Drop hint + Browse.
-    let addrow = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), margin: UiRect::top(Val::Px(4.0)), ..default() }).id();
+    // Drop hint + Browse — now the last row inside the card.
+    let addrow = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
     let hint = icon_label(commands, fonts, "cloud-arrow-down", "Drop files here or", text_muted(), 11.0);
     let browse = pill_button(commands, fonts, "folder-open", "Browse...");
     commands.entity(browse).insert(FileBrowseBtn);
     commands.entity(addrow).add_children(&[hint, browse]);
+    commands.entity(frame).add_child(addrow);
 
-    commands.entity(sec).add_children(&[head, frame, addrow]);
+    commands.entity(sec).add_children(&[head, frame]);
     commands.entity(parent).add_child(sec);
 }
 
@@ -289,12 +316,34 @@ fn build_destination(commands: &mut Commands, fonts: &EmberFonts, parent: Entity
     let sec = section(commands);
     let head = section_label(commands, fonts, "folder-open", "Destination");
 
-    let path_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-    let prefix = txt(commands, fonts, "assets/", 12.0, text_muted());
-    let input = text_input(commands, &fonts.ui, "e.g. models/imported", &init.target_dir);
-    commands.entity(input).insert(Node { flex_grow: 1.0, height: Val::Px(28.0), align_items: AlignItems::Center, padding: UiRect::horizontal(Val::Px(8.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() });
-    bind_text_input(commands, input, |w| w.get_resource::<ImportOverlayState>().map(|s| s.target_directory.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ImportOverlayState>() { s.target_directory = v; } });
-    commands.entity(path_row).add_children(&[prefix, input]);
+    // Folder picker: the project's own directory tree (mirrors the marketplace
+    // install flow). Clicking a row sets `target_directory` to that
+    // project-relative path. The project root is the first, always-present row.
+    let tree = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), ..default() })
+        .id();
+    let mut rows = vec![dest_folder_row(commands, fonts, String::new(), 0, "assets (project root)")];
+    for (rel, depth, name) in &init.dest_folders {
+        rows.push(dest_folder_row(commands, fonts, rel.clone(), *depth + 1, name));
+    }
+    commands.entity(tree).add_children(&rows);
+    let tree_scroll = scroll_area(commands, tree, 150.0);
+    let tree_box = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                overflow: Overflow::clip(),
+                padding: UiRect::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(section_bg())),
+            BorderColor::all(rgb(border())),
+        ))
+        .id();
+    commands.entity(tree_box).add_child(tree_scroll);
 
     let org = txt(commands, fonts, "Organize", 12.0, text_muted());
     let radios = radio_group(commands, &fonts.ui, &["Separate folder per file", "Combine all files into destination"], init.layout);
@@ -308,11 +357,75 @@ fn build_destination(commands: &mut Commands, fonts: &EmberFonts, parent: Entity
         |w, v: &usize| { if let Some(mut s) = w.get_resource_mut::<ImportOverlayState>() { s.layout = if *v == 1 { ImportLayout::Combined } else { ImportLayout::PerFileFolder }; } },
     );
 
-    let dest_browse = pill_button(commands, fonts, "folder", "Browse");
-    commands.entity(dest_browse).insert(DestBrowseBtn);
-
-    commands.entity(sec).add_children(&[head, path_row, org, radios, dest_browse]);
+    commands.entity(sec).add_children(&[head, tree_box, org, radios]);
     commands.entity(parent).add_child(sec);
+}
+
+/// One selectable row in the destination folder tree. `rel` is the
+/// project-relative target path (`""` = project root); selection highlights the
+/// row whose path matches `ImportOverlayState::target_directory`.
+fn dest_folder_row(commands: &mut Commands, fonts: &EmberFonts, rel: String, depth: usize, name: &str) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(22.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::left(Val::Px(8.0 + depth as f32 * 14.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            DestFolderRow(rel.clone()),
+            hover_cursor(),
+        ))
+        .id();
+    let p = rel.clone();
+    bind_bg(commands, row, move |w| {
+        let selected = w.get_resource::<ImportOverlayState>().map(|s| s.target_directory == p).unwrap_or(false);
+        if selected {
+            rgb(accent()).with_alpha(0.20)
+        } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+            rgb(hover_bg())
+        } else {
+            Color::NONE
+        }
+    });
+    let icon = icon_text(commands, &fonts.phosphor, "folder", text_muted(), 12.0);
+    commands.entity(icon).insert(FocusPolicy::Pass);
+    let lbl = commands.spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    commands.entity(row).add_children(&[icon, lbl]);
+    row
+}
+
+/// Recursively list the project's directories (two levels deep) as
+/// project-relative forward-slashed paths, skipping hidden / build / dependency
+/// folders. Mirrors the marketplace install picker's `scan_dirs`.
+fn scan_dest_dirs(root: &std::path::Path) -> Vec<(String, usize, String)> {
+    fn rec(root: &std::path::Path, dir: &std::path::Path, depth: usize, max: usize, out: &mut Vec<(String, usize, String)>) {
+        if depth > max || out.len() > 300 {
+            return;
+        }
+        let Ok(read) = std::fs::read_dir(dir) else { return };
+        let mut entries: Vec<PathBuf> = read.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        entries.sort();
+        for path in entries {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if name.starts_with('.') || name == "target" || name == "node_modules" {
+                continue;
+            }
+            let rel = path.strip_prefix(root).ok().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            out.push((rel, depth, name));
+            rec(root, &path, depth + 1, max, out);
+        }
+    }
+    let mut out = Vec::new();
+    rec(root, root, 0, 1, &mut out);
+    out
 }
 
 fn build_progress(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
@@ -472,6 +585,13 @@ fn import_click(q: Query<&Interaction, (With<ImportBtn>, Changed<Interaction>)>,
         commands.queue(|w: &mut World| {
             if can_import(w) {
                 run_import(w);
+                // Dismiss the modal and hand progress off to the corner toast.
+                // We keep `active_task` / `progress` / `pending_files` intact so
+                // the toast system can keep polling and rendering the bar.
+                let mut s = w.resource_mut::<ImportOverlayState>();
+                s.visible = false;
+                s.toast_active = true;
+                s.toast_dismiss_at = None;
             }
         });
     }
@@ -521,26 +641,153 @@ fn do_file_browse(world: &mut World) {
     }
 }
 
-fn dest_browse_click(q: Query<&Interaction, (With<DestBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
-    if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.queue(do_dest_browse);
+/// Click a destination folder row → it becomes the import target directory.
+fn dest_folder_click(q: Query<(&Interaction, &DestFolderRow), Changed<Interaction>>, mut state: Option<ResMut<ImportOverlayState>>) {
+    let Some(state) = state.as_mut() else { return };
+    for (i, row) in &q {
+        if *i == Interaction::Pressed && state.target_directory != row.0 {
+            state.target_directory = row.0.clone();
+        }
     }
 }
 
-fn do_dest_browse(world: &mut World) {
-    let root = world.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone());
-    let mut dlg = rfd::FileDialog::new().set_title("Select destination folder");
-    if let Some(root) = &root {
-        dlg = dlg.set_directory(root);
+// ── Corner progress toast ──────────────────────────────────────────────────────
+
+/// Owns the corner progress toast: polls the running import, spawns/despawns the
+/// toast entity, and auto-dismisses a few seconds after the import finishes.
+fn manage_import_toast(world: &mut World) {
+    let active = world.resource::<ImportOverlayState>().toast_active;
+    if active {
+        poll_import_task(world); // keep the bar moving while the modal is closed
     }
-    let Some(dir) = dlg.pick_folder() else { return };
-    let rel = root
-        .as_ref()
-        .and_then(|r| dir.strip_prefix(r).ok())
-        .map(|p| p.to_path_buf())
-        .unwrap_or(dir);
-    let rel = rel.to_string_lossy().replace('\\', "/");
-    world.resource_mut::<ImportOverlayState>().target_directory = rel;
+
+    // Once the import reaches a terminal state, arm a short auto-dismiss timer
+    // so the success/error toast lingers briefly before clearing itself.
+    if active {
+        let terminal = matches!(
+            world.resource::<ImportOverlayState>().progress,
+            ImportProgress::Done(_) | ImportProgress::Error(_)
+        );
+        if terminal {
+            let now = world.resource::<Time>().elapsed_secs_f64();
+            let dismiss_at = world.resource::<ImportOverlayState>().toast_dismiss_at;
+            match dismiss_at {
+                None => world.resource_mut::<ImportOverlayState>().toast_dismiss_at = Some(now + 5.0),
+                Some(t) if now >= t => {
+                    let mut s = world.resource_mut::<ImportOverlayState>();
+                    s.toast_active = false;
+                    s.toast_dismiss_at = None;
+                    s.progress = ImportProgress::Idle;
+                    s.pending_files.clear();
+                    s.log_entries.clear();
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let want = world.resource::<ImportOverlayState>().toast_active;
+    let mut q = world.query_filtered::<Entity, With<ToastRoot>>();
+    let existing: Vec<Entity> = q.iter(world).collect();
+    if want && existing.is_empty() {
+        let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
+        let mut queue = CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            spawn_toast(&mut commands, &fonts);
+        }
+        queue.apply(world);
+    } else if !want && !existing.is_empty() {
+        for e in existing {
+            world.entity_mut(e).despawn();
+        }
+    }
+}
+
+fn spawn_toast(commands: &mut Commands, fonts: &EmberFonts) {
+    // Fixed bottom-right card, above the viewport chrome.
+    let root = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(16.0),
+                bottom: Val::Px(16.0),
+                width: Val::Px(320.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(8.0),
+                padding: UiRect::all(Val::Px(12.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(panel_bg())),
+            BorderColor::all(rgb(border())),
+            GlobalZIndex(9200),
+            OverlaySurface,
+            ToastRoot,
+            Name::new("import-toast"),
+        ))
+        .id();
+
+    // Header: title + dismiss ×.
+    let header = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
+    let title = icon_label(commands, fonts, "download-simple", "Importing models", text_primary(), 12.0);
+    let close = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), ToastDismissBtn, hover_cursor())).id();
+    let close_x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
+    commands.entity(close_x).insert(FocusPolicy::Pass);
+    commands.entity(close).add_child(close_x);
+    commands.entity(header).add_children(&[title, close]);
+    commands.entity(root).add_child(header);
+
+    // Working: label + progress bar.
+    let working = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() }).id();
+    let toprow = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+    let spin = spinner(commands);
+    let plabel = txt(commands, fonts, "", 11.0, text_muted());
+    bind_text(commands, plabel, |w| match w.get_resource::<ImportOverlayState>().map(|s| s.progress.clone()) {
+        Some(ImportProgress::Working { current, total, label }) => format!("[{current}/{total}] {label}"),
+        _ => "Starting…".to_string(),
+    });
+    commands.entity(toprow).add_children(&[spin, plabel]);
+    let track = commands.spawn((Node { width: Val::Percent(100.0), height: Val::Px(6.0), overflow: Overflow::clip(), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(rgb(section_bg())))).id();
+    let fill = commands.spawn((Node { width: Val::Percent(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(rgb(accent())))).id();
+    bind_with(commands, fill, progress_fraction, |w, target, v: &OrderedF32| { if let Some(mut n) = w.get_mut::<Node>(target) { n.width = Val::Percent((v.0 * 100.0).clamp(0.0, 100.0)); } });
+    commands.entity(track).add_child(fill);
+    commands.entity(working).add_children(&[toprow, track]);
+    bind_display(commands, working, |w| matches!(w.get_resource::<ImportOverlayState>().map(|s| &s.progress), Some(ImportProgress::Working { .. }) | Some(ImportProgress::Idle)));
+    commands.entity(root).add_child(working);
+
+    // Done / Error result lines.
+    let (done, done_msg) = icon_msg(commands, fonts, "check-circle", GREEN);
+    bind_text(commands, done_msg, |w| match w.get_resource::<ImportOverlayState>().map(|s| s.progress.clone()) {
+        Some(ImportProgress::Done(m)) => m,
+        _ => String::new(),
+    });
+    bind_display(commands, done, |w| matches!(w.get_resource::<ImportOverlayState>().map(|s| &s.progress), Some(ImportProgress::Done(_))));
+    commands.entity(root).add_child(done);
+
+    let (err, err_msg) = icon_msg(commands, fonts, "warning", RED);
+    bind_text(commands, err_msg, |w| match w.get_resource::<ImportOverlayState>().map(|s| s.progress.clone()) {
+        Some(ImportProgress::Error(m)) => m,
+        _ => String::new(),
+    });
+    bind_display(commands, err, |w| matches!(w.get_resource::<ImportOverlayState>().map(|s| &s.progress), Some(ImportProgress::Error(_))));
+    commands.entity(root).add_child(err);
+}
+
+fn toast_dismiss_click(q: Query<&Interaction, (With<ToastDismissBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ImportOverlayState>>) {
+    let Some(state) = state.as_mut() else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        // Hide the toast. A still-running import keeps writing in the background;
+        // dismissing only removes the notification.
+        state.toast_active = false;
+        state.toast_dismiss_at = None;
+        if matches!(state.progress, ImportProgress::Done(_) | ImportProgress::Error(_)) {
+            state.progress = ImportProgress::Idle;
+            state.pending_files.clear();
+            state.log_entries.clear();
+        }
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

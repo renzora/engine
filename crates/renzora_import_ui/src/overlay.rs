@@ -85,6 +85,14 @@ pub struct ImportOverlayState {
     pub log_entries: Vec<ImportLogEntry>,
     /// Background import task (if running).
     pub(crate) active_task: Option<ImportTask>,
+    /// True once an import has been launched from the overlay and the modal has
+    /// been dismissed into the corner progress toast. While set, the toast
+    /// system owns polling + lifecycle (so the silent drag-drop auto-import path
+    /// in `lib.rs` stays out of the way).
+    pub(crate) toast_active: bool,
+    /// Wall-clock time (`Time::elapsed_secs_f64`) at which a finished toast
+    /// should auto-dismiss. Set when the import reaches a terminal state.
+    pub(crate) toast_dismiss_at: Option<f64>,
 }
 
 impl Default for ImportOverlayState {
@@ -98,6 +106,8 @@ impl Default for ImportOverlayState {
             progress: ImportProgress::Idle,
             log_entries: Vec::new(),
             active_task: None,
+            toast_active: false,
+            toast_dismiss_at: None,
         }
     }
 }
@@ -210,6 +220,8 @@ pub(crate) fn close_overlay(world: &mut World) {
     state.progress = ImportProgress::Idle;
     state.log_entries.clear();
     state.active_task = None;
+    state.toast_active = false;
+    state.toast_dismiss_at = None;
 }
 
 pub(crate) fn run_import(world: &mut World) {

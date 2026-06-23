@@ -115,6 +115,31 @@ Notes:
 - **`.blend`** is not parsed in-process — the importer invokes a locally installed Blender via `std::process::Command`, located through `BLENDER_PATH`, common install dirs, or `PATH`. If Blender isn't installed, `.blend` import fails.
 - **`.bvh`** carries no geometry: its `convert()` always errors so the animation-extraction fallback runs instead, pulling clips out via `extract_animations_from_bvh`.
 
+### The import overlay (`renzora_import_ui`)
+
+Dropping a model onto the editor (or using the asset browser's **Import** button)
+opens the import modal. Its layout:
+
+- **Files** — the dropped/added files list, with the **Drop files here or
+  Browse…** affordance sitting *inside* the bordered card.
+- **Import Settings / Extract / Mesh Optimization** — scale, up-axis, and the
+  per-pass toggles fed into `ImportSettings`.
+- **Destination** — a **folder tree of the project's own directories** (the same
+  picker style as the marketplace install flow). Click a folder to set the
+  import target; the first row, *assets (project root)*, targets the project
+  root. The **Organize** radios choose a per-file `<stem>/` folder or a combined
+  destination.
+
+Clicking **Import** **dismisses the modal immediately** and hands progress off to
+a **corner toast** (bottom-right): a live `[done/total]` label + progress bar
+while the background worker runs, then a success/error line that auto-dismisses
+after a few seconds (or via its × button). The import keeps running in the
+background regardless of whether the toast is dismissed.
+
+> Drag-and-drop with **Auto-import on drop** enabled (the default) skips the
+> modal entirely and imports silently; the toast flow is the explicit
+> Import-button path.
+
 The public surface (`renzora_import`) includes `detect_format`, `supported_extensions`, `ModelFormat`, `convert_to_glb` / `convert_to_glb_with_progress`, `ImportSettings`, `UpAxis`, `optimize_glb`, and `compact_glb`, plus the `extract_animations_from_*` helpers.
 
 ```rust

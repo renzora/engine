@@ -100,7 +100,11 @@ fn import_orchestrate_system(world: &mut World) {
     // and the user has opted into auto-import. Skipped when the overlay is
     // explicitly visible (the user clicked Import and wants to pick files).
     let overlay_visible = world.resource::<overlay::ImportOverlayState>().visible;
-    if auto_import && !overlay_visible {
+    // An explicit overlay → toast import owns its own polling + terminal
+    // cleanup; staying out keeps the auto-import path from wiping the toast's
+    // Done/Error message the moment it finishes.
+    let toast_active = world.resource::<overlay::ImportOverlayState>().toast_active;
+    if auto_import && !overlay_visible && !toast_active {
         overlay::poll_import_task(world);
 
         let should_start = {
