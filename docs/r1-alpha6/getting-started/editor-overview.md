@@ -99,9 +99,9 @@ What you can do here:
 - **Click** to select; `Ctrl+Click` toggles, `Shift+Click` extends the range.
 - **Left-drag** in empty space to box-select. Drag near the top or bottom edge and the grid **auto-scrolls** so the selection can reach files that are off-screen.
 - **Drag** a file onto a folder to move it, or out into the viewport to spawn it.
-- **Right-click** any item for **Rename**, Duplicate, Favorite, Reveal in Explorer, and Delete.
+- **Right-click** any item for **Rename**, Duplicate, Favorite, Reveal in Explorer, Delete — and a color-coded **create-new** section (the same one the **Add** button opens) so you can make a new asset without reaching for the toolbar. New files land in the current folder.
 - To rename a file or folder inline, press **`F2`**, **click its name** while it's already selected, or pick **Rename** from the right-click menu. The whole name starts highlighted, so typing (or `Delete`) replaces it; press `Enter` to confirm or `Esc` to cancel.
-- Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles.
+- Use the toolbar to **Add** a new asset, **Import**, create a **New Folder**, change the **sort** order, switch between **grid and list** views, and zoom the tiles. The **Add** menu (and the right-click menu) creates a **Material**, **Blueprint**, **Lua Script**, **Rhai Script**, **Particle**, **Template** (HTML markup UI), or **Scene (BSN)** — each row color-coded to match its file type's accent on the tiles.
 
 ## Scaling the UI
 

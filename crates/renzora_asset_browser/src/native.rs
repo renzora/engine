@@ -345,9 +345,23 @@ enum NewAsset {
     Lua,
     Rhai,
     Particle,
+    Template,
+    Bsn,
 }
 
 impl NewAsset {
+    /// The creatable file types offered by the Add button + right-click menu,
+    /// in display order. `Folder` is excluded — it has its own toolbar button.
+    const MENU: [NewAsset; 7] = [
+        NewAsset::Material,
+        NewAsset::Blueprint,
+        NewAsset::Lua,
+        NewAsset::Rhai,
+        NewAsset::Particle,
+        NewAsset::Template,
+        NewAsset::Bsn,
+    ];
+
     fn filename(self) -> &'static str {
         match self {
             NewAsset::Folder => "New Folder",
@@ -356,6 +370,8 @@ impl NewAsset {
             NewAsset::Lua => "new_script.lua",
             NewAsset::Rhai => "new_script.rhai",
             NewAsset::Particle => "NewParticle.particle",
+            NewAsset::Template => "NewTemplate.html",
+            NewAsset::Bsn => "NewScene.bsn",
         }
     }
     fn content(self) -> &'static str {
@@ -365,6 +381,47 @@ impl NewAsset {
             NewAsset::Lua => "-- New Lua script\n",
             NewAsset::Rhai => "// New Rhai script\n",
             NewAsset::Particle => "(name: \"New Particle\")",
+            NewAsset::Template => "<template>\n    <node></node>\n</template>\n",
+            // An empty scene = just the interim-BSN header the parser expects.
+            NewAsset::Bsn => "// renzora interim bsn v1\n",
+        }
+    }
+    /// Menu label.
+    fn label(self) -> &'static str {
+        match self {
+            NewAsset::Folder => "Folder",
+            NewAsset::Material => "Material",
+            NewAsset::Blueprint => "Blueprint",
+            NewAsset::Lua => "Lua Script",
+            NewAsset::Rhai => "Rhai Script",
+            NewAsset::Particle => "Particle",
+            NewAsset::Template => "Template",
+            NewAsset::Bsn => "Scene (BSN)",
+        }
+    }
+    /// Phosphor icon — mirrors each type's editor opener in [`open_action`].
+    fn icon(self) -> &'static str {
+        match self {
+            NewAsset::Folder => "folder-plus",
+            NewAsset::Material => "palette",
+            NewAsset::Blueprint => "blueprint",
+            NewAsset::Lua | NewAsset::Rhai | NewAsset::Template => "code",
+            NewAsset::Particle => "sparkle",
+            NewAsset::Bsn => "film-slate",
+        }
+    }
+    /// Accent color — matches the tile's type accent in [`asset_type_info`] so
+    /// the menu, the tile strip and the subtitle all read as one color language.
+    fn color(self) -> (u8, u8, u8) {
+        match self {
+            NewAsset::Folder => (235, 200, 120),
+            NewAsset::Material => (0, 200, 130),
+            NewAsset::Blueprint => (100, 180, 255),
+            NewAsset::Lua => (120, 170, 255),
+            NewAsset::Rhai => (130, 230, 180),
+            NewAsset::Particle => (230, 160, 90),
+            NewAsset::Template => (230, 120, 90),
+            NewAsset::Bsn => (115, 191, 242),
         }
     }
     fn is_folder(self) -> bool {
@@ -912,6 +969,12 @@ fn asset_context_menu(
             let path = path.clone();
             move |_| reveal_in_explorer(&path)
         }),
+    ]);
+    // Same color-coded "create new X" rows as the Add button, so a new asset can
+    // be made straight from the right-click menu (lands in the current folder).
+    kids.push(menu_sep(&mut commands));
+    kids.extend(new_asset_menu_items(&mut commands, &fonts));
+    kids.extend([
         menu_sep(&mut commands),
         menu_item_styled(&mut commands, &fonts, "trash", "Delete", (224, 96, 88), (224, 96, 88), {
             let path = path.clone();
@@ -949,20 +1012,23 @@ fn add_menu_open(
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
     let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
-    let items = [
-        ("palette", "Material", NewAsset::Material),
-        ("blueprint", "Blueprint", NewAsset::Blueprint),
-        ("code", "Lua Script", NewAsset::Lua),
-        ("code", "Rhai Script", NewAsset::Rhai),
-        ("sparkle", "Particle", NewAsset::Particle),
-    ];
-    let kids: Vec<Entity> = items
-        .iter()
-        .map(|&(icon, label, kind)| {
-            menu_item(&mut commands, &fonts, icon, label, move |w| create_asset(w, kind))
-        })
-        .collect();
+    let kids = new_asset_menu_items(&mut commands, &fonts);
     commands.entity(menu).add_children(&kids);
+}
+
+/// The color-coded "create new X" rows shared by the Add button and the
+/// right-click menu. Each row carries the type's accent color (icon + label) so
+/// the menu reads as the same color language as the asset tiles.
+fn new_asset_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
+    NewAsset::MENU
+        .iter()
+        .map(|&kind| {
+            let c = kind.color();
+            menu_item_styled(commands, fonts, kind.icon(), kind.label(), c, c, move |w| {
+                create_asset(w, kind)
+            })
+        })
+        .collect()
 }
 
 #[derive(Component)]
