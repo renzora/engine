@@ -133,6 +133,7 @@ pub fn register_native_inspector(app: &mut App) {
             remove_click,
             add_button_click,
             field_button_click,
+            reset_click,
             lock_click,
             enum_option_click,
             asset_drop,
@@ -819,6 +820,14 @@ struct FieldButton {
     entity: Entity,
 }
 
+/// Marks a per-field reset button so [`reset_click`] writes the field's default.
+#[derive(Component)]
+struct ResetBtn {
+    get_fn: GetFn,
+    set_fn: SetFn,
+    entity: Entity,
+}
+
 fn build_section(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -930,7 +939,60 @@ fn build_field_row(
         ))
         .id();
     build_field_value(commands, fonts, field, entity, value);
+    // A per-field "reset to default" affordance, right of the editable widget(s).
+    // Skipped for kinds that have no value to reset (action buttons, read-only
+    // text) — resetting those would be meaningless.
+    if field_is_resettable(field.kind) {
+        let reset = build_reset_button(commands, fonts, field.get_fn, field.set_fn, entity);
+        commands.entity(value).add_child(reset);
+    }
     renzora_ember::inspector::inspector_row(commands, &fonts.ui, field.name, value)
+}
+
+/// Whether a field carries an editable value worth a reset button. `Button` is a
+/// fire-and-forget action and `ReadOnly` can't be edited, so neither gets one.
+fn field_is_resettable(kind: FieldKind) -> bool {
+    !matches!(kind, FieldKind::Button { .. } | FieldKind::ReadOnly)
+}
+
+/// A small icon button that resets a field to its type-appropriate default
+/// (via [`FieldValue::type_default`]). Reads the field's current value only to
+/// learn its `FieldValue` variant, then writes the matching default back; the
+/// field's two-way binding refreshes the widget on the next frame.
+fn build_reset_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    get_fn: GetFn,
+    set_fn: SetFn,
+    entity: Entity,
+) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                flex_shrink: 0.0,
+                width: Val::Px(18.0),
+                height: Val::Px(18.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            Interaction::default(),
+            FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ResetBtn { get_fn, set_fn, entity },
+            Name::new("field-reset"),
+        ))
+        .id();
+    let glyph = phosphor_glyph(
+        commands,
+        fonts,
+        "arrow-counter-clockwise",
+        renzora_ember::theme::text_muted(),
+        11.0,
+    );
+    commands.entity(btn).add_child(glyph);
+    btn
 }
 
 fn build_field_value(
@@ -1607,6 +1669,27 @@ fn field_button_click(
         }
         let (set_fn, entity) = (btn.set_fn, btn.entity);
         cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Bool(true)));
+    }
+}
+
+/// Reset a field to its default when its reset button is pressed. We read the
+/// current value first only to recover the `FieldValue` variant, then write the
+/// matching `type_default()` back through the field's own `set_fn`.
+fn reset_click(
+    q: Query<(&Interaction, &ResetBtn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (get_fn, set_fn, entity) = (btn.get_fn, btn.set_fn, btn.entity);
+        cmds.push(move |w: &mut World| {
+            if let Some(cur) = get_fn(w, entity) {
+                set_fn(w, entity, cur.type_default());
+            }
+        });
     }
 }
 

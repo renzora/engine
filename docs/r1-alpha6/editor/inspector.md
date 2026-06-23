@@ -55,6 +55,8 @@ Different settings get different controls, picked automatically to match the val
 - **Dropdowns** — pick from a fixed list of choices.
 - **Asset slots** — drag a file from the Asset Browser onto the slot (it only accepts the right file types).
 
+> Every editable field has a small **reset** button (the circular ↺ arrow) just to its right. Click it to snap that field back to its default value — `0` for numbers, off for toggles, empty for text, white for colors, and so on. Action buttons and read-only fields don't show one, since there's nothing to reset.
+
 ## Adding and removing components
 
 - **Add** — click **Add Component** (top or bottom of the panel) to open a list of everything you can add, grouped by category. Type to filter.
