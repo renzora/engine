@@ -118,17 +118,26 @@ Notes:
 ### The import overlay (`renzora_import_ui`)
 
 Dropping a model onto the editor (or using the asset browser's **Import** button)
-opens the import modal. Its layout:
+opens the import modal. It's a **two-pane dialog**: a left sidebar lists the
+sections and a right pane shows the active one, so the modal stays a fixed size
+instead of scrolling through every option at once. The modal always opens on
+**Files**.
 
-- **Files** — the dropped/added files list, with the **Drop files here or
-  Browse…** affordance sitting *inside* the bordered card.
-- **Import Settings / Extract / Mesh Optimization** — scale, up-axis, and the
-  per-pass toggles fed into `ImportSettings`.
+- **Files** — a drag-and-drop card (a **Browse files** button picks from disk)
+  above the queued-file list. The sidebar's Files row carries a count badge of
+  how many files are queued.
+- **Settings** — scale, up-axis, **Flip UVs** and **Generate normals** as
+  label-left / control-right rows, fed into `ImportSettings`.
+- **Extract** — toggles for skeleton/skin, animations, textures and materials.
+- **Optimize** — the mesh-optimization passes (vertex cache / overdraw / vertex
+  fetch).
 - **Destination** — a **folder tree of the project's own directories** (the same
   picker style as the marketplace install flow). Click a folder to set the
   import target; the first row, *assets (project root)*, targets the project
   root. The **Organize** radios choose a per-file `<stem>/` folder or a combined
   destination.
+- **Output** — per-file import results. The sidebar row only appears once an
+  import has logged results.
 
 Clicking **Import** **dismisses the modal immediately** and hands progress off to
 a **corner toast** (bottom-right): a live `[done/total]` label + progress bar

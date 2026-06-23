@@ -1,10 +1,15 @@
 //! Bevy-native (ember) import overlay — the bevy_ui counterpart to the egui
-//! `draw_import_overlay`. Same modal: a Files list, Import Settings, Extract,
-//! Mesh Optimization, Destination, progress + output log, and Import/Cancel
-//! buttons. It edits the same [`ImportOverlayState`] and reuses the worker
-//! (`run_import` / `poll_import_task`). Renders only under the BevyUi backend;
-//! the egui overlay renders under Egui. The egui orchestration (file drops,
-//! ImportRequested, auto-import) keeps running regardless.
+//! `draw_import_overlay`. Two-pane modal: a left sidebar of sections (Files,
+//! Settings, Extract, Optimize, Destination) and a right content pane showing
+//! the active section. It edits the same [`ImportOverlayState`] and reuses the
+//! worker (`run_import` / `poll_import_task`). Renders only under the BevyUi
+//! backend; the egui overlay renders under Egui. The egui orchestration (file
+//! drops, ImportRequested, auto-import) keeps running regardless.
+//!
+//! Why a sidebar instead of one long scroll: the import options span five
+//! unrelated concerns. Stacked vertically they read as an undifferentiated wall
+//! of checkboxes; split into named sections the user sees one focused panel at a
+//! time and the modal stays a fixed, predictable size.
 
 use std::path::PathBuf;
 
@@ -27,14 +32,41 @@ const GREEN: (u8, u8, u8) = (89, 191, 115);
 const RED: (u8, u8, u8) = (239, 68, 68);
 const FILE_ORANGE: (u8, u8, u8) = (255, 170, 100);
 
+/// Which sidebar section is showing in the right pane. Lives in [`ImportNav`] so
+/// the pane-visibility bindings and the nav-row highlights read one source of
+/// truth; reset to [`ImportSection::Files`] each time the modal opens.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImportSection {
+    Files,
+    Settings,
+    Extract,
+    Optimize,
+    Destination,
+    /// Per-file import results. Its nav row is hidden until there are results;
+    /// the modal usually hands an import off to the corner toast, but if one
+    /// runs with the modal open this is where the log lands.
+    Output,
+}
+
+#[derive(Resource)]
+struct ImportNav {
+    active: ImportSection,
+}
+impl Default for ImportNav {
+    fn default() -> Self {
+        Self { active: ImportSection::Files }
+    }
+}
+
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(
+    app.init_resource::<ImportNav>().add_systems(
         Update,
         (
             manage_import_modal,
             manage_import_toast,
             file_browse_click,
             dest_folder_click,
+            nav_click,
             import_click,
             cancel_click,
             toast_dismiss_click,
@@ -49,6 +81,9 @@ pub(crate) fn register(app: &mut App) {
 struct ImportRoot;
 #[derive(Component)]
 struct FileBrowseBtn;
+/// A clickable sidebar nav row; switches the active pane on press.
+#[derive(Component, Clone, Copy)]
+struct NavBtn(ImportSection);
 /// A row in the destination folder tree. Holds the project-relative path it
 /// targets (forward-slashed, `""` = project root).
 #[derive(Component, Clone)]
@@ -84,6 +119,9 @@ fn manage_import_modal(world: &mut World) {
     if visible && existing.is_empty() {
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
         let has_project = world.get_resource::<renzora::core::CurrentProject>().is_some();
+        // Always open on the Files pane — the first thing the user does is add
+        // files, and a stale section from a previous open would be confusing.
+        world.resource_mut::<ImportNav>().active = ImportSection::Files;
         let init = Init::read(world);
         let mut queue = CommandQueue::default();
         {
@@ -141,7 +179,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
                 bottom: Val::Px(0.0),
                 align_items: AlignItems::FlexStart,
                 justify_content: JustifyContent::Center,
-                padding: UiRect::top(Val::Vh(8.0)),
+                padding: UiRect::top(Val::Vh(7.0)),
                 ..default()
             },
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.63)),
@@ -158,12 +196,12 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
     let panel = commands
         .spawn((
             Node {
-                width: Val::Px(520.0),
-                max_height: Val::Vh(84.0),
+                width: Val::Px(660.0),
+                max_height: Val::Vh(88.0),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(20.0)),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
             BackgroundColor(rgb(panel_bg())),
@@ -187,7 +225,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
     commands.entity(panel).add_child(header);
 
     let sep = commands
-        .spawn((Node { width: Val::Percent(100.0), height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }, BackgroundColor(rgb(divider()))))
+        .spawn((Node { width: Val::Percent(100.0), height: Val::Px(1.0), margin: UiRect::vertical(Val::Px(14.0)), ..default() }, BackgroundColor(rgb(divider()))))
         .id();
     commands.entity(panel).add_child(sep);
 
@@ -197,80 +235,233 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
         return;
     }
 
-    // Scrollable body (sections) + fixed footer (buttons).
-    let body_col = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(12.0), ..default() }, Name::new("import-body")))
+    // Body: fixed-height row of [sidebar | content]. A fixed height keeps the
+    // modal from resizing as the user flips between short and tall sections.
+    let body = commands
+        .spawn(Node { width: Val::Percent(100.0), height: Val::Px(400.0), flex_direction: FlexDirection::Row, ..default() })
         .id();
-    let body = scroll_area(commands, body_col, 460.0);
+
+    let sidebar = commands
+        .spawn((
+            Node {
+                width: Val::Px(176.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::right(Val::Px(16.0)),
+                border: UiRect::right(Val::Px(1.0)),
+                ..default()
+            },
+            BorderColor::all(rgb(divider())),
+        ))
+        .id();
+    let nav = [
+        ("files", "Files", ImportSection::Files),
+        ("gear", "Settings", ImportSection::Settings),
+        ("puzzle-piece", "Extract", ImportSection::Extract),
+        ("cube", "Optimize", ImportSection::Optimize),
+        ("folder-open", "Destination", ImportSection::Destination),
+    ];
+    let mut items: Vec<Entity> = nav
+        .iter()
+        .map(|(icon, label, sec)| nav_item(commands, fonts, icon, label, *sec))
+        .collect();
+    // Output nav row: only present once an import has logged results.
+    let output = nav_item(commands, fonts, "list-bullets", "Output", ImportSection::Output);
+    bind_display(commands, output, |w| w.get_resource::<ImportOverlayState>().is_some_and(|s| !s.log_entries.is_empty()));
+    items.push(output);
+    commands.entity(sidebar).add_children(&items);
+
+    // Content: each pane stacks here but only the active one displays. Wrapped
+    // in a scroll so a long section (the folder tree) can overflow gracefully.
+    let stack = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() })
+        .id();
+    build_files_pane(commands, fonts, stack);
+    build_settings_pane(commands, fonts, stack, init);
+    build_extract_pane(commands, fonts, stack);
+    build_optimize_pane(commands, fonts, stack);
+    build_destination_pane(commands, fonts, stack, init);
+    build_output_pane(commands, fonts, stack);
+
+    let scroll = scroll_area(commands, stack, 400.0);
+    let content = commands
+        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, padding: UiRect::left(Val::Px(18.0)), ..default() })
+        .id();
+    commands.entity(content).add_child(scroll);
+
+    commands.entity(body).add_children(&[sidebar, content]);
     commands.entity(panel).add_child(body);
 
-    build_files(commands, fonts, body_col);
-    build_settings(commands, fonts, body_col, init);
-    build_extract(commands, fonts, body_col);
-    build_meshopt(commands, fonts, body_col);
-    build_destination(commands, fonts, body_col, init);
-    build_progress(commands, fonts, body_col);
-    build_log(commands, fonts, body_col);
-
+    build_progress(commands, fonts, panel);
     build_footer(commands, fonts, panel);
 }
 
-// ── Sections ─────────────────────────────────────────────────────────────────
+// ── Sidebar ──────────────────────────────────────────────────────────────────
 
-fn build_files(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
-    let sec = section(commands);
-    let head = section_label(commands, fonts, "files", "Files");
-    // File list frame — a column so the list, the empty hint and the
-    // drop/browse row all stack *inside* the bordered card.
-    let frame = commands
+/// One sidebar row. Highlights when its section is active; the Files row also
+/// carries a count badge so the user sees how many files are queued without
+/// leaving whatever section they're on.
+fn nav_item(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str, sec: ImportSection) -> Entity {
+    let row = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
+                height: Val::Px(34.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(9.0),
+                padding: UiRect::axes(Val::Px(10.0), Val::Px(0.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            NavBtn(sec),
+            hover_cursor(),
+        ))
+        .id();
+    bind_bg(commands, row, move |w| {
+        let active = w.get_resource::<ImportNav>().is_some_and(|n| n.active == sec);
+        if active {
+            rgb(accent()).with_alpha(0.18)
+        } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+            rgb(hover_bg())
+        } else {
+            Color::NONE
+        }
+    });
+
+    let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 14.0);
+    commands.entity(ic).insert(FocusPolicy::Pass);
+    bind_with(commands, ic, move |w| active_flag(w, sec), |w, t, v: &Active| {
+        if let Some(mut c) = w.get_mut::<TextColor>(t) {
+            c.0 = rgb(if v.0 { accent() } else { text_muted() });
+        }
+    });
+
+    let lbl = commands
+        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() }))
+        .id();
+    bind_with(commands, lbl, move |w| active_flag(w, sec), |w, t, v: &Active| {
+        if let Some(mut c) = w.get_mut::<TextColor>(t) {
+            c.0 = rgb(if v.0 { text_primary() } else { text_muted() });
+        }
+    });
+    commands.entity(row).add_children(&[ic, lbl]);
+
+    // Files-only: a queued-count badge pinned to the right of the row.
+    if matches!(sec, ImportSection::Files) {
+        let badge = commands
+            .spawn((
+                Node {
+                    min_width: Val::Px(18.0),
+                    height: Val::Px(16.0),
+                    padding: UiRect::axes(Val::Px(5.0), Val::Px(0.0)),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(accent())),
+                FocusPolicy::Pass,
+            ))
+            .id();
+        let bt = commands
+            .spawn((Text::new(String::new()), ui_font(&fonts.ui, 10.0), TextColor(Color::WHITE), FocusPolicy::Pass))
+            .id();
+        bind_text(commands, bt, |w| w.get_resource::<ImportOverlayState>().map(|s| s.pending_files.len()).filter(|n| *n > 0).map(|n| n.to_string()).unwrap_or_default());
+        bind_display(commands, badge, |w| w.get_resource::<ImportOverlayState>().is_some_and(|s| !s.pending_files.is_empty()));
+        commands.entity(badge).add_child(bt);
+        commands.entity(row).add_child(badge);
+    }
+    row
+}
+
+#[derive(PartialEq)]
+struct Active(bool);
+fn active_flag(w: &World, sec: ImportSection) -> Active {
+    Active(w.get_resource::<ImportNav>().is_some_and(|n| n.active == sec))
+}
+
+fn nav_click(q: Query<(&Interaction, &NavBtn), Changed<Interaction>>, mut nav: Option<ResMut<ImportNav>>) {
+    let Some(nav) = nav.as_mut() else { return };
+    for (i, b) in &q {
+        if *i == Interaction::Pressed && nav.active != b.0 {
+            nav.active = b.0;
+        }
+    }
+}
+
+// ── Panes ────────────────────────────────────────────────────────────────────
+
+/// A content pane shown only while its section is active.
+fn pane(commands: &mut Commands, sec: ImportSection) -> Entity {
+    let p = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(12.0), ..default() })
+        .id();
+    bind_display(commands, p, move |w| w.get_resource::<ImportNav>().is_some_and(|n| n.active == sec));
+    p
+}
+
+/// A pane's title + one-line description, used at the top of every section.
+fn pane_header(commands: &mut Commands, fonts: &EmberFonts, title: &str, subtitle: &str) -> Entity {
+    let col = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), margin: UiRect::bottom(Val::Px(2.0)), ..default() }).id();
+    let t = commands.spawn((Text::new(title.to_string()), ui_font(&fonts.ui, 15.0), TextColor(rgb(text_primary())))).id();
+    let s = commands.spawn((Text::new(subtitle.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    commands.entity(col).add_children(&[t, s]);
+    col
+}
+
+fn build_files_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
+    let p = pane(commands, ImportSection::Files);
+    let head = pane_header(commands, fonts, "Files", "Add the 3D models you want to import.");
+
+    // Dropzone — the empty state is this panel, so there's no separate "no
+    // files" hint. Only the Browse button is clickable; the card itself is
+    // passive (real OS drag-drop is handled by the egui orchestration layer).
+    let dz = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(116.0),
+                flex_shrink: 0.0,
                 flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
                 row_gap: Val::Px(8.0),
-                padding: UiRect::all(Val::Px(8.0)),
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
             BackgroundColor(rgb(section_bg())),
             BorderColor::all(rgb(border())),
         ))
         .id();
+    let cloud = icon_text(commands, &fonts.phosphor, "cloud-arrow-down", text_muted(), 30.0);
+    let dz_t = txt(commands, fonts, "Drag & drop models here", 12.0, text_primary());
+    let browse = pill_button(commands, fonts, "folder-open", "Browse files");
+    commands.entity(browse).insert(FileBrowseBtn);
+    commands.entity(dz).add_children(&[cloud, dz_t, browse]);
 
+    // Queued-file list.
     let list = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }, FilesContainer)).id();
     keyed_list(commands, list, files_snapshot);
-    let scroll = scroll_area(commands, list, 120.0);
-    commands.entity(frame).add_child(scroll);
-    // Empty hint (shown when no files).
-    let empty = txt(commands, fonts, "No files added yet", 11.0, text_muted());
-    bind_display(commands, empty, |w| w.get_resource::<ImportOverlayState>().is_some_and(|s| s.pending_files.is_empty()));
-    commands.entity(frame).add_child(empty);
+    let list_scroll = scroll_area(commands, list, 150.0);
 
-    // Drop hint + Browse — now the last row inside the card.
-    let addrow = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
-    let hint = icon_label(commands, fonts, "cloud-arrow-down", "Drop files here or", text_muted(), 11.0);
-    let browse = pill_button(commands, fonts, "folder-open", "Browse...");
-    commands.entity(browse).insert(FileBrowseBtn);
-    commands.entity(addrow).add_children(&[hint, browse]);
-    commands.entity(frame).add_child(addrow);
-
-    commands.entity(sec).add_children(&[head, frame]);
-    commands.entity(parent).add_child(sec);
+    commands.entity(p).add_children(&[head, dz, list_scroll]);
+    commands.entity(parent).add_child(p);
 }
 
-fn build_settings(commands: &mut Commands, fonts: &EmberFonts, parent: Entity, init: &Init) {
-    let sec = section(commands);
-    let head = section_label(commands, fonts, "gear", "Import Settings");
+fn build_settings_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity, init: &Init) {
+    let p = pane(commands, ImportSection::Settings);
+    let head = pane_header(commands, fonts, "Import Settings", "Scale, axis orientation and mesh fix-ups.");
 
-    // Scale.
-    let scale_row = labeled(commands, fonts, "Scale:");
     let scale = drag_value(commands, &fonts.ui, "", text_primary(), init.scale, 0.01);
     bind_2way(commands, scale, |w| g_settings(w, |s| s.scale), |w, v: &f32| s_settings(w, |s| s.scale = (*v).clamp(0.001, 1000.0)));
-    commands.entity(scale_row).add_child(scale);
+    let scale_row = field_row(commands, fonts, "Scale", scale);
 
-    // Up axis dropdown.
-    let axis_row = labeled(commands, fonts, "Up Axis:");
     let axis = dropdown(commands, fonts, &["Auto", "Y-Up (GLTF/Bevy)", "Z-Up (Blender/CAD)"], init.up_axis);
     bind_2way(
         commands,
@@ -282,39 +473,39 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, parent: Entity, i
         },
         |w, v: &usize| s_settings(w, |s| s.up_axis = match v { 1 => UpAxis::YUp, 2 => UpAxis::ZUp, _ => UpAxis::Auto }),
     );
-    commands.entity(axis_row).add_child(axis);
+    let axis_row = field_row(commands, fonts, "Up axis", axis);
 
-    let flip = check_row(commands, fonts, "Flip UVs", |s| s.flip_uvs, |s, v| s.flip_uvs = v);
-    let normals = check_row(commands, fonts, "Generate normals if missing", |s| s.generate_normals, |s, v| s.generate_normals = v);
+    let flip = toggle_row(commands, fonts, "Flip UVs", |s| s.flip_uvs, |s, v| s.flip_uvs = v);
+    let normals = toggle_row(commands, fonts, "Generate normals if missing", |s| s.generate_normals, |s, v| s.generate_normals = v);
 
-    commands.entity(sec).add_children(&[head, scale_row, axis_row, flip, normals]);
-    commands.entity(parent).add_child(sec);
+    commands.entity(p).add_children(&[head, scale_row, axis_row, flip, normals]);
+    commands.entity(parent).add_child(p);
 }
 
-fn build_extract(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
-    let sec = section(commands);
-    let head = section_label(commands, fonts, "puzzle-piece", "Extract");
-    let a = check_row(commands, fonts, "Skeleton + skin weights", |s| s.extract_skeleton, |s, v| s.extract_skeleton = v);
-    let b = check_row(commands, fonts, "Animations (→ animations/*.anim)", |s| s.extract_animations, |s, v| s.extract_animations = v);
-    let c = check_row(commands, fonts, "Textures (→ textures/*.png)", |s| s.extract_textures, |s, v| s.extract_textures = v);
-    let d = check_row(commands, fonts, "Materials (→ materials/*.material)", |s| s.extract_materials, |s, v| s.extract_materials = v);
-    commands.entity(sec).add_children(&[head, a, b, c, d]);
-    commands.entity(parent).add_child(sec);
+fn build_extract_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
+    let p = pane(commands, ImportSection::Extract);
+    let head = pane_header(commands, fonts, "Extract", "Pull sub-assets out into their own project files.");
+    let a = toggle_row(commands, fonts, "Skeleton + skin weights", |s| s.extract_skeleton, |s, v| s.extract_skeleton = v);
+    let b = toggle_row(commands, fonts, "Animations  →  animations/*.anim", |s| s.extract_animations, |s, v| s.extract_animations = v);
+    let c = toggle_row(commands, fonts, "Textures  →  textures/*.png", |s| s.extract_textures, |s, v| s.extract_textures = v);
+    let d = toggle_row(commands, fonts, "Materials  →  materials/*.material", |s| s.extract_materials, |s, v| s.extract_materials = v);
+    commands.entity(p).add_children(&[head, a, b, c, d]);
+    commands.entity(parent).add_child(p);
 }
 
-fn build_meshopt(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
-    let sec = section(commands);
-    let head = section_label(commands, fonts, "cube", "Mesh Optimization");
-    let a = check_row(commands, fonts, "Optimize vertex cache", |s| s.optimize_vertex_cache, |s, v| s.optimize_vertex_cache = v);
-    let b = check_row(commands, fonts, "Optimize overdraw", |s| s.optimize_overdraw, |s, v| s.optimize_overdraw = v);
-    let c = check_row(commands, fonts, "Optimize vertex fetch", |s| s.optimize_vertex_fetch, |s, v| s.optimize_vertex_fetch = v);
-    commands.entity(sec).add_children(&[head, a, b, c]);
-    commands.entity(parent).add_child(sec);
+fn build_optimize_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
+    let p = pane(commands, ImportSection::Optimize);
+    let head = pane_header(commands, fonts, "Mesh Optimization", "Reorder vertices for faster GPU rendering.");
+    let a = toggle_row(commands, fonts, "Optimize vertex cache", |s| s.optimize_vertex_cache, |s, v| s.optimize_vertex_cache = v);
+    let b = toggle_row(commands, fonts, "Optimize overdraw", |s| s.optimize_overdraw, |s, v| s.optimize_overdraw = v);
+    let c = toggle_row(commands, fonts, "Optimize vertex fetch", |s| s.optimize_vertex_fetch, |s, v| s.optimize_vertex_fetch = v);
+    commands.entity(p).add_children(&[head, a, b, c]);
+    commands.entity(parent).add_child(p);
 }
 
-fn build_destination(commands: &mut Commands, fonts: &EmberFonts, parent: Entity, init: &Init) {
-    let sec = section(commands);
-    let head = section_label(commands, fonts, "folder-open", "Destination");
+fn build_destination_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity, init: &Init) {
+    let p = pane(commands, ImportSection::Destination);
+    let head = pane_header(commands, fonts, "Destination", "Pick the project folder to import into.");
 
     // Folder picker: the project's own directory tree (mirrors the marketplace
     // install flow). Clicking a row sets `target_directory` to that
@@ -334,7 +525,7 @@ fn build_destination(commands: &mut Commands, fonts: &EmberFonts, parent: Entity
                 width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
                 border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 overflow: Overflow::clip(),
                 padding: UiRect::all(Val::Px(3.0)),
                 ..default()
@@ -357,8 +548,22 @@ fn build_destination(commands: &mut Commands, fonts: &EmberFonts, parent: Entity
         |w, v: &usize| { if let Some(mut s) = w.get_resource_mut::<ImportOverlayState>() { s.layout = if *v == 1 { ImportLayout::Combined } else { ImportLayout::PerFileFolder }; } },
     );
 
-    commands.entity(sec).add_children(&[head, tree_box, org, radios]);
-    commands.entity(parent).add_child(sec);
+    commands.entity(p).add_children(&[head, tree_box, org, radios]);
+    commands.entity(parent).add_child(p);
+}
+
+fn build_output_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
+    let p = pane(commands, ImportSection::Output);
+    let head = pane_header(commands, fonts, "Output", "Per-file results from the last import.");
+    let list = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, LogContainer)).id();
+    keyed_list(commands, list, log_snapshot);
+    let scroll = scroll_area(commands, list, 300.0);
+    let frame = commands
+        .spawn((Node { width: Val::Percent(100.0), padding: UiRect::all(Val::Px(8.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() }, BackgroundColor(rgb(section_bg())), BorderColor::all(rgb(border()))))
+        .id();
+    commands.entity(frame).add_child(scroll);
+    commands.entity(p).add_children(&[head, frame]);
+    commands.entity(parent).add_child(p);
 }
 
 /// One selectable row in the destination folder tree. `rel` is the
@@ -429,9 +634,11 @@ fn scan_dest_dirs(root: &std::path::Path) -> Vec<(String, usize, String)> {
 }
 
 fn build_progress(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
-    let sec = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() }).id();
+    // A slim status strip above the footer. The modal normally hands an import
+    // off to the corner toast on Import, so this only shows if an import is
+    // somehow still running with the modal open — kept for honest feedback.
+    let sec = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(12.0)), ..default() }).id();
 
-    // Working: spinner + label + bar.
     let working = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), ..default() }).id();
     let toprow = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
     let spin = spinner(commands);
@@ -448,7 +655,6 @@ fn build_progress(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
     commands.entity(working).add_children(&[toprow, track]);
     bind_display(commands, working, |w| matches!(w.get_resource::<ImportOverlayState>().map(|s| &s.progress), Some(ImportProgress::Working { .. })));
 
-    // Done / Error messages.
     let (done, done_msg) = icon_msg(commands, fonts, "check-circle", GREEN);
     bind_text(commands, done_msg, |w| match w.get_resource::<ImportOverlayState>().map(|s| s.progress.clone()) {
         Some(ImportProgress::Done(m)) => m,
@@ -464,32 +670,18 @@ fn build_progress(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
     bind_display(commands, err, |w| matches!(w.get_resource::<ImportOverlayState>().map(|s| &s.progress), Some(ImportProgress::Error(_))));
 
     commands.entity(sec).add_children(&[working, done, err]);
-    commands.entity(parent).add_child(sec);
-}
-
-fn build_log(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
-    let sec = section(commands);
-    let head = section_label(commands, fonts, "list-bullets", "Output");
-    let list = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }, LogContainer)).id();
-    keyed_list(commands, list, log_snapshot);
-    let scroll = scroll_area(commands, list, 120.0);
-    let frame = commands
-        .spawn((Node { width: Val::Percent(100.0), padding: UiRect::all(Val::Px(8.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(section_bg())), BorderColor::all(rgb(border()))))
-        .id();
-    commands.entity(frame).add_child(scroll);
-    commands.entity(sec).add_children(&[head, frame]);
-    // Whole section hidden when the log is empty.
-    bind_display(commands, sec, |w| w.get_resource::<ImportOverlayState>().is_some_and(|s| !s.log_entries.is_empty()));
+    // Whole strip hidden while idle, so the footer hugs the body.
+    bind_display(commands, sec, |w| !matches!(w.get_resource::<ImportOverlayState>().map(|s| &s.progress), Some(ImportProgress::Idle) | None));
     commands.entity(parent).add_child(sec);
 }
 
 fn build_footer(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) {
-    let row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: Val::Px(8.0), margin: UiRect::top(Val::Px(12.0)), ..default() }).id();
+    let row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: Val::Px(8.0), margin: UiRect::top(Val::Px(16.0)), ..default() }).id();
     let cancel = wide_button(commands, fonts, "Cancel", rgb(section_bg()), text_primary(), 80.0);
     commands.entity(cancel).insert(CancelBtn);
     let import = commands
         .spawn((
-            Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
+            Node { min_width: Val::Px(110.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: Val::Px(6.0), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
             BackgroundColor(rgb(accent())),
             Interaction::default(),
             ImportBtn,
@@ -505,7 +697,7 @@ fn build_footer(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) {
     commands.entity(panel).add_child(row);
 }
 
-// ── Keyed lists ──────────────────────────────────────────────────────────────
+// ── Keyed list (files) ─────────────────────────────────────────────────────────
 
 fn files_snapshot(world: &World) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
@@ -524,11 +716,17 @@ fn files_snapshot(world: &World) -> KeyedSnapshot {
 fn file_row(commands: &mut Commands, fonts: &EmberFonts, path: &std::path::Path) -> Entity {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_uppercase();
-    let row = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }, FocusPolicy::Pass)).id();
+    let row = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), height: Val::Px(26.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(7.0), padding: UiRect::axes(Val::Px(7.0), Val::Px(0.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            BackgroundColor(rgb(section_bg())),
+            FocusPolicy::Pass,
+        ))
+        .id();
     let icon = icon_text(commands, &fonts.phosphor, "cube", FILE_ORANGE, 12.0);
     commands.entity(icon).insert(FocusPolicy::Pass);
     let nm = commands.spawn((Text::new(name), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() })).id();
-    let ex = commands.spawn((Text::new(format!("({ext})")), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())), FocusPolicy::Pass)).id();
+    let ex = commands.spawn((Text::new(ext), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted())), FocusPolicy::Pass)).id();
     let rm = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), RemoveFileBtn(path.to_path_buf()), hover_cursor())).id();
     let rmx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 11.0);
     commands.entity(rmx).insert(FocusPolicy::Pass);
@@ -800,26 +998,14 @@ fn txt(commands: &mut Commands, fonts: &EmberFonts, s: &str, size: f32, color: (
     commands.spawn((Text::new(s.to_string()), ui_font(&fonts.ui, size), TextColor(rgb(color)))).id()
 }
 
-fn section(commands: &mut Commands) -> Entity {
-    commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id()
-}
-
 fn row_between(commands: &mut Commands) -> Entity {
     commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id()
 }
 
 fn title_row(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }, FocusPolicy::Pass)).id();
+    let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }, FocusPolicy::Pass)).id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 18.0);
     let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 18.0), TextColor(rgb(text_primary())))).id();
-    commands.entity(row).add_children(&[ic, t]);
-    row
-}
-
-fn section_label(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 13.0);
-    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())))).id();
     commands.entity(row).add_children(&[ic, t]);
     row
 }
@@ -841,36 +1027,35 @@ fn icon_msg(commands: &mut Commands, fonts: &EmberFonts, icon: &str, color: (u8,
     (row, t)
 }
 
-fn labeled(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
-    let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
-    let t = txt(commands, fonts, label, 12.0, text_muted());
-    commands.entity(row).add_child(t);
+/// A settings row: a left-aligned label and a right-aligned control.
+fn field_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, control: Entity) -> Entity {
+    let row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, column_gap: Val::Px(12.0), min_height: Val::Px(26.0), ..default() }).id();
+    let t = txt(commands, fonts, label, 12.0, text_primary());
+    commands.entity(row).add_children(&[t, control]);
     row
 }
 
-fn check_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: fn(&renzora_import::settings::ImportSettings) -> bool, set: fn(&mut renzora_import::settings::ImportSettings, bool)) -> Entity {
-    let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+/// A boolean settings row: label on the left, checkbox on the right.
+fn toggle_row(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: fn(&renzora_import::settings::ImportSettings) -> bool, set: fn(&mut renzora_import::settings::ImportSettings, bool)) -> Entity {
     let cb = checkbox(commands, false);
     bind_2way(commands, cb, move |w| g_settings(w, get), move |w, v: &bool| s_settings(w, |s| set(s, *v)));
-    let t = txt(commands, fonts, label, 12.0, text_primary());
-    commands.entity(row).add_children(&[cb, t]);
-    row
+    field_row(commands, fonts, label, cb)
 }
 
 fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
     let btn = commands
-        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(section_bg())), Interaction::default(), hover_cursor()))
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(12.0), Val::Px(6.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(accent())), Interaction::default(), hover_cursor()))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 11.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, (255, 255, 255), 12.0);
     commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
     commands.entity(btn).add_children(&[ic, t]);
     btn
 }
 
 fn wide_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, bg: Color, fg: (u8, u8, u8), min_w: f32) -> Entity {
     let btn = commands
-        .spawn((Node { min_width: Val::Px(min_w), height: Val::Px(32.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(bg), Interaction::default(), hover_cursor()))
+        .spawn((Node { min_width: Val::Px(min_w), height: Val::Px(32.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(6.0)), ..default() }, BackgroundColor(bg), Interaction::default(), hover_cursor()))
         .id();
     let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 13.0), TextColor(rgb(fg)), FocusPolicy::Pass)).id();
     commands.entity(btn).add_child(t);
