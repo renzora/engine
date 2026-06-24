@@ -222,15 +222,53 @@ pub fn save_renderer_backend(backend: RendererBackend) -> std::io::Result<()> {
 struct EditorPrefFile {
     #[serde(default = "default_ui_scale")]
     ui_scale: f32,
+    #[serde(default = "default_system_monitor_ms")]
+    stats_system_monitor_ms: u32,
+    #[serde(default = "default_render_stats_ms")]
+    stats_render_stats_ms: u32,
+    #[serde(default = "default_ecs_stats_ms")]
+    stats_ecs_stats_ms: u32,
+    #[serde(default = "default_true")]
+    status_show_fps: bool,
+    #[serde(default = "default_true")]
+    status_show_ram: bool,
+    #[serde(default = "default_true")]
+    status_show_gpu: bool,
+    #[serde(default = "default_true")]
+    status_show_rendering_mode: bool,
+    #[serde(default = "default_true")]
+    status_show_gpu_name: bool,
 }
 
 fn default_ui_scale() -> f32 {
     1.0
 }
+fn default_system_monitor_ms() -> u32 {
+    200
+}
+fn default_render_stats_ms() -> u32 {
+    100
+}
+fn default_ecs_stats_ms() -> u32 {
+    250
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for EditorPrefFile {
     fn default() -> Self {
-        Self { ui_scale: 1.0 }
+        Self {
+            ui_scale: 1.0,
+            stats_system_monitor_ms: default_system_monitor_ms(),
+            stats_render_stats_ms: default_render_stats_ms(),
+            stats_ecs_stats_ms: default_ecs_stats_ms(),
+            status_show_fps: true,
+            status_show_ram: true,
+            status_show_gpu: true,
+            status_show_rendering_mode: true,
+            status_show_gpu_name: true,
+        }
     }
 }
 
@@ -285,6 +323,120 @@ pub fn save_ui_scale(ui_scale: f32) -> std::io::Result<()> {
     prefs.ui_scale = ui_scale;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
+}
+
+/// Per-user refresh intervals (ms) for the editor's live stat readouts. Higher
+/// numbers = fewer updates = cheaper. Edited from Settings → Plugins → "Stats
+/// Refresh" and persisted in `~/.renzora/editor.toml`. The throttled stat
+/// systems read this live (see [`stat_refresh_throttle`]).
+#[derive(Resource, Clone, Copy, PartialEq, Debug)]
+pub struct StatsRefreshSettings {
+    /// Status-bar FPS / RAM / GPU poll interval.
+    pub system_monitor_ms: u32,
+    /// Render Stats panel refresh interval.
+    pub render_stats_ms: u32,
+    /// ECS Stats panel refresh interval (its archetype scan is the heaviest).
+    pub ecs_stats_ms: u32,
+    /// Status-bar segment visibility (which readouts the status bar shows).
+    pub show_fps: bool,
+    pub show_ram: bool,
+    pub show_gpu: bool,
+    pub show_rendering_mode: bool,
+    pub show_gpu_name: bool,
+}
+
+impl Default for StatsRefreshSettings {
+    fn default() -> Self {
+        Self {
+            system_monitor_ms: default_system_monitor_ms(),
+            render_stats_ms: default_render_stats_ms(),
+            ecs_stats_ms: default_ecs_stats_ms(),
+            show_fps: true,
+            show_ram: true,
+            show_gpu: true,
+            show_rendering_mode: true,
+            show_gpu_name: true,
+        }
+    }
+}
+
+/// Load the persisted stat-refresh intervals, clamped to sane bounds.
+pub fn load_stats_refresh() -> StatsRefreshSettings {
+    #[cfg(target_arch = "wasm32")]
+    {
+        StatsRefreshSettings::default()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let prefs = editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .unwrap_or_default();
+        StatsRefreshSettings {
+            system_monitor_ms: prefs.stats_system_monitor_ms.clamp(16, 10_000),
+            render_stats_ms: prefs.stats_render_stats_ms.clamp(16, 10_000),
+            ecs_stats_ms: prefs.stats_ecs_stats_ms.clamp(16, 10_000),
+            show_fps: prefs.status_show_fps,
+            show_ram: prefs.status_show_ram,
+            show_gpu: prefs.status_show_gpu,
+            show_rendering_mode: prefs.status_show_rendering_mode,
+            show_gpu_name: prefs.status_show_gpu_name,
+        }
+    }
+}
+
+/// Persist the stat-refresh intervals (read-modify-write, so `ui_scale` and any
+/// future fields in the file survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_stats_refresh(settings: &StatsRefreshSettings) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.stats_system_monitor_ms = settings.system_monitor_ms;
+    prefs.stats_render_stats_ms = settings.render_stats_ms;
+    prefs.stats_ecs_stats_ms = settings.ecs_stats_ms;
+    prefs.status_show_fps = settings.show_fps;
+    prefs.status_show_ram = settings.show_ram;
+    prefs.status_show_gpu = settings.show_gpu;
+    prefs.status_show_rendering_mode = settings.show_rendering_mode;
+    prefs.status_show_gpu_name = settings.show_gpu_name;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Build a run condition that fires at most once per the interval returned by
+/// `interval_ms`, read **live** from [`StatsRefreshSettings`] so a settings edit
+/// takes effect immediately. Falls back to 250 ms when the resource is absent;
+/// an interval of 0 means "every frame". Each `.run_if(stat_refresh_throttle(…))`
+/// gets its own accumulator.
+pub fn stat_refresh_throttle(
+    interval_ms: fn(&StatsRefreshSettings) -> u32,
+) -> impl FnMut(Res<Time>, Option<Res<StatsRefreshSettings>>) -> bool + Clone {
+    let mut acc_ms = 0.0f32;
+    move |time: Res<Time>, settings: Option<Res<StatsRefreshSettings>>| {
+        let interval = settings.as_deref().map(interval_ms).unwrap_or(250);
+        if interval == 0 {
+            return true;
+        }
+        acc_ms += time.delta_secs() * 1000.0;
+        if acc_ms >= interval as f32 {
+            // Carry the remainder (capped) so we don't drift slow on long frames.
+            acc_ms = (acc_ms - interval as f32).min(interval as f32);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// How the game's render viewport scales to fill the OS window.

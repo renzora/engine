@@ -25,7 +25,6 @@ struct SystemMonitorState {
     gpu_usage_pct: f64,
     gpu_vram_used_gb: f64,
     gpu_vram_total_gb: f64,
-    accum_secs: f32,
 }
 
 #[derive(Resource)]
@@ -37,19 +36,13 @@ impl Default for NvmlHandle {
     }
 }
 
-const DISPLAY_REFRESH_SECS: f32 = 0.5;
-
 fn update_system_monitor(
-    time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
     mut state: ResMut<SystemMonitorState>,
 ) {
-    state.accum_secs += time.delta_secs();
-    if state.accum_secs < DISPLAY_REFRESH_SECS {
-        return;
-    }
-    state.accum_secs = 0.0;
-
+    // No internal gate: the run condition (the Stats Refresh setting) governs how
+    // often this runs, so the configured interval fully controls the FPS /
+    // frame-time readout's update rate.
     if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
         if let Some(val) = fps.average() {
             state.fps = val;
@@ -77,10 +70,13 @@ fn init_hardware_info(mut state: ResMut<SystemMonitorState>) {
     state.gpu_name = String::new();
 }
 
-fn update_memory_info(mut state: ResMut<SystemMonitorState>) {
-    use sysinfo::System;
-
-    let mut sys = System::new();
+fn update_memory_info(
+    mut state: ResMut<SystemMonitorState>,
+    // Keep the `System` between calls — allocating a fresh one each time (and
+    // re-probing the whole machine) is the bulk of this system's cost.
+    mut sys: Local<Option<sysinfo::System>>,
+) {
+    let sys = sys.get_or_insert_with(sysinfo::System::new);
     sys.refresh_memory();
     state.used_ram_gb = sys.used_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
 }
@@ -137,13 +133,17 @@ impl Plugin for SystemMonitorPlugin {
         app.add_systems(Startup, init_hardware_info);
         app.add_systems(
             Update,
-            (
-                update_system_monitor,
-                update_memory_info,
-                update_gpu_stats,
-                extract_gpu_name,
-            )
-                .run_if(in_state(SplashState::Editor)),
+            extract_gpu_name.run_if(in_state(SplashState::Editor)),
+        );
+        // CPU/RAM/GPU polling hits the OS each call (sysinfo refresh; NVML driver
+        // query), so don't run it at 60 Hz for a status-bar readout. The interval
+        // is user-configurable (Settings → Plugins → Stats Refresh); the resource
+        // is seeded + persisted by the debugger plugin, and absent → 250 ms.
+        app.add_systems(
+            Update,
+            (update_system_monitor, update_memory_info, update_gpu_stats)
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora::stat_refresh_throttle(|s| s.system_monitor_ms)),
         );
 
         // bevy_ui shell status item (the egui-free path).
@@ -165,25 +165,34 @@ fn monitor_status_segments(world: &World) -> Vec<ShellStatusSegment> {
     const MUTED: [u8; 3] = [150, 150, 164];
     const AMBER: [u8; 3] = [220, 180, 50];
 
+    // Per-segment visibility from the user's stats settings (all on by default
+    // when the resource is absent).
+    let vis = world.get_resource::<renzora::StatsRefreshSettings>().copied();
+    let show = |pick: fn(&renzora::StatsRefreshSettings) -> bool| vis.as_ref().map(pick).unwrap_or(true);
+
     let mut out = Vec::new();
-    let fps_color = if s.fps >= 55.0 {
-        [100, 200, 100]
-    } else if s.fps >= 30.0 {
-        AMBER
-    } else {
-        [220, 80, 80]
-    };
-    out.push(ShellStatusSegment::new(
-        "speedometer",
-        format!("{:.0} FPS ({:.2}ms)", s.fps, s.frame_time_ms),
-        fps_color,
-    ));
-    out.push(ShellStatusSegment::new(
-        "memory",
-        format!("{:.1} / {:.0} GB", s.used_ram_gb, s.total_ram_gb),
-        SECONDARY,
-    ));
-    if s.gpu_vram_total_gb > 0.0 {
+    if show(|v| v.show_fps) {
+        let fps_color = if s.fps >= 55.0 {
+            [100, 200, 100]
+        } else if s.fps >= 30.0 {
+            AMBER
+        } else {
+            [220, 80, 80]
+        };
+        out.push(ShellStatusSegment::new(
+            "speedometer",
+            format!("{:.0} FPS ({:.2}ms)", s.fps, s.frame_time_ms),
+            fps_color,
+        ));
+    }
+    if show(|v| v.show_ram) {
+        out.push(ShellStatusSegment::new(
+            "memory",
+            format!("{:.1} / {:.0} GB", s.used_ram_gb, s.total_ram_gb),
+            SECONDARY,
+        ));
+    }
+    if show(|v| v.show_gpu) && s.gpu_vram_total_gb > 0.0 {
         out.push(ShellStatusSegment::new(
             "graphics-card",
             format!(
@@ -193,14 +202,16 @@ fn monitor_status_segments(world: &World) -> Vec<ShellStatusSegment> {
             SECONDARY,
         ));
     }
-    if let Some(mode) = world.get_resource::<ResolvedRenderingMode>() {
-        let (label, color) = match mode.0 {
-            RenderingMode::Deferred => ("Deferred", AMBER),
-            _ => ("Forward", SECONDARY),
-        };
-        out.push(ShellStatusSegment::new("stack", label, color));
+    if show(|v| v.show_rendering_mode) {
+        if let Some(mode) = world.get_resource::<ResolvedRenderingMode>() {
+            let (label, color) = match mode.0 {
+                RenderingMode::Deferred => ("Deferred", AMBER),
+                _ => ("Forward", SECONDARY),
+            };
+            out.push(ShellStatusSegment::new("stack", label, color));
+        }
     }
-    if !s.gpu_name.is_empty() {
+    if show(|v| v.show_gpu_name) && !s.gpu_name.is_empty() {
         out.push(ShellStatusSegment::new("graphics-card", s.gpu_name.clone(), MUTED));
     }
     out
