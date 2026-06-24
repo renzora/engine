@@ -34,7 +34,7 @@ The first build takes several minutes (Bevy is large); subsequent builds are inc
 
 ### The `renzora` CLI — the build interface
 
-The CLI is the canonical way to build and run a checkout. Each command runs `cargo` inside the container against the custom `dist` profile (`inherits = "release"`, `opt-level = 2`, `strip = "symbols"`) so that plugin ABI hashes stay consistent across every build and machine.
+The CLI is the canonical way to build and run a checkout. Each command runs `cargo` inside the container against the custom `dist` profile (`inherits = "release"`, `opt-level = 2`, `strip = "symbols"`) so that the build is reproducible across every machine. The plugin ABI hash itself is profile-independent — it is a function of the bevy version, rust toolchain, and bevy feature set only (see [Building Plugins](/docs/r1-alpha6/extending/plugins) and the `abi_hash` crate) — but the pinned container toolchain is what keeps all three of those inputs identical build-to-build.
 
 | Command | What it builds / runs |
 |---|---|

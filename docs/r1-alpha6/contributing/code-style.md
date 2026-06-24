@@ -200,14 +200,15 @@ let file = std::fs::read_to_string(&path).unwrap(); // don't
 
 ## Unsafe code
 
-- Avoid `unsafe` unless it is genuinely necessary — the main legitimate place is the FFI the `add!`/`export_plugin_bundle!` macros generate (e.g. the `plugin_bevy_hash` transmute) and GPU interop.
+- Avoid `unsafe` unless it is genuinely necessary — the main legitimate place is the FFI the `add!`/`export_plugin_bundle!` macros generate (the `extern "C"` plugin exports the loader dlopens) and GPU interop.
 - Every `unsafe` block needs a `// SAFETY:` comment stating the invariant that makes it sound.
 - Prefer a safe abstraction over leaving `unsafe` at the call site.
 
 ```rust
-// SAFETY: TypeId is a #[repr(transparent)] wrapper around a 128-bit value;
-// transmuting it to [u64; 2] for the FFI ABI guard preserves the bits exactly.
-unsafe { std::mem::transmute(std::any::TypeId::of::<bevy::ecs::world::World>()) }
+// SAFETY: `create_fn` is the `plugin_create` export of a library whose
+// `plugin_bevy_hash` already matched the host's RENZORA_ABI_HASH, so the
+// returned `*mut dyn Plugin` was built against this exact bevy ABI.
+let plugin: Box<dyn Plugin> = unsafe { Box::from_raw(create_fn()) };
 ```
 
 ## Documentation

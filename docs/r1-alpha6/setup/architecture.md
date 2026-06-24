@@ -83,17 +83,16 @@ renzora::add!(EarlySetupPlugin, Runtime, priority = -100); // installed earlier
 The macro (`crates/renzora/src/plugin_meta.rs`) emits **two parallel registration paths**:
 
 1. **Always, on every platform** — an `inventory::submit!` of a `StaticPlugin { name, scope, priority, install }`. The `install` closure calls `app.add_plugins(<T as Default>::default())`. These are collected with `inventory::collect!(StaticPlugin)` into one global registry.
-2. **Only under `#[cfg(all(feature = "dlopen", not(ios/android/wasm)))]`** on the *calling* crate — three `#[no_mangle] extern "C"` exports so the loader can dlopen a standalone `.dll`/`.so`/`.dylib`:
+2. **Only under `#[cfg(all(feature = "dlopen", not(ios/android/wasm)))]`** on the *calling* crate — `#[no_mangle] extern "C"` exports so the loader can dlopen a standalone `.dll`/`.so`/`.dylib`:
 
 ```rust
 #[no_mangle] pub extern "C" fn plugin_create() -> *mut dyn Plugin { /* Box::into_raw(...) */ }
 #[no_mangle] pub extern "C" fn plugin_scope()  -> u8            { /* Editor=0 | Runtime=1 */ }
-#[no_mangle] pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
-    // transmute(TypeId::of::<bevy::ecs::world::World>()) — the cross-dylib ABI guard
-}
+#[no_mangle] pub extern "C" fn plugin_bevy_hash() -> [u64; 2]   { renzora::RENZORA_ABI_HASH }
+#[no_mangle] pub extern "C" fn plugin_abi_info() -> *const c_char { /* the ABI inputs, for diagnostics */ }
 ```
 
-`plugin_bevy_hash` is the **ABI guard**: it is the transmuted `TypeId` of Bevy's `World`. The loader compares a plugin's hash to its own and rejects any mismatch, so a plugin built against a different Bevy/SDK can never be loaded into the running world.
+`plugin_bevy_hash` is the **ABI guard**: it returns `RENZORA_ABI_HASH`, a stable hash of exactly the **bevy version**, **rust toolchain**, and **curated bevy feature set** (baked into the shared `renzora` dylib by its `build.rs` — see the `abi_hash` crate). The loader compares a plugin's hash to its own and rejects any mismatch, so a plugin built against a different Bevy version/toolchain/feature set can never be loaded into the running world; `plugin_abi_info` lets the rejection message name which input differs.
 
 ### Scopes
 

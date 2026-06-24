@@ -1,0 +1,26 @@
+[package]
+name = "abi_hash"
+version = "0.1.0"
+edition = "2021"
+description = "Computes the Renzora plugin ABI hash from its only three inputs: bevy version, rust toolchain, and the curated bevy feature set."
+
+# Two faces of one crate:
+#  - the library is a BUILD-dependency of `renzora` (its `build.rs` bakes the
+#    computed hash into a `const`), so the value is identical for the host and
+#    every in-tree plugin (same Cargo.lock + same workspace Cargo.toml + same
+#    rustc → same hash).
+#  - the binary is the `renzora`-CLI / CI reporter: `show`, `verify`, `update`.
+# It deliberately depends on NOTHING from the engine (no bevy, no renzora) so it
+# stays a tiny, fast, native-linkable tool with no ABI of its own.
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "abi_hash"
+path = "src/main.rs"
+
+[dependencies]
+toml = "0.8"
+
+[lints]
+workspace = true
