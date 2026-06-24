@@ -179,6 +179,133 @@ where
     row
 }
 
+/// A rich, Unreal "Place Actors"-style menu row: a thumbnail icon box, a colored
+/// accent bar, and a two-line label (title + small uppercase subtitle). Runs
+/// `on_click` (and closes the menu) when pressed. `accent` tints the icon and
+/// the bar so each row reads as its own type at a glance.
+#[allow(clippy::too_many_arguments)]
+pub fn menu_card<F>(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    title: &str,
+    subtitle: &str,
+    accent: (u8, u8, u8),
+    on_click: F,
+) -> Entity
+where
+    F: Fn(&mut World) + Send + Sync + 'static,
+{
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(9.0),
+                width: Val::Percent(100.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            MenuAction(Box::new(on_click)),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("menu-card"),
+        ))
+        .id();
+    bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+        _ => Color::NONE,
+    });
+
+    // Thumbnail icon box — a dark inset square holding the accent-tinted glyph.
+    let glyph = icon_text(commands, &fonts.phosphor, icon, accent, 20.0);
+    let icon_box = commands
+        .spawn((
+            Node {
+                width: Val::Px(38.0),
+                height: Val::Px(38.0),
+                flex_shrink: 0.0,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.22)),
+        ))
+        .id();
+    commands.entity(icon_box).add_children(&[glyph]);
+
+    // Unreal's left-edge accent stripe between the thumbnail and the label.
+    let bar = commands
+        .spawn((
+            Node {
+                width: Val::Px(3.0),
+                height: Val::Px(28.0),
+                flex_shrink: 0.0,
+                border_radius: BorderRadius::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent)),
+        ))
+        .id();
+
+    // Title (prominent) over a small, muted, uppercase type subtitle.
+    let title_t = commands
+        .spawn((
+            Text::new(title),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    let sub_t = commands
+        .spawn((
+            Text::new(subtitle.to_uppercase()),
+            ui_font(&fonts.ui, 9.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let text_col = commands
+        .spawn((Node {
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::Center,
+            row_gap: Val::Px(2.0),
+            ..default()
+        },))
+        .id();
+    commands.entity(text_col).add_children(&[title_t, sub_t]);
+
+    commands.entity(row).add_children(&[icon_box, bar, text_col]);
+    row
+}
+
+/// A non-interactive section header for a [`screen_menu`] — a small, muted,
+/// uppercase label (Unreal's content-browser "CREATE BASIC ASSET" style) that
+/// titles the group of items beneath it. Not clickable; carries no
+/// [`MenuAction`].
+pub fn menu_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(5.0), Val::Px(3.0)),
+                ..default()
+            },
+            Name::new("menu-header"),
+        ))
+        .id();
+    let t = commands
+        .spawn((
+            Text::new(label.to_uppercase()),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    commands.entity(row).add_children(&[t]);
+    row
+}
+
 /// A thin divider for a [`screen_menu`].
 pub fn menu_sep(commands: &mut Commands) -> Entity {
     commands

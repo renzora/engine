@@ -38,6 +38,8 @@ Click a tab to switch. You can drag tabs to reorder them, right-click to rename 
 
 Every workspace is made of **panels** that you can rearrange to taste. Drag a panel's tab and drop it on the edge of another panel to split the space, or onto its center to stack it as a new tab. Drag the divider between panels to resize.
 
+You can also **drag a panel's tab up onto the workspace ribbon** (the tabs in the top bar, or the `+`) and drop it there: that pops the panel out into a brand-new workspace of its own, named after the panel. It's the quickest way to give a single tool the whole screen — the panel moves out of its old workspace, and the new one is selected for you.
+
 To add a panel, click **Add Panel** on an empty space. You'll get a searchable picker with everything grouped by category:
 
 ![The Add Panel picker, listing every panel grouped by category such as Scene, Material, Debug, Audio, and Shader, with a search box at the top.](/assets/previews/panels.png)

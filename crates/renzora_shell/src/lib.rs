@@ -83,7 +83,7 @@ impl Plugin for ShellPlugin {
                 doc_tab_click,
                 doc_tab_close,
                 (sync_workspace_to_active_doc, persist_dock_layout),
-                workspace_add_click,
+                (workspace_add_click, workspace_drop_to_new),
                 (window_btn_click, window_drag, window_resize_start, update_maximize_icon),
                 (process_exit_request, exit_prompt_buttons, pending_exit_after_save),
             ),
@@ -289,6 +289,11 @@ struct RibbonItem {
 /// The ribbon's "+" — adds a new empty workspace.
 #[derive(Component)]
 struct WorkspaceAddBtn;
+
+/// Tags the ribbon strip + its `+` as a drop target for dock-tab drags: dropping
+/// a dragged panel here spawns a new workspace from it (see [`workspace_drop_to_new`]).
+#[derive(Component)]
+struct WorkspaceDropZone;
 
 /// The top-bar magnifier — toggles the command palette.
 #[derive(Component)]
@@ -1183,6 +1188,91 @@ fn workspace_add_click(
     dirty.0 = true;
 }
 
+/// Drag any dock tab onto the workspace ribbon (the strip or its `+`) and drop it
+/// to spawn a NEW workspace containing only that panel — the panel is *moved* out
+/// of the workspace it came from.
+///
+/// The ember dock publishes the in-flight drag through [`renzora_ember::dock::DockDragWatch`]:
+/// `dragging` is the panel id, and setting `claim` tells the dock to leave the
+/// drop to us (so it neither re-docks nor tab-switches). We claim while the cursor
+/// is over the ribbon, then build the workspace on release.
+///
+/// The release is handled from `Local` state captured on earlier frames because
+/// the dock clears its own watch on release and may run before us that frame — so
+/// `watch.dragging` can already be `None` by the time we see the mouse-up.
+fn workspace_drop_to_new(
+    watch: Option<ResMut<renzora_ember::dock::DockDragWatch>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    zones: Query<&RelativeCursorPosition, With<WorkspaceDropZone>>,
+    mut add_bg: Query<&mut BackgroundColor, With<WorkspaceAddBtn>>,
+    mut layouts: ResMut<ShellLayouts>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    mut dragged_id: Local<Option<String>>,
+    mut over_zone: Local<bool>,
+) {
+    let Some(mut watch) = watch else {
+        return;
+    };
+
+    // Resolve the drop using the prior frames' captured state, then reset.
+    if mouse.just_released(MouseButton::Left) {
+        if *over_zone {
+            if let Some(id) = dragged_id.take() {
+                make_workspace_from_panel(&id, &mut layouts, &mut dock, &mut dirty);
+            }
+        }
+        *over_zone = false;
+        *dragged_id = None;
+        if let Ok(mut bg) = add_bg.single_mut() {
+            bg.0 = Color::NONE;
+        }
+        // Deliberately leave `watch.claim`/`watch.dragging` for the dock to clear:
+        // if the dock's `tab_drag` runs after us this frame it must still see the
+        // claim so it skips its own re-dock. It clears both on release regardless.
+        return;
+    }
+
+    // Track the in-flight drag and claim the drop while over the ribbon.
+    if let Some(id) = &watch.dragging {
+        if dragged_id.as_deref() != Some(id.as_str()) {
+            *dragged_id = Some(id.clone());
+        }
+    }
+    let hovering = watch.dragging.is_some() && zones.iter().any(|rcp| rcp.cursor_over);
+    if watch.claim != hovering {
+        watch.claim = hovering;
+    }
+    if *over_zone != hovering {
+        *over_zone = hovering;
+        if let Ok(mut bg) = add_bg.single_mut() {
+            bg.0 = if hovering { rgb(accent()) } else { Color::NONE };
+        }
+    }
+}
+
+/// Move panel `id` into a brand-new workspace of its own and switch to it. The
+/// panel is removed from the current (active) tree first so this is a move, not a
+/// copy; the emptied current workspace is saved back into its slot.
+fn make_workspace_from_panel(
+    id: &str,
+    layouts: &mut ShellLayouts,
+    dock: &mut Dock,
+    dirty: &mut DockDirty,
+) {
+    dock.tree.remove_panel(id);
+    let active = layouts.active;
+    if let Some(slot) = layouts.layouts.get_mut(active) {
+        slot.1 = dock.tree.clone();
+    }
+    let name = renzora_ember::dock::humanize(id);
+    layouts.layouts.push((name, DockTree::leaf(id.to_string())));
+    let idx = layouts.layouts.len() - 1;
+    dock.tree = layouts.layouts[idx].1.clone();
+    layouts.active = idx;
+    dirty.0 = true;
+}
+
 // ── Chrome ──────────────────────────────────────────────────────────────────
 
 fn spawn_shell(
@@ -1608,6 +1698,8 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
                 ..default()
             },
             bevy::ui::FocusPolicy::Pass,
+            WorkspaceDropZone,
+            RelativeCursorPosition::default(),
             Name::new("ribbon"),
         ))
         .id();
@@ -1618,10 +1710,14 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
+            BackgroundColor(Color::NONE),
             Interaction::default(),
             WorkspaceAddBtn,
+            WorkspaceDropZone,
+            RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("workspace-add"),
         ))

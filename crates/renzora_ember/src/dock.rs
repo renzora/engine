@@ -313,6 +313,7 @@ impl Plugin for DockPlugin {
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
             .init_resource::<TabDrag>()
+            .init_resource::<DockDragWatch>()
             .init_resource::<crate::font::FontRegistry>()
             .add_systems(
                 Update,
@@ -540,6 +541,25 @@ struct DividerDrag {
 #[derive(Resource, Default)]
 struct TabDrag(Option<TabDragState>);
 
+/// Public seam letting an outside consumer (the editor shell) observe an
+/// in-flight tab drag and divert its drop somewhere the dock knows nothing
+/// about — e.g. dropping a panel on the workspace ribbon to spawn a new
+/// workspace from it.
+///
+/// `dragging` carries the panel id once a drag passes the move threshold and is
+/// cleared on release. A consumer that wants to handle the drop itself sets
+/// `claim` (typically while the cursor is over its own drop target); on release
+/// the dock then skips its own re-dock/tab-switch and leaves the panel to the
+/// claimant, which is responsible for removing it from the live [`Dock`] tree.
+/// The dock clears both fields on release.
+#[derive(Resource, Default)]
+pub struct DockDragWatch {
+    /// Id of the panel currently being dragged (`None` when no active drag).
+    pub dragging: Option<String>,
+    /// Set by an external consumer to take ownership of the pending drop.
+    pub claim: bool,
+}
+
 struct TabDragState {
     id: String,
     leaf: Entity,
@@ -699,6 +719,7 @@ fn tab_drag(
     root_overlay: Query<Entity, With<RootDropOverlay>>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
+    mut watch: ResMut<DockDragWatch>,
 ) {
     let cursor = windows.single().ok().and_then(|w| w.cursor_position());
 
@@ -731,6 +752,14 @@ fn tab_drag(
                 if let Ok(mut n) = nodes.get_mut(e) {
                     n.display = Display::None;
                 }
+            }
+            // An external consumer (e.g. the workspace ribbon) claimed this drop:
+            // it owns moving the panel, so the dock does nothing here — no re-dock,
+            // no tab switch. Clear the watch and bail.
+            if watch.claim {
+                watch.dragging = None;
+                watch.claim = false;
+                return;
             }
             if state.active {
                 if let Some(action) = state.action {
@@ -774,6 +803,8 @@ fn tab_drag(
                 pending.0 = Some((state.leaf, state.id));
             }
         }
+        watch.dragging = None;
+        watch.claim = false;
         return;
     }
 
@@ -786,6 +817,9 @@ fn tab_drag(
     if !state.active {
         if cur.distance(state.start_cursor) > TAB_DRAG_THRESHOLD {
             state.active = true;
+            // Publish the dragged panel id so external drop targets (the workspace
+            // ribbon) can react while the drag is in flight.
+            watch.dragging = Some(state.id.clone());
             if let Some(fonts) = &fonts {
                 state.ghost = Some(spawn_ghost(&mut commands, &fonts.ui, &state.id, cur));
             }
