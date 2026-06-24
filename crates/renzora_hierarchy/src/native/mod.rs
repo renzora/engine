@@ -116,8 +116,16 @@ pub fn register_native_hierarchy(app: &mut App) {
         // Virtualized via the shared ember primitive (the hierarchy's own
         // windowing used to live here; it's now one implementation for every
         // panel). `hierarchy_snapshot` returns the full row list; the helper
-        // builds only the visible window.
-        renzora_ember::virtual_scroll::virtual_scroll(commands, list, 6, tree::hierarchy_snapshot);
+        // builds only the visible window. The versioned form skips re-running
+        // the snapshot entirely on frames where neither the rows nor the scroll
+        // position changed (see `tree::hier_flat_version`).
+        renzora_ember::virtual_scroll::virtual_scroll_versioned(
+            commands,
+            list,
+            6,
+            tree::hier_flat_version,
+            tree::hierarchy_snapshot,
+        );
         let scroll = renzora_ember::widgets::scroll_view(commands, list);
         // Parent-stacking overlay: pinned ancestor headers over the top of the
         // scroll viewport (toggled by EditorSettings.hierarchy_parent_stacking).

@@ -92,10 +92,30 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    renzora_ember::virtual_scroll::virtual_scroll(commands, grid, 6, shapes_snapshot);
+    renzora_ember::virtual_scroll::virtual_scroll_versioned(
+        commands,
+        grid,
+        6,
+        shapes_token,
+        shapes_snapshot,
+    );
 
     commands.entity(root).add_children(&[search, grid]);
     root
+}
+
+/// Dirty token: the shape set is static, so only the search box changes which
+/// shapes show. Combined with the scroll-window term, the snapshot is skipped
+/// on frames where neither changed.
+fn shapes_token(world: &World) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    world
+        .get_resource::<ShapesState>()
+        .map(|s| s.search.to_lowercase())
+        .unwrap_or_default()
+        .hash(&mut h);
+    h.finish()
 }
 
 fn shapes_snapshot(world: &World) -> KeyedSnapshot {

@@ -78,6 +78,7 @@ pub fn update_selection_outlines(
     children_query: Query<&Children>,
     outlined_entities: Query<Entity, With<SelectionOutline>>,
     hidden: Query<(), With<HideInHierarchy>>,
+    mut last_sig: Local<Option<u64>>,
     world: &World,
 ) {
     let primary_color = Color::srgb(1.0, 0.5, 0.0);
@@ -92,6 +93,40 @@ pub fn update_selection_outlines(
         && !editing_collider
         && settings.selection_highlight_mode != SelectionHighlightMode::Gizmo;
 
+    let all_selected = selection.get_all();
+    let primary = selection.get();
+
+    // Re-applying the outline components every frame moves every selected mesh
+    // (and its whole child-mesh subtree) between archetypes twice — a real cost
+    // when the selection is a model with many child meshes. Nothing about the
+    // outline set changes unless the selection or these settings change, and
+    // `EditorSelection` is interior-mutable (its change-tick doesn't fire), so
+    // compare a cheap signature of the inputs and skip when it's unchanged.
+    let sig = {
+        use std::hash::{Hash, Hasher};
+        // Order-independent fold so selection-set ordering doesn't matter.
+        let mut set: u64 = 0;
+        for &e in &all_selected {
+            let mut eh = std::collections::hash_map::DefaultHasher::new();
+            e.hash(&mut eh);
+            set ^= eh.finish();
+        }
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (
+            set,
+            all_selected.len(),
+            primary,
+            should_show,
+            settings.selection_boundary_on_top,
+        )
+            .hash(&mut h);
+        h.finish()
+    };
+    if *last_sig == Some(sig) {
+        return;
+    }
+    *last_sig = Some(sig);
+
     // Remove all existing outlines
     for entity in outlined_entities.iter() {
         if let Ok(mut ec) = commands.get_entity(entity) {
@@ -102,9 +137,6 @@ pub fn update_selection_outlines(
     if !should_show {
         return;
     }
-
-    let all_selected = selection.get_all();
-    let primary = selection.get();
 
     let outline_mode = if settings.selection_boundary_on_top {
         OutlineMode::ExtrudeFlat

@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{bind_bg, keyed_list_tokened, KeyedSnapshot};
 use renzora_ember::theme::{accent, rgb, section_bg, text_muted, text_primary};
 
 use crate::highlight::Language;
@@ -37,8 +37,24 @@ fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
             Name::new("outline-list"),
         ))
         .id();
-    keyed_list(commands, list, outline_snapshot);
+    keyed_list_tokened(commands, list, outline_token, outline_snapshot);
     list
+}
+
+/// Dirty token for the outline: the active tab plus the file's path and content.
+/// Hashing the content is far cheaper than re-tokenizing it, so the (parsing)
+/// snapshot only runs when the file actually changes. Hashing the content (rather
+/// than tracking an edit revision) means the token can never go stale.
+fn outline_token(world: &World) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Some(state) = world.get_resource::<CodeEditorState>() {
+        state.active_tab.hash(&mut h);
+        if let Some(file) = state.active_tab.and_then(|i| state.open_files.get(i)) {
+            file.path.hash(&mut h);
+            file.content.hash(&mut h);
+        }
+    }
+    h.finish()
 }
 
 /// What the outline shows this frame.

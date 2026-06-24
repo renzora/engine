@@ -593,10 +593,40 @@ fn smoothstep(u: f32) -> f32 {
 
 // ─── Apply: Transform tracks ────────────────────────────────────────────────
 
-/// Drive named entities' Transforms from any active TransformClip.
+/// `tag -> entities` lookup so a transform track can reach its targets without
+/// scanning every tagged entity. Rebuilt only when the tagged set changes (see
+/// [`update_tag_index`]).
+#[derive(Resource, Default)]
+pub struct TagIndex {
+    map: bevy::platform::collections::HashMap<String, Vec<Entity>>,
+}
+
+/// Keep [`TagIndex`] current. The full rebuild runs only on a frame where some
+/// `EntityTag` was added, changed or removed; otherwise it's an O(1) early-out.
+pub fn update_tag_index(
+    mut index: ResMut<TagIndex>,
+    changed: Query<(), Or<(Added<EntityTag>, Changed<EntityTag>)>>,
+    mut removed: RemovedComponents<EntityTag>,
+    tags: Query<(Entity, &EntityTag)>,
+    mut inited: Local<bool>,
+) {
+    let dirty = !*inited || !changed.is_empty() || removed.read().next().is_some();
+    if !dirty {
+        return;
+    }
+    *inited = true;
+    index.map.clear();
+    for (e, tag) in &tags {
+        index.map.entry(tag.tag.clone()).or_default().push(e);
+    }
+}
+
+/// Drive tagged entities' Transforms from any active TransformClip. Only the
+/// entities matching each active track's tag are touched (via [`TagIndex`]).
 pub fn apply_transform_tracks(
     state: Res<SequencerState>,
-    mut q: Query<(&EntityTag, &mut Transform)>,
+    index: Res<TagIndex>,
+    mut transforms: Query<&mut Transform>,
 ) {
     let playhead = state.playhead;
     for track in &state.sequence.tracks {
@@ -612,9 +642,12 @@ pub fn apply_transform_tracks(
         else {
             continue;
         };
+        let Some(entities) = index.map.get(target_tag) else {
+            continue;
+        };
         let pose = sample_transform_clip(clip, playhead - clip.start);
-        for (tag, mut xf) in q.iter_mut() {
-            if &tag.tag == target_tag {
+        for &e in entities {
+            if let Ok(mut xf) = transforms.get_mut(e) {
                 xf.translation = pose.translation;
                 xf.rotation = pose.rotation;
                 xf.scale = pose.scale;

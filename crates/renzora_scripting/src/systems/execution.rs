@@ -329,7 +329,20 @@ pub fn run_scripts(world: &mut World) {
             Option<&ChildOf>,
             Option<&Children>,
         )>();
-        for (entity, _sc, transform, name, parent, children) in query.iter(world) {
+        for (entity, sc, transform, name, parent, children) in query.iter(world) {
+            // Skip entities with nothing to run. A `ScriptComponent` is
+            // auto-inserted on *every* named entity, so most carry no enabled,
+            // pathed script — and the per-entity subtree walk + `take`/`insert`
+            // archetype churn below is pure waste for them (the inner loop would
+            // execute nothing anyway). This peek is the same `enabled && path`
+            // test the executor applies per entry.
+            if !sc
+                .scripts
+                .iter()
+                .any(|e| e.enabled && e.script_path.is_some())
+            {
+                continue;
+            }
             script_entities.push(ScriptEntityData {
                 entity,
                 entity_name: name

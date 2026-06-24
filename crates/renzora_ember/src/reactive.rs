@@ -574,6 +574,12 @@ struct KeyedList {
     /// `(key, hash)` in display order — for a cheap "nothing changed" check.
     order: Vec<(u64, u64)>,
     snapshot: Box<dyn Fn(&World) -> KeyedSnapshot + Send + Sync>,
+    /// Optional cheap check run before the snapshot each frame. When it returns
+    /// the same value as the previous frame, the snapshot is skipped — so a list
+    /// whose snapshot is expensive to produce doesn't pay for it on frames where
+    /// nothing changed. `None` means always run the snapshot.
+    token: Option<Box<dyn Fn(&World) -> u64 + Send + Sync>>,
+    last_token: Option<u64>,
     meta: EntryMeta,
     rows_rebuilt: u64,
 }
@@ -589,6 +595,30 @@ pub fn keyed_list<F>(commands: &mut Commands, container: Entity, snapshot: F)
 where
     F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
 {
+    register_keyed_list(commands, container, None, snapshot);
+}
+
+/// Like [`keyed_list`], but runs `token` (a cheap `&World -> u64`) before the
+/// snapshot each frame and skips the snapshot when the token is unchanged.
+/// Use this when the snapshot is expensive to build and the consumer can cheaply
+/// signal whether anything affecting the list changed (a content version, plus
+/// the scroll window for a virtualized list — see [`crate::virtual_scroll`]).
+pub fn keyed_list_tokened<T, F>(commands: &mut Commands, container: Entity, token: T, snapshot: F)
+where
+    T: Fn(&World) -> u64 + Send + Sync + 'static,
+    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+{
+    register_keyed_list(commands, container, Some(Box::new(token)), snapshot);
+}
+
+fn register_keyed_list<F>(
+    commands: &mut Commands,
+    container: Entity,
+    token: Option<Box<dyn Fn(&World) -> u64 + Send + Sync>>,
+    snapshot: F,
+) where
+    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+{
     commands.queue(move |world: &mut World| {
         if let Some(mut reg) = world.get_resource_mut::<KeyedListRegistry>() {
             reg.0.push(KeyedList {
@@ -596,6 +626,8 @@ where
                 current: HashMap::default(),
                 order: Vec::new(),
                 snapshot: Box::new(snapshot),
+                token,
+                last_token: None,
                 meta: EntryMeta::new(Some(container), "list"),
                 rows_rebuilt: 0,
             });
@@ -623,6 +655,18 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
                 return true;
             }
             let t0 = Instant::now();
+            // If a dirty token is supplied and matches last frame, nothing the
+            // list depends on changed — skip building the snapshot entirely.
+            if let Some(token) = &kl.token {
+                let tok = token(world);
+                if kl.last_token == Some(tok) {
+                    let us = t0.elapsed().as_secs_f32() * 1e6;
+                    kl.meta.record(us, false);
+                    total_us += us;
+                    return true;
+                }
+                kl.last_token = Some(tok);
+            }
             let snap = (kl.snapshot)(world);
             // Cheap fast-path: same keys + hashes in the same order → nothing to do.
             if snap.items == kl.order {

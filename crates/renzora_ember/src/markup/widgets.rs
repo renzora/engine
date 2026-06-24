@@ -68,9 +68,12 @@ fn is_component(world: &World, name: &str) -> bool {
         .is_some()
 }
 
-fn entity_by_name(world: &mut World, name: &str) -> Option<Entity> {
-    let mut q = world.query::<(Entity, &Name)>();
-    q.iter(world).find(|(_, n)| n.as_str() == name).map(|(e, _)| e)
+fn entity_by_name(world: &World, name: &str) -> Option<Entity> {
+    world
+        .resource::<crate::markup::binding::MarkupNameIndex>()
+        .map
+        .get(name)
+        .copied()
 }
 
 /// Write `value` to a target path. Component fields (`Entity.Component.field`)

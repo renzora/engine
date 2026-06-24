@@ -33,7 +33,9 @@ pub fn register(app: &mut App) {
     app.register_native_inspector_ui("text_rich", text_rich_native);
     app.add_systems(
         Update,
-        (rebuild_text_spans, add_span_click, remove_span_click).run_if(in_state(SplashState::Editor)),
+        (rebuild_text_spans, add_span_click, remove_span_click)
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active("inspector")),
     );
 }
 

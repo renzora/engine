@@ -111,12 +111,26 @@ impl AssetBadgeChanges<'_, '_> {
 
 /// Exclusive system: rebuilds `HierarchyTreeCache` when dirty. Runs in
 /// `Update` so the cache is populated before the panel reads it.
-pub fn update_hierarchy_cache(world: &mut World) {
+pub fn update_hierarchy_cache(world: &mut World, mut last_build: Local<f32>) {
     let dirty = world.resource::<HierarchyDirty>().0;
     let empty = world.resource::<HierarchyTreeCache>().nodes.is_empty();
     if !dirty && !empty {
         return;
     }
+
+    // Debounce churn-driven rebuilds. `build_entity_tree` is a full-world scan,
+    // and this runs exclusively (`&mut World`) on the critical path. The editor
+    // constantly spawns/despawns *named* UI chrome (status-bar metrics, reactive
+    // rows, tooltips), which trips the dirty flag via `Name`/`ChildOf` change
+    // detection even though none of it is in the tree — so without a guard the
+    // tree rebuilds every single frame. The panel doesn't need 60 Hz freshness:
+    // once a tree exists, rebuild at most ~10x/sec and leave the dirty flag set
+    // until a rebuild actually lands (a real scene edit still shows within 100ms).
+    let now = world.resource::<Time>().elapsed_secs();
+    if !empty && now - *last_build < 0.1 {
+        return;
+    }
+    *last_build = now;
 
     let nodes = build_entity_tree(world);
     let mut cache = world.resource_mut::<HierarchyTreeCache>();

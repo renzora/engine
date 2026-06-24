@@ -17,11 +17,14 @@ use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_with, keyed_list, KeyedSnapshot};
-use renzora_ember::virtual_scroll::virtual_scroll;
+use renzora_ember::reactive::{
+    bind_2way, bind_bg, bind_display, bind_with, keyed_list, keyed_list_tokened, KeyedSnapshot,
+};
+use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
-    icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu, scroll_view, slider,
+    icon_label_button, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
+    scroll_view, slider,
     text_input, EmberScroll, EmberTextInput,
 };
 
@@ -397,6 +400,20 @@ impl NewAsset {
             NewAsset::Particle => "Particle",
             NewAsset::Template => "Template",
             NewAsset::Bsn => "Scene (BSN)",
+        }
+    }
+    /// Small uppercase type subtitle shown under the title on the menu card
+    /// (Unreal's "STATIC MESH" / "BASIC SHAPE" second line).
+    fn subtitle(self) -> &'static str {
+        match self {
+            NewAsset::Folder => "Folder",
+            NewAsset::Material => "PBR Material",
+            NewAsset::Blueprint => "Visual Script",
+            NewAsset::Lua => "Lua Script",
+            NewAsset::Rhai => "Rhai Script",
+            NewAsset::Particle => "VFX",
+            NewAsset::Template => "UI Markup",
+            NewAsset::Bsn => "Scene",
         }
     }
     /// Phosphor icon — mirrors each type's editor opener in [`open_action`].
@@ -943,7 +960,11 @@ fn asset_context_menu(
         "Favorite"
     };
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-    let mut kids = Vec::new();
+    // Same color-coded "create new X" rows as the Add button, led by the
+    // "Create Asset" header — at the TOP of the menu so a new asset can be made
+    // straight from the right-click menu (lands in the current folder).
+    let mut kids = new_asset_menu_items(&mut commands, &fonts);
+    kids.push(menu_sep(&mut commands));
     // "Open in <Editor>" routes editor-backed assets to their panel/layout.
     if let Some((icon, label)) = open_action(&path) {
         kids.push(menu_item(&mut commands, &fonts, icon, label, {
@@ -969,12 +990,6 @@ fn asset_context_menu(
             let path = path.clone();
             move |_| reveal_in_explorer(&path)
         }),
-    ]);
-    // Same color-coded "create new X" rows as the Add button, so a new asset can
-    // be made straight from the right-click menu (lands in the current folder).
-    kids.push(menu_sep(&mut commands));
-    kids.extend(new_asset_menu_items(&mut commands, &fonts));
-    kids.extend([
         menu_sep(&mut commands),
         menu_item_styled(&mut commands, &fonts, "trash", "Delete", (224, 96, 88), (224, 96, 88), {
             let path = path.clone();
@@ -1017,18 +1032,23 @@ fn add_menu_open(
 }
 
 /// The color-coded "create new X" rows shared by the Add button and the
-/// right-click menu. Each row carries the type's accent color (icon + label) so
-/// the menu reads as the same color language as the asset tiles.
+/// right-click menu, led by an Unreal-style "Create Asset" section header. Each
+/// row carries the type's accent color (icon + label) so the menu reads as the
+/// same color language as the asset tiles.
 fn new_asset_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
-    NewAsset::MENU
-        .iter()
-        .map(|&kind| {
-            let c = kind.color();
-            menu_item_styled(commands, fonts, kind.icon(), kind.label(), c, c, move |w| {
-                create_asset(w, kind)
-            })
-        })
-        .collect()
+    let mut kids = vec![menu_header(commands, fonts, "Create Asset")];
+    kids.extend(NewAsset::MENU.iter().map(|&kind| {
+        menu_card(
+            commands,
+            fonts,
+            kind.icon(),
+            kind.label(),
+            kind.subtitle(),
+            kind.color(),
+            move |w| create_asset(w, kind),
+        )
+    }));
+    kids
 }
 
 #[derive(Component)]
@@ -1752,7 +1772,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    keyed_list(commands, tree_list, tree_snapshot);
+    keyed_list_tokened(commands, tree_list, tree_token, tree_snapshot);
     let tree_scroll = scroll_view(commands, tree_list);
     let tree_pane = commands
         .spawn((
@@ -2015,8 +2035,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     // Virtualized: only the tiles in (or near) the viewport are built, so a
     // folder of hundreds of split meshes stays cheap. `grid_snapshot` returns the
-    // full list; `virtual_scroll` windows it.
-    virtual_scroll(commands, grid, 6, grid_snapshot);
+    // full list; the versioned form also skips re-hashing every entry on frames
+    // where neither the listing nor the scroll window changed (see `grid_token`).
+    virtual_scroll_versioned(commands, grid, 6, grid_token, grid_snapshot);
     let grid_scroll = scroll_view(commands, grid);
     // Mark the grid viewport so the marquee knows when a press lands in empty
     // grid space (vs. on a tile or the tree).
@@ -2284,6 +2305,25 @@ fn read_sorted_entries(folder: &Path, search: &str, sort: SortMode, desc: bool) 
         }
     });
     entries
+}
+
+/// Dirty token for the asset grid. The listing `Arc` is rebuilt by
+/// `refresh_listing` whenever the folder, search, sort, or contents change (it's
+/// pre-sorted, so its pointer identity captures item set *and* order). The rest
+/// are per-render overlays the snapshot folds into each item's hash. Combined
+/// with `virtual_scroll_versioned`'s scroll-window term, this skips the per-entry
+/// hashing on frames where nothing changed.
+fn grid_token(world: &World) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Some(st) = world.get_resource::<NativeAssets>() {
+        (std::sync::Arc::as_ptr(&st.listing) as usize as u64).hash(&mut h);
+        ((st.zoom * 20.0).round() as i64).hash(&mut h);
+        st.list_view.hash(&mut h);
+        st.renaming.hash(&mut h);
+        hash_path_set(st.favorites.iter()).hash(&mut h);
+    }
+    h.finish()
 }
 
 fn grid_snapshot(world: &World) -> KeyedSnapshot {
@@ -2790,6 +2830,46 @@ enum TreeItem {
 
 fn file_name_of(p: &Path) -> String {
     p.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string()
+}
+
+/// Order-independent hash of a set/list of paths — XOR-folded so a `HashSet`'s
+/// iteration order doesn't change the result frame to frame — mixed with count.
+fn hash_path_set<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut acc: u64 = 0;
+    let mut count: u64 = 0;
+    for p in paths {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        p.hash(&mut h);
+        acc ^= h.finish();
+        count += 1;
+    }
+    acc.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(count)
+}
+
+/// Dirty token for the folder tree. The tree's shape is decided by the expansion
+/// set, the favorites/recent shortcuts and the file/folder mode; folding those in
+/// lets the (filesystem-walking) snapshot be skipped on frames where none of them
+/// changed. A whole-second bucket is mixed in so folders created on disk while the
+/// panel is open still appear within a second.
+fn tree_token(world: &World) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    if let Some(st) = world.get_resource::<NativeAssets>() {
+        hash_path_set(st.expanded.iter()).hash(&mut h);
+        hash_path_set(st.favorites.iter()).hash(&mut h);
+        hash_path_set(st.recent.iter()).hash(&mut h);
+        st.fav_open.hash(&mut h);
+        st.recent_open.hash(&mut h);
+        st.narrow.hash(&mut h);
+    }
+    if let Some(root) = project_root(world) {
+        root.hash(&mut h);
+    }
+    if let Some(time) = world.get_resource::<Time>() {
+        (time.elapsed_secs() as u64).hash(&mut h);
+    }
+    h.finish()
 }
 
 fn tree_snapshot(world: &World) -> KeyedSnapshot {

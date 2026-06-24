@@ -39,7 +39,8 @@ pub fn register(app: &mut App) {
             add_script_option_click,
             add_script_drop_highlight,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active("inspector")),
     );
 }
 

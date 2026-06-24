@@ -57,15 +57,6 @@ pub fn update_text_bindings(world: &mut World) {
         return;
     }
 
-    // Name → entity map for cross-entity paths (`{{ Environment.Sun.x }}`).
-    let mut names: HashMap<String, Entity> = HashMap::default();
-    {
-        let mut name_q = world.query::<(Entity, &Name)>();
-        for (e, n) in name_q.iter(world) {
-            names.insert(n.as_str().to_string(), e);
-        }
-    }
-
     // Clone the registry handle (Arc) so its read-guard doesn't borrow `world`
     // — leaves us free to read entities reflectively in the same scope.
     let type_registry = world.resource::<AppTypeRegistry>().clone();
@@ -73,8 +64,10 @@ pub fn update_text_bindings(world: &mut World) {
     let mut updates: Vec<(Entity, String)> = Vec::new();
     {
         let registry = type_registry.read();
+        // Cross-entity name map (`{{ Environment.Sun.x }}`) — cached, not rebuilt.
+        let names = &world.resource::<MarkupNameIndex>().map;
         for (text_ent, template, source) in &bindings {
-            let rendered = render_template(world, &registry, &names, *source, template);
+            let rendered = render_template(world, &registry, names, *source, template);
             updates.push((*text_ent, rendered));
         }
     }
@@ -614,20 +607,13 @@ pub fn update_show_bindings(world: &mut World) {
         return;
     }
 
-    let mut names: HashMap<String, Entity> = HashMap::default();
-    {
-        let mut name_q = world.query::<(Entity, &Name)>();
-        for (e, n) in name_q.iter(world) {
-            names.insert(n.as_str().to_string(), e);
-        }
-    }
-
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let mut updates: Vec<(Entity, bool)> = Vec::new();
     {
         let registry = type_registry.read();
+        let names = &world.resource::<MarkupNameIndex>().map;
         for (ent, expr, source) in &bindings {
-            updates.push((*ent, eval_condition(world, &registry, &names, *source, expr)));
+            updates.push((*ent, eval_condition(world, &registry, names, *source, expr)));
         }
     }
 
@@ -648,21 +634,49 @@ pub fn update_show_bindings(world: &mut World) {
 }
 
 /// Read a single binding path to a display string, against `host`. Public so
-/// widgets (toggle, etc.) can read the current value of a bound target.
-/// Takes `&mut World` so it can build the name map via a query; only reads.
-pub fn read_path(world: &mut World, host: Entity, path: &str) -> Option<String> {
-    let mut names: HashMap<String, Entity> = HashMap::default();
-    {
-        let mut q = world.query::<(Entity, &Name)>();
-        for (e, n) in q.iter(world) {
-            names.insert(n.as_str().to_string(), e);
-        }
-    }
+/// widgets (toggle, etc.) can read the current value of a bound target. Reads
+/// the cached [`MarkupNameIndex`] for cross-entity name lookups.
+pub fn read_path(world: &World, host: Entity, path: &str) -> Option<String> {
     let registry = world.resource::<AppTypeRegistry>().clone();
     let reg = registry.read();
-    resolve_path(world, &reg, &names, host, path)
+    let names = &world.resource::<MarkupNameIndex>().map;
+    resolve_path(world, &reg, names, host, path)
+}
+
+/// Cached `Name -> entity` map for cross-entity binding paths
+/// (`{{ Environment.Sun.x }}`). Rebuilt only when a `Name` is added, changed or
+/// removed (see [`update_name_index`]); the binding systems read it instead of
+/// rebuilding the whole-world map every frame.
+#[derive(Resource, Default)]
+pub struct MarkupNameIndex {
+    pub map: HashMap<String, Entity>,
+}
+
+/// Keep [`MarkupNameIndex`] current. The full rebuild only runs on a frame where
+/// some `Name` actually changed; otherwise this is an O(1) early-out.
+fn update_name_index(
+    mut index: ResMut<MarkupNameIndex>,
+    changed: Query<(), Or<(Added<Name>, Changed<Name>)>>,
+    mut removed: RemovedComponents<Name>,
+    names: Query<(Entity, &Name)>,
+    mut inited: Local<bool>,
+) {
+    let dirty = !*inited || !changed.is_empty() || removed.read().next().is_some();
+    if !dirty {
+        return;
+    }
+    *inited = true;
+    index.map.clear();
+    for (e, n) in &names {
+        index.map.insert(n.as_str().to_string(), e);
+    }
 }
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Update, (update_text_bindings, update_show_bindings));
+    app.init_resource::<MarkupNameIndex>();
+    // `update_name_index` first so the binding systems read a current map.
+    app.add_systems(
+        Update,
+        (update_name_index, update_text_bindings, update_show_bindings).chain(),
+    );
 }

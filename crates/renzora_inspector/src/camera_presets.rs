@@ -41,7 +41,8 @@ pub fn register(app: &mut App) {
             snap_preset_click,
             delete_preset_click,
         )
-            .run_if(in_state(SplashState::Editor)),
+            .run_if(in_state(SplashState::Editor))
+            .run_if(renzora_ember::dock::panel_active("inspector")),
     );
 }
 

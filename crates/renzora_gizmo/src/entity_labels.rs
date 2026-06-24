@@ -27,6 +27,12 @@ pub fn draw_entity_labels(
         (Entity, &GlobalTransform, &Name, Has<Mesh3d>, Has<ChildOf>),
         (Without<HideInHierarchy>, Without<EditorCamera>),
     >,
+    // Dedicated top-level query so `LabelScope::TopLevel` reaches only root
+    // entities instead of scanning the whole scene and discarding children.
+    top_level: Query<
+        (Entity, &GlobalTransform, &Name),
+        (Without<ChildOf>, Without<HideInHierarchy>, Without<EditorCamera>),
+    >,
 ) {
     if !settings.show_labels {
         return;
@@ -43,22 +49,13 @@ pub fn draw_entity_labels(
         settings.label_color[2] as f32 / 255.0,
     );
 
-    for (entity, gt, name, has_mesh, has_parent) in labeled.iter() {
-        // Scope filter — which entities get a label.
-        let in_scope = match settings.label_scope {
-            LabelScope::All => true,
-            LabelScope::TopLevel => !has_parent,
-            LabelScope::Meshes => has_mesh,
-            LabelScope::Selected => Some(entity) == selected,
-        };
-        if !in_scope {
-            continue;
-        }
-
+    // Draw one entity's label. Shared by every scope so the scope only decides
+    // *which* entities are visited, not how the label is rendered.
+    let mut draw = |entity: Entity, gt: &GlobalTransform, name: &Name| {
         let pos = gt.translation();
         let dist = cam_pos.distance(pos);
         if dist > max_dist {
-            continue;
+            return;
         }
 
         // Billboard: the stroke text lies in the local XY plane with the glyph
@@ -69,7 +66,7 @@ pub fn draw_entity_labels(
         let right = Vec3::Y.cross(forward).normalize_or_zero();
         if right == Vec3::ZERO {
             // Camera directly above/below the label — degenerate basis, skip.
-            continue;
+            return;
         }
         let up = forward.cross(right);
         let rot = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
@@ -96,5 +93,34 @@ pub fn draw_entity_labels(
             Vec2::new(0.0, -0.5),
             color,
         );
+    };
+
+    // Visit only the entities the scope needs — `Selected` and `TopLevel` reach
+    // their entities directly instead of scanning every named entity.
+    match settings.label_scope {
+        LabelScope::Selected => {
+            for e in selection.get_all() {
+                if let Ok((entity, gt, name, _, _)) = labeled.get(e) {
+                    draw(entity, gt, name);
+                }
+            }
+        }
+        LabelScope::TopLevel => {
+            for (entity, gt, name) in top_level.iter() {
+                draw(entity, gt, name);
+            }
+        }
+        LabelScope::Meshes => {
+            for (entity, gt, name, has_mesh, _) in labeled.iter() {
+                if has_mesh {
+                    draw(entity, gt, name);
+                }
+            }
+        }
+        LabelScope::All => {
+            for (entity, gt, name, _, _) in labeled.iter() {
+                draw(entity, gt, name);
+            }
+        }
     }
 }

@@ -32,6 +32,7 @@ impl Plugin for SequencerPlugin {
         info!("[editor] SequencerPlugin");
 
         app.init_resource::<runtime::SequencerState>();
+        app.init_resource::<runtime::TagIndex>();
         app.insert_resource(runtime::SequencerBridge::default());
 
         app.add_systems(
@@ -40,6 +41,7 @@ impl Plugin for SequencerPlugin {
                 runtime::apply_bridge_actions,
                 runtime::advance_playhead,
                 runtime::apply_camera_tracks,
+                runtime::update_tag_index,
                 runtime::apply_transform_tracks,
             )
                 .chain(),

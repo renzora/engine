@@ -1135,14 +1135,25 @@ impl Plugin for ScenePlugin {
             .init_resource::<EditorLoadProgress>()
             .init_resource::<TabAssetCache>()
             .init_resource::<tab_asset_cache::SceneDiagSnapshot>()
-            // Refresh the Scene Diagnostics panel's input snapshot each
-            // frame. Exclusive system (uses a dozen queries internally
-            // via SystemState); panels only have `&World` so we cache
-            // the data in a resource they can read.
+            // Refresh the Scene Diagnostics panel's input snapshot. Exclusive
+            // system (uses a dozen queries internally via SystemState); panels
+            // only have `&World` so we cache the data in a resource they read.
+            //
+            // It does several full-scene passes + clones every StandardMaterial
+            // handle, so its cost scales with the scene (O(entities+materials)).
+            // That's fine for a debug panel but ruinous on a 100k+ entity scene
+            // if it runs every frame regardless of visibility — so gate it on the
+            // Scene Diagnostics panel actually being the active tab, and throttle
+            // to 4 Hz while it is. When the panel is hidden it costs nothing; the
+            // snapshot it feeds is read by nothing else (see `native_diagnostics`).
             .add_systems(
                 Update,
                 tab_asset_cache::update_scene_diag_snapshot
-                    .run_if(in_state(SplashState::Editor)),
+                    .run_if(in_state(SplashState::Editor))
+                    .run_if(renzora_ember::dock::panel_active("scene_diagnostics"))
+                    .run_if(bevy::time::common_conditions::on_timer(
+                        std::time::Duration::from_millis(250),
+                    )),
             )
             .add_plugins(NativeSceneDiagnostics)
             .add_plugins(NativeScenesPanel)

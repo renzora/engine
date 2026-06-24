@@ -36,6 +36,10 @@ pub(crate) struct HierFlatCache {
     /// Visible entity order (parallel to `rows`) so per-frame consumers (parent
     /// stacking) get it without re-flattening the tree.
     pub order: Vec<Entity>,
+    /// Bumped every time the flattened rows are rebuilt. The virtualized list
+    /// reads this as its dirty token so it skips re-running the snapshot on
+    /// frames where the visible rows didn't change (see [`hier_flat_version`]).
+    pub version: u64,
 }
 
 fn c32([r, g, b]: [u8; 3]) -> Color {
@@ -161,6 +165,17 @@ pub(crate) fn update_flatten_cache(
         .collect();
     flat.order = rows.iter().map(|r| r.entity).collect();
     flat.rows = Arc::new(rows);
+    flat.version = flat.version.wrapping_add(1);
+}
+
+/// Dirty token for the hierarchy's virtualized list: the flatten version, which
+/// bumps whenever the visible rows are rebuilt. The scroll window is folded in
+/// by `virtual_scroll_versioned`, so this only needs to track content changes.
+pub(crate) fn hier_flat_version(world: &World) -> u64 {
+    world
+        .get_resource::<HierFlatCache>()
+        .map(|f| f.version)
+        .unwrap_or(0)
 }
 
 /// The keyed-list snapshot: the **full** row list (one `(key, hash)` per visible

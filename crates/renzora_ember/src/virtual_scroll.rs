@@ -22,7 +22,7 @@
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform};
 
-use crate::reactive::{keyed_list, KeyedSnapshot};
+use crate::reactive::{keyed_list, keyed_list_tokened, KeyedSnapshot};
 
 /// Sentinel keys for the top/bottom spacer rows. Astronomically unlikely to
 /// collide with a real item key (an entity bits / path hash), and each list has
@@ -76,11 +76,42 @@ pub fn virtual_scroll<F>(
 ) where
     F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
 {
+    virtual_scroll_impl(commands, container, overscan, None, snapshot);
+}
+
+/// Like [`virtual_scroll`], but skips re-running `snapshot` on frames where
+/// neither the data nor the scroll window changed. `version` is a cheap
+/// `&World -> u64` that bumps whenever the underlying list contents change;
+/// the scroll position and viewport size are folded in automatically, so the
+/// window still rebuilds while scrolling/resizing. Use this when the snapshot
+/// is expensive to build (large lists) and the consumer can supply a version.
+pub fn virtual_scroll_versioned<V, F>(
+    commands: &mut Commands,
+    container: Entity,
+    overscan: usize,
+    version: V,
+    snapshot: F,
+) where
+    V: Fn(&World) -> u64 + Send + Sync + 'static,
+    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+{
+    virtual_scroll_impl(commands, container, overscan, Some(Box::new(version)), snapshot);
+}
+
+fn virtual_scroll_impl<F>(
+    commands: &mut Commands,
+    container: Entity,
+    overscan: usize,
+    version: Option<Box<dyn Fn(&World) -> u64 + Send + Sync>>,
+    snapshot: F,
+) where
+    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+{
     commands
         .entity(container)
         .insert((VirtualList { overscan }, VirtualMetrics::default()));
 
-    keyed_list(commands, container, move |world| {
+    let windowed = move |world: &World| {
         let m = world
             .get::<VirtualMetrics>(container)
             .copied()
@@ -129,7 +160,32 @@ pub fn virtual_scroll<F>(
                 }
             }),
         }
-    });
+    };
+
+    match version {
+        Some(v) => keyed_list_tokened(
+            commands,
+            container,
+            move |world: &World| {
+                use std::hash::{Hash, Hasher};
+                let m = world
+                    .get::<VirtualMetrics>(container)
+                    .copied()
+                    .unwrap_or_default();
+                // Rebuild only when the data version or the visible window moves.
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                v(world).hash(&mut h);
+                m.offset.to_bits().hash(&mut h);
+                m.viewport_h.to_bits().hash(&mut h);
+                m.row_h.to_bits().hash(&mut h);
+                m.columns.hash(&mut h);
+                m.measured.hash(&mut h);
+                h.finish()
+            },
+            windowed,
+        ),
+        None => keyed_list(commands, container, windowed),
+    }
 }
 
 /// A zero-content filler reserving `height` px for the rows outside the window.
