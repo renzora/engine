@@ -81,12 +81,15 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 # costs an intra-version ABI bump, so we front-load it.
 #
 # Deliberately OMITTED (each would be an ABI bump to add — do it with eyes open):
-#   meshlet, meshlet_processor, bevy_solari       experimental / heavy / ray-traced
+#   meshlet, meshlet_processor                    ENABLED below (experimental
+#                                                   virtual geometry)
+#   (bevy_solari IS enabled below — it backs the renzora_solari plugin.)
 #   dlss, force_disable_dlss                      NVIDIA proprietary SDK
-#   trace*, detailed_trace, bevy_dev_tools,       dev/CI only (trace backends are
-#     bevy_ci_testing, bevy_debug_stepping,         mutually exclusive anyway)
-#     bevy_ui_debug, debug, *glam_assert,
-#     embedded_watcher, hotpatching, track_location, schedule_data
+#   trace_chrome, detailed_trace, track_location, dev/CI only — OFF (they tax every
+#     trace_tracy_memory, bevy_dev_tools,           frame and would skew a profile);
+#     bevy_ci_testing, bevy_debug_stepping,         only `trace_tracy` is enabled
+#     bevy_ui_debug, debug, *glam_assert,           below, for CPU zones.
+#     embedded_watcher, hotpatching, schedule_data
 #   zstd_c, reflect_auto_register_static,         superseded by the chosen
 #     default_no_std / critical-section / libm / web   std + zstd_rust variants
 #   statically-linked-dxc, spirv_shader_passthrough, raw_vulkan_init   per-backend
@@ -115,12 +118,32 @@ bevy = { version = "0.19", features = [
     "pbr_specular_textures", "experimental_pbr_pcss",
     "morph", "morph_animation",
     "bluenoise_texture", "dfg_lut", "area_light_luts",
+    # Experimental hardware-raytraced lighting — backs the `renzora_solari`
+    # distribution plugin (Bevy's `SolariPlugins`). Enabling it recompiles
+    # `bevy_dylib` and MOVES the plugin ABI hash (CLAUDE.md §3): every existing
+    # distribution plugin must be rebuilt, and the pinned hash must be re-pinned
+    # after the next container build.
+    "bevy_solari",
     # built-in post-process effect stack (vignette, lens distortion, chromatic aberration)
     "bevy_post_process",
     # clipboard / fonts / ui
     "system_clipboard", "clipboard_image", "system_font_discovery", "ghost_nodes",
     # asset IO / processing
     "asset_processor", "file_watcher", "http", "https", "web_asset_cache",
+    # ── Profiling + meshlet config (NOT a shipping feature set) ─────────────────
+    # `trace_tracy` routes Bevy's per-system `tracing` spans to the Tracy server
+    # that `renzora_tracy` connects to — giving CPU zones in Tracy. Kept LEAN on
+    # purpose: the debug/assert/detailed-trace features (glam_assert, debug,
+    # detailed_trace, track_location, trace_tracy_memory, …) were dropped because
+    # they tax every frame (asserts on every math op, allocator hooks, a span per
+    # system) and would make a capture reflect the instrumentation, not the engine.
+    # `trace_tracy` still recompiles `bevy_dylib` and MOVES the plugin ABI hash
+    # (CLAUDE.md §3) — don't re-pin from this build; a normal build omits this block.
+    "trace_tracy",
+    # Experimental virtual-geometry (meshlet) + its offline asset processor. The
+    # processor pulls `metis-sys`, whose vendored C needs the cross-compile
+    # workaround in docker/windows/Dockerfile to build for windows-msvc.
+    "meshlet", "meshlet_processor",
 ] }
 # Individual Bevy sub-crates that some vendored ecosystem crates depend on
 # directly (not via the `bevy` umbrella). Same 0.19 line as `bevy` above so they

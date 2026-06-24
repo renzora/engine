@@ -58,8 +58,14 @@ WIN_IMSVC="/imsvc /xwin/crt/include /imsvc /xwin/sdk/include/ucrt /imsvc /xwin/s
 export CC_x86_64_pc_windows_msvc=clang-cl-win64
 export CXX_x86_64_pc_windows_msvc=clang-cl-win64
 export AR_x86_64_pc_windows_msvc=llvm-lib
-export CFLAGS_x86_64_pc_windows_msvc="$WIN_IMSVC"
-export CXXFLAGS_x86_64_pc_windows_msvc="$WIN_IMSVC"
+# -Wno-implicit-function-declaration: some vendored C (e.g. metis-sys' GKlib,
+# pulled in by Bevy's `meshlet_processor`) calls POSIX `read`/`write` without a
+# declaration. clang-cl makes that a hard error under C99; suppressing it lets
+# the file compile, and MSVC's auto-linked oldnames.lib aliases the POSIX names
+# to `_read`/`_write` so it still links. Harmless for correctly-declared code.
+WIN_CFLAGS="$WIN_IMSVC -Wno-implicit-function-declaration"
+export CFLAGS_x86_64_pc_windows_msvc="$WIN_CFLAGS"
+export CXXFLAGS_x86_64_pc_windows_msvc="$WIN_CFLAGS"
 EOF
 
 # ── Cargo linker config ──────────────────────────────────────────────────────
