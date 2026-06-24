@@ -150,6 +150,49 @@ impl ExtractComponent for LumenLighting {
     }
 }
 
+// ── Solari (hardware-raytraced GI) ─────────────────────────────────────────
+
+/// GPU ray-tracing capability flag, decided ONCE by the host at startup.
+///
+/// Bevy's `bevy_solari` needs ray-tracing wgpu features (`EXPERIMENTAL_RAY_QUERY`
+/// + acceleration structures) enabled on the `RenderDevice` *at creation time* —
+/// which is frozen before any dlopen plugin's `build()` runs. So the host
+/// (`renzora_runtime`) probes the GPU adapter at boot, requests those features
+/// when supported, and records the verdict here. The `renzora_solari` plugin
+/// reads it in `build()` (before the device exists) to decide whether installing
+/// `SolariPlugins` is safe: adding ray-tracing render nodes on a GPU that can't
+/// create them would crash the engine, so when this is absent/`false` the plugin
+/// stays inert and the engine boots normally on non-RT GPUs.
+///
+/// Lives in the contract dylib so the host (producer) and the plugin (consumer)
+/// share one `TypeId` across the dlopen boundary.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct GpuRaytracing {
+    pub enabled: bool,
+}
+
+/// Solari raytraced-GI settings. Authored on a non-camera source entity
+/// (typically "World Environment") and routed onto the active cameras via
+/// [`EffectRouting`], mirroring [`LumenLighting`]. The `renzora_solari` plugin
+/// consumes it: while enabled it attaches Bevy's `SolariLighting` (and the HDR +
+/// prepass components it requires) to each routed camera and mirrors conforming
+/// meshes into the ray-tracing scene.
+///
+/// Solari is a *different* GI backend from Lumen — fully dynamic hardware path
+/// tracing, no voxel/SDF cache — and the two are mutually exclusive per camera.
+/// Don't author both on the same World Environment.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SolariGi {
+    pub enabled: bool,
+}
+
+impl Default for SolariGi {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 // ── Diagnostics snapshot (GI plugin → debugger Lumen panel) ────────────────
 
 /// Flat snapshot of the Lumen CPU-bake throttle. The GI plugin (editor builds)

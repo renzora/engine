@@ -25,7 +25,7 @@ The two Renzora-owned insertions into Bevy's `Core3d` sub-graph are:
 - **SSGI** (the `renzora_rt` node, label `RtLabel`) runs **between `EndMainPass` and `Tonemapping`**, so it operates on the linear, lit HDR image before tone mapping.
 - The **unified post-process node** runs **between `Tonemapping` and `EndMainPassPostProcessing`**, so every fullscreen effect sees the already-tonemapped image.
 
-`WgpuSettings` requests exactly one optional feature — `POLYGON_MODE_LINE` (skipped on the GL backend, never requested on web) — which is what enables wireframe debug views. No ray-tracing features are requested.
+`WgpuSettings` requests `POLYGON_MODE_LINE` (skipped on the GL backend, never requested on web) — which is what enables wireframe debug views — and, **when the GPU supports it**, Bevy Solari's hardware ray-tracing features. The host probes the adapter once at startup (`raytracing_supported()`); on an RT-capable GPU it requests the ray-tracing features and records `renzora::GpuRaytracing { enabled: true }` so the optional `renzora_solari` plugin can activate. On a non-RT GPU nothing extra is requested and the engine boots unchanged. See [Solari ray-traced GI](./solari.md).
 
 ## Three families of camera effects
 
@@ -103,9 +103,11 @@ LumenLighting {
 | `ScreenSpace` | Delegates to `RtLighting` — the single-pass SSGI node in `renzora_rt` | Working (default) |
 | `SdfLow` | Voxel-cone diffuse trace at low voxel-cache resolution (SSGI stripped) | Working |
 | `SdfHigh` | Voxel-cone diffuse trace at full voxel-cache resolution | Working |
-| `Hwrt` | Reserved for a hardware-ray-tracing backend | **Renders nothing** today |
+| `Hwrt` | Reserved Lumen HWRT tier | **Renders nothing** today |
 
-> `Hwrt` parses and can be selected, but **produces no GI** — wgpu ray tracing is not enabled (`platform_wgpu_settings()` requests only `POLYGON_MODE_LINE`, and `bevy_solari` is not wired in). Treat it as equivalent to `Off` until the HWRT backend lands. Some in-source comments still read "only `Off` and `ScreenSpace` are implemented" — that is stale; `SdfLow`/`SdfHigh` are live.
+> Lumen's own `Hwrt` tier parses and can be selected, but **produces no GI** — it is a placeholder for a future Lumen hardware backend. Treat it as equivalent to `Off`. Some in-source comments still read "only `Off` and `ScreenSpace` are implemented" — that is stale; `SdfLow`/`SdfHigh` are live.
+>
+> Hardware ray-traced GI **does** ship — as a separate backend, not a Lumen tier: the optional **`renzora_solari`** plugin wraps Bevy Solari. It is independent of `LumenLighting` (authored via its own `SolariGi` component) and the two are mutually exclusive per camera. See [Solari ray-traced GI](./solari.md).
 
 ### What `LumenPlugin` installs
 

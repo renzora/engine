@@ -48,7 +48,7 @@ renzora run -- --server  # run a headless dedicated server (--server)
 - The Rust version is pinned in **one place**: `docker/base/Dockerfile` (`FROM rust:1.93.0-bookworm`). There is **no `rust-toolchain.toml`** and the project does **not** require nightly.
 - Linux uses `mold` and Windows uses `rust-lld` inside the image (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`) — that linker setup is fixed in the container, another reason the build is container-only.
 
-> Heads-up for older docs: there is no `--features solari` raytracing build. `bevy_solari` is not wired in, and the GI tier `LumenQuality::Hwrt` currently renders nothing because wgpu ray tracing is not enabled. Don't add a `solari` feature flag to your build or bug report.
+> Heads-up: hardware ray-traced GI ships via the optional **`renzora_solari`** plugin (Bevy Solari), enabled by the `bevy_solari` Bevy feature in the workspace `Cargo.toml` and activated at runtime only on RT-capable GPUs — see [Solari ray-traced GI](../rendering/solari.md). There is still no `--features solari` *build* flag; Solari is a drop-in plugin, not a build variant. Lumen's separate `LumenQuality::Hwrt` tier remains an unimplemented placeholder and renders nothing.
 
 ## What to contribute
 

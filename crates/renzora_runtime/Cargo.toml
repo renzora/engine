@@ -21,6 +21,12 @@ bevy = { workspace = true }
 # Version must match the one bevy_winit 0.18 depends on (0.30).
 winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Startup-only: probe the GPU adapter to decide whether to request Solari's
+# ray-tracing wgpu features (see `raytracing_supported`). Must match bevy's wgpu
+# (29.x) so the `Features` bitflags are the same type across the call. Backends
+# come from bevy's own wgpu feature set via cargo feature unification, so we keep
+# our dependency feature-light.
+wgpu = { version = "29", default-features = false }
 
 # Core
 renzora_engine = { path = "../renzora_engine" }

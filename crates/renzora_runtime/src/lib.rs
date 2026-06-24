@@ -96,11 +96,21 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         // DX12, Vulkan and Metal but NOT OpenGL, so requesting it as a *required*
         // feature on the GL backend would leave wgpu unable to create a device.
         // Skip it there; GL users simply don't get wireframe.
-        let features = if backends == Backends::GL {
+        let mut features = if backends == Backends::GL {
             WgpuFeatures::empty()
         } else {
             WgpuFeatures::POLYGON_MODE_LINE
         };
+
+        // Request Solari's hardware ray-tracing features when the adapter
+        // supports them, so the `renzora_solari` plugin (if present) can build
+        // its RT pipelines. Probed once (cached). On a non-RT GPU this is a
+        // no-op and the engine boots exactly as before — requesting an
+        // unsupported feature here would otherwise fail device creation, since
+        // Bevy ORs `features` into `required_features` without intersecting.
+        if raytracing_supported() {
+            features |= bevy::solari::SolariPlugins::required_wgpu_features();
+        }
 
         WgpuSettings {
             backends: Some(backends),
@@ -108,6 +118,84 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
             ..default()
         }
     }
+}
+
+/// Whether the GPU + selected backend support the wgpu ray-tracing features
+/// `bevy_solari` (Solari) needs. Probed ONCE at startup and cached.
+///
+/// Why a standalone probe instead of reading the live `RenderDevice`: the device
+/// is created — with its feature set frozen — *before* any dlopen plugin loads,
+/// so the only way the `renzora_solari` plugin can know in time to gate
+/// `SolariPlugins` in its `build()` is for the host to find out first and stash
+/// it in [`renzora::GpuRaytracing`]. We spin up a throwaway wgpu adapter on the
+/// same backend the renderer will use and check it reports
+/// `SolariPlugins::required_wgpu_features()`. Any failure ⇒ `false` (Solari
+/// stays inert; the engine boots normally on non-RT GPUs).
+#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+pub fn raytracing_supported() -> bool {
+    use std::sync::OnceLock;
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        use renzora::RendererBackend;
+        use wgpu::Backends;
+
+        // Mirror `platform_wgpu_settings`' backend selection so the probe sees
+        // the same adapter the renderer will.
+        #[cfg(target_os = "windows")]
+        let default_backend = Backends::VULKAN;
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        let default_backend = Backends::METAL;
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
+        let default_backend = Backends::VULKAN;
+
+        let backends = match renzora::load_renderer_backend() {
+            RendererBackend::Auto => default_backend,
+            RendererBackend::Dx12 => Backends::DX12,
+            RendererBackend::Vulkan => Backends::VULKAN,
+            RendererBackend::Metal => Backends::METAL,
+            RendererBackend::Gl => Backends::GL,
+        };
+        // OpenGL has no ray-tracing path — skip the probe entirely.
+        if backends == Backends::GL {
+            return false;
+        }
+
+        let required = bevy::solari::SolariPlugins::required_wgpu_features();
+        // wgpu 29's `InstanceDescriptor` has no `Default`; start from its
+        // defaults constructor and override only the backend.
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = bevy::tasks::block_on(instance.request_adapter(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: None,
+            },
+        ));
+        match adapter {
+            Ok(adapter) => {
+                let ok = adapter.features().contains(required);
+                if ok {
+                    info!("[runtime] GPU ray tracing supported — Solari can run if its plugin is present");
+                } else {
+                    info!("[runtime] GPU ray tracing unsupported by adapter — Solari will stay inert");
+                }
+                ok
+            }
+            Err(e) => {
+                info!("[runtime] ray-tracing probe found no adapter ({e}) — Solari will stay inert");
+                false
+            }
+        }
+    })
+}
+
+/// Non-desktop targets (Android / wasm) have no ray-tracing path here.
+#[cfg(any(target_os = "android", target_arch = "wasm32"))]
+pub fn raytracing_supported() -> bool {
+    false
 }
 
 pub fn init_app() -> App {
@@ -251,6 +339,13 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         ..default()
     });
     app.add_plugins(plugins);
+    // Record GPU ray-tracing capability so the `renzora_solari` distribution
+    // plugin can gate `SolariPlugins` in its `build()`. The `RenderDevice`'s
+    // feature set is frozen here (before dlopen plugins load), so the plugin
+    // can't probe the device itself in time — see `renzora::GpuRaytracing`.
+    app.insert_resource(renzora::GpuRaytracing {
+        enabled: raytracing_supported(),
+    });
     // Render recovery (Bevy 0.19): by default any `RenderError` quits the app —
     // which means a GPU device-loss (driver reset, GPU hang, or an XR headset
     // disconnect / compositor reset) hard-crashes the editor or game. Override

@@ -1,0 +1,27 @@
+[package]
+name = "renzora_solari"
+version = "0.1.0"
+edition = "2021"
+description = "Solari hardware-raytraced global illumination — a drop-in cdylib GI plugin. Wraps Bevy's experimental bevy_solari (SolariPlugins) behind Renzora's effect routing + inspector, gated on GPU ray-tracing support."
+
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
+# startup. Drop it in to enable Solari, delete it to disable — nothing in the
+# host links this crate. The settings type (`SolariGi`) and the capability flag
+# (`GpuRaytracing`) live in the shared `renzora` contract, so this crate must
+# NOT be statically linked by any host/editor crate.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["editor", "dlopen"]
+dlopen = []
+# Compiles the Solari inspector entry.
+editor = ["renzora/editor"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora" }
+
+[lints]
+workspace = true
