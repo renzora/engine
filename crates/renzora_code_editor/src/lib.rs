@@ -19,35 +19,83 @@ use renzora_scripting::ScriptComponent;
 // Systems
 // ---------------------------------------------------------------------------
 
-/// When the selected entity has scripts attached, auto-open them in the code editor.
+/// Make the code editor follow entity selection: selecting an entity *replaces*
+/// the open tabs with exactly that entity's file-backed scripts (one tab each,
+/// the first focused). Switching entities is not additive — the previous
+/// entity's scripts are closed.
+///
+/// Gated on a *signature* of `(selected entity, its resolved script paths)` kept
+/// in a `Local`, so this only acts when the selection — or the selected entity's
+/// script set — actually changes, never every frame (which would pin `active_tab`
+/// and stop you switching/closing tabs). Selecting an entity with *no* scripts
+/// leaves the editor untouched rather than blanking it on every stray click, so
+/// the editor keeps showing the last scripted entity you looked at.
+///
+/// Unsaved (modified) tabs survive the replace so in-progress edits are never
+/// silently dropped — the same rule `close_all`/`close_others` follow.
 fn sync_selection_scripts(
     selection: Res<EditorSelection>,
     mut state: ResMut<CodeEditorState>,
     project: Option<Res<CurrentProject>>,
     script_query: Query<&ScriptComponent>,
+    mut last_sig: Local<u64>,
 ) {
-    let Some(entity) = selection.get() else {
-        return;
-    };
-    let Ok(sc) = script_query.get(entity) else {
-        return;
-    };
+    use std::hash::{Hash, Hasher};
+
     let Some(project) = project else { return };
 
-    for entry in &sc.scripts {
-        if let Some(ref rel_path) = entry.script_path {
-            // Project-relative path; same convention as
-            // ScriptEngine::resolve_path.
-            let resolved = if rel_path.is_absolute() {
-                rel_path.clone()
-            } else {
-                project.path.join(rel_path)
-            };
-            if resolved.exists() {
-                // open_file is idempotent — if already open it just switches tab
-                state.open_file(resolved);
-            }
-        }
+    // Resolve the selected entity's file-backed scripts to absolute, existing
+    // paths. `script_id`-only entries (registered scripts with no file) have no
+    // editable source, so they're skipped.
+    let resolved: Vec<std::path::PathBuf> = selection
+        .get()
+        .and_then(|e| script_query.get(e).ok())
+        .map(|sc| {
+            sc.scripts
+                .iter()
+                .filter_map(|entry| entry.script_path.as_ref())
+                .map(|rel| {
+                    // Project-relative path; same convention as
+                    // ScriptEngine::resolve_path.
+                    if rel.is_absolute() {
+                        rel.clone()
+                    } else {
+                        project.path.join(rel)
+                    }
+                })
+                .filter(|p| p.exists())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    selection.get().map(|e| e.to_bits()).hash(&mut h);
+    for p in &resolved {
+        p.hash(&mut h);
+    }
+    let sig = h.finish();
+    if sig == *last_sig {
+        return;
+    }
+    *last_sig = sig;
+
+    if resolved.is_empty() {
+        return;
+    }
+
+    // Replace the tab set with this entity's scripts: drop every tab that isn't
+    // one of them, except unsaved ones (kept so edits aren't lost).
+    state
+        .open_files
+        .retain(|f| f.is_modified || resolved.iter().any(|p| *p == f.path));
+    for p in &resolved {
+        // open_file is idempotent — already-open scripts just keep their tab.
+        state.open_file(p.clone());
+    }
+    // Focus the entity's FIRST script so the tabs read left-to-right in
+    // attachment order (open_file leaves the last-opened tab active).
+    if let Some(idx) = state.open_files.iter().position(|f| f.path == resolved[0]) {
+        state.active_tab = Some(idx);
     }
 }
 
