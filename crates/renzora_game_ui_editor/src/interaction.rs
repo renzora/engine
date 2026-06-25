@@ -50,7 +50,15 @@ type Bbox = (f32, f32, f32, f32);
 pub(crate) struct CanvasBackground;
 
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(Update, canvas_interact.run_if(in_state(SplashState::Editor)));
+    app.add_systems(
+        Update,
+        canvas_interact
+            .run_if(in_state(SplashState::Editor))
+            // Play mode runs *inside* the editor (SplashState stays `Editor`), so
+            // without this guard drag-to-move/resize/rotate would keep editing the
+            // live UI layout while the user is playtesting. Mirrors the 3D gizmo.
+            .run_if(renzora::not_in_play_mode),
+    );
 }
 
 enum Mode {
