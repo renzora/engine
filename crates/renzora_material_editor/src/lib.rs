@@ -36,6 +36,22 @@ pub enum MaterialEditMode {
 }
 
 
+/// One material slot in the editor's tab bar. Selecting an entity populates the
+/// tabs with every distinct material found in its subtree (deduped by file path),
+/// so a multi-mesh model shows all its materials at once; switching tab loads
+/// that material into `graph`.
+#[derive(Clone, Debug)]
+pub struct MaterialTab {
+    /// The mesh entity this material is attached to. `None` for a standalone
+    /// `.material` asset tab opened from the browser.
+    pub entity: Option<Entity>,
+    /// Project-relative `.material` path, or `None` for a mesh with no
+    /// `MaterialRef` yet (a fresh graph that saves on first edit).
+    pub path: Option<String>,
+    /// Display label (material file stem, or the mesh's name).
+    pub label: String,
+}
+
 /// Persistent editor state for the material editor.
 #[derive(Resource)]
 pub struct MaterialEditorState {
@@ -53,6 +69,11 @@ pub struct MaterialEditorState {
     pub compile_errors: Vec<String>,
     /// True when graph has unsaved changes.
     pub is_dirty: bool,
+    /// Material tabs for the current selection — one per distinct material in the
+    /// selected entity's subtree. Drives the graph panel's tab bar.
+    pub tabs: Vec<MaterialTab>,
+    /// Index into `tabs` of the material currently loaded in `graph`.
+    pub active_tab: Option<usize>,
 }
 
 impl Default for MaterialEditorState {
@@ -65,6 +86,8 @@ impl Default for MaterialEditorState {
             compiled_wgsl: None,
             compile_errors: Vec::new(),
             is_dirty: false,
+            tabs: Vec::new(),
+            active_tab: None,
         }
     }
 }
