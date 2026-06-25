@@ -12,7 +12,9 @@ pub use state::*;
 use bevy::prelude::*;
 
 use renzora::core::CurrentProject;
+use renzora_ember::markup::MarkupSource;
 use renzora_editor_framework::EditorSelection;
+use renzora_game_ui::HtmlTemplatePath;
 use renzora_scripting::ScriptComponent;
 
 // ---------------------------------------------------------------------------
@@ -20,56 +22,105 @@ use renzora_scripting::ScriptComponent;
 // ---------------------------------------------------------------------------
 
 /// Make the code editor follow entity selection: selecting an entity *replaces*
-/// the open tabs with exactly that entity's file-backed scripts (one tab each,
-/// the first focused). Switching entities is not additive — the previous
-/// entity's scripts are closed.
+/// the open tabs with its editable source files — every file-backed script on a
+/// `ScriptComponent`, plus the `.html` UI templates reachable from it (its own
+/// `HtmlTemplatePath` and those of every descendant, so selecting a `UiCanvas`
+/// opens all of its children's templates as tabs). One tab each, the first
+/// focused. Switching entities is not additive — the previous entity's sources
+/// are closed.
 ///
-/// Gated on a *signature* of `(selected entity, its resolved script paths)` kept
-/// in a `Local`, so this only acts when the selection — or the selected entity's
-/// script set — actually changes, never every frame (which would pin `active_tab`
-/// and stop you switching/closing tabs). Selecting an entity with *no* scripts
+/// Gated on a *signature* of `(selected entity, its resolved source paths)` kept
+/// in a `Local`, so this only acts when the selection — or that entity's source
+/// set — actually changes, never every frame (which would pin `active_tab` and
+/// stop you switching/closing tabs). Selecting an entity with no editable source
 /// leaves the editor untouched rather than blanking it on every stray click, so
-/// the editor keeps showing the last scripted entity you looked at.
+/// it keeps showing the last source-bearing entity you looked at.
 ///
 /// Unsaved (modified) tabs survive the replace so in-progress edits are never
 /// silently dropped — the same rule `close_all`/`close_others` follow.
-fn sync_selection_scripts(
+fn sync_selection_sources(
     selection: Res<EditorSelection>,
     mut state: ResMut<CodeEditorState>,
     project: Option<Res<CurrentProject>>,
+    assets: Res<AssetServer>,
     script_query: Query<&ScriptComponent>,
+    template_query: Query<&HtmlTemplatePath>,
+    children_query: Query<&Children>,
+    markup_query: Query<&MarkupSource>,
     mut last_sig: Local<u64>,
 ) {
     use std::hash::{Hash, Hasher};
 
     let Some(project) = project else { return };
+    let selected = selection.get();
 
-    // Resolve the selected entity's file-backed scripts to absolute, existing
-    // paths. `script_id`-only entries (registered scripts with no file) have no
-    // editable source, so they're skipped.
-    let resolved: Vec<std::path::PathBuf> = selection
-        .get()
-        .and_then(|e| script_query.get(e).ok())
-        .map(|sc| {
-            sc.scripts
-                .iter()
-                .filter_map(|entry| entry.script_path.as_ref())
-                .map(|rel| {
-                    // Project-relative path; same convention as
-                    // ScriptEngine::resolve_path.
-                    if rel.is_absolute() {
-                        rel.clone()
-                    } else {
-                        project.path.join(rel)
+    // Project-relative -> absolute, existing path. Same convention as
+    // ScriptEngine::resolve_path / the markup loader.
+    let resolve = |rel: std::path::PathBuf| -> Option<std::path::PathBuf> {
+        let abs = if rel.is_absolute() {
+            rel
+        } else {
+            project.path.join(rel)
+        };
+        abs.exists().then_some(abs)
+    };
+
+    let mut resolved: Vec<std::path::PathBuf> = Vec::new();
+
+    // Scripts: every file-backed entry, in attachment order. `script_id`-only
+    // entries (registered scripts with no file) have no editable source.
+    if let Some(sc) = selected.and_then(|e| script_query.get(e).ok()) {
+        for entry in &sc.scripts {
+            if let Some(abs) = entry.script_path.clone().and_then(resolve) {
+                if !resolved.contains(&abs) {
+                    resolved.push(abs);
+                }
+            }
+        }
+    }
+
+    // UI templates. At edit time the path lives on an `HtmlTemplatePath`
+    // component held by each template *instance* entity; a `UiCanvas` is a bare
+    // parent whose children carry them. So walk the selected entity and all its
+    // descendants collecting every `HtmlTemplatePath` — selecting one instance
+    // opens its template, selecting the canvas opens all of its children's
+    // templates as tabs.
+    if let Some(root) = selected {
+        let mut queue = std::collections::VecDeque::from([root]);
+        while let Some(e) = queue.pop_front() {
+            if let Ok(tp) = template_query.get(e) {
+                if let Some(abs) = resolve(std::path::PathBuf::from(&tp.0)) {
+                    if !resolved.contains(&abs) {
+                        resolved.push(abs);
                     }
-                })
-                .filter(|p| p.exists())
-                .collect()
-        })
-        .unwrap_or_default();
+                }
+            }
+            if let Ok(children) = children_query.get(e) {
+                for child in children.iter() {
+                    queue.push_back(child);
+                }
+            }
+        }
+    }
+
+    // At runtime the markup loader expands a template into a tree of nodes that
+    // each carry `MarkupSource` (but not `HtmlTemplatePath`). Selecting a built
+    // node deep inside the UI resolves back to its template via the asset handle,
+    // covering the case the downward `HtmlTemplatePath` walk above can't reach.
+    if let Some(ms) = selected.and_then(|e| markup_query.get(e).ok()) {
+        if let Some(abs) = assets
+            .get_path(&ms.template_handle)
+            .map(|p| p.path().to_path_buf())
+            .and_then(resolve)
+        {
+            if !resolved.contains(&abs) {
+                resolved.push(abs);
+            }
+        }
+    }
 
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    selection.get().map(|e| e.to_bits()).hash(&mut h);
+    selected.map(|e| e.to_bits()).hash(&mut h);
     for p in &resolved {
         p.hash(&mut h);
     }
@@ -83,17 +134,17 @@ fn sync_selection_scripts(
         return;
     }
 
-    // Replace the tab set with this entity's scripts: drop every tab that isn't
+    // Replace the tab set with this entity's sources: drop every tab that isn't
     // one of them, except unsaved ones (kept so edits aren't lost).
     state
         .open_files
         .retain(|f| f.is_modified || resolved.iter().any(|p| *p == f.path));
     for p in &resolved {
-        // open_file is idempotent — already-open scripts just keep their tab.
+        // open_file is idempotent — already-open sources just keep their tab.
         state.open_file(p.clone());
     }
-    // Focus the entity's FIRST script so the tabs read left-to-right in
-    // attachment order (open_file leaves the last-opened tab active).
+    // Focus the FIRST source so the tabs read left-to-right in attachment order
+    // (open_file leaves the last-opened tab active).
     if let Some(idx) = state.open_files.iter().position(|f| f.path == resolved[0]) {
         state.active_tab = Some(idx);
     }
@@ -115,7 +166,7 @@ impl Plugin for CodeEditorPlugin {
         app.add_systems(
             Update,
             (
-                sync_selection_scripts,
+                sync_selection_sources,
                 consume_open_code_editor_file,
                 sync_asset_filter_for_scripting,
                 sync_code_editor_prefs_to_settings,

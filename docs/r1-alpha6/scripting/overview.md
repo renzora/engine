@@ -26,10 +26,12 @@ Renzora has a built-in code editor, so you never have to leave the engine to wri
 
 You can open scripts a few ways: double-click a `.lua`/`.rhai` file in the asset
 browser, drop one onto the editor, or **select an entity** — the code editor
-follows your selection and shows every script attached to that entity, one tab
-per script, with the first focused. Switching to another entity *replaces* the
-tabs with that entity's scripts (it isn't additive); any tab with unsaved
-changes is kept so you never lose edits. Selecting an entity with no scripts
+follows your selection and shows that entity's editable sources: every script
+attached to it, one tab per script, with the first focused. UI works the same
+way — select a template and its `.html` opens; select a **UI Canvas** and every
+template under it opens as tabs. Switching to another entity *replaces* the tabs
+with the new entity's sources (it isn't additive); any tab with unsaved changes
+is kept so you never lose edits. Selecting an entity with no editable source
 leaves the editor as it was.
 
 Scripts live in your project's `scripts/` folder. Each script is just a text file with a few functions in it that the engine calls for you at the right moments.

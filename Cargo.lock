@@ -7881,6 +7881,7 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_game_ui",
  "renzora_scripting",
 ]
 
