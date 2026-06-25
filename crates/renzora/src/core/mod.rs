@@ -238,6 +238,12 @@ struct EditorPrefFile {
     status_show_rendering_mode: bool,
     #[serde(default = "default_true")]
     status_show_gpu_name: bool,
+    /// Developer mode — unlocks dev/profiling tooling hidden from a normal
+    /// editing session. Persisted here so a distribution plugin can read the
+    /// host's dev-mode state via [`load_dev_mode`] at startup (the gated
+    /// `renzora_tracy` profiler bridge does exactly this). Generic host flag.
+    #[serde(default)]
+    dev_mode: bool,
 }
 
 fn default_ui_scale() -> f32 {
@@ -268,6 +274,7 @@ impl Default for EditorPrefFile {
             status_show_gpu: true,
             status_show_rendering_mode: true,
             status_show_gpu_name: true,
+            dev_mode: false,
         }
     }
 }
@@ -410,6 +417,45 @@ pub fn save_stats_refresh(settings: &StatsRefreshSettings) -> std::io::Result<()
     prefs.status_show_gpu = settings.show_gpu;
     prefs.status_show_rendering_mode = settings.show_rendering_mode;
     prefs.status_show_gpu_name = settings.show_gpu_name;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load the persisted developer-mode flag (default `false`). The editor seeds
+/// `EditorSettings.dev_mode` from this at startup, and a distribution plugin can
+/// read it directly (e.g. `renzora_tracy` gates its profiler bridge on it).
+pub fn load_dev_mode() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.dev_mode)
+            .unwrap_or(false)
+    }
+}
+
+/// Persist the developer-mode flag (read-modify-write, so other fields survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.dev_mode = dev_mode;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

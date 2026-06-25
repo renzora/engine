@@ -16,10 +16,20 @@ dlopen = []
 
 [dependencies]
 bevy = { workspace = true }
-renzora = { path = "../renzora", default-features = false }
+# `editor` feature: lets the plugin read `EditorSettings.dev_mode` across the
+# dylib boundary (it's a contract type) to gate the bridge on Dev Mode.
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# Renders the plugin's own "Tracy Profiler" settings toggle.
+renzora_ember = { path = "../renzora_ember" }
+# Editor toast queue — to notify that the toggle applies on restart.
+renzora_ui = { path = "../renzora_ui" }
 # Direct Tracy protocol client (no tracing layer needed). The protocol
-# version must match the Tracy server build you connect with.
-tracy-client = "0.18"
+# version must match the Tracy server build you connect with. `ondemand` so the
+# client only buffers while a profiler is connected (no idle RAM growth).
+tracy-client = { version = "0.18", features = ["ondemand"] }
+# Persist the opt-in to the user's config dir, like other distribution plugins.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [lints]
 workspace = true

@@ -114,7 +114,8 @@
             { "slug": "editor-dev/panels", "title": "Building Editor Panels" },
             { "slug": "editor-dev/widgets", "title": "Custom Widgets" },
             { "slug": "editor-dev/theming", "title": "Theming System" },
-            { "slug": "editor-dev/inspector-fields", "title": "Custom Inspector Fields" }
+            { "slug": "editor-dev/inspector-fields", "title": "Custom Inspector Fields" },
+            { "slug": "editor-dev/profiling", "title": "Profiling with Tracy" }
           ]
         },
         {

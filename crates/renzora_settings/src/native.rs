@@ -1673,7 +1673,12 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
         commands,
         false, // corrected by bind_2way on first frame
         |w| w.resource::<EditorSettings>().dev_mode,
-        |w, &v| w.resource_mut::<EditorSettings>().dev_mode = v,
+        |w, &v| {
+            w.resource_mut::<EditorSettings>().dev_mode = v;
+            // Persist so dev mode (and plugins gated on it, e.g. renzora_tracy)
+            // survive a restart.
+            let _ = renzora::save_dev_mode(v);
+        },
     );
     settings_row(commands, fonts, body, 0, "Dev Mode", t);
 

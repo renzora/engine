@@ -251,7 +251,9 @@ impl Default for EditorSettings {
             ui_scale: renzora::load_ui_scale(),
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
-            dev_mode: false,
+            // Seeded from the persisted contract flag so dev mode (and anything
+            // gated on it, e.g. the `renzora_tracy` profiler) survives restarts.
+            dev_mode: renzora::load_dev_mode(),
             script_rerun_on_ready_on_reload: true,
             scripts_use_game_camera: true,
             hide_cursor_in_play_mode: true,
