@@ -1,0 +1,110 @@
+name: Build Engine
+
+# Manually-triggered cross-compile of the engine (editor + runtime) for the
+# desktop platforms, using the same Docker toolchain images the `renzora` CLI
+# drives. Each platform job pulls its toolchain image from GHCR, mounts the
+# checkout at /app/src (where the CLI puts it, so cargo resolves BOTH the repo's
+# .cargo/config.toml and the image's /app/.cargo cross-linker sections), and runs
+# docker/build-all.sh — the exact path `renzora build <platform>` takes.
+#
+# Arch coverage matches the toolchain's real capabilities:
+#   linux    x86_64 + aarch64  (one container cross-builds both)
+#   macos    x86_64 + aarch64  (osxcross builds both slices)
+#   windows  x86_64 only       (native arm64 Windows is intentionally unsupported
+#                               by the toolchain — see docker/windows/Dockerfile;
+#                               arm64 users run the x64 build under emulation)
+#
+# Triggered ONLY by hand (workflow_dispatch) — never on push.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform(s) to build"
+        type: choice
+        default: all
+        options:
+          - all
+          - linux
+          - windows
+          - macos
+
+env:
+  REGISTRY: ghcr.io/renzora
+
+jobs:
+  # Turn the single `platform` choice into the build matrix. `all` fans out to
+  # every platform; a specific choice narrows to one.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          linux='{"platform":"linux","arches":"x64+arm64"}'
+          windows='{"platform":"windows","arches":"x64"}'
+          macos='{"platform":"macos","arches":"x64+arm64"}'
+          case "${{ inputs.platform }}" in
+            all)     inc="$linux,$windows,$macos" ;;
+            linux)   inc="$linux" ;;
+            windows) inc="$windows" ;;
+            macos)   inc="$macos" ;;
+          esac
+          echo "matrix={\"include\":[$inc]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # bevy + the full plugin set across multiple target triples needs more than
+      # the runner's default free space; reclaim the preinstalled SDKs we don't
+      # use before the build fills the disk.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+                      /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `:latest` (not the content-hash tag) for the same reason test.yml does:
+      # this workflow and docker-image.yml are independent, so the hash-tagged
+      # image for the current Dockerfile may not be published yet; `:latest` with
+      # eventual consistency is fine for an on-demand build.
+      - name: Build ${{ matrix.platform }} (${{ matrix.arches }})
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/app/src" \
+            -w /app/src \
+            "${REGISTRY}/${{ matrix.platform }}:latest" \
+            bash docker/build-all.sh dist ${{ matrix.platform }}
+
+      # docker runs as root, so the dist tree is root-owned; hand it back to the
+      # runner user before upload-artifact reads it.
+      - name: Reclaim ownership of build output
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" dist || true
+
+      - name: Upload ${{ matrix.platform }} build
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
