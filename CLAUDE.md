@@ -79,96 +79,73 @@ excluded.
 
 ---
 
-## 3. Plugin ABI — the `RENZORA_ABI_HASH`
+## 3. Plugin ABI — the `bevy_dylib` hash
 
 Community/distribution plugins are `dlopen`'d at runtime and share **one
-compiled `bevy_dylib`** with the host. The ABI guard is `RENZORA_ABI_HASH`,
-exported by every plugin as `plugin_bevy_hash()` and checked by
-`dynamic_plugin_loader` before a plugin is allowed to touch the `App`. If the
-host and a plugin were built against an incompatible bevy, every
-component/resource crossing the boundary would be a *different* type, so the
-loader rejects the mismatch.
+compiled `bevy_dylib`** with the host. The ABI guard is the `TypeId` of
+`bevy::ecs::world::World` (exported by every plugin as `plugin_bevy_hash()` and
+checked by `dynamic_plugin_loader` before a plugin is allowed to touch the
+`App`). If the host and a plugin were built against different `bevy_dylib`
+copies, every component/resource crossing the boundary would be a *different*
+type, so the loader rejects the mismatch.
 
-### The hash is computed explicitly from THREE inputs — nothing else
+In practice this surfaces as the cargo metadata hash in the dylib filename,
+e.g. `bevy_dylib-<hash>.dll`.
 
-`RENZORA_ABI_HASH` is a stable hash of exactly:
-
-1. **bevy version** — the resolved version from `Cargo.lock` (e.g. `0.19.0`).
-2. **rust toolchain** — `rustc` release + commit-hash (target triple deliberately
-   excluded, so the hash is the same on every platform).
-3. **the curated bevy feature set** — the `[workspace.dependencies] bevy.features`
-   list, sorted. (Only *bevy's* features matter; a plugin's own unrelated cargo
-   features don't change bevy's compilation, so they're ignored.)
-
-A change to none of those three cannot move the hash; a change to any of them
-moves it deterministically. This is implemented in the **`abi_hash`** crate
-(`crates/abi_hash`): `renzora`'s `build.rs` calls it to bake `RENZORA_ABI_HASH`
-(plus `RENZORA_ABI_INPUTS`) into the shared `renzora` dylib, so the host and
-every in-tree plugin compute the same value. All three inputs are pinned in
-**`docker/base/Dockerfile`** (rustc + the bevy feature set) and the workspace
-`Cargo.toml` / `Cargo.lock` (bevy version) — a per-platform Dockerfile edit
-cannot move the hash.
-
-### What `RENZORA_ABI_HASH` does and does NOT guarantee
-
-It is a **persistent identifier of the ABI configuration** (bevy version + rustc +
-feature set) — identical on every machine and environment for the same three
-inputs. It deliberately does NOT capture the build flags/profile/env, so it can't
-detect those. That's by design: real binary compatibility (the `bevy_dylib` cargo
-metadata hash, which governs the actual exported symbols) ALSO depends on build
-flags and is therefore **environment-specific**. Empirically, a local native
-`--profile dist` build and the Docker cross-build produce the *same*
-`RENZORA_ABI_HASH` but *different* `bevy_dylib` symbol hashes (different
-`RUSTFLAGS`/env). So **all real building must happen in Docker** (the one
-canonical flag/env set) — plugins built in Docker against a given release are
-mutually loadable; a plugin from a different build environment (or a different
-profile) is not, and the OS linker rejects it. `RENZORA_ABI_HASH` is the stable
-label for "which ABI config"; reproducible Docker builds are what make plugins of
-that config actually interchangeable.
-
-### The pin lives in `abi.lock` — verify it, don't eyeball a dylib filename
-
-`abi.lock` (repo root, committed) records the three inputs + the resulting hash.
-The `abi_hash` CLI is the tool:
+### Current stable ABI hash
 
 ```
-cargo run -p abi_hash -- show     # print current inputs + hash
-cargo run -p abi_hash -- verify   # diff current inputs vs abi.lock (exit 1 on drift)
-cargo run -p abi_hash -- update   # re-pin abi.lock after an INTENDED change
+STABLE ABI HASH (Bevy 0.19, crates.io source): eb7a819cba90e0c8
 ```
 
-**On every `renzora run` / `renzora build` (and in CI):** run `abi_hash verify`.
+> The Bevy 0.18 hash was `6f39727ed2dbbb6c`; the 0.19 upgrade moved it to
+> `d0b0839f4fb45a22` (expected — a Bevy version bump always rehashes the ABI).
+> Switching the Bevy dependency from the git tag `v0.19.0` to the crates.io
+> `0.19` release then moved it again to `eb7a819cba90e0c8`. The *code* is
+> identical (same 0.19.0 release), but the cargo metadata hash folds in the
+> dependency **source** (`git+…#rev` vs `registry+…`), so the source change
+> rehashes the ABI even with byte-identical code — and every plugin built
+> against the git-sourced dylib must be rebuilt. `eb7a819cba90e0c8` is now the
+> pinned value; hold it stable from here.
 
-- **Stable** → the plugin ABI is unchanged; all existing distribution plugins
-  keep loading.
-- **Changed** → `verify` prints the exact cause (`bevy version: X → Y`,
-  `rust toolchain: … → …`, or `feature added/removed: ±name`). **Stop and inform
-  the user**: every existing distribution plugin will fail the ABI check until
-  rebuilt. If the change is intended, re-pin with `abi_hash update`; otherwise
-  investigate (an unintended move now points at a specific input, not a mystery).
+**On every `renzora run` / `renzora build`:** check the hash of the generated
+`bevy_dylib` (it's embedded in the host binary's imports and is the suffix of
+the copied `bevy_dylib-<hash>.<ext>`). 
 
-At load time the loader's rejection log likewise diffs the engine's inputs
-against the plugin's (via the plugin's `plugin_abi_info()` export), so a failed
-load says *which* input differs.
+- If it **matches** `eb7a819cba90e0c8` → good, the plugin ABI is stable and all
+  existing community plugins keep loading.
+- If it **differs** → **stop and inform the user.** Explain the likely cause and
+  that every existing distribution plugin will now fail the ABI check until
+  rebuilt. Keeping the hash at `eb7a819cba90e0c8` is important for plugin ABI
+  stability — do not let it drift casually.
 
-### Current state
+Things that change the hash: a Bevy version bump, a change to `bevy`'s enabled
+feature set, a Rust compiler version change, or anything that alters
+`bevy_dylib`'s compilation. All of those live in **`docker/base/Dockerfile`**
+(the shared base image), so the ABI hash is governed by the base, not the
+per-platform images — a per-platform Dockerfile edit cannot move it. A change
+with **none** of those is a red flag worth investigating.
 
-`abi.lock` reflects the **current** workspace, which has the profiling/experimental
-features `trace_tracy`, `meshlet`, `meshlet_processor`, and `bevy_solari` enabled.
-Toggling any of those will (correctly and visibly) move the hash — `verify` will
-name the feature. A shipping build that drops `trace_tracy`/`meshlet` is expected
-to re-pin once. There is no per-platform hash divergence anymore (the triple is
-not an input).
+Note the hash is **per-target**: each platform's `bevy_dylib` carries its own
+cargo-metadata hash (the triple is folded in), so the macOS, Windows, and Linux
+artifacts naturally differ from each other and from `eb7a819cba90e0c8`. The pin
+applies per platform; compare a platform's hash to its own prior value.
 
-The current pinned hash is:
+### Bevy 0.19 (done — hash re-pinned)
 
-```
-STABLE ABI HASH: 3bbffe3e96cbadf859829a69319e3f75
-```
+The 0.19 upgrade rehashed the ABI, as expected (a version bump always does), and
+the later git→crates.io source switch rehashed it once more (cargo folds the
+dependency source into the metadata hash, so identical code at a different source
+still moves it). The current value is **pinned** below; hold it stable from here
+(don't let it drift after it's pinned).
 
-`abi.lock` is the source of truth (`abi_hash show` prints it with its inputs).
-The hash holds across source/lockfile/profile/target changes and moves only on
-the three real inputs.
+| Engine / Bevy | Source | Stable ABI hash |
+|---|---|---|
+| r1-alpha6 / Bevy 0.18 | git tag | `6f39727ed2dbbb6c` |
+| bevy-0.19-migration / Bevy 0.19 | git tag `v0.19.0` | `d0b0839f4fb45a22` |
+| r1-alpha6 / Bevy 0.19 | crates.io `0.19` | `eb7a819cba90e0c8` |
+
+See `docs/BEVY_0.19_MIGRATION.md` for migration context.
 
 ---
 
@@ -328,8 +305,6 @@ Domain functions belong in that domain crate's extension.
 | `crates/renzora/` | Contract dylib: shared types/events/components, editor contract |
 | `crates/renzora/src/plugin_meta.rs` | `add!` / `export_plugin_bundle!`, `PluginScope` |
 | `crates/dynamic_plugin_loader/src/lib.rs` | dlopen loader + ABI hash gate + hot-reload |
-| `crates/abi_hash/` | Computes/verifies `RENZORA_ABI_HASH` (bevy ver + rustc + bevy features); `renzora` build-dep + CLI (`show`/`verify`/`update`) |
-| `abi.lock` | Pinned ABI inputs + hash; `abi_hash verify` diffs against it |
 | `crates/renzora_scripting/` | Lua + Rhai backends, `ScriptExtension` trait |
 | `crates/renzora_lumen`, `crates/renzora_cloth` | Distribution `cdylib` plugin templates |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |

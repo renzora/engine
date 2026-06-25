@@ -87,10 +87,6 @@ mod platform {
     type CreatePluginFn = extern "C" fn() -> *mut dyn Plugin;
     type ScopePluginFn = extern "C" fn() -> u8;
     type BevyHashFn = extern "C" fn() -> [u64; 2];
-    // Optional diagnostics export: the plugin's three ABI inputs as a
-    // NUL-terminated C string. Absent on plugins built before it was added — the
-    // hash check still works; only the field-level rejection message degrades.
-    type AbiInfoFn = extern "C" fn() -> *const std::os::raw::c_char;
     // Bundle entry point: one cdylib, N plugins. `*mut App` is a thin pointer
     // (FFI-safe in practice; only the address crosses — both sides agree on
     // `App`'s layout via the shared `bevy_dylib`, enforced by `plugin_bevy_hash`).
@@ -100,43 +96,9 @@ mod platform {
     #[allow(improper_ctypes_definitions)]
     type InstallScopeFn = extern "C" fn(*mut App, u8) -> u32;
 
-    // The host's ABI tag — the single `RENZORA_ABI_HASH` baked into the shared
-    // `renzora` dylib (bevy version + rustc + bevy feature set). A plugin's
-    // `plugin_bevy_hash()` resolves to the same const because it linked the same
-    // `renzora`, so equal tags mean "built against the same bevy ABI". This
-    // replaced `TypeId::of::<World>()`, which drifted on dependency source /
-    // lockfile / profile / target with no real ABI change.
     fn engine_bevy_hash() -> [u64; 2] {
-        renzora::RENZORA_ABI_HASH
-    }
-
-    /// A loaded plugin's `plugin_abi_info()` (its three ABI inputs as text), if
-    /// it exports one. Returns `None` for plugins built before the export.
-    fn read_plugin_abi_info(library: &Library) -> Option<String> {
-        unsafe {
-            let f = library.get::<AbiInfoFn>(b"plugin_abi_info").ok()?;
-            let ptr = (*f)();
-            if ptr.is_null() {
-                return None;
-            }
-            Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
-        }
-    }
-
-    /// Why `library` failed the ABI check: the host's inputs vs the plugin's
-    /// (when the plugin exports them), each on one line for the log.
-    fn abi_mismatch_detail(library: &Library) -> String {
-        let engine = renzora::RENZORA_ABI_INPUTS.replace('\n', " | ");
-        match read_plugin_abi_info(library) {
-            Some(plugin) => format!(
-                "engine [{}] vs plugin [{}]",
-                engine,
-                plugin.trim_end_matches('\0').trim().replace('\n', " | ")
-            ),
-            None => format!(
-                "engine [{engine}]; plugin predates the ABI-info export — rebuild it against this engine"
-            ),
-        }
+        let id = std::any::TypeId::of::<bevy::ecs::world::World>();
+        unsafe { std::mem::transmute(id) }
     }
 
     #[cfg(target_os = "windows")]
@@ -216,18 +178,23 @@ mod platform {
             };
 
             if !compatible {
+                let engine_hash = engine_bevy_hash();
+                let plugin_hash = unsafe {
+                    library
+                        .get::<BevyHashFn>(b"plugin_bevy_hash")
+                        .ok()
+                        .map(|f| (*f)())
+                };
                 warn!(
-                    "[dynamic-plugin] Skipping '{}' — incompatible plugin ABI: {}",
-                    stem,
-                    abi_mismatch_detail(&library)
+                    "[dynamic-plugin] Skipping '{}' — incompatible bevy version (engine: {:?}, plugin: {:?})",
+                    stem, engine_hash, plugin_hash
                 );
                 if let Some(mut registry) =
                     app.world_mut().get_resource_mut::<DynamicPluginRegistry>()
                 {
                     registry.failed.push(FailedPlugin {
                         id: stem,
-                        reason: "Incompatible plugin ABI — rebuild plugin against this engine \
-                                 (bevy version / rustc / bevy features differ)"
+                        reason: "Incompatible bevy version — rebuild plugin with current engine"
                             .into(),
                     });
                 }
@@ -364,10 +331,10 @@ mod platform {
             }
         };
 
-        // Same ABI gate as the directory loader: the bundle must have been built
-        // against the same bevy ABI as the host (same `RENZORA_ABI_HASH`) or
-        // every component/resource crossing the boundary would be a distinct
-        // type. Reject on mismatch.
+        // Same ABI gate as the directory loader: the bundle must import the
+        // exact `bevy_dylib` the host imports (one `--workspace` build) or its
+        // `World` TypeId differs and every component/resource crossing the
+        // boundary would be a distinct type. Reject on mismatch.
         let compatible = unsafe {
             library
                 .get::<BevyHashFn>(b"plugin_bevy_hash")
@@ -377,10 +344,9 @@ mod platform {
         };
         if !compatible {
             warn!(
-                "[dynamic-plugin] editor bundle '{}' — incompatible plugin ABI, skipped: {} \
+                "[dynamic-plugin] editor bundle '{}' — incompatible bevy version, skipped \
                  (rebuild the bundle in the same `--workspace` build as the host)",
-                stem,
-                abi_mismatch_detail(&library)
+                stem
             );
             return;
         }
@@ -699,10 +665,7 @@ mod platform {
         if !compatible {
             return Some((
                 HotLoadOutcome::Skipped,
-                format!(
-                    "incompatible plugin ABI — rebuild against this engine: {}",
-                    abi_mismatch_detail(&library)
-                ),
+                "incompatible engine/Bevy version — rebuild the plugin against this engine".into(),
             ));
         }
 

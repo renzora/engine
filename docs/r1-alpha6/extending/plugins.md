@@ -67,8 +67,7 @@ The macro expands to **two parallel registration paths**, and the build target d
    ```rust
    #[no_mangle] pub extern "C" fn plugin_create() -> *mut dyn Plugin;
    #[no_mangle] pub extern "C" fn plugin_scope()  -> u8;       // PluginScope discriminant
-   #[no_mangle] pub extern "C" fn plugin_bevy_hash() -> [u64; 2]; // ABI guard (RENZORA_ABI_HASH)
-   #[no_mangle] pub extern "C" fn plugin_abi_info() -> *const c_char; // ABI inputs, for diagnostics
+   #[no_mangle] pub extern "C" fn plugin_bevy_hash() -> [u64; 2]; // ABI guard
    ```
 
    The `cfg(feature = "dlopen")` gate resolves against the **calling crate**, not against `renzora`. That is why a distribution plugin declares its own `dlopen` feature rather than enabling one on the `renzora` dependency.
@@ -179,20 +178,17 @@ renzora add <name> --dylib    # distribution cdylib (default = ["dlopen"])
 
 ## The ABI guard
 
-A `dlopen`'d plugin and the host share the **same compiled `bevy_dylib` and `renzora` dylib** (via `prefer-dynamic` + `bevy/dynamic_linking`). `plugin_bevy_hash()` enforces compatibility at load time by returning `renzora::RENZORA_ABI_HASH`, which the macro emits for you:
+A `dlopen`'d plugin and the host share the **same compiled `bevy_dylib` and `renzora` dylib** (via `prefer-dynamic` + `bevy/dynamic_linking`), so their `TypeId`s line up across the boundary. `plugin_bevy_hash()` enforces this at load time:
 
 ```rust
 #[no_mangle]
 pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
-    renzora::RENZORA_ABI_HASH
+    let id = std::any::TypeId::of::<bevy::ecs::world::World>();
+    unsafe { std::mem::transmute(id) }
 }
 ```
 
-`RENZORA_ABI_HASH` is a stable hash of exactly three inputs — the **bevy version**, the **rust toolchain**, and the **curated bevy feature set** — baked into the shared `renzora` dylib by its `build.rs` (see the `abi_hash` crate). It deliberately does **not** depend on the dependency source, `Cargo.lock` churn, build profile, or target, so it stays stable unless one of those three real inputs changes. The loader compares the plugin's value against the host's and **rejects any plugin whose hash does not match** — a mismatch means the plugin was built against a different Bevy/toolchain/feature set and would corrupt ECS access.
-
-In practice: build distribution plugins with the **same engine, toolchain, and bevy feature set** as the host (the `docker/base/Dockerfile` image, pinned to one Rust version, is the canonical build environment). The macro also emits `plugin_abi_info()`, so when the loader rejects a plugin it logs exactly which input differs (bevy version / rustc / feature). Run `cargo run -p abi_hash -- verify` to check the host's current hash against the pinned `abi.lock` and see the cause of any change.
-
-`RENZORA_ABI_HASH` is a persistent *label* for the ABI configuration, but actual binary loadability also depends on the build environment: the `bevy_dylib`'s real exported-symbol identity (its cargo metadata hash) folds in `RUSTFLAGS`/profile, so a plugin only loads into a build made in the **same environment** — which is why all distribution plugins must be built in the canonical Docker image. A plugin built against a different profile or environment is rejected by the OS linker even if the three ABI inputs match.
+The loader compares this against its own value and **rejects any plugin whose hash does not match** — a mismatch means the plugin was built against a different Bevy/engine and would corrupt ECS access. In practice this means: build distribution plugins with the **same engine version and toolchain** as the host (the `docker/base/Dockerfile` image, pinned to one Rust version, is the canonical build environment). The build also stamps a `RENZORA_BUILD_HASH` (version + rustc + Bevy) used for the same compatibility checks.
 
 ## Hot-loading
 

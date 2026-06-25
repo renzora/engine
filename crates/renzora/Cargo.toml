@@ -76,11 +76,5 @@ renzora_macros = { path = "../renzora_macros", optional = true }
 # desktop, mobile staticlib/cdylib, and wasm32 (via __wasm_call_ctors).
 inventory = "0.3"
 
-[build-dependencies]
-# Computes the plugin ABI hash (bevy version + rustc + bevy feature set) that
-# build.rs bakes into `RENZORA_ABI_HASH`. A tiny file-reading tool with no bevy
-# / renzora dependency, so it adds no cycle and no ABI weight of its own.
-abi_hash = { path = "../abi_hash" }
-
 [lints]
 workspace = true

@@ -16,11 +16,8 @@ members = [
     # member glob that matches nothing is a hard error, so this stays valid only
     # while ≥1 `editor/` subcrate exists.
     "crates/renzora_*/editor",
-    # Non-plugin engine support crates.
+    # Non-plugin engine support crate.
     "crates/dynamic_plugin_loader",
-    # Build/CI tool: computes + verifies the plugin ABI hash (bevy version +
-    # rustc + bevy feature set). `renzora`'s build.rs uses it as a build-dep.
-    "crates/abi_hash",
     # Vendored Bevy ecosystem crates. Listed explicitly (not via a
     # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
     # is its own vendored workspace.

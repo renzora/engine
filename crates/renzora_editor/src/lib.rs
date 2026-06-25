@@ -19,13 +19,10 @@
 //! - **Build via `--workspace` only** (never `cargo build -p renzora_editor`).
 //!   `dynamic_linking` reaches this crate's `bevy` solely through resolver-2
 //!   feature unification with `renzora_app` under one `--workspace` build. Built
-//!   in isolation it would link a *separate, static* bevy whose `World` etc. are
-//!   distinct types from the host's `bevy_dylib`, so ECS access across the
-//!   boundary is corrupt. NOTE: the `plugin_bevy_hash` guard is now
-//!   `RENZORA_ABI_HASH` (bevy version + rustc + bevy features), which an
-//!   isolation build reads from the *same* workspace files and so would still
-//!   *match* — it no longer auto-catches this mistake. The `--workspace` build
-//!   is therefore a hard discipline, not something the hash will rescue.
+//!   in isolation it would link a *separate, static* bevy → a different
+//!   `World` TypeId → `plugin_bevy_hash` mismatch → the loader silently rejects
+//!   the bundle ("incompatible bevy version"). The user must verify the built
+//!   bundle's hash equals the host's.
 //! - **Deployment contract:** the inventory `plugin_install_scope` replays is the
 //!   ONE global registry in the shared `renzora` dylib. So a build either
 //!   statically links the editor plugins (`add_editor_plugins`) OR ships them as

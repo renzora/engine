@@ -12,8 +12,8 @@
 //!    platform: desktop binary, iOS staticlib, Android cdylib, wasm32.
 //!
 //! 2. **FFI** — `extern "C"` exports (`plugin_create`, `plugin_scope`,
-//!    `plugin_bevy_hash`, `plugin_abi_info`) so the dynamic plugin loader can
-//!    dlopen a standalone `.dll` / `.so` / `.dylib` and read the symbols. Used for
+//!    `plugin_bevy_hash`) so the dynamic plugin loader can dlopen a
+//!    standalone `.dll` / `.so` / `.dylib` and read the symbols. Used for
 //!    user-installed plugins on desktop. Multiple statically-linked plugins
 //!    would have these symbols collide, so they're cfg-gated to desktop
 //!    targets only.
@@ -171,25 +171,10 @@ macro_rules! add {
                 $crate::PluginScope::$scope as u8
             }
 
-            // The ABI guard the loader checks before touching the `App`. It is
-            // the explicit `RENZORA_ABI_HASH` (bevy version + rustc + bevy
-            // feature set) baked into `renzora` by its build.rs, NOT the old
-            // `TypeId::of::<World>()` — which folded in dependency source,
-            // lockfile churn, build profile, and target, and so drifted with no
-            // real ABI change. Because the plugin compiles the same `renzora`
-            // dylib as the host, this resolves to the host's value.
             #[no_mangle]
             pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
-                $crate::RENZORA_ABI_HASH
-            }
-
-            // Diagnostics: the three ABI inputs as a NUL-terminated C string, so
-            // a host that rejects this plugin can print exactly which input
-            // (bevy version / rustc / feature) differs. Optional — older plugins
-            // built before this export are loaded/rejected on the hash alone.
-            #[no_mangle]
-            pub extern "C" fn plugin_abi_info() -> *const ::std::os::raw::c_char {
-                $crate::RENZORA_ABI_INPUTS_CSTR.as_ptr() as *const ::std::os::raw::c_char
+                let id = ::std::any::TypeId::of::<$crate::bevy::ecs::world::World>();
+                unsafe { ::std::mem::transmute(id) }
             }
         };
     };
@@ -329,17 +314,11 @@ macro_rules! export_plugin_bundle {
 
             /// Identical to [`add!`]'s `plugin_bevy_hash`: the ABI guard. The
             /// loader rejects the whole bundle if this doesn't match the host's
-            /// `RENZORA_ABI_HASH` (bevy version + rustc + bevy feature set).
+            /// `bevy_dylib` hash.
             #[no_mangle]
             pub extern "C" fn plugin_bevy_hash() -> [u64; 2] {
-                $crate::RENZORA_ABI_HASH
-            }
-
-            /// Identical to [`add!`]'s `plugin_abi_info`: the three ABI inputs as
-            /// a NUL-terminated C string, for field-level rejection diagnostics.
-            #[no_mangle]
-            pub extern "C" fn plugin_abi_info() -> *const ::std::os::raw::c_char {
-                $crate::RENZORA_ABI_INPUTS_CSTR.as_ptr() as *const ::std::os::raw::c_char
+                let id = ::std::any::TypeId::of::<$crate::bevy::ecs::world::World>();
+                unsafe { ::std::mem::transmute(id) }
             }
         };
     };
