@@ -83,6 +83,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, tabs, tabs_snapshot);
 
+    // Toolbar (font size + Minimap/Whitespace), below the tab strip.
+    let toolbar = crate::build_code_editor_toolbar(commands, fonts);
+
     // Editor body (fills); the ember editor + an empty-state note overlay.
     let body = commands
         .spawn((Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, position_type: PositionType::Relative, overflow: Overflow::clip(), ..default() }, Name::new("code-body")))
@@ -127,7 +130,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, status_lbl, status_text);
     commands.entity(status).add_child(status_lbl);
 
-    commands.entity(root).add_children(&[tabs, body, status]);
+    commands.entity(root).add_children(&[tabs, toolbar, body, status]);
     root
 }
 

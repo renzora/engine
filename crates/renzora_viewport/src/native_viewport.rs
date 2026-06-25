@@ -124,8 +124,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
         });
         commands.entity(content).add_child(editor);
-        let header = crate::native_header::build_header(commands, fonts);
-        commands.entity(root).add_children(&[header, content]);
+        // The viewport toolbar (header) lives in the shared toolbar strip below
+        // the document tabs (registered as the "viewport" panel's toolbar — see
+        // `native_header::register`), so slot 0 only carries its content.
+        commands.entity(root).add_child(content);
     } else {
         commands.entity(root).add_child(content);
     }

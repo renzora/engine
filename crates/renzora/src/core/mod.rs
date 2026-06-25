@@ -2083,10 +2083,6 @@ pub enum PlayState {
     Playing,
     /// Game is paused.
     Paused,
-    /// Scripts running inside the editor (editor UI visible, no camera switch).
-    ScriptsOnly,
-    /// Scripts paused inside the editor.
-    ScriptsPaused,
 }
 
 /// Resource that tracks play mode state and pending transitions.
@@ -2101,8 +2097,6 @@ pub struct PlayModeState {
     pub request_stop: bool,
     /// Set to `true` to toggle pause.
     pub request_pause: bool,
-    /// Set to `true` to request scripts-only mode next frame.
-    pub request_scripts_only: bool,
 }
 
 impl PlayModeState {
@@ -2110,7 +2104,7 @@ impl PlayModeState {
         self.state == PlayState::Playing
     }
     pub fn is_paused(&self) -> bool {
-        matches!(self.state, PlayState::Paused | PlayState::ScriptsPaused)
+        self.state == PlayState::Paused
     }
     pub fn is_editing(&self) -> bool {
         self.state == PlayState::Editing
@@ -2119,20 +2113,13 @@ impl PlayModeState {
     pub fn is_in_play_mode(&self) -> bool {
         matches!(self.state, PlayState::Playing | PlayState::Paused)
     }
-    /// Returns true if scripts are in scripts-only mode (running or paused).
-    pub fn is_scripts_only(&self) -> bool {
-        matches!(
-            self.state,
-            PlayState::ScriptsOnly | PlayState::ScriptsPaused
-        )
-    }
     /// Returns true if scripts should be executing this frame.
     pub fn is_scripts_running(&self) -> bool {
-        matches!(self.state, PlayState::Playing | PlayState::ScriptsOnly)
+        self.state == PlayState::Playing
     }
 }
 
-/// Run condition: returns true when NOT in play mode (editing or scripts-only).
+/// Run condition: returns true when NOT in play mode (i.e. editing).
 /// Use as `.run_if(not_in_play_mode)` on editor systems that should be disabled during play.
 pub fn not_in_play_mode(play_mode: Option<Res<PlayModeState>>) -> bool {
     !play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode())

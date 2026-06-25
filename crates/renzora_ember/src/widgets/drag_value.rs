@@ -35,6 +35,10 @@ pub(crate) struct EmberDragValue {
     press_x: Option<f32>,
     /// Whether the current press has moved past the click threshold.
     moved: bool,
+    /// The current press began on the bottom slider rail, so it sets the value
+    /// absolutely from the cursor's position across the track (a fast min→max
+    /// sweep) instead of the number area's fine relative scrub.
+    rail_drag: bool,
     /// Keyboard-edit mode: the field shows `buffer` and accepts typed digits.
     editing: bool,
     buffer: String,
@@ -61,6 +65,36 @@ pub struct DragRange {
 /// How far (px) the cursor may travel during a press and still count as a click
 /// (which enters keyboard edit) rather than a drag (which scrubs).
 const CLICK_SLOP: f32 = 3.0;
+/// Bottom band (logical px) of a boxed field that counts as the slider rail — a
+/// press here drives the value absolutely (the quick min→max sweep).
+const RAIL_PX: f32 = 6.0;
+
+/// Settings for the drag-value widget. `rail_quick_drag` toggles the boxed
+/// field's bottom-rail "sweep": when on, a press on the bottom slider rail sets
+/// the value absolutely (fast min→max) instead of the fine relative scrub the
+/// number area does. On by default; the editor exposes a Settings toggle that
+/// drives this resource.
+#[derive(Resource)]
+pub struct DragValueConfig {
+    pub rail_quick_drag: bool,
+}
+
+impl Default for DragValueConfig {
+    fn default() -> Self {
+        Self { rail_quick_drag: true }
+    }
+}
+
+/// Map a press's normalized X within the box to a range value, accounting for
+/// the track's 4px side insets. Returns `None` for a degenerate width.
+fn rail_value(norm_x: f32, computed: &bevy::ui::ComputedNode, r: &DragRange) -> Option<f32> {
+    let w = computed.size().x * computed.inverse_scale_factor();
+    if w <= 8.0 {
+        return None;
+    }
+    let f = (((norm_x * w) - 4.0) / (w - 8.0)).clamp(0.0, 1.0);
+    Some(r.min + f * (r.max - r.min))
+}
 
 /// Set true for the frame the wheel turns *and* a value field owns the gesture,
 /// so the scroll area beneath swallows the wheel. Read by
@@ -144,6 +178,9 @@ fn drag_value_impl(
             },
             BackgroundColor(if flat { Color::NONE } else { rgb(popup_bg()) }),
             Interaction::default(),
+            // Lets the drag system tell a press on the bottom slider rail (an
+            // absolute min→max sweep) from one on the number area (fine scrub).
+            bevy::ui::RelativeCursorPosition::default(),
             // Scrub affordance on hover; flips to the text I-beam while editing.
             crate::cursor_icon::HoverCursor(SystemCursorIcon::EwResize),
             Name::new("drag-value"),
@@ -288,6 +325,7 @@ fn drag_value_impl(
             last_x: None,
             press_x: None,
             moved: false,
+            rail_drag: false,
             editing: false,
             buffer: String::new(),
             select_all: false,
@@ -411,6 +449,7 @@ pub(crate) fn drag_value_scroll(
 /// A press that never moves past [`CLICK_SLOP`] is a click and enters edit mode.
 pub(crate) fn drag_value_drag(
     windows: Query<&Window>,
+    config: Option<Res<DragValueConfig>>,
     mut values: Query<(
         &Interaction,
         &mut EmberDragValue,
@@ -418,6 +457,8 @@ pub(crate) fn drag_value_drag(
         Option<&DragRange>,
         Option<&mut Styled>,
         &mut crate::cursor_icon::HoverCursor,
+        &bevy::ui::RelativeCursorPosition,
+        &bevy::ui::ComputedNode,
     )>,
 ) {
     let cursor_x = windows
@@ -425,7 +466,9 @@ pub(crate) fn drag_value_drag(
         .ok()
         .and_then(|w| w.cursor_position())
         .map(|p| p.x);
-    for (interaction, mut dv, mut bound, range, styled, mut cursor) in &mut values {
+    // On unless a Settings toggle turns it off.
+    let rail_enabled = config.as_ref().map(|c| c.rail_quick_drag).unwrap_or(true);
+    for (interaction, mut dv, mut bound, range, styled, mut cursor, rel, computed) in &mut values {
         if dv.editing {
             continue;
         }
@@ -435,34 +478,64 @@ pub(crate) fn drag_value_drag(
                     dv.last_x = cursor_x;
                     dv.press_x = cursor_x;
                     dv.moved = false;
+                    // Rail sweep: a boxed, ranged field whose press lands in the
+                    // bottom rail band drives the value absolutely from here on.
+                    dv.rail_drag = false;
+                    if rail_enabled && dv.handle.is_some() {
+                        if let (Some(r), Some(norm)) = (range, rel.normalized) {
+                            let h = computed.size().y * computed.inverse_scale_factor();
+                            if (1.0 - norm.y) * h <= RAIL_PX {
+                                dv.rail_drag = true;
+                                dv.moved = true; // acts immediately; never edits
+                                if let Some(v) = rail_value(norm.x, computed, r) {
+                                    if v != bound.0 {
+                                        bound.0 = v;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 Some(last) => {
                     if let Some(cx) = cursor_x {
-                        if let Some(px) = dv.press_x {
-                            if (cx - px).abs() > CLICK_SLOP {
-                                dv.moved = true;
-                            }
-                        }
-                        if dv.moved {
-                            let delta = cx - last;
-                            if delta != 0.0 {
-                                let mut v = bound.0 + delta * dv.step;
-                                if let Some(r) = range {
-                                    v = v.clamp(r.min, r.max);
-                                }
-                                if v != bound.0 {
-                                    bound.0 = v;
+                        if dv.rail_drag {
+                            // Absolute: track the cursor across the rail (clamped
+                            // to min/max even when dragged past the box edges).
+                            if let (Some(r), Some(norm)) = (range, rel.normalized) {
+                                if let Some(v) = rail_value(norm.x, computed, r) {
+                                    if v != bound.0 {
+                                        bound.0 = v;
+                                    }
                                 }
                             }
+                            dv.last_x = Some(cx);
+                        } else {
+                            if let Some(px) = dv.press_x {
+                                if (cx - px).abs() > CLICK_SLOP {
+                                    dv.moved = true;
+                                }
+                            }
+                            if dv.moved {
+                                let delta = cx - last;
+                                if delta != 0.0 {
+                                    let mut v = bound.0 + delta * dv.step;
+                                    if let Some(r) = range {
+                                        v = v.clamp(r.min, r.max);
+                                    }
+                                    if v != bound.0 {
+                                        bound.0 = v;
+                                    }
+                                }
+                            }
+                            dv.last_x = Some(cx);
                         }
-                        dv.last_x = Some(cx);
                     }
                 }
             }
         } else if dv.last_x.is_some() {
-            // Released. A press that never moved is a click → enter edit mode
-            // with the whole value selected (type or Delete replaces it).
-            if !dv.moved {
+            // Released. A press that never moved (and wasn't a rail sweep) is a
+            // click → enter edit mode with the whole value selected.
+            if !dv.moved && !dv.rail_drag {
                 dv.editing = true;
                 dv.buffer = edit_string(bound.0);
                 dv.select_all = true;
@@ -474,6 +547,7 @@ pub(crate) fn drag_value_drag(
             dv.last_x = None;
             dv.press_x = None;
             dv.moved = false;
+            dv.rail_drag = false;
         }
     }
 }
@@ -621,6 +695,33 @@ pub(crate) fn drag_value_edit(
             };
             if n.display != d {
                 n.display = d;
+            }
+        }
+    }
+}
+
+/// Show the round grabber only when rail-sweep is enabled (and the field has a
+/// range to sweep) — with the setting off the handle is non-functional, so it's
+/// hidden, leaving just the fill line as a value indicator. Cheap, guarded
+/// writes; runs every frame so both the live toggle and freshly-built fields
+/// pick up the current setting.
+pub(crate) fn drag_value_handle_vis(
+    config: Option<Res<DragValueConfig>>,
+    values: Query<(&EmberDragValue, Option<&DragRange>)>,
+    mut nodes: Query<&mut Node>,
+) {
+    let on = config.as_ref().map(|c| c.rail_quick_drag).unwrap_or(true);
+    for (dv, range) in &values {
+        if let Some(handle) = dv.handle {
+            if let Ok(mut n) = nodes.get_mut(handle) {
+                let want = if on && range.is_some() {
+                    Display::Flex
+                } else {
+                    Display::None
+                };
+                if n.display != want {
+                    n.display = want;
+                }
             }
         }
     }

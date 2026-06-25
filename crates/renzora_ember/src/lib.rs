@@ -32,6 +32,7 @@ pub mod reactive;
 pub mod settings_sections;
 pub mod style;
 pub mod theme;
+pub mod toolbar;
 pub mod virtual_scroll;
 pub mod widgets;
 
@@ -48,5 +49,6 @@ impl Plugin for EmberPlugin {
             reactive::ReactivePlugin,
             virtual_scroll::VirtualScrollPlugin,
         ));
+        toolbar::register(app);
     }
 }

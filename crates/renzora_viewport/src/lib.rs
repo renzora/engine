@@ -17,7 +17,7 @@ pub mod model_flatten;
 mod native_axis_gizmo;
 mod native_camera_preview;
 mod native_drop;
-mod native_header;
+pub mod native_header;
 mod native_nav;
 mod native_viewport;
 pub mod particle_drop;
@@ -601,17 +601,10 @@ fn handle_play_shortcuts(
     }
 
     if keybindings.just_pressed(EditorAction::PlayStop, &keyboard) {
-        if play_mode.is_in_play_mode() || play_mode.is_scripts_only() {
+        if play_mode.is_in_play_mode() {
             play_mode.request_stop = true;
         } else {
             play_mode.request_play = true;
-        }
-    }
-    if keybindings.just_pressed(EditorAction::PlayScriptsOnly, &keyboard) {
-        if play_mode.is_in_play_mode() || play_mode.is_scripts_only() {
-            play_mode.request_stop = true;
-        } else {
-            play_mode.request_scripts_only = true;
         }
     }
 }

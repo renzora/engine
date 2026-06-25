@@ -24,6 +24,9 @@ renzora_ui = { path = "../renzora_ui" }
 # editor uses, rendered into bevy_ui. HuiPlugin runs the resolver globally.
 # Theme source: maps the active ThemeManager theme into ember's runtime palette.
 renzora_theme = { path = "../renzora_theme" }
+# Viewport toolbar (header): the shell hosts it as a full-width strip directly
+# below the document-tab bar instead of nesting it inside the viewport panel.
+renzora_viewport = { path = "../renzora_viewport" }
 
 [lints]
 workspace = true

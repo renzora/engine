@@ -74,7 +74,7 @@ impl Plugin for ShellPlugin {
                 ribbon_rename_commit,
                 content_dispatch,
                 (top_menu_open, top_menu_hover, top_menu_sync),
-                settings_btn_click,
+                (settings_btn_click, play_btn_click, update_play_button),
                 plugin_install::install_buttons,
                 palette_btn_click,
                 (theme_bridge, sync_theme_menu_open),
@@ -268,6 +268,131 @@ fn settings_btn_click(
     }
 }
 
+/// The top-bar Play / Stop button (icon + text). This is the editor's single
+/// play control now that the viewport toolbar's play/scripts buttons are gone.
+#[derive(Component)]
+struct TopBarPlayBtn;
+/// The play button's phosphor glyph (swaps play ↔ stop with state).
+#[derive(Component)]
+struct TopBarPlayIcon;
+/// The play button's "Play" / "Stop" text label.
+#[derive(Component)]
+struct TopBarPlayLabel;
+
+/// Build the top-bar Play button: a phosphor glyph + a "Play" label in one
+/// clickable pill. The glyph + label live as `FocusPolicy::Pass` children so the
+/// hover/click lands on the parent (where `Interaction` lives).
+fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            TopBarPlayBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("top-bar-play"),
+        ))
+        .id();
+    let icon = glyph(commands, "play", play_green(), 16.0);
+    commands
+        .entity(icon)
+        .insert((TopBarPlayIcon, bevy::ui::FocusPolicy::Pass));
+    let label = commands
+        .spawn((
+            Text::new("Play"),
+            ui_font(font, 13.0),
+            TextColor(rgb(play_green())),
+            TopBarPlayLabel,
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(btn).add_children(&[icon, label]);
+    btn
+}
+
+/// Click the top-bar Play button → request play (from Editing, with a scene
+/// camera) or stop (while playing, or while an external runtime is alive).
+fn play_btn_click(
+    btns: Query<&Interaction, (Changed<Interaction>, With<TopBarPlayBtn>)>,
+    play_mode: Option<ResMut<renzora::core::PlayModeState>>,
+    runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
+    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+) {
+    let Some(mut pm) = play_mode else { return };
+    let runtime_alive = runtime.is_some_and(|r| r.is_alive());
+    let has_cam = !scene_cams.is_empty();
+    for interaction in &btns {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if runtime_alive || pm.is_in_play_mode() {
+            pm.request_stop = true;
+        } else if pm.is_editing() && has_cam {
+            pm.request_play = true;
+        }
+    }
+}
+
+/// Drive the Play button's glyph + label + color from play state: green "Play"
+/// when editing (muted if there's no scene camera to play), red "Stop" while
+/// playing (in-editor or an external runtime).
+fn update_play_button(
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
+    theme: Option<Res<renzora_theme::ThemeManager>>,
+    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+    mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
+    mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
+) {
+    let Some(theme) = theme else { return };
+    let t = &theme.active_theme;
+    let tc = |c: renzora_theme::ThemeColor| {
+        let [r, g, b, _] = c.to_array();
+        Color::srgb_u8(r, g, b)
+    };
+    let green = tc(t.semantic.success);
+    let red = tc(t.semantic.error);
+    let muted = tc(t.text.muted);
+
+    let active = runtime.is_some_and(|r| r.is_alive())
+        || play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
+    let has_cam = !scene_cams.is_empty();
+
+    let (icon_name, color, label_text) = if active {
+        ("stop", red, "Stop")
+    } else if !has_cam {
+        ("play", muted, "Play")
+    } else {
+        ("play", green, "Play")
+    };
+
+    for mut icon in &mut icons {
+        if icon.name != icon_name {
+            icon.name = icon_name.to_string();
+            icon.resolved = false; // force `apply_icons` to re-render the glyph
+        }
+        if icon.color != Some(color) {
+            icon.color = Some(color);
+            icon.resolved = false;
+        }
+    }
+    for (mut text, mut tcolor) in &mut labels {
+        if text.0 != label_text {
+            text.0 = label_text.to_string();
+        }
+        if tcolor.0 != color {
+            tcolor.0 = color;
+        }
+    }
+}
+
 renzora::add!(ShellPlugin, Editor);
 
 /// The ribbon's workspace layouts and which one is active. Switching saves the
@@ -347,6 +472,7 @@ fn manage_shell_root(
     fonts: Option<Res<EmberFonts>>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
     theme_menu_open: Res<ThemeMenuOpen>,
+    toolbars: Option<Res<renzora_ember::toolbar::PanelToolbars>>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
@@ -366,7 +492,8 @@ fn manage_shell_root(
         } else {
             (Vec::new(), String::new())
         };
-        spawn_shell(&mut commands, &fonts, &themes, &active, theme_menu_open.0);
+        let toolbars = toolbars.map(|t| t.clone()).unwrap_or_default();
+        spawn_shell(&mut commands, &fonts, &themes, &active, theme_menu_open.0, &toolbars);
         // Build the dock into the freshly-spawned `DockArea` (ember rebuilds it
         // from the persisted `Dock.tree`).
         dirty.0 = true;
@@ -1281,6 +1408,7 @@ fn spawn_shell(
     themes: &[String],
     active: &str,
     theme_menu_open: bool,
+    toolbars: &renzora_ember::toolbar::PanelToolbars,
 ) {
     let font = &fonts.ui;
     let root = commands
@@ -1322,11 +1450,17 @@ fn spawn_shell(
         ))
         .id();
 
+    // Shared panel-toolbar strip directly below the document tabs. Each panel
+    // contributes its own toolbar items (via `register_panel_toolbar*`), and the
+    // host shows the ones whose panel is the active dock tab — e.g. the viewport
+    // header for the viewport, code-editor controls for the code editor, etc.
+    let toolbar = renzora_ember::toolbar::build_toolbar_host(commands, fonts, toolbars);
+
     let statusbar = build_status_bar(commands, fonts, themes, active, theme_menu_open);
 
     commands
         .entity(root)
-        .add_children(&[top_bar, doctabs, dock_area, statusbar]);
+        .add_children(&[top_bar, doctabs, toolbar, dock_area, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     let grips = build_resize_zones(commands);
@@ -1729,8 +1863,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
     commands.entity(center).add_children(&[magnifier, ribbon, add]);
 
     let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0);
-    let play = icon_item(commands, "play", play_green(), 16.0);
-    let code = icon_item(commands, "code", text_muted(), 16.0);
+    let play = build_play_button(commands, font);
     let settings = icon_item(commands, "gear", text_muted(), 16.0);
     commands.entity(settings).insert((
         Interaction::default(),
@@ -1819,7 +1952,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     commands
         .entity(right)
-        .add_children(&[play, code, settings, window]);
+        .add_children(&[play, settings, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar

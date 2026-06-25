@@ -144,7 +144,6 @@ Mouse picking happens in the viewport; the keyboard handles the rest.
 | Key | Action |
 |---|---|
 | `F5` | Play / Stop |
-| `Shift+F5` | Run scripts only |
 
 ## Code editor
 

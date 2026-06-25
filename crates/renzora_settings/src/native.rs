@@ -171,6 +171,7 @@ pub(crate) fn build(app: &mut App) {
             theme_save_click,
             ember_theme_save_click,
             apply_font_settings,
+            sync_drag_value_rail_sweep,
         )
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
@@ -193,6 +194,18 @@ pub(crate) fn build(app: &mut App) {
         (rebind_btn_click, rebind_capture, reset_bindings_click, input_listen_capture)
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
+}
+
+/// Push the `EditorSettings.drag_value_rail_sweep` preference into ember's
+/// `DragValueConfig` so the numeric-field widget honours the toggle (ember can't
+/// read `EditorSettings`). Change-detected, so it's a no-op most frames.
+fn sync_drag_value_rail_sweep(
+    settings: Res<EditorSettings>,
+    mut config: ResMut<renzora_ember::widgets::DragValueConfig>,
+) {
+    if settings.is_changed() && config.rail_quick_drag != settings.drag_value_rail_sweep {
+        config.rail_quick_drag = settings.drag_value_rail_sweep;
+    }
 }
 
 /// Live-filter the sidebar categories by the search box text. Pure visibility
@@ -1624,6 +1637,21 @@ fn tab_interface(
         "How to pick a single component to focus: a vertical icon menu down the \
          left edge, or a dropdown in the top bar.",
     );
+
+    let t = ctl_toggle(
+        commands,
+        settings.drag_value_rail_sweep,
+        |w| w.resource::<EditorSettings>().drag_value_rail_sweep,
+        |w, &v| w.resource_mut::<EditorSettings>().drag_value_rail_sweep = v,
+    );
+    settings_row(commands, fonts, body, 2, "Rail Sweep", t);
+    note_row(
+        commands,
+        fonts,
+        body,
+        "Drag the bottom slider rail of a numeric field to sweep it from min to \
+         max quickly; the number area still does the fine relative scrub.",
+    );
 }
 
 fn inspector_filter_style_index(v: InspectorComponentFilterStyle) -> usize {
@@ -2026,22 +2054,16 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
     settings_row(commands, fonts, body, 0, "Hot Reload", t);
     let t = ctl_toggle(
         commands, true,
-        |w| w.resource::<EditorSettings>().scripts_use_game_camera,
-        |w, &v| w.resource_mut::<EditorSettings>().scripts_use_game_camera = v,
-    );
-    settings_row(commands, fonts, body, 1, "Script Camera", t);
-    let t = ctl_toggle(
-        commands, true,
         |w| w.resource::<EditorSettings>().hide_cursor_in_play_mode,
         |w, &v| w.resource_mut::<EditorSettings>().hide_cursor_in_play_mode = v,
     );
-    settings_row(commands, fonts, body, 2, "Cursor", t);
+    settings_row(commands, fonts, body, 1, "Cursor", t);
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().external_play_window,
         |w, &v| w.resource_mut::<EditorSettings>().external_play_window = v,
     );
-    settings_row(commands, fonts, body, 3, "External Window", t);
+    settings_row(commands, fonts, body, 2, "External Window", t);
 
     let (sec, body) = section(commands, fonts, "code", "Code Editor", A_GREEN);
     commands.entity(col).add_child(sec);

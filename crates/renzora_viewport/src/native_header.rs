@@ -14,13 +14,17 @@ use renzora::core::viewport_types::{
     CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ViewAngleCommand,
     ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
 };
+use renzora::core::ShapeRegistry;
+use renzora_undo::{execute, SpawnShapeCmd, UndoContext};
 use bevy::ecs::world::CommandQueue;
 use std::sync::Arc;
 
 use renzora_editor_framework::{EditorCommands, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
-use renzora_ember::widgets::{checkbox, drag_value, drag_value_flat, DragRange};
+use renzora_ember::widgets::{
+    checkbox, drag_value, drag_value_flat, scroll_area, DragRange, OverlaySurface,
+};
 use renzora_ember::theme::{
     border, hover_bg, panel_bg, popup_bg, rgb, tab_active, text_muted, text_primary, value_text,
 };
@@ -39,8 +43,6 @@ enum HeaderAction {
     Undo,
     Redo,
     Save,
-    Play,
-    Scripts,
     Maximize,
 }
 
@@ -54,12 +56,19 @@ fn col(c: renzora_theme::ThemeColor) -> Color {
     Color::srgb_u8(r, g, b)
 }
 
-/// Build the header row (child 0 of the primary viewport panel).
-pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// Build the header row.
+///
+/// Historically this was child 0 of the primary viewport panel; it is now
+/// lifted to the editor shell and rendered as a full-width strip directly
+/// below the document-tab bar (see `renzora_shell::spawn_shell`). The driver
+/// systems in [`register`] locate it by component, so it works regardless of
+/// where it is parented.
+pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let row = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
+                // Content-sized: the shared toolbar host centers the strip, so
+                // the header sizes to its widgets and the host does the centering.
                 height: Val::Px(HEADER_HEIGHT),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
@@ -78,9 +87,6 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right");
     let gap1 = gap(commands, 6.0);
     let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk");
-    let gap2 = gap(commands, 6.0);
-    let play = action_btn(commands, fonts, HeaderAction::Play, "play");
-    let scripts = action_btn(commands, fonts, HeaderAction::Scripts, "code");
 
     // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
     // Populated from ToolbarRegistry by a deferred system (predicates need World).
@@ -98,6 +104,11 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
             Name::new("vp-tools"),
         ))
         .id();
+
+    // "Add shape" menu — a dropdown listing every registered shape (the same
+    // ShapeRegistry the shape-library panel reads), grouped by category.
+    let shapes_gap = gap(commands, 8.0);
+    let shapes_dd = build_shapes_dropdown(commands, fonts);
 
     let gap3 = gap(commands, 8.0);
     let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
@@ -145,21 +156,22 @@ pub(crate) fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     let cam_speed = cam_speed_widget(commands, fonts);
     commands.entity(cam_speed).insert(ThreeDOnly);
 
-    let spacer = commands
-        .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-hdr-spacer")))
-        .id();
+    // Fixed gap (not a flex spacer) so the whole toolbar reads as one centered
+    // cluster rather than splitting to the left/right edges.
+    let center_gap = gap(commands, 12.0);
     let display_dd = build_display_dropdown(commands, fonts);
     let snap_dd = build_snap_dropdown(commands, fonts);
     let camera_dd = build_camera_dropdown(commands, fonts);
     let gap4 = gap(commands, 3.0);
     let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out");
 
-    // Left: session actions (+ tools, later). Right: view/mode, inline snapping,
-    // camera speed, then the Display / Snap / Camera dropdowns + maximize.
+    // One centered cluster: session actions (+ tools, shapes), then view/mode,
+    // inline snapping, camera speed, the Display / Snap / Camera dropdowns, and
+    // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
-        undo, redo, gap1, save, gap2, play, scripts, tools_gap, tools, spacer, view_dd, mode_dd,
-        gap5, translate, rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd, camera_dd,
-        gap4, maximize,
+        undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd,
+        center_gap, view_dd, mode_dd, gap5, translate, rotate, scale, gap6, cam_speed, gap3,
+        display_dd, snap_dd, camera_dd, gap4, maximize,
     ]);
     row
 }
@@ -201,6 +213,17 @@ fn action_btn(
 
 pub(crate) fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
+    use renzora_ember::toolbar::PanelToolbarExt;
+
+    // The viewport header is the viewport's toolbar: it sits in the shared strip
+    // below the document tabs (centered by the host) and shows while ANY of the
+    // 4 viewport slots is the active dock tab. It still owns the 3D/2D/UI
+    // selector. Built once by the shell's toolbar host.
+    app.register_panel_toolbar_multi(
+        &["viewport", "viewport-2", "viewport-3", "viewport-4"],
+        |commands, fonts| build_header(commands, fonts),
+    );
+
     app.add_systems(
         Update,
         (
@@ -223,13 +246,17 @@ pub(crate) fn register(app: &mut App) {
             update_panel_buttons,
             update_camera_snap_triggers,
             tool_button_click,
+            // Nested tuple: keeps the top-level system count within Bevy's
+            // 20-element tuple limit for `add_systems`.
+            (shape_spawn_click, update_shape_menu),
         )
             .run_if(in_state(SplashState::Editor)),
     );
-    // Exclusive (need `&World` for the registry predicates).
+    // Exclusive (need `&World` for the registry predicates / shape registry).
     app.add_systems(
         Update,
-        (populate_tools, update_tool_buttons).run_if(in_state(SplashState::Editor)),
+        (populate_tools, update_tool_buttons, populate_shapes)
+            .run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -553,16 +580,9 @@ struct HeaderModel {
     can_undo: bool,
     can_redo: bool,
     can_save: bool,
-    has_scene_camera: bool,
-    is_active: bool,   // in-editor play OR external runtime alive
-    is_editing: bool,  // editing and no runtime
-    is_scripts: bool,  // scripts-only running
     maximized: bool,
     primary: Color,
     muted: Color,
-    play: Color,
-    scripts: Color,
-    stop: Color,
     accent: Color,
     hovered_bg: Color,
 }
@@ -572,11 +592,8 @@ fn update_header_visuals(
     mut texts: Query<(&mut Text, &mut TextColor)>,
     undo: Option<Res<renzora_undo::UndoStacks>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
-    pm: Option<Res<renzora::core::PlayModeState>>,
-    runtime: Option<Res<crate::external_runtime::ExternalRuntime>>,
     maximized: Option<Res<renzora_ui::ViewportMaximized>>,
     theme: Option<Res<ThemeManager>>,
-    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
 ) {
     let Some(theme) = theme else { return };
     let t = &theme.active_theme;
@@ -587,25 +604,14 @@ fn update_header_visuals(
     let can_save = tabs
         .and_then(|tabs| tabs.tabs.get(tabs.active_tab).map(|t| t.is_modified))
         .unwrap_or(false);
-    let is_playing = pm.as_ref().map(|p| p.is_in_play_mode()).unwrap_or(false);
-    let is_scripts = pm.as_ref().map(|p| p.is_scripts_only()).unwrap_or(false);
-    let is_editing_raw = pm.as_ref().map(|p| p.is_editing()).unwrap_or(true);
-    let runtime_alive = runtime.map(|r| r.is_alive()).unwrap_or(false);
 
     let model = HeaderModel {
         can_undo,
         can_redo,
         can_save,
-        has_scene_camera: !scene_cams.is_empty(),
-        is_active: is_playing || runtime_alive,
-        is_editing: is_editing_raw && !runtime_alive,
-        is_scripts,
         maximized: maximized.is_some_and(|m| m.0),
         primary: col(t.text.primary),
         muted: col(t.text.muted),
-        play: col(t.semantic.success),
-        scripts: col(t.semantic.accent),
-        stop: col(t.semantic.error),
         accent: col(t.semantic.accent),
         hovered_bg: col(t.widgets.hovered_bg),
     };
@@ -658,24 +664,6 @@ fn action_appearance(action: &HeaderAction, m: &HeaderModel) -> (&'static str, C
             if m.can_save { m.primary } else { m.muted },
             m.can_save,
         ),
-        HeaderAction::Play => {
-            if m.is_active {
-                ("stop", m.stop, true)
-            } else if !m.has_scene_camera {
-                ("play", m.muted, false)
-            } else {
-                ("play", m.play, true)
-            }
-        }
-        HeaderAction::Scripts => {
-            if m.is_scripts {
-                ("stop", m.scripts, true)
-            } else if m.is_active {
-                ("code", m.muted, false)
-            } else {
-                ("code", m.scripts, m.is_editing)
-            }
-        }
         HeaderAction::Maximize => (
             if m.maximized { "arrows-in" } else { "arrows-out" },
             if m.maximized { m.primary } else { m.muted },
@@ -698,35 +686,6 @@ fn header_action_click(
             HeaderAction::Redo => cmds.push(|w: &mut World| renzora_undo::redo_once(w)),
             HeaderAction::Save => cmds.push(|w: &mut World| {
                 w.insert_resource(renzora::core::SaveSceneRequested);
-            }),
-            HeaderAction::Play => cmds.push(|w: &mut World| {
-                use renzora::core::{PlayModeState, SceneCamera};
-                let runtime_alive = w
-                    .get_resource::<crate::external_runtime::ExternalRuntime>()
-                    .map(|r| r.is_alive())
-                    .unwrap_or(false);
-                let mut cam_q = w.query_filtered::<(), With<SceneCamera>>();
-                let has_cam = cam_q.iter(w).next().is_some();
-                if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
-                    if runtime_alive || pm.is_in_play_mode() {
-                        pm.request_stop = true;
-                    } else if pm.is_scripts_only() {
-                        pm.request_stop = true;
-                        pm.request_play = true;
-                    } else if pm.is_editing() && has_cam {
-                        pm.request_play = true;
-                    }
-                }
-            }),
-            HeaderAction::Scripts => cmds.push(|w: &mut World| {
-                use renzora::core::PlayModeState;
-                if let Some(mut pm) = w.get_resource_mut::<PlayModeState>() {
-                    if pm.is_scripts_only() {
-                        pm.request_stop = true;
-                    } else if pm.is_editing() {
-                        pm.request_scripts_only = true;
-                    }
-                }
             }),
             HeaderAction::Maximize => cmds.push(|w: &mut World| {
                 let mut m = w.get_resource_or_insert_with(renzora_ui::ViewportMaximized::default);
@@ -2061,5 +2020,263 @@ fn tool_button_click(
         }
         let activate = btn.activate.clone();
         cmds.push(move |w: &mut World| (activate)(w));
+    }
+}
+
+// ── Add-shape dropdown ───────────────────────────────────────────────────────
+//
+// A dropdown that spawns any registered shape from the toolbar. It reads the
+// same `ShapeRegistry` the shape-library panel uses (so the two never drift),
+// grouped by category. Population is deferred to an exclusive system because the
+// registry is filled by the shape crate's plugin at startup, after the header is
+// built; the list is filled once the registry is non-empty.
+
+/// The shapes-menu trigger button (for hover / open background tinting).
+#[derive(Component)]
+struct ShapeMenuTrigger;
+
+/// The (initially empty) column inside the shapes popup that `populate_shapes`
+/// fills from the registry.
+#[derive(Component)]
+struct ShapeMenuContainer;
+
+/// Marks a shapes list that's already been filled, so it isn't refilled.
+#[derive(Component)]
+struct ShapesPopulated;
+
+/// A selectable shape row — carries the registry id so the click handler can
+/// look the rest up (name + default color) at spawn time.
+#[derive(Component, Clone)]
+struct ShapeSpawn {
+    id: String,
+}
+
+fn build_shapes_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    // Empty column that `populate_shapes` fills; wrapped in a capped scroll area
+    // since the registry holds ~30 shapes across several categories.
+    let container = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                ..default()
+            },
+            ShapeMenuContainer,
+            Name::new("vp-shapes-list"),
+        ))
+        .id();
+    let scroll = scroll_area(commands, container, 360.0);
+
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                width: Val::Px(200.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(6.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            GlobalZIndex(600),
+            // Floating popup: swallow scroll/click so the wheel scrolls the list
+            // instead of bleeding to the dock behind it (see ember `popup`).
+            OverlaySurface,
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("vp-shapes-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_child(scroll);
+
+    let glyph = icon_text(commands, &fonts.phosphor, "shapes", text_muted(), 15.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                width: Val::Px(40.0),
+                height: Val::Px(BTN_H),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            PanelToggle { panel, open: false },
+            ShapeMenuTrigger,
+            Name::new("vp-shapes-dropdown"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[glyph, caret]);
+
+    dropdown_wrap(commands, trigger, panel)
+}
+
+/// A label + icon row that spawns shape `id` when clicked.
+fn shape_row(commands: &mut Commands, fonts: &EmberFonts, icon: &str, name: &str, id: &str) -> Entity {
+    let glyph = icon_text(commands, &fonts.phosphor, icon, text_primary(), 14.0);
+    let label = commands
+        .spawn((
+            Text::new(name),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(BTN_H),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            ShapeSpawn { id: id.to_string() },
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("vp-shape-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[glyph, label]);
+    row
+}
+
+/// Fill an empty `ShapeMenuContainer` from `ShapeRegistry`, grouped by category
+/// (a section label whenever the category changes, separators between groups).
+/// Exclusive so it can spawn rows from the registry's `&World` data; runs until
+/// the registry is populated and the container exists.
+fn populate_shapes(world: &mut World) {
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+    // Snapshot (icon, name, id, category) so the borrow of the registry ends
+    // before we open a `Commands` over the world.
+    let shapes: Vec<(String, String, String, String)> = {
+        let Some(reg) = world.get_resource::<ShapeRegistry>() else {
+            return;
+        };
+        reg.iter()
+            .map(|e| {
+                (
+                    e.icon.to_string(),
+                    e.name.to_string(),
+                    e.id.to_string(),
+                    e.category.to_string(),
+                )
+            })
+            .collect()
+    };
+    if shapes.is_empty() {
+        return; // shapes not registered yet
+    }
+    let mut cq = world.query_filtered::<Entity, (With<ShapeMenuContainer>, Without<ShapesPopulated>)>();
+    let Some(container) = cq.iter(world).next() else {
+        return;
+    };
+
+    let mut queue = CommandQueue::default();
+    {
+        let mut commands = Commands::new(&mut queue, world);
+        let mut children: Vec<Entity> = Vec::new();
+        let mut last_cat: Option<&str> = None;
+        for (icon, name, id, category) in &shapes {
+            if last_cat != Some(category.as_str()) {
+                if last_cat.is_some() {
+                    children.push(separator_row(&mut commands));
+                }
+                children.push(section_label(&mut commands, &fonts, category));
+                last_cat = Some(category.as_str());
+            }
+            children.push(shape_row(&mut commands, &fonts, icon, name, id));
+        }
+        commands.entity(container).add_children(&children);
+        commands.entity(container).insert(ShapesPopulated);
+    }
+    queue.apply(world);
+}
+
+/// Spawn the clicked shape at the origin (matching the hierarchy "Add Entity"
+/// menu) through the undo system, then leave the menu open so several shapes can
+/// be added in a row.
+fn shape_spawn_click(
+    q: Query<(&Interaction, &ShapeSpawn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, shape) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let id = shape.id.clone();
+        cmds.push(move |w: &mut World| {
+            let Some((shape_id, name, color)) = w
+                .get_resource::<ShapeRegistry>()
+                .and_then(|r| r.get(&id))
+                .map(|e| (e.id.to_string(), e.name.to_string(), e.default_color))
+            else {
+                warn!("Shape '{id}' not found in registry");
+                return;
+            };
+            execute(
+                w,
+                UndoContext::Scene,
+                Box::new(SpawnShapeCmd {
+                    entity: Entity::PLACEHOLDER,
+                    shape_id,
+                    name,
+                    position: Vec3::ZERO,
+                    color,
+                }),
+            );
+        });
+    }
+}
+
+/// Hover/open tinting for the shapes trigger + hover highlight for its rows.
+fn update_shape_menu(
+    theme: Option<Res<ThemeManager>>,
+    mut trigger: Query<
+        (&Interaction, &PanelToggle, &mut BackgroundColor),
+        (With<ShapeMenuTrigger>, Without<ShapeSpawn>),
+    >,
+    mut rows: Query<(&Interaction, &mut BackgroundColor), With<ShapeSpawn>>,
+) {
+    let Some(theme) = theme else { return };
+    let t = &theme.active_theme;
+    let inactive = col(t.widgets.inactive_bg);
+    let hovered = col(t.widgets.hovered_bg);
+
+    for (interaction, toggle, mut bg) in &mut trigger {
+        let want = if toggle.open || *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            inactive
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+    for (interaction, mut bg) in &mut rows {
+        let want = if *interaction == Interaction::Hovered {
+            hovered
+        } else {
+            Color::NONE
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
     }
 }

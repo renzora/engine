@@ -154,6 +154,110 @@ fn sync_selection_sources(
 // Plugin
 // ---------------------------------------------------------------------------
 
+/// Builds the code-editor's panel toolbar: a font-size scrubber bound to the
+/// editor's live zoom, and Minimap / Whitespace toggle switches bound to the
+/// editor settings. Spawned once by the shell's toolbar host (and shown only
+/// while the code editor is the active dock tab).
+pub(crate) fn build_code_editor_toolbar(
+    commands: &mut Commands,
+    fonts: &renzora_ember::font::EmberFonts,
+) -> Entity {
+    use renzora_editor_framework::EditorSettings;
+    use renzora_ember::font::ui_font;
+    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::theme::{border, header_bg, rgb, text_muted, value_text};
+    use renzora_ember::widgets::{drag_value, toggle_switch, DragRange};
+
+    let label = |commands: &mut Commands, text: &str| {
+        commands
+            .spawn((
+                Text::new(text),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_muted())),
+            ))
+            .id()
+    };
+
+    // A full-width bar inside the code editor panel (below its tab strip).
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(28.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border: UiRect::bottom(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(border())),
+            Name::new("code-editor-toolbar"),
+        ))
+        .id();
+
+    // Font size → the editor's live zoom (`CodeEditorState.font_size`).
+    let size_label = label(commands, "Size");
+    let size = drag_value(commands, &fonts.ui, "", value_text(), 14.0, 1.0);
+    commands.entity(size).insert(DragRange { min: 8.0, max: 48.0 });
+    bind_2way(
+        commands,
+        size,
+        |w| {
+            w.get_resource::<CodeEditorState>()
+                .map(|s| s.font_size)
+                .unwrap_or(14.0)
+        },
+        |w, v: &f32| {
+            if let Some(mut s) = w.get_resource_mut::<CodeEditorState>() {
+                s.font_size = *v;
+            }
+        },
+    );
+
+    // Minimap + Whitespace → editor settings (toggle switches).
+    let mini_label = label(commands, "Minimap");
+    let mini = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        mini,
+        |w| {
+            w.get_resource::<EditorSettings>()
+                .map(|s| s.code_show_minimap)
+                .unwrap_or(false)
+        },
+        |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<EditorSettings>() {
+                s.code_show_minimap = *v;
+            }
+        },
+    );
+
+    let ws_label = label(commands, "Whitespace");
+    let ws = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        ws,
+        |w| {
+            w.get_resource::<EditorSettings>()
+                .map(|s| s.code_show_whitespace)
+                .unwrap_or(false)
+        },
+        |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<EditorSettings>() {
+                s.code_show_whitespace = *v;
+            }
+        },
+    );
+
+    commands
+        .entity(row)
+        .add_children(&[size_label, size, mini_label, mini, ws_label, ws]);
+    row
+}
+
 #[derive(Default)]
 pub struct CodeEditorPlugin;
 

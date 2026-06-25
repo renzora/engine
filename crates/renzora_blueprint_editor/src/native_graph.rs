@@ -32,7 +32,11 @@ pub struct NativeBlueprintGraph;
 
 impl Plugin for NativeBlueprintGraph {
     fn build(&self, app: &mut App) {
+        use renzora_ember::toolbar::PanelToolbarExt;
         app.register_panel_content("blueprint_graph", false, build);
+        // Toolbar actions live in the shared strip (shown when the blueprint
+        // graph is the active panel).
+        app.register_panel_toolbar("blueprint_graph", build_toolbar);
         app.add_systems(
             Update,
             (apply_click, add_node_open, bp_context_menu_open, layout_click)
@@ -77,6 +81,24 @@ fn with_active_graph<R>(w: &World, f: impl FnOnce(&BlueprintGraph) -> R) -> Opti
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
+/// The blueprint graph's toolbar (Add Node / Auto Layout / Apply), mounted in
+/// the shared strip while the blueprint graph is the active panel. Wired by the
+/// same marker-component systems regardless of where the buttons live.
+fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    // Content-sized — the strip host supplies background + centering.
+    let bar = commands
+        .spawn((
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(8.0)), flex_shrink: 0.0, ..default() },
+            Name::new("blueprint-graph-toolbar"),
+        ))
+        .id();
+    let add = tool_button(commands, fonts, "plus", "Add Node", accent(), AddNodeBtn);
+    let layout = tool_button(commands, fonts, "tree-structure", "Auto Layout", text_primary(), LayoutBtn);
+    let apply = tool_button(commands, fonts, "lightning", "Apply", text_primary(), ApplyBtn);
+    commands.entity(bar).add_children(&[add, layout, apply]);
+    bar
+}
+
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn((
@@ -85,18 +107,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    let bar = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), border: UiRect::bottom(Val::Px(1.0)), flex_shrink: 0.0, ..default() },
-            BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb(border())),
-        ))
-        .id();
-    let add = tool_button(commands, fonts, "plus", "Add Node", accent(), AddNodeBtn);
-    let layout = tool_button(commands, fonts, "tree-structure", "Auto Layout", text_primary(), LayoutBtn);
-    let apply = tool_button(commands, fonts, "lightning", "Apply", text_primary(), ApplyBtn);
-    commands.entity(bar).add_children(&[add, layout, apply]);
-
+    // Canvas (the toolbar lives in the shared strip — see `build_toolbar`).
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(BpGraph);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
@@ -114,7 +125,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(canvas).add_child(nodes_layer);
     keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
 
-    commands.entity(root).add_children(&[bar, handle.viewport]);
+    commands.entity(root).add_child(handle.viewport);
     renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }

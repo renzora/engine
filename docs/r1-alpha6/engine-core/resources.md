@@ -63,7 +63,7 @@ These are the **contract resources/types** that live in `renzora` for exactly th
 | `EditorSession(bool)` | `renzora` (`core`) | Editor-vs-game flag, set once at startup |
 | `GlobalStore` | `renzora_globals` | Cross-system key/value store (uses `renzora::PinValue`) |
 | `CurrentProject` / `ProjectConfig` | `renzora` (`core`) | The open project and its `project.toml` |
-| `PlayModeState` | `renzora` (`core`) | Editing / Playing / Paused / scripts-only |
+| `PlayModeState` | `renzora` (`core`) | Editing / Playing / Paused |
 | `EffectRouting` | `renzora` (`core`) | Maps post-process settings entities onto active cameras |
 | `LumenDiagState` | `renzora` (`gi`) | GI diagnostics, written in the editor, read by the debugger panel |
 | `NetworkBridge`, `ScriptRpcInbox`, `ScriptNetLifecycleInbox`, `ScriptUiInbox` | `renzora` (`core`) | Decoupling inboxes between networking/UI and scripting |
@@ -156,7 +156,7 @@ fn pause_world(mut play: ResMut<PlayModeState>) {
 }
 ```
 
-`PlayState` is `Editing`, `Playing`, `Paused`, `ScriptsOnly`, or `ScriptsPaused`. The resource exposes helpers (`is_playing`, `is_paused`, `is_in_play_mode`, `is_scripts_running`) and `request_*` flags that the editor consumes next frame. The free function `not_in_play_mode` is a run-condition for editor-only systems.
+`PlayState` is `Editing`, `Playing`, or `Paused`. The resource exposes helpers (`is_playing`, `is_paused`, `is_in_play_mode`, `is_scripts_running`) and `request_*` flags that the editor consumes next frame. The free function `not_in_play_mode` is a run-condition for editor-only systems.
 
 ## Editor registries
 

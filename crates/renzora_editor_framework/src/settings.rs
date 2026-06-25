@@ -220,8 +220,6 @@ pub struct EditorSettings {
     pub dev_mode: bool,
     /// Re-run on_ready when a script is hot-reloaded
     pub script_rerun_on_ready_on_reload: bool,
-    /// Use game camera when running scripts (ScriptsOnly mode)
-    pub scripts_use_game_camera: bool,
     /// Hide and lock the cursor when entering play mode
     pub hide_cursor_in_play_mode: bool,
     /// Spawn the exported runtime binary as a child process when entering
@@ -233,6 +231,9 @@ pub struct EditorSettings {
     pub external_play_window: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
+    /// Numeric drag fields: a press on the bottom slider rail sets the value
+    /// absolutely (a fast min→max sweep) instead of the fine relative scrub.
+    pub drag_value_rail_sweep: bool,
     /// Graphics backend wgpu requests at startup. Persisted to disk (not held
     /// only in this resource) because the renderer is created before this
     /// resource exists; changing it requires an editor restart to take effect.
@@ -280,10 +281,10 @@ impl Default for EditorSettings {
             // gated on it, e.g. the `renzora_tracy` profiler) survives restarts.
             dev_mode: renzora::load_dev_mode(),
             script_rerun_on_ready_on_reload: true,
-            scripts_use_game_camera: true,
             hide_cursor_in_play_mode: true,
             external_play_window: true,
             auto_import_on_drop: true,
+            drag_value_rail_sweep: true,
             // Seed the UI's working copy from the persisted preference so the
             // settings panel shows what the renderer actually booted with.
             renderer_backend: renzora::load_renderer_backend(),

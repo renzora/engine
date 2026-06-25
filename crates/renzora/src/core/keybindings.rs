@@ -64,7 +64,6 @@ pub enum EditorAction {
 
     // Play mode
     PlayStop,
-    PlayScriptsOnly,
 
     // Camera view angles
     ViewFront,
@@ -157,7 +156,6 @@ impl EditorAction {
             EditorAction::ToggleGrid => "Toggle Grid",
             EditorAction::ResetUiScale => "Reset UI Scale",
             EditorAction::PlayStop => "Play/Stop",
-            EditorAction::PlayScriptsOnly => "Run Scripts Only",
             EditorAction::ViewFront => "View Front",
             EditorAction::ViewBack => "View Back",
             EditorAction::ViewLeft => "View Left",
@@ -270,7 +268,7 @@ impl EditorAction {
             | EditorAction::ToggleEdgeSnap
             | EditorAction::ToggleScaleBottom => "View",
 
-            EditorAction::PlayStop | EditorAction::PlayScriptsOnly => "Play",
+            EditorAction::PlayStop => "Play",
 
             EditorAction::CodeSaveFile
             | EditorAction::CodeSaveAll
@@ -346,7 +344,6 @@ impl EditorAction {
             EditorAction::ViewBottom,
             EditorAction::ToggleProjection,
             EditorAction::PlayStop,
-            EditorAction::PlayScriptsOnly,
             EditorAction::ResetCamera,
             EditorAction::FrameAll,
             EditorAction::CameraToCursor,
@@ -574,10 +571,6 @@ impl Default for KeyBindings {
 
         // Play mode
         bindings.insert(EditorAction::PlayStop, KeyBinding::new(KeyCode::F5));
-        bindings.insert(
-            EditorAction::PlayScriptsOnly,
-            KeyBinding::new(KeyCode::F5).shift(),
-        );
 
         // View angle defaults (Blender-style numpad)
         bindings.insert(EditorAction::ViewFront, KeyBinding::new(KeyCode::Numpad1));

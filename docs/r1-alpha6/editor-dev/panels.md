@@ -258,3 +258,46 @@ Registering a panel does **not** force it into a layout. The metadata makes it a
 If you want a panel docked by default, add it to a workspace layout rather than relying on the picker; otherwise the **+** picker is how users bring it in (this is exactly what the tutorial's throwaway "Demo Panel" does — registered but deliberately not pre-docked).
 
 > Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` bundle (or shipped as a `--editor` distribution plugin). When the bundle is absent — the shipped game — none of this code runs, because `PluginScope::Editor` plugins are never installed into a runtime-only binary.
+
+## Panel toolbars — the shared strip below the document tabs
+
+There is **one** toolbar strip, mounted by the shell just under the document tabs, and its contents follow the **active panel**. A panel (or any plugin) registers toolbar items keyed by a dock panel id; the strip shows a panel's items only while that panel is the active (visible) tab in its leaf — so the toolbar swaps automatically as you move between the viewport, the code editor, the material graph, etc. Nothing is keyed to a *workspace*; it's purely which panels are on screen.
+
+The API lives on `App` (trait `renzora_ember::toolbar::PanelToolbarExt`):
+
+```rust
+use renzora_ember::toolbar::PanelToolbarExt;
+
+// Simplest: an icon button. `on_click` runs (deferred) with `&mut World`.
+app.register_panel_toolbar_button(
+    "material_graph", "floppy-disk", "Save material",
+    |w| { /* save the open material */ },
+);
+
+// Full control: a builder closure with `&mut Commands` + `&EmberFonts`, so you
+// can spawn ANY ember widget — dropdown, slider, input, checkbox, toggle
+// switch, color picker — and wire reactivity with the `bind_*` helpers
+// (e.g. read `EditorSelection` to react when a mesh is picked).
+app.register_panel_toolbar("blueprint_graph", |commands, fonts| {
+    let row = commands.spawn(Node { /* a Row */ ..default() }).id();
+    // … add_node / auto_layout / apply buttons …
+    row // the item's root entity
+});
+
+// Show one item's group for SEVERAL panels (any-active). The main viewport
+// toolbar uses this so it shows for every viewport slot:
+app.register_panel_toolbar_multi(
+    &["viewport", "viewport-2", "viewport-3", "viewport-4"],
+    |commands, fonts| build_viewport_header(commands, fonts),
+);
+```
+
+Notes:
+- The strip is **centered** by the host. If several panels are visible at once, their groups concatenate (in registration order) into that one centered cluster.
+- Built-in users of the strip: the **viewport header** (view/mode/snap/display/camera + gizmo tools + the 3D/2D/UI selector — shown for any of the 4 viewport slots), the **material graph** (Add Node / Apply / Fit / Center / Zoom + material picker), and the **blueprint graph** (Add Node / Auto Layout / Apply).
+- Items are built **once** when the shell spawns (and on a theme rebuild). Register at plugin-build time, before the chrome mounts.
+- A builder that needs a resource snapshot *at build time* (e.g. `font_picker`, which snapshots the `FontRegistry`) can't read it from this signature yet — bind reactively instead, or open an issue to widen the builder.
+
+### Or just put it in your panel
+
+A toolbar is only UI, so you don't *have* to use the strip — an editor can build the same ember widgets directly inside its own panel. The **code editor** (its font-size + Minimap/Whitespace bar, below the tab strip) and the **UI canvas** (its align/grid/snap/zoom bar) do exactly that. The widgets and their click systems behave identically either way — systems query by marker component, not by tree position. Use the strip when the toolbar belongs in the shared chrome below the tabs; build it in-panel when it belongs to that panel's own layout.

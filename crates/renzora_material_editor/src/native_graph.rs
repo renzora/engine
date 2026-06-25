@@ -49,7 +49,11 @@ pub struct NativeMaterialGraph;
 
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
+        use renzora_ember::toolbar::PanelToolbarExt;
         app.register_panel_content("material_graph", false, build);
+        // The graph's actions live in the shared toolbar strip (shown when the
+        // material graph is the active panel), not inside the panel itself.
+        app.register_panel_toolbar("material_graph", build_toolbar);
         app.add_systems(
             Update,
             (apply_click, add_node_open, view_op_click, context_menu_open)
@@ -93,22 +97,16 @@ struct MaterialTabsRoot {
     sig: u64,
 }
 
-fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let root = commands
-        .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
-            Name::new("native-material-graph"),
-        ))
-        .id();
-
-    // Toolbar — a single horizontal strip: node/view actions on the left, the
-    // material picker pushed to the right. Buttons are ember widgets so they get
-    // themed hover/press states (the old hand-rolled chips were flat + tiny).
+/// The material graph's toolbar, mounted in the shared strip (centered) while
+/// the material graph is the active panel. Its buttons are wired by the same
+/// marker-component systems (`apply_click`/`add_node_open`/`view_op_click`),
+/// which query by marker regardless of where the button lives.
+fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    // Content-sized row — the strip host supplies the background and centering.
     let bar = commands
         .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), border: UiRect::bottom(Val::Px(1.0)), flex_shrink: 0.0, ..default() },
-            BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb(border())),
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(8.0)), flex_shrink: 0.0, ..default() },
+            Name::new("material-graph-toolbar"),
         ))
         .id();
     let add = icon_label_button(commands, fonts, "plus", "Add Node");
@@ -130,9 +128,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Material picker — a dropdown of every material in the selected entity's
     // subtree (a model can have many, so a dropdown beats a tab row; it scrolls
-    // when long). Sits at the left of the toolbar. Hidden when the selection has
-    // none. `dd_holder` is rebuilt by `rebuild_material_dropdown` whenever the
-    // set changes; the leading label is static so it survives the rebuild.
+    // when long). Hidden when the selection has none. `dd_holder` is rebuilt by
+    // `rebuild_material_dropdown` whenever the set changes; the leading label is
+    // static so it survives the rebuild.
     let mat_section = commands
         .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), flex_shrink: 0.0, ..default() }, Name::new("material-picker")))
         .id();
@@ -148,8 +146,18 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
 
     commands.entity(bar).add_children(&[mat_section, add, apply, sep, fit, center, zin, zout]);
+    bar
+}
 
-    // Canvas.
+fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let root = commands
+        .spawn((
+            Node { width: Val::Percent(100.0), height: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() },
+            Name::new("native-material-graph"),
+        ))
+        .id();
+
+    // Canvas (the toolbar lives in the shared strip — see `build_toolbar`).
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(MatGraph);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
@@ -168,7 +176,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(canvas).add_child(nodes_layer);
     keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
 
-    commands.entity(root).add_children(&[bar, handle.viewport]);
+    commands.entity(root).add_child(handle.viewport);
     renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }

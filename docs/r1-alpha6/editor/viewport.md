@@ -49,6 +49,12 @@ Want to line something up dead-on from the front or top? The numpad snaps the ca
 
 The viewport header also has a **3D / 2D / UI** selector: **2D** gives you a flat top-down camera for 2D games, and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha5/scripting/game-ui).
 
+## Adding shapes from the toolbar
+
+The toolbar carries a **shapes** dropdown (the multi-square icon, next to the transform tools). Click it for a categorized list of every built-in primitive — **Basic** (cube, sphere, cylinder, plane, cone, capsule…), **Curved**, **Level** building blocks, and **Advanced**. Picking one drops it into your scene at the origin, ready to move with the gizmo. The menu stays open so you can add several in a row, and every add is a single undo step.
+
+It's the same shape list as the shape-library panel and the hierarchy's **Add Entity** menu, so whatever you register shows up in all three.
+
 ## Display toggles
 
 | Key | Toggle |

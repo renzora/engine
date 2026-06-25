@@ -156,8 +156,6 @@ pub fn debug_log_play_mode(
             PlayState::Editing => "Editing",
             PlayState::Playing => "Playing",
             PlayState::Paused => "Paused",
-            PlayState::ScriptsOnly => "ScriptsOnly",
-            PlayState::ScriptsPaused => "ScriptsPaused",
         };
         console_info("PlayMode", format!("State -> {}", state_str));
         *prev_state = Some(state);
