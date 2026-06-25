@@ -321,14 +321,34 @@ pub fn graph_node_view(
         let r = port_row(commands, fonts, node_id, viewport, pin, label, true, *pin_color);
         commands.entity(node).add_child(r);
     }
-    // Optional preview thumbnail (e.g. texture nodes).
+    // Optional preview thumbnail (e.g. texture nodes). Output pins hug the right
+    // edge, so the left of the node below the inputs is dead space — drop the
+    // preview there (absolutely positioned) instead of adding a square row at the
+    // bottom. Kept SQUARE: the texture is square, so a square box fills edge to
+    // edge (a taller box letterboxes the image, leaving top/bottom gaps). Width
+    // is held clear of the right-aligned output labels.
     if let Some(img) = thumbnail {
+        let body_top = HEAD_H + inputs.len() as f32 * ROW_H + 2.0;
+        let size = NODE_W - 70.0;
+        // The preview is absolute (out of flow), so a node with few output rows
+        // wouldn't grow to contain it and the image would spill past the bottom.
+        // Reserve the shortfall with an in-flow spacer — zero for tall nodes whose
+        // pins already exceed the preview (e.g. the 6-output texture node).
+        let reserve = (body_top + size + 8.0 - (HEAD_H + (inputs.len() + outputs.len()) as f32 * ROW_H)).max(0.0);
+        if reserve > 0.0 {
+            let spacer = commands
+                .spawn(Node { width: Val::Percent(100.0), height: Val::Px(reserve), ..default() })
+                .id();
+            commands.entity(node).add_child(spacer);
+        }
         let thumb = commands
             .spawn((
                 Node {
-                    width: Val::Px(NODE_W - 16.0),
-                    height: Val::Px(NODE_W - 16.0),
-                    margin: UiRect::all(Val::Px(8.0)),
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(8.0),
+                    top: Val::Px(body_top),
+                    width: Val::Px(size),
+                    height: Val::Px(size),
                     border: UiRect::all(Val::Px(1.0)),
                     border_radius: BorderRadius::all(Val::Px(3.0)),
                     ..default()
