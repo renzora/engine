@@ -24,7 +24,7 @@ use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     icon_label_button, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
-    scroll_view, slider,
+    screen_menu_flip, scroll_view, slider,
     text_input, EmberScroll, EmberTextInput,
 };
 
@@ -951,15 +951,21 @@ fn asset_context_menu(
     let Some(path) = state.hovered.clone() else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(win) = windows.iter().next() else {
         return;
     };
+    let Some(cursor) = win.cursor_position() else {
+        return;
+    };
+    let win_h = win.height();
     let fav_label = if state.favorites.contains(&path) {
         "Unfavorite"
     } else {
         "Favorite"
     };
-    let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+    // Flip the menu upward when the click lands low in the window so the (often
+    // tall) "Create Asset" list grows up from the cursor instead of being clipped.
+    let menu = screen_menu_flip(&mut commands, cursor.x, cursor.y, win_h);
     // Same color-coded "create new X" rows as the Add button, led by the
     // "Create Asset" header — at the TOP of the menu so a new asset can be made
     // straight from the right-click menu (lands in the current folder).

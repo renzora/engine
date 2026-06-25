@@ -37,6 +37,27 @@ const SCREEN_MENU_MAX_H: f32 = 420.0;
 /// scrollbar) instead of spilling off-screen. The returned entity is that scroll
 /// content — add items to it exactly as before.
 pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
+    screen_menu_anchored(commands, x, Val::Px(y), Val::Auto)
+}
+
+/// Like [`screen_menu`], but flips the menu to open *upward* from `(x, y)` when
+/// the click lands in the lower half of a `win_h`-tall window — so a context menu
+/// near the bottom edge grows up from the cursor (the click sits at the menu's
+/// bottom) instead of being clamped on top of it. `x` / `y` / `win_h` are window
+/// logical pixels.
+pub fn screen_menu_flip(commands: &mut Commands, x: f32, y: f32, win_h: f32) -> Entity {
+    if y > win_h * 0.5 {
+        // Pin the menu's bottom edge at the click; its items stack upward.
+        screen_menu_anchored(commands, x, Val::Auto, Val::Px((win_h - y).max(0.0)))
+    } else {
+        screen_menu_anchored(commands, x, Val::Px(y), Val::Auto)
+    }
+}
+
+/// Shared body of [`screen_menu`] / [`screen_menu_flip`]: spawns the floating menu
+/// at `left = x` with the given vertical anchor (`top` for downward menus,
+/// `bottom` for upward ones — the other should be [`Val::Auto`]).
+fn screen_menu_anchored(commands: &mut Commands, x: f32, top: Val, bottom: Val) -> Entity {
     // Scroll content column — callers add their menu items here.
     let content = commands
         .spawn((
@@ -55,7 +76,8 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(x),
-                top: Val::Px(y),
+                top,
+                bottom,
                 flex_direction: FlexDirection::Column,
                 min_width: Val::Px(184.0),
                 padding: UiRect::all(Val::Px(4.0)),
@@ -86,18 +108,30 @@ pub fn screen_menu(commands: &mut Commands, x: f32, y: f32) -> Entity {
 #[derive(Component)]
 pub struct OverlaySurface;
 
-/// True while the cursor is over any *visible* [`OverlaySurface`]. Read by the
-/// scroll system and the native viewport so interaction never passes through an
-/// open overlay onto whatever sits behind it.
+/// True while pointer interaction is **captured by a floating overlay or a
+/// modal** — i.e. the cursor is over any *visible* [`OverlaySurface`] (dropdown
+/// / menu / popup), OR a [`ModalSurface`](super::overlay::ModalSurface) is open
+/// (modals block everything behind them regardless of cursor position).
+///
+/// Any panel-level wheel / drag / scrub handler (timeline zoom, code-editor
+/// scroll, graph zoom, …) should bail when this is set, so an open overlay or
+/// modal can't have its wheel *also* drive the panel sitting behind it. Bevy
+/// broadcasts `MouseWheel` to every reader, so each such handler must opt out
+/// itself — this resource is the shared signal they check.
 #[derive(Resource, Default)]
 pub struct PointerOverOverlay(pub bool);
 
-/// Recompute [`PointerOverOverlay`] each frame from the visible overlay surfaces.
+/// Recompute [`PointerOverOverlay`] each frame from the visible overlay surfaces
+/// and any open modal.
 pub(crate) fn update_pointer_over_overlay(
     mut res: ResMut<PointerOverOverlay>,
     surfaces: Query<(&RelativeCursorPosition, &Node), With<OverlaySurface>>,
+    modals: Query<(), With<super::overlay::ModalSurface>>,
 ) {
-    let over = surfaces.iter().any(|(rcp, node)| node.display != Display::None && rcp.cursor_over);
+    let over = !modals.is_empty()
+        || surfaces
+            .iter()
+            .any(|(rcp, node)| node.display != Display::None && rcp.cursor_over);
     if res.0 != over {
         res.0 = over;
     }
@@ -201,9 +235,9 @@ where
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(9.0),
+                column_gap: Val::Px(8.0),
                 width: Val::Percent(100.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
@@ -220,12 +254,12 @@ where
     });
 
     // Thumbnail icon box — a dark inset square holding the accent-tinted glyph.
-    let glyph = icon_text(commands, &fonts.phosphor, icon, accent, 20.0);
+    let glyph = icon_text(commands, &fonts.phosphor, icon, accent, 15.0);
     let icon_box = commands
         .spawn((
             Node {
-                width: Val::Px(38.0),
-                height: Val::Px(38.0),
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
                 flex_shrink: 0.0,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
@@ -242,7 +276,7 @@ where
         .spawn((
             Node {
                 width: Val::Px(3.0),
-                height: Val::Px(28.0),
+                height: Val::Px(20.0),
                 flex_shrink: 0.0,
                 border_radius: BorderRadius::all(Val::Px(2.0)),
                 ..default()
@@ -255,14 +289,14 @@ where
     let title_t = commands
         .spawn((
             Text::new(title),
-            ui_font(&fonts.ui, 13.0),
+            ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
         ))
         .id();
     let sub_t = commands
         .spawn((
             Text::new(subtitle.to_uppercase()),
-            ui_font(&fonts.ui, 9.0),
+            ui_font(&fonts.ui, 8.0),
             TextColor(rgb(text_muted())),
         ))
         .id();
@@ -270,7 +304,7 @@ where
         .spawn((Node {
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::Center,
-            row_gap: Val::Px(2.0),
+            row_gap: Val::Px(1.0),
             ..default()
         },))
         .id();
@@ -397,6 +431,14 @@ pub(crate) fn screen_menu_clamp(
             let ny = y.min((wh - size.y).max(0.0)).max(0.0);
             if (ny - y).abs() > 0.5 {
                 node.top = Val::Px(ny);
+            }
+        }
+        // Upward-anchored menus (see `screen_menu_flip`) position by `bottom`;
+        // keep their top edge (`wh - bottom - size.y`) on-screen.
+        if let Val::Px(b) = node.bottom {
+            let nb = b.min((wh - size.y).max(0.0)).max(0.0);
+            if (nb - b).abs() > 0.5 {
+                node.bottom = Val::Px(nb);
             }
         }
     }

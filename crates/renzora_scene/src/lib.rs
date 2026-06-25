@@ -6,8 +6,8 @@ use bevy::prelude::*;
 
 use renzora::core::{
     CurrentProject, EditorCamera, HideInHierarchy, MeshInstanceData, NewSceneRequested,
-    OpenSceneRequested, SaveAsSceneRequested, SaveSceneRequested, SceneCamera, SceneTabBuffers,
-    TabSceneSnapshot, TabSwitchRequest, ToggleSettingsRequested,
+    OpenSceneRequested, OpenScenePathRequested, SaveAsSceneRequested, SaveSceneRequested,
+    SceneCamera, SceneTabBuffers, TabSceneSnapshot, TabSwitchRequest, ToggleSettingsRequested,
 };
 use renzora_camera::OrbitCameraState;
 use renzora_editor_framework::SplashState;
@@ -585,6 +585,18 @@ fn open_scene_system(world: &mut World) {
             format!("Opened scene {}", file_path.display()),
         );
     }
+}
+
+/// Open a specific scene file (requested by path, e.g. the asset browser's
+/// double-click / "Open Scene" context item) in its own document tab. Defers to
+/// [`panel::open_scene`], which saves the current tab's buffer, creates a tab,
+/// and loads the file from disk — so the new tab shows the scene's contents
+/// rather than the empty world a bare `open_asset_tab` would leave behind.
+fn open_scene_path_system(world: &mut World) {
+    let Some(req) = world.remove_resource::<OpenScenePathRequested>() else {
+        return;
+    };
+    panel::open_scene(world, &req.0);
 }
 
 // ============================================================================
@@ -1222,6 +1234,7 @@ impl Plugin for ScenePlugin {
                     save_as_scene_system,
                     new_scene_system,
                     open_scene_system,
+                    open_scene_path_system,
                     handle_tab_switch,
                 )
                     .run_if(in_state(SplashState::Editor)),

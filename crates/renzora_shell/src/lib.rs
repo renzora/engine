@@ -521,6 +521,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("history", "History", "clock-counter-clockwise", "Editing"),
     ("outline", "Outline", "list-dashes", "Editing"),
     ("code_editor", "Code", "code", "Editing"),
+    ("console", "Console", "terminal", "Debug"),
     ("problems", "Problems", "warning-circle", "Debug"),
     ("script_variables", "Variables", "brackets-curly", "Scripting"),
     ("scripts_on_entity", "Scripts", "file-code", "Scripting"),
@@ -2789,15 +2790,34 @@ fn build_menu_items(
     }
 }
 
-/// Reset the active workspace's dock tree to its registered layout.
+/// Reset the active workspace's dock tree to the **engine default** for that
+/// workspace. The stored `ShellLayouts` entry holds the user's *edited* layout
+/// (persisted to `~/.renzora/layout.json`), so resetting to it was a no-op —
+/// we pull the pristine tree from [`dock::workspace_layouts`] instead, matched
+/// by the active workspace's name, and overwrite both the live dock and the
+/// stored layout so the reset sticks (and gets persisted).
 fn reset_layout_action(w: &mut World) {
-    let tree = w
+    let active_name = w
         .get_resource::<ShellLayouts>()
-        .and_then(|l| l.layouts.get(l.active).map(|(_, t)| t.clone()));
-    if let Some(tree) = tree {
-        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-            dock.tree = tree;
+        .and_then(|l| l.layouts.get(l.active).map(|(name, _)| name.clone()));
+    let Some(active_name) = active_name else {
+        return;
+    };
+    let Some(default_tree) = dock::workspace_layouts()
+        .into_iter()
+        .find(|(name, _)| *name == active_name)
+        .map(|(_, t)| t)
+    else {
+        return;
+    };
+    if let Some(mut layouts) = w.get_resource_mut::<ShellLayouts>() {
+        let active = layouts.active;
+        if let Some(slot) = layouts.layouts.get_mut(active) {
+            slot.1 = default_tree.clone();
         }
+    }
+    if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+        dock.tree = default_tree;
     }
     if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
         d.0 = true;

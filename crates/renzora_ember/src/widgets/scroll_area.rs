@@ -272,7 +272,7 @@ pub(crate) fn scroll_wheel(
     // 0.19: the UI stack index moved off `ComputedNode` into its own
     // `ComputedStackIndex(u32)` component.
     mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
-    overlays: Query<(&RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &Node), With<super::popup::OverlaySurface>>,
+    overlays: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &Node), With<super::popup::OverlaySurface>>,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
 ) {
@@ -290,7 +290,21 @@ pub(crate) fn scroll_wheel(
     }
     let modal_open = !modals.is_empty();
 
-    // The frontmost scroll area under the cursor (highest stack index).
+    // The topmost floating overlay (dropdown / menu / popup) under the cursor, if
+    // any. It confines the wheel exactly like a modal: only scroll areas *inside*
+    // that overlay may scroll, so an open overlay fully isolates the wheel from
+    // the panel behind it — and when the overlay has no scroll area of its own,
+    // the wheel is swallowed rather than leaking through. Ancestry, not stack
+    // index, decides this, so it's correct even when the panel behind sits higher
+    // in the UI tree's stacking order than the floating overlay.
+    let top_overlay: Option<Entity> = overlays
+        .iter()
+        .filter(|(_, rcp, _, node)| rcp.cursor_over && node.display != Display::None)
+        .max_by_key(|(_, _, si, _)| si.0)
+        .map(|(e, _, _, _)| e);
+
+    // The frontmost scroll area under the cursor (highest stack index) that's
+    // allowed to scroll given any open modal / overlay confinement.
     let mut best: Option<(Entity, u32)> = None;
     for (e, rcp, cn, _) in &areas {
         if !rcp.cursor_over {
@@ -299,30 +313,38 @@ pub(crate) fn scroll_wheel(
         if modal_open && !under_overlay(e, &parents, &modals) {
             continue;
         }
+        if let Some(ov) = top_overlay {
+            if e != ov && !is_descendant_of(e, ov, &parents) {
+                continue;
+            }
+        }
         let si = cn.0;
         if best.is_none_or(|(_, b)| si >= b) {
             best = Some((e, si));
         }
     }
-    let Some((target, target_si)) = best else {
+    // No eligible scroll area — if an overlay is under the cursor it swallows the
+    // wheel (returning here leaves the panel behind untouched).
+    let Some((target, _)) = best else {
         return;
     };
-
-    // An overlay stacked strictly above the chosen scroll area swallows the
-    // wheel (e.g. a context menu over a panel's list). A dropdown list is itself
-    // an overlay, but its inner scroll area stacks above its panel, so it wins.
-    let overlay_above = overlays
-        .iter()
-        .filter(|(rcp, _, node)| rcp.cursor_over && node.display != Display::None)
-        .any(|(_, cn, _)| cn.0 > target_si);
-    if overlay_above {
-        return;
-    }
 
     if let Ok((_, _, _, mut s)) = areas.get_mut(target) {
         s.target -= dy * WHEEL_STEP;
         s.stick = false; // user took control; scroll_update re-sticks at bottom
     }
+}
+
+/// Is `e` a descendant of `ancestor` in the UI tree?
+fn is_descendant_of(mut e: Entity, ancestor: Entity, parents: &Query<&ChildOf>) -> bool {
+    while let Ok(c) = parents.get(e) {
+        let p = c.parent();
+        if p == ancestor {
+            return true;
+        }
+        e = p;
+    }
+    false
 }
 
 /// Is `e` itself or any ancestor a [`super::overlay::ModalSurface`]?

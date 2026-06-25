@@ -16,6 +16,7 @@ mod filter;
 mod pin;
 mod rename;
 mod row;
+mod scene_drop;
 mod scene_starter;
 mod systems;
 mod tree;
@@ -64,6 +65,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<filter::HierFilter>();
     app.init_resource::<filter::HierSearch>();
     app.init_resource::<rename::HierRename>();
+    app.init_resource::<scene_drop::ArmedHierSceneDrop>();
     // A pinned header (Add Entity) over the scrollable, reactive tree list.
     app.register_panel_content(PANEL_ID, false, |commands, fonts| {
         let root = commands
@@ -76,6 +78,10 @@ pub fn register_native_hierarchy(app: &mut App) {
                     ..default()
                 },
                 Name::new("hierarchy-root"),
+                // Scene-asset drop target: dropping a `.bsn` / `.ron` here spawns
+                // it as a nested instance (handled in `scene_drop`).
+                scene_drop::HierRoot,
+                bevy::ui::RelativeCursorPosition::default(),
             ))
             .id();
 
@@ -158,6 +164,8 @@ pub fn register_native_hierarchy(app: &mut App) {
             systems::hierarchy_badge_click,
             drag::hier_drag,
             drag::hier_drag_tooltip,
+            scene_drop::arm_hier_scene_drop,
+            scene_drop::commit_hier_scene_drop,
             context_menu::hier_context_menu,
             add_entity::hier_add_entity_open,
             filter::hier_filter_toggle,

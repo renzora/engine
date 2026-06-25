@@ -121,7 +121,13 @@ autoload = ["scenes/loader.ron"]
 
 You can drop one scene inside another as a **scene instance** — great for a prop, an enemy, or a room you want to reuse in many places. Edit the original once and every copy updates.
 
-To add one, right-click in the Hierarchy and choose **Instance Scene…**, then pick a `.ron` file. Its contents appear nested under a new instance row. Choose **Unpack Scene Instance** if you'd rather break it apart into normal objects.
+There are three ways to add one:
+
+- **Drag** a scene file (`.bsn`) from the Asset Browser onto the **viewport** — it drops at the spot under your cursor.
+- **Drag** the same file onto the **Hierarchy** — it's added at the scene root.
+- Right-click in the Hierarchy and choose **Instance Scene…**, then pick a file.
+
+Its contents appear nested under a new instance row. Choose **Unpack Scene Instance** if you'd rather break it apart into normal objects.
 
 When you save, only the instance's own position and overrides are stored in the host scene — its insides still live in the original file, and any edits you make to them are saved back there. The editor also blocks a scene from referencing itself, so you can never create an endless loop.
 

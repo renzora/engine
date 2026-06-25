@@ -95,7 +95,14 @@ pub fn arm_viewport_drop(
     };
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
 
+    // `hovered` is the panel-aware signal: it's the viewport node's own
+    // `cursor_over` (clip- and stack-index-aware), already cleared when the
+    // cursor is over another panel, an overlay, or a modal. Requiring it — on
+    // top of the geometric rect — keeps a drop from arming the viewport while
+    // the cursor is actually over the hierarchy/inspector (which otherwise lets
+    // BOTH the viewport and that panel commit the same drop → a duplicate spawn).
     let valid = payload.is_detached
+        && viewport.hovered
         && window.cursor_position().is_some_and(|c| {
             let min = viewport.screen_position;
             let max = min + viewport.screen_size;

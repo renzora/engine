@@ -16,7 +16,14 @@ pub(crate) fn open_double_clicked(world: &bevy::prelude::World, path: std::path:
         if let Some(cmds) = world.get_resource::<EditorCommands>() {
             let p = path.clone();
             cmds.push(move |world: &mut bevy::prelude::World| {
-                renzora_editor_framework::open_asset_tab(world, &p, kind);
+                // Scenes own a 3D world, so they can't just open an (empty) doc
+                // tab — they must be loaded from disk into a new scene tab. Route
+                // them to the scene system; every other kind opens as an asset tab.
+                if matches!(kind, DocTabKind::Scene) {
+                    world.insert_resource(renzora::core::OpenScenePathRequested(p));
+                } else {
+                    renzora_editor_framework::open_asset_tab(world, &p, kind);
+                }
             });
         }
         return;

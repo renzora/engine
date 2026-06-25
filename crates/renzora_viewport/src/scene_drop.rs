@@ -1,5 +1,5 @@
-//! Drag-and-drop scene-instance spawning — detects `.ron` asset drops on the
-//! viewport and spawns a `SceneInstance` entity expanded from that file.
+//! Drag-and-drop scene-instance spawning — detects `.bsn` / `.ron` asset drops
+//! on the viewport and spawns a `SceneInstance` entity expanded from that file.
 
 use std::path::PathBuf;
 
@@ -11,9 +11,9 @@ use renzora_ui::{DocumentTabState, Toasts};
 
 use crate::ViewportState;
 
-pub(crate) const SCENE_EXTENSIONS: &[&str] = &["ron"];
+pub(crate) const SCENE_EXTENSIONS: &[&str] = &["ron", "bsn"];
 
-/// Commit a `.ron` scene-instance drop at the given viewport-space pointer.
+/// Commit a `.bsn` / `.ron` scene-instance drop at the given viewport-space pointer.
 /// Shared by the egui drop check and the native bevy_ui drop
 /// (`native_drop::commit_viewport_drop`). `screen_pos` / `vp_rect` are in window
 /// logical pixels.
