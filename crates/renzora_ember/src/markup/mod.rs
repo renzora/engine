@@ -27,7 +27,7 @@ pub mod widgets;
 pub mod writeback;
 
 pub use provenance::MarkupSource;
-pub use template::HtmlTemplatePath;
+pub use template::{HtmlTemplatePath, TemplateReloadRequests};
 
 /// The markup runtime plugin (formerly `renzora_hui::HuiPlugin`). Registered via
 /// `renzora::add!` at Runtime scope so it runs in both the editor viewport and

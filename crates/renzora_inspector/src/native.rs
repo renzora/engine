@@ -18,11 +18,13 @@ use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
+use bevy::ui::{ComputedNode, FocusPolicy};
+use bevy::window::PrimaryWindow;
 
 use renzora_editor_framework::{
-    EditorCommands, EditorSelection, EditorSettings, FieldType, FieldValue, InspectorExpandDefault,
-    InspectorRegistry, NativeInspectorDrawer, NativeInspectorRegistry,
+    EditorCommands, EditorSelection, EditorSettings, FieldType, FieldValue,
+    InspectorComponentFilterStyle, InspectorExpandDefault, InspectorRegistry, NativeInspectorDrawer,
+    NativeInspectorRegistry,
 };
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
@@ -57,7 +59,7 @@ struct NativeInspectorState {
     locked: Option<Entity>,
     /// Lowercased component-name filter (empty = show all).
     filter: String,
-    /// Exact component display-name picked from the filter dropdown
+    /// Exact component display-name picked from the left component menu
     /// (`None` = show all components). ANDed with `filter`.
     selected: Option<String>,
 }
@@ -76,35 +78,68 @@ struct ExpandAllGlyph;
 #[derive(Component)]
 struct InspectorSectionHeader;
 
-/// Stable host for the component-filter dropdown. The ember `dropdown` widget
-/// bakes its options in at build time, so `rebuild_inspector` despawns this
-/// host's child and rebuilds the dropdown whenever the component set changes.
+/// Stable host for the vertical component menu down the left of the inspector.
+/// `rebuild_inspector` despawns this host's children and rebuilds one icon button
+/// per component (plus an "All" entry) whenever the component set changes.
+#[derive(Component)]
+struct ComponentMenuHost;
+
+/// A single button in the left-side component menu. `name` is the component's
+/// display name to filter to, or `None` for the "All components" entry.
+#[derive(Component)]
+struct ComponentMenuButton {
+    name: Option<String>,
+}
+
+/// Links a menu button to its (hidden) tooltip bubble so `component_menu_tooltip`
+/// can show/position it on hover.
+#[derive(Component)]
+struct ComponentTooltip {
+    tip: Entity,
+}
+
+/// Stable host for the top-bar component-filter dropdown (the alternative to the
+/// vertical menu, chosen via `inspector_component_filter_style`). Rebuilt in
+/// place by `rebuild_inspector`; shown only in `Dropdown` mode.
 #[derive(Component)]
 struct FilterDropdownHost;
 
 /// The "show everything" entry, shown as index 0 in the filter dropdown.
 const FILTER_ALL: &str = "All components";
 
+/// The user's chosen component-filter presentation (defaults to the vertical
+/// menu if settings aren't available yet).
+fn filter_style(world: &World) -> InspectorComponentFilterStyle {
+    world
+        .get_resource::<EditorSettings>()
+        .map(|s| s.inspector_component_filter_style)
+        .unwrap_or_default()
+}
+
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<NativeInspectorState>();
     // `scroll: false` — we manage scrolling ourselves so the top bar (filter
-    // dropdown + filter input) and the Add Component row beneath it stay *fixed*
-    // while only the component list scrolls.
+    // input + expand-all) and the Add Component row beneath it stay *fixed* while
+    // only the component list scrolls.
     app.register_panel_content("inspector", false, |commands, fonts| {
+        // Outer row: the vertical component menu down the left + the main column
+        // (top bar, add row, scrolling list) on the right.
         let root = commands
             .spawn((
                 Node {
                     width: Val::Percent(100.0),
                     flex_grow: 1.0,
                     min_height: Val::Px(0.0),
-                    flex_direction: FlexDirection::Column,
+                    flex_direction: FlexDirection::Row,
                     ..default()
                 },
                 Name::new("inspector-panel"),
             ))
             .id();
-        // Fixed top bar: component-filter dropdown + filter input + expand-all.
+        // Left rail: vertical component menu (rebuilt by `rebuild_inspector`).
+        let menu = build_component_menu_host(commands);
+        // Fixed top bar: component-filter input + expand-all.
         let top = build_top_bar(commands, fonts);
         // Fixed Add Component row, pinned directly under the top bar.
         let add_row = build_add_row(commands, fonts);
@@ -124,7 +159,20 @@ pub fn register_native_inspector(app: &mut App) {
             ))
             .id();
         let scroll = scroll_view(commands, content);
-        commands.entity(root).add_children(&[top, add_row, scroll]);
+        let main = commands
+            .spawn((
+                Node {
+                    flex_grow: 1.0,
+                    min_width: Val::Px(0.0),
+                    min_height: Val::Px(0.0),
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+                Name::new("inspector-main"),
+            ))
+            .id();
+        commands.entity(main).add_children(&[top, add_row, scroll]);
+        commands.entity(root).add_children(&[menu, main]);
         root
     });
     app.add_systems(
@@ -140,6 +188,8 @@ pub fn register_native_inspector(app: &mut App) {
             asset_clear_click,
             asset_drop_highlight,
             inspector_filter_sync,
+            component_menu_click,
+            component_menu_tooltip,
             expand_all_click,
             sync_expand_glyph,
         )
@@ -255,18 +305,15 @@ fn present_components(world: &World, entity: Entity) -> Vec<(&'static str, &'sta
         .collect()
 }
 
-/// The fixed top bar: a component-filter dropdown on the left + the
-/// component-filter text input to its right. (The Add Component button lives in
-/// the row directly below.) Hidden when nothing is selected.
+/// The fixed top bar: the component-filter dropdown (shown only in `Dropdown`
+/// mode) + the component-filter text input + the expand/collapse-all toggle. (In
+/// `VerticalMenu` mode the component menu lives in the left rail; the Add
+/// Component button is in the row directly below.) Hidden when nothing is selected.
 fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    // A stable host for the component-filter dropdown. The dropdown itself is
-    // (re)built by `rebuild_inspector` from the components currently on the
-    // entity; picking one filters the inspector to it ("All components" clears
-    // it).
+    // Stable host for the dropdown; populated by `rebuild_inspector` and shown
+    // only when the user picked the `Dropdown` filter style.
     let dropdown_host = commands
         .spawn((
-            // Hug the dropdown (which sizes to its content, capped) so a short
-            // selection like "TAA" gives a short box.
             Node {
                 flex_shrink: 0.0,
                 ..default()
@@ -275,6 +322,10 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("filter-dropdown-host"),
         ))
         .id();
+    bind_display(commands, dropdown_host, |w| {
+        inspected_entity(w).is_some()
+            && filter_style(w) == InspectorComponentFilterStyle::Dropdown
+    });
     let input = text_input(commands, &fonts.ui, "Filter components...", "");
     commands.entity(input).insert((
         InspectorFilter,
@@ -339,6 +390,32 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bar
 }
 
+/// Stable host for the left-side vertical component menu. `rebuild_inspector`
+/// repopulates it with one icon button per component whenever the set changes.
+/// Hidden when nothing is selected.
+fn build_component_menu_host(commands: &mut Commands) -> Entity {
+    let host = commands
+        .spawn((
+            Node {
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(c(renzora_ember::theme::window_bg())),
+            ComponentMenuHost,
+            Name::new("inspector-component-menu"),
+        ))
+        .id();
+    bind_display(commands, host, |w| {
+        inspected_entity(w).is_some()
+            && filter_style(w) == InspectorComponentFilterStyle::VerticalMenu
+    });
+    host
+}
+
 /// Build the ember `dropdown` filtering the inspector by component, from the
 /// `present` components (display names). Index 0 is "All components"; selecting
 /// it clears the filter. Two-way bound to `NativeInspectorState::selected`.
@@ -401,6 +478,111 @@ fn build_filter_dropdown(
     dd
 }
 
+/// Build the vertical component menu's buttons: an "All" entry (clears the
+/// filter) followed by one icon button per present component. Clicking a button
+/// filters the inspector to that component; the active one is highlighted. Each
+/// carries `ComponentMenuButton` so `component_menu_click` can toggle the filter.
+fn build_component_menu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    present: &[(&'static str, &'static str)],
+    selected: &Option<String>,
+) -> Vec<Entity> {
+    let mut out = Vec::with_capacity(present.len() + 1);
+    // "All" first — active when no specific component is selected.
+    out.push(component_menu_button(
+        commands,
+        fonts,
+        "list",
+        None,
+        selected.is_none(),
+    ));
+    for (name, icon) in present {
+        let active = selected.as_deref() == Some(*name);
+        out.push(component_menu_button(
+            commands,
+            fonts,
+            icon,
+            Some((*name).to_string()),
+            active,
+        ));
+    }
+    out
+}
+
+/// One icon button in the left component menu. Carries a hidden tooltip child
+/// (the rail is icon-only) that `component_menu_tooltip` reveals + positions.
+fn component_menu_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    name: Option<String>,
+    active: bool,
+) -> Entity {
+    let (bg, glyph_color) = if active {
+        (renzora_ember::theme::accent(), renzora_ember::theme::on_accent())
+    } else {
+        // Inactive buttons blend into the (darker) rail so only the active one reads.
+        (renzora_ember::theme::window_bg(), renzora_ember::theme::text_muted())
+    };
+    let label = name.clone().unwrap_or_else(|| "All components".to_string());
+    let btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(c(bg)),
+            Interaction::default(),
+            FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ComponentMenuButton { name },
+            Name::new("component-menu-button"),
+        ))
+        .id();
+    let glyph = phosphor_glyph(commands, fonts, icon, glyph_color, 15.0);
+
+    // Tooltip bubble — a child positioned just off the button's right edge by
+    // default; `component_menu_tooltip` flips it left / clamps it vertically so it
+    // never leaves the window. Hidden until hovered.
+    let tip_text = commands
+        .spawn((
+            Text::new(label),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(c(renzora_ember::theme::text_primary())),
+            TextLayout::no_wrap(),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let tip = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(100.0),
+                margin: UiRect::left(Val::Px(6.0)),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(c(renzora_ember::theme::window_bg())),
+            BorderColor::all(c(renzora_ember::theme::border())),
+            GlobalZIndex(9000),
+            FocusPolicy::Pass,
+            Name::new("component-menu-tooltip"),
+        ))
+        .id();
+    commands.entity(tip).add_child(tip_text);
+    commands.entity(btn).insert(ComponentTooltip { tip });
+    commands.entity(btn).add_children(&[glyph, tip]);
+    btn
+}
+
 /// The fixed Add Component row, pinned under the top bar: a full-width Add
 /// Component button. Hidden when nothing is selected.
 fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -435,6 +617,95 @@ fn inspector_filter_sync(
     }
 }
 
+/// Click a left-menu button to filter the inspector to that component. Clicking
+/// the already-active button (or "All") clears the filter. Mirrors what the old
+/// filter dropdown did into `NativeInspectorState::selected`; `rebuild_inspector`
+/// then rebuilds the menu so the highlight follows.
+fn component_menu_click(
+    q: Query<(&Interaction, &ComponentMenuButton), Changed<Interaction>>,
+    mut state: ResMut<NativeInspectorState>,
+) {
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        // Toggle: re-clicking the active component clears back to "All".
+        let next = if state.selected == btn.name {
+            None
+        } else {
+            btn.name.clone()
+        };
+        if state.selected != next {
+            state.selected = next;
+        }
+    }
+}
+
+/// Show + position the vertical menu's tooltips. The rail is icon-only, so each
+/// button carries a hidden bubble naming its component; on hover we reveal it and
+/// place it just off the button — preferring the right side, flipping to the left
+/// when it would overflow the window, and clamping it vertically so it's never
+/// cut off near the top/bottom edge. The dropdown style needs none of this.
+fn component_menu_tooltip(
+    buttons: Query<(&Interaction, &ComponentTooltip, &ComputedNode, &GlobalTransform)>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cnodes: Query<&ComputedNode>,
+    mut nodes: Query<&mut Node>,
+) {
+    let win = windows.iter().next();
+    for (interaction, tt, btn_cn, gt) in &buttons {
+        if !matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            if let Ok(mut n) = nodes.get_mut(tt.tip) {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
+            continue;
+        }
+
+        // GlobalTransform / ComputedNode are physical; Node offsets are logical.
+        let inv = btn_cn.inverse_scale_factor();
+        let center = gt.translation().truncate() * inv;
+        let bsize = btn_cn.size() * inv;
+        let tsize = cnodes
+            .get(tt.tip)
+            .map(|cn| cn.size() * cn.inverse_scale_factor())
+            .unwrap_or(Vec2::ZERO);
+
+        let gap = 6.0;
+        // Right side unless it would run past the window's right edge.
+        let place_right = win
+            .map(|w| center.x + bsize.x * 0.5 + gap + tsize.x <= w.width())
+            .unwrap_or(true);
+        // Vertically centre on the button, then clamp into the window. The node's
+        // `top` is relative to the button's top, so convert through global coords.
+        let btn_top = center.y - bsize.y * 0.5;
+        let desired_top = win
+            .map(|w| (center.y - tsize.y * 0.5).clamp(0.0, (w.height() - tsize.y).max(0.0)))
+            .unwrap_or(center.y - tsize.y * 0.5);
+        let top_offset = desired_top - btn_top;
+
+        if let Ok(mut n) = nodes.get_mut(tt.tip) {
+            if n.display != Display::Flex {
+                n.display = Display::Flex;
+            }
+            if place_right {
+                n.left = Val::Percent(100.0);
+                n.right = Val::Auto;
+                n.margin.left = Val::Px(gap);
+                n.margin.right = Val::Px(0.0);
+            } else {
+                n.right = Val::Percent(100.0);
+                n.left = Val::Auto;
+                n.margin.right = Val::Px(gap);
+                n.margin.left = Val::Px(0.0);
+            }
+            n.top = Val::Px(top_offset);
+            n.bottom = Val::Auto;
+        }
+    }
+}
+
 // ── Rebuild ──────────────────────────────────────────────────────────────────
 
 fn rebuild_inspector(world: &mut World) {
@@ -457,7 +728,7 @@ fn rebuild_inspector(world: &mut World) {
             .and_then(|s| s.get())
     });
 
-    // Drop a stale dropdown pick if that component isn't on the current entity
+    // Drop a stale menu pick if that component isn't on the current entity
     // (e.g. selection changed) so we don't strand the inspector on an empty list.
     if let Some(sel) = world.resource::<NativeInspectorState>().selected.clone() {
         let still_present = entity
@@ -486,13 +757,21 @@ fn rebuild_inspector(world: &mut World) {
         .map(|ch| ch.iter().collect())
         .unwrap_or_default();
 
-    // Rebuild the filter dropdown from the entity's components (the ember widget
-    // bakes options in at build time, so it's recreated when the set changes).
-    let filter_host = {
+    // The component filter renders as either a left rail of icon buttons or a
+    // top-bar dropdown; we rebuild whichever the user picked and clear the other.
+    let style = filter_style(world);
+    let menu_host = {
+        let mut hq = world.query_filtered::<Entity, With<ComponentMenuHost>>();
+        hq.iter(world).next()
+    };
+    let menu_host_children: Vec<Entity> = menu_host
+        .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
+        .unwrap_or_default();
+    let dropdown_host = {
         let mut hq = world.query_filtered::<Entity, With<FilterDropdownHost>>();
         hq.iter(world).next()
     };
-    let filter_host_children: Vec<Entity> = filter_host
+    let dropdown_host_children: Vec<Entity> = dropdown_host
         .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
         .unwrap_or_default();
     let present: Vec<(&'static str, &'static str)> =
@@ -510,13 +789,29 @@ fn rebuild_inspector(world: &mut World) {
             commands.entity(child).despawn();
         }
 
-        // Rebuild the filter dropdown with the entity's current components.
-        if let Some(host) = filter_host {
-            for child in &filter_host_children {
-                commands.entity(*child).despawn();
+        // Clear both filter hosts, then rebuild only the active style's widget.
+        // (The inactive host stays empty and is hidden by its `bind_display`.)
+        for child in &menu_host_children {
+            commands.entity(*child).despawn();
+        }
+        for child in &dropdown_host_children {
+            commands.entity(*child).despawn();
+        }
+        match style {
+            InspectorComponentFilterStyle::VerticalMenu => {
+                if let Some(host) = menu_host {
+                    let buttons =
+                        build_component_menu(&mut commands, &fonts, &present, &selected_now);
+                    commands.entity(host).add_children(&buttons);
+                }
             }
-            let dd = build_filter_dropdown(&mut commands, &fonts, &present, &selected_now);
-            commands.entity(host).add_child(dd);
+            InspectorComponentFilterStyle::Dropdown => {
+                if let Some(host) = dropdown_host {
+                    let dd =
+                        build_filter_dropdown(&mut commands, &fonts, &present, &selected_now);
+                    commands.entity(host).add_child(dd);
+                }
+            }
         }
 
         match entity {
@@ -572,9 +867,11 @@ fn inspector_signature(
         s.filter.hash(&mut h);
         s.selected.hash(&mut h);
     }
-    // Changing the default-expand policy re-applies it to the current view.
+    // Changing the default-expand policy re-applies it to the current view, and
+    // switching the filter style swaps the rail/dropdown — both force a rebuild.
     if let Some(s) = world.get_resource::<EditorSettings>() {
         (s.inspector_expand_default as u8).hash(&mut h);
+        (s.inspector_component_filter_style as u8).hash(&mut h);
     }
     match entity {
         Some(e) => {

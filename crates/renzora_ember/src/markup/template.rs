@@ -12,8 +12,10 @@
 //! entity. There's no opaque "scope root" wrapper, no `HtmlNode`, no
 //! `HtmlStyle` — just the components the loader writes.
 //!
-//! Hot-reload (Phase C) will despawn the children and re-run the loader; for
-//! now we only handle the initial path-insert path.
+//! Hot-reload (Phase C): `hot_reload_templates` watches `AssetEvent::Modified`
+//! and re-queues the holders, so `finalize_pending_templates` despawns the old
+//! children and re-runs the loader. Saving a template in the code editor forces
+//! the asset re-read that drives this.
 
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
@@ -123,7 +125,77 @@ fn finalize_pending_templates(
             &no_overrides,
             None,
         );
+        // Keep the root template's asset alive past this build so editing the
+        // file emits `AssetEvent::Modified` and hot-reload can react. Without an
+        // owner the handle drops with `PendingTemplate` below and the asset is
+        // GC'd.
+        if let Some(path) = server.get_path(&marker.0) {
+            keeper.keep(path.to_string(), marker.0.clone());
+        }
         commands.entity(entity).remove::<PendingTemplate>();
+    }
+}
+
+/// Template asset ids the editor has explicitly asked to hot-reload after a
+/// save. Only `Modified` events for ids in here rebuild the UI.
+///
+/// The gate matters because the inspector's attribute writeback *also* dirties
+/// the asset — it calls `Assets::get_mut` (emits `Modified`) and rewrites the
+/// `.html` (the file watcher emits another `Modified`) — yet it already updated
+/// the live entity in place and must NOT trigger a rebuild, which would despawn
+/// the node the user has selected and is mid-edit on. So instead of reacting to
+/// every `Modified`, we react only to saves that registered here. External edits
+/// (a different editor) are intentionally out of scope.
+#[derive(Resource, Default)]
+pub struct TemplateReloadRequests(pub bevy::platform::collections::HashSet<AssetId<HtmlTemplate>>);
+
+impl TemplateReloadRequests {
+    /// Register `path`'s template asset so the next `Modified` for it triggers a
+    /// rebuild. Resolving the handle here (instead of in the caller) keeps
+    /// `HtmlTemplate` out of the editor crate's dependency surface.
+    pub fn request(&mut self, server: &AssetServer, path: &str) {
+        let handle: Handle<HtmlTemplate> = server.load(path.to_string());
+        self.0.insert(handle.id());
+    }
+}
+
+/// Hot-reload (Phase C): when a template the editor saved has finished
+/// re-reading from disk, rebuild every canvas that uses it.
+///
+/// We re-queue **all** `HtmlTemplatePath` holders rather than tracking which one
+/// depends on the changed asset: a top-level template can pull in others via
+/// `template="..."`, so a saved sub-template should still refresh the canvases
+/// that embed it. There are only a handful of canvases, so the blanket rebuild
+/// is cheap and avoids a brittle dependency graph. Re-inserting `PendingTemplate`
+/// is all it takes — `finalize_pending_templates` does the despawn-and-rebuild
+/// next tick, exactly as for a fresh path insert.
+fn hot_reload_templates(
+    mut events: MessageReader<AssetEvent<HtmlTemplate>>,
+    mut requests: ResMut<TemplateReloadRequests>,
+    server: Res<AssetServer>,
+    holders: Query<(Entity, &HtmlTemplatePath)>,
+    mut commands: Commands,
+) {
+    // A save can surface as both a `reload()`-driven and a file-watcher-driven
+    // `Modified` for the same id; consuming the id on the first means the second
+    // is a no-op, so we rebuild once.
+    let mut rebuild = false;
+    for ev in events.read() {
+        if let AssetEvent::Modified { id } = ev {
+            if requests.0.remove(id) {
+                rebuild = true;
+            }
+        }
+    }
+    if !rebuild {
+        return;
+    }
+    for (entity, path) in &holders {
+        if path.0.is_empty() {
+            continue;
+        }
+        let handle: Handle<HtmlTemplate> = server.load(path.0.clone());
+        commands.entity(entity).insert(PendingTemplate(handle));
     }
 }
 
@@ -132,6 +204,7 @@ fn finalize_pending_templates(
 /// no longer registered in this crate's plugin.
 pub fn plugin(app: &mut App) {
     app.init_resource::<TemplateHandles>()
+        .init_resource::<TemplateReloadRequests>()
         .add_observer(on_template_path_inserted)
-        .add_systems(Update, finalize_pending_templates);
+        .add_systems(Update, (hot_reload_templates, finalize_pending_templates));
 }

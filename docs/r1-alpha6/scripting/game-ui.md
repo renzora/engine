@@ -40,6 +40,8 @@ A UI file is just an `.html` document with one `<template>` at the top. Each tag
 
 Save it, and the panel appears. Change a color or a width, save again, and it updates without restarting. That fast loop is the whole point of markup.
 
+Selecting a UI entity opens its `.html` in the built-in code editor, and pressing **Ctrl+S** there hot-reloads every canvas using that template right away — no need to re-run the game. (Editing the same attributes through the inspector updates the entity live without a rebuild, so your selection stays put.)
+
 ### The tags you'll use
 
 A handful of tags cover almost everything:

@@ -29,7 +29,12 @@ In a section header you'll find:
 
 Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Name**, **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
 
-At the very top is a component **filter dropdown**, a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click it once to open every section, again to collapse them all; it resets when you select a different object. (The bottom of the list has an **Add Component** button.)
+To focus a single component, use the **component filter**. It comes in two styles, switched in **Settings → Interface → Inspector → Component Filter**:
+
+- **Dropdown** *(default)* — a single dropdown in the top bar listing the components on the object; pick one to filter, or **All components** to clear it.
+- **Vertical Menu** — one icon button per component down the left edge, plus an **All** entry at the top. Hover a button for a tooltip naming the component (the bubble stays on-screen, flipping to the other side or sliding up/down near an edge). Click to filter the panel to just that component; click it again (or **All**) to show everything. The active button is highlighted.
+
+At the very top is a **filter box** — start typing a component name to hide everything else — and an **expand/collapse-all** button on the right. Click it once to open every section, again to collapse them all; it resets when you select a different object. (The bottom of the list has an **Add Component** button.)
 
 ### Which sections start open
 

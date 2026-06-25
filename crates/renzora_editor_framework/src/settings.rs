@@ -87,6 +87,29 @@ impl InspectorExpandDefault {
     }
 }
 
+/// How the inspector presents its per-component filter: a vertical icon menu down
+/// the left edge, or a compact dropdown in the top bar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InspectorComponentFilterStyle {
+    /// A single dropdown in the top bar.
+    #[default]
+    Dropdown,
+    /// One icon button per component down the left rail (plus an "All" entry).
+    VerticalMenu,
+}
+
+impl InspectorComponentFilterStyle {
+    pub const ALL: &'static [InspectorComponentFilterStyle] =
+        &[Self::Dropdown, Self::VerticalMenu];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::VerticalMenu => "Vertical Menu",
+            Self::Dropdown => "Dropdown",
+        }
+    }
+}
+
 /// Available proportional (UI) font families.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UiFont {
@@ -221,6 +244,8 @@ pub struct EditorSettings {
     /// Which component sections start expanded when the inspector is built for a
     /// newly selected entity.
     pub inspector_expand_default: InspectorExpandDefault,
+    /// How the inspector presents its per-component filter (left rail vs dropdown).
+    pub inspector_component_filter_style: InspectorComponentFilterStyle,
     /// Whether the settings overlay is open
     pub show_settings: bool,
     /// Directory to load dynamic plugins from
@@ -265,6 +290,7 @@ impl Default for EditorSettings {
             ui_preview_by_default: true,
             hierarchy_parent_stacking: true,
             inspector_expand_default: InspectorExpandDefault::default(),
+            inspector_component_filter_style: InspectorComponentFilterStyle::default(),
             show_settings: false,
             plugins_dir: "plugins".to_string(),
             code_auto_close_pairs: true,

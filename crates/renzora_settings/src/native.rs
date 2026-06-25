@@ -14,8 +14,8 @@ use renzora::{
     WindowMode,
 };
 use renzora_editor_framework::{
-    EditorSettings, InspectorExpandDefault, MonoFont, SelectionGranularity, SelectionHighlightMode,
-    SettingsTab, UiFont,
+    EditorSettings, InspectorComponentFilterStyle, InspectorExpandDefault, MonoFont,
+    SelectionGranularity, SelectionHighlightMode, SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
@@ -1593,6 +1593,44 @@ fn tab_interface(
         "Which component sections start open when you select an entity. \
          \"Essentials Only\" keeps Name, Transform, and Scripts open.",
     );
+
+    let filter_labels: Vec<&str> = InspectorComponentFilterStyle::ALL
+        .iter()
+        .map(|m| m.label())
+        .collect();
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &filter_labels,
+        inspector_filter_style_index(settings.inspector_component_filter_style),
+        |w| {
+            inspector_filter_style_index(
+                w.resource::<EditorSettings>().inspector_component_filter_style,
+            )
+        },
+        |w, &i| {
+            w.resource_mut::<EditorSettings>().inspector_component_filter_style =
+                InspectorComponentFilterStyle::ALL
+                    .get(i)
+                    .copied()
+                    .unwrap_or_default();
+        },
+    );
+    settings_row(commands, fonts, body, 1, "Component Filter", dd);
+    note_row(
+        commands,
+        fonts,
+        body,
+        "How to pick a single component to focus: a vertical icon menu down the \
+         left edge, or a dropdown in the top bar.",
+    );
+}
+
+fn inspector_filter_style_index(v: InspectorComponentFilterStyle) -> usize {
+    InspectorComponentFilterStyle::ALL
+        .iter()
+        .position(|m| *m == v)
+        .unwrap_or(0)
 }
 
 fn inspector_expand_index(v: InspectorExpandDefault) -> usize {

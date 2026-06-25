@@ -168,6 +168,7 @@ impl Plugin for CodeEditorPlugin {
             (
                 sync_selection_sources,
                 consume_open_code_editor_file,
+                reload_saved_ui_templates,
                 sync_asset_filter_for_scripting,
                 sync_code_editor_prefs_to_settings,
             )
@@ -207,6 +208,55 @@ fn sync_code_editor_prefs_to_settings(
     }
     if settings.mono_font != editor_state.mono_font {
         settings.mono_font = editor_state.mono_font.clone();
+    }
+}
+
+/// Hot-reload the game UI when a `.html` template is saved in the editor.
+///
+/// Saving only writes the file to disk; nothing else changes by itself. To make
+/// the running UI pick up the edit immediately, we force the asset server to
+/// re-read the template from disk. That replaces the parsed `HtmlTemplate` in
+/// `Assets<HtmlTemplate>` (same id) and emits `AssetEvent::Modified`, which the
+/// markup plugin watches to despawn and rebuild every canvas using it. The
+/// reload is explicit rather than relying on Bevy's file watcher so this works
+/// regardless of whether watching is enabled.
+///
+/// `HtmlTemplatePath`/the loader address templates by their project-relative
+/// path (e.g. `ui/health_bar.html`), so we strip the project root off the saved
+/// absolute path and normalise to forward slashes — the same asset path the
+/// template was loaded under, otherwise `reload` would target a different id.
+fn reload_saved_ui_templates(
+    mut state: ResMut<CodeEditorState>,
+    project: Option<Res<CurrentProject>>,
+    server: Res<AssetServer>,
+    mut reloads: ResMut<renzora_ember::markup::TemplateReloadRequests>,
+) {
+    if state.recently_saved.is_empty() {
+        return;
+    }
+    let saved = std::mem::take(&mut state.recently_saved);
+    let Some(project) = project else { return };
+    for path in saved {
+        let is_html = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("html") || e.eq_ignore_ascii_case("htm"))
+            .unwrap_or(false);
+        if !is_html {
+            continue;
+        }
+        // Only templates under the project asset root have a loadable path.
+        let Ok(rel) = path.strip_prefix(&project.path) else {
+            continue;
+        };
+        let asset_path = rel.to_string_lossy().replace('\\', "/");
+        info!("code_editor: hot-reloading saved UI template `{asset_path}`");
+        // Register the asset id BEFORE the reload so the markup plugin treats the
+        // resulting `Modified` as an intentional save (and rebuilds), not an
+        // inspector writeback (which it ignores). The reload forces an immediate
+        // disk re-read so we don't wait on the file watcher.
+        reloads.request(&server, &asset_path);
+        server.reload(asset_path);
     }
 }
 

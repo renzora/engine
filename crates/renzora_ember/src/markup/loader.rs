@@ -219,6 +219,18 @@ pub struct TemplateHandles {
     handles: bevy::platform::collections::HashMap<String, Handle<HtmlTemplate>>,
 }
 
+impl TemplateHandles {
+    /// Stash a strong handle so its asset stays loaded for the lifetime of the
+    /// editor. Sub-templates land here automatically via `template_deps_ready`,
+    /// but a *root* template (the one a `HtmlTemplatePath` points at) otherwise
+    /// has no long-lived owner once `PendingTemplate` is dropped post-build —
+    /// the asset would be GC'd and `AssetEvent::Modified` would never fire for
+    /// it, so hot-reload on save couldn't see the change. Idempotent.
+    pub fn keep(&mut self, path: String, handle: Handle<HtmlTemplate>) {
+        self.handles.entry(path).or_insert(handle);
+    }
+}
+
 /// Walk a template's AST (and recursively, every template it references via
 /// `template="path"`) to confirm all dependent assets are loaded. Used by
 /// `finalize_pending_templates` before kicking off a build so the loader never

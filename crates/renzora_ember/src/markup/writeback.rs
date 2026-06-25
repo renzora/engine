@@ -9,11 +9,14 @@
 //! keep targeting the right ranges.
 //!
 //! What's intentionally NOT here:
-//! - **Hot-reload guard.** `renzora_hui` doesn't currently re-run the loader
-//!   on `AssetEvent<HtmlTemplate>::Modified` (the Phase C feature in
-//!   `template.rs`), so writing the file does not trigger a respawn. When
-//!   that lands, this module will need to set a "self-write" flag the
-//!   reload-handler checks before despawning.
+//! - **Hot-reload coupling.** This writeback dirties the asset (`get_mut`
+//!   emits `Modified`) and rewrites the file (the file watcher emits another
+//!   `Modified`), but it has already updated the live entity in place, so a
+//!   rebuild would only despawn the node the user is editing. The Phase-C
+//!   reload handler in `template.rs` therefore rebuilds **only** for asset ids
+//!   the code editor registered via `TemplateReloadRequests` on save — these
+//!   writeback `Modified`s aren't registered, so they're ignored. No self-write
+//!   flag needed: the gate is the request set, not the event.
 //! - **Atomic multi-attribute writes.** Each call writes one attribute.
 //!   Two inspector edits = two file writes. Fine in practice for now.
 

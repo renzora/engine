@@ -108,6 +108,13 @@ pub struct CodeEditorState {
     /// the keep-visible window, disable the blink so the cursor stays lit —
     /// effectively "resetting" the blink on every edit.
     pub last_cursor_visible_reset: Option<f64>,
+
+    /// Absolute paths written to disk since the last frame the editor reacted.
+    /// `save_file` pushes here; a system drains it to drive side effects of a
+    /// save — notably forcing a UI-template asset reload so the game UI hot-
+    /// reloads the instant you Ctrl+S a `.html`. (`save_file` is a plain
+    /// method with no ECS access, so it can't trigger the reload itself.)
+    pub recently_saved: Vec<PathBuf>,
 }
 
 impl Default for CodeEditorState {
@@ -145,6 +152,7 @@ impl Default for CodeEditorState {
             extra_cursors: Vec::new(),
             mono_font: MonoFont::default(),
             last_cursor_visible_reset: None,
+            recently_saved: Vec::new(),
         }
     }
 }
@@ -426,12 +434,21 @@ end
                 file.content = cleaned;
             }
         }
-        match std::fs::write(&file.path, &file.content) {
+        let saved = match std::fs::write(&file.path, &file.content) {
             Ok(_) => {
                 file.is_modified = false;
                 log::info!("Saved: {}", file.path.display());
+                Some(file.path.clone())
             }
-            Err(e) => log::error!("Failed to save {}: {}", file.path.display(), e),
+            Err(e) => {
+                log::error!("Failed to save {}: {}", file.path.display(), e);
+                None
+            }
+        };
+        // Outside the `file` borrow so we can touch another field of `self`.
+        // Let a system react to the save (e.g. hot-reload UI templates).
+        if let Some(path) = saved {
+            self.recently_saved.push(path);
         }
     }
 
