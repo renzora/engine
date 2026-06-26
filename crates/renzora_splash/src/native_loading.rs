@@ -118,10 +118,11 @@ fn manage_loading_screen(world: &mut World) {
             return;
         }
         let fonts = world.resource::<EmberFonts>().clone();
+        let (pname, ppath) = project_info(world);
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_loading(&mut commands, &fonts, false);
+            spawn_loading(&mut commands, &fonts, false, &pname, &ppath);
         }
         queue.apply(world);
     } else if !want && !existing.is_empty() {
@@ -129,6 +130,14 @@ fn manage_loading_screen(world: &mut World) {
             world.entity_mut(e).despawn();
         }
     }
+}
+
+/// The active project's display name and folder path (empty if none open yet).
+fn project_info(world: &World) -> (String, String) {
+    world
+        .get_resource::<renzora::CurrentProject>()
+        .map(|p| (p.config.name.clone(), p.path.display().to_string()))
+        .unwrap_or_default()
 }
 
 fn manage_editor_overlay(world: &mut World) {
@@ -147,7 +156,7 @@ fn manage_editor_overlay(world: &mut World) {
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_loading(&mut commands, &fonts, true);
+            spawn_loading(&mut commands, &fonts, true, "", "");
         }
         queue.apply(world);
     } else if !want && !existing.is_empty() {
@@ -157,7 +166,13 @@ fn manage_editor_overlay(world: &mut World) {
     }
 }
 
-fn spawn_loading(commands: &mut Commands, fonts: &EmberFonts, modal: bool) {
+fn spawn_loading(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    modal: bool,
+    project_name: &str,
+    project_path: &str,
+) {
     let mut backdrop = commands.spawn((
         Node {
             position_type: PositionType::Absolute,
@@ -187,12 +202,12 @@ fn spawn_loading(commands: &mut Commands, fonts: &EmberFonts, modal: bool) {
     let backdrop = backdrop.id();
 
     // Modal editor overlay stays the plain letterbox; the standalone loading screen
-    // gets matrix rain behind a hacky terminal.
+    // gets a drifting particle network behind a hacky terminal.
     if modal {
         let panel = build_letterbox(commands, fonts);
         commands.entity(backdrop).add_child(panel);
     } else {
-        let rain = commands
+        let network = commands
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
@@ -203,12 +218,12 @@ fn spawn_loading(commands: &mut Commands, fonts: &EmberFonts, modal: bool) {
                     ..default()
                 },
                 FocusPolicy::Pass,
-                crate::native_post::MatrixView,
-                Name::new("loading-matrix"),
+                crate::native_post::NetworkView,
+                Name::new("loading-network"),
             ))
             .id();
-        let panel = build_terminal(commands, fonts);
-        commands.entity(backdrop).add_children(&[rain, panel]);
+        let panel = build_terminal(commands, fonts, project_name, project_path);
+        commands.entity(backdrop).add_children(&[network, panel]);
     }
 }
 
@@ -304,7 +319,12 @@ fn build_letterbox(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// The hacky terminal window: a header bar, a streaming boot log that fills in
 /// with loading progress (blinking cursor), and a green progress bar footer.
-fn build_terminal(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn build_terminal(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    project_name: &str,
+    project_path: &str,
+) -> Entity {
     let win = commands
         .spawn((
             Node {
@@ -366,15 +386,74 @@ fn build_terminal(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, log, terminal_text);
     commands.entity(body).add_child(log);
 
-    // Footer: the retro block-segment loader bar (text blocks, terminal style).
+    // Footer: the active project (name + path), then a full-width loading bar
+    // spanning the whole console, with a percent readout.
     let footer = commands
-        .spawn(Node { width: Val::Percent(100.0), padding: UiRect::all(Val::Px(16.0)), ..default() })
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(7.0),
+            padding: UiRect::all(Val::Px(16.0)),
+            ..default()
+        })
         .id();
-    let bar = commands
-        .spawn((Text::new(String::new()), ui_font(&fonts.mono, 16.0), TextColor(c(90, 235, 140))))
+
+    let proj = commands
+        .spawn((
+            Text::new(format!("project: {project_name}")),
+            ui_font(&fonts.mono, 12.5),
+            TextColor(c(120, 235, 160)),
+        ))
         .id();
-    bind_text(commands, bar, block_bar_text);
-    commands.entity(footer).add_child(bar);
+    let loc = commands
+        .spawn((
+            Text::new(format!("path:    {project_path}")),
+            ui_font(&fonts.mono, 11.0),
+            TextColor(c(80, 150, 110)),
+        ))
+        .id();
+
+    // Full-width track + animated fill (eased progress).
+    let track = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(14.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                overflow: Overflow::clip(),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(ca(4, 14, 8, 255)),
+            BorderColor::all(c(40, 130, 80)),
+        ))
+        .id();
+    let fill = commands
+        .spawn((
+            Node { width: Val::Percent(0.0), height: Val::Percent(100.0), ..default() },
+            BackgroundColor(c(90, 235, 140)),
+            LoadingFill,
+        ))
+        .id();
+    bind_with(commands, fill, loading_fraction_eased, |world, target, v: &OrderedF32| {
+        if let Some(mut n) = world.get_mut::<Node>(target) {
+            n.width = Val::Percent((v.0 * 100.0).clamp(0.0, 100.0));
+        }
+    });
+    commands.entity(track).add_child(fill);
+
+    let pct = commands
+        .spawn((
+            Text::new("0%".to_string()),
+            ui_font(&fonts.mono, 12.0),
+            TextColor(c(120, 235, 160)),
+            LoadingPercent,
+        ))
+        .id();
+    bind_text(commands, pct, loading_percent_eased_text);
+
+    commands.entity(footer).add_children(&[proj, loc, track, pct]);
 
     commands.entity(win).add_children(&[header, body, footer]);
     win
@@ -455,31 +534,15 @@ fn loading_fill_color(world: &World) -> [u8; 3] {
     [(90.0 + 40.0 * pulse) as u8, (180.0 - 30.0 * pulse) as u8, 255]
 }
 
-/// Retro block-segment loader bar, e.g. `[████████▓░░░░░░░] 42%`. The leading
-/// segment animates so the bar reads as "working" even when the real percentage
-/// pauses (a single GLB can sit at one value for a while).
-fn block_bar_text(world: &World) -> String {
-    let (frac, pct) = progress_fraction(world);
-    let t = world.get_resource::<Time>().map(|t| t.elapsed_secs()).unwrap_or(0.0);
-    let segs: usize = 24;
-    let filled = ((frac * segs as f32).floor() as usize).min(segs);
-    let pulse = (t * 6.0) as i64 % 3;
-    let mut bar = String::with_capacity(segs);
-    for i in 0..segs {
-        let ch = if i < filled {
-            '█'
-        } else if i == filled && filled < segs {
-            match pulse {
-                0 => '░',
-                1 => '▒',
-                _ => '▓',
-            }
-        } else {
-            '░'
-        };
-        bar.push(ch);
-    }
-    format!("[{bar}] {pct:>3}%")
+/// Eased display fraction (the smooth [`LoadingAnim`] value), for the full-width
+/// terminal bar.
+fn loading_fraction_eased(world: &World) -> OrderedF32 {
+    OrderedF32(progress_fraction(world).0)
+}
+
+/// Eased percent readout for the full-width terminal bar.
+fn loading_percent_eased_text(world: &World) -> String {
+    format!("{}%", progress_fraction(world).1)
 }
 
 // ── Hacky terminal boot log ──────────────────────────────────────────────────

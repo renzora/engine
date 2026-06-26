@@ -68,10 +68,10 @@ impl UiMaterial for PostMaterial {
 pub(crate) fn register(app: &mut App) {
     bevy::asset::embedded_asset!(app, "post.wgsl");
     bevy::asset::embedded_asset!(app, "tvoff.wgsl");
-    bevy::asset::embedded_asset!(app, "matrix.wgsl");
+    bevy::asset::embedded_asset!(app, "network.wgsl");
     app.add_plugins(UiMaterialPlugin::<PostMaterial>::default());
     app.add_plugins(UiMaterialPlugin::<TvOffMaterial>::default());
-    app.add_plugins(UiMaterialPlugin::<MatrixMaterial>::default());
+    app.add_plugins(UiMaterialPlugin::<NetworkMaterial>::default());
     app.add_systems(Startup, setup_post);
     app.add_systems(OnEnter(SplashState::Editor), start_editor_intro);
     app.add_systems(
@@ -85,8 +85,8 @@ pub(crate) fn register(app: &mut App) {
             sync_tvoff,
             attach_editor_intro,
             tick_editor_intro,
-            attach_matrix,
-            sync_matrix,
+            attach_network,
+            sync_network,
         ),
     );
 }
@@ -230,40 +230,40 @@ fn sync_tvoff(
     }
 }
 
-// ── Matrix rain (loading screen background) ────────────────────────────────────
+// ── Particle network (loading screen background) ───────────────────────────────
 
-/// Marker for the fullscreen matrix-rain node behind the loading terminal.
+/// Marker for the fullscreen particle-network node behind the loading terminal.
 #[derive(Component)]
-pub(crate) struct MatrixView;
+pub(crate) struct NetworkView;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(crate) struct MatrixMaterial {
+pub(crate) struct NetworkMaterial {
     /// x = time, y = width(px), z = height(px).
     #[uniform(0)]
     params: Vec4,
 }
 
-impl UiMaterial for MatrixMaterial {
+impl UiMaterial for NetworkMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/matrix.wgsl".into()
+        "embedded://renzora_splash/network.wgsl".into()
     }
 }
 
-fn attach_matrix(
+fn attach_network(
     mut commands: Commands,
-    mut materials: ResMut<Assets<MatrixMaterial>>,
-    views: Query<Entity, (With<MatrixView>, Without<MaterialNode<MatrixMaterial>>)>,
+    mut materials: ResMut<Assets<NetworkMaterial>>,
+    views: Query<Entity, (With<NetworkView>, Without<MaterialNode<NetworkMaterial>>)>,
 ) {
     for e in &views {
-        let handle = materials.add(MatrixMaterial { params: Vec4::ZERO });
+        let handle = materials.add(NetworkMaterial { params: Vec4::ZERO });
         commands.entity(e).insert(MaterialNode(handle));
     }
 }
 
-fn sync_matrix(
+fn sync_network(
     time: Res<Time>,
-    mut materials: ResMut<Assets<MatrixMaterial>>,
-    views: Query<(&ComputedNode, &MaterialNode<MatrixMaterial>), With<MatrixView>>,
+    mut materials: ResMut<Assets<NetworkMaterial>>,
+    views: Query<(&ComputedNode, &MaterialNode<NetworkMaterial>), With<NetworkView>>,
 ) {
     let t = time.elapsed_secs();
     for (cn, mat) in &views {
