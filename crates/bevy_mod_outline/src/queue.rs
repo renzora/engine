@@ -1,5 +1,4 @@
 use bevy::camera::visibility::RenderLayers;
-use bevy::camera::Hdr;
 use bevy::core_pipeline::prepass::MotionVectorPrepass;
 use bevy::ecs::change_detection::Tick;
 use bevy::ecs::system::SystemChangeTick;
@@ -14,7 +13,7 @@ use bevy::render::render_phase::{
     ViewBinnedRenderPhases, ViewRangefinder3d, ViewSortedRenderPhases,
 };
 use bevy::render::render_resource::{
-    CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines,
+    CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines, TextureFormat,
 };
 use bevy::render::sync_world::{MainEntity, MainEntityHashMap};
 use bevy::render::view::{ExtractedView, RetainedViewEntity};
@@ -121,7 +120,6 @@ pub(crate) fn specialise_outlines(
     views: Query<(
         &ExtractedView,
         Has<MotionVectorPrepass>,
-        Has<Hdr>,
         &Msaa,
         Option<&RenderLayers>,
     )>,
@@ -129,13 +127,17 @@ pub(crate) fn specialise_outlines(
 ) {
     all_views.clear();
 
-    for (view, motion_vector_prepass, hdr, msaa, view_mask) in &views {
+    for (view, motion_vector_prepass, msaa, view_mask) in &views {
         all_views.insert(view.retained_view_entity);
+
+        // Bevy 0.19 doesn't extract the `Hdr` marker into the render world, so a
+        // `Has<Hdr>` query is always false and would specialize an `Rgba8UnormSrgb`
+        // pipeline for an HDR (`Rgba16Float`) view — a fatal attachment mismatch.
+        // Read the view's real render-target format instead.
+        let hdr = view.target_format == TextureFormat::Rgba16Float;
 
         let view_key = ViewPipelineKey::new()
             .with_msaa(*msaa)
-            // Bevy 0.19: HDR is a marker component on the view, not a field on
-            // `ExtractedView`.
             .with_hdr_format(hdr)
             .with_motion_vector_prepass(motion_vector_prepass);
 

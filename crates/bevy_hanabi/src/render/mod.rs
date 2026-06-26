@@ -8,8 +8,6 @@ use std::{
     vec,
 };
 
-// Bevy 0.19: HDR is a marker component on the view, not an `ExtractedView` field.
-use bevy::camera::Hdr;
 #[cfg(feature = "2d")]
 use bevy::core_pipeline::core_2d::{Transparent2d, CORE_2D_DEPTH_FORMAT};
 #[cfg(feature = "2d")]
@@ -1886,8 +1884,12 @@ pub(crate) struct ParticleRenderPipelineKey {
     pipeline_mode: PipelineMode,
     /// MSAA sample count.
     msaa_samples: u32,
-    /// Is the camera using an HDR render target?
-    hdr: bool,
+    /// The exact [`TextureFormat`] the view renders to (`ExtractedView::target_format`).
+    /// Bevy 0.19 no longer extracts the `Hdr` marker into the render world, so the
+    /// old `Has<Hdr>` query was always false and produced an `Rgba8UnormSrgb` pipeline
+    /// even for HDR (`Rgba16Float`) views — a fatal color-attachment mismatch. Carrying
+    /// the view's real format here makes the pipeline target always match the pass.
+    format: TextureFormat,
 }
 
 #[derive(Clone, Copy, Default, Hash, PartialEq, Eq, Debug)]
@@ -1920,7 +1922,7 @@ impl Default for ParticleRenderPipelineKey {
             #[cfg(all(feature = "2d", feature = "3d"))]
             pipeline_mode: PipelineMode::Camera3d,
             msaa_samples: Msaa::default().samples(),
-            hdr: false,
+            format: TextureFormat::Rgba8UnormSrgb,
         }
     }
 }
@@ -2080,13 +2082,11 @@ impl SpecializedRenderPipeline for ParticlesRenderPipeline {
         #[cfg(all(feature = "3d", not(feature = "2d")))]
         let depth_stencil = Some(depth_stencil_3d);
 
-        // Bevy 0.19 deprecated `ViewTarget::TEXTURE_FORMAT_HDR` /
-        // `TextureFormat::bevy_default()`; use the concrete formats they returned.
-        let format = if key.hdr {
-            TextureFormat::Rgba16Float
-        } else {
-            TextureFormat::Rgba8UnormSrgb
-        };
+        // The color target must match the view's actual render-target format
+        // (`ExtractedView::target_format`), threaded through the key. Deriving it from
+        // a stale `Has<Hdr>` flag — false in the 0.19 render world — picked the wrong
+        // format for HDR views and crashed wgpu with an incompatible-attachment error.
+        let format = key.format;
 
         let hash = calc_func_id(&key);
         let label = format!("hanabi:pipeline:render_{hash:016X}");
@@ -5078,7 +5078,7 @@ pub struct QueueEffectsReadOnlyParams<'w, 's> {
 }
 
 fn emit_sorted_draw<T, F>(
-    views: &Query<(&RenderVisibleEntities, &ExtractedView, Has<Hdr>, &Msaa)>,
+    views: &Query<(&RenderVisibleEntities, &ExtractedView, &Msaa)>,
     render_phases: &mut ResMut<ViewSortedRenderPhases<T>>,
     view_entities: &mut FixedBitSet,
     sorted_effect_batches: &SortedEffectBatches,
@@ -5095,7 +5095,8 @@ fn emit_sorted_draw<T, F>(
 {
     trace!("emit_sorted_draw() {} views", views.iter().len());
 
-    for (visible_entities, view, hdr, msaa) in views.iter() {
+    for (visible_entities, view, msaa) in views.iter() {
+        let format = view.target_format;
         trace!(
             "Process new sorted view with {} visible particle effect entities",
             // Bevy 0.19: `RenderVisibleEntities::len::<T>()` → `get::<T>()` + count.
@@ -5208,12 +5209,12 @@ fn emit_sorted_draw<T, F>(
 
             // Specialize the render pipeline based on the effect batch
             trace!(
-                "Specializing render pipeline: render_shader={:?} image_count={} alpha_mask={:?} flipbook={:?} hdr={}",
+                "Specializing render pipeline: render_shader={:?} image_count={} alpha_mask={:?} flipbook={:?} format={:?}",
                 effect_batch.render_shader,
                 image_count,
                 alpha_mask,
                 flipbook,
-                hdr
+                format
             );
 
             // Add a draw pass for the effect batch
@@ -5242,7 +5243,7 @@ fn emit_sorted_draw<T, F>(
                     #[cfg(all(feature = "2d", feature = "3d"))]
                     pipeline_mode,
                     msaa_samples: msaa.samples(),
-                    hdr: hdr,
+                    format,
                 },
             );
             #[cfg(feature = "trace")]
@@ -5270,7 +5271,7 @@ fn emit_sorted_draw<T, F>(
 
 #[cfg(feature = "3d")]
 fn emit_binned_draw<T, F, G>(
-    views: &Query<(&RenderVisibleEntities, &ExtractedView, Has<Hdr>, &Msaa)>,
+    views: &Query<(&RenderVisibleEntities, &ExtractedView, &Msaa)>,
     render_phases: &mut ResMut<ViewBinnedRenderPhases<T>>,
     view_entities: &mut FixedBitSet,
     sorted_effect_batches: &SortedEffectBatches,
@@ -5295,7 +5296,8 @@ fn emit_binned_draw<T, F, G>(
 
     trace!("emit_binned_draw() {} views", views.iter().len());
 
-    for (visible_entities, view, hdr, msaa) in views.iter() {
+    for (visible_entities, view, msaa) in views.iter() {
+        let format = view.target_format;
         trace!("Process new binned view (alpha_mask={:?})", alpha_mask);
 
         let Some(render_phase) = render_phases.get_mut(&view.retained_view_entity) else {
@@ -5395,12 +5397,12 @@ fn emit_binned_draw<T, F, G>(
 
             // Specialize the render pipeline based on the effect batch
             trace!(
-                "Specializing render pipeline: render_shaders={:?} image_count={} alpha_mask={:?} flipbook={:?} hdr={}",
+                "Specializing render pipeline: render_shaders={:?} image_count={} alpha_mask={:?} flipbook={:?} format={:?}",
                 effect_batch.render_shader,
                 image_count,
                 alpha_mask,
                 flipbook,
-                hdr
+                format
             );
 
             // Add a draw pass for the effect batch
@@ -5434,7 +5436,7 @@ fn emit_binned_draw<T, F, G>(
                     #[cfg(all(feature = "2d", feature = "3d"))]
                     pipeline_mode,
                     msaa_samples: msaa.samples(),
-                    hdr: hdr,
+                    format,
                 },
             );
             #[cfg(feature = "trace")]
@@ -5464,7 +5466,7 @@ fn emit_binned_draw<T, F, G>(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn queue_effects(
-    views: Query<(&RenderVisibleEntities, &ExtractedView, Has<Hdr>, &Msaa)>,
+    views: Query<(&RenderVisibleEntities, &ExtractedView, &Msaa)>,
     effects_meta: Res<EffectsMeta>,
     mut render_pipeline: ResMut<ParticlesRenderPipeline>,
     mut specialized_render_pipelines: ResMut<SpecializedRenderPipelines<ParticlesRenderPipeline>>,
