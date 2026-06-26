@@ -143,28 +143,16 @@ impl LoadingTasks {
 pub struct EditorLoadingOverlayActive(pub bool);
 
 pub(crate) fn auto_advance_to_editor(
-    time: Res<Time<bevy::time::Real>>,
     mut tasks: ResMut<LoadingTasks>,
-    textures: Res<TextureLoadProgress>,
-    mut tex_wait: Local<f32>,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
-    // First the GLB/scene phase (tasks) must be done.
-    if !tasks.tick_and_can_advance() {
-        *tex_wait = 0.0;
-        return;
+    // Advance as soon as the GLB/scene phase is done. Textures keep decoding in
+    // the background (their real progress is still shown on the loading screen via
+    // `TextureLoadProgress`), but we don't block the editor open on them — gating
+    // here caused a noticeable stall.
+    if tasks.tick_and_can_advance() {
+        next_state.set(SplashState::Editor);
     }
-    // Then hold the loading screen until the scene's textures have actually
-    // finished decoding — they load *after* the GLB spawns and are the real
-    // remaining work. Guarded by a timeout so a stuck/failed texture can never
-    // hang the editor open.
-    const TEXTURE_TIMEOUT: f32 = 12.0;
-    *tex_wait += time.delta_secs();
-    let textures_pending = textures.total > 0 && textures.loaded < textures.total;
-    if textures_pending && *tex_wait < TEXTURE_TIMEOUT {
-        return;
-    }
-    next_state.set(SplashState::Editor);
 }
 
 pub(crate) fn log_loading_entered() {
