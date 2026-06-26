@@ -42,6 +42,13 @@ mod xy_pad;
 mod curve;
 mod gradient;
 
+// Themeable chrome shaders + images loaded from a theme folder (per surface).
+mod theme_shader;
+pub use theme_shader::{
+    set_surface_image, set_surface_shader, shader_key, SurfaceSource, ThemeShaderSurface,
+    ThemeSurface,
+};
+
 // Audio.
 mod mixer;
 mod vu_meter;
@@ -315,6 +322,7 @@ impl Plugin for WidgetsPlugin {
         app.add_plugins(colorpicker::ColorPickerPlugin);
         app.add_plugins(curve::CurveEditorPlugin);
         app.add_plugins(gradient::GradientEditorPlugin);
+        app.add_plugins(theme_shader::ThemeShaderPlugin);
         // gauge / chart / waveform are ALSO added by the markup runtime
         // (`markup::vector::plugin`, via `MarkupPlugin`), which runs first.
         // bevy panics on a duplicate plugin TYPE at the `add_plugins` call

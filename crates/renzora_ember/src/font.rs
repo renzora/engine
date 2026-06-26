@@ -34,6 +34,26 @@ pub fn set_ui_font_scale(scale: f32) {
     UI_FONT_SCALE.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
 }
 
+/// A theme-supplied UI font override. A folder theme can ship its own font (its
+/// `[fonts] ui` points at a file inside the theme folder); the shell loads it and
+/// sets it here. `apply_font_settings` then prefers this over the user's font
+/// setting *while that theme is active*, and reverts when it's cleared (`None`).
+/// Runtime-safe (no `World`), like the color palette.
+static THEME_UI_FONT: std::sync::LazyLock<std::sync::RwLock<Option<FontSource>>> =
+    std::sync::LazyLock::new(|| std::sync::RwLock::new(None));
+
+/// Set (or clear, with `None`) the active theme's UI font override.
+pub fn set_theme_ui_font(src: Option<FontSource>) {
+    if let Ok(mut g) = THEME_UI_FONT.write() {
+        *g = src;
+    }
+}
+
+/// The active theme's UI font override, if any.
+pub fn theme_ui_font() -> Option<FontSource> {
+    THEME_UI_FONT.read().ok().and_then(|g| g.clone())
+}
+
 /// The fonts ember renders with. `ui` = the proportional UI font (Noto by
 /// default, user-changeable via the theme); `mono` = the monospace font;
 /// `phosphor` = the icon font.

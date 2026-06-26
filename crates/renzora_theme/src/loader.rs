@@ -20,6 +20,12 @@ pub struct ThemeManager {
     /// Path to the project's themes directory (if any)
     themes_dir: Option<PathBuf>,
 
+    /// Folder of the active theme, for folder-style themes
+    /// (`themes/<Name>/theme.toml`). `None` for built-ins and flat `.toml`
+    /// themes. Lets consumers resolve theme-relative assets — shaders, fonts —
+    /// that ship *inside* the theme folder.
+    active_theme_dir: Option<PathBuf>,
+
     /// Whether the active theme has unsaved changes
     pub has_unsaved_changes: bool,
 }
@@ -31,6 +37,7 @@ impl Default for ThemeManager {
             active_theme_name: "Dark".to_string(),
             available_themes: vec!["Dark".to_string(), "Light".to_string()],
             themes_dir: None,
+            active_theme_dir: None,
             has_unsaved_changes: false,
         }
     }
@@ -50,7 +57,10 @@ impl ThemeManager {
         self.scan_themes();
     }
 
-    /// Scan the themes directory for available custom themes
+    /// Scan the themes directory for available custom themes. Two layouts are
+    /// supported: a flat `themes/<Name>.toml`, and a folder `themes/<Name>/` that
+    /// contains `theme.toml` (plus the theme's own shaders/fonts). A folder takes
+    /// precedence over a flat file of the same name.
     pub fn scan_themes(&mut self) {
         // Start with built-in themes
         self.available_themes = vec!["Dark".to_string(), "Light".to_string()];
@@ -62,18 +72,38 @@ impl ThemeManager {
                 if let Ok(entries) = std::fs::read_dir(themes_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.extension().and_then(|s| s.to_str()) == Some("toml") {
-                            if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                                // Don't duplicate built-in theme names
-                                if name != "Dark" && name != "Light" {
-                                    self.available_themes.push(name.to_string());
-                                }
+                        // Folder theme: `<Name>/theme.toml`.
+                        let name = if path.is_dir() {
+                            if path.join("theme.toml").exists() {
+                                path.file_name().and_then(|s| s.to_str())
+                            } else {
+                                None
+                            }
+                        } else if path.extension().and_then(|s| s.to_str()) == Some("toml") {
+                            path.file_stem().and_then(|s| s.to_str())
+                        } else {
+                            None
+                        };
+                        if let Some(name) = name {
+                            // Don't duplicate built-ins or a name already added
+                            // (a folder and a flat file can share a name).
+                            if name != "Dark"
+                                && name != "Light"
+                                && !self.available_themes.iter().any(|n| n == name)
+                            {
+                                self.available_themes.push(name.to_string());
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    /// Folder of the active theme (folder-style themes only). `None` for built-ins
+    /// and flat `.toml` themes. Use it to resolve theme-relative assets.
+    pub fn active_theme_dir(&self) -> Option<&Path> {
+        self.active_theme_dir.as_deref()
     }
 
     /// Load a theme by name
@@ -83,24 +113,40 @@ impl ThemeManager {
             "Dark" => {
                 self.active_theme = Theme::dark();
                 self.active_theme_name = "Dark".to_string();
+                self.active_theme_dir = None;
                 self.has_unsaved_changes = false;
                 true
             }
             "Light" => {
                 self.active_theme = Theme::light();
                 self.active_theme_name = "Light".to_string();
+                self.active_theme_dir = None;
                 self.has_unsaved_changes = false;
                 true
             }
             _ => {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    // Try to load from file
                     if let Some(themes_dir) = &self.themes_dir {
+                        // Folder theme first: `<Name>/theme.toml`, remembering the
+                        // folder so its shaders/fonts can be resolved.
+                        let folder = themes_dir.join(name);
+                        let folder_toml = folder.join("theme.toml");
+                        if folder_toml.exists() {
+                            if let Some(theme) = Self::load_theme_from_file(&folder_toml) {
+                                self.active_theme = theme;
+                                self.active_theme_name = name.to_string();
+                                self.active_theme_dir = Some(folder);
+                                self.has_unsaved_changes = false;
+                                return true;
+                            }
+                        }
+                        // Fall back to a flat `<Name>.toml` (no theme folder).
                         let path = themes_dir.join(format!("{}.toml", name));
                         if let Some(theme) = Self::load_theme_from_file(&path) {
                             self.active_theme = theme;
                             self.active_theme_name = name.to_string();
+                            self.active_theme_dir = None;
                             self.has_unsaved_changes = false;
                             return true;
                         }

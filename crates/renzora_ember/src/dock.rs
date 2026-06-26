@@ -1613,6 +1613,9 @@ fn build_leaf(
             BackgroundColor(rgb(panel_bg())),
             BorderColor::all(Color::NONE),
             DockPart::Leaf,
+            crate::widgets::ThemeShaderSurface {
+                surface: crate::widgets::ThemeSurface::Panel,
+            },
             bevy::ui::RelativeCursorPosition::default(),
             Name::new("leaf"),
         ))
@@ -1730,6 +1733,9 @@ fn populate_leaf(
             bevy::ui::RelativeCursorPosition::default(),
             TabBarOf(leaf),
             DockPart::TabBar,
+            crate::widgets::ThemeShaderSurface {
+                surface: crate::widgets::ThemeSurface::PanelHeader,
+            },
             Name::new("tabbar"),
         ))
         .id();

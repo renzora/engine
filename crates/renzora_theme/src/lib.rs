@@ -135,6 +135,20 @@ pub struct Theme {
     /// Code-editor syntax highlighting + chrome colors
     #[serde(default)]
     pub syntax: SyntaxColors,
+
+    /// Animated chrome shader effects (matrix rain, …). Optional; empty = none.
+    #[serde(default)]
+    pub effects: ThemeEffects,
+
+    /// Fonts the theme ships in its own folder. Optional; empty = use the
+    /// editor's font setting.
+    #[serde(default)]
+    pub fonts: ThemeFonts,
+
+    /// Images the theme ships in its own folder, painted on chrome surfaces.
+    /// Optional; empty = none.
+    #[serde(default)]
+    pub images: ThemeImages,
 }
 
 impl Default for Theme {
@@ -524,6 +538,51 @@ impl Default for SyntaxColors {
             find_match: ThemeColor::with_alpha(240, 200, 90, 110),
         }
     }
+}
+
+/// Fonts a theme ships inside its own folder (`themes/<Name>/`). The path is
+/// relative to the theme folder, so a theme can carry a bespoke typeface
+/// alongside its colors and shader. Empty = fall back to the editor's font
+/// setting.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ThemeFonts {
+    /// UI font file relative to the theme folder, e.g. `"doto.ttf"`. Applied as
+    /// the editor's UI font while this theme is active.
+    pub ui: String,
+}
+
+/// Images a theme ships inside its own folder, painted on chrome surfaces. Each
+/// path is relative to the theme folder. A surface with an image but no
+/// `[effects]` shader just displays the image (cover-fit); a surface with both
+/// lets the shader sample the image. Empty = no image for that surface. Surface
+/// names match `renzora_ember::widgets::ThemeSurface`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ThemeImages {
+    pub top_bar: String,
+    pub doc_tabs: String,
+    pub status_bar: String,
+    pub panel: String,
+    pub panel_header: String,
+}
+
+/// Animated chrome shader for a theme. The shader source lives in the theme's
+/// own folder (`themes/<Name>/`), so a theme can ship a bespoke effect alongside
+/// its colors and fonts. Themes that omit `[effects]` (empty `shader`/`surfaces`)
+/// look exactly as before.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ThemeEffects {
+    /// Per-surface shader: a WGSL file relative to the theme folder, painted on
+    /// that surface. Different surfaces can run different effects at once. Empty =
+    /// that surface has no effect. Surface names match
+    /// `renzora_ember::widgets::ThemeSurface`.
+    pub top_bar: String,
+    pub doc_tabs: String,
+    pub status_bar: String,
+    pub panel: String,
+    pub panel_header: String,
 }
 
 /// Viewport colors

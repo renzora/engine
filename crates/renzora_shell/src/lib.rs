@@ -98,9 +98,11 @@ impl Plugin for ShellPlugin {
 fn theme_bridge(
     tm: Option<Res<renzora_theme::ThemeManager>>,
     project: Option<Res<renzora::CurrentProject>>,
+    asset_server: Res<AssetServer>,
     mut last_name: Local<Option<String>>,
     mut last_pal: Local<Option<renzora_ember::theme::Palette>>,
     mut last_syntax: Local<Option<renzora_ember::theme::SyntaxPalette>>,
+    mut last_effects: Local<Option<String>>,
     mut last_themes: Local<Option<Vec<String>>>,
     roots: Query<Entity, With<ShellRoot>>,
     mut dirty: ResMut<DockDirty>,
@@ -111,6 +113,58 @@ fn theme_bridge(
     if last_pal.as_ref() != Some(&pal) {
         renzora_ember::theme::set_palette(pal);
         *last_pal = Some(pal);
+    }
+
+    // Chrome shader effects (matrix rain, …). Gated on a real change — the apply
+    // reads the theme folder's `.wgsl` off disk, so re-running it every frame
+    // would hammer the filesystem. The fingerprint folds in the theme name (so a
+    // switch re-applies) and the effect fields (so a live edit does too).
+    // Fold every referenced shader file's mtime in too, so editing a theme's
+    // `.wgsl` and saving hot-reloads the effect without reselecting the theme.
+    let eff = &tm.active_theme.effects;
+    let imgs = &tm.active_theme.images;
+    let files = [
+        &eff.top_bar, &eff.doc_tabs, &eff.status_bar, &eff.panel, &eff.panel_header,
+        &imgs.top_bar, &imgs.doc_tabs, &imgs.status_bar, &imgs.panel, &imgs.panel_header,
+    ];
+    let mut shader_mtime: u64 = 0;
+    if let Some(dir) = tm.active_theme_dir() {
+        for f in files {
+            if f.is_empty() {
+                continue;
+            }
+            if let Some(secs) = std::fs::metadata(dir.join(f))
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+            {
+                shader_mtime = shader_mtime.max(secs);
+            }
+        }
+    }
+    let eff_fp = format!(
+        "{}\u{1}{}|{}|{}|{}|{}\u{1}{}|{}|{}|{}|{}\u{1}{}\u{1}{}",
+        tm.active_theme_name,
+        eff.top_bar, eff.doc_tabs, eff.status_bar, eff.panel, eff.panel_header,
+        imgs.top_bar, imgs.doc_tabs, imgs.status_bar, imgs.panel, imgs.panel_header,
+        tm.active_theme.fonts.ui,
+        shader_mtime,
+    );
+    if last_effects.as_deref() != Some(eff_fp.as_str()) {
+        apply_theme_effects(
+            &tm.active_theme,
+            &tm.active_theme_name,
+            tm.active_theme_dir(),
+            &asset_server,
+        );
+        apply_theme_fonts(
+            &tm.active_theme,
+            &tm.active_theme_name,
+            tm.active_theme_dir(),
+            &asset_server,
+        );
+        *last_effects = Some(eff_fp);
     }
 
     // Map the theme's syntax colors into the code editor's palette. Tracked
@@ -219,6 +273,104 @@ fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette
         card_bg: tc(&t.panels.item_bg),
         tree_line: tc(&t.panels.tree_line),
     }
+}
+
+/// The theme-relative shader file a surface paints with (empty = none).
+fn surface_shader_rel(eff: &renzora_theme::ThemeEffects, s: renzora_ember::widgets::ThemeSurface) -> &str {
+    use renzora_ember::widgets::ThemeSurface as S;
+    match s {
+        S::TopBar => &eff.top_bar,
+        S::DocTabs => &eff.doc_tabs,
+        S::StatusBar => &eff.status_bar,
+        S::Panel => &eff.panel,
+        S::PanelHeader => &eff.panel_header,
+    }
+}
+
+/// The theme-relative image file a surface paints with (empty = none).
+fn surface_image_rel(img: &renzora_theme::ThemeImages, s: renzora_ember::widgets::ThemeSurface) -> &str {
+    use renzora_ember::widgets::ThemeSurface as S;
+    match s {
+        S::TopBar => &img.top_bar,
+        S::DocTabs => &img.doc_tabs,
+        S::StatusBar => &img.status_bar,
+        S::Panel => &img.panel,
+        S::PanelHeader => &img.panel_header,
+    }
+}
+
+/// Push a theme's `[effects]` + `[images]` into ember **per surface**. Each
+/// surface resolves to: its own shader (if `[effects]` names one), else the
+/// built-in image display (if `[images]` names one), else off — and, in all
+/// cases, binds the surface's image so a custom shader can sample it. Shaders are
+/// read off disk; images load via the asset server (project-relative path, like
+/// fonts). Callers gate on a real change.
+fn apply_theme_effects(
+    theme: &renzora_theme::Theme,
+    theme_name: &str,
+    theme_dir: Option<&std::path::Path>,
+    asset_server: &AssetServer,
+) {
+    use renzora_ember::widgets::{set_surface_image, set_surface_shader, shader_key, SurfaceSource, ThemeSurface};
+
+    for surface in ThemeSurface::ALL {
+        let shader_rel = surface_shader_rel(&theme.effects, surface);
+        let image_rel = surface_image_rel(&theme.images, surface);
+        let has_shader = !shader_rel.is_empty();
+        let has_image = !image_rel.is_empty();
+
+        // Bind the surface's image (or clear → default white texture).
+        if has_image {
+            let rel = format!("themes/{}/{}", theme_name, image_rel.replace('\\', "/"));
+            set_surface_image(surface, Some(asset_server.load::<bevy::image::Image>(rel)));
+        } else {
+            set_surface_image(surface, None);
+        }
+
+        // Resolve the shader source for this surface.
+        if !has_shader && !has_image {
+            set_surface_shader(surface, None); // off
+            continue;
+        }
+        let req = if has_shader {
+            match theme_dir.map(|d| d.join(shader_rel)) {
+                Some(path) => match std::fs::read_to_string(&path) {
+                    Ok(src) => (shader_key(&src), SurfaceSource::Custom(src)),
+                    Err(e) => {
+                        warn!("[theme] effect shader {:?} unreadable: {e} — using built-in", path);
+                        (0, SurfaceSource::Builtin)
+                    }
+                },
+                None => (0, SurfaceSource::Builtin),
+            }
+        } else {
+            // Image only → built-in image display shader.
+            (1, SurfaceSource::Image)
+        };
+        set_surface_shader(surface, Some(req));
+    }
+}
+
+/// Load a theme's `[fonts]` from its own folder and set the editor's UI-font
+/// override (cleared when the theme ships no font). Loaded by project-relative
+/// path (`themes/<Name>/<file>`) — the same basis the font scanner uses — so the
+/// asset server dedupes it and a shipped game can pack it. `AssetServer::load` is
+/// async/cheap, but callers still gate this on an actual theme change.
+fn apply_theme_fonts(
+    theme: &renzora_theme::Theme,
+    theme_name: &str,
+    theme_dir: Option<&std::path::Path>,
+    asset_server: &AssetServer,
+) {
+    use bevy::text::{Font, FontSource};
+    let src = match (theme.fonts.ui.is_empty(), theme_dir) {
+        (false, Some(_)) => {
+            let rel = format!("themes/{}/{}", theme_name, theme.fonts.ui.replace('\\', "/"));
+            Some(FontSource::Handle(asset_server.load::<Font>(rel)))
+        }
+        _ => None, // no font shipped (or unknown folder) → user's font setting
+    };
+    renzora_ember::font::set_theme_ui_font(src);
 }
 
 /// Map a theme's `syntax` section into the code editor's [`SyntaxPalette`].
@@ -473,6 +625,7 @@ fn manage_shell_root(
     tm: Option<Res<renzora_theme::ThemeManager>>,
     theme_menu_open: Res<ThemeMenuOpen>,
     toolbars: Option<Res<renzora_ember::toolbar::PanelToolbars>>,
+    asset_server: Res<AssetServer>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
 ) {
@@ -488,6 +641,12 @@ fn manage_shell_root(
         // set_palette can otherwise race the rebuild's spawn across a frame).
         let (themes, active) = if let Some(tm) = tm.as_ref() {
             renzora_ember::theme::set_palette(palette_from_theme(&tm.active_theme));
+            apply_theme_effects(
+                &tm.active_theme,
+                &tm.active_theme_name,
+                tm.active_theme_dir(),
+                &asset_server,
+            );
             (tm.available_themes.clone(), tm.active_theme_name.clone())
         } else {
             (Vec::new(), String::new())
@@ -1534,6 +1693,9 @@ fn build_status_bar(
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(Color::NONE),
             ChromeBar::Status,
+            renzora_ember::widgets::ThemeShaderSurface {
+                surface: renzora_ember::widgets::ThemeSurface::StatusBar,
+            },
             Name::new("status-bar"),
         ))
         .id();
@@ -1789,6 +1951,12 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
             BackgroundColor(rgb(window_bg())),
             BorderColor::all(Color::NONE),
             ChromeBar::Top,
+            // Host for a themeable shader effect (matrix rain, …). The driver in
+            // ember paints it as this node's background when the active theme sets
+            // `effects.top_bar`; the menus/buttons render on top.
+            renzora_ember::widgets::ThemeShaderSurface {
+                surface: renzora_ember::widgets::ThemeSurface::TopBar,
+            },
             // The bar is the window drag handle; empty areas (zones pass through)
             // reach it, while interactive children (menus/buttons) block it.
             Interaction::default(),
@@ -2100,6 +2268,9 @@ fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> En
             BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb(divider())),
             ChromeBar::DocTabs,
+            renzora_ember::widgets::ThemeShaderSurface {
+                surface: renzora_ember::widgets::ThemeSurface::DocTabs,
+            },
             Name::new("doc-tabs"),
         ))
         .id();

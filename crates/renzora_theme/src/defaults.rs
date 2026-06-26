@@ -21,6 +21,9 @@ impl Theme {
             material: MaterialColors::default(),
             viewport: ViewportColors::default(),
             syntax: SyntaxColors::default(),
+            effects: ThemeEffects::default(),
+            fonts: ThemeFonts::default(),
+            images: ThemeImages::default(),
         }
     }
 
@@ -189,6 +192,9 @@ impl Theme {
                 bracket_match: ThemeColor::with_alpha(38, 108, 200, 72),
                 find_match: ThemeColor::with_alpha(220, 170, 40, 110),
             },
+            effects: ThemeEffects::default(),
+            fonts: ThemeFonts::default(),
+            images: ThemeImages::default(),
         }
     }
 }

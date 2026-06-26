@@ -299,19 +299,27 @@ fn apply_font_settings(
     settings: Res<EditorSettings>,
     registry: Res<renzora_ember::font::FontRegistry>,
     fonts: Option<ResMut<EmberFonts>>,
+    // The theme font override applied last run, so a theme switching its font
+    // on/off re-triggers the swap even when settings/registry are unchanged.
+    mut last_theme_ui: Local<Option<bevy::text::FontSource>>,
     mut text_q: Query<&mut TextFont>,
 ) {
     let Some(mut fonts) = fonts else {
         return;
     };
-    // Re-apply when the choice changes OR when the registry changes (a project
-    // font may have just finished loading, so the chosen name now resolves). The
-    // no-op early-outs below make the first/extra runs harmless.
-    if !settings.is_changed() && !registry.is_changed() {
+    // A folder theme can override the UI font; it wins over the user's setting
+    // while active. Reverts to the setting when the theme clears it (`None`).
+    let theme_ui = renzora_ember::font::theme_ui_font();
+    // Re-apply when the choice changes, when the registry changes (a project font
+    // may have just finished loading, so the chosen name now resolves), or when
+    // the theme font override flips. The no-op early-outs below keep extra runs
+    // harmless.
+    if !settings.is_changed() && !registry.is_changed() && *last_theme_ui == theme_ui {
         return;
     }
+    *last_theme_ui = theme_ui.clone();
     // Compute both before mutating so the immutable borrow of `fonts` is done.
-    let new_ui = ui_font_source(&settings.ui_font, &fonts, &registry);
+    let new_ui = theme_ui.unwrap_or_else(|| ui_font_source(&settings.ui_font, &fonts, &registry));
     let new_mono = mono_font_source(&settings.mono_font, &fonts, &registry);
 
     if new_ui != fonts.ui {
