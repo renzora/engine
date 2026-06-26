@@ -1,5 +1,5 @@
 //! Bevy-native (ember) splash launcher — an open, chrome-less project launcher
-//! floating over the animated city + grid/network background: a search field at
+//! floating over the procedural terrain-flyover + dusk-sky background: a search field at
 //! top-centre, the "Renzora" title + a narrow recent-projects list in the
 //! middle, and the New/Open actions + social links at bottom-centre. Window
 //! controls float in the top-right; the whole background is a drag handle.
@@ -10,7 +10,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
 use bevy::time::Real;
-use bevy::ui::FocusPolicy;
+use bevy::ui::{BackgroundGradient, ColorStop, FocusPolicy, Gradient, LinearGradient};
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -66,6 +66,14 @@ fn white() -> Color {
     Color::WHITE
 }
 
+/// A vertical (top → bottom) two-stop background gradient for a card.
+fn card_gradient(top: Color, bot: Color) -> BackgroundGradient {
+    BackgroundGradient(vec![Gradient::Linear(LinearGradient::new(
+        std::f32::consts::PI, // 180° → top to bottom
+        vec![ColorStop::auto(top), ColorStop::auto(bot)],
+    ))])
+}
+
 const VERSION: &str = "r1-alpha6";
 const WEBSITE_URL: &str = "https://renzora.com";
 const YOUTUBE_URL: &str = "https://youtube.com/@renzoragame";
@@ -96,6 +104,9 @@ struct NewProjectBtn;
 struct OpenProjectBtn;
 #[derive(Component)]
 struct RecentsContainer;
+/// A recent-project row — its border animates into a glitchy rainbow on hover.
+#[derive(Component)]
+struct RecentRow;
 #[derive(Component, Clone)]
 struct RecentOpen(std::path::PathBuf);
 #[derive(Component, Clone)]
@@ -129,8 +140,60 @@ pub(crate) fn register(app: &mut App) {
             recent_open_click,
             recent_remove_click,
             url_click,
+            animate_recent_borders,
+            tick_tvoff,
         ),
     );
+}
+
+/// Cheap deterministic 0..1 hash for the hover glitch (no rng).
+fn glitch_rand(x: f32) -> f32 {
+    let v = (x * 12.9898).sin() * 43758.5453;
+    v - v.floor()
+}
+
+/// While a recent-project row is hovered, animate its border into a cycling
+/// rainbow with occasional glitchy hue jumps; restore the soft border otherwise.
+fn animate_recent_borders(
+    time: Res<Time>,
+    mut rows: Query<(&Interaction, &mut BorderColor, &mut BackgroundGradient), With<RecentRow>>,
+) {
+    let t = time.elapsed_secs();
+    for (interaction, mut border, mut grad) in &mut rows {
+        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        if !hovered {
+            *border = BorderColor::all(border_soft());
+            *grad = card_gradient(ca(22, 24, 36, 225), ca(11, 13, 21, 225));
+            continue;
+        }
+
+        // Baseline hover: a smoothly cycling rainbow border + brighter card.
+        let hue = (t * 50.0).rem_euclid(360.0); // ~7s per full cycle, smooth
+        let mut border_col = Color::hsl(hue, 0.9, 0.62);
+        let mut top = panel_hover();
+        let mut bot = ca(20, 22, 40, 250);
+
+        // Occasional glitch burst (like the floating shapes): rare, brief, with
+        // rapid colour-tearing flashes and an off-frame blink.
+        let phase = t * 1.6;
+        let frac = phase.fract();
+        if glitch_rand(phase.floor()) > 0.88 && frac < 0.22 {
+            let f = glitch_rand((t * 50.0).floor());
+            if f > 0.66 {
+                border_col = Color::WHITE; // tear to white
+                top = ca(80, 30, 110, 255);
+            } else if f > 0.33 {
+                border_col = Color::srgb(0.0, 1.0, 1.0); // cyan tear
+            } else {
+                // off-frame blink
+                top = ca(8, 8, 14, 110);
+                bot = ca(4, 4, 8, 110);
+            }
+        }
+
+        *border = BorderColor::all(border_col);
+        *grad = card_gradient(top, bot);
+    }
 }
 
 fn native_reopen(
@@ -168,11 +231,17 @@ fn manage_splash(world: &mut World) {
         if world.get_resource::<EmberFonts>().is_none() {
             return;
         }
+        // The post camera (created at startup by native_post) must exist before we
+        // can route the background to it.
+        let Some(post_cam) = world.get_resource::<crate::native_post::SplashPost>().map(|p| p.camera)
+        else {
+            return;
+        };
         let fonts = world.resource::<EmberFonts>().clone();
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_splash(&mut commands, &fonts);
+            spawn_splash(&mut commands, &fonts, post_cam);
         }
         queue.apply(world);
     } else if !want && !existing.is_empty() {
@@ -182,9 +251,9 @@ fn manage_splash(world: &mut World) {
     }
 }
 
-fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
+fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
     // The root is also the window drag handle — clicking empty background space
-    // (the city/shader children are click-through) drags the borderless window.
+    // (the terrain/sky children are click-through) drags the borderless window.
     let root = commands
         .spawn((
             Node {
@@ -206,22 +275,47 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts) {
         ))
         .id();
 
-    let backdrop = commands
+    // Background (sky shader + terrain render) is rendered to the offscreen post
+    // camera via its own UI root, so the post pass can sample + bloom it. It carries
+    // `SplashRoot` too, so it's torn down with the rest of the splash.
+    let bg_host = commands
         .spawn((
             fullscreen_abs(),
             FocusPolicy::Pass,
-            crate::native_bg::BgBackground,
-            Name::new("splash-bg"),
+            bevy::ui::UiTargetCamera(post_cam),
+            SplashRoot,
+            Name::new("splash-bg-host"),
         ))
         .id();
-    let city = commands
-        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_city::CityView, Name::new("splash-city")))
+    let backdrop = commands
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_bg::BgBackground, Name::new("splash-bg")))
+        .id();
+    let terrain = commands
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_terrain::TerrainView, Name::new("splash-terrain")))
+        .id();
+    commands.entity(bg_host).add_children(&[backdrop, terrain]);
+
+    // The post-processed background, shown on the main camera behind the UI.
+    let post_view = commands
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_post::PostView, Name::new("splash-post")))
         .id();
 
     let layout = build_layout(commands, fonts);
     let controls = build_window_controls(commands, fonts);
 
-    commands.entity(root).add_children(&[backdrop, city, layout, controls]);
+    // CRT turn-off overlay, above everything (idle = fully transparent, so it
+    // doesn't block input until a project is chosen).
+    let tvoff = commands
+        .spawn((
+            fullscreen_abs(),
+            GlobalZIndex(700),
+            FocusPolicy::Pass,
+            crate::native_post::TvOffView,
+            Name::new("splash-tvoff"),
+        ))
+        .id();
+
+    commands.entity(root).add_children(&[post_view, layout, controls, tvoff]);
     build_resize_zones(commands, root);
 }
 
@@ -637,19 +731,19 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(13.0),
                 padding: UiRect::horizontal(Val::Px(14.0)),
-                border: UiRect::all(Val::Px(1.0)),
+                border: UiRect::all(Val::Px(1.5)),
                 border_radius: BorderRadius::all(Val::Px(10.0)),
                 ..default()
             },
             BackgroundColor(ca(16, 18, 28, 220)),
+            card_gradient(ca(22, 24, 36, 225), ca(11, 13, 21, 225)),
             BorderColor::all(border_soft()),
             Interaction::default(),
+            RecentRow,
         ))
         .id();
     if row.exists {
         commands.entity(container).insert((RecentOpen(row.path.clone()), HoverCursor(SystemCursorIcon::Pointer)));
-        let cc = container;
-        bind_bg(commands, container, move |w| if is_hovered(w, cc) { panel_hover() } else { ca(16, 18, 28, 220) });
     }
 
     let icon = icon_text(commands, &fonts.phosphor, "folder", if row.exists { (110, 150, 255) } else { (150, 158, 178) }, 21.0);
@@ -898,7 +992,24 @@ fn enter_project(world: &mut World, project: crate::project::CurrentProject) {
         let _ = cfg.save();
     }
     world.insert_resource(project);
-    world.resource_mut::<NextState<SplashState>>().set(SplashState::Loading);
+    // Play the CRT turn-off effect; `tick_tvoff` switches to Loading when it ends.
+    world.insert_resource(crate::TvOff::default());
+}
+
+/// Advance the CRT turn-off animation; when it completes, drop into the loading
+/// screen. Uses real time so it plays at a consistent speed.
+fn tick_tvoff(
+    time: Res<Time<Real>>,
+    tvoff: Option<ResMut<crate::TvOff>>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<SplashState>>,
+) {
+    let Some(mut tv) = tvoff else { return };
+    tv.timer += time.delta_secs();
+    if tv.timer >= crate::TVOFF_DURATION {
+        commands.remove_resource::<crate::TvOff>();
+        next_state.set(SplashState::Loading);
+    }
 }
 
 fn do_open_recent(world: &mut World, path: &std::path::Path) {

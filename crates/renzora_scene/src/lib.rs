@@ -14,7 +14,10 @@ use renzora_editor_framework::SplashState;
 use renzora_engine::scene_io;
 use renzora_ui::{DocTabKind, DocumentTabState};
 use renzora_keybindings::{EditorAction, KeyBindings};
-use renzora_splash::{EditorLoadingOverlayActive, LoadingTaskHandle, LoadingTasks};
+use renzora_shader::material::GraphMaterial;
+use renzora_splash::{
+    EditorLoadingOverlayActive, LoadingBytes, LoadingTaskHandle, LoadingTasks, TextureLoadProgress,
+};
 use renzora_viewport::model_flatten::ImportedRoot;
 
 // Re-export so downstream code that was using `renzora_scene::{save_scene, load_scene, ...}` still works.
@@ -629,6 +632,10 @@ struct SceneLoadProgress {
     /// additive, so we track the previous value for delta computation).
     last_loaded: u32,
     last_processed: u32,
+    /// On-disk byte size of each distinct GLB the scene references (`model_path`
+    /// → file size), gathered once when loading starts. Drives the real byte
+    /// loader; empty when the scene has no external models.
+    gltf_sizes: std::collections::HashMap<String, u64>,
 }
 
 /// Loads the scene file the moment we transition into `SplashState::Loading`,
@@ -637,6 +644,67 @@ struct SceneLoadProgress {
 /// instantiated. The loading screen stays up until every pending GLB has
 /// landed (plus the standard `min_frames_remaining` grace period), so the
 /// editor only opens onto a fully-populated entity tree.
+/// Real texture-decode progress. Textures are stripped from the GLB into external
+/// `.rmip` files and loaded as separate images by the material resolver *after*
+/// the scene spawns, so they're the genuine remaining work. Count how many of the
+/// spawned models' material textures have actually finished, into
+/// `TextureLoadProgress` — the loading screen shows it and waits on it.
+fn tick_texture_progress(
+    state: Res<State<SplashState>>,
+    asset_server: Res<AssetServer>,
+    std_mats: Res<Assets<StandardMaterial>>,
+    graph_mats: Option<Res<Assets<GraphMaterial>>>,
+    std_q: Query<&MeshMaterial3d<StandardMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
+    graph_q: Query<&MeshMaterial3d<GraphMaterial>, (Without<EditorCamera>, Without<HideInHierarchy>)>,
+    progress: Option<ResMut<TextureLoadProgress>>,
+) {
+    if !matches!(state.get(), SplashState::Loading) {
+        return;
+    }
+    let Some(mut progress) = progress else { return };
+
+    let mut images: Vec<Handle<Image>> = Vec::new();
+    for m in &std_q {
+        if let Some(mat) = std_mats.get(&m.0) {
+            tab_asset_cache::collect_standard_material_images(mat, &mut images);
+        }
+    }
+    if let Some(graph_mats) = &graph_mats {
+        for m in &graph_q {
+            if let Some(mat) = graph_mats.get(&m.0) {
+                tab_asset_cache::collect_standard_material_images(&mat.base, &mut images);
+                for slot in [
+                    mat.extension.texture_0.as_ref(),
+                    mat.extension.texture_1.as_ref(),
+                    mat.extension.texture_2.as_ref(),
+                    mat.extension.texture_3.as_ref(),
+                    mat.extension.texture_4.as_ref(),
+                    mat.extension.texture_5.as_ref(),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    images.push(slot.clone());
+                }
+            }
+        }
+    }
+
+    let mut seen: std::collections::HashSet<bevy::asset::AssetId<Image>> = std::collections::HashSet::new();
+    let mut total = 0u32;
+    let mut loaded = 0u32;
+    for h in &images {
+        if seen.insert(h.id()) {
+            total += 1;
+            if matches!(asset_server.get_load_state(h.id()), Some(bevy::asset::LoadState::Loaded)) {
+                loaded += 1;
+            }
+        }
+    }
+    progress.loaded = loaded;
+    progress.total = total;
+}
+
 fn load_scene_on_enter_loading(world: &mut World) {
     info!("[loading] entered Loading state, kicking off scene load");
 
@@ -698,6 +766,33 @@ fn load_scene_on_enter_loading(world: &mut World) {
         q.iter(world).count() as u32
     };
 
+    // Gather the real on-disk size of every distinct GLB the scene references,
+    // for a genuine byte loader. The asset reader resolves `model_path` under the
+    // project root, so we stat `project_path/{model_path}`.
+    let project_root = world.get_resource::<CurrentProject>().map(|p| p.path.clone());
+    let mut gltf_sizes: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    {
+        let mut q = world.query::<&MeshInstanceData>();
+        for data in q.iter(world) {
+            if let Some(path) = data.model_path.as_deref() {
+                if !gltf_sizes.contains_key(path) {
+                    let bytes = project_root
+                        .as_ref()
+                        .map(|r| r.join(path))
+                        .and_then(|f| std::fs::metadata(f).ok())
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+                    gltf_sizes.insert(path.to_string(), bytes);
+                }
+            }
+        }
+    }
+    let total_bytes: u64 = gltf_sizes.values().sum();
+    if let Some(mut lb) = world.get_resource_mut::<LoadingBytes>() {
+        lb.loaded = 0;
+        lb.total = total_bytes;
+    }
+
     // Two tasks so the user sees each phase as the bar fills:
     //   1. Asset I/O   — Gltf bytes from disk, texture decode.
     //   2. Scene spawn — Bevy's SceneSpawner instantiating the GLB.
@@ -717,6 +812,7 @@ fn load_scene_on_enter_loading(world: &mut World) {
         total_instances: instance_count,
         last_loaded: 0,
         last_processed: 0,
+        gltf_sizes,
     });
 
     // Ask the hierarchy to auto-select its top entity once the cache is
@@ -748,10 +844,26 @@ fn tick_scene_load_progress(
         Has<scene_io::MeshInstanceLoadFailed>,
     )>,
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
+    loaded_q: Query<&MeshInstanceData, Without<scene_io::PendingMeshInstanceRehydrate>>,
+    loading_bytes: Option<ResMut<LoadingBytes>>,
     children_q: Query<&Children>,
     scene_roots: Query<Entity, With<bevy::world_serialization::WorldAssetRoot>>,
 ) {
     let Some(mut progress) = progress else { return };
+
+    // Real byte progress: sum the on-disk size of every distinct GLB whose
+    // instances are no longer pending (their asset finished loading).
+    if let Some(mut lb) = loading_bytes {
+        use std::collections::HashSet;
+        let mut done: HashSet<&str> = HashSet::new();
+        for data in loaded_q.iter() {
+            if let Some(p) = data.model_path.as_deref() {
+                done.insert(p);
+            }
+        }
+        lb.loaded = done.iter().filter_map(|p| progress.gltf_sizes.get(*p)).sum();
+        lb.total = progress.gltf_sizes.values().sum();
+    }
 
     // Empty-scene case: complete every task immediately so the grace
     // timer is the only thing holding the loading screen up.
@@ -1211,6 +1323,7 @@ impl Plugin for ScenePlugin {
                     scene_io::finish_mesh_instance_rehydrate,
                     tab_asset_cache::cache_added_mesh_instances,
                     tick_scene_load_progress,
+                    tick_texture_progress,
                 )
                     .run_if(in_state(SplashState::Loading)),
             )

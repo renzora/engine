@@ -40,6 +40,26 @@ pub struct LoadingTasks {
     pub(crate) min_frames_remaining: u32,
 }
 
+/// Real byte totals for the loading bar, populated by `renzora_scene` from the
+/// on-disk sizes of the scene's GLB files (loose-file editor loads). Lets the
+/// loader show genuine MB-loaded rather than a step count. `total == 0` means no
+/// byte data — the UI falls back to the task-count fraction.
+#[derive(Resource, Default)]
+pub struct LoadingBytes {
+    pub loaded: u64,
+    pub total: u64,
+}
+
+/// Real sub-asset progress: how many of the scene's `.rmip` textures have
+/// finished decoding (vs total referenced by the spawned models' materials).
+/// Populated by `renzora_scene::tick_texture_progress`. This is the genuine
+/// "still decoding" signal — textures are the heavy part of a scene load.
+#[derive(Resource, Default)]
+pub struct TextureLoadProgress {
+    pub loaded: u32,
+    pub total: u32,
+}
+
 impl LoadingTasks {
     pub fn register(&mut self, label: impl Into<String>, total: u32) -> LoadingTaskHandle {
         let h = LoadingTaskHandle(self.next_id);
@@ -123,12 +143,28 @@ impl LoadingTasks {
 pub struct EditorLoadingOverlayActive(pub bool);
 
 pub(crate) fn auto_advance_to_editor(
+    time: Res<Time<bevy::time::Real>>,
     mut tasks: ResMut<LoadingTasks>,
+    textures: Res<TextureLoadProgress>,
+    mut tex_wait: Local<f32>,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
-    if tasks.tick_and_can_advance() {
-        next_state.set(SplashState::Editor);
+    // First the GLB/scene phase (tasks) must be done.
+    if !tasks.tick_and_can_advance() {
+        *tex_wait = 0.0;
+        return;
     }
+    // Then hold the loading screen until the scene's textures have actually
+    // finished decoding — they load *after* the GLB spawns and are the real
+    // remaining work. Guarded by a timeout so a stuck/failed texture can never
+    // hang the editor open.
+    const TEXTURE_TIMEOUT: f32 = 12.0;
+    *tex_wait += time.delta_secs();
+    let textures_pending = textures.total > 0 && textures.loaded < textures.total;
+    if textures_pending && *tex_wait < TEXTURE_TIMEOUT {
+        return;
+    }
+    next_state.set(SplashState::Editor);
 }
 
 pub(crate) fn log_loading_entered() {

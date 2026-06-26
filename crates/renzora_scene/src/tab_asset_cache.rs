@@ -348,7 +348,7 @@ pub fn pin_live_tab_handles(world: &mut World, tab_id: u64) {
     }
 }
 
-fn collect_standard_material_images(mat: &StandardMaterial, out: &mut Vec<Handle<Image>>) {
+pub(crate) fn collect_standard_material_images(mat: &StandardMaterial, out: &mut Vec<Handle<Image>>) {
     // Only the unconditionally-present texture slots — the rest
     // (`specular_*`, `anisotropy_*`, `clearcoat_*`, `*_transmission_*`,
     // `thickness_*`) sit behind `pbr_specular_textures` /

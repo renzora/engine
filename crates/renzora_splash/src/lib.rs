@@ -4,8 +4,9 @@ pub mod github;
 pub mod loading;
 mod native;
 mod native_bg;
-mod native_city;
 mod native_loading;
+mod native_post;
+mod native_terrain;
 pub mod project;
 #[cfg(target_arch = "wasm32")]
 pub mod web_storage;
@@ -14,7 +15,8 @@ pub use auth::SplashAuth;
 pub use config::{AppConfig, UpdateConfig};
 pub use github::GithubStats;
 pub use loading::{
-    EditorLoadingOverlayActive, LoadingTask, LoadingTaskHandle, LoadingTasks,
+    EditorLoadingOverlayActive, LoadingBytes, LoadingTask, LoadingTaskHandle, LoadingTasks,
+    TextureLoadProgress,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use project::create_project;
@@ -41,6 +43,8 @@ impl Plugin for SplashPlugin {
             .insert_resource(SplashAuth::new())
             .insert_resource(GithubStats::new())
             .init_resource::<LoadingTasks>()
+            .init_resource::<LoadingBytes>()
+            .init_resource::<TextureLoadProgress>()
             .init_resource::<EditorLoadingOverlayActive>()
             .add_systems(
                 Update,
@@ -56,11 +60,13 @@ impl Plugin for SplashPlugin {
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Startup, apply_project_arg);
 
-        // Native (bevy_ui) splash, loading screen, background and city scene.
+        // Native (bevy_ui) splash, loading screen, dusk-sky background and the
+        // procedural terrain-flyover scene.
         native::register(app);
         native_loading::register(app);
         native_bg::register(app);
-        native_city::register(app);
+        native_terrain::register(app);
+        native_post::register(app);
     }
 }
 
@@ -148,5 +154,16 @@ fn apply_project_arg(mut commands: Commands) {
 /// (e.g. project opened via File menu).
 #[derive(Resource)]
 pub struct PendingProjectReopen;
+
+/// While present, the splash plays a CRT "turn-off" animation; when its timer
+/// reaches [`TVOFF_DURATION`], `native::tick_tvoff` transitions to Loading.
+/// Inserted by `enter_project` (a project was chosen from the launcher).
+#[derive(Resource, Default)]
+pub(crate) struct TvOff {
+    pub timer: f32,
+}
+
+/// Duration (seconds) of the CRT turn-off animation.
+pub(crate) const TVOFF_DURATION: f32 = 0.45;
 
 renzora::add!(SplashPlugin, Editor);

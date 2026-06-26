@@ -1,9 +1,10 @@
 //! Animated splash background as a `UiMaterial` (mirrors ember's gradient/curve
 //! widgets). A fullscreen UI node carrying [`BgBackground`] gets a [`BgMaterial`]
 //! whose `params` (time + aspect) are updated each frame; the shader in
-//! `splash_bg.wgsl` paints the synthwave grid + starfield. Self-contained: it
-//! renders in the normal UI pass on the existing default UI camera, so it needs
-//! no extra camera/render-target plumbing.
+//! `splash_bg.wgsl` paints the dusk sky (gradient + horizon ember + starfield)
+//! that the terrain-flyover render composites over. Self-contained: it renders in
+//! the normal UI pass on the existing default UI camera, so it needs no extra
+//! camera/render-target plumbing.
 
 use bevy::asset::Asset;
 use bevy::prelude::*;
