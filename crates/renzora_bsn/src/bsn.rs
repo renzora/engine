@@ -24,10 +24,12 @@
 
 use crate::{DynamicEntity, DynamicScene};
 use bevy::reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
-use bevy::reflect::{PartialReflect, TypeRegistry};
+use bevy::reflect::{PartialReflect, TypeRegistration, TypeRegistry};
 use bevy::ecs::entity::Entity;
 use serde::de::DeserializeSeed;
+use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::{OnceLock, RwLock};
 
 const HEADER: &str = "// renzora interim bsn v1";
 
@@ -217,8 +219,86 @@ fn write_value(
     Ok(())
 }
 
+/// Process-global migration aliases: `old type-path/name` → `current short name
+/// or full path`. Consulted by [`resolve_registration`] when a serialized
+/// type-path no longer resolves. See [`register_component_alias`].
+fn component_aliases() -> &'static RwLock<HashMap<String, String>> {
+    static ALIASES: OnceLock<RwLock<HashMap<String, String>>> = OnceLock::new();
+    ALIASES.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+/// Register a migration alias so scenes that recorded an **old** component
+/// type-path or name still load after a *rename*. `old` is the string as it
+/// appears in existing scene files (full path or short name); `current` is the
+/// present short name (or full path).
+///
+/// Module/crate **moves** need no alias — they're absorbed automatically by the
+/// short-name fallback in [`resolve_registration`]. Use this only for genuine
+/// renames (the one case short-name matching can't bridge). Idempotent.
+pub fn register_component_alias(old: impl Into<String>, current: impl Into<String>) {
+    if let Ok(mut map) = component_aliases().write() {
+        map.insert(old.into(), current.into());
+    }
+}
+
+/// The trailing `Ident` of a fully-qualified type-path (what bevy registers as
+/// the *short* type path). Returns `None` for generic / tuple / array paths
+/// (those contain `<`, `(`, `[`), whose short form bevy computes structurally —
+/// we don't reconstruct it, the exact-path lookup already covers them.
+fn short_name_of(type_path: &str) -> Option<&str> {
+    if type_path.contains(['<', '(', '[', ' ', '&', ';']) {
+        return None;
+    }
+    type_path.rsplit("::").next().filter(|s| !s.is_empty())
+}
+
+/// Resolve a serialized component type-path to a live registration, tolerant of
+/// the type having **moved modules/crates** or been **renamed** since the scene
+/// was saved. Three tiers, most-precise first:
+///
+/// 1. **Exact path** — the common case; nothing moved.
+/// 2. **Short-name fallback** — match by trailing `Ident` via
+///    [`TypeRegistry::get_with_short_type_path`], which bevy keeps *unambiguous*
+///    (colliding short names are dropped, so this never resolves to the wrong
+///    type). This makes module/crate reorganizations non-breaking for free.
+/// 3. **Alias map** — an explicit `old → current` entry for genuine renames.
+///
+/// Returns `None` only when every tier misses (truly unknown / unregistered),
+/// in which case the component is skipped exactly as before.
+fn resolve_registration<'r>(
+    type_path: &str,
+    registry: &'r TypeRegistry,
+) -> Option<&'r TypeRegistration> {
+    if let Some(reg) = registry.get_with_type_path(type_path) {
+        return Some(reg);
+    }
+    // Short-name fallback (handles moves). Skipped for ambiguous short names
+    // because bevy returns `None` for them — we never guess.
+    if let Some(short) = short_name_of(type_path) {
+        if let Some(reg) = registry.get_with_short_type_path(short) {
+            return Some(reg);
+        }
+    }
+    // Alias map (handles renames). Keyed by the full path or its short name.
+    if let Ok(map) = component_aliases().read() {
+        let target = map
+            .get(type_path)
+            .or_else(|| short_name_of(type_path).and_then(|s| map.get(s)));
+        if let Some(target) = target {
+            if let Some(reg) = registry
+                .get_with_type_path(target)
+                .or_else(|| registry.get_with_short_type_path(target))
+            {
+                return Some(reg);
+            }
+        }
+    }
+    None
+}
+
 /// Look up `type_path` in the registry and reflect-deserialize `value_str`
-/// (a RON value) into a boxed component.
+/// (a RON value) into a boxed component. Resolution is refactor-tolerant — see
+/// [`resolve_registration`] (moved/renamed types still load).
 fn reflect_component_value(
     type_path: &str,
     value_str: &str,
@@ -226,12 +306,10 @@ fn reflect_component_value(
     offset: usize,
 ) -> Result<Box<dyn PartialReflect>, BsnError> {
     let registration =
-        registry
-            .get_with_type_path(type_path)
-            .ok_or_else(|| BsnError::UnregisteredType {
-                type_path: type_path.to_string(),
-                offset,
-            })?;
+        resolve_registration(type_path, registry).ok_or_else(|| BsnError::UnregisteredType {
+            type_path: type_path.to_string(),
+            offset,
+        })?;
     let seed = TypedReflectDeserializer::new(registration, registry);
     let mut ron_de =
         ron::Deserializer::from_str(value_str).map_err(|e| BsnError::Deserialize {
@@ -498,6 +576,67 @@ mod tests {
         assert_eq!(t.translation, Vec3::new(1.0, 2.0, 3.0));
         let name = dst.get::<Name>(new_entity).expect("Name present");
         assert_eq!(name.as_str(), "Player");
+    }
+
+    /// A component whose serialized type-path moved modules (here faked by
+    /// rewriting `Transform`'s path) must still load via the short-name fallback
+    /// — the exact regression that the `core/mod.rs` split caused for scenes
+    /// keyed by `renzora::core::MeshInstanceData`.
+    #[test]
+    fn moved_type_resolves_by_short_name() {
+        let atr = registry();
+        let mut src = World::new();
+        src.insert_resource(atr.clone());
+        let e = src.spawn(Transform::from_xyz(4.0, 5.0, 6.0)).id();
+        let scene = DynamicSceneBuilder::from_world(&src).extract_entity(e).build();
+
+        let reg = atr.read();
+        let text = BsnSerializer.serialize(&scene, &reg).expect("serialize");
+        // Simulate the type having moved to a different module: same short name
+        // (`Transform`), different (now non-existent) full path.
+        let moved = text.replace(
+            "bevy_transform::components::transform::Transform",
+            "legacy::core::moved::Transform",
+        );
+        assert!(moved.contains("legacy::core::moved::Transform"), "{moved}");
+
+        let parsed = BsnSerializer.deserialize(&moved, &reg).expect("deserialize");
+        let mut dst = World::new();
+        dst.insert_resource(atr.clone());
+        let mut map = EntityHashMap::default();
+        parsed.write_to_world(&mut dst, &mut map).expect("write");
+        let ne = *map.values().next().expect("one entity");
+        let t = dst.get::<Transform>(ne).expect("Transform resolved by short name");
+        assert_eq!(t.translation, Vec3::new(4.0, 5.0, 6.0));
+    }
+
+    /// A genuinely *renamed* type (short name also changed) can't be matched by
+    /// short name; an explicit alias bridges it.
+    #[test]
+    fn renamed_type_resolves_via_alias() {
+        let atr = registry();
+        let mut src = World::new();
+        src.insert_resource(atr.clone());
+        let e = src.spawn(Name::new("Bob")).id();
+        let scene = DynamicSceneBuilder::from_world(&src).extract_entity(e).build();
+
+        let reg = atr.read();
+        let text = BsnSerializer.serialize(&scene, &reg).expect("serialize");
+        // Old name has a short name (`OldLabel`) that matches nothing registered,
+        // so short-name fallback can't bridge it — only the alias can.
+        let renamed = text.replace("bevy_ecs::name::Name", "legacy::OldLabel");
+
+        // Without the alias the type is genuinely unknown (strict deserialize errors).
+        assert!(BsnSerializer.deserialize(&renamed, &reg).is_err());
+
+        register_component_alias("legacy::OldLabel", "Name");
+        let after = BsnSerializer.deserialize(&renamed, &reg).expect("deserialize");
+        let mut dst = World::new();
+        dst.insert_resource(atr.clone());
+        let mut map = EntityHashMap::default();
+        after.write_to_world(&mut dst, &mut map).expect("write");
+        let ne = *map.values().next().expect("one entity");
+        assert_eq!(dst.get::<Name>(ne).expect("Name via alias").as_str(), "Bob");
     }
 
     #[test]

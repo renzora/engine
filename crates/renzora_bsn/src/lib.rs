@@ -33,6 +33,7 @@ mod scene_filter;
 
 pub mod bsn;
 
+pub use bsn::register_component_alias;
 pub use dynamic_scene::{DynamicEntity, DynamicScene};
 pub use dynamic_scene_builder::DynamicSceneBuilder;
 pub use scene_filter::SceneFilter;

@@ -92,6 +92,31 @@ Knowing the rules avoids surprises:
 - **Runtime/editor-only components are stripped.** Meshes, materials, cameras, `avian3d` physics bodies, animation runtime state, `bevy_ui` camera plumbing, and networking markers are explicitly denied — they get regenerated on load from their serializable companions (e.g. `MeshInstanceData`, `PhysicsBodyData`). Anything that fails to serialize is dropped too.
 - **Loading is lossy.** If a scene names a type that isn't registered, `load_scene` strips just that entry, keeps loading the rest, logs a warning, and fires a `SceneLoadedWithSkippedTypes` event. A scene from the editor that references a component your runtime build never registered will load with that component missing rather than failing.
 
+### Renaming or moving a component (scene compatibility)
+
+Scenes record each component by its reflected **type path** (e.g.
+`my_crate::gameplay::Health`). That path is derived from the type's Rust module,
+so refactors can change it and silently invalidate existing scene files. The
+loader handles this for you in two tiers:
+
+- **Moving a type** between modules or crates (or, say, splitting one big file
+  into submodules) is **automatic**. When the exact path isn't found, the loader
+  falls back to matching the **short name** (`Health`), which is unchanged by a
+  move. This is collision-safe — if two registered types share a short name, the
+  fallback declines rather than guess, so the component is skipped, never
+  mismatched. No action needed.
+- **Renaming a type** (the short name itself changes, `Health` → `Vitals`)
+  can't be matched by short name, so register a one-line migration alias at
+  startup so old scenes keep loading:
+
+  ```rust
+  // In the owning plugin's build():
+  renzora_bsn::register_component_alias("Health", "Vitals");
+  // The `old` key may be the old short name or the old full type path.
+  ```
+
+Either way, scenes heal on their next save (which writes the current path).
+
 ## Making a component editable in the Inspector
 
 To give a component an editable card in the editor's Inspector, derive `renzora::Inspectable` and annotate the fields. This is the same `Health`/`Movement` pattern shipped in the `renzora_test_component` example crate:
