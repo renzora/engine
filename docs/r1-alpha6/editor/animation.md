@@ -156,10 +156,17 @@ Property tracks live in the same `.anim` clip as skeletal tracks and play back i
 - **Drag** a key horizontally to retime (snap-aware).
 - **Click** a key to select it — it highlights and its value shows in the toolbar readout (`Rotation @ 1.33s = (0°, 90°, 0°)`).
 - **Delete** removes the selected key. (With a key selected over the timeline, Delete removes the keyframe, not the entity.)
-- **Right-click** a key → Delete, **Set to current pose**, or toggle **Linear / Stepped** interpolation.
+- **Right-click** a key → Delete, **Set to current pose**, or pick its **interpolation** — the menu lists Linear, Stepped, and a set of easing curves (Smooth, Ease In, Ease Out, Ease In-Out, Back Out, Bounce Out, Elastic Out). The active curve is checked.
 - **Length** field (toolbar) sets the clip duration; **gridlines** and ruler labels mark seconds (and frames when zoomed in).
 
-> **Interpolation:** Linear (smooth) or Stepped (hold) per key. Rotation is keyed as **Euler degrees** so a full 0→360° spin works (quaternion slerp would take the shortest path and not move). For a continuous spin, use keys **less than 180° apart** — e.g. 0° / 120° / 240° / 360°.
+> **Interpolation (per key):**
+> - **Linear** — even blend toward the next key.
+> - **Stepped** — hold this key's value until the next (no blend).
+> - **Eased** — remap the blend through a [Bevy `EaseFunction`](https://docs.rs/bevy/latest/bevy/math/curve/enum.EaseFunction.html) before lerping, so a single pair of keys can ease in/out, overshoot (**Back Out**), or bounce (**Bounce Out** / **Elastic Out**) — the same easing set used by script `tween_*` and UI transitions. Easing applies to **Float / Vec3 / Color** tracks (and rotation, via its Euler-degree path). The editor scrub preview and runtime playback use the identical curve.
+>
+> Rotation is keyed as **Euler degrees** so a full 0→360° spin works (quaternion slerp would take the shortest path and not move). For a continuous spin, use keys **less than 180° apart** — e.g. 0° / 120° / 240° / 360°.
+>
+> Older clips (authored before easing existed) load with every key as **Linear** — backward-compatible by default.
 
 ### Event markers
 
@@ -198,9 +205,11 @@ Property tracks and markers serialize into the same RON `AnimClip` as skeletal `
             field: "rotation",         // dotted reflect path
             keys: [
                 (time: 0.0, value: Vec3((0.0,   0.0, 0.0)), interp: Linear),
-                (time: 2.0, value: Vec3((0.0, 180.0, 0.0)), interp: Linear),
+                (time: 2.0, value: Vec3((0.0, 180.0, 0.0)), interp: Eased(QuadraticInOut)),
                 (time: 4.0, value: Vec3((0.0, 360.0, 0.0)), interp: Linear),
             ],
+            // interp values: `Linear`, `Stepped`, or `Eased(<EaseFunction>)` —
+            // e.g. `Eased(SmoothStep)`, `Eased(BackOut)`, `Eased(BounceOut)`.
         ),
     ],
     markers: [

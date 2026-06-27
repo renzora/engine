@@ -447,7 +447,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(26.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::horizontal(Val::Px(6.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() },
+            Node { width: Val::Percent(100.0), height: Val::Px(34.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(3.0), padding: UiRect::horizontal(Val::Px(6.0)), border: UiRect::bottom(Val::Px(1.0)), ..default() },
             BackgroundColor(rgb(header_bg())),
             BorderColor::all(rgb(border())),
         ))
@@ -588,15 +588,15 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn icon_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &str, color: (u8, u8, u8), marker: M) -> (Entity, Entity) {
     let btn = commands
-        .spawn((Node { width: Val::Px(22.0), height: Val::Px(20.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), marker))
+        .spawn((Node { width: Val::Px(30.0), height: Val::Px(28.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(4.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(Color::NONE), Interaction::default(), marker))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, color, 13.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, color, 17.0);
     commands.entity(btn).add_child(ic);
     (btn, ic)
 }
 
 fn vsep(commands: &mut Commands) -> Entity {
-    commands.spawn((Node { width: Val::Px(1.0), height: Val::Px(16.0), margin: UiRect::horizontal(Val::Px(2.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(border())))).id()
+    commands.spawn((Node { width: Val::Px(1.0), height: Val::Px(22.0), margin: UiRect::horizontal(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(border())))).id()
 }
 
 // ── Snapshots ──────────────────────────────────────────────────────────────────
@@ -1170,6 +1170,42 @@ fn set_key_to_live(world: &mut World, entity: Option<Entity>, track: usize, idx:
     }
 }
 
+/// Set a property key's interpolation curve and mark the clip dirty (so the
+/// scrub preview and the auto-save reflect it immediately).
+fn set_key_interp(world: &mut World, track: usize, idx: usize, interp: renzora::Interp) {
+    if let Some(mut cache) = world.get_resource_mut::<NativeAnimClip>() {
+        if let Some(key) = cache
+            .clip
+            .as_mut()
+            .and_then(|c| c.property_tracks.get_mut(track))
+            .and_then(|pt| pt.keys.get_mut(idx))
+        {
+            key.interp = interp;
+        }
+        cache.dirty = true;
+    }
+}
+
+/// The interpolation choices offered in a property key's right-click menu, as
+/// `(icon, label, interp)`. A curated subset of Bevy's [`EaseFunction`] set —
+/// the ones that read clearly on a float/Vec3/Color dopesheet — plus the two
+/// non-eased modes. Per-key authoring writes one of these into `PropertyKey`.
+fn interp_menu_choices() -> [(&'static str, &'static str, renzora::Interp); 9] {
+    use bevy::math::curve::EaseFunction as E;
+    use renzora::Interp;
+    [
+        ("minus", "Linear", Interp::Linear),
+        ("stairs", "Stepped (hold)", Interp::Stepped),
+        ("chart-line", "Smooth (in-out)", Interp::Eased(E::SmoothStep)),
+        ("trend-up", "Ease In", Interp::Eased(E::QuadraticIn)),
+        ("trend-down", "Ease Out", Interp::Eased(E::QuadraticOut)),
+        ("activity", "Ease In-Out", Interp::Eased(E::CubicInOut)),
+        ("arrow-u-up-left", "Back Out (overshoot)", Interp::Eased(E::BackOut)),
+        ("circle", "Bounce Out", Interp::Eased(E::BounceOut)),
+        ("waves", "Elastic Out", Interp::Eased(E::ElasticOut)),
+    ]
+}
+
 fn push(bridge: &AnimEditorBridge, action: AnimEditorAction) {
     if let Ok(mut p) = bridge.pending.lock() {
         p.push(action);
@@ -1490,20 +1526,21 @@ fn key_context_menu(
                 set_key_to_live(w, entity, track, idx);
             });
             kids.push(set_item);
-            let toggle = menu_item(&mut commands, &fonts, "chart-line", "Toggle Linear/Stepped", move |w| {
-                if let Some(mut cache) = w.get_resource_mut::<NativeAnimClip>() {
-                    if let Some(clip) = cache.clip.as_mut() {
-                        if let Some(key) = clip.property_tracks.get_mut(track).and_then(|pt| pt.keys.get_mut(idx)) {
-                            key.interp = match key.interp {
-                                renzora::Interp::Linear => renzora::Interp::Stepped,
-                                renzora::Interp::Stepped => renzora::Interp::Linear,
-                            };
-                        }
-                    }
-                    cache.dirty = true;
-                }
-            });
-            kids.push(toggle);
+            // Per-key interpolation picker: a curated row per easing choice. The
+            // active curve is flagged with a "check" icon so the menu doubles as a
+            // readout of the key's current interpolation.
+            let current = clip
+                .property_tracks
+                .get(track)
+                .and_then(|pt| pt.keys.get(idx))
+                .map(|k| k.interp);
+            for (icon, label, interp) in interp_menu_choices() {
+                let shown_icon = if current == Some(interp) { "check" } else { icon };
+                let item = menu_item(&mut commands, &fonts, shown_icon, label, move |w| {
+                    set_key_interp(w, track, idx, interp);
+                });
+                kids.push(item);
+            }
         }
         commands.entity(menu).add_children(&kids);
         return;
