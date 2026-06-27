@@ -8,7 +8,7 @@ Renzora does **not** use `cross`, `mingw`, or per-host linker juggling. Cross bu
 
 | Image | Adds on top of base |
 |---|---|
-| `base` (`docker/base/Dockerfile`, `FROM rust:1.93.0-bookworm`) | rust + Linux dev libs + LLVM-19 |
+| `base` (`docker/base/Dockerfile`, `FROM rust:1.95.0-bookworm`) | rust + Linux dev libs + LLVM-19 |
 | `linux` | appimagetool + dual-arch cross-gcc + UPX |
 | `windows` | xwin (MSVC SDK + CRT) |
 | `macos` | osxcross + macOS SDK + rcodesign |
@@ -18,7 +18,7 @@ Renzora does **not** use `cross`, `mingw`, or per-host linker juggling. Cross bu
 
 Each platform image builds `FROM base`, so they share the base layer on pull (downloaded once, stored once) while a toolchain change to one platform never re-downloads the others. The `renzora` CLI pulls only what a command needs: `renzora run` pulls the host platform image; `renzora build` (no args) pulls all; `renzora build windows` pulls only Windows. The GPU editor and game still run **natively** from the `dist/` output; only the *build* happens in the container.
 
-The base image is the **single source of truth for the Rust version** — there is no `rust-toolchain.toml` in the repo. Bumping the compiler means editing the `FROM rust:1.93.0-bookworm` line in `docker/base/Dockerfile`. Tags are content hashes (`baseTag = sha256(docker/base/Dockerfile)`, `<plat>Tag = sha256(baseTag + docker/<plat>/Dockerfile)`), so a base edit re-rolls **every** platform tag — the CLI re-pulls and CI rebuilds each platform on the new base — while a platform-only edit moves just that platform's tag.
+The base image is the source of truth for the **container's** Rust version; a `rust-toolchain.toml` at the repo root pins the same version for native `cargo renzora` builds — keep the two in lockstep. Bumping the compiler means editing the `FROM rust:1.95.0-bookworm` line in `docker/base/Dockerfile` (and `rust-toolchain.toml`). Tags are content hashes (`baseTag = sha256(docker/base/Dockerfile)`, `<plat>Tag = sha256(baseTag + docker/<plat>/Dockerfile)`), so a base edit re-rolls **every** platform tag — the CLI re-pulls and CI rebuilds each platform on the new base — while a platform-only edit moves just that platform's tag.
 
 > Ignore older guides that mention `cargo install cross`, `gcc-mingw-w64`, `aarch64-apple-ios-sim` via Xcode, or hand-editing `~/.cargo/config.toml` per target. None of that applies — the container already contains a configured linker and SDK for every supported triple.
 
@@ -167,7 +167,7 @@ The root `build.rs` adapts to whether it is building natively or cross-compiling
 It also emits two values used by the dynamic-plugin ABI guard, regardless of target:
 
 - `RENZORA_ENGINE_VERSION` — the package version.
-- `RENZORA_BUILD_HASH` — an FNV-1a hash of `"<version>-<rustc>-bevy0.18"`. The loader **rejects** any plugin whose hash differs, so a plugin built against a different compiler or engine version is refused rather than crashing. (This is why every build uses the same `dist` profile and the same containerized compiler.)
+- `RENZORA_BUILD_HASH` — an FNV-1a hash of `"<version>-<rustc>-bevy0.19"`. The loader **rejects** any plugin whose hash differs, so a plugin built against a different compiler or engine version is refused rather than crashing. (This is why every build uses the same `dist` profile and the same containerized compiler.)
 
 ## Single-target cross builds
 

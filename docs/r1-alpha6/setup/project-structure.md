@@ -2,7 +2,7 @@
 
 How the Renzora engine repository is organized — one Cargo workspace, ~187 crates auto-included by globs, and the "one binary, editor-as-removable-cdylib" layout.
 
-Renzora is a single large Cargo workspace built on **Bevy 0.18**, where almost every feature is its own crate that registers a Bevy `Plugin`. The defining structural fact is **one engine binary** (`renzora`) that is always runtime-shaped; the editor ships as a removable cdylib bundle beside it. This page maps the repository so you can find your way around the source.
+Renzora is a single large Cargo workspace built on **Bevy 0.19**, where almost every feature is its own crate that registers a Bevy `Plugin`. The defining structural fact is **one engine binary** (`renzora`) that is always runtime-shaped; the editor ships as a removable cdylib bundle beside it. This page maps the repository so you can find your way around the source.
 
 ## Repository layout
 
@@ -35,7 +35,7 @@ engine/
 └── docs/                   # in-repo engine docs (markdown)
 ```
 
-> There is **no** `Makefile.toml`/cargo-make, no `rust-toolchain.toml`, and no `_legacy_src/`. The pinned Rust version (`1.93.0`) lives only in `docker/base/Dockerfile`, and common tasks run through the `renzora` CLI, which wraps the cargo aliases in `.cargo/config.toml` inside the container (see [Build System](/docs/r1-alpha5/setup/build-system)).
+> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.95.0`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Build System](/docs/r1-alpha5/setup/build-system)).
 
 ## The workspace member globs
 

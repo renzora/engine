@@ -21,6 +21,18 @@ renzora run               # build the editor and launch it (first run is slow)
 
 Everything builds inside a container, so Docker handles the rest — no toolchain or system libraries to set up, and the build is identical on every machine. The editor runs on your computer, not in the container.
 
+### Building from source without Docker
+
+Working on the engine itself, or prefer no Docker? Clone the repo and build natively for your own platform with `cargo renzora`:
+
+```bash
+git clone https://github.com/renzora/engine.git
+cd engine
+cargo renzora             # build, stage dist/, and launch the editor
+```
+
+You need only Git and <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer">rustup</a> — `rust-toolchain.toml` pins the Rust version automatically, so you compile with the same compiler the container uses. You'll also need your platform's usual native build dependencies (a C/C++ toolchain; on Linux the X11/Wayland/ALSA/udev dev headers). `cargo renzora dist` builds and stages without launching. This builds for your machine only — cross-platform builds still go through `renzora build` (Docker).
+
 ### Commands
 
 | Command | What it does |

@@ -1,12 +1,16 @@
 # Cargo aliases — everything uses dist profile for consistent plugin hashes
 [alias]
 # Run
-# The editor experience now ships as the `renzora_editor` cdylib loaded
-# from beside the exe, so the editor run must be `--workspace` — that builds
-# the binary AND the bundle into target/dist next to each other (one bevy_dylib
-# via feature unification). `runtime` forces game mode (`--no-editor`) even if a
-# bundle dll is sitting in target/dist from a prior editor build.
-renzora = "run --profile dist --workspace --bin renzora"
+# `cargo renzora` is the native (no-Docker) build+stage+run. It routes through
+# the `xtask` helper instead of a bare `cargo run`, because a bare run leaves the
+# distribution plugin cdylibs flat in target/dist/ where the loader (which scans
+# <exe-dir>/plugins/) never finds them. `xtask` compiles the workspace, stages a
+# clean dist/<platform>/ exactly like the Docker build-all.sh (bevy_dylib +
+# renzora + the editor bundle beside the exe; plugins in plugins/), then launches
+# it. `cargo renzora dist` stages without launching. With rust-toolchain.toml
+# pinning rustc, this mirrors the container locally on the host platform; Docker
+# stays the path for cross-platform/release builds.
+renzora = "run --package xtask --"
 runtime = "run --profile dist --bin renzora -- --no-editor"
 # Dedicated server = the runtime binary launched with `--server`.
 server = "run --profile dist --bin renzora -- --server"

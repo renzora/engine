@@ -18,6 +18,10 @@ members = [
     "crates/renzora_*/editor",
     # Non-plugin engine support crate.
     "crates/dynamic_plugin_loader",
+    # Native build helper (`cargo renzora`). Listed explicitly — it lives at the
+    # repo root, not under `crates/`, so no glob covers it. Excluded from the
+    # workspace `--workspace` engine build (it pulls no bevy and isn't shipped).
+    "xtask",
     # Vendored Bevy ecosystem crates. Listed explicitly (not via a
     # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
     # is its own vendored workspace.

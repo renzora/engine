@@ -2,7 +2,7 @@
 
 Clone the Renzora engine workspace and build the editor, the game runtime, or every export target — all through the `renzora` CLI, which runs every build inside the pinned Docker toolchain.
 
-> **Why the container, always.** Renzora's dynamic-plugin system needs the host binary, the editor bundle, and every plugin to share **one** compiled copy of Bevy and the `renzora` SDK. A native `cargo` build on your own machine produces a different `bevy_dylib` and engine build hash, so plugins built elsewhere would be refused. Building in the pinned `ghcr.io/renzora/engine` image guarantees everyone's hash matches — so there is **no supported native build**. The GPU editor and game still *run* natively from `dist/`; only the *build* happens in the container.
+> **Why the container, always.** Renzora's dynamic-plugin system needs the host binary, the editor bundle, and every plugin to share **one** compiled copy of Bevy and the `renzora` SDK. A native `cargo` build on your own machine produces a different `bevy_dylib` and engine build hash, so plugins built elsewhere would be refused. Building in the pinned `ghcr.io/renzora/engine` image guarantees everyone's hash matches, which is why Docker is the canonical path. A native (no-Docker) build of your host platform is also supported via `cargo renzora` (see [Building natively](#building-natively-without-docker) below). The GPU editor and game run natively from `dist/` either way.
 
 ## What you're building
 
@@ -31,6 +31,18 @@ renzora run          # build the workspace in the container and run the editor
 ```
 
 The first build takes several minutes (Bevy is large); subsequent builds are incremental.
+
+## Building natively (without Docker)
+
+If you'd rather build and run on your own machine for your own platform — no Docker — use `cargo renzora`:
+
+```bash
+git clone https://github.com/renzora/engine.git
+cd engine
+cargo renzora           # build the workspace, stage dist/, and launch the editor
+```
+
+You need only **Git** and **rustup** (no Docker, no `cargo install`); `rust-toolchain.toml` makes rustup auto-install and select the pinned Rust version on first run. You'll also need your platform's usual native build dependencies (a C/C++ toolchain; on Linux the X11/Wayland/ALSA/udev dev headers). `cargo renzora dist` builds and stages into `dist/` without launching. A bare `cargo run` is **not** enough on its own — it compiles the distribution plugin cdylibs but leaves them where the loader can't find them; `cargo renzora` adds the staging step that lays out `dist/` exactly like the container. Native builds only ever produce artifacts for the machine they run on — for cross-platform builds use Docker (`renzora build`).
 
 ### The `renzora` CLI — the build interface
 

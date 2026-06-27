@@ -18,8 +18,10 @@
 # hash). So keep this file minimal and stable; put volatile shared tools in the
 # platform images, not here.
 #
-# This is the SINGLE source of truth for the engine's Rust version — there is no
-# rust-toolchain.toml. The base tag = first 12 hex of this file's SHA-256, and
+# This is the source of truth for the CONTAINER's Rust version. A second copy
+# lives in `/rust-toolchain.toml` at the repo root, which pins the same version
+# for NATIVE (no-Docker) `cargo renzora` builds — keep the two in lockstep; a
+# bump must edit both. The base tag = first 12 hex of this file's SHA-256, and
 # each platform tag folds in this base tag, so editing this file re-rolls every
 # image tag (CI rebuilds all; the CLI re-pulls).
 #

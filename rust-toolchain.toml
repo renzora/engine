@@ -1,0 +1,11 @@
+# Pins the Rust toolchain for NATIVE (no-Docker) builds so a contributor running
+# `cargo renzora` / `cargo check` on their own machine compiles with the exact
+# rustc the canonical Docker images use. This is what makes the native path a
+# faithful local mirror of the container — same compiler, same artifacts.
+#
+# SECOND SOURCE OF TRUTH — keep in lockstep with `docker/base/Dockerfile`
+# (`FROM rust:<version>-bookworm`). A version bump must touch BOTH files; they
+# describe the same pinned compiler from the two angles (native vs container).
+# rustup auto-installs/selects this channel on the first cargo invocation.
+[toolchain]
+channel = "1.95.0"

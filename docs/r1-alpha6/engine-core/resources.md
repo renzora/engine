@@ -48,7 +48,7 @@ fn maybe_config(cfg: Option<Res<GameState>>) {
 }
 ```
 
-> This is plain Bevy 0.18 — there is no Renzora-specific resource trait or macro. `#[derive(Resource)]` and the `Res`/`ResMut` system params come straight from `bevy::prelude`.
+> This is plain Bevy 0.19 — there is no Renzora-specific resource trait or macro. `#[derive(Resource)]` and the `Res`/`ResMut` system params come straight from `bevy::prelude`.
 
 ## The shared-contract pattern
 

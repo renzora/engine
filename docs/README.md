@@ -21,4 +21,4 @@ This folder holds **internal design docs only**: forward-looking plans, phased r
 | Doc | What it covers |
 |---|---|
 | [editor-runtime-plugin-architecture.md](editor-runtime-plugin-architecture.md) | The "one binary, editor-as-removable-cdylib" model (Operation Merge) and the plugin ABI. The merge is now fully shipped; the document's older sections are kept for history. |
-| [BEVY_0.19_MIGRATION.md](BEVY_0.19_MIGRATION.md) | Upgrade notes for the planned Bevy 0.19 bump. The engine currently runs on **Bevy 0.18**. |
+| [BEVY_0.19_MIGRATION.md](BEVY_0.19_MIGRATION.md) | Notes from the Bevy 0.18 → 0.19 upgrade. The engine now runs on **Bevy 0.19**. |

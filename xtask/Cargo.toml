@@ -1,0 +1,22 @@
+# Native build helper — the local mirror of the Docker `build-all.sh` staging.
+#
+# This crate exists so `cargo renzora` can do, on the developer's own machine,
+# exactly what the container does: compile the workspace, then arrange the
+# binary + shared libraries into a clean `dist/<platform>/` layout (bevy_dylib,
+# renzora.dll and the editor bundle beside the exe; every other plugin cdylib in
+# `plugins/`). `cargo run`/`cargo build` alone compile everything but leave the
+# plugin cdylibs flat next to the exe, where the dynamic loader (which scans
+# `<exe-dir>/plugins/`) never finds them — this tool closes that gap with no
+# Docker and no extra install (it rides on plain `cargo`).
+#
+# Deliberately ZERO dependencies: it must stay a tiny, instant-compiling helper,
+# and it must never pull `bevy` (which would perturb the workspace feature
+# unification that keeps every crate on one `bevy_dylib`). std only.
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lints]
+workspace = true

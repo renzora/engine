@@ -52,30 +52,43 @@ with `!` in the prompt so its output lands in the session.
 
 ---
 
-## 2. Building & testing — Docker is the ONLY supported path
+## 2. Building & testing — Docker preferred, native supported
 
-**Do ALL building and testing in Docker via the `renzora` CLI. Do not use the
-local/native toolchain for builds or tests.**
+**Prefer Docker via the `renzora` CLI for building and testing.** It's the
+canonical environment, the only path for cross-platform/release builds, and what
+CI runs — so it's the ground truth when verifying. A **native** (no-Docker) build
+of the host platform is also supported via `cargo renzora` (see below), for local
+convenience; reach for it when a contributor wants to build/run on their own
+machine without Docker, but fall back to Docker whenever results must match the
+canonical env or another platform is involved.
 
-The reason is a hard limit, not a preference: the shared `renzora` dylib plus
-the full plugin set exceeds the **65,535 exported-symbol cap** of the Windows PE
-format. Native MSVC `link.exe` refuses it; the container's `rust-lld` does not.
-So:
+A note on the old "native can't link" claim: the shared `renzora` dylib plus the
+full plugin set exceeds the **65,535 exported-symbol cap** of the Windows PE
+format, which MSVC `link.exe` refuses. That is *not* a blocker, because
+`.cargo/config.toml` already pins the linker to **`rust-lld`** for
+`x86_64-pc-windows-msvc` (host and container alike), and rust-lld has no such cap.
+So native links succeed; we simply never use `link.exe`. So:
 
-- ✅ `cargo check` natively / via the editor — **allowed** (it doesn't link). This
-  is the fast local gate while editing.
-- ✅ `renzora check`, `renzora test`, `renzora build`, `renzora run` — the real
-  builds, all inside the container.
-- ❌ Native `cargo build` / `cargo test` of the workspace — **will fail to link.**
-  Don't propose it, don't try to "fix" the link error by stripping the dylib.
+- ✅ `cargo check` natively / via the editor — the fast local gate while editing
+  (doesn't link).
+- ✅ `cargo renzora` — native build + stage + run on the **host platform** (an
+  `xtask` that mirrors the container's `build-all.sh` staging; `rust-toolchain.toml`
+  pins rustc so it matches the images). Convenient, but host-only.
+- ✅ `renzora check`, `renzora test`, `renzora build`, `renzora run` — the
+  canonical builds inside the container; **required** for cross-platform/release
+  and for reproducing CI. **Prefer these when verifying.**
+- ❌ Don't "fix" a perceived link error by stripping the `dylib` crate-type or
+  disabling `prefer-dynamic` — the shared `bevy_dylib`/`renzora` dylib is
+  load-bearing for the plugin ABI (§3).
 
-Pinned toolchain (single source of truth = `docker/base/Dockerfile`): **Rust
-1.95.0**, **Bevy 0.19**. The base image is the foundation every platform image
-builds `FROM`, so the Rust version lives there (a bump cascades to all
-platforms — see §3). CI (`.github/workflows/test.yml`) runs `cargo test` + `cargo
-clippy -D warnings` in the `base` image, excluding the vendored `bevy_*` /
-`vleue_navigator` crates. Keep clippy green; the vendored crates must stay
-excluded.
+Pinned toolchain — **Rust 1.95.0**, **Bevy 0.19**. The Rust version lives in TWO
+files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.95.0`, the
+container) and `rust-toolchain.toml` (native `cargo renzora` / `cargo check`); a
+bump must edit both. The base image is the foundation every platform image builds
+`FROM`, so a container bump cascades to all platforms — see §3. CI
+(`.github/workflows/test.yml`) runs `cargo test` + `cargo clippy -D warnings` in
+the `base` image, excluding the vendored `bevy_*` / `vleue_navigator` crates. Keep
+clippy green; the vendored crates must stay excluded.
 
 ---
 
@@ -104,10 +117,13 @@ Two layers, both real:
    imports that exact filename; a plugin that shares bevy must import the *same*
    filename. Build a plugin in a different environment and it imports a
    differently-named `bevy_dylib` that isn't beside the exe → the OS loader fails
-   it **before `plugin_bevy_hash()` is even called**. This is why **all real
-   building happens in Docker** (the one canonical flag/env set): only then do the
-   host and every plugin produce the same `bevy_dylib-<metadata>` and the same
-   `World` `TypeId`.
+   it **before `plugin_bevy_hash()` is even called**. This is why **prebuilt,
+   redistributed plugins must be built in the canonical Docker env** (the one
+   canonical flag/env set): only then do they import the same `bevy_dylib-<metadata>`
+   the canonical editor does. **Source-first builds sidestep this entirely** —
+   whether via Docker or native `cargo renzora`, the host and every in-workspace
+   plugin are compiled together in one env, so they share that build's
+   `bevy_dylib-<metadata>` and `World` `TypeId` by construction.
 2. **The `World` `TypeId` guard — the clean rejection.** When two `bevy_dylib`s
    *do* coexist (e.g. a plugin shipping its own), the filename gate can't catch
    it; the `TypeId` check does, and turns a cryptic loader failure into an

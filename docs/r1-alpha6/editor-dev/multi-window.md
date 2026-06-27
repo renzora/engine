@@ -70,7 +70,7 @@ the `Viewports` array already supports 4 slots. Two flavours:
 
 **Monitor placement** is the one genuinely new dependency: query the `Monitors`
 resource and place the window via `MonitorSelection` / monitor coordinates.
-Bevy 0.18's monitor enumeration is thin; 0.19 is the moment to wire it. Extend
+Bevy 0.19's monitor enumeration is thin; 0.19 is the moment to wire it. Extend
 `WindowConfig` (`crates/renzora/src/core/mod.rs`) with an optional target-monitor
 index and persist it in project config. Fullscreen today is hardcoded to
 `MonitorSelection::Current` in `apply_window_config()`

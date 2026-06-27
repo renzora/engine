@@ -55,7 +55,7 @@ The remaining `renzora.exe` now launches straight into your game. Everything els
 
 ## Why the build runs in Docker
 
-There is no supported native `cargo` build path. A native build produces a different `bevy_dylib`/engine build hash, which breaks the dynamic-plugin ABI (see the ABI hash below), so every build runs inside the pinned `ghcr.io/renzora/windows` image via the `renzora` CLI. The compiler version is pinned in `docker/base/Dockerfile` (currently **Rust 1.93.0**, shared by every platform image); you don't install it yourself — the host needs only Docker + Git (Rust just to install the CLI):
+The canonical Windows build runs inside the pinned `ghcr.io/renzora/windows` image via the `renzora` CLI — required for cross-platform/release, and what guarantees a matching `bevy_dylib`/engine build hash. A native (no-Docker) Windows build is also supported via `cargo renzora` (source-first, so the host and its plugins share one `bevy_dylib`). The compiler version is pinned in `docker/base/Dockerfile` (currently **Rust 1.95.0**, shared by every platform image) and mirrored in `rust-toolchain.toml` for native builds; for the container path you don't install it yourself — the host needs only Docker + Git (Rust just to install the CLI):
 
 ```bash
 renzora build       # binary + editor bundle + plugins into dist/windows-x64/
@@ -84,7 +84,7 @@ A few consequences worth knowing:
 
 ### Icon and version metadata
 
-`build.rs` embeds the executable icon and version resource automatically. On a Windows host it uses `winres` with `icon.ico` from the repo root; when cross-compiling from Linux it hand-writes a `.rc` file and compiles it with `llvm-rc`. The version string comes from `CARGO_PKG_VERSION`. The same build also emits `RENZORA_ENGINE_VERSION` and an FNV-1a `RENZORA_BUILD_HASH` (version + rustc + `bevy0.18`) used to reject ABI-incompatible dynamic plugins at load time.
+`build.rs` embeds the executable icon and version resource automatically. On a Windows host it uses `winres` with `icon.ico` from the repo root; when cross-compiling from Linux it hand-writes a `.rc` file and compiles it with `llvm-rc`. The version string comes from `CARGO_PKG_VERSION`. The same build also emits `RENZORA_ENGINE_VERSION` and an FNV-1a `RENZORA_BUILD_HASH` (version + rustc + `bevy0.19`) used to reject ABI-incompatible dynamic plugins at load time.
 
 ## Packaging assets
 

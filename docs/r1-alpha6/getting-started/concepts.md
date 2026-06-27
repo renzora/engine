@@ -2,7 +2,7 @@
 
 Renzora builds your whole game out of a few simple ideas. Once you know what an *entity*, a *component*, and a *scene* are, the rest of the editor clicks into place — no coding required to follow along.
 
-Under the hood Renzora runs on the **Bevy 0.18** engine, but you don't need to know Bevy to make a game. You'll mostly work visually, and these three words cover almost everything you see on screen.
+Under the hood Renzora runs on the **Bevy 0.19** engine, but you don't need to know Bevy to make a game. You'll mostly work visually, and these three words cover almost everything you see on screen.
 
 ## Entities: the "things" in your world
 

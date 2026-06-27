@@ -11,7 +11,7 @@ The two ways to get Renzora:
 - **Download a prebuilt build** — the easiest start. No tools to set up; just download, extract, and run.
 - **Install the `renzora` CLI** — the way to scaffold and build your own projects. Every build runs inside the engine's Docker toolchain.
 
-> Renzora **only** builds inside its pinned Docker toolchain. There is no supported native `cargo` build — the container is what guarantees your `bevy_dylib` and engine build hash match everyone else's, which is exactly what keeps community plugins ABI-compatible across machines. The editor and game still **run** natively on your GPU; only the *build* happens in the container.
+> Renzora's canonical build is its pinned Docker toolchain — the container guarantees your `bevy_dylib` and engine build hash match everyone else's, which keeps community plugins ABI-compatible across machines, and it's required for cross-platform builds. A native (no-Docker) build of your own platform is also supported via `cargo renzora`. The editor and game run natively on your GPU either way.
 
 ## System requirements
 
@@ -23,7 +23,7 @@ The two ways to get Renzora:
 | **GPU** | A GPU with Vulkan, Metal, or DX12 (Renzora renders through `wgpu`) |
 | **RAM** | 4 GB minimum, 8 GB recommended |
 
-> Renzora is a Bevy 0.18 engine and uses WebGPU/`wgpu` for rendering. Very old GPUs without a Vulkan/Metal/DX12 backend are not supported.
+> Renzora is a Bevy 0.19 engine and uses WebGPU/`wgpu` for rendering. Very old GPUs without a Vulkan/Metal/DX12 backend are not supported.
 
 ## Download a prebuilt build (easiest)
 

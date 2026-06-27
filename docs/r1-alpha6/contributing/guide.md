@@ -39,13 +39,13 @@ renzora run runtime      # run the shipped-game shape (same binary, --no-editor)
 renzora run -- --server  # run a headless dedicated server (--server)
 ```
 
-> Renzora builds **only** in the container — there is no supported native `cargo` build. The container guarantees your `bevy_dylib` and engine build hash match everyone else's, which is what keeps the plugin ABI compatible. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
+> Renzora's canonical build is the container — it guarantees your `bevy_dylib` and engine build hash match everyone else's, which is what keeps the plugin ABI compatible, and it's required for cross-platform/release builds. A native (no-Docker) build of your host platform is also supported via `cargo renzora` (source-first, so the host and its plugins share one `bevy_dylib`); prefer the container when results must match the canonical env. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
 
 ### Toolchain
 
 - The build runs in the pinned `ghcr.io/renzora/*` images (a shared `base` plus one per platform) — you only need **Docker** and **Git**. The Rust version, C/C++ toolchain, linkers (`clang`/`mold`/`rust-lld`), and the Bevy system libraries are all baked into the images; you install none of them locally. The CLI pulls only the images a command needs.
 - Rust/Cargo is needed only to install the CLI (`cargo install renzora`), not to build the engine.
-- The Rust version is pinned in **one place**: `docker/base/Dockerfile` (`FROM rust:1.93.0-bookworm`). There is **no `rust-toolchain.toml`** and the project does **not** require nightly.
+- The Rust version is pinned in two lockstep files: `docker/base/Dockerfile` (`FROM rust:1.95.0-bookworm`, the container) and `rust-toolchain.toml` (native `cargo renzora` builds). The project does **not** require nightly.
 - Linux uses `mold` and Windows uses `rust-lld` inside the image (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`) — that linker setup is fixed in the container, another reason the build is container-only.
 
 > Heads-up: hardware ray-traced GI ships via the optional **`renzora_solari`** plugin (Bevy Solari), enabled by the `bevy_solari` Bevy feature in the workspace `Cargo.toml` and activated at runtime only on RT-capable GPUs — see [Solari ray-traced GI](../rendering/solari.md). There is still no `--features solari` *build* flag; Solari is a drop-in plugin, not a build variant. Lumen's separate `LumenQuality::Hwrt` tier remains an unimplemented placeholder and renders nothing.
@@ -115,7 +115,7 @@ What's worth a test: new data structures (serialize/deserialize round-trips), ne
 
 ## Continuous integration
 
-CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the shared base image** `ghcr.io/renzora/base:latest`, so the runner needs nothing installed — `rustc 1.93` and the Linux dev libs are baked into the base (the per-platform cross toolchains aren't needed to test first-party crates).
+CI runs on every push and pull request to `main` (`.github/workflows/test.yml`). Both jobs run **inside the shared base image** `ghcr.io/renzora/base:latest`, so the runner needs nothing installed — `rustc 1.95` and the Linux dev libs are baked into the base (the per-platform cross toolchains aren't needed to test first-party crates).
 
 > CI invokes **`cargo test` and `cargo clippy`** inside the image. The `renzora test` / `renzora check` CLI commands wrap those same cargo invocations in the container, so they reproduce CI locally — run those, not a native `cargo`.
 

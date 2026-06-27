@@ -178,7 +178,7 @@ renzora --server --rpak server.rpak --port 7636 --tick-rate 64 --max-clients 32
 
 ## Versioning and the ABI guard
 
-There is no version manifest. Compatibility between a template and its plugins is enforced by an **ABI hash**: `build.rs` emits an FNV-1a `RENZORA_BUILD_HASH` (engine version + rustc + `bevy0.18`), and every dynamic plugin exports a `plugin_bevy_hash()` the loader compares against its own — a mismatch is rejected. So a template, its `bevy_dylib`/`renzora` shared libs, and the plugin cdylibs you ship beside it **must all come from the same engine build**. The export modal surfaces the latest GitHub release tag as "Latest" for reference, but it does not gate the export on a version string.
+There is no version manifest. Compatibility between a template and its plugins is enforced by an **ABI hash**: `build.rs` emits an FNV-1a `RENZORA_BUILD_HASH` (engine version + rustc + `bevy0.19`), and every dynamic plugin exports a `plugin_bevy_hash()` the loader compares against its own — a mismatch is rejected. So a template, its `bevy_dylib`/`renzora` shared libs, and the plugin cdylibs you ship beside it **must all come from the same engine build**. The export modal surfaces the latest GitHub release tag as "Latest" for reference, but it does not gate the export on a version string.
 
 ## See also
 

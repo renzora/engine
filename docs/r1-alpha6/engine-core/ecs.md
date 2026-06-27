@@ -1,6 +1,6 @@
 # ECS & Bevy
 
-Renzora is built on Bevy 0.18's Entity Component System, where game state is plain data and logic is just functions over that data.
+Renzora is built on Bevy 0.19's Entity Component System, where game state is plain data and logic is just functions over that data.
 
 ## Why ECS?
 
@@ -13,7 +13,7 @@ Bevy is a data-driven engine. Instead of deep inheritance hierarchies, Renzora c
 
 This layout keeps related data contiguous in memory (cache-friendly), makes composition trivial, and lets Bevy run non-conflicting systems in parallel automatically.
 
-> Everything on this page is stock Bevy 0.18 — the same API used inside the engine crates and inside dynamic plugins. The Renzora-specific layering is covered in the last section.
+> Everything on this page is stock Bevy 0.19 — the same API used inside the engine crates and inside dynamic plugins. The Renzora-specific layering is covered in the last section.
 
 ## Entities
 
@@ -37,7 +37,7 @@ fn spawn_player(mut commands: Commands) {
 }
 ```
 
-Despawn with `.despawn()`. In Bevy 0.18 a despawn is **recursive by default** — it removes the entity and all of its related children, so there is no separate `despawn_recursive()`:
+Despawn with `.despawn()`. In Bevy 0.19 a despawn is **recursive by default** — it removes the entity and all of its related children, so there is no separate `despawn_recursive()`:
 
 ```rust
 fn cleanup(mut commands: Commands, query: Query<Entity, With<Dead>>) {
@@ -146,7 +146,7 @@ app.insert_resource(GameScore { points: 0 }); // explicit value
 
 ## Messages and events
 
-Bevy 0.18 splits "one-shot communication" into **two distinct mechanisms**. Use the right one for the job.
+Bevy 0.19 splits "one-shot communication" into **two distinct mechanisms**. Use the right one for the job.
 
 ### Buffered messages
 

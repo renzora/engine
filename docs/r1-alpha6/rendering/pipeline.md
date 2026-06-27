@@ -4,11 +4,11 @@ How Renzora turns a scene into a frame: Bevy's PBR/HDR core, three families of c
 
 ## How a frame renders
 
-Renzora does **not** ship a custom deferred/G-buffer renderer. It renders with **Bevy 0.18's built-in PBR pipeline** — physically based (Cook-Torrance) materials, clustered lighting, and a **16-bit-float HDR** render target followed by a tonemapping pass. On top of that core, Renzora inserts its own render-graph nodes and a large family of effect plugins.
+Renzora does **not** ship a custom deferred/G-buffer renderer. It renders with **Bevy 0.19's built-in PBR pipeline** — physically based (Cook-Torrance) materials, clustered lighting, and a **16-bit-float HDR** render target followed by a tonemapping pass. On top of that core, Renzora inserts its own render-graph nodes and a large family of effect plugins.
 
 Each viewport camera is a `Camera3d`. Cameras are spawned with **`DepthPrepass` + `NormalPrepass`** attached, because the screen-space GI pass needs depth and normals.
 
-> Bevy 0.18 specializes the prepass pipeline at first render and cannot grow a camera's prepass attachment list afterwards (doing so trips a wgpu validation crash). The depth + normal prepasses are therefore attached permanently at camera spawn (`renzora_engine::camera`, `renzora_viewport::play_mode`), not toggled per effect.
+> Bevy 0.19 specializes the prepass pipeline at first render and cannot grow a camera's prepass attachment list afterwards (doing so trips a wgpu validation crash). The depth + normal prepasses are therefore attached permanently at camera spawn (`renzora_engine::camera`, `renzora_viewport::play_mode`), not toggled per effect.
 
 ### What the engine adds to the `Core3d` graph
 

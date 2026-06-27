@@ -42,7 +42,7 @@ dist/macos-arm64/
 ├── renzora                       # the engine binary
 ├── librenzora.dylib              # SDK / contracts (shared by host + plugins)
 ├── librenzora_editor.dylib       # editor bundle (delete to ship the game)
-├── libbevy_dylib-<hash>.dylib    # shared Bevy 0.18 dylib
+├── libbevy_dylib-<hash>.dylib    # shared Bevy 0.19 dylib
 ├── libstd-<hash>.dylib           # matching Rust std
 └── plugins/
     └── lib<plugin>.dylib         # distribution-plugin cdylibs

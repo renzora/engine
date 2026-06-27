@@ -1,6 +1,6 @@
 # Writing Systems
 
-Systems hold all the logic in a Renzora game; they are plain Bevy 0.18 functions that a plugin registers on a schedule.
+Systems hold all the logic in a Renzora game; they are plain Bevy 0.19 functions that a plugin registers on a schedule.
 
 ## Systems live in plugins
 
@@ -104,7 +104,7 @@ Register it on a schedule from inside a plugin's `build`:
 app.add_systems(Update, my_system);
 ```
 
-> Bevy 0.18 renamed buffered "events" to **messages**: `EventWriter`/`EventReader`/`send`/`add_event` are now `MessageWriter`/`MessageReader`/`write`/`add_message`. Observer-style `Event` + `On<...>` is a separate mechanism. Both are covered on the ECS page.
+> Bevy 0.19 renamed buffered "events" to **messages**: `EventWriter`/`EventReader`/`send`/`add_event` are now `MessageWriter`/`MessageReader`/`write`/`add_message`. Observer-style `Event` + `On<...>` is a separate mechanism. Both are covered on the ECS page.
 
 ## Schedules
 
@@ -247,7 +247,7 @@ fn regenerate_health(
 }
 ```
 
-Despawn entities after a timer. In Bevy 0.18 `despawn()` is **recursive by default** — it removes the entity and its children, so there is no separate `despawn_recursive()`:
+Despawn entities after a timer. In Bevy 0.19 `despawn()` is **recursive by default** — it removes the entity and its children, so there is no separate `despawn_recursive()`:
 
 ```rust
 #[derive(Component)]
