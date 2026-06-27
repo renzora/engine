@@ -13,6 +13,7 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::light::{
     AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
 };
+#[cfg(feature = "render_3d")]
 use bevy::pbr::{AtmosphereSettings, DistanceFog, FogFalloff};
 use bevy::prelude::*;
 use bevy::render::render_resource::{
@@ -81,17 +82,6 @@ pub fn spawn_editor_camera(
             RenderLayers::from_layers(&[0, 1]),
             Name::new(format!("Editor Camera {i}")),
             Hdr,
-            // Resident, no-op distance fog. `DistanceFog` is mesh-view binding 13;
-            // keeping it on the camera from spawn means binding 13 is always in
-            // PBR's layout. The `WorldEnvironment` fog reconcile only *updates*
-            // this component, never adds/removes it — toggling its presence would
-            // restructure the shared layout and crash wgpu. Density 0 = no fog.
-            DistanceFog {
-                color: Color::NONE,
-                directional_light_color: Color::NONE,
-                directional_light_exponent: 8.0,
-                falloff: FogFalloff::Exponential { density: 0.0 },
-            },
             // Atmosphere/sky binds depth as non-multisampled (binding 13);
             // any MSAA on the same camera trips a wgpu validation crash.
             Msaa::Off,
@@ -123,6 +113,18 @@ pub fn spawn_editor_camera(
             // closes the separate first-frame specialization race.)
         ));
 
+        // Resident, no-op distance fog (3D only — bevy_pbr mesh-view binding 13).
+        // Kept on the camera from spawn so binding 13 is always in PBR's layout;
+        // the `WorldEnvironment` fog reconcile only *updates* it, never adds/removes
+        // (toggling presence restructures the shared layout and crashes wgpu).
+        #[cfg(feature = "render_3d")]
+        entity.insert(DistanceFog {
+            color: Color::NONE,
+            directional_light_color: Color::NONE,
+            directional_light_exponent: 8.0,
+            falloff: FogFalloff::Exponential { density: 0.0 },
+        });
+
         // Only the PRIMARY camera carries the procedural sky + IBL. In Bevy
         // 0.18 the `Atmosphere` component makes a camera's mesh-view layout
         // expect the environment-map (IBL) bindings, and the per-camera IBL
@@ -147,12 +149,14 @@ pub fn spawn_editor_camera(
             entity.insert((
                 PrimaryViewportCamera,
                 EditorCamera,
-                AtmosphereSettings::default(),
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
                     ..default()
                 },
             ));
+            // Per-view atmosphere render mode — bevy_pbr, 3D only.
+            #[cfg(feature = "render_3d")]
+            entity.insert(AtmosphereSettings::default());
         } else {
             entity.insert(EnvironmentMapLight {
                 diffuse_map: placeholder_cube.clone(),
