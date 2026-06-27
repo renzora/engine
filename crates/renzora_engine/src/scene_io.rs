@@ -1551,6 +1551,7 @@ pub fn load_current_scene(world: &mut World) {
 /// their custom shader). Symptom appeared as the runtime plane rendering
 /// gray while the editor rendered correctly — the build's plugin set
 /// changes the system schedule, which decides the race.
+#[cfg(feature = "render_3d")]
 pub fn rehydrate_meshes(
     mut commands: Commands,
     query: Query<
@@ -2176,6 +2177,7 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
 ///
 /// Triggers on `Added<MeshInstanceData>` (scene load). Skips entities that already
 /// have children (e.g. model_drop already spawned the SceneRoot child).
+#[cfg(feature = "render_3d")]
 pub fn rehydrate_mesh_instances(
     mut commands: Commands,
     query: Query<
@@ -2205,6 +2207,7 @@ pub fn rehydrate_mesh_instances(
 
 /// Marker: waiting for GLTF to finish loading so we can attach the scene child.
 #[derive(Component)]
+#[cfg(feature = "render_3d")]
 pub struct PendingMeshInstanceRehydrate(pub Handle<Gltf>);
 
 /// Marker: the mesh instance's GLB asset failed to load — typically because the
@@ -2216,6 +2219,7 @@ pub struct PendingMeshInstanceRehydrate(pub Handle<Gltf>);
 pub struct MeshInstanceLoadFailed;
 
 /// Finishes mesh-instance rehydration once the GLTF asset is ready.
+#[cfg(feature = "render_3d")]
 pub fn finish_mesh_instance_rehydrate(
     mut commands: Commands,
     query: Query<(Entity, &PendingMeshInstanceRehydrate)>,

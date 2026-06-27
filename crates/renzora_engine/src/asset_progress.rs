@@ -94,6 +94,8 @@ impl AssetLoadProgress {
 /// up each entity's `model_path` in the rpak index.
 pub fn tick_asset_load_progress(
     instances: Query<&MeshInstanceData>,
+    // glTF model loading is `render_3d`-only — a 2D game has no models pending.
+    #[cfg(feature = "render_3d")]
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     vfs: Option<Res<Vfs>>,
     time: Res<Time>,
@@ -119,6 +121,7 @@ pub fn tick_asset_load_progress(
     let mut pending_files: u32 = 0;
     let mut pending_bytes: u64 = 0;
     let mut current: Option<String> = None;
+    #[cfg(feature = "render_3d")]
     for data in pending.iter() {
         if let Some(path) = data.model_path.as_deref() {
             pending_files += 1;

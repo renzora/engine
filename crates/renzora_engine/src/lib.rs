@@ -431,22 +431,10 @@ impl Plugin for RuntimePlugin {
             .add_systems(
                 Update,
                 (
-                    scene_io::rehydrate_meshes,
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_lights,
                     scene_io::rehydrate_visibility,
                 ),
-            )
-            // Loading glTF models is purely visual — a dedicated server has no
-            // render world and its `server.rpak` strips meshes, so skip it
-            // there (otherwise it logs "Path not found" for every model).
-            .add_systems(
-                Update,
-                (
-                    scene_io::rehydrate_mesh_instances,
-                    scene_io::finish_mesh_instance_rehydrate,
-                )
-                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
             )
             .add_systems(
                 Update,
@@ -456,6 +444,21 @@ impl Plugin for RuntimePlugin {
                     scene_io::enforce_single_active_camera,
                 ),
             );
+
+            // 3D mesh + glTF model rehydration — only with the `render_3d` pipeline
+            // (a 2D game has no 3D primitives or glTF models). Loading glTF is
+            // purely visual, so it also skips on a dedicated server (no render
+            // world; its `server.rpak` strips meshes, avoiding "Path not found").
+            #[cfg(feature = "render_3d")]
+            app.add_systems(Update, scene_io::rehydrate_meshes)
+                .add_systems(
+                    Update,
+                    (
+                        scene_io::rehydrate_mesh_instances,
+                        scene_io::finish_mesh_instance_rehydrate,
+                    )
+                        .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                );
         }
 
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
