@@ -40,9 +40,7 @@ sudo apt install pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
   libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev
 ```
 
-(Windows and macOS need only their standard C/C++ toolchain — MSVC Build Tools / Xcode Command Line Tools.)
-
-### Commands
+### Renzora CLI Commands
 
 | Command | What it does |
 |---|---|
