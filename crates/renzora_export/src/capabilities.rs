@@ -176,6 +176,36 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: true,
     },
     Capability {
+        id: "render_3d",
+        label: "3D rendering (PBR pipeline)",
+        help: "The whole 3D pipeline: bevy_pbr (StandardMaterial, shadows, deferred/forward \
+               renderer), glTF model loading, and the renzora_shader graph-material system \
+               (~10 MiB). OFF = a 2D-only game (sprites + UI). Lights/atmosphere still work \
+               (bevy_light is kept). Requires the 3D subsystems (Terrain/Water/Sky/Post-FX) \
+               to also be off — they build on bevy_pbr.",
+        // Dropping the `3d` meta also requires dropping every pbr_* sub-feature: each
+        // would otherwise re-enable bevy_pbr on its own. (bevy_solari/meshlet need pbr
+        // too — they're separate caps but also stripped here.)
+        bevy_features: &[
+            "3d",
+            "pbr_transmission_textures",
+            "pbr_clustered_decals",
+            "pbr_light_textures",
+            "pbr_multi_layer_material_textures",
+            "pbr_anisotropy_texture",
+            "pbr_specular_textures",
+            "experimental_pbr_pcss",
+            "bluenoise_texture",
+            "dfg_lut",
+            "area_light_luts",
+            "bevy_solari",
+            "meshlet",
+            "meshlet_processor",
+        ],
+        runtime_features: &["render_3d"],
+        default_on: true,
+    },
+    Capability {
         id: "audio",
         label: "Audio",
         help: "The audio subsystem. Drop for a silent game.",

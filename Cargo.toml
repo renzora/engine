@@ -110,6 +110,12 @@ bevy = { version = "0.19", default-features = false, features = [
     # `default-features = false` base needed to drop other default subsystems
     # (e.g. gizmos, and eventually 2d/3d) per export.
     "2d", "3d", "ui",
+    # `bevy_light` listed explicitly (redundant while `3d` is on — `3d` already
+    # provides it) so it SURVIVES when the lean 2D export drops the `3d` meta:
+    # bevy_light does not depend on bevy_pbr, so lights/atmosphere keep working in
+    # a 2D build. See `renzora_export::capabilities` render_3d (which strips `3d`
+    # + the pbr_* sub-features).
+    "bevy_light",
     "serialize",
     # extra engine subsystems
     "bevy_remote", "bevy_feathers", "bevy_settings", "sysinfo_plugin",

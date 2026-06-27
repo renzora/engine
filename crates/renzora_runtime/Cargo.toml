@@ -20,8 +20,13 @@ toml = "0.8"
 default = [
     "navmesh", "terrain", "spline", "water", "audio", "particles",
     "animation", "blueprint", "game_ui", "postfx", "sky", "solari",
-    "rhai", "script_http", "physics",
+    "rhai", "script_http", "physics", "render_3d",
 ]
+# The 3D rendering pipeline (bevy_pbr + renzora_shader). Off = a 2D-only export
+# (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
+# Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped
+# separately by the exporter's render_3d capability.
+render_3d = ["dep:renzora_shader", "renzora_engine/render_3d"]
 # avian physics (~6.5 MiB: avian3d + parry3d + bevy_transform_interpolation +
 # bevy_heavy + glam_matrix_extras). Forwards to every crate that touches avian:
 # the engine scene-save denies, water buoyancy, and the navmesh collider-obstacle
@@ -116,7 +121,9 @@ renzora_hanabi = { path = "../renzora_hanabi", optional = true }
 # also cfg-gating `src/main.rs` (a later step).
 renzora_network = { path = "../renzora_network" }
 renzora_audio = { path = "../renzora_audio", optional = true }
-renzora_shader = { path = "../renzora_shader" }
+# Optional under `render_3d`: the runtime only keepalive-links it so the shader
+# plugin's inventory entry registers. A 2D export drops it with bevy_pbr.
+renzora_shader = { path = "../renzora_shader", optional = true }
 renzora_navmesh = { path = "../renzora_navmesh", optional = true }
 
 # Postprocess framework + vital effects
