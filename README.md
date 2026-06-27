@@ -31,7 +31,16 @@ cd engine
 cargo renzora             # build, stage dist/, and launch the editor
 ```
 
-You need only Git and <a href="https://rustup.rs" target="_blank" rel="noopener noreferrer">rustup</a> — `rust-toolchain.toml` pins the Rust version automatically, so you compile with the same compiler the container uses. You'll also need your platform's usual native build dependencies (a C/C++ toolchain; on Linux the X11/Wayland/ALSA/udev dev headers). `cargo renzora dist` builds and stages without launching. This builds for your machine only — cross-platform builds still go through `renzora build` (Docker).
+The build lands in `dist/<platform>/`. Use `cargo renzora dist` to build without launching. Builds are host-only; for other platforms use `renzora build` (Docker).
+
+On **Linux** you also need the usual graphics/audio dev headers:
+
+```bash
+sudo apt install pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+  libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev
+```
+
+(Windows and macOS need only their standard C/C++ toolchain — MSVC Build Tools / Xcode Command Line Tools.)
 
 ### Commands
 
