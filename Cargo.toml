@@ -102,7 +102,14 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 # SOURCE: Bevy 0.19 is published on crates.io. The `bevy` umbrella pulls its
 # sub-crates as matching 0.19.x registry deps, so the tree stays internally
 # consistent — one Bevy across the dlopen boundary.
-bevy = { version = "0.19", features = [
+bevy = { version = "0.19", default-features = false, features = [
+    # Bevy's default is the four meta-features `2d, 3d, ui, audio`. We take
+    # `default-features = false` and re-add all but `audio` — Renzora's audio is
+    # kira-based (`renzora_audio`), so `bevy_audio` (and its rodio/cpal/symphonia
+    # stack) is never used anywhere in the engine. This also establishes the
+    # `default-features = false` base needed to drop other default subsystems
+    # (e.g. gizmos, and eventually 2d/3d) per export.
+    "2d", "3d", "ui",
     "serialize",
     # extra engine subsystems
     "bevy_remote", "bevy_feathers", "bevy_settings", "sysinfo_plugin",
@@ -114,8 +121,7 @@ bevy = { version = "0.19", features = [
     # all image formats
     "bmp", "dds", "exr", "ff", "gif", "ico", "jpeg", "pnm", "qoi", "tga",
     "tiff", "webp", "zlib", "basis-universal", "compressed_image_saver",
-    # all audio formats
-    "audio-all-formats",
+    # (audio formats intentionally dropped — Renzora uses kira, not bevy_audio)
     # PBR / rendering detail
     "pbr_transmission_textures", "pbr_clustered_decals", "pbr_light_textures",
     "pbr_multi_layer_material_textures", "pbr_anisotropy_texture",
@@ -169,7 +175,15 @@ name = "renzora"
 path = "src/main.rs"
 
 [features]
-default = ["runtime"]
+# `dynamic_linking` is in the DEFAULT set so every ordinary build — the editor,
+# `cargo renzora`, `cargo check`, the `--workspace` dist builds, the dedicated
+# server — links the shared `bevy_dylib`/`renzora` dylib and keeps the one frozen
+# plugin ABI (`plugin_bevy_hash`). It is a *feature* rather than an inline dep
+# flag so the lean release exporter can drop it with `--no-default-features
+# --features runtime`, producing a fully static single binary (static Bevy +
+# static std, no dylibs) — see `crates/renzora_export` and `[profile.dist-lean]`.
+# Dropping it does NOT move the dev/editor ABI: the default build is unchanged.
+default = ["runtime", "dynamic_linking"]
 # One binary, always runtime-shaped. The editor is no longer a compile-time
 # feature: it ships as the `renzora_editor` cdylib loaded at startup
 # from beside the exe (Operation Merge). Present → the binary is the editor;
@@ -177,6 +191,18 @@ default = ["runtime"]
 # the dedicated server (launch with `--server` to boot headless) and the
 # host/listen server (`--host`). No separate editor/server feature or binary.
 runtime = ["dep:renzora_runtime", "renzora_runtime/lua"]
+# Statically link selected distribution plugins into the binary (lean export
+# only). OFF in every normal build — the editor/dev/server builds keep loading
+# plugins as dlopen cdylibs. The lean exporter regenerates the
+# `renzora_static_plugins` aggregator (whose deps are the plugins a game uses)
+# and builds with this feature so they compile in. See `renzora_export::build`.
+static_plugins = ["dep:renzora_static_plugins"]
+# Shared-`bevy_dylib` dynamic linking. ON by default (above); the lean exporter
+# turns it OFF for a static release binary. Mobile/wasm lanes never enable it
+# (they build via `--no-default-features --features <wasm|…>` or their own
+# crates), so `bevy_dylib` — a dylib-only crate that can't link into an iOS
+# staticlib / Android cdylib / wasm — correctly stays out of those builds.
+dynamic_linking = ["bevy/dynamic_linking"]
 wasm = [
     "runtime",
     "bevy/webgpu",
@@ -201,16 +227,20 @@ wasm = [
 ]
 
 [dependencies]
-# Desktop binary opts into `dynamic_linking` here. Feature unification
-# under `--workspace` propagates this to every plugin crate's bevy dep
-# so they share one `bevy_dylib` instance and matching TypeIds. Mobile
-# builds (`-p renzora-ios` / `-p renzora-android`) don't see this dep
-# and compile bevy without dynamic_linking — bevy_dylib stays out of
-# their staticlib/cdylib link.
-bevy = { workspace = true, features = ["dynamic_linking"] }
+# `dynamic_linking` is pulled by the `dynamic_linking` feature (in `default`),
+# NOT pinned here — so it can be dropped for a static lean build via
+# `--no-default-features`. Feature unification under `--workspace` still
+# propagates the default-on feature to every plugin crate's bevy dep, so they
+# share one `bevy_dylib` instance and matching TypeIds. Mobile builds
+# (`-p renzora-ios` / `-p renzora-android`) don't see this dep and compile bevy
+# without dynamic_linking — bevy_dylib stays out of their staticlib/cdylib link.
+bevy = { workspace = true }
 
 # Single shared library — `editor` feature on this crate adds editor extras.
 renzora_runtime = { path = "crates/renzora_runtime", optional = true }
+# Lean-export static-plugin aggregator. Optional + behind `static_plugins`, so
+# normal builds never link it; committed empty, regenerated per lean export.
+renzora_static_plugins = { path = "crates/renzora_static_plugins", optional = true }
 uuid = "1"
 
 # Misc
@@ -230,6 +260,33 @@ winres = "0.1"
 [profile.dist]
 inherits = "release"
 opt-level = 2
+strip = "symbols"
+
+# Lean release profile for the single-binary game export. Kept SEPARATE from
+# `dist` on purpose: `dist`'s lto/codegen-units feed the frozen plugin ABI hash,
+# so they must not change. `dist-lean` is only ever invoked by the lean exporter
+# (`--no-default-features --features runtime`, i.e. static Bevy + static std),
+# where there is no dylib boundary or ABI to preserve — so we maximise size
+# reduction: thin LTO to dead-strip unreachable engine code, size-opt, and full
+# symbol strip.
+#
+# `thin` not `fat` LTO: fat LTO merges the whole program into one giant link unit,
+# which on a graph this size made `rust-lld` fail to link the `renzora` dylib;
+# thin LTO keeps per-module units (robust + much faster) while still giving most
+# of the size win.
+#
+# NOT `panic = "abort"`: the `renzora` crate is `dylib`+`rlib`, and the dylib
+# artifact links the precompiled std's `panic_unwind` runtime, which can't be
+# mixed with an `abort` strategy on stable Rust (it would need `-Z build-std` to
+# rebuild std). So we keep the default `unwind`; the lost unwind-table savings
+# are small next to LTO + strip.
+#
+# `codegen-units` is left at `dist`'s default (16) — forcing 1 only helped fat
+# LTO and slows the build a lot for little size gain under thin LTO.
+[profile.dist-lean]
+inherits = "dist"
+lto = "thin"
+opt-level = "s"
 strip = "symbols"
 
 

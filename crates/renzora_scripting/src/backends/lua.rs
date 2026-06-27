@@ -14,6 +14,7 @@ use crate::context::ScriptContext;
 /// If `path` is a `.blueprint`/`.bp` file, compile its JSON graph to Lua source;
 /// otherwise return the source unchanged. A parse failure becomes a top-level
 /// `error(...)` so it surfaces in the console instead of failing silently.
+#[cfg(feature = "blueprint")]
 fn compile_blueprint_source(path: &Path, source: String) -> String {
     let is_bp = path
         .extension()
@@ -30,6 +31,23 @@ fn compile_blueprint_source(path: &Path, source: String) -> String {
             log::warn!("[Scripting] Blueprint '{}' failed to parse: {}", path.display(), msg);
             format!("error('blueprint parse failed: {msg}')")
         }
+    }
+}
+
+/// Blueprint support stripped from this build (lean export, `blueprint` feature
+/// off): a `.blueprint`/`.bp` file can't be compiled, so surface a clear console
+/// error rather than feeding JSON to the Lua parser. Plain `.lua` passes through.
+#[cfg(not(feature = "blueprint"))]
+fn compile_blueprint_source(path: &Path, source: String) -> String {
+    let is_bp = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e == "blueprint" || e == "bp")
+        .unwrap_or(false);
+    if is_bp {
+        "error('blueprint support is not included in this build')".to_string()
+    } else {
+        source
     }
 }
 

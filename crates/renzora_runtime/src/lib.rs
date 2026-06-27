@@ -108,6 +108,7 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         // no-op and the engine boots exactly as before — requesting an
         // unsupported feature here would otherwise fail device creation, since
         // Bevy ORs `features` into `required_features` without intersecting.
+        #[cfg(feature = "solari")]
         if raytracing_supported() {
             features |= bevy::solari::SolariPlugins::required_wgpu_features();
         }
@@ -131,7 +132,7 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
 /// same backend the renderer will use and check it reports
 /// `SolariPlugins::required_wgpu_features()`. Any failure ⇒ `false` (Solari
 /// stays inert; the engine boots normally on non-RT GPUs).
-#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32"), feature = "solari"))]
 pub fn raytracing_supported() -> bool {
     use std::sync::OnceLock;
     static SUPPORTED: OnceLock<bool> = OnceLock::new();
@@ -192,8 +193,9 @@ pub fn raytracing_supported() -> bool {
     })
 }
 
-/// Non-desktop targets (Android / wasm) have no ray-tracing path here.
-#[cfg(any(target_os = "android", target_arch = "wasm32"))]
+/// Non-desktop targets (Android / wasm), or a build with Solari stripped, have no
+/// ray-tracing path here.
+#[cfg(any(target_os = "android", target_arch = "wasm32", not(feature = "solari")))]
 pub fn raytracing_supported() -> bool {
     false
 }
@@ -674,8 +676,11 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     app.add_plugins(renzora_input::InputPlugin);
     info!("[runtime] foundation: ScriptingPlugin");
     app.add_plugins(renzora_scripting::ScriptingPlugin::default());
-    info!("[runtime] foundation: PhysicsPlugin");
-    app.add_plugins(renzora_physics::PhysicsPlugin);
+    #[cfg(feature = "physics")]
+    {
+        info!("[runtime] foundation: PhysicsPlugin");
+        app.add_plugins(renzora_physics::PhysicsPlugin);
+    }
 
     // Font scripting: `action("set_ui_font"/"set_font", {name=...})`.
     app.add_observer(handle_font_script_actions);

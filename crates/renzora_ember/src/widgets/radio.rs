@@ -102,6 +102,7 @@ pub(crate) fn radio_interact(
     pressed: Query<(&Interaction, &EmberRadio), Changed<Interaction>>,
     radios: Query<&EmberRadio>,
     mut nodes: Query<&mut Node>,
+    mut groups: Query<&mut crate::reactive::Bound<usize>>,
 ) {
     let mut chosen: Option<(Entity, usize)> = None;
     for (interaction, r) in &pressed {
@@ -113,6 +114,15 @@ pub(crate) fn radio_interact(
     let Some((group, value)) = chosen else {
         return;
     };
+    // Write the choice into the group's bound model so `bind_2way` (and any
+    // reactive binding) actually sees the selection. Without this the dot moves
+    // but no state is ever updated — every radio group looked interactive while
+    // silently keeping its default value.
+    if let Ok(mut bound) = groups.get_mut(group) {
+        if bound.0 != value {
+            bound.0 = value;
+        }
+    }
     for r in &radios {
         if r.group != group {
             continue;

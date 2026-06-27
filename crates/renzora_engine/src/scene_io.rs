@@ -22,6 +22,63 @@ use renzora_lighting::Sun;
 use std::collections::BTreeSet;
 use std::path::Path;
 
+/// Conditionally-compiled `deny_component` calls for the optional `animation`
+/// and `terrain` subsystems. When the lean exporter strips those crates, their
+/// component types don't exist, so the deny is a no-op — but the call sites in
+/// the three save chains stay identical, keeping them readable instead of
+/// breaking each chain apart with an inline `#[cfg]`.
+trait DenyOptionalSubsystems: Sized {
+    fn deny_animation_state(self) -> Self;
+    fn deny_terrain_material(self) -> Self;
+    fn deny_physics_components(self) -> Self;
+}
+
+impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
+    #[cfg(feature = "animation")]
+    fn deny_animation_state(self) -> Self {
+        // AnimatorReadState is a runtime mirror — rebuilt each frame.
+        self.deny_component::<renzora_animation::AnimatorReadState>()
+    }
+    #[cfg(not(feature = "animation"))]
+    fn deny_animation_state(self) -> Self {
+        self
+    }
+
+    #[cfg(feature = "terrain")]
+    fn deny_terrain_material(self) -> Self {
+        self.deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+    }
+    #[cfg(not(feature = "terrain"))]
+    fn deny_terrain_material(self) -> Self {
+        self
+    }
+
+    // Avian runtime components are regenerated on load from our serializable
+    // PhysicsBodyData + CollisionShapeData; persisting them causes
+    // duplicate-reflect-type errors during deserialization. Stripped with the
+    // `physics` subsystem (no avian → these types don't exist).
+    #[cfg(feature = "physics")]
+    fn deny_physics_components(self) -> Self {
+        self.deny_component::<avian3d::prelude::Collider>()
+            .deny_component::<avian3d::collision::collider::ColliderAabb>()
+            .deny_component::<avian3d::prelude::RigidBody>()
+            .deny_component::<avian3d::prelude::LinearVelocity>()
+            .deny_component::<avian3d::prelude::AngularVelocity>()
+            .deny_component::<avian3d::prelude::Mass>()
+            .deny_component::<avian3d::prelude::Friction>()
+            .deny_component::<avian3d::prelude::Restitution>()
+            .deny_component::<avian3d::prelude::GravityScale>()
+            .deny_component::<avian3d::prelude::LinearDamping>()
+            .deny_component::<avian3d::prelude::AngularDamping>()
+            .deny_component::<avian3d::prelude::LockedAxes>()
+            .deny_component::<avian3d::prelude::Sensor>()
+    }
+    #[cfg(not(feature = "physics"))]
+    fn deny_physics_components(self) -> Self {
+        self
+    }
+}
+
 // ============================================================================
 // Scene load state + events
 // ============================================================================
@@ -225,7 +282,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<MeshMaterial3d<StandardMaterial>>()
         .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
         .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
-        .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+        .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
         // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
@@ -248,8 +305,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         // `AnimatedBy` stores an Entity reference that doesn't remap across
         // scene loads — must be reconstructed by the animator rehydration.
         .deny_component::<bevy::animation::AnimatedBy>()
-        // AnimatorReadState is a runtime mirror — rebuilt each frame.
-        .deny_component::<renzora_animation::AnimatorReadState>()
+        .deny_animation_state()
         // Networking: Lightyear internals should not persist to scene files.
         // Networked/NetworkOwner/NetworkId are runtime-only markers.
         .deny_component::<renzora_network::Networked>()
@@ -258,19 +314,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         // Avian runtime components are regenerated on load from our
         // serializable PhysicsBodyData + CollisionShapeData. Persisting them
         // causes duplicate-reflect-type errors during deserialization.
-        .deny_component::<avian3d::prelude::Collider>()
-        .deny_component::<avian3d::collision::collider::ColliderAabb>()
-        .deny_component::<avian3d::prelude::RigidBody>()
-        .deny_component::<avian3d::prelude::LinearVelocity>()
-        .deny_component::<avian3d::prelude::AngularVelocity>()
-        .deny_component::<avian3d::prelude::Mass>()
-        .deny_component::<avian3d::prelude::Friction>()
-        .deny_component::<avian3d::prelude::Restitution>()
-        .deny_component::<avian3d::prelude::GravityScale>()
-        .deny_component::<avian3d::prelude::LinearDamping>()
-        .deny_component::<avian3d::prelude::AngularDamping>()
-        .deny_component::<avian3d::prelude::LockedAxes>()
-        .deny_component::<avian3d::prelude::Sensor>()
+        .deny_physics_components()
         .extract_entities(entities.into_iter())
         .build();
 
@@ -392,7 +436,7 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_component::<MeshMaterial3d<StandardMaterial>>()
         .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
         .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
-        .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+        .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
         // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
@@ -415,27 +459,14 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         // `AnimatedBy` stores an Entity reference that doesn't remap across
         // scene loads — must be reconstructed by the animator rehydration.
         .deny_component::<bevy::animation::AnimatedBy>()
-        // AnimatorReadState is a runtime mirror — rebuilt each frame.
-        .deny_component::<renzora_animation::AnimatorReadState>()
+        .deny_animation_state()
         .deny_component::<renzora_network::Networked>()
         .deny_component::<renzora_network::NetworkOwner>()
         .deny_component::<renzora_network::NetworkId>()
         // Avian runtime components are regenerated on load from our
         // serializable PhysicsBodyData + CollisionShapeData. Persisting them
         // causes duplicate-reflect-type errors during deserialization.
-        .deny_component::<avian3d::prelude::Collider>()
-        .deny_component::<avian3d::collision::collider::ColliderAabb>()
-        .deny_component::<avian3d::prelude::RigidBody>()
-        .deny_component::<avian3d::prelude::LinearVelocity>()
-        .deny_component::<avian3d::prelude::AngularVelocity>()
-        .deny_component::<avian3d::prelude::Mass>()
-        .deny_component::<avian3d::prelude::Friction>()
-        .deny_component::<avian3d::prelude::Restitution>()
-        .deny_component::<avian3d::prelude::GravityScale>()
-        .deny_component::<avian3d::prelude::LinearDamping>()
-        .deny_component::<avian3d::prelude::AngularDamping>()
-        .deny_component::<avian3d::prelude::LockedAxes>()
-        .deny_component::<avian3d::prelude::Sensor>()
+        .deny_physics_components()
         .extract_entities(entities.into_iter())
         .build();
 
@@ -1320,7 +1351,7 @@ pub fn save_prefab_source(
         .deny_component::<MeshMaterial3d<StandardMaterial>>()
         .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
         .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
-        .deny_component::<MeshMaterial3d<renzora_terrain::material::TerrainCheckerboardMaterial>>()
+        .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
         // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
@@ -1345,23 +1376,11 @@ pub fn save_prefab_source(
         .deny_component::<bevy::animation::AnimationPlayer>()
         .deny_component::<bevy::animation::transition::AnimationTransitions>()
         .deny_component::<bevy::animation::AnimatedBy>()
-        .deny_component::<renzora_animation::AnimatorReadState>()
+        .deny_animation_state()
         .deny_component::<renzora_network::Networked>()
         .deny_component::<renzora_network::NetworkOwner>()
         .deny_component::<renzora_network::NetworkId>()
-        .deny_component::<avian3d::prelude::Collider>()
-        .deny_component::<avian3d::collision::collider::ColliderAabb>()
-        .deny_component::<avian3d::prelude::RigidBody>()
-        .deny_component::<avian3d::prelude::LinearVelocity>()
-        .deny_component::<avian3d::prelude::AngularVelocity>()
-        .deny_component::<avian3d::prelude::Mass>()
-        .deny_component::<avian3d::prelude::Friction>()
-        .deny_component::<avian3d::prelude::Restitution>()
-        .deny_component::<avian3d::prelude::GravityScale>()
-        .deny_component::<avian3d::prelude::LinearDamping>()
-        .deny_component::<avian3d::prelude::AngularDamping>()
-        .deny_component::<avian3d::prelude::LockedAxes>()
-        .deny_component::<avian3d::prelude::Sensor>()
+        .deny_physics_components()
         .extract_entities(descendants.into_iter())
         .build();
 

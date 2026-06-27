@@ -31,9 +31,10 @@ pub use template::{HtmlTemplatePath, TemplateReloadRequests};
 
 /// The markup runtime plugin (formerly `renzora_hui::HuiPlugin`). Registered via
 /// `renzora::add!` at Runtime scope so it runs in both the editor viewport and
-/// shipped games — anywhere markup UI is used. The icon + cursor-icon helpers
-/// live at the ember crate root (shared with the widget library) but their
-/// systems are installed here so they run wherever markup runs.
+/// shipped games — anywhere markup UI is used. The lean export strips this whole
+/// module (and `renzora_game_ui`/`bevy_hui`) via the `game_ui` feature; the
+/// foundational `cursor_icon`/`icons` systems it once installed now live in
+/// `EmberPlugin` so they run with or without markup.
 #[derive(Default)]
 pub struct MarkupPlugin;
 
@@ -53,16 +54,16 @@ impl Plugin for MarkupPlugin {
         template::plugin(app);
         interactions::plugin(app);
         cursor::plugin(app);
-        crate::cursor_icon::plugin(app);
         drag::plugin(app);
         dnd::plugin(app);
         binding::plugin(app);
         foreach::plugin(app);
         input_field::plugin(app);
         widgets::plugin(app);
-        crate::icons::plugin(app);
         transitions::plugin(app);
         vector::plugin(app);
+        // `cursor_icon` + `icons` are now installed by `EmberPlugin` (they're
+        // foundational to all widgets, not just markup) — see ember/src/lib.rs.
     }
 }
 

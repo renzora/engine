@@ -2889,12 +2889,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
-name = "claxon"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bfbf56724aa9eca8afa4fcfadeb479e722935bb2a0900c2d37e0cc477af0688"
-
-[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4699,12 +4693,6 @@ checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
 ]
-
-[[package]]
-name = "hound"
-version = "3.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
 
 [[package]]
 name = "http"
@@ -7643,6 +7631,7 @@ dependencies = [
  "getrandom 0.3.4",
  "log",
  "renzora_runtime",
+ "renzora_static_plugins",
  "toml 0.8.23",
  "uuid",
  "wasm-bindgen",
@@ -8295,6 +8284,7 @@ dependencies = [
 name = "renzora_export"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "bevy",
  "dynamic_plugin_loader",
  "p256",
@@ -8309,6 +8299,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
  "ureq",
  "zip",
 ]
@@ -8566,6 +8557,7 @@ dependencies = [
  "renzora_auth",
  "renzora_ember",
  "renzora_theme",
+ "serde",
  "toml 0.8.23",
  "ureq",
  "zip",
@@ -9537,6 +9529,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_static_plugins"
+version = "0.1.0"
+
+[[package]]
 name = "renzora_swirl"
 version = "0.1.0"
 dependencies = [
@@ -9953,13 +9949,10 @@ version = "0.22.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a536bb79db59098ef71a4dd4246c02eb87b316deceb1b68e0cde7167ec01eb"
 dependencies = [
- "claxon",
  "cpal",
  "dasp_sample",
- "hound",
  "lewton",
  "num-rational",
- "symphonia",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -10723,11 +10716,9 @@ dependencies = [
  "lazy_static",
  "symphonia-bundle-flac",
  "symphonia-bundle-mp3",
- "symphonia-codec-aac",
  "symphonia-codec-pcm",
  "symphonia-codec-vorbis",
  "symphonia-core",
- "symphonia-format-isomp4",
  "symphonia-format-ogg",
  "symphonia-format-riff",
  "symphonia-metadata",
@@ -10755,17 +10746,6 @@ dependencies = [
  "log",
  "symphonia-core",
  "symphonia-metadata",
-]
-
-[[package]]
-name = "symphonia-codec-aac"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c263845aa86881416849c1729a54c7f55164f8b96111dba59de46849e73a790"
-dependencies = [
- "lazy_static",
- "log",
- "symphonia-core",
 ]
 
 [[package]]
@@ -10800,19 +10780,6 @@ dependencies = [
  "bytemuck",
  "lazy_static",
  "log",
-]
-
-[[package]]
-name = "symphonia-format-isomp4"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "243739585d11f81daf8dac8d9f3d18cc7898f6c09a259675fc364b382c30e0a5"
-dependencies = [
- "encoding_rs",
- "log",
- "symphonia-core",
- "symphonia-metadata",
- "symphonia-utils-xiph",
 ]
 
 [[package]]

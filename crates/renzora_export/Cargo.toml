@@ -12,6 +12,10 @@ renzora_import = { path = "../renzora_import" }
 dynamic_plugin_loader = { path = "../dynamic_plugin_loader" }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
+# Edit the export copy's Cargo.toml (strip Bevy features) while preserving the
+# rest of the manifest. The copy is disposable, but format-preserving edits keep
+# diffs/debugging sane.
+toml_edit = "0.22"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
@@ -31,6 +35,8 @@ sha2 = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
 ureq = "3"
 serde_json = "1"
+# Copy the build log to the system clipboard from the export log view.
+arboard = "3"
 
 [lints]
 workspace = true

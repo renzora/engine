@@ -7,6 +7,16 @@ description = "Navigation mesh and pathfinding for the Renzora engine"
 [features]
 default = ["lua"]
 lua = ["renzora_scripting/lua", "dep:mlua"]
+# Terrain-aware nav obstacles (sample heightmaps → slope obstacles). Optional so
+# the lean export drops `renzora_terrain` for a game with no terrain. NOT in
+# `default` — `renzora_runtime`'s `terrain` feature forwards `renzora_navmesh?/terrain`
+# only when BOTH navmesh and terrain are kept.
+terrain = ["dep:renzora_terrain"]
+# avian `Collider` obstacle auto-updater. NOT in `default` — `renzora_runtime`'s
+# `physics` feature forwards `renzora_navmesh?/physics` only when physics is kept.
+# Also enables vleue_navigator's own avian3d updater (otherwise it pulls avian
+# unconditionally — the real source of the avian leak through navmesh).
+physics = ["dep:avian3d", "vleue_navigator/avian3d"]
 # No `editor` feature: this crate is compiled lean. Its editor-only code (panel,
 # inspectors, bake workflow) moved to the nested `renzora_navmesh_editor` crate
 # (crates/renzora_navmesh/editor), installed only by the editor bundle.
@@ -17,17 +27,20 @@ serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
-vleue_navigator = { path = "../vleue_navigator", features = ["avian3d", "debug-with-gizmos"] }
+# avian3d enabled only via this crate's `physics` feature (see [features]); a
+# no-physics export keeps pathfinding without pulling avian.
+vleue_navigator = { path = "../vleue_navigator", default-features = false, features = ["debug-with-gizmos"] }
 # Use the vendored polyanya (glam 0.32) so its `Mesh` type matches the one
 # vleue_navigator's `NavMesh::from_polyanya_mesh` expects (else two polyanya
 # versions in the graph → "different polyanya::Mesh" type error).
 polyanya = { path = "../polyanya", features = ["serde"] }
-renzora_terrain = { path = "../renzora_terrain" }
+renzora_terrain = { path = "../renzora_terrain", optional = true }
 
 [dependencies.avian3d]
 path = "../avian/crates/avian3d"
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
+optional = true
 
 # Lua types referenced by the NavScriptExtension impl.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

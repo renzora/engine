@@ -282,6 +282,28 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary, dest: &Path)
         return Err("Sign in to download this asset".into());
     };
     let path = install::install_asset_into(dest, &asset.name, &url, &filename, &bytes)?;
+    // Plugins get a metadata sidecar next to the dll so a lean export can trace
+    // it back to source and the official editor can fetch the right per-release
+    // dll. Non-fatal: a missing sidecar doesn't fail the install.
+    if install::install_dir_for_category(&asset.category) == "plugins" {
+        let crate_name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.strip_prefix("lib").unwrap_or(s).to_string())
+            .unwrap_or_default();
+        let meta = install::PluginSidecar {
+            asset_id: asset.id.clone(),
+            name: asset.name.clone(),
+            slug: asset.slug.clone(),
+            version: asset.version.clone(),
+            category: asset.category.clone(),
+            crate_name,
+            ..Default::default()
+        };
+        if let Err(e) = install::write_plugin_sidecar(&path, &meta) {
+            bevy::log::warn!("[hub] plugin sidecar not written: {e}");
+        }
+    }
     Ok(format!("Installed \"{}\" into {}", asset.name, path.display()))
 }
 

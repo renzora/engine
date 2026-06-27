@@ -7,6 +7,10 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod apk_signer;
 #[cfg(not(target_arch = "wasm32"))]
+mod build;
+#[cfg(not(target_arch = "wasm32"))]
+mod capabilities;
+#[cfg(not(target_arch = "wasm32"))]
 mod download;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
@@ -14,6 +18,8 @@ mod native;
 mod overlay;
 #[cfg(not(target_arch = "wasm32"))]
 mod templates;
+#[cfg(not(target_arch = "wasm32"))]
+mod toolchain;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use overlay::ExportOverlayState;

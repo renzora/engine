@@ -25,9 +25,14 @@ pub use renzora::{
 };
 pub use vfs::Vfs;
 
-// Re-export audio crate so downstream can use renzora_engine::audio types
+// Re-export audio crate so downstream can use renzora_engine::audio types.
+// Gated: the lean export strips `renzora_audio` for a silent game (no consumer
+// of this re-export exists today, so it's purely a convenience alias).
+#[cfg(feature = "audio")]
 pub use renzora_audio;
-// Re-export physics crate for downstream access
+// Re-export physics crate for downstream access. Gated: the lean export strips
+// `renzora_physics` for a no-physics game (no consumer of this alias exists).
+#[cfg(feature = "physics")]
 pub use renzora_physics;
 
 use bevy::core_pipeline::prepass::DeferredPrepass;

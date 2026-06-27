@@ -8,11 +8,17 @@ edition = "2021"
 # shore-particle module moved to the nested renzora_water_editor crate
 # (crates/renzora_water/editor).
 
+[features]
+# Buoyancy (the only avian use). NOT in default — `renzora_runtime`'s `physics`
+# feature forwards `renzora_water?/physics` only when physics is also kept, so a
+# no-physics lean export drops avian here.
+physics = ["dep:avian3d"]
+
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
-avian3d = { path = "../avian/crates/avian3d", default-features = false, features = ["3d", "f32"] }
+avian3d = { path = "../avian/crates/avian3d", default-features = false, features = ["3d", "f32"], optional = true }
 
 [lints]
 workspace = true

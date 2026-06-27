@@ -1,5 +1,9 @@
-#![allow(unused_variables)]
+#![allow(unused_variables, dead_code)]
 
+// Only `apply_buoyancy` uses avian (`Forces`); gated with `physics` so the
+// `Buoyant` marker + wave-sampling helpers still compile without avian. The
+// `dead_code` allow covers helpers used only by the gated system.
+#[cfg(feature = "physics")]
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -99,6 +103,7 @@ pub fn sample_wave_velocity(xz: Vec2, surface: &WaterSurface, time: f32) -> Vec2
 
 // ── Buoyancy system ──────────────────────────────────────────────────────────
 
+#[cfg(feature = "physics")]
 pub fn apply_buoyancy(
     time: Res<Time>,
     water_query: Query<(&WaterSurface, &GlobalTransform)>,

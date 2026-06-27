@@ -20,7 +20,7 @@ Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-
 | Setting | What it controls |
 |---|---|
 | **Platform** | Target platform (see the table below) |
-| **Packaging mode** | Separate files vs. single self-contained binary |
+| **Packaging mode** | Separate files, single self-contained binary, or a **lean** recompiled-from-source single binary |
 | **Window mode / size** | Default `Windowed` / `Fullscreen` and resolution (e.g. `1280×720`) |
 | **Icon** | Optional window/app icon path |
 | **Compression level** | Zstd level used when packing the `.rpak` |
@@ -67,7 +67,10 @@ That ordering is what makes both packaging modes work without any code changes i
 | Mode | Layout | Use it for |
 |---|---|---|
 | **Separate files** (`SeparateFiles`) | game binary + a sibling `.rpak` | Development, quick re-packs, web/mobile (where the `.rpak` is injected into the container) |
-| **Single binary** (`SingleBinary`) | one self-contained executable with the `.rpak` appended | Clean desktop distribution |
+| **Single binary** (`SingleBinary`) | one self-contained executable (with sibling dylibs) and the `.rpak` appended | Clean desktop distribution, fast to produce |
+| **Lean single binary** (`LeanSingleBinary`) | one **statically linked, stripped** executable with the `.rpak` appended — **no** sibling dylibs at all | Lean release builds (see below) |
+
+The first two modes **copy** the already-built dev runtime, so they ship the engine as separate dylibs (`bevy_dylib`, `renzora`, a dynamic `std`) beside the exe — fast to produce, but bloated. The lean mode instead **recompiles** the game from source into a single static file. See the next section.
 
 Per platform, packing produces:
 
@@ -75,6 +78,75 @@ Per platform, packing produces:
 - **Android** — the template `.apk` with the project packed in as `assets/game.rpak`.
 - **iOS** — the template `.app` bundle with `game.rpak` injected, re-zipped into an `.ipa`.
 - **Web** — a zip containing `renzora-runtime.js`, `renzora-runtime_bg.wasm`, `game.rpak`, and a generated `index.html` that fetches the `.rpak` and starts the runtime.
+
+## Lean single binary (compiled from source)
+
+The two copy-based modes are great for development but ship the **whole engine** as
+separate dynamic libraries next to the exe (a `bevy_dylib`, the `renzora` SDK
+dylib, and a dynamically-linked `std`). That sharing is exactly what makes the
+dev/editor build fast and keeps the plugin ABI stable — but it bloats a release.
+
+**Lean single binary** mode produces a release build the right way: it
+**recompiles your game's `renzora` binary from source**, statically, into one
+self-contained file with the `.rpak` embedded — no sibling dylibs.
+
+What it strips/changes versus the copy modes:
+
+- **Static Bevy + static `std`** — `bevy_dylib` and the dynamic `std` are gone;
+  everything is linked into the one executable (`--no-default-features --features
+  runtime`, which drops the `dynamic_linking` feature).
+- **Fat LTO + size optimisation + symbol strip + `panic = "abort"`** (the
+  `dist-lean` cargo profile) — dead code is eliminated and the binary is built
+  for size.
+- On Windows it also static-links the MSVC runtime (no `VCRUNTIME140.dll`
+  dependency), which is safe here precisely because a lean binary has no dynamic
+  plugin ABI to preserve.
+
+### It needs a Rust toolchain — installed automatically
+
+Because it compiles, lean mode needs `cargo`. If Rust is already on your `PATH`
+it's used directly. If not — e.g. on a canonical editor release where the user has
+no Rust — the editor **provisions `rustup` automatically** into a private cache
+beside the editor (its own `CARGO_HOME`/`RUSTUP_HOME`, the pinned toolchain,
+minimal profile). This **never touches your global environment** or any existing
+Rust install, and the toolchain is reused on later exports. The first lean export
+therefore does a one-time toolchain download plus a full from-scratch compile, so
+it takes several minutes; subsequent ones are incremental.
+
+### Host platform only (today)
+
+Native `cargo` can only build for the **platform the editor is running on**, so
+lean mode is offered only when the selected target matches your host. Building a
+lean binary for a *different* OS is a hard Docker requirement (the canonical
+cross-compile path), which is not yet wired into this mode — use the copy-based
+modes, or build on the matching host, for other platforms in the meantime.
+
+### Plugins are compiled in, not dlopen'd
+
+A static binary can't `dlopen`, so the distribution plugins a game uses (the
+post-process effects, GI, cloth, …) are **compiled into** the lean binary from
+their workspace source instead. At export, the plugins you selected are wired
+into the generated `renzora_static_plugins` aggregator, which force-links each so
+its `inventory::submit!` registration is pulled in; the runtime then discovers
+and installs them at boot exactly as if they'd been dlopen'd.
+
+The whole lean build runs in an **isolated copy** of the engine source (synced
+into the gitignored `target/export-src/`), so your dev tree is never touched —
+`cargo renzora` and `renzora run` are completely unaffected. The copy is patched
+freely (e.g. `renzora` is built rlib-only to dodge the Windows PE 65535-export
+cap) because it's disposable; the first export copies the source and the rest are
+incremental.
+
+This works today for plugins whose **source is in the engine checkout** (every
+built-in distribution plugin). A lean build recompiles the **engine source** the
+editor was built from — your project is just assets that ride along in the rpak —
+so it's available when you run the editor from a source checkout.
+**Marketplace plugins** install as a prebuilt cdylib plus a `<crate>.plugin.toml`
+metadata sidecar; embedding those into a lean binary means downloading their
+source via that sidecar, which lands once the marketplace's source/build pipeline
+is in place. Until then, a lean build skips any selected plugin whose source
+isn't in the workspace (and says so), so use a copy-based mode if your game
+depends on a marketplace-only plugin.
 
 ## Where templates come from
 

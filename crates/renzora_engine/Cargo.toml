@@ -8,27 +8,49 @@ edition = "2021"
 # installed only by the editor bundle. Editor-vs-game is decided at runtime via
 # `renzora::EditorSession`.
 
+[features]
+# Optional subsystems this core crate would otherwise drag into EVERY build —
+# including the lean game export — even when a game never uses them. They're ON
+# by default so the editor/dev/server build is byte-for-byte unchanged; the lean
+# exporter drops one by depending on this crate with `default-features = false`
+# (via `renzora_runtime`, which forwards only the kept subsystems). `audio` just
+# re-exports the crate (see lib.rs); `animation` gates the scene-save deny of
+# `AnimatorReadState` (see scene_io.rs). See `renzora_export::capabilities`.
+default = ["audio", "animation", "terrain", "physics"]
+audio = ["dep:renzora_audio"]
+animation = ["dep:renzora_animation"]
+# `terrain` only gates the scene-save deny of `TerrainCheckerboardMaterial`
+# (scene_io.rs) — the sole renzora_terrain use in this crate.
+terrain = ["dep:renzora_terrain"]
+# `physics` gates the avian deny block in scene_io.rs (the only avian use — the
+# `pub use renzora_physics` re-export below is the only renzora_physics use). The
+# string-based `type_name.starts_with("avian3d::")` filters need no avian dep.
+physics = ["dep:renzora_physics", "dep:avian3d"]
+
 [dependencies]
 renzora_macros = { path = "../renzora_macros" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
-renzora_physics = { path = "../renzora_physics" }
+renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_rmip = { path = "../renzora_rmip" }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_shader = { path = "../renzora_shader" }
-renzora_terrain = { path = "../renzora_terrain" }
+renzora_terrain = { path = "../renzora_terrain", optional = true }
 renzora_network = { path = "../renzora_network" }
 renzora_bsn = { path = "../renzora_bsn" }
 renzora_rpak = { path = "../renzora_rpak" }
-renzora_audio = { path = "../renzora_audio" }
-renzora_scripting = { path = "../renzora_scripting" }
-renzora_animation = { path = "../renzora_animation", default-features = false }
+renzora_audio = { path = "../renzora_audio", optional = true }
+# `default-features = false`: engine uses only core scripting types; backends/
+# blueprint/http are forwarded from `renzora_runtime` (see its features). Keeping
+# defaults here would pin them on for every lean export.
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_animation = { path = "../renzora_animation", default-features = false, optional = true }
 futures-lite = "2"
 ron = "0.8"
 serde = "1"
 thiserror = "2"
 toml = "0.8"
-avian3d = { path = "../avian/crates/avian3d", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"] }
+avian3d = { path = "../avian/crates/avian3d", default-features = false, features = ["3d", "f32", "default-collider", "parry-f32"], optional = true }
 
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))'.dependencies]
 arboard = "3"

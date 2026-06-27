@@ -105,6 +105,58 @@ pub fn install_asset_into(
     }
 }
 
+/// Metadata sidecar written next to an installed marketplace plugin dll, as
+/// `<crate>.plugin.toml`. It ties the prebuilt dll back to its marketplace
+/// identity and (eventually) its buildable source, which is what lets:
+///   * a **lean export** fetch the plugin's source and compile it INTO the
+///     static binary (a static binary can't dlopen), and
+///   * the **official editor** fetch the right prebuilt dll per engine release.
+///
+/// `crate_name` (the dll stem / workspace crate name) is known at install time.
+/// The source/release fields are written empty until the marketplace server's
+/// build pipeline exists to populate them — this struct IS the contract that
+/// pipeline must satisfy. See `docs/r1-alpha6` and `renzora_export::build`.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+pub struct PluginSidecar {
+    pub asset_id: String,
+    pub name: String,
+    pub slug: String,
+    pub version: String,
+    pub category: String,
+    /// Workspace crate name = dll stem (e.g. `renzora_lumen`). What the lean
+    /// exporter keys on to compile the plugin in from source.
+    pub crate_name: String,
+    /// Engine release whose frozen ABI this dll was built against. Empty until
+    /// the server records it.
+    #[serde(default)]
+    pub engine_release: String,
+    /// URL to download the plugin's buildable source for `engine_release`. Empty
+    /// until the server exposes a `/source` endpoint.
+    #[serde(default)]
+    pub source_url: String,
+    /// Per-release prebuilt dll URLs (`engine_release -> url`). A dll is
+    /// ABI-frozen per release, so this is a matrix, not one URL. Empty for now.
+    #[serde(default)]
+    pub dylib_urls: std::collections::BTreeMap<String, String>,
+}
+
+/// Write a [`PluginSidecar`] next to an installed plugin. `installed` is the
+/// path an `install_*` call returned: for a single-file dll the sidecar is
+/// `<stem>.plugin.toml` beside it; for an extracted dir it's `plugin.toml`
+/// inside it.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn write_plugin_sidecar(installed: &Path, meta: &PluginSidecar) -> Result<PathBuf, String> {
+    let sidecar = if installed.is_dir() {
+        installed.join("plugin.toml")
+    } else {
+        installed.with_extension("plugin.toml")
+    };
+    let toml = toml::to_string_pretty(meta).map_err(|e| format!("serialize plugin sidecar: {e}"))?;
+    std::fs::write(&sidecar, toml).map_err(|e| format!("write plugin sidecar: {e}"))?;
+    Ok(sidecar)
+}
+
 /// Extract a zip archive into a destination directory, inside a subfolder
 /// named after the asset.
 #[cfg(not(target_arch = "wasm32"))]

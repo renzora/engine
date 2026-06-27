@@ -7,14 +7,13 @@
 
 use std::f32::consts::FRAC_PI_2;
 
-use avian3d::prelude::Collider;
 use bevy::ecs::entity::EntityHashMap;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use vleue_navigator::{
     prelude::{
         ManagedNavMesh, NavMeshAgentExclusion, NavMeshDebug, NavMeshSettings, NavMeshUpdateMode,
-        NavmeshUpdaterPlugin, Triangulation, VleueNavigatorPlugin,
+        Triangulation, VleueNavigatorPlugin,
     },
     NavMesh,
 };
@@ -23,7 +22,15 @@ pub mod persistence;
 pub mod script_extension;
 pub use script_extension::NavScriptExtension;
 
+#[cfg(feature = "terrain")]
 use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
+// avian `Collider` drives the obstacle auto-updater. Gated with `physics` so the
+// lean export drops avian for a no-physics game — navmeshes then build from the
+// volume outline (+ terrain) only.
+#[cfg(feature = "physics")]
+use avian3d::prelude::Collider;
+#[cfg(feature = "physics")]
+use vleue_navigator::prelude::NavmeshUpdaterPlugin;
 
 /// Optional editor override for agent-path gizmo visibility. The NavMesh editor
 /// panel (in `renzora_navmesh_editor`) inits + drives this from its "Show Agent
@@ -160,6 +167,7 @@ fn sync_volume_changes(
 /// slopes exceed the threshold. Samples every `step`-th vertex to keep
 /// polygon count low. Returns polygons in navmesh-local 2D space
 /// (relative to the volume's XZ center).
+#[cfg(feature = "terrain")]
 fn terrain_slope_obstacles(
     volume: &NavMeshVolume,
     vol_pos: Vec3,
@@ -226,6 +234,7 @@ fn terrain_slope_obstacles(
 /// When `include_terrain` is on, sample terrain heightmaps and inject
 /// slope obstacles into `NavMeshSettings.fixed`. Runs only when the
 /// volume or terrain data changes.
+#[cfg(feature = "terrain")]
 fn sync_terrain_obstacles(
     mut volumes: Query<
         (
@@ -589,13 +598,11 @@ impl Plugin for NavMeshPlugin {
             .register_type::<NavReadState>()
             .add_message::<NavAgentArrived>()
             .add_plugins(VleueNavigatorPlugin)
-            .add_plugins(NavmeshUpdaterPlugin::<Collider, NavMeshObstacle>::default())
             .add_systems(
                 Update,
                 (
                     on_volume_added,
                     sync_volume_changes,
-                    sync_terrain_obstacles,
                     update_agent_paths,
                     advance_agents,
                     auto_init_nav_read_state,
@@ -604,6 +611,17 @@ impl Plugin for NavMeshPlugin {
                 ),
             )
             .add_observer(handle_nav_script_actions);
+
+        // Auto-rebuild navmeshes from avian `Collider` obstacles — only when the
+        // `physics` subsystem is built (added after VleueNavigatorPlugin above).
+        #[cfg(feature = "physics")]
+        app.add_plugins(NavmeshUpdaterPlugin::<Collider, NavMeshObstacle>::default());
+
+        // Terrain-aware obstacle injection — only when the `terrain` subsystem is
+        // built (the tuple above is unordered, so a separate add doesn't change
+        // scheduling). Stripped together with `renzora_terrain` in a lean export.
+        #[cfg(feature = "terrain")]
+        app.add_systems(Update, sync_terrain_obstacles);
 
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(

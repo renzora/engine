@@ -1,3 +1,8 @@
+// Without the simulation backend, the helper systems/fns below are unreferenced
+// (only the avian-free data types are used). Silence the noise for that build
+// rather than scatter per-item gates.
+#![cfg_attr(not(feature = "avian"), allow(dead_code, unused_variables, unused_imports))]
+
 pub mod auto_fit;
 pub mod backend;
 pub mod data;
@@ -30,8 +35,14 @@ fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
     play_mode.is_none_or(|pm| !pm.is_editing())
 }
 
-#[cfg(not(feature = "avian"))]
-compile_error!("renzora_physics requires the `avian` feature");
+// Without the `avian` feature this crate still compiles, exposing only the
+// avian-free serializable data types (`data` / `properties`: `PhysicsBodyData`,
+// `CollisionShapeData`, …). The whole simulation backend (`backend::avian`,
+// the `PhysicsPlugin` body, character controller, read-state systems) is
+// `#[cfg(feature = "avian")]`. This lets the lean export drop avian (~6.5 MiB)
+// while crates like `renzora_terrain` keep tagging chunks with collider DATA —
+// inert until a build that enables the backend. `renzora_runtime`'s `physics`
+// feature turns the backend back on.
 
 /// Physics plugin that delegates to the selected backend.
 ///

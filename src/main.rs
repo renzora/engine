@@ -15,6 +15,16 @@
 
 use bevy::prelude::*;
 
+// Force-link statically-embedded distribution plugins for a lean single-binary
+// export. The `static_plugins` feature is OFF in every normal build; the lean
+// exporter turns it on and regenerates the `renzora_static_plugins` aggregator
+// to depend on the plugins a game uses. This `extern crate` keeps the
+// aggregator — and through its own `extern crate` lines, each plugin's
+// `inventory::submit!` ctor — from being dead-stripped, so the runtime's
+// `for_each_static_plugin` loop discovers and installs them at boot (no dlopen).
+#[cfg(feature = "static_plugins")]
+extern crate renzora_static_plugins;
+
 // ── App setup helpers ────────────────────────────────────────────────────
 //
 // Most setup lives in `renzora_runtime` (the shared meta-crate). The two

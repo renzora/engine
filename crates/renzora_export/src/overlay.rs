@@ -1,7 +1,8 @@
 //! Export overlay state + background worker. The native (bevy_ui) modal in
 //! `native.rs` renders the UI and reuses everything here.
 
-use std::sync::{mpsc, Mutex};
+use std::sync::atomic::AtomicBool;
+use std::sync::{mpsc, Arc, Mutex};
 
 use bevy::prelude::*;
 use renzora::core::{CurrentProject, WindowMode};
@@ -16,10 +17,24 @@ use crate::templates::{Platform, TemplateManager};
 /// Packaging mode for the exported build.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackagingMode {
-    /// Runtime binary + .rpak file side by side.
+    /// Copy the dev runtime binary + its dylibs, write a sibling .rpak.
     SeparateFiles,
-    /// .rpak appended to the binary — single executable.
+    /// Copy the dev runtime binary + its dylibs, .rpak appended to the binary.
     SingleBinary,
+    /// Recompile a lean, fully static, stripped binary from source and append
+    /// the .rpak to it — one self-contained file, no sibling dylibs. Needs a
+    /// Rust toolchain (auto-provisioned if absent). See `build`/`toolchain`.
+    LeanSingleBinary,
+}
+
+/// Which view the export modal shows: the settings form, or the live build log.
+/// Clicking Export switches to [`ExportView::Log`]; finishing + Back returns to
+/// [`ExportView::Settings`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportView {
+    #[default]
+    Settings,
+    Log,
 }
 
 /// Export progress state.
@@ -41,12 +56,24 @@ enum ExportMsg {
 /// Handle for a running background export.
 pub(crate) struct ExportTask {
     rx: Mutex<mpsc::Receiver<ExportMsg>>,
+    /// Set by the Cancel button; the worker (and the cargo child it spawned)
+    /// watch this and abort the build.
+    pub(crate) cancel: Arc<AtomicBool>,
 }
 
 /// Resource holding the export overlay state.
 #[derive(Resource)]
 pub struct ExportOverlayState {
     pub visible: bool,
+    /// Settings form vs. live build-log view.
+    pub view: ExportView,
+    /// Accumulated build/export output lines for the terminal log (tail-capped).
+    pub build_log: Vec<String>,
+    /// Count of crates compiled so far (parsed from cargo's "Compiling …" lines),
+    /// used to estimate the progress bar.
+    pub build_compiled: u32,
+    /// Whether the build reached "Finished" / Done (progress bar → full).
+    pub build_finished: bool,
     pub platform: Platform,
     pub packaging_mode: PackagingMode,
     pub window_mode: WindowMode,
@@ -72,6 +99,9 @@ pub struct ExportOverlayState {
     pub available_plugins: Vec<dynamic_plugin_loader::DynamicPluginInfo>,
     /// Which plugins are selected for export (by id).
     pub selected_plugins: std::collections::HashSet<String>,
+    /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped
+    /// from the lean build. Populated with defaults after the plugin scan.
+    pub capabilities: std::collections::HashMap<String, bool>,
     /// Whether plugins have been scanned yet.
     pub(crate) plugins_scanned: bool,
     /// Latest GitHub release info (for runtime downloads).
@@ -92,6 +122,10 @@ impl Default for ExportOverlayState {
     fn default() -> Self {
         Self {
             visible: false,
+            view: ExportView::Settings,
+            build_log: Vec::new(),
+            build_compiled: 0,
+            build_finished: false,
             platform: Platform::current().unwrap_or(Platform::WindowsX64),
             packaging_mode: PackagingMode::SeparateFiles,
             window_mode: WindowMode::Windowed,
@@ -112,6 +146,7 @@ impl Default for ExportOverlayState {
             active_task: None,
             available_plugins: Vec::new(),
             selected_plugins: std::collections::HashSet::new(),
+            capabilities: std::collections::HashMap::new(),
             plugins_scanned: false,
             release_info: None,
             release_fetch_rx: None,
@@ -120,6 +155,15 @@ impl Default for ExportOverlayState {
             download_task: None,
             download_status: None,
         }
+    }
+}
+
+/// Append a line to the terminal log, keeping a bounded tail so a long build
+/// (thousands of cargo lines) can't grow the buffer unbounded.
+fn push_log(state: &mut ExportOverlayState, line: String) {
+    state.build_log.push(line);
+    if state.build_log.len() > 600 {
+        state.build_log.drain(0..200);
     }
 }
 
@@ -163,12 +207,24 @@ pub(crate) fn poll_export_task(world: &mut World) {
     for msg in updates {
         match msg {
             ExportMsg::Progress(label) => {
+                // Track compile progress from cargo's own output for the bar.
+                let trimmed = label.trim_start();
+                if trimmed.starts_with("Compiling ") {
+                    state.build_compiled += 1;
+                }
+                if trimmed.starts_with("Finished") {
+                    state.build_finished = true;
+                }
+                push_log(&mut state, label.clone());
                 state.progress = ExportProgress::Working(label);
             }
             ExportMsg::Done(msg) => {
+                state.build_finished = true;
+                push_log(&mut state, msg.clone());
                 state.progress = ExportProgress::Done(msg);
             }
             ExportMsg::Error(msg) => {
+                push_log(&mut state, format!("error: {msg}"));
                 state.progress = ExportProgress::Error(msg);
             }
         }
@@ -599,6 +655,12 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         .filter(|p| export_state.selected_plugins.contains(&p.id))
         .map(|p| p.path.clone())
         .collect();
+    // Bevy + runtime-subsystem features to strip from the lean build (capabilities
+    // the game has off).
+    let disabled_bevy_features =
+        crate::capabilities::disabled_bevy_features(&export_state.capabilities);
+    let disabled_runtime_features =
+        crate::capabilities::disabled_runtime_features(&export_state.capabilities);
     let project_name = project_name.to_string();
 
     // The game binary is the already-built renzora(.exe) for this platform.
@@ -627,12 +689,20 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     // there's no separate server template to resolve here.
 
     let (tx, rx) = mpsc::channel();
+    let cancel = Arc::new(AtomicBool::new(false));
 
-    // Set initial progress and store task
+    // Switch to the live log view, reset its state, and store the task.
     {
         let mut state = world.resource_mut::<ExportOverlayState>();
+        state.view = ExportView::Log;
+        state.build_log.clear();
+        state.build_compiled = 0;
+        state.build_finished = false;
         state.progress = ExportProgress::Working("Packing assets...".into());
-        state.active_task = Some(ExportTask { rx: Mutex::new(rx) });
+        state.active_task = Some(ExportTask {
+            rx: Mutex::new(rx),
+            cancel: cancel.clone(),
+        });
     }
 
     // Spawn background thread
@@ -660,6 +730,9 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             template_path,
             selected_plugins,
             runtime_dir,
+            disabled_bevy_features,
+            disabled_runtime_features,
+            cancel,
         );
     });
 }
@@ -689,6 +762,9 @@ fn export_worker(
     template_path: std::path::PathBuf,
     selected_plugins: Vec<std::path::PathBuf>,
     runtime_dir: std::path::PathBuf,
+    disabled_bevy_features: Vec<String>,
+    disabled_runtime_features: Vec<String>,
+    cancel: Arc<AtomicBool>,
 ) {
     // Pack assets
     let _ = tx.send(ExportMsg::Progress("Scanning project assets...".into()));
@@ -867,12 +943,69 @@ fn export_worker(
                 packer
                     .append_to_binary(&template_path, &binary_dest, compression_level).map(|_| ())
             }
+            PackagingMode::LeanSingleBinary => {
+                // Recompile a lean static binary from the project workspace,
+                // then embed the rpak in it. No dev runtime/dylibs are copied.
+                let binary_dest = output_dir.join(&binary_name);
+                // Distribution plugins the game uses, by workspace crate name
+                // (dll stem minus any Unix `lib` prefix). A static binary can't
+                // dlopen, so these get compiled in from their workspace source.
+                let crate_names: Vec<String> = selected_plugins
+                    .iter()
+                    .filter_map(|p| p.file_stem().and_then(|s| s.to_str()))
+                    .map(|s| s.strip_prefix("lib").unwrap_or(s).to_string())
+                    .collect();
+                let tx_b = tx.clone();
+                let mut progress = |m: String| {
+                    let _ = tx_b.send(ExportMsg::Progress(m));
+                };
+                let built = crate::toolchain::ensure_rust(&runtime_dir, &mut progress)
+                    .and_then(|toolchain| {
+                        // A lean build recompiles the ENGINE (the project is just
+                        // assets → rpak), so compile the engine source checkout the
+                        // editor was built from, found by walking up from its
+                        // runtime dir (e.g. `<engine>/dist/windows-x64/`).
+                        let engine_dir = crate::build::find_engine_source(&runtime_dir)
+                            .ok_or_else(|| {
+                                format!(
+                                    "Could not find the engine source to compile \
+                                     (searched up from {}). A lean build recompiles \
+                                     the engine; run the editor from a source checkout.",
+                                    runtime_dir.display()
+                                )
+                            })?;
+                        progress(format!(
+                            "Compiling lean binary in {} (this can take several minutes)…",
+                            engine_dir.display()
+                        ));
+                        crate::build::build_lean(
+                            &engine_dir,
+                            platform,
+                            &toolchain,
+                            &mut progress,
+                            &crate_names,
+                            &disabled_bevy_features,
+                            &disabled_runtime_features,
+                            &cancel,
+                        )
+                    });
+                match built {
+                    Ok(bin) => packer
+                        .append_to_binary(&bin, &binary_dest, compression_level)
+                        .map(|_| ()),
+                    Err(e) => Err(std::io::Error::other(e)),
+                }
+            }
         }
     };
 
+    // The lean binary is statically linked and self-contained, so it ships none
+    // of the dev runtime's sibling dylibs or dlopen plugin cdylibs.
+    let is_lean = matches!(packaging_mode, PackagingMode::LeanSingleBinary);
+
     match result {
         Ok(()) => {
-            if !is_wasm {
+            if !is_wasm && !is_lean {
                 // Copy shared libraries from runtime build (bevy_dylib + std + SDK)
                 let _ = tx.send(ExportMsg::Progress("Copying shared libraries...".into()));
                 for entry in std::fs::read_dir(&runtime_dir)

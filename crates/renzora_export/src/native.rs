@@ -11,13 +11,15 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use renzora::core::WindowMode;
+use std::sync::atomic::Ordering;
+
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text};
+use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, react};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, spinner, text_input, OverlaySurface};
+use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, scroll_view_pinned, spinner, text_input, OverlaySurface};
 
 use crate::download::{self, DownloadProgress};
-use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, PackagingMode};
+use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode};
 use crate::templates::{Platform, TemplateManager};
 
 const GREEN: (u8, u8, u8) = (89, 191, 115);
@@ -37,6 +39,8 @@ pub(crate) fn register(app: &mut App) {
             download_click,
             install_click,
             export_click,
+            cancel_or_back_click,
+            copy_log_click,
             close_click,
         ),
     );
@@ -66,6 +70,12 @@ struct InstallBtn;
 struct ExportBtn;
 #[derive(Component)]
 struct CloseBtn;
+/// Cancel the running export, or (once finished) go back to the settings view.
+#[derive(Component)]
+struct CancelOrBackBtn;
+/// Copy the full build log to the system clipboard.
+#[derive(Component)]
+struct CopyLogBtn;
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -127,6 +137,10 @@ fn scan_plugins(world: &mut World) {
         }
     }
     s.available_plugins = plugins;
+    // Default the engine-feature toggles (Solari follows its plugin; codecs are
+    // auto-enabled from the project's asset files).
+    let selected: Vec<String> = s.selected_plugins.iter().cloned().collect();
+    s.capabilities = crate::capabilities::defaults(&selected, project_root.as_deref());
     s.plugins_scanned = true;
 }
 
@@ -250,20 +264,34 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
         return;
     }
 
+    // Settings view — the export form. Hidden once an export starts.
+    let settings_view = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), flex_grow: 1.0, min_height: Val::Px(0.0), ..default() })
+        .id();
+    commands.entity(panel).add_child(settings_view);
+    bind_display(commands, settings_view, |w| {
+        matches!(w.get_resource::<ExportOverlayState>().map(|s| s.view), Some(ExportView::Settings))
+    });
+
     // Two columns.
     let cols = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(16.0), flex_grow: 1.0, min_height: Val::Px(0.0), ..default() }).id();
     let sidebar = build_sidebar(commands, fonts);
     let right = commands.spawn((Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), min_width: Val::Px(0.0), ..default() }, RightPane { sig: None })).id();
     let right_scroll = scroll_area(commands, right, 440.0);
     commands.entity(cols).add_children(&[sidebar, right_scroll]);
-    commands.entity(panel).add_child(cols);
+    commands.entity(settings_view).add_child(cols);
 
-    // Output.
-    build_output(commands, fonts, panel, init);
-    // Progress.
-    build_progress(commands, fonts, panel);
-    // Export button.
-    build_export_btn(commands, fonts, panel);
+    // Output + export button live in the settings view.
+    build_output(commands, fonts, settings_view, init);
+    build_export_btn(commands, fonts, settings_view);
+
+    // Log view — the live build terminal + progress bar + cancel. Shown while and
+    // after an export runs.
+    let log_view = build_log_view(commands, fonts);
+    commands.entity(panel).add_child(log_view);
+    bind_display(commands, log_view, |w| {
+        matches!(w.get_resource::<ExportOverlayState>().map(|s| s.view), Some(ExportView::Log))
+    });
 }
 
 // ── Sidebar (platforms) ──────────────────────────────────────────────────────
@@ -367,18 +395,76 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
     // Runtime template status.
     build_runtime_status(commands, fonts, pane, p);
 
-    // Packaging (desktop).
+    // Packaging (desktop). The lean static single-binary mode recompiles from
+    // source, which native cargo can only do for the host triple — so it's
+    // offered only when exporting for the platform the editor is running on.
     if desktop {
+        let host = Platform::current() == Some(p);
         let sec = section(commands);
         let h = section_label(commands, fonts, "file-archive", "Packaging");
-        let radios = radio_group(commands, &fonts.ui, &["Binary + .rpak", "Single executable"], 0);
+        let labels: &[&str] = if host {
+            &["Binary + .rpak", "Single executable", "Lean single binary"]
+        } else {
+            &["Binary + .rpak", "Single executable"]
+        };
+        let radios = radio_group(commands, &fonts.ui, labels, 0);
         bind_2way(
             commands,
             radios,
-            |w| if matches!(w.resource::<ExportOverlayState>().packaging_mode, PackagingMode::SingleBinary) { 1usize } else { 0 },
-            |w, v: &usize| w.resource_mut::<ExportOverlayState>().packaging_mode = if *v == 1 { PackagingMode::SingleBinary } else { PackagingMode::SeparateFiles },
+            |w| match w.resource::<ExportOverlayState>().packaging_mode {
+                PackagingMode::SeparateFiles => 0usize,
+                PackagingMode::SingleBinary => 1,
+                PackagingMode::LeanSingleBinary => 2,
+            },
+            |w, v: &usize| {
+                w.resource_mut::<ExportOverlayState>().packaging_mode = match *v {
+                    2 => PackagingMode::LeanSingleBinary,
+                    1 => PackagingMode::SingleBinary,
+                    _ => PackagingMode::SeparateFiles,
+                };
+            },
         );
         commands.entity(sec).add_children(&[h, radios]);
+        if host {
+            let hint = txt(
+                commands,
+                fonts,
+                "Lean: recompiles a stripped static single binary (no engine dylibs). Installs Rust automatically if missing.",
+                11.0,
+                text_muted(),
+            );
+            commands.entity(sec).add_child(hint);
+        }
+        commands.entity(pane).add_child(sec);
+    }
+
+    // Engine features — strip unused Bevy capabilities from the lean recompile.
+    // Lean export only (host platform), and only the safe-leaf capabilities for
+    // now (see `capabilities.rs`).
+    if Platform::current() == Some(p) {
+        let sec = section(commands);
+        let h = section_label(commands, fonts, "sliders-horizontal", "Engine Features (lean only)");
+        commands.entity(sec).add_child(h);
+        for cap in crate::capabilities::CAPABILITIES {
+            let id = cap.id;
+            // Inlined `check_state` so the closures can capture the capability id.
+            let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+            let cb = checkbox(commands, false);
+            bind_2way(
+                commands,
+                cb,
+                move |w| w.get_resource::<ExportOverlayState>().map(|s| s.capabilities.get(id).copied().unwrap_or(false)).unwrap_or(false),
+                move |w, v: &bool| {
+                    if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                        s.capabilities.insert(id.to_string(), *v);
+                    }
+                },
+            );
+            let t = txt(commands, fonts, cap.label, 12.0, text_primary());
+            commands.entity(row).add_children(&[cb, t]);
+            let help = txt(commands, fonts, cap.help, 10.0, text_muted());
+            commands.entity(sec).add_children(&[row, help]);
+        }
         commands.entity(pane).add_child(sec);
     }
 
@@ -573,22 +659,108 @@ fn build_output(commands: &mut Commands, fonts: &EmberFonts, panel: Entity, init
     commands.entity(panel).add_child(sec);
 }
 
-fn build_progress(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) {
-    let sec = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), margin: UiRect::top(Val::Px(8.0)), ..default() }).id();
-    let working = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+/// Rough crate count for a full lean build, used only to scale the progress bar
+/// (cargo gives no total in piped mode). Over/under-estimating just makes the bar
+/// move a little fast or slow; it snaps to full on "Finished"/Done.
+const LEAN_BUILD_ESTIMATE: f32 = 480.0;
+
+/// Progress-bar fraction (0..1) from compiled-crate count, full once finished.
+fn build_fraction(s: &ExportOverlayState) -> f32 {
+    if s.build_finished {
+        1.0
+    } else if s.build_compiled == 0 {
+        0.02
+    } else {
+        (s.build_compiled as f32 / LEAN_BUILD_ESTIMATE).min(0.97)
+    }
+}
+
+/// Reactively drive a node's width as a percentage (for the progress fill).
+fn bind_width_pct(
+    commands: &mut Commands,
+    target: Entity,
+    value: impl Fn(&World) -> f32 + Send + Sync + 'static,
+) {
+    react(commands, move |w: &mut World| {
+        if w.get_entity(target).is_err() {
+            return false;
+        }
+        let v = value(w).clamp(0.0, 1.0);
+        if let Some(mut n) = w.get_mut::<Node>(target) {
+            n.width = Val::Percent(v * 100.0);
+        }
+        true
+    });
+}
+
+/// The export log view: a heading, a progress bar, a scrolling terminal of the
+/// live build output, and a Cancel/Back button. Replaces the old inline progress.
+fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let view = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), flex_grow: 1.0, min_height: Val::Px(0.0), ..default() })
+        .id();
+
+    // Heading — reflects the current phase.
+    let heading_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
     let sp = spinner(commands);
-    let wl = txt(commands, fonts, "", 12.0, text_muted());
-    bind_text(commands, wl, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) { Some(ExportProgress::Working(m)) => m, _ => String::new() });
-    commands.entity(working).add_children(&[sp, wl]);
-    bind_display(commands, working, |w| matches!(w.get_resource::<ExportOverlayState>().map(|s| &s.progress), Some(ExportProgress::Working(_))));
-    let (done, dmsg) = icon_msg(commands, fonts, "check-circle", GREEN);
-    bind_text(commands, dmsg, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) { Some(ExportProgress::Done(m)) => m, _ => String::new() });
-    bind_display(commands, done, |w| matches!(w.get_resource::<ExportOverlayState>().map(|s| &s.progress), Some(ExportProgress::Done(_))));
-    let (err, emsg) = icon_msg(commands, fonts, "warning", RED);
-    bind_text(commands, emsg, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) { Some(ExportProgress::Error(m)) => m, _ => String::new() });
-    bind_display(commands, err, |w| matches!(w.get_resource::<ExportOverlayState>().map(|s| &s.progress), Some(ExportProgress::Error(_))));
-    commands.entity(sec).add_children(&[working, done, err]);
-    commands.entity(panel).add_child(sec);
+    bind_display(commands, sp, |w| {
+        w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false)
+    });
+    let heading = txt(commands, fonts, "", 14.0, text_primary());
+    bind_text(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
+        Some(ExportProgress::Done(_)) => "Export complete".to_string(),
+        Some(ExportProgress::Error(_)) => "Export failed".to_string(),
+        _ => "Exporting…".to_string(),
+    });
+    bind_text_color(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
+        Some(ExportProgress::Done(_)) => rgb(GREEN),
+        Some(ExportProgress::Error(_)) => rgb(RED),
+        _ => rgb(text_primary()),
+    });
+    commands.entity(heading_row).add_children(&[sp, heading]);
+
+    // Progress bar.
+    let track = commands.spawn((Node { width: Val::Percent(100.0), height: Val::Px(8.0), border_radius: BorderRadius::all(Val::Px(4.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb(card_bg())))).id();
+    let fill = commands.spawn((Node { width: Val::Percent(2.0), height: Val::Percent(100.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(accent())))).id();
+    commands.entity(track).add_child(fill);
+    bind_width_pct(commands, fill, |w| w.get_resource::<ExportOverlayState>().map(build_fraction).unwrap_or(0.0));
+    bind_bg(commands, fill, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
+        Some(ExportProgress::Error(_)) => rgb(RED),
+        Some(ExportProgress::Done(_)) => rgb(GREEN),
+        _ => rgb(accent()),
+    });
+
+    // Terminal — dark monospace box with the FULL build log in a pinned scroll
+    // view: it auto-follows the bottom as new output streams in, but releases if
+    // the user scrolls up to read back (an error can otherwise be pushed out of
+    // view by cargo's huge linker-command dump). `build_log` is tail-capped at 600
+    // lines upstream so this stays bounded.
+    let term = commands.spawn((Node { width: Val::Percent(100.0), height: Val::Px(360.0), flex_direction: FlexDirection::Column, padding: UiRect::all(Val::Px(8.0)), overflow: Overflow::clip(), ..default() }, BackgroundColor(rgb((14, 16, 20))))).id();
+    let log_text = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_muted())), FocusPolicy::Pass)).id();
+    bind_text(commands, log_text, |w| {
+        w.get_resource::<ExportOverlayState>().map(|s| s.build_log.join("\n")).unwrap_or_default()
+    });
+    let log_scroll = scroll_view_pinned(commands, log_text);
+    commands.entity(term).add_child(log_scroll);
+
+    // Buttons: Copy log (left), Cancel/Back (right).
+    let btn_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
+    let copy_btn = pill_button(commands, fonts, "clipboard", "Copy log");
+    commands.entity(copy_btn).insert(CopyLogBtn);
+    let btn = commands.spawn((Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(section_bg())), Interaction::default(), CancelOrBackBtn, cursor())).id();
+    let btn_label = commands.spawn((Text::new("Cancel"), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    bind_text(commands, btn_label, |w| {
+        if w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false) {
+            "Cancel".to_string()
+        } else {
+            "Back".to_string()
+        }
+    });
+    commands.entity(btn).add_child(btn_label);
+    commands.entity(btn_row).add_children(&[copy_btn, btn]);
+
+    commands.entity(view).add_children(&[heading_row, track, term, btn_row]);
+    view
 }
 
 fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) {
@@ -623,8 +795,48 @@ fn platform_click(q: Query<(&Interaction, &PlatformBtn), Changed<Interaction>>, 
 fn close_click(q: Query<&Interaction, (With<CloseBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {
     let Some(state) = state.as_mut() else { return };
     if q.iter().any(|i| *i == Interaction::Pressed) {
+        // Closing mid-export cancels the build rather than leaving it running
+        // detached. Reset to the settings view for next time.
+        if let Some(task) = state.active_task.as_ref() {
+            task.cancel.store(true, Ordering::Relaxed);
+        }
         state.visible = false;
         state.active_task = None;
+        state.view = ExportView::Settings;
+    }
+}
+
+/// Cancel the running build, or — once it has finished — return to the settings
+/// form. The button's label flips between "Cancel" and "Back" accordingly.
+fn cancel_or_back_click(
+    q: Query<&Interaction, (With<CancelOrBackBtn>, Changed<Interaction>)>,
+    mut state: Option<ResMut<ExportOverlayState>>,
+) {
+    let Some(state) = state.as_mut() else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    if let Some(task) = state.active_task.as_ref() {
+        // Running → request cancellation; the worker kills the cargo build and
+        // the poll loop flips to the cancelled/error state.
+        task.cancel.store(true, Ordering::Relaxed);
+    } else {
+        // Finished → back to the settings form.
+        state.view = ExportView::Settings;
+        state.progress = ExportProgress::Idle;
+    }
+}
+
+/// Copy the full build log to the system clipboard.
+fn copy_log_click(
+    q: Query<&Interaction, (With<CopyLogBtn>, Changed<Interaction>)>,
+    state: Option<Res<ExportOverlayState>>,
+) {
+    let Some(state) = state else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        if let Ok(mut cb) = arboard::Clipboard::new() {
+            let _ = cb.set_text(state.build_log.join("\n"));
+        }
     }
 }
 

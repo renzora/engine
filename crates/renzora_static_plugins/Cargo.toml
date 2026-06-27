@@ -1,0 +1,19 @@
+[package]
+name = "renzora_static_plugins"
+version = "0.1.0"
+edition = "2021"
+description = "Aggregator that statically links selected distribution plugins into a lean single-binary game export, so their `inventory::submit!` registrations are compiled in instead of dlopen'd. EMPTY by default — the `renzora_export` lean build regenerates this crate's `[dependencies]` and `src/lib.rs` for the plugins a game actually uses, builds with `--features static_plugins`, then restores it. Committed empty so the optional `renzora_static_plugins` dep in the root binary always resolves."
+
+# rlib (the default) so the host binary can link it. No cdylib: this is never a
+# dlopen plugin, only a static link shim.
+[lib]
+crate-type = ["rlib"]
+
+# Intentionally no dependencies in the committed state — the lean exporter writes
+# the selected plugin crates here per-build (each as `default-features = false`,
+# so they compile dlopen-off / editor-off, rlib-only) and restores this file
+# afterwards. See `crates/renzora_export/src/build.rs`.
+[dependencies]
+
+[lints]
+workspace = true

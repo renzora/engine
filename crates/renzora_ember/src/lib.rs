@@ -29,6 +29,13 @@ pub mod dock;
 pub mod font;
 pub mod icons;
 pub mod inspector;
+// The in-game `.html` UI runtime. Gated so the lean export can drop it (and its
+// `renzora_game_ui` + `bevy_hui` deps) for a game with no markup UI. Its
+// `MarkupPlugin` self-registers via `renzora::add!`, so gating the module out
+// also drops that registration. The foundational `cursor_icon`/`icons` systems
+// it used to install are now installed by `EmberPlugin` (below) so they run with
+// or without markup — every widget needs them.
+#[cfg(feature = "game_ui")]
 pub mod markup;
 pub mod panel;
 pub mod phosphor_map;
@@ -53,6 +60,12 @@ impl Plugin for EmberPlugin {
             reactive::ReactivePlugin,
             virtual_scroll::VirtualScrollPlugin,
         ));
+        // Foundational helpers shared by every widget (hover/drag OS cursor +
+        // phosphor icon font). Installed here — not in `markup::MarkupPlugin` —
+        // so they run even when the lean export strips the `game_ui` markup
+        // module. (When markup IS present, it no longer installs them.)
+        cursor_icon::plugin(app);
+        icons::plugin(app);
         toolbar::register(app);
         // Correct pointer state (clip + occlusion) — see `correct_pointer_state`.
         // Runs right after `UiSystems::Focus` (the sole writer of `Interaction` /

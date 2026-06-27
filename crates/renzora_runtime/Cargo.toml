@@ -10,8 +10,67 @@ toml = "0.8"
 
 
 [features]
-default = []
-lua = []
+# Every subsystem is ON by default, so the editor/dev build and the normal
+# `runtime` build are byte-for-byte unchanged. The lean exporter shrinks a game
+# by removing the subsystems it doesn't use from `default` — but only in its
+# DISPOSABLE copy of this manifest, never the dev source (see
+# `renzora_export::build` / `capabilities`). Core foundation crates
+# (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
+# optional: they're referenced directly and must always be present.
+default = [
+    "navmesh", "terrain", "spline", "water", "audio", "particles",
+    "animation", "blueprint", "game_ui", "postfx", "sky", "solari",
+    "rhai", "script_http", "physics",
+]
+# avian physics (~6.5 MiB: avian3d + parry3d + bevy_transform_interpolation +
+# bevy_heavy + glam_matrix_extras). Forwards to every crate that touches avian:
+# the engine scene-save denies, water buoyancy, and the navmesh collider-obstacle
+# updater (the `?` enables those only when that subsystem is also kept). Stripped
+# for a game with no rigid-body physics.
+physics = [
+    "dep:renzora_physics",
+    "renzora_physics/avian",
+    "renzora_engine/physics",
+    "renzora_water?/physics",
+    "renzora_navmesh?/physics",
+]
+# Scripting backends/capabilities, forwarded to `renzora_scripting` (which every
+# lean-closure crate now deps `default-features = false`, so these are the sole
+# switches). `lua` is NOT in `default` — it rides the binary's `runtime` feature
+# so it survives `--no-default-features` (every game is at least Lua-scriptable);
+# `rhai`/`blueprint`/`script_http` are in `default` so the lean export strips
+# them unless a capability keeps them (Rhai-less desktop, no-blueprint, no-http).
+lua = ["renzora_scripting/lua"]
+rhai = ["renzora_scripting/rhai"]
+script_http = ["renzora_scripting/script_http"]
+# Code gate for the runtime's `bevy::solari` GPU ray-tracing probe. Paired with
+# the root `bevy/bevy_solari` feature by the exporter's Solari capability — both
+# are stripped together, so this stays consistent with whether Solari is built.
+solari = []
+navmesh = ["dep:renzora_navmesh"]
+particles = ["dep:renzora_hanabi"]
+# `renzora_navmesh?/terrain`: enable navmesh's terrain-obstacle support only when
+# navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
+terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain"]
+spline = ["dep:renzora_spline"]
+water = ["dep:renzora_water"]
+audio = ["dep:renzora_audio", "renzora_engine/audio"]
+animation = ["dep:renzora_animation", "renzora_engine/animation"]
+blueprint = ["dep:renzora_blueprint", "renzora_scripting/blueprint"]
+game_ui = ["dep:renzora_game_ui", "renzora_ember/game_ui"]
+# Post-process effect stack (the framework `renzora_postprocess` + tonemapping
+# stay core; these are the individual effects).
+postfx = [
+    "dep:renzora_bloom_effect", "dep:renzora_ssao", "dep:renzora_ssr",
+    "dep:renzora_dof", "dep:renzora_motion_blur", "dep:renzora_distance_fog",
+    "dep:renzora_volumetric_fog", "dep:renzora_lens_distortion",
+    "dep:renzora_auto_exposure", "dep:renzora_oit", "dep:renzora_antialiasing",
+]
+# Sky / environment visuals.
+sky = [
+    "dep:renzora_atmosphere", "dep:renzora_environment_map",
+    "dep:renzora_skybox", "dep:renzora_clouds", "dep:renzora_night_stars",
+]
 
 [dependencies]
 bevy = { workspace = true }
@@ -29,47 +88,58 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 wgpu = { version = "29", default-features = false }
 
 # Core
-renzora_engine = { path = "../renzora_engine" }
+# `default-features = false` so the lean export can strip the optional subsystems
+# `renzora_engine` would otherwise hard-pull (audio, animation) — the `audio` /
+# `animation` features below forward to it. Normal builds keep them via `default`.
+renzora_engine = { path = "../renzora_engine", default-features = false }
 renzora = { path = "../renzora", default-features = false }
-renzora_scripting = { path = "../renzora_scripting" }
-renzora_blueprint = { path = "../renzora_blueprint" }
+# `default-features = false`: the backends + blueprint + script_http are switched
+# on via this crate's matching features (above), so the lean export can drop them.
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_blueprint = { path = "../renzora_blueprint", optional = true }
 renzora_input = { path = "../renzora_input" }
-renzora_physics = { path = "../renzora_physics" }
+renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_globals = { path = "../renzora_globals" }
-renzora_terrain = { path = "../renzora_terrain" }
-renzora_spline = { path = "../renzora_spline" }
+renzora_terrain = { path = "../renzora_terrain", optional = true }
+renzora_spline = { path = "../renzora_spline", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }
-renzora_water = { path = "../renzora_water" }
-renzora_animation = { path = "../renzora_animation" }
-renzora_game_ui = { path = "../renzora_game_ui" }
-renzora_ember = { path = "../renzora_ember" }
-renzora_hanabi = { path = "../renzora_hanabi" }
+renzora_water = { path = "../renzora_water", optional = true }
+renzora_animation = { path = "../renzora_animation", optional = true }
+renzora_game_ui = { path = "../renzora_game_ui", optional = true }
+# `default-features = false` so the lean export can strip ember's `game_ui`
+# markup module (+ its `renzora_game_ui`/`bevy_hui` deps); the `game_ui` feature
+# below forwards `renzora_ember/game_ui`. Normal builds keep it via `default`.
+renzora_ember = { path = "../renzora_ember", default-features = false }
+renzora_hanabi = { path = "../renzora_hanabi", optional = true }
+# Non-optional: the binary's `--server`/`--host` path uses it directly
+# (`renzora_runtime::renzora_network`), so it can't be feature-gated without
+# also cfg-gating `src/main.rs` (a later step).
 renzora_network = { path = "../renzora_network" }
-renzora_audio = { path = "../renzora_audio" }
+renzora_audio = { path = "../renzora_audio", optional = true }
 renzora_shader = { path = "../renzora_shader" }
-renzora_navmesh = { path = "../renzora_navmesh" }
+renzora_navmesh = { path = "../renzora_navmesh", optional = true }
 
 # Postprocess framework + vital effects
 renzora_postprocess = { path = "../renzora_postprocess" }
 renzora_tonemapping = { path = "../renzora_tonemapping" }
-renzora_bloom_effect = { path = "../renzora_bloom_effect" }
-renzora_antialiasing = { path = "../renzora_antialiasing" }
-renzora_ssao = { path = "../renzora_ssao" }
-renzora_ssr = { path = "../renzora_ssr" }
-renzora_lens_distortion = { path = "../renzora_lens_distortion" }
-renzora_auto_exposure = { path = "../renzora_auto_exposure" }
-renzora_oit = { path = "../renzora_oit" }
-renzora_dof = { path = "../renzora_dof" }
-renzora_motion_blur = { path = "../renzora_motion_blur" }
-renzora_distance_fog = { path = "../renzora_distance_fog" }
-renzora_volumetric_fog = { path = "../renzora_volumetric_fog" }
+renzora_bloom_effect = { path = "../renzora_bloom_effect", optional = true }
+renzora_antialiasing = { path = "../renzora_antialiasing", optional = true }
+renzora_ssao = { path = "../renzora_ssao", optional = true }
+renzora_ssr = { path = "../renzora_ssr", optional = true }
+renzora_lens_distortion = { path = "../renzora_lens_distortion", optional = true }
+renzora_auto_exposure = { path = "../renzora_auto_exposure", optional = true }
+renzora_oit = { path = "../renzora_oit", optional = true }
+renzora_dof = { path = "../renzora_dof", optional = true }
+renzora_motion_blur = { path = "../renzora_motion_blur", optional = true }
+renzora_distance_fog = { path = "../renzora_distance_fog", optional = true }
+renzora_volumetric_fog = { path = "../renzora_volumetric_fog", optional = true }
 
 # Environment
-renzora_atmosphere = { path = "../renzora_atmosphere" }
-renzora_environment_map = { path = "../renzora_environment_map" }
-renzora_skybox = { path = "../renzora_skybox" }
-renzora_clouds = { path = "../renzora_clouds" }
-renzora_night_stars = { path = "../renzora_night_stars" }
+renzora_atmosphere = { path = "../renzora_atmosphere", optional = true }
+renzora_environment_map = { path = "../renzora_environment_map", optional = true }
+renzora_skybox = { path = "../renzora_skybox", optional = true }
+renzora_clouds = { path = "../renzora_clouds", optional = true }
+renzora_night_stars = { path = "../renzora_night_stars", optional = true }
 
 [lints]
 workspace = true

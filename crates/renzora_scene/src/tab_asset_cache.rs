@@ -606,11 +606,10 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
         animation_clips: world
             .get_resource::<Assets<AnimationClip>>()
             .map_or(0, Assets::len),
-        // Audio source asset type is plugin-dependent; expose as Option so
-        // it shows "n/a" when the audio plugin isn't loaded yet.
-        audio_sources: world
-            .get_resource::<Assets<bevy::audio::AudioSource>>()
-            .map(Assets::len),
+        // `bevy_audio` is not compiled in (Renzora's audio is kira-based, via
+        // `renzora_audio`), so there is no `bevy::audio::AudioSource` asset to
+        // count — always "n/a".
+        audio_sources: None,
     };
 
     // ── Entity health: a batch of small queries via SystemState.

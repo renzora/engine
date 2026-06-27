@@ -11,6 +11,9 @@
 use bevy::prelude::*;
 use bevy::window::{CursorIcon, PrimaryWindow, SystemCursorIcon};
 
+// The auto "grabbing" cursor reads the markup drag state; without the `game_ui`
+// markup module (lean export) there is no drag, so the param is gated out.
+#[cfg(feature = "game_ui")]
 use crate::markup::dnd::DragState;
 
 /// Stamped from `cursor="..."`; the OS cursor shown while this node is hovered.
@@ -43,13 +46,18 @@ pub fn parse_cursor(name: &str) -> Option<SystemCursorIcon> {
 }
 
 fn apply_cursor_icon(
-    drag: Res<DragState>,
+    #[cfg(feature = "game_ui")] drag: Res<DragState>,
     hovered: Query<(&Interaction, &HoverCursor)>,
     windows: Query<Entity, With<PrimaryWindow>>,
     mut commands: Commands,
     mut last: Local<Option<SystemCursorIcon>>,
 ) {
-    let target = if drag.is_dragging() {
+    #[cfg(feature = "game_ui")]
+    let dragging = drag.is_dragging();
+    #[cfg(not(feature = "game_ui"))]
+    let dragging = false;
+
+    let target = if dragging {
         SystemCursorIcon::Grabbing
     } else {
         hovered

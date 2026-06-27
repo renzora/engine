@@ -63,7 +63,12 @@ impl HttpInbox {
 
 /// Perform one blocking request. `(status, body)`; `status == 0` on transport
 /// error with the error text in `body`.
-#[cfg(not(target_arch = "wasm32"))]
+///
+/// Only compiled with the `script_http` feature (native): it's the sole user of
+/// `ureq`, so gating it here lets the lean exporter drop the whole rustls/ring
+/// TLS stack (~1 MiB) for a game that issues no script HTTP requests. The
+/// `HttpInbox`/`HttpResult` types above stay so `systems::` need no `#[cfg]`.
+#[cfg(all(not(target_arch = "wasm32"), feature = "script_http"))]
 fn run_blocking(method: &str, url: &str, body: Option<&str>) -> (u16, String) {
     let result = match method.to_ascii_uppercase().as_str() {
         "POST" => ureq::post(url)
@@ -84,7 +89,10 @@ fn run_blocking(method: &str, url: &str, body: Option<&str>) -> (u16, String) {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+/// Fallback when script HTTP is unavailable — wasm (no native client yet) or the
+/// `script_http` feature stripped by the lean export. `http_get`/`http_post`
+/// then resolve to this disabled response instead of pulling in `ureq`.
+#[cfg(any(target_arch = "wasm32", not(feature = "script_http")))]
 fn run_blocking(_method: &str, _url: &str, _body: Option<&str>) -> (u16, String) {
-    (0, "http not supported on wasm yet".into())
+    (0, "http is not available in this build".into())
 }
