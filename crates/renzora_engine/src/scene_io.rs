@@ -31,6 +31,7 @@ trait DenyOptionalSubsystems: Sized {
     fn deny_animation_state(self) -> Self;
     fn deny_terrain_material(self) -> Self;
     fn deny_physics_components(self) -> Self;
+    fn deny_render_3d_materials(self) -> Self;
 }
 
 impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
@@ -75,6 +76,23 @@ impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
     }
     #[cfg(not(feature = "physics"))]
     fn deny_physics_components(self) -> Self {
+        self
+    }
+
+    // The 3D mesh/material runtime components (bevy_pbr `Mesh3d`/`StandardMaterial`
+    // + renzora_shader's `GraphMaterial`/`MaterialResolved`). Stripped with the
+    // `render_3d` subsystem — in a 2D-only export bevy_pbr/renzora_shader are gone,
+    // so these types don't exist. The serializable mesh/material refs persist
+    // instead and rehydrate on load.
+    #[cfg(feature = "render_3d")]
+    fn deny_render_3d_materials(self) -> Self {
+        self.deny_component::<Mesh3d>()
+            .deny_component::<MeshMaterial3d<StandardMaterial>>()
+            .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
+            .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
+    }
+    #[cfg(not(feature = "render_3d"))]
+    fn deny_render_3d_materials(self) -> Self {
         self
     }
 }
@@ -278,10 +296,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
 
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
-        .deny_component::<Mesh3d>()
-        .deny_component::<MeshMaterial3d<StandardMaterial>>()
-        .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
-        .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
+        .deny_render_3d_materials()
         .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
@@ -432,10 +447,7 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
 
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
-        .deny_component::<Mesh3d>()
-        .deny_component::<MeshMaterial3d<StandardMaterial>>()
-        .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
-        .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
+        .deny_render_3d_materials()
         .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
@@ -1347,10 +1359,7 @@ pub fn save_prefab_source(
 
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
-        .deny_component::<Mesh3d>()
-        .deny_component::<MeshMaterial3d<StandardMaterial>>()
-        .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
-        .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
+        .deny_render_3d_materials()
         .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()

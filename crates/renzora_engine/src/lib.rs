@@ -35,7 +35,9 @@ pub use renzora_audio;
 #[cfg(feature = "physics")]
 pub use renzora_physics;
 
+#[cfg(feature = "render_3d")]
 use bevy::core_pipeline::prepass::DeferredPrepass;
+#[cfg(feature = "render_3d")]
 use bevy::pbr::DefaultOpaqueRendererMethod;
 use bevy::prelude::*;
 use renzora_lighting::Sun;
@@ -44,7 +46,11 @@ use renzora_lighting::Sun;
 /// mode. Bevy's PbrPlugin inserts a Forward default during its own
 /// build; we override here so materials follow our resolved choice.
 /// `insert_resource` is idempotent, so calling this multiple times is
-/// safe.
+/// safe. No-op in a 2D (`render_3d` off) build — there's no bevy_pbr.
+#[cfg(not(feature = "render_3d"))]
+fn apply_rendering_mode(_app: &mut App, _mode: RenderingMode) {}
+
+#[cfg(feature = "render_3d")]
 fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
     match mode {
         RenderingMode::Deferred => {
@@ -86,6 +92,7 @@ fn apply_rendering_mode(app: &mut App, mode: RenderingMode) {
 /// returned `false`, and would never be revisited. The `Without<DeferredPrepass>`
 /// filter is what makes scanning every frame cheap: as soon as the
 /// marker is on an entity, the query stops returning it.
+#[cfg(feature = "render_3d")]
 fn ensure_deferred_prepass_on_cameras(
     rendering_mode: Res<ResolvedRenderingMode>,
     cameras: Query<Entity, (With<Camera3d>, Without<DeferredPrepass>)>,
@@ -121,6 +128,7 @@ fn ensure_deferred_prepass_on_cameras(
 /// while that render path's `pbr_opaque_mesh_pipeline` specializes *without* the
 /// `CONTACT_SHADOWS` key (binding 16 absent), so wgpu hard-quits with a layout
 /// mismatch. `renzora_skybox`/`renzora_night_stars` exclude these same cameras.
+#[cfg(feature = "render_3d")]
 fn ensure_contact_shadows_on_forward_cameras(
     rendering_mode: Res<ResolvedRenderingMode>,
     add_cameras: Query<
@@ -185,6 +193,7 @@ fn ensure_contact_shadows_on_forward_cameras(
 /// overwrites the real value later the same frame, before the bind group is
 /// built. Fixes the crash for reactive attach, camera spawn, and
 /// Forward↔Deferred switches alike.
+#[cfg(feature = "render_3d")]
 fn seed_contact_shadows_offset(
     mut commands: Commands,
     views: Query<
@@ -211,6 +220,7 @@ fn seed_contact_shadows_offset(
 ///
 /// No-op when there's no project (engine started without one — splash
 /// keeps spinning or the user backed out).
+#[cfg(feature = "render_3d")]
 pub fn sync_rendering_mode_from_project(
     project: Option<Res<CurrentProject>>,
     mut resolved: ResMut<ResolvedRenderingMode>,
@@ -454,29 +464,34 @@ impl Plugin for RuntimePlugin {
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Update, install_audio_asset_loader);
 
-        // Safety net: in Deferred mode, ensure every 3D camera carries
-        // DeferredPrepass so its prepass queue includes the deferred
-        // opaque phase. Covers editor previews/thumbnails that spawn
-        // their own Camera3d entities without our explicit attachment.
-        app.add_systems(
-            PostUpdate,
-            (
-                ensure_deferred_prepass_on_cameras,
-                ensure_contact_shadows_on_forward_cameras,
-            ),
-        );
-
-        // Render-world half of the contact-shadows fix: seed the view's
-        // `ViewContactShadowsUniformOffset` before Bevy reads it to pick the
-        // mesh pipeline key, so the pipeline and the bind group agree on binding
-        // 16 from the first frame. See `seed_contact_shadows_offset` for the race.
-        if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
-            render_app.add_systems(
-                bevy::render::Render,
-                seed_contact_shadows_offset
-                    .in_set(bevy::render::RenderSystems::PrepareAssets)
-                    .before(bevy::pbr::check_views_need_specialization),
+        // 3D render setup (deferred prepass + contact-shadows fix) — only with the
+        // `render_3d` pipeline. A 2D export drops bevy_pbr, so none of this exists.
+        #[cfg(feature = "render_3d")]
+        {
+            // Safety net: in Deferred mode, ensure every 3D camera carries
+            // DeferredPrepass so its prepass queue includes the deferred
+            // opaque phase. Covers editor previews/thumbnails that spawn
+            // their own Camera3d entities without our explicit attachment.
+            app.add_systems(
+                PostUpdate,
+                (
+                    ensure_deferred_prepass_on_cameras,
+                    ensure_contact_shadows_on_forward_cameras,
+                ),
             );
+
+            // Render-world half of the contact-shadows fix: seed the view's
+            // `ViewContactShadowsUniformOffset` before Bevy reads it to pick the
+            // mesh pipeline key, so the pipeline and the bind group agree on binding
+            // 16 from the first frame. See `seed_contact_shadows_offset` for the race.
+            if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+                render_app.add_systems(
+                    bevy::render::Render,
+                    seed_contact_shadows_offset
+                        .in_set(bevy::render::RenderSystems::PrepareAssets)
+                        .before(bevy::pbr::check_views_need_specialization),
+                );
+            }
         }
 
         app.init_resource::<ViewportRenderTarget>()
