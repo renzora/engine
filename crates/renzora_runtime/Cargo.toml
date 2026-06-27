@@ -26,7 +26,7 @@ default = [
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
 # Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped
 # separately by the exporter's render_3d capability.
-render_3d = ["dep:renzora_shader", "renzora_engine/render_3d"]
+render_3d = ["dep:renzora_shader", "renzora_engine/render_3d", "renzora/render_3d"]
 # avian physics (~6.5 MiB: avian3d + parry3d + bevy_transform_interpolation +
 # bevy_heavy + glam_matrix_extras). Forwards to every crate that touches avian:
 # the engine scene-save denies, water buoyancy, and the navmesh collider-obstacle

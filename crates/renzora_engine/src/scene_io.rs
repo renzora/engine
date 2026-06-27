@@ -9,6 +9,7 @@ use bevy::light::{Atmosphere, AtmosphereEnvironmentMapLight};
 // Interim BSN scene IR + format (replaces Bevy 0.18's deleted DynamicScene/RON).
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::{DynamicEntity, DynamicScene, DynamicSceneBuilder};
+#[cfg(feature = "render_3d")]
 use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
 use bevy::camera::Hdr;
@@ -1862,7 +1863,6 @@ pub fn rehydrate_cameras(
                 NormalPrepass,
                 DepthPrepass,
                 MotionVectorPrepass,
-                AtmosphereSettings::default(),
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
                     ..default()
@@ -1871,6 +1871,11 @@ pub fn rehydrate_cameras(
                 // deferred + area_light_luts bind-group-layout conflict).
                 Msaa::Off,
             ));
+            // Per-view atmosphere render mode — bevy_pbr, render_3d only.
+            #[cfg(feature = "render_3d")]
+            commands
+                .entity(entity)
+                .insert(AtmosphereSettings::default());
             // 0.19: `Atmosphere` belongs on a dedicated world entity, never the
             // camera (else `world_to_atmosphere` rotates with the view and the
             // sky glitches on pan). Spawn a runtime sky for the active camera.

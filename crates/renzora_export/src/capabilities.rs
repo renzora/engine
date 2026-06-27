@@ -201,6 +201,9 @@ pub const CAPABILITIES: &[Capability] = &[
             "bevy_solari",
             "meshlet",
             "meshlet_processor",
+            // 3D mesh morph targets (skinned/blend-shape) — irrelevant to 2D.
+            "morph",
+            "morph_animation",
         ],
         runtime_features: &["render_3d"],
         default_on: true,
@@ -330,8 +333,24 @@ pub fn disabled_bevy_features(state: &HashMap<String, bool>) -> Vec<String> {
 }
 
 /// `renzora_runtime` `default` features to strip from the export copy.
+///
+/// Enforces the one hard dependency between capabilities: the 3D subsystems
+/// (terrain/water/sky/post-FX/spline) build on bevy_pbr, so when `render_3d` is
+/// off they MUST be stripped too — otherwise the 2D build fails to compile. We do
+/// it here (not via a Cargo feature dep, which would force render_3d back ON).
 pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
-    collect_disabled(state, |c| c.runtime_features)
+    let mut out = collect_disabled(state, |c| c.runtime_features);
+    let render_3d_on = state.get("render_3d").copied().unwrap_or(true);
+    if !render_3d_on {
+        // particles (bevy_hanabi) references bevy_pbr in its asset path — drop it
+        // too in 2D (a dedicated 2D-particle path can re-add it later).
+        for f in ["terrain", "water", "sky", "postfx", "spline", "particles"] {
+            if !out.iter().any(|x| x == f) {
+                out.push(f.to_string());
+            }
+        }
+    }
+    out
 }
 
 fn collect_disabled(

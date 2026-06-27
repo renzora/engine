@@ -32,6 +32,11 @@ editor = ["postprocess", "dep:renzora_macros"]
 # Off by default so mobile/wasm/server builds keep the lean contracts-only
 # base — they never link the render-graph surface.
 postprocess = []
+# Within the post-process framework, gates the ordering anchors that reference
+# bevy_anti_alias (TAA/FXAA/SMAA) — those live in bevy's `3d` meta, dropped by a
+# 2D lean export. `tonemapping`/`Core3d` survive (bevy_core_pipeline). ON in every
+# desktop/editor build (forwarded by renzora_runtime/renzora_engine `render_3d`).
+render_3d = []
 # Note on the `dlopen` mechanism: distribution plugins (cdylib + dlopen)
 # need the FFI exports `plugin_create`, `plugin_scope`, `plugin_bevy_hash`
 # from `renzora::add!`. The macro gates those exports behind

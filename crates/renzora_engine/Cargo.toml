@@ -23,7 +23,7 @@ default = ["audio", "animation", "terrain", "physics", "render_3d"]
 # denies (scene_io.rs) and the render-mode/contact-shadow setup (lib.rs). NOTE: a
 # full 2D build also needs the bevy `3d` meta-feature dropped at the root manifest
 # + bevy_light handling — see plan (2D MODE).
-render_3d = ["dep:renzora_shader"]
+render_3d = ["dep:renzora_shader", "renzora/render_3d"]
 audio = ["dep:renzora_audio"]
 animation = ["dep:renzora_animation"]
 # `terrain` only gates the scene-save deny of `TerrainCheckerboardMaterial`
