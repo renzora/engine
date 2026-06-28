@@ -689,7 +689,13 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
                             ordered.push(e);
                         }
                         Some(&(_, old)) => {
-                            commands.entity(old).despawn();
+                            // `try_despawn`: the tracked row may already be gone
+                            // (its slot despawned + reused by another rebuild path
+                            // → a generation mismatch), and a plain `despawn` would
+                            // panic on that stale handle. We rebuild `next` from
+                            // scratch anyway, so silently skipping a vanished row is
+                            // correct.
+                            commands.entity(old).try_despawn();
                             let e = (snap.build)(&mut commands, &fonts, i);
                             next.insert(key, (hash, e));
                             ordered.push(e);
@@ -703,10 +709,11 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
                         }
                     }
                 }
-                // Despawn rows whose key vanished.
+                // Despawn rows whose key vanished. `try_despawn` for the same
+                // stale-slot reason as above.
                 for (k, &(_, e)) in kl.current.iter() {
                     if !next.contains_key(k) {
-                        commands.entity(e).despawn();
+                        commands.entity(e).try_despawn();
                     }
                 }
                 // Set the container's children to the new order (moves existing,
