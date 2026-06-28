@@ -66,9 +66,10 @@ impl SelectionGranularity {
 pub enum InspectorExpandDefault {
     /// Only the most-edited components (Name, Transform, Scripts) start open;
     /// everything else starts collapsed so long inspectors stay scannable.
-    #[default]
     Essentials,
-    /// Every component starts open.
+    /// Every component starts open (the default — sections start expanded and the
+    /// first header click collapses them).
+    #[default]
     AllOpen,
     /// Every component starts collapsed.
     AllClosed,

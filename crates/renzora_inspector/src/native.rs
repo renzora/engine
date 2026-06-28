@@ -1149,6 +1149,11 @@ fn build_section(
         width: Val::Percent(100.0),
         flex_direction: FlexDirection::Column,
         padding: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(4.0)),
+        // Preserve the collapsed state `section_with_header_open` encoded in the
+        // body's `display`; a bare `Node` would default to `Flex` and show a
+        // start-collapsed section, desyncing it from its `Section.open` flag (the
+        // first collapse click would then no-op).
+        display: if sec.open { Display::Flex } else { Display::None },
         ..default()
     });
     if sec.native_drawer.is_some() {
