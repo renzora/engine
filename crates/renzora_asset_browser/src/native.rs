@@ -1684,16 +1684,39 @@ fn folder_color(name: &str) -> (u8, u8, u8) {
     }
 }
 
+/// A theme is a `.toml`, identified either by its manifest filename
+/// `theme.toml` (nested form, `themes/<Name>/theme.toml`) or by living anywhere
+/// under a `themes/` folder (flat form, `themes/<Name>.toml`). Either way the
+/// browser gives it its own icon/label instead of the generic TOML one.
+fn is_theme_file(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if name.eq_ignore_ascii_case("theme.toml") {
+        return true;
+    }
+    let is_toml = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("toml"));
+    is_toml
+        && path.ancestors().skip(1).any(|a| {
+            a.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case("themes"))
+        })
+}
+
 /// Accent color + human-readable type label for a file, by extension. Drives the
 /// tile's type subtitle and bottom accent strip (mirrors Unreal's "Blueprint
 /// Class" subtitle + colored underline). Folders are handled separately.
 fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
+    if is_theme_file(path) {
+        return ((255, 170, 210), "Theme");
+    }
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
     match ext.as_str() {
+        "ttf" | "otf" | "woff" | "woff2" => ((140, 200, 255), "Font"),
         "material" => ((0, 200, 130), "Material"),
         "blueprint" | "bp" => ((100, 180, 255), "Blueprint"),
         "lua" => ((120, 170, 255), "Lua Script"),
@@ -1733,9 +1756,13 @@ fn icon_for(path: &Path, is_dir: bool) -> &'static str {
     if is_dir {
         return "folder";
     }
+    if is_theme_file(path) {
+        return "swatches";
+    }
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => "image",
+        "ttf" | "otf" | "woff" | "woff2" => "text-aa",
         "glb" | "gltf" | "obj" | "fbx" => "cube",
         "material" => "palette",
         "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
