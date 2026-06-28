@@ -118,7 +118,10 @@ bevy = { version = "0.19", default-features = false, features = [
     "bevy_light",
     "serialize",
     # extra engine subsystems
-    "bevy_remote", "bevy_feathers", "bevy_settings", "sysinfo_plugin",
+    # (bevy_remote / BRP deliberately omitted — nothing in the editor or the
+    # exported game uses the Bevy Remote Protocol, and it was the sole puller of
+    # bevy_dev_tools, which would otherwise re-introduce bevy_pbr into a 2D build.)
+    "bevy_feathers", "bevy_settings", "sysinfo_plugin",
     "bevy_camera_controller", "free_camera", "pan_camera",
     # reflection extras
     "reflect_functions", "reflect_documentation",

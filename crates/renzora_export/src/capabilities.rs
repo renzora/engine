@@ -6,7 +6,7 @@
 //! touched — only the disposable copy — so this is safe.
 //!
 //! Two kinds:
-//! * **Safe-leaf** (Solari, meshlets, BRP, Feathers, uncommon codecs): Bevy
+//! * **Safe-leaf** (Solari, meshlets, Feathers, uncommon codecs): Bevy
 //!   features no core crate hard-depends on. Default OFF (auto-stripped), since
 //!   they're confidently unneeded.
 //! * **Structural subsystems** (audio, navmesh, networking, post-FX, sky, …):
@@ -46,14 +46,6 @@ pub const CAPABILITIES: &[Capability] = &[
         label: "Virtual geometry (meshlets)",
         help: "Experimental meshlet rendering + its metis-based processor. Rarely used; large.",
         bevy_features: &["meshlet", "meshlet_processor"],
-        runtime_features: &[],
-        default_on: false,
-    },
-    Capability {
-        id: "remote",
-        label: "Remote debugging protocol",
-        help: "Bevy Remote Protocol server. Not needed in a shipped game.",
-        bevy_features: &["bevy_remote"],
         runtime_features: &[],
         default_on: false,
     },
