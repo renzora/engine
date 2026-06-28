@@ -264,9 +264,11 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
     // Two columns.
     let cols = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, column_gap: Val::Px(16.0), flex_grow: 1.0, min_height: Val::Px(0.0), ..default() }).id();
     let sidebar = build_sidebar(commands, fonts);
+    // The right column is NOT scrolled as a whole — the platform header and tab
+    // bar inside it stay fixed; each tab caps and scrolls its own content (see
+    // `finish_tab`). That keeps the top chrome put while a long list scrolls.
     let right = commands.spawn((Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), min_width: Val::Px(0.0), ..default() }, RightPane { sig: None })).id();
-    let right_scroll = scroll_area(commands, right, 440.0);
-    commands.entity(cols).add_children(&[sidebar, right_scroll]);
+    commands.entity(cols).add_children(&[sidebar, right]);
     commands.entity(settings_view).add_child(cols);
 
     // Export button sits below the columns; the output fields (name, directory,
@@ -421,6 +423,22 @@ fn tab_panel(commands: &mut Commands) -> Entity {
     commands.spawn(Node::default()).id()
 }
 
+/// Max height a single tab's content scrolls within. The platform header + tab
+/// bar live above the panels and stay fixed; only this inner content scrolls.
+const TAB_CONTENT_MAX: f32 = 380.0;
+
+/// Finish a tab: stack its `sections` in a column and wrap that in one capped
+/// scroll viewport, so the content scrolls under the fixed header/tab bar
+/// (sizes to content when short, scrolls past `TAB_CONTENT_MAX`).
+fn finish_tab(commands: &mut Commands, panel: Entity, sections: &[Entity]) {
+    let content = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), ..default() })
+        .id();
+    commands.entity(content).add_children(sections);
+    let scroll = scroll_area(commands, content, TAB_CONTENT_MAX);
+    commands.entity(panel).add_child(scroll);
+}
+
 // ── Output tab: binary name, export directory, icon ──────────────────────────
 
 fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -460,7 +478,7 @@ fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(icon_row).add_children(&[icon_lbl, icon_path, clear, icon_browse]);
 
     commands.entity(body).add_children(&[name_row, dir_row, icon_row]);
-    commands.entity(panel).add_child(sec);
+    finish_tab(commands, panel, &[sec]);
     panel
 }
 
@@ -468,6 +486,7 @@ fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool, host: bool) -> Entity {
     let panel = tab_panel(commands);
+    let mut secs = Vec::new();
 
     // Packaging mode (desktop). The lean static single-binary mode recompiles
     // from source, which native cargo can only do for the host triple — so it's
@@ -501,11 +520,11 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
             let hint = txt(commands, fonts, "Lean: recompiles a stripped static single binary (no engine dylibs). Installs Rust automatically if missing.", 11.0, text_muted());
             commands.entity(body).add_child(hint);
         }
-        commands.entity(panel).add_child(sec);
+        secs.push(sec);
     }
 
-    let status = build_runtime_status(commands, fonts, p);
-    commands.entity(panel).add_child(status);
+    secs.push(build_runtime_status(commands, fonts, p));
+    finish_tab(commands, panel, &secs);
     panel
 }
 
@@ -546,9 +565,11 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
     if host {
         let note = txt(commands, fonts, "Strip unused engine capabilities from the lean single-binary recompile. Auto-detected from the project where possible.", 11.0, text_muted());
         commands.entity(body).add_child(note);
-        let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
-        for cap in crate::capabilities::CAPABILITIES {
+        let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
+        for (idx, cap) in crate::capabilities::CAPABILITIES.iter().enumerate() {
             let id = cap.id;
+            // One padded, zebra-striped item per capability (checkbox + label + help).
+            let item = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(row_stripe(idx)))).id();
             // Inlined `check_state` so the closures can capture the capability id.
             let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
             let cb = checkbox(commands, false);
@@ -565,15 +586,15 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
             let t = txt(commands, fonts, cap.label, 12.0, text_primary());
             commands.entity(row).add_children(&[cb, t]);
             let help = txt(commands, fonts, cap.help, 10.0, text_muted());
-            commands.entity(list).add_children(&[row, help]);
+            commands.entity(item).add_children(&[row, help]);
+            commands.entity(list).add_child(item);
         }
-        let scroll = scroll_area(commands, list, 280.0);
-        commands.entity(body).add_child(scroll);
+        commands.entity(body).add_child(list);
     } else {
         let note = txt(commands, fonts, "Engine-feature stripping is part of the lean single-binary export, which only builds for the host platform you're running the editor on.", 11.0, text_muted());
         commands.entity(body).add_child(note);
     }
-    commands.entity(panel).add_child(sec);
+    finish_tab(commands, panel, &[sec]);
     panel
 }
 
@@ -582,9 +603,8 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
 fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let panel = tab_panel(commands);
     let (sec, body) = section(commands, fonts, "puzzle-piece", "Plugins", accent());
-    let list = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }).id();
-    let scroll = scroll_area(commands, list, 240.0);
-    commands.entity(body).add_child(scroll);
+    let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
+    commands.entity(body).add_child(list);
     // Filled by a command that can read the world (the plugin list is stable
     // after the scan).
     commands.queue(move |world: &mut World| {
@@ -597,8 +617,8 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 let note = c.spawn((Text::new("No plugins detected in this project.".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
                 c.entity(list).add_child(note);
             }
-            for (id, scope) in plugins {
-                let row = c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
+            for (idx, (id, scope)) in plugins.into_iter().enumerate() {
+                let row = c.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(row_stripe(idx)))).id();
                 let cb = checkbox(&mut c, true);
                 let id2 = id.clone();
                 bind_2way(&mut c, cb, move |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.selected_plugins.contains(&id2)), {
@@ -616,7 +636,7 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
         queue.apply(world);
     });
-    commands.entity(panel).add_child(sec);
+    finish_tab(commands, panel, &[sec]);
     panel
 }
 
@@ -632,7 +652,6 @@ fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     bind_2way(commands, dv, |w| w.resource::<ExportOverlayState>().compression_level as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().compression_level = (v.round() as i32).clamp(1, 22));
     commands.entity(crow).add_child(dv);
     commands.entity(cbody).add_child(crow);
-    commands.entity(panel).add_child(csec);
 
     // Mesh optimization.
     let (msec, mbody) = section(commands, fonts, "cube", "Mesh Optimization", accent());
@@ -655,7 +674,7 @@ fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     commands.entity(levels).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
     bind_display(commands, levels, |w| w.resource::<ExportOverlayState>().mesh_generate_lods);
     commands.entity(mbody).add_child(levels);
-    commands.entity(panel).add_child(msec);
+    finish_tab(commands, panel, &[csec, msec]);
     panel
 }
 
@@ -663,6 +682,7 @@ fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
 
 fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool) -> Entity {
     let panel = tab_panel(commands);
+    let mut secs = Vec::new();
 
     // Window (desktop).
     if desktop {
@@ -689,7 +709,7 @@ fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, d
         commands.entity(size).add_children(&[szl, dw, xl, dh]);
         bind_display(commands, size, |w| matches!(w.resource::<ExportOverlayState>().window_mode, WindowMode::Windowed));
         commands.entity(wbody).add_child(size);
-        commands.entity(panel).add_child(wsec);
+        secs.push(wsec);
     }
 
     // Flags.
@@ -700,7 +720,8 @@ fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, d
         let server = check_state(commands, fonts, "Include dedicated server", |s| s.include_server, |s, v| s.include_server = v);
         commands.entity(obody).add_child(server);
     }
-    commands.entity(panel).add_child(osec);
+    secs.push(osec);
+    finish_tab(commands, panel, &secs);
     panel
 }
 
@@ -982,6 +1003,12 @@ fn fullscreen() -> Node {
 
 fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::srgba_u8(r, g, b, a)
+}
+
+/// Zebra-stripe background for list rows — a faint overlay on odd rows so long
+/// lists (features, plugins) read as discrete rows.
+fn row_stripe(idx: usize) -> Color {
+    if idx % 2 == 1 { ca(255, 255, 255, 4) } else { Color::NONE }
 }
 
 fn cursor() -> renzora_ember::cursor_icon::HoverCursor {
