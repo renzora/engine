@@ -118,6 +118,17 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: false,
     },
     Capability {
+        id: "gizmos",
+        label: "Debug gizmos (immediate-mode draw)",
+        help: "bevy_gizmos + bevy_gizmos_render — immediate-mode debug-line drawing (~1.3 MiB). \
+               Editor/debug only; a shipped game rarely uses it. (Now strippable because we own \
+               the explicit bevy manifest — it used to be welded into the 2d/3d metas.) The \
+               editor's transform gizmo is a separate crate, renzora_gizmo, and is unaffected.",
+        bevy_features: &["bevy_gizmos", "bevy_gizmos_render"],
+        runtime_features: &[],
+        default_on: false,
+    },
+    Capability {
         id: "image_extra",
         label: "Image-format decoders",
         help: "Every optional texture decoder — DDS, JPEG, WebP, basis-universal, EXR/HDR, TIFF, \
@@ -210,7 +221,11 @@ pub const CAPABILITIES: &[Capability] = &[
         // would otherwise re-enable bevy_pbr on its own. (bevy_solari/meshlet need pbr
         // too — they're separate caps but also stripped here.)
         bevy_features: &[
-            "3d",
+            // The explicit 3D-render features (we own the manifest now — no `3d` meta).
+            "bevy_pbr",
+            "bevy_gltf",
+            "gltf_animation",
+            "bevy_mikktspace",
             "pbr_transmission_textures",
             "pbr_clustered_decals",
             "pbr_light_textures",
