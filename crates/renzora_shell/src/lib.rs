@@ -1869,9 +1869,15 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
     }
 }
 
-/// Left side: a Ready label + left-aligned status items.
+/// Left side: a Ready label + left-aligned status items. A plugin can swap the
+/// "Ready" text via [`renzora::ShellReadyStatus`] (e.g. the auto-save countdown).
 fn status_snapshot_left(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
-    let mut rows = vec![StatusRow::Label("Ready".to_string(), text_muted())];
+    let (label, color) = world
+        .get_resource::<renzora::ShellReadyStatus>()
+        .and_then(|r| r.label.clone().map(|t| (t, r.color)))
+        .map(|(t, c)| (t, c.map(|c| (c[0], c[1], c[2])).unwrap_or_else(text_muted)))
+        .unwrap_or_else(|| ("Ready".to_string(), text_muted()));
+    let mut rows = vec![StatusRow::Label(label, color)];
     rows.extend(status_rows(world, renzora::ShellStatusAlign::Left));
     rows_snapshot(rows)
 }

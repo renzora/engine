@@ -100,6 +100,10 @@ Prefer to work with the keyboard? Press a key, move the mouse, then click to con
 
 Press `Ctrl+S` to save. Scenes are stored as `.ron` files, kept by convention in your project's `scenes/` folder. You almost never edit these by hand — the editor writes them for you — but they are plain text if you ever want to peek.
 
+### Auto-save
+
+The editor saves for you on a timer — **on by default**, every 5 minutes. Adjust it under **Settings → Auto-Save** (in the sidebar's **Editor** group): toggle it off, or change the interval (in seconds). In the last few seconds before each save the bottom-left status bar replaces **Ready** with a live **Auto save in Ns** countdown; when it reaches zero the scene is saved — through the exact same path as `Ctrl+S`, so a focused asset tab (a material, script, etc.) is never overwritten — and the label returns to **Ready**. Auto-save pauses while you're in Play mode.
+
 Your project picks which scene loads first when the game runs. That's set in `project.toml` with a single `main_scene` line:
 
 ```toml

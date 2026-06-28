@@ -50,6 +50,7 @@ editor = [
     "dep:renzora_animation_editor",
     "dep:renzora_asset_browser",
     "dep:renzora_auth",
+    "dep:renzora_autosave",
     "dep:renzora_blueprint_editor",
     "dep:renzora_code_editor",
     "dep:renzora_command_palette",
@@ -134,6 +135,7 @@ renzora_shell              = { path = "../renzora_shell", optional = true }
 renzora_animation_editor   = { path = "../renzora_animation_editor", optional = true }
 renzora_asset_browser      = { path = "../renzora_asset_browser", optional = true }
 renzora_auth               = { path = "../renzora_auth", optional = true }
+renzora_autosave           = { path = "../renzora_autosave", optional = true }
 renzora_blueprint_editor   = { path = "../renzora_blueprint_editor", optional = true }
 renzora_code_editor        = { path = "../renzora_code_editor", optional = true }
 renzora_command_palette    = { path = "../renzora_command_palette", optional = true }

@@ -413,6 +413,18 @@ pub struct ShellStatusRegistry {
     pub items: Vec<ShellStatusItem>,
 }
 
+/// Overrides the status bar's left-hand **"Ready"** label. The host owns the
+/// status bar, so a plugin can't replace that label by registering a status item
+/// (those only *append*). Instead it writes here: `label = Some(text)` swaps the
+/// "Ready" text for `text` (in `color`, falling back to the muted default when
+/// `None`); `label = None` restores "Ready". This is how the auto-save plugin
+/// shows its "Auto save in Ns" countdown in place of "Ready".
+#[derive(Resource, Default)]
+pub struct ShellReadyStatus {
+    pub label: Option<String>,
+    pub color: Option<[u8; 3]>,
+}
+
 /// The bevy-native editor-extension API. A renzora plugin (full ECS access) uses
 /// this to add panels + status-bar items to the bevy_ui shell directly — no
 /// egui, no bridge — mirroring how `#[derive]` component macros let plugins add

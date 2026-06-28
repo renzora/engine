@@ -246,6 +246,16 @@ struct EditorPrefFile {
     /// `renzora_tracy` profiler bridge does exactly this). Generic host flag.
     #[serde(default)]
     dev_mode: bool,
+    /// Auto-save: periodically re-save the open scene. On by default.
+    #[serde(default = "default_true")]
+    autosave_enabled: bool,
+    /// Seconds between auto-saves (the countdown shown in the status bar).
+    #[serde(default = "default_autosave_interval_secs")]
+    autosave_interval_secs: u32,
+}
+
+fn default_autosave_interval_secs() -> u32 {
+    300
 }
 
 fn default_ui_scale() -> f32 {
@@ -277,6 +287,8 @@ impl Default for EditorPrefFile {
             status_show_rendering_mode: true,
             status_show_gpu_name: true,
             dev_mode: false,
+            autosave_enabled: true,
+            autosave_interval_secs: default_autosave_interval_secs(),
         }
     }
 }
@@ -458,6 +470,70 @@ pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.dev_mode = dev_mode;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Auto-save preferences, persisted per-user in `~/.renzora/editor.toml`.
+///
+/// A contract resource (rather than living in `EditorSettings`) so the
+/// `renzora_autosave` plugin — which owns the countdown + save trigger — depends
+/// only on this dylib, and the settings UI edits it the same way. Off by default;
+/// the editor never writes scene files until the user opts in.
+#[derive(Resource, Clone, Copy, PartialEq, Debug)]
+pub struct AutoSaveSettings {
+    pub enabled: bool,
+    /// Seconds between auto-saves.
+    pub interval_secs: u32,
+}
+
+impl Default for AutoSaveSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval_secs: default_autosave_interval_secs(),
+        }
+    }
+}
+
+/// Load the persisted auto-save preferences (defaults when the file is absent).
+pub fn load_autosave() -> AutoSaveSettings {
+    #[cfg(target_arch = "wasm32")]
+    {
+        AutoSaveSettings::default()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let prefs = editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .unwrap_or_default();
+        AutoSaveSettings {
+            enabled: prefs.autosave_enabled,
+            // Clamp to a sane floor so a corrupt/0 value can't busy-save.
+            interval_secs: prefs.autosave_interval_secs.clamp(10, 3600),
+        }
+    }
+}
+
+/// Persist the auto-save preferences (read-modify-write, so other fields survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_autosave(settings: &AutoSaveSettings) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.autosave_enabled = settings.enabled;
+    prefs.autosave_interval_secs = settings.interval_secs;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

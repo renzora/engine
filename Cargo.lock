@@ -7652,6 +7652,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_autosave"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+]
+
+[[package]]
 name = "renzora_bloom_effect"
 version = "0.1.0"
 dependencies = [
@@ -7993,6 +8001,7 @@ dependencies = [
  "renzora_auth",
  "renzora_auto_exposure",
  "renzora_auto_exposure_editor",
+ "renzora_autosave",
  "renzora_bloom_effect",
  "renzora_bloom_effect_editor",
  "renzora_blueprint_editor",

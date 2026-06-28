@@ -159,6 +159,10 @@ struct ResetBindingsBtn;
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<NativeSettingsState>();
     app.init_resource::<NativeInputUi>();
+    // Seed the auto-save setting from disk so the Editor tab shows the persisted
+    // value even if the `renzora_autosave` plugin (its real owner) isn't present.
+    // `insert_resource` from that plugin wins over this when it is.
+    app.insert_resource(renzora::load_autosave());
     app.add_systems(
         Update,
         (
@@ -685,6 +689,7 @@ const CATS: &[(&str, &[Cat])] = &[
         "EDITOR",
         &[
             (SettingsTab::Editor, Some("developer"), "wrench", "Developer"),
+            (SettingsTab::Editor, Some("autosave"), "floppy-disk", "Auto-Save"),
             (SettingsTab::Editor, Some("workspace"), "desktop", "UI Workspace"),
             (SettingsTab::Editor, Some("renderer"), "monitor", "Renderer"),
             (SettingsTab::Viewport, Some("grid"), "grid-four", "Grid"),
@@ -1755,6 +1760,43 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
         },
     );
     settings_row(commands, fonts, body, 0, "Dev Mode", t);
+
+    let (sec, body) = section(commands, fonts, "floppy-disk", "Auto-Save", A_GREEN);
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "autosave");
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| w.resource::<renzora::AutoSaveSettings>().enabled,
+        |w, &v| {
+            w.resource_mut::<renzora::AutoSaveSettings>().enabled = v;
+            let snap = *w.resource::<renzora::AutoSaveSettings>();
+            let _ = renzora::save_autosave(&snap);
+        },
+    );
+    settings_row(commands, fonts, body, 0, "Enable Auto-Save", t);
+    let dv = ctl_drag(
+        commands,
+        fonts,
+        300.0,
+        10.0,
+        3600.0,
+        10.0,
+        |w| w.resource::<renzora::AutoSaveSettings>().interval_secs as f32,
+        |w, &v| {
+            let secs = v.round().clamp(10.0, 3600.0) as u32;
+            w.resource_mut::<renzora::AutoSaveSettings>().interval_secs = secs;
+            let snap = *w.resource::<renzora::AutoSaveSettings>();
+            let _ = renzora::save_autosave(&snap);
+        },
+    );
+    settings_row(commands, fonts, body, 1, "Interval (seconds)", dv);
+    note_row(
+        commands,
+        fonts,
+        body,
+        "Re-saves the open scene on a timer. The status bar counts down in place of \"Ready\".",
+    );
 
     let (sec, body) = section(commands, fonts, "desktop", "UI Workspace", A_BLUE);
     commands.entity(col).add_child(sec);

@@ -1,0 +1,23 @@
+[package]
+name = "renzora_autosave"
+version = "0.1.0"
+edition = "2021"
+description = "Periodic scene auto-save. Editor-only plugin: counts down a user-set interval, then re-saves the open scene through the same path as Ctrl+S. The status bar's left label shows the live 'Auto save in Ns' countdown in place of 'Ready'."
+
+# Editor-scope plugin. Ships as an rlib member of the `renzora_editor` bundle
+# (NOT a standalone cdylib): the bundle's `export_plugin_bundle!` replays every
+# Editor-scope plugin from the shared inventory, so a loose editor cdylib would
+# double-install. Mirrors `renzora_tutorial` — `add!(AutoSavePlugin, Editor)`
+# self-registers via inventory.
+
+[dependencies]
+bevy = { workspace = true }
+# Everything this plugin touches is a contract type, so the dylib is the only
+# dependency: AutoSaveSettings + load_autosave (the persisted setting),
+# ShellReadyStatus (the status-bar label override), SaveSceneRequested (the
+# asset-tab-safe save path Ctrl+S uses), CurrentProject / PlayModeState /
+# SplashState (the gates).
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+
+[lints]
+workspace = true
