@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use crate::components::{SliderData, UiWidgetPart};
+use crate::game_ui::components::{SliderData, UiWidgetPart};
 
 /// Updates the slider value when the track is dragged, and positions the thumb.
 pub fn slider_system(

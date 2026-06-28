@@ -242,7 +242,7 @@ fn on_widget_reparented(
 ) {
     for entity in &changed {
         commands.queue(move |world: &mut World| {
-            crate::spawn::reapply_layout_from_parent(world, entity);
+            crate::game_ui::spawn::reapply_layout_from_parent(world, entity);
         });
     }
 }
@@ -263,7 +263,7 @@ fn on_childof_inserted(
         return;
     }
     commands.queue(move |world: &mut World| {
-        crate::spawn::reapply_layout_from_parent(world, entity);
+        crate::game_ui::spawn::reapply_layout_from_parent(world, entity);
     });
 }
 

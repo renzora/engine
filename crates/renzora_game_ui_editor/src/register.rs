@@ -7,7 +7,7 @@
 //! inside `GameUiPlugin::build` under the `editor` feature. It runs from
 //! `GameUiEditorPlugin::build`.
 //!
-//! Path note: `components::` → `renzora_game_ui::components::`, the moved canvas
+//! Path note: `components::` → `renzora_ember::game_ui::components::`, the moved canvas
 //! modules are now local (`crate::canvas` / `crate::canvas_render` /
 //! `crate::ui_inspector`), and `UiWidgetType::icon()` became the free fn
 //! [`widget_icon`] here (icons are name-based, resolved via the phosphor map).
@@ -15,8 +15,8 @@
 use bevy::prelude::*;
 
 use renzora::AppEditorExt;
-use renzora_game_ui::components::{self};
-use renzora_game_ui::{UiCanvas, UiWidget, UiWidgetType};
+use renzora_ember::game_ui::components::{self};
+use renzora_ember::game_ui::{UiCanvas, UiWidget, UiWidgetType};
 
 use crate::{canvas, canvas_render, ui_inspector as inspector};
 
@@ -849,7 +849,7 @@ fn register_ui_presets(app: &mut App) {
         ($variant:ident, $id:literal, $label:literal) => {{
             fn spawn_fn(world: &mut World) -> Entity {
                 let e =
-                    renzora_game_ui::spawn::spawn_widget(world, &UiWidgetType::$variant, None);
+                    renzora_ember::game_ui::spawn::spawn_widget(world, &UiWidgetType::$variant, None);
                 // Editor follow-up that used to live inside `spawn_widget`'s
                 // `#[cfg(feature = "editor")]` block: expand the parent in the
                 // hierarchy panel + select the freshly-spawned widget.

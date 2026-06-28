@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{CheckboxData, UiWidgetPart};
+use crate::game_ui::components::{CheckboxData, UiWidgetPart};
 
 pub fn checkbox_system(
     mut checkboxes: Query<(&mut CheckboxData, &Interaction, &Children), Changed<Interaction>>,

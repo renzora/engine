@@ -31,7 +31,7 @@ use bevy::prelude::*;
 
 use renzora::SplashState;
 use renzora_ember::font::EmberFonts;
-use renzora_game_ui::UiCanvas;
+use renzora_ember::game_ui::UiCanvas;
 
 mod align;
 pub mod canvas;

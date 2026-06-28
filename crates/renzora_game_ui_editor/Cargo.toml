@@ -11,7 +11,6 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_game_ui = { path = "../renzora_game_ui" }
 renzora_ember = { path = "../renzora_ember" }
 
 # Editor-only dep relocated from renzora_game_ui (the lean runtime crate no

@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::*;
+use crate::game_ui::components::*;
 
 pub fn interaction_style_system(
     mut widgets: Query<

@@ -6,7 +6,7 @@
 //! - **Play mode**: PlayModeCamera ← [play mode source camera, all non-camera entities]
 //!
 //! Note: the UI authoring viewport mode reuses the editor camera as its
-//! 3D backdrop (see `renzora_game_ui::canvas`), so it inherits the
+//! 3D backdrop (see `renzora_ember::game_ui::canvas`), so it inherits the
 //! EditorCamera route — no dedicated UI canvas preview camera exists.
 
 use bevy::prelude::*;

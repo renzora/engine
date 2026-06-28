@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{DraggableWindowData, UiWidgetPart};
+use crate::game_ui::components::{DraggableWindowData, UiWidgetPart};
 
 /// Tracks active drag state for a window.
 #[derive(Component, Default)]

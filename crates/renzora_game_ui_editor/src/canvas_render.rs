@@ -17,7 +17,7 @@ use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 
-use renzora_game_ui::components::UiCanvas;
+use renzora_ember::game_ui::components::UiCanvas;
 
 /// *Initial* resolution of the UI editor render-target image (the default
 /// canvas reference). The target is resized to follow the active canvas's

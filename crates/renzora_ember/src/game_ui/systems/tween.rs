@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{TweenComplete, UiFill, UiOpacity, UiTween, UiTweenProperty};
+use crate::game_ui::components::{TweenComplete, UiFill, UiOpacity, UiTween, UiTweenProperty};
 
 pub fn ui_tween_system(
     mut commands: Commands,

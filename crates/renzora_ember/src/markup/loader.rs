@@ -542,7 +542,7 @@ fn apply_xnode_to(
     // hit-tests `UiWidget` entities, so clicking a `<text>` inside a `<panel>`
     // lands on the text (deepest match wins). Combined with `MarkupSource`
     // below, that makes per-element edits round-trip to the `.html` file.
-    ec.insert(renzora_game_ui::UiWidget::default());
+    ec.insert(crate::game_ui::UiWidget::default());
 
     // `hover:` / `pressed:` color overrides + tween timing → `Interactive`.
     // bevy_hui parses these into `StyleAttr::Hover/Pressed(inner)`; collect the

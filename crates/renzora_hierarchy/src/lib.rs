@@ -167,8 +167,8 @@ fn detect_selection_keybindings(
         // game UI (`UiCanvas`/`UiWidget`). SelectAll must skip the former, or a
         // follow-up Delete despawns the whole editor UI.
         Has<bevy::ui::Node>,
-        Has<renzora_game_ui::UiCanvas>,
-        Has<renzora_game_ui::UiWidget>,
+        Has<renzora_ember::game_ui::UiCanvas>,
+        Has<renzora_ember::game_ui::UiWidget>,
     )>,
     mut vis_q: Query<&mut bevy::prelude::Visibility>,
     mut rename_req: ResMut<RenameRequest>,

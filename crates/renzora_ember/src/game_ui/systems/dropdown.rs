@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{DropdownData, UiWidgetPart};
+use crate::game_ui::components::{DropdownData, UiWidgetPart};
 
 pub fn dropdown_system(
     mut dropdowns: Query<(&mut DropdownData, &Interaction, &Children), Changed<Interaction>>,

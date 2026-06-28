@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{ModalData, UiWidgetPart};
+use crate::game_ui::components::{ModalData, UiWidgetPart};
 
 pub fn modal_system(
     mut modals: Query<(Entity, &ModalData, &Children, &mut Visibility)>,

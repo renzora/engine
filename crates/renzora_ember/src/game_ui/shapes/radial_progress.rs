@@ -53,7 +53,7 @@ impl RadialProgressMaterial {
 
 impl UiMaterial for RadialProgressMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_game_ui/shapes/radial_progress.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/radial_progress.wgsl".into()
     }
 }
 

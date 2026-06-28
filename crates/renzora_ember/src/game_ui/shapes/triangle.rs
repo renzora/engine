@@ -50,7 +50,7 @@ impl TriangleMaterial {
 
 impl UiMaterial for TriangleMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_game_ui/shapes/triangle.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/triangle.wgsl".into()
     }
 }
 

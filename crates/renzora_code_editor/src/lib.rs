@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_ember::markup::MarkupSource;
 use renzora_editor_framework::EditorSelection;
-use renzora_game_ui::HtmlTemplatePath;
+use renzora_ember::game_ui::HtmlTemplatePath;
 use renzora_scripting::ScriptComponent;
 
 // ---------------------------------------------------------------------------

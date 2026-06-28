@@ -5,8 +5,8 @@
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use crate::components::*;
-use crate::shapes::{self, UiShapeWidget};
+use crate::game_ui::components::*;
+use crate::game_ui::shapes::{self, UiShapeWidget};
 
 /// Reference resolution for computing percent values.
 struct Ref {
@@ -302,7 +302,7 @@ pub fn spawn_html_template_at(
             HtmlTemplatePath(load_path),
             // Dedicated UI entity dropped onto the canvas — build the markup
             // tree directly onto it, not as a child.
-            crate::HuiBuildOnSelf,
+            crate::game_ui::HuiBuildOnSelf,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),

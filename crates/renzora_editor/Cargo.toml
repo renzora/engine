@@ -229,7 +229,6 @@ renzora_animation       = { path = "../renzora_animation" }
 renzora_water           = { path = "../renzora_water" }
 renzora_water_editor    = { path = "../renzora_water/editor", optional = true }
 renzora_terrain         = { path = "../renzora_terrain" }
-renzora_game_ui         = { path = "../renzora_game_ui" }
 renzora_ember_editor    = { path = "../renzora_ember/editor", optional = true }
 renzora_navmesh         = { path = "../renzora_navmesh" }
 renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true }

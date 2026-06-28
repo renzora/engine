@@ -15,7 +15,7 @@
 use bevy::app::AppExit;
 use bevy::prelude::*;
 use renzora::{ScriptAction, ScriptActionValue};
-use renzora_game_ui::{HtmlTemplatePath, UiCanvas};
+use crate::game_ui::{HtmlTemplatePath, UiCanvas};
 
 /// `action("hui_spawn", { template = "templates/foo.html" })` — spawn a new
 /// `UiCanvas` root carrying that path; the renzora_hui loader builds the markup

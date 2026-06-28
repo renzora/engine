@@ -62,7 +62,7 @@ water = ["dep:renzora_water"]
 audio = ["dep:renzora_audio", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
 blueprint = ["dep:renzora_blueprint", "renzora_scripting/blueprint"]
-game_ui = ["dep:renzora_game_ui", "renzora_ember/game_ui"]
+game_ui = ["renzora_ember/game_ui"]
 # Post-process effect stack (the framework `renzora_postprocess` + tonemapping
 # stay core; these are the individual effects).
 postfx = [
@@ -110,7 +110,6 @@ renzora_spline = { path = "../renzora_spline", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }
 renzora_water = { path = "../renzora_water", optional = true }
 renzora_animation = { path = "../renzora_animation", optional = true }
-renzora_game_ui = { path = "../renzora_game_ui", optional = true }
 # `default-features = false` so the lean export can strip ember's `game_ui`
 # markup module (+ its `renzora_game_ui`/`bevy_hui` deps); the `game_ui` feature
 # below forwards `renzora_ember/game_ui`. Normal builds keep it via `default`.

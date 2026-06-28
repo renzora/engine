@@ -23,7 +23,7 @@
 use bevy::prelude::*;
 use renzora::ScriptAction;
 
-use crate::components::*;
+use crate::game_ui::components::*;
 
 /// System that handles UI-related ScriptAction events.
 pub fn handle_ui_script_actions(

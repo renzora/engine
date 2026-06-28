@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{TooltipData, UiWidgetPart};
+use crate::game_ui::components::{TooltipData, UiWidgetPart};
 
 /// Tracks how long the tooltip has been hovered.
 #[derive(Component, Default)]

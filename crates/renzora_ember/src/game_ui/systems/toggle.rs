@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{ToggleData, UiWidgetPart};
+use crate::game_ui::components::{ToggleData, UiWidgetPart};
 
 pub fn toggle_system(
     mut toggles: Query<(&mut ToggleData, &Interaction, &Children), Changed<Interaction>>,

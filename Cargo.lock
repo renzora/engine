@@ -7870,7 +7870,6 @@ dependencies = [
  "renzora",
  "renzora_editor_framework",
  "renzora_ember",
- "renzora_game_ui",
  "renzora_scripting",
 ]
 
@@ -8102,7 +8101,6 @@ dependencies = [
  "renzora_environment_map_editor",
  "renzora_export",
  "renzora_foliage_editor",
- "renzora_game_ui",
  "renzora_game_ui_editor",
  "renzora_gamepad",
  "renzora_gizmo",
@@ -8191,7 +8189,6 @@ dependencies = [
  "bevy_hui",
  "nom",
  "renzora",
- "renzora_game_ui",
  "renzora_scripting",
  "serde",
  "tempfile",
@@ -8206,7 +8203,6 @@ dependencies = [
  "bevy_hui",
  "renzora",
  "renzora_ember",
- "renzora_game_ui",
 ]
 
 [[package]]
@@ -8362,15 +8358,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_game_ui"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "serde",
-]
-
-[[package]]
 name = "renzora_game_ui_editor"
 version = "0.1.0"
 dependencies = [
@@ -8378,7 +8365,6 @@ dependencies = [
  "image",
  "renzora",
  "renzora_ember",
- "renzora_game_ui",
 ]
 
 [[package]]
@@ -8526,7 +8512,6 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
- "renzora_game_ui",
  "renzora_macros",
  "renzora_physics",
  "renzora_scripting",
@@ -9207,7 +9192,6 @@ dependencies = [
  "renzora_ember",
  "renzora_engine",
  "renzora_environment_map",
- "renzora_game_ui",
  "renzora_globals",
  "renzora_hanabi",
  "renzora_input",
@@ -9759,7 +9743,6 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_engine",
- "renzora_game_ui",
  "renzora_game_ui_editor",
  "renzora_hanabi",
  "renzora_import",

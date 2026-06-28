@@ -13,7 +13,7 @@ use renzora_ember::reactive::{bind_2way, bind_bg, bind_display};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, icon_label_button, text_input, DragRange};
 
-use renzora_game_ui::components::{
+use renzora_ember::game_ui::components::{
     DropdownData, GradientStop, UiCursor, UiFill, UiInteractionStyle, UiStateStyle, UiStroke, UiTransition,
 };
 

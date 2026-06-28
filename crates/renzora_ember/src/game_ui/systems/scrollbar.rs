@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::components::{ScrollbarData, ScrollbarOrientation, UiWidgetPart};
+use crate::game_ui::components::{ScrollbarData, ScrollbarOrientation, UiWidgetPart};
 
 pub fn scrollbar_system(
     bars: Query<(&ScrollbarData, &Children), Changed<ScrollbarData>>,

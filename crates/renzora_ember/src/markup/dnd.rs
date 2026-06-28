@@ -19,7 +19,7 @@ use bevy::prelude::*;
 use bevy::ui::{GlobalZIndex, RelativeCursorPosition, UiScale};
 use bevy::window::PrimaryWindow;
 use renzora::{EntityTag, ScriptUiInbox, UiCallback};
-use renzora_game_ui::UiCanvas;
+use crate::game_ui::UiCanvas;
 
 /// A drag source. `payload` is the data entity that moves (the binding host).
 #[derive(Component)]

@@ -8,7 +8,6 @@ description = "Editor-only markup editor (folded in from renzora_hui): the HTML-
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = ".." }
-renzora_game_ui = { path = "../../renzora_game_ui" }
 bevy_hui = { path = "../../bevy_hui" }
 
 [lints]

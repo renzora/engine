@@ -58,7 +58,7 @@ impl RectangleMaterial {
 
 impl UiMaterial for RectangleMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_game_ui/shapes/rectangle.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/rectangle.wgsl".into()
     }
 }
 

@@ -13,7 +13,7 @@ description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets,
 # helpers stay regardless (every widget needs them). `renzora_runtime` deps this
 # crate with `default-features = false` and forwards its own `game_ui` feature.
 default = ["game_ui"]
-game_ui = ["dep:renzora_game_ui", "dep:bevy_hui"]
+game_ui = ["dep:bevy_hui"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -27,7 +27,6 @@ renzora = { path = "../renzora", default-features = false }
 # bevy_hui parser, the game-UI canvas primitives, and the scripting bridge.
 # Both are used only by the `markup` module → gated behind `game_ui`.
 bevy_hui = { path = "../bevy_hui", optional = true }
-renzora_game_ui = { path = "../renzora_game_ui", optional = true }
 # `default-features = false`: ember uses only core scripting types — the lean
 # exporter strips the backends/blueprint/http via `renzora_runtime`'s forwarding,
 # which only works if no other lean-closure crate forces the defaults back on.

@@ -20,7 +20,7 @@
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy_hui::prelude::HtmlTemplate;
-pub use renzora_game_ui::HtmlTemplatePath;
+pub use crate::game_ui::HtmlTemplatePath;
 
 use crate::markup::loader::{build_template_onto, template_deps_ready, TemplateHandles};
 

@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::*;
+use crate::game_ui::components::*;
 
 /// Applies style component fields to the corresponding bevy_ui components.
 pub fn apply_widget_style_system(
@@ -137,7 +137,7 @@ pub fn ensure_style_components(
             Option<&BackgroundColor>,
             Option<&BorderColor>,
         ),
-        (Added<UiWidget>, Without<crate::shapes::UiShapeWidget>),
+        (Added<UiWidget>, Without<crate::game_ui::shapes::UiShapeWidget>),
     >,
 ) {
     for (entity, fill, stroke, bg, border) in &query {

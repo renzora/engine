@@ -58,7 +58,7 @@ impl PolygonMaterial {
 
 impl UiMaterial for PolygonMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_game_ui/shapes/polygon.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/polygon.wgsl".into()
     }
 }
 

@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::RadioButtonData;
+use crate::game_ui::components::RadioButtonData;
 
 pub fn radio_button_system(
     mut buttons: Query<

@@ -6,7 +6,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::{ProgressDirection, UiBarFill};
+use crate::game_ui::components::{ProgressDirection, UiBarFill};
 
 /// Apply [`UiBarFill::fraction`] to the entity's `Node`.
 ///

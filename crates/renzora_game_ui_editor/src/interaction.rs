@@ -327,7 +327,7 @@ fn set_node_move(world: &mut World, entity: Entity, nx: f32, ny: f32, nw: f32, n
 
 fn set_node_rect(world: &mut World, entity: Entity, nx: f32, ny: f32, nw: f32, nh: f32, parent: Bbox) {
     let (px, py, pw, ph) = (parent.0, parent.1, parent.2.max(1.0), parent.3.max(1.0));
-    let flex = renzora_game_ui::spawn::is_flex_child(world, entity);
+    let flex = renzora_ember::game_ui::spawn::is_flex_child(world, entity);
     if let Ok(mut em) = world.get_entity_mut(entity) {
         if let Some(mut node) = em.get_mut::<Node>() {
             node.width = Val::Percent(nw / pw * 100.0);

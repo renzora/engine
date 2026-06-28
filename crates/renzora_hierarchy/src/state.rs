@@ -135,10 +135,10 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             // `UiCanvas` / `UiWidget` node but drop every other UI node.
             if world.get::<bevy::ui::Node>(entity).is_some()
                 && world
-                    .get::<renzora_game_ui::UiCanvas>(entity)
+                    .get::<renzora_ember::game_ui::UiCanvas>(entity)
                     .is_none()
                 && world
-                    .get::<renzora_game_ui::UiWidget>(entity)
+                    .get::<renzora_ember::game_ui::UiWidget>(entity)
                     .is_none()
             {
                 continue;

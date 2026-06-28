@@ -13,7 +13,7 @@ use bevy_hui::prelude::{HtmlNode, Tags};
 use renzora::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
-use renzora_game_ui::UiWidget;
+use renzora_ember::game_ui::UiWidget;
 
 use renzora_ember::markup::HtmlTemplatePath;
 
@@ -61,7 +61,7 @@ fn register_editor_entries(app: &mut App) {
         icon: "code",
         category: "ui",
         spawn_fn: |world| {
-            renzora_game_ui::spawn::spawn_html_template_at(
+            renzora_ember::game_ui::spawn::spawn_html_template_at(
                 world,
                 std::path::Path::new(DEFAULT_TEMPLATE),
                 None,

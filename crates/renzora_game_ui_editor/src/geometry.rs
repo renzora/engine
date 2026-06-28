@@ -10,7 +10,7 @@
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform};
 
-use renzora_game_ui::UiWidget;
+use renzora_ember::game_ui::UiWidget;
 
 use crate::NativeCanvasState;
 

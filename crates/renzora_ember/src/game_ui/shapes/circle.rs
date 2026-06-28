@@ -48,7 +48,7 @@ impl CircleMaterial {
 
 impl UiMaterial for CircleMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_game_ui/shapes/circle.wgsl".into()
+        "embedded://renzora_ember/game_ui/shapes/circle.wgsl".into()
     }
 }
 

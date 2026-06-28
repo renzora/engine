@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 
-use renzora_game_ui::components::{self, UiCanvas};
+use renzora_ember::game_ui::components::{self, UiCanvas};
 
 /// Snapshot of the selected widget's properties for editing.
 /// Convert a Val to design-space pixels given a reference dimension.

@@ -15,7 +15,6 @@ renzora_scripting = { path = "../renzora_scripting" }
 renzora_physics = { path = "../renzora_physics" }
 renzora_engine = { path = "../renzora_engine" }
 renzora_ui = { path = "../renzora_ui" }
-renzora_game_ui = { path = "../renzora_game_ui" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"

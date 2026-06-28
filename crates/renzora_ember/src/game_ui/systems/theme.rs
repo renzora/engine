@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use crate::components::*;
+use crate::game_ui::components::*;
 
 /// When the `UiTheme` resource changes, update all themed widget styles.
 pub fn ui_theme_system(

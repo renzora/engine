@@ -50,7 +50,7 @@ pub fn native_html_drop(
 fn spawn_html_template(world: &mut World, abs_path: PathBuf) {
     // Shared spawn: a draggable, absolutely-positioned instance under a canvas
     // (path stored project-relative; markup built under a child HtmlNode).
-    let instance = renzora_game_ui::spawn::spawn_html_template_at(world, &abs_path, None);
+    let instance = renzora_ember::game_ui::spawn::spawn_html_template_at(world, &abs_path, None);
     if let Some(sel) = world.get_resource::<EditorSelection>() {
         sel.set(Some(instance));
     }

@@ -1,11 +1,11 @@
-//! Editor-only spawn helpers relocated from `renzora_game_ui::spawn`.
+//! Editor-only spawn helpers relocated from `renzora_ember::game_ui::spawn`.
 //!
 //! These read `renzora::EditorSelection` / use the `image` crate, which the
 //! lean runtime `renzora_game_ui` crate no longer carries.
 
 use bevy::prelude::*;
 
-use renzora_game_ui::components::*;
+use renzora_ember::game_ui::components::*;
 
 /// Choose the parent to use for a "Add Widget" action in the editor.
 ///

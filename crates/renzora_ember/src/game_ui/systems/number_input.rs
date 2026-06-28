@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::components::{NumberInputData, UiWidgetPart};
+use crate::game_ui::components::{NumberInputData, UiWidgetPart};
 
 pub fn number_input_system(
     inputs: Query<(&NumberInputData, &Children), Changed<NumberInputData>>,

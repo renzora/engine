@@ -35,6 +35,12 @@ pub mod inspector;
 // also drops that registration. The foundational `cursor_icon`/`icons` systems
 // it used to install are now installed by `EmberPlugin` (below) so they run with
 // or without markup — every widget needs them.
+// The in-game UI canvas + widget library (folded in from the former
+// `renzora_game_ui` crate — keeping it separate forced a dependency cycle that
+// blocked game UI from using ember's widgets). Gated with `markup` under the
+// `game_ui` feature; `GameUiPlugin` self-registers via `renzora::add!`.
+#[cfg(feature = "game_ui")]
+pub mod game_ui;
 #[cfg(feature = "game_ui")]
 pub mod markup;
 pub mod panel;
