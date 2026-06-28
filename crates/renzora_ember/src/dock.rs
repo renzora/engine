@@ -135,6 +135,28 @@ impl DockTree {
         }
     }
 
+    /// Collect the active (visible) panel id of every leaf into `out`. The dock
+    /// rebuild uses this to decide which preserved content entities the new tree
+    /// will reuse — only those may be detached-to-root, because a content node
+    /// that is detached *and then despawned* in the same frame corrupts bevy_ui's
+    /// taffy tree (the old leaf still lists it as a child while its slotmap key is
+    /// freed → `invalid SlotMap key` panic). Contents not in this set stay
+    /// attached and die safely with their old leaf.
+    pub fn active_tab_ids(&self, out: &mut std::collections::HashSet<String>) {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.active_tab_ids(out);
+                second.active_tab_ids(out);
+            }
+            DockTree::Leaf { tabs, active_tab } => {
+                if let Some(id) = tabs.get(*active_tab) {
+                    out.insert(id.clone());
+                }
+            }
+            DockTree::Empty => {}
+        }
+    }
+
     /// Make `panel` the active tab in its leaf.
     pub fn set_active_tab(&mut self, panel: &str) {
         if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(panel) {
@@ -1132,9 +1154,19 @@ fn rebuild_dock(
     // it from the hierarchy so the despawn below doesn't take it — `build_tree`
     // re-parents it, so reordering/moving tabs keeps the panel (and its state)
     // instead of recreating it.
+    //
+    // Only detach contents the *new* tree will reuse. A content node that is
+    // detached-to-root and then despawned in the same frame (e.g. every non-
+    // viewport panel when maximizing) corrupts bevy_ui's taffy tree: it gets
+    // reparented to the implicit-viewport root and its slotmap key freed, while
+    // its old leaf still lists it as a child — so taffy panics with
+    // `invalid SlotMap key` when removing that leaf. Leaving non-reused contents
+    // attached lets them despawn safely with their old leaf instead.
+    let mut reusable = std::collections::HashSet::new();
+    dock.tree.active_tab_ids(&mut reusable);
     let mut preserved: HashMap<String, Entity> = HashMap::new();
     for leaf in &leaves {
-        if !leaf.active.is_empty() {
+        if !leaf.active.is_empty() && reusable.contains(&leaf.active) {
             preserved.insert(leaf.active.clone(), leaf.content);
             commands.entity(leaf.content).remove::<ChildOf>();
         }
