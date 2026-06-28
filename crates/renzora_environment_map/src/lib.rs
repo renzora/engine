@@ -49,6 +49,30 @@ impl Default for EnvironmentMapComponentSettings {
     }
 }
 
+/// Force a one-shot re-sync of every `EffectRouting` consumer the moment the IBL
+/// bake comes online.
+///
+/// On scene load the camera's `GeneratedEnvironmentMapLight` (the atmosphere →
+/// cubemap bake) only appears a few frames *after* the `WorldEnvironment` entity
+/// — by then the `routing` / `settings` / `sun` `is_changed` flags that gate
+/// [`sync_environment_map`] (and `renzora_atmosphere::sync_atmosphere`) have
+/// lapsed, so the freshly-baked maps keep the camera's placeholder (dark)
+/// intensity until the user nudges the sun or the env-map value. Marking the
+/// routing changed when the bake is `Added` re-applies the authored intensity +
+/// atmosphere mode, so IBL lights up on load with no manual kick.
+///
+/// `gate_environment_generation` also re-adds this component on dormant→active,
+/// which harmlessly re-fires this (the values are unchanged); the component is
+/// stable in steady state, so this never loops.
+fn kick_routing_on_bake_ready(
+    added: Query<(), Added<GeneratedEnvironmentMapLight>>,
+    mut routing: ResMut<renzora::EffectRouting>,
+) {
+    if !added.is_empty() {
+        routing.set_changed();
+    }
+}
+
 fn sync_environment_map(
     mut commands: Commands,
     sources: Query<(
@@ -251,6 +275,10 @@ impl Plugin for EnvironmentMapPlugin {
         app.add_systems(
             Update,
             (
+                // Runs first so the same frame's `sync_environment_map` sees the
+                // forced `routing` change and re-applies intensity once the bake
+                // is ready (fixes "scene loads dark until the sun/env is nudged").
+                kick_routing_on_bake_ready,
                 sync_environment_map,
                 cleanup_environment_map,
                 gate_environment_generation,
