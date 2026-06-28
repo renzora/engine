@@ -118,7 +118,7 @@ pub fn setup_ui_canvas_render(mut commands: Commands, mut images: ResMut<Assets<
 /// reference changes, which is a rare design-time edit. The display frame
 /// stretches this texture to `reference × zoom`, so any size renders cleanly.
 pub(crate) fn sync_render_target_to_reference(
-    state: Res<crate::NativeCanvasState>,
+    state: Res<crate::game_ui::NativeCanvasState>,
     render: Option<ResMut<UiCanvasRender>>,
     mut images: ResMut<Assets<Image>>,
 ) {

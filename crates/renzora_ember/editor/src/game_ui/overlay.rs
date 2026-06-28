@@ -20,7 +20,7 @@ use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
 
-use crate::NativeCanvasState;
+use crate::game_ui::NativeCanvasState;
 
 /// Transparent full-frame layer that receives canvas clicks/drags.
 #[derive(Component)]
@@ -88,7 +88,7 @@ pub(crate) fn register(app: &mut App) {
         (position_sel_boxes, position_marquee)
             // After the geometry snapshot so the box tracks the same frame's
             // widget sizes instead of trailing a frame behind during a resize.
-            .after(crate::geometry::snapshot_widgets)
+            .after(crate::game_ui::geometry::snapshot_widgets)
             .run_if(in_state(SplashState::Editor)),
     );
 }

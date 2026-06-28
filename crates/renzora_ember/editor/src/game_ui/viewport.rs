@@ -1,6 +1,6 @@
 //! The canvas viewport: a dark area holding the zoomed "design frame" whose
 //! `ImageNode` shows the live offscreen render of the game UI
-//! (`crate::canvas_render::UiCanvasRender`). The frame is sized to the
+//! (`crate::game_ui::canvas_render::UiCanvasRender`). The frame is sized to the
 //! active canvas's reference resolution × zoom, so it shows the UI at design
 //! scale.
 
@@ -9,9 +9,9 @@ use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_display, bind_with};
 use renzora_ember::theme::*;
-use crate::canvas::UiCanvasPreviewEnabled;
-use crate::canvas_render::UiCanvasRender;
-use crate::NativeCanvasState;
+use crate::game_ui::canvas::UiCanvasPreviewEnabled;
+use crate::game_ui::canvas_render::UiCanvasRender;
+use crate::game_ui::NativeCanvasState;
 
 pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let area = commands
@@ -30,7 +30,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             // centered frame sits on top where it covers, so a press only reaches
             // this node when it lands *outside* the frame.
             Interaction::default(),
-            crate::interaction::CanvasBackground,
+            crate::game_ui::interaction::CanvasBackground,
             Name::new("ui-canvas-viewport"),
         ))
         .id();
@@ -50,7 +50,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(Color::srgb(0.02, 0.02, 0.03)),
             BorderColor::all(rgb(border())),
             bevy::ui::UiTransform::IDENTITY,
-            crate::nav::CanvasFrame,
+            crate::game_ui::nav::CanvasFrame,
             Name::new("ui-canvas-frame"),
         ))
         .id();
@@ -121,7 +121,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
     // Editing overlay (selection box + handles + hit layer) over the image.
-    let overlay = crate::overlay::build(commands);
+    let overlay = crate::game_ui::overlay::build(commands);
     commands.entity(frame).add_children(&[backdrop, img, overlay]);
 
     commands.entity(area).add_children(&[note, frame]);

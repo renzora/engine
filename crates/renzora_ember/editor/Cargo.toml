@@ -9,6 +9,7 @@ bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_ember = { path = ".." }
 bevy_hui = { path = "../../bevy_hui" }
+image = { version = "0.25", default-features = false }
 
 [lints]
 workspace = true

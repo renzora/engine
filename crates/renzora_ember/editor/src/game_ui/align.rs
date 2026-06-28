@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-use crate::geometry::WidgetGeom;
+use crate::game_ui::geometry::WidgetGeom;
 
 #[derive(Clone, Copy)]
 pub(crate) enum AlignAction {

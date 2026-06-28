@@ -119,7 +119,7 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         renzora_ember::reactive::bind_display(commands, img, |w| {
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) != Some(ViewportView::Ui)
         });
-        let editor = renzora_game_ui_editor::build_ui_canvas(commands, fonts);
+        let editor = renzora_ember_editor::game_ui::build_ui_canvas(commands, fonts);
         renzora_ember::reactive::bind_display(commands, editor, |w| {
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
         });

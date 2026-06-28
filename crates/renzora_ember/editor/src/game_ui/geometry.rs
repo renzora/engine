@@ -12,7 +12,7 @@ use bevy::ui::{ComputedNode, UiGlobalTransform, UiScale, UiTransform};
 
 use renzora_ember::game_ui::UiWidget;
 
-use crate::NativeCanvasState;
+use crate::game_ui::NativeCanvasState;
 
 #[derive(Clone)]
 pub(crate) struct WidgetGeom {

@@ -21,7 +21,7 @@ renzora_shader = { path = "../renzora_shader" }
 renzora_terrain = { path = "../renzora_terrain" }
 renzora_engine = { path = "../renzora_engine" }
 renzora_import = { path = "../renzora_import" }
-renzora_game_ui_editor = { path = "../renzora_game_ui_editor" }
+renzora_ember_editor = { path = "../renzora_ember/editor" }
 serde_json = "1"
 bytemuck = { version = "1.5", features = ["derive"] }
 

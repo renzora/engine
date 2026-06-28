@@ -13,8 +13,8 @@ use bevy::window::PrimaryWindow;
 
 use renzora::SplashState;
 
-use crate::overlay::CanvasHitLayer;
-use crate::NativeCanvasState;
+use crate::game_ui::overlay::CanvasHitLayer;
+use crate::game_ui::NativeCanvasState;
 
 /// Screen pixels panned per wheel notch when scrolling with a modifier held.
 const WHEEL_PAN_STEP: f32 = 60.0;
@@ -44,7 +44,7 @@ fn canvas_pan(
     windows: Query<&Window, With<PrimaryWindow>>,
     mut last: Local<Option<Vec2>>,
     hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
-    background: Query<&Interaction, With<crate::interaction::CanvasBackground>>,
+    background: Query<&Interaction, With<crate::game_ui::interaction::CanvasBackground>>,
     mut state: ResMut<NativeCanvasState>,
 ) {
     let panning = mouse.pressed(MouseButton::Middle) || mouse.pressed(MouseButton::Right);
@@ -77,7 +77,7 @@ fn canvas_wheel(
     mut wheel: MessageReader<MouseWheel>,
     keys: Res<ButtonInput<KeyCode>>,
     hit: Query<&RelativeCursorPosition, With<CanvasHitLayer>>,
-    background: Query<&Interaction, With<crate::interaction::CanvasBackground>>,
+    background: Query<&Interaction, With<crate::game_ui::interaction::CanvasBackground>>,
     mut state: ResMut<NativeCanvasState>,
 ) {
     let mut scroll = 0.0;

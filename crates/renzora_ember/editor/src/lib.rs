@@ -18,6 +18,10 @@ use bevy::prelude::*;
 
 mod editor;
 mod inspector;
+// The WYSIWYG game-UI canvas editor (folded in from the former
+// `renzora_game_ui_editor` crate — its cycle-avoidance reason vanished once
+// game_ui merged into ember). `GameUiEditorPlugin` self-registers via `add!`.
+pub mod game_ui;
 
 pub use editor::HuiEditorPlugin;
 pub use inspector::HuiInspectorPlugin;

@@ -108,7 +108,6 @@ editor = [
     "dep:renzora_procedural_tree_editor",
     "renzora_network/editor",
     "dep:renzora_water_editor",
-    "dep:renzora_game_ui_editor",
     "dep:renzora_ember_editor",
     "dep:renzora_navmesh_editor",
 ]
@@ -166,7 +165,6 @@ renzora_terrain_editor     = { path = "../renzora_terrain_editor", optional = tr
 renzora_test_component     = { path = "../renzora_test_component", optional = true }
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
 renzora_tutorial           = { path = "../renzora_tutorial", optional = true }
-renzora_game_ui_editor     = { path = "../renzora_game_ui_editor", optional = true }
 renzora_engine_editor      = { path = "../renzora_engine/editor", optional = true }
 
 # ── Dual-mode crates touched by the `editor` cascade above ───────────────────

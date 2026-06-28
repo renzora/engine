@@ -33,9 +33,9 @@ use bevy::ui::{RelativeCursorPosition, UiTransform};
 
 use renzora::{EditorSelection, SplashState};
 
-use crate::geometry::{is_descendant_of, topmost_at};
-use crate::overlay::{CanvasHandle, CanvasHitLayer, HandleKind, ResizeHandle};
-use crate::NativeCanvasState;
+use crate::game_ui::geometry::{is_descendant_of, topmost_at};
+use crate::game_ui::overlay::{CanvasHandle, CanvasHitLayer, HandleKind, ResizeHandle};
+use crate::game_ui::NativeCanvasState;
 
 /// Design-space pixels the cursor must travel after a press before the gesture
 /// is treated as a drag (rather than a click).

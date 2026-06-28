@@ -9,7 +9,7 @@
 //! editor types (`UiCanvas`, `canvas_render::UiCanvasRender`).
 //!
 //! Architecture: the game UI is *real bevy_ui* rendered to an offscreen image by
-//! `crate::canvas_render` (`UiCanvasRender.image_handle`). The native
+//! `crate::game_ui::canvas_render` (`UiCanvasRender.image_handle`). The native
 //! panel displays that rendered image (an `ImageNode`) and overlays the editing
 //! chrome — selection box, resize/rotate handles, marquee — as bevy_ui nodes, so
 //! it never has to reimplement the egui `paint_*` widget-preview functions.

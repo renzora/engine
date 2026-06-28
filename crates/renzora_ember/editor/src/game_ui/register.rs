@@ -8,8 +8,8 @@
 //! `GameUiEditorPlugin::build`.
 //!
 //! Path note: `components::` → `renzora_ember::game_ui::components::`, the moved canvas
-//! modules are now local (`crate::canvas` / `crate::canvas_render` /
-//! `crate::ui_inspector`), and `UiWidgetType::icon()` became the free fn
+//! modules are now local (`crate::game_ui::canvas` / `crate::game_ui::canvas_render` /
+//! `crate::game_ui::ui_inspector`), and `UiWidgetType::icon()` became the free fn
 //! [`widget_icon`] here (icons are name-based, resolved via the phosphor map).
 
 use bevy::prelude::*;
@@ -18,7 +18,7 @@ use renzora::AppEditorExt;
 use renzora_ember::game_ui::components::{self};
 use renzora_ember::game_ui::{UiCanvas, UiWidget, UiWidgetType};
 
-use crate::{canvas, canvas_render, ui_inspector as inspector};
+use crate::game_ui::{canvas, canvas_render, ui_inspector as inspector};
 
 /// Phosphor icon *name* (kebab-case) for a widget type. Replaces the old
 /// `UiWidgetType::icon()` inherent method (which lived in `renzora_game_ui`
