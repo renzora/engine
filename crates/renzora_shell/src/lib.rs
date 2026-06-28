@@ -561,6 +561,10 @@ struct ShellLayouts {
 #[derive(Component)]
 struct RibbonItem {
     index: usize,
+    /// Vertical insertion marker shown at this tab's left/right edge during a
+    /// reorder drag (mirrors the dock tab-drag preview). Toggled in
+    /// [`ribbon_interact`].
+    marker: Entity,
 }
 
 /// The ribbon's "+" — adds a new empty workspace.
@@ -585,6 +589,8 @@ struct RibbonDragState {
     from: usize,
     start_cursor: Vec2,
     active: bool,
+    /// Insertion slot (0..=len) under the live cursor; applied on release.
+    target: usize,
 }
 
 /// The workspace currently being inline-renamed (`None` = none). Read by
@@ -901,14 +907,27 @@ fn ribbon_interact(
     windows: Query<&Window>,
     rename: Res<RibbonRename>,
     pressed: Query<(&RibbonItem, &Interaction)>,
-    geom: Query<(&RibbonItem, &GlobalTransform)>,
+    items: Query<(&RibbonItem, &RelativeCursorPosition)>,
+    mut nodes: Query<&mut Node>,
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
 ) {
+    // Hide every insertion marker (no drag live, or before re-showing one slot).
+    let hide_markers = |items: &Query<(&RibbonItem, &RelativeCursorPosition)>, nodes: &mut Query<&mut Node>| {
+        for (it, _) in items {
+            if let Ok(mut n) = nodes.get_mut(it.marker) {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
+        }
+    };
+
     // Don't drag/switch while a tab is being renamed.
     if rename.0.is_some() {
         drag.0 = None;
+        hide_markers(&items, &mut nodes);
         return;
     }
     let cursor = windows.iter().next().and_then(|w| w.cursor_position());
@@ -917,7 +936,7 @@ fn ribbon_interact(
         if let Some(cur) = cursor {
             for (item, interaction) in &pressed {
                 if *interaction == Interaction::Pressed {
-                    drag.0 = Some(RibbonDragState { from: item.index, start_cursor: cur, active: false });
+                    drag.0 = Some(RibbonDragState { from: item.index, start_cursor: cur, active: false, target: item.index });
                     break;
                 }
             }
@@ -930,22 +949,51 @@ fn ribbon_interact(
         }
     }
 
+    // While actively dragging, track the insertion slot under the cursor and show
+    // the matching edge marker. Using each tab's RelativeCursorPosition (not a
+    // GlobalTransform center compared against the cursor, which drifts under UI
+    // scaling) keeps the hit-test in the cursor's own space — fixing both the
+    // missing divider and the wrong drop position.
+    if let Some(state) = drag.0.as_mut() {
+        if state.active {
+            // (marker, right-edge): cursor in a tab's left half inserts before it,
+            // right half after it.
+            let mut shown: Option<(Entity, bool)> = None;
+            for (it, rcp) in &items {
+                if rcp.cursor_over {
+                    let before = rcp.normalized.map_or(true, |n| n.x < 0.0);
+                    state.target = if before { it.index } else { it.index + 1 };
+                    shown = Some((it.marker, !before));
+                    break;
+                }
+            }
+            hide_markers(&items, &mut nodes);
+            if let Some((marker, right)) = shown {
+                if let Ok(mut n) = nodes.get_mut(marker) {
+                    n.display = Display::Flex;
+                    if right {
+                        n.left = Val::Auto;
+                        n.right = Val::Px(-2.0);
+                    } else {
+                        n.left = Val::Px(-2.0);
+                        n.right = Val::Auto;
+                    }
+                }
+            }
+        }
+    } else {
+        hide_markers(&items, &mut nodes);
+    }
+
     if mouse.just_released(MouseButton::Left) {
+        hide_markers(&items, &mut nodes);
         if let Some(state) = drag.0.take() {
             if !state.active {
                 apply_workspace(state.from, &mut layouts, &mut dock, &mut dirty);
-            } else if let Some(cur) = cursor {
-                // Insertion slot = first tab whose center is right of the cursor.
-                let mut centers: Vec<(usize, f32)> = geom.iter().map(|(it, gt)| (it.index, gt.translation().x)).collect();
-                centers.sort_by_key(|(i, _)| *i);
-                let mut target = layouts.layouts.len();
-                for (i, cx) in &centers {
-                    if cur.x < *cx {
-                        target = *i;
-                        break;
-                    }
-                }
+            } else {
                 let from = state.from;
+                let target = state.target.min(layouts.layouts.len());
+                // Removing `from` first shifts later slots left by one.
                 let post_to = if from < target { target.saturating_sub(1) } else { target };
                 if post_to != from {
                     move_workspace(&mut layouts, &dock, from, post_to);
@@ -2187,8 +2235,27 @@ fn ribbon_item(
             Name::new("ribbon-underline"),
         ))
         .id();
-    commands.entity(item).insert(RibbonItem { index });
-    commands.entity(item).add_children(&[text_wrap, underline]);
+    // Insertion marker: a thin accent bar pinned to the item's edge, hidden until
+    // a reorder drag points at this slot (see [`ribbon_interact`]). Absolutely
+    // positioned so it never affects the ribbon's layout.
+    let marker = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(-2.0),
+                top: Val::Px(0.0),
+                height: Val::Percent(100.0),
+                width: Val::Px(2.0),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("ribbon-insert-marker"),
+        ))
+        .id();
+    commands.entity(item).insert(RibbonItem { index, marker });
+    commands.entity(item).add_children(&[text_wrap, underline, marker]);
     item
 }
 
@@ -2920,8 +2987,6 @@ fn build_menu_items(
                     f(w);
                 }
             }),
-            menu_sep(commands),
-            menu_item(commands, fonts, "layout", "Reset Layout", reset_layout_action),
         ],
         TopMenuKind::View => vec![
             menu_item(commands, fonts, "magnifying-glass-plus", "Zoom In", |w| {
@@ -2944,6 +3009,9 @@ fn build_menu_items(
                 iso.active = !iso.active;
                 w.insert_resource(iso);
             }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "layout", "Reset Layout", reset_layout_action),
+            menu_item(commands, fonts, "browsers", "Reset Workspace", reset_workspace_action),
         ],
         TopMenuKind::Help => vec![
             menu_item(commands, fonts, "graduation-cap", "Getting Started Tutorial", |w| {
@@ -2994,6 +3062,28 @@ fn reset_layout_action(w: &mut World) {
     }
     if let Some(mut dock) = w.get_resource_mut::<Dock>() {
         dock.tree = default_tree;
+    }
+    if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+        d.0 = true;
+    }
+}
+
+/// Reset the entire workspace ribbon to the engine defaults: discard any
+/// user-added / removed / renamed / reordered workspaces and restore each
+/// default workspace's pristine dock tree. Where [`reset_layout_action`] resets
+/// only the active workspace's layout, this rebuilds the whole set (active back
+/// to the first default), then flags a rebuild so the change persists.
+fn reset_workspace_action(w: &mut World) {
+    let defaults = dock::workspace_layouts();
+    let Some((_, active_tree)) = defaults.first().map(|(n, t)| (n.clone(), t.clone())) else {
+        return;
+    };
+    if let Some(mut layouts) = w.get_resource_mut::<ShellLayouts>() {
+        layouts.layouts = defaults;
+        layouts.active = 0;
+    }
+    if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+        dock.tree = active_tree;
     }
     if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
         d.0 = true;
