@@ -149,6 +149,9 @@ impl NumericInputBuffer {
 pub struct EntityStartState {
     pub entity: Entity,
     pub transform: Transform,
+    /// The entity's parent world affine, captured at start so world-space
+    /// deltas/rotations are written correctly into the local `Transform`.
+    pub parent: bevy::math::Affine3A,
 }
 
 /// State for the modal transform system.
@@ -176,6 +179,9 @@ pub struct ModalTransformState {
     pub pending_grab: bool,
     /// Screen-space pivot for scale visualization.
     pub pivot_screen_pos: Option<Vec2>,
+    /// World-space pivot (selection AABB center) the rotate/scale pivots about,
+    /// so the object transforms in place.
+    pub pivot_world: Vec3,
     /// Cursor position when modal started.
     pub initial_cursor_pos: Vec2,
 }
@@ -231,6 +237,11 @@ pub fn modal_transform_input_system(
     mut modal: ResMut<ModalTransformState>,
     transforms: Query<&Transform>,
     global_transforms: Query<&GlobalTransform>,
+    // Same AABB-center pivot the tool gizmo uses, so the modal anchors on the
+    // visible mesh — not the entity origin, which for baked-vertex GLBs (their
+    // transform sits at world 0,0,0) is nowhere near what's on screen.
+    aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
+    children: Query<&Children>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut cursor_options: Query<&mut CursorOptions>,
     input_focus: Res<InputFocusState>,
@@ -286,7 +297,7 @@ pub fn modal_transform_input_system(
         return;
     };
 
-    // Compute pivot (average world position of selected entities)
+    // Compute pivot (average AABB center of selected entities)
     let mut avg_pos = Vec3::ZERO;
     let mut count = 0u32;
     for &entity in &selected {
@@ -294,7 +305,7 @@ pub fn modal_transform_input_system(
             continue;
         }
         if let Ok(gt) = global_transforms.get(entity) {
-            avg_pos += gt.translation();
+            avg_pos += crate::compute_gizmo_pivot(entity, &aabbs, &children, gt);
             count += 1;
         }
     }
@@ -339,14 +350,21 @@ pub fn modal_transform_input_system(
     }
     let _ = mode;
 
-    // Collect starting transforms (skip hidden entities)
+    // Collect starting transforms (skip hidden entities), capturing each
+    // entity's parent frame so writes go back into local space correctly.
     let start_transforms: Vec<EntityStartState> = selected
         .iter()
         .filter(|&&entity| hidden.get(entity).is_err())
         .filter_map(|&entity| {
-            transforms.get(entity).ok().map(|t| EntityStartState {
+            let t = *transforms.get(entity).ok()?;
+            let parent = global_transforms
+                .get(entity)
+                .map(|gt| crate::transform_space::parent_affine(gt, &t))
+                .unwrap_or(bevy::math::Affine3A::IDENTITY);
+            Some(EntityStartState {
                 entity,
-                transform: *t,
+                transform: t,
+                parent,
             })
         })
         .collect();
@@ -354,6 +372,7 @@ pub fn modal_transform_input_system(
     if !start_transforms.is_empty() {
         modal.start(mode, cursor_pos, start_transforms);
         modal.pivot_screen_pos = pivot_screen_pos;
+        modal.pivot_world = avg_pos;
     }
 }
 
@@ -696,7 +715,11 @@ fn apply_grab(
             }
             _ => (cam_right * delta.x.signum()).normalize_or_zero(),
         };
-        transform.translation = state.transform.translation + direction * value;
+        transform.translation = crate::transform_space::world_translation(
+            state.transform.translation,
+            direction * value,
+            &state.parent,
+        );
         return;
     }
 
@@ -736,7 +759,11 @@ fn apply_grab(
         }
     };
 
-    transform.translation = state.transform.translation + world_delta;
+    transform.translation = crate::transform_space::world_translation(
+        state.transform.translation,
+        world_delta,
+        &state.parent,
+    );
 }
 
 fn apply_rotate(
@@ -755,7 +782,15 @@ fn apply_rotate(
                 Quat::from_rotation_z(radians)
             }
         };
-        transform.rotation = rotation * state.transform.rotation;
+        crate::transform_space::pivot_rotation(
+            transform,
+            state.transform.translation,
+            state.transform.rotation,
+            state.transform.scale,
+            rotation,
+            modal.pivot_world,
+            &state.parent,
+        );
         return;
     }
 
@@ -769,7 +804,15 @@ fn apply_rotate(
         }
     };
 
-    transform.rotation = rotation * state.transform.rotation;
+    crate::transform_space::pivot_rotation(
+        transform,
+        state.transform.translation,
+        state.transform.rotation,
+        state.transform.scale,
+        rotation,
+        modal.pivot_world,
+        &state.parent,
+    );
 }
 
 fn apply_scale(
@@ -780,8 +823,16 @@ fn apply_scale(
 ) {
     // Numeric input: explicit factor
     if let Some(factor) = modal.numeric_input.value() {
-        let scale = axis_scale_vec(modal.axis_constraint, factor);
-        transform.scale = state.transform.scale * scale;
+        let new_scale = state.transform.scale * axis_scale_vec(modal.axis_constraint, factor);
+        crate::transform_space::pivot_scale(
+            transform,
+            state.transform.translation,
+            state.transform.rotation,
+            state.transform.scale,
+            new_scale,
+            modal.pivot_world,
+            &state.parent,
+        );
         return;
     }
 
@@ -800,8 +851,16 @@ fn apply_scale(
         1.0 + dx * modal.sensitivity * 0.1
     };
 
-    let scale = axis_scale_vec(modal.axis_constraint, factor);
-    transform.scale = state.transform.scale * scale;
+    let new_scale = state.transform.scale * axis_scale_vec(modal.axis_constraint, factor);
+    crate::transform_space::pivot_scale(
+        transform,
+        state.transform.translation,
+        state.transform.rotation,
+        state.transform.scale,
+        new_scale,
+        modal.pivot_world,
+        &state.parent,
+    );
 }
 
 fn axis_scale_vec(constraint: AxisConstraint, factor: f32) -> Vec3 {
@@ -840,6 +899,21 @@ pub fn sync_modal_hud(
         (rgba.alpha * 255.0) as u8,
     ];
     hud.numeric_display = modal.numeric_input.display();
+
+    // Reference circle + live factor for the scale HUD. The pivot the gesture
+    // anchored on is the projected entity center (or the cursor at start if the
+    // projection was unavailable). `ref_radius` is the start distance; the
+    // factor mirrors `apply_scale`'s distance ratio (clamped when the start
+    // distance is degenerate, e.g. the cursor was warped onto the pivot).
+    let pivot = modal.pivot_screen_pos.unwrap_or(modal.initial_cursor_pos);
+    let start_dist = (modal.initial_cursor_pos - pivot).length();
+    let cur_dist = (modal.last_cursor_pos - pivot).length();
+    hud.ref_radius = start_dist;
+    hud.scale_factor = if start_dist < 1.0 {
+        1.0
+    } else {
+        cur_dist / start_dist
+    };
 }
 
 #[cfg(test)]
@@ -851,6 +925,7 @@ mod tests {
         EntityStartState {
             entity: Entity::PLACEHOLDER,
             transform,
+            parent: bevy::math::Affine3A::IDENTITY,
         }
     }
 

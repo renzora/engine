@@ -16,6 +16,7 @@ pub mod model_drop;
 pub mod model_flatten;
 mod native_axis_gizmo;
 mod native_camera_preview;
+mod native_modal_hud;
 mod native_drop;
 mod native_game;
 pub mod native_header;
@@ -222,6 +223,7 @@ impl Plugin for ViewportPlugin {
         native_viewport::register_native_viewport(app);
         native_game::register(app);
         native_camera_preview::register(app);
+        native_modal_hud::register(app);
     }
 }
 

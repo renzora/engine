@@ -863,6 +863,13 @@ pub struct ModalTransformHud {
     pub axis_color: [u8; 4],
     /// Numeric input display string.
     pub numeric_display: String,
+    /// Scale-mode reference circle radius in screen px (cursor's distance from
+    /// the pivot when the gesture started — when the cursor is back on this
+    /// circle, the scale factor is exactly 1).
+    pub ref_radius: f32,
+    /// Scale-mode live scale factor (current cursor distance / start distance),
+    /// shown as the readout when the user hasn't typed an explicit value.
+    pub scale_factor: f32,
 }
 
 /// Holds the optional render target for the game camera.

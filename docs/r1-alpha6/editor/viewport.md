@@ -80,6 +80,17 @@ Switch between gizmo tools with these keys:
 
 The colors map to the 3D axes: **X is red, Y is green, Z is blue**. A handle turns **yellow** when you hover or drag it. (You can see the Move arrows on the selected scooter in the screenshot above.)
 
+Rotating and scaling pivot around the object's **bounding-box center**, so objects transform in place rather than drifting — this holds even for imported models whose pivot was authored at the world origin.
+
+### World vs Local space
+
+The **World / Local** button in the toolbar (next to the shapes dropdown) sets which axes the gizmo follows:
+
+- **World** — handles align to the world axes (X/Y/Z), regardless of how the object is rotated.
+- **Local** — handles align to the object's own orientation, so dragging moves it along *its* axes.
+
+Either way the transform is applied correctly even when the object is nested under a rotated or scaled parent. Scale always acts along the object's own axes (the toggle only changes which way the scale handles point).
+
 ### Transform from the keyboard
 
 If you'd rather not grab a handle, you can drive a transform straight from the keyboard with an object selected:

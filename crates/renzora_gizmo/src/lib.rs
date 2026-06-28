@@ -16,8 +16,10 @@ pub mod modal_transform;
 mod picker_2d;
 pub mod selection_visuals;
 pub mod skeleton_gizmo;
+mod transform_space;
 
 use bevy::camera::visibility::RenderLayers;
+use bevy::ecs::system::SystemParam;
 use bevy::input::mouse::MouseMotion;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{Material, MaterialPipeline, MaterialPipelineKey};
@@ -143,7 +145,7 @@ impl Material for GizmoMaterial {
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
-pub use renzora_editor_framework::GizmoMode;
+pub use renzora_editor_framework::{GizmoMode, GizmoSpace};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GizmoAxis {
@@ -275,6 +277,19 @@ pub struct GizmoState {
     /// the current viewing angle. Locked while a drag is in progress so
     /// the handle direction doesn't flip mid-drag.
     pub axis_signs: Vec3,
+    /// World-space orientation of the gizmo handles, captured at drag start so
+    /// the axes stay fixed for the whole gesture even in Local space (where the
+    /// object's rotation — and thus the live basis — changes as you rotate it).
+    pub drag_basis: Quat,
+    /// World-space pivot the active drag rotates/scales about (the selection's
+    /// AABB center at drag start), so the object pivots in place.
+    pub drag_pivot: Vec3,
+    /// Each dragged entity's parent world affine, captured at drag start (the
+    /// parent doesn't move during the gesture). World-space deltas are converted
+    /// into this frame before being written to the entity's local `Transform`,
+    /// so transforms are correct under any nesting. Index-aligned with
+    /// `drag_starts`.
+    pub drag_parents: Vec<bevy::math::Affine3A>,
 }
 
 impl Default for GizmoState {
@@ -288,7 +303,22 @@ impl Default for GizmoState {
             drag_scale_factor: 0.0,
             gizmo_scale: 1.0,
             axis_signs: Vec3::ONE,
+            drag_basis: Quat::IDENTITY,
+            drag_pivot: Vec3::ZERO,
+            drag_parents: Vec::new(),
         }
+    }
+}
+
+/// World-space orientation of the gizmo handles for `mode`, given the
+/// selection's world rotation and the active [`GizmoSpace`]. Scale handles are
+/// always local-aligned — a non-uniform scale along world axes can't be written
+/// back as a `Transform` (it would shear a rotated object) — so the space toggle
+/// only changes which way the scale handles point, never the scale math.
+fn gizmo_basis(space: GizmoSpace, mode: GizmoMode, sel_world_rot: Quat) -> Quat {
+    match mode {
+        GizmoMode::Scale => sel_world_rot,
+        _ => space.basis(sel_world_rot),
     }
 }
 
@@ -387,6 +417,7 @@ impl Plugin for GizmoPlugin {
                 },
             )
             .init_resource::<GizmoMode>()
+            .init_resource::<GizmoSpace>()
             .init_resource::<GizmoState>()
             .init_resource::<BoxSelectionState>()
             .init_resource::<skeleton_gizmo::BoneSelection>()
@@ -769,6 +800,7 @@ fn setup_gizmo_meshes(
 fn update_gizmo_transforms(
     selection: Res<EditorSelection>,
     mode: Res<GizmoMode>,
+    space: Res<GizmoSpace>,
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmo_state: ResMut<GizmoState>,
@@ -823,6 +855,13 @@ fn update_gizmo_transforms(
             let sel_world = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
             root_transform.translation = sel_world;
 
+            // Orient the handles per the active space (world-aligned, or the
+            // object's own rotation in Local mode). Scale handles always follow
+            // the object (see `gizmo_basis`).
+            let basis = gizmo_basis(*space, *mode, sel_gt.rotation());
+            let world_aligned = basis == Quat::IDENTITY;
+            root_transform.rotation = basis;
+
             if let Ok(cam_gt) = camera_query.single() {
                 let dist = (cam_gt.translation() - sel_world).length().max(0.1);
                 let scale = dist / GIZMO_SCALE_REF_DIST;
@@ -831,14 +870,20 @@ fn update_gizmo_transforms(
                 // stay visible. Y stays +1 always — the up arrow must always
                 // point up, never flip when looking from below (otherwise the
                 // gizmo can read as upside-down). Locked while dragging so
-                // the axis doesn't flip out from under the user.
-                let cam_dir = cam_gt.translation() - sel_world;
+                // the axis doesn't flip out from under the user. Only applied
+                // for world-aligned handles; oriented (Local / scale) handles
+                // point along the real axes without flipping.
                 if gizmo_state.active_axis.is_none() {
-                    gizmo_state.axis_signs = Vec3::new(
-                        if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
-                        1.0,
-                        if cam_dir.z >= 0.0 { 1.0 } else { -1.0 },
-                    );
+                    gizmo_state.axis_signs = if world_aligned {
+                        let cam_dir = cam_gt.translation() - sel_world;
+                        Vec3::new(
+                            if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
+                            1.0,
+                            if cam_dir.z >= 0.0 { 1.0 } else { -1.0 },
+                        )
+                    } else {
+                        Vec3::ONE
+                    };
                 }
                 let s = gizmo_state.axis_signs;
                 root_transform.scale = Vec3::new(scale * s.x, scale * s.y, scale * s.z);
@@ -927,6 +972,7 @@ pub struct LabelGizmoGroup;
 fn draw_line_gizmos(
     mut gizmos: Gizmos<TransformGizmoGroup>,
     mode: Res<GizmoMode>,
+    space: Res<GizmoSpace>,
     gizmo_state: Res<GizmoState>,
     selection: Res<EditorSelection>,
     modal: Res<modal_transform::ModalTransformState>,
@@ -942,9 +988,10 @@ fn draw_line_gizmos(
     aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_q: Query<&Children>,
 ) {
-    // Modal transforms (G/R/S) take over input — hide the gizmo's
-    // immediate-mode planes/axis lines so they don't sit under the modal
-    // HUD while the user is dragging.
+    // Modal transforms (G/R/S) take over input — hide the tool-mode handles so
+    // they don't sit under the modal HUD while dragging. The modal *scale* HUD
+    // (reference circle + line to cursor) is drawn separately by the viewport's
+    // `render_modal_scale_hud`, reading `ModalTransformHud`.
     if modal.active {
         return;
     }
@@ -965,6 +1012,9 @@ fn draw_line_gizmos(
         return;
     }
 
+    // Orient the rotate circles / scale lines to match the active space (and the
+    // picking basis), so visuals and hit-testing agree.
+    let basis = gizmo_basis(*space, *mode, sel_gt.rotation());
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
     let highlight = Color::srgb(1.0, 1.0, 0.3);
     let x_base = Color::srgb(1.0, 0.15, 0.15);
@@ -997,16 +1047,16 @@ fn draw_line_gizmos(
             };
 
             gizmos.circle(
-                Isometry3d::new(pos, Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+                Isometry3d::new(pos, basis * Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
                 radius,
                 x_color,
             );
             gizmos.circle(
-                Isometry3d::new(pos, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                Isometry3d::new(pos, basis * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
                 radius,
                 y_color,
             );
-            gizmos.circle(Isometry3d::new(pos, Quat::IDENTITY), radius, z_color);
+            gizmos.circle(Isometry3d::new(pos, basis), radius, z_color);
         }
         GizmoMode::Scale => {
             let scale_size = GIZMO_SIZE * gs;
@@ -1026,14 +1076,17 @@ fn draw_line_gizmos(
                 z_base
             };
 
-            // Lines from center to cube tips
-            gizmos.line(pos, pos + Vec3::X * scale_size, x_color);
-            gizmos.line(pos, pos + Vec3::Y * scale_size, y_color);
-            gizmos.line(pos, pos + Vec3::Z * scale_size, z_color);
+            // Lines from center to cube tips (oriented to the active space).
+            let ax = basis * Vec3::X;
+            let ay = basis * Vec3::Y;
+            let az = basis * Vec3::Z;
+            gizmos.line(pos, pos + ax * scale_size, x_color);
+            gizmos.line(pos, pos + ay * scale_size, y_color);
+            gizmos.line(pos, pos + az * scale_size, z_color);
 
             // Cube wireframes at tips
             let cube_half = 0.075 * gs;
-            for (axis_dir, color) in [(Vec3::X, x_color), (Vec3::Y, y_color), (Vec3::Z, z_color)] {
+            for (axis_dir, color) in [(ax, x_color), (ay, y_color), (az, z_color)] {
                 let c = pos + axis_dir * scale_size;
                 let h = Vec3::splat(cube_half);
                 // Draw 12 edges of the cube
@@ -1051,7 +1104,7 @@ fn draw_line_gizmos(
                     (Vec3::new(1.0, 1.0, -1.0), Vec3::new(1.0, 1.0, 1.0)),
                     (Vec3::new(-1.0, 1.0, -1.0), Vec3::new(-1.0, 1.0, 1.0)),
                 ] {
-                    gizmos.line(c + a * h, c + b * h, color);
+                    gizmos.line(c + basis * (a * h), c + basis * (b * h), color);
                 }
             }
         }
@@ -1674,6 +1727,7 @@ fn pick_threshold(
 fn gizmo_hover_detect(
     mut gizmo_state: ResMut<GizmoState>,
     mode: Res<GizmoMode>,
+    space: Res<GizmoSpace>,
     selection: Res<EditorSelection>,
     viewport: Option<Res<ViewportState>>,
     camera_q: Query<(&GlobalTransform, &Projection), With<EditorCamera>>,
@@ -1727,6 +1781,8 @@ fn gizmo_hover_detect(
     let gs = gizmo_state.gizmo_scale.max(0.01);
     let gizmo_size = GIZMO_SIZE * gs;
     let threshold = pick_threshold(cam_gt, entity_pos, projection, viewport.screen_size.y);
+    // Same orientation the handles are drawn with, so picking matches visuals.
+    let basis = gizmo_basis(*space, *mode, entity_gt.rotation());
 
     let mut best: Option<(GizmoAxis, f32)> = None;
 
@@ -1739,10 +1795,11 @@ fn gizmo_hover_detect(
             let po = GIZMO_PLANE_OFFSET * gs;
             for plane in PLANES {
                 let (sa, sb) = plane.signed_plane_axes(gizmo_state.axis_signs).unwrap();
-                let center = entity_pos + sa * po + sb * po;
-                // The picking math wants unsigned world axes for the quad
-                // basis; signs are already accounted for in the center.
+                let center = entity_pos + basis * sa * po + basis * sb * po;
+                // The picking math wants the (oriented) unsigned axes for the
+                // quad basis; signs are already accounted for in the center.
                 let (a, b) = plane.plane_axes().unwrap();
+                let (a, b) = (basis * a, basis * b);
                 let corner = center - a * plane_half - b * plane_half;
                 if ray_hits_plane_quad(&ray, corner, a, b, GIZMO_PLANE_SIZE * gs) {
                     best = Some((plane, 0.0));
@@ -1751,7 +1808,7 @@ fn gizmo_hover_detect(
             }
             if best.is_none() {
                 for axis in AXES {
-                    let dir = axis.signed_direction(gizmo_state.axis_signs);
+                    let dir = basis * axis.signed_direction(gizmo_state.axis_signs);
                     if let Some(dist) = closest_distance_ray_segment(
                         &ray,
                         entity_pos,
@@ -1766,7 +1823,7 @@ fn gizmo_hover_detect(
         }
         GizmoMode::Scale => {
             for axis in AXES {
-                let dir = axis.signed_direction(gizmo_state.axis_signs);
+                let dir = basis * axis.signed_direction(gizmo_state.axis_signs);
                 if let Some(dist) =
                     closest_distance_ray_segment(&ray, entity_pos, entity_pos + dir * gizmo_size)
                 {
@@ -1779,7 +1836,8 @@ fn gizmo_hover_detect(
         GizmoMode::Rotate => {
             let radius = gizmo_size * 0.7;
             for axis in AXES {
-                if let Some(dist) = ray_circle_distance(&ray, entity_pos, axis.direction(), radius)
+                if let Some(dist) =
+                    ray_circle_distance(&ray, entity_pos, basis * axis.direction(), radius)
                 {
                     if dist < threshold && best.is_none_or(|(_, d)| dist < d) {
                         best = Some((axis, dist));
@@ -1808,9 +1866,28 @@ fn release_drag_cursor(cursor_q: &mut Query<&mut CursorOptions, With<PrimaryWind
     }
 }
 
+/// Geometry queries shared by the drag system, bundled so `gizmo_drag` stays
+/// under Bevy's 16-parameter system limit.
+#[derive(SystemParam)]
+struct DragGeom<'w, 's> {
+    global: Query<'w, 's, &'static GlobalTransform, Without<EditorCamera>>,
+    aabb: Query<'w, 's, &'static bevy::camera::primitives::Aabb>,
+    pivot_aabbs: Query<
+        'w,
+        's,
+        (
+            Option<&'static bevy::camera::primitives::Aabb>,
+            &'static GlobalTransform,
+        ),
+        With<Mesh3d>,
+    >,
+    children: Query<'w, 's, &'static Children>,
+}
+
 fn gizmo_drag(
     mut gizmo_state: ResMut<GizmoState>,
     mode: Res<GizmoMode>,
+    space: Res<GizmoSpace>,
     selection: Res<EditorSelection>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     viewport: Option<Res<ViewportState>>,
@@ -1825,10 +1902,7 @@ fn gizmo_drag(
             Without<GizmoMesh>,
         ),
     >,
-    global_q: Query<&GlobalTransform, Without<EditorCamera>>,
-    aabb_q: Query<&bevy::camera::primitives::Aabb>,
-    pivot_aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
-    children_q: Query<&Children>,
+    geom: DragGeom,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
@@ -1872,13 +1946,44 @@ fn gizmo_drag(
     if mouse_button.just_pressed(MouseButton::Left) && gizmo_state.active_axis.is_none() {
         if let Some(axis) = gizmo_state.hovered_axis {
             let mut starts = Vec::new();
+            let mut parents = Vec::new();
             for &entity in &selected_entities {
                 if let Ok(t) = transform_q.get(entity) {
                     starts.push((entity, t.translation, t.rotation, t.scale));
+                    // Parent frame = world * local⁻¹, captured now (the parent is
+                    // stationary for the gesture). Identity when unparented.
+                    let parent = geom.global
+                        .get(entity)
+                        .map(|gt| transform_space::parent_affine(gt, t))
+                        .unwrap_or(bevy::math::Affine3A::IDENTITY);
+                    parents.push(parent);
                 }
             }
+            // Capture the handle orientation and the world pivot now, so both
+            // stay fixed for the whole gesture (in Local space the live basis
+            // would otherwise drift as the object rotates).
+            let sel_world_rot = selection
+                .get()
+                .and_then(|e| geom.global.get(e).ok())
+                .map(|gt| gt.rotation())
+                .unwrap_or(Quat::IDENTITY);
+            let mut pivot_sum = Vec3::ZERO;
+            let mut pivot_n = 0u32;
+            for &e in &selected_entities {
+                if let Ok(gt) = geom.global.get(e) {
+                    pivot_sum += compute_gizmo_pivot(e, &geom.pivot_aabbs, &geom.children, gt);
+                    pivot_n += 1;
+                }
+            }
+            gizmo_state.drag_basis = gizmo_basis(*space, *mode, sel_world_rot);
+            gizmo_state.drag_pivot = if pivot_n > 0 {
+                pivot_sum / pivot_n as f32
+            } else {
+                Vec3::ZERO
+            };
             gizmo_state.active_axis = Some(axis);
             gizmo_state.drag_starts = starts;
+            gizmo_state.drag_parents = parents;
             gizmo_state.drag_offset = Vec3::ZERO;
             gizmo_state.drag_angle = 0.0;
             gizmo_state.drag_scale_factor = 0.0;
@@ -1975,8 +2080,8 @@ fn gizmo_drag(
         let mut sum = Vec3::ZERO;
         let mut n = 0u32;
         for &e in &selected_entities {
-            if let Ok(gt) = global_q.get(e) {
-                sum += compute_gizmo_pivot(e, &pivot_aabbs, &children_q, gt);
+            if let Ok(gt) = geom.global.get(e) {
+                sum += compute_gizmo_pivot(e, &geom.pivot_aabbs, &geom.children, gt);
                 n += 1;
             }
         }
@@ -2010,6 +2115,8 @@ fn gizmo_drag(
                 // no longer orthogonal), and also under-counts due to
                 // foreshortening — both of which feel stiff and laggy.
                 let (a, b) = axis.plane_axes().unwrap();
+                let a = gizmo_state.drag_basis * a;
+                let b = gizmo_state.drag_basis * b;
                 let cam_right = cam_gt.right().as_vec3();
                 let cam_up = cam_gt.up().as_vec3();
                 let sa = Vec2::new(a.dot(cam_right), -a.dot(cam_up));
@@ -2030,7 +2137,7 @@ fn gizmo_drag(
                 // screen space, then unforeshorten by dividing by the squared
                 // screen length so the gizmo tracks the cursor 1:1 along the
                 // axis even when it's angled away from the camera.
-                let dir = axis.signed_direction(gizmo_state.axis_signs);
+                let dir = gizmo_state.drag_basis * axis.signed_direction(gizmo_state.axis_signs);
                 let cam_right = cam_gt.right().as_vec3();
                 let cam_up = cam_gt.up().as_vec3();
                 let sa = Vec2::new(dir.dot(cam_right), -dir.dot(cam_up));
@@ -2050,7 +2157,15 @@ fn gizmo_drag(
                         .get(i)
                         .map(|(_, p, r, s)| (*p, *r, *s))
                         .unwrap_or((t.translation, t.rotation, t.scale));
-                    let mut new_pos = start_t + total_offset;
+                    let parent = gizmo_state
+                        .drag_parents
+                        .get(i)
+                        .copied()
+                        .unwrap_or(bevy::math::Affine3A::IDENTITY);
+                    // Convert the world-space drag into the entity's parent frame
+                    // so it moves along the gizmo's axis, not a parent-rotated one.
+                    let mut new_pos =
+                        transform_space::world_translation(start_t, total_offset, &parent);
                     if snap.translate_enabled && snap.translate_snap > 0.0 {
                         let step = snap.translate_snap;
                         // For edge-snap, snap the world-space AABB min corner
@@ -2058,7 +2173,7 @@ fn gizmo_drag(
                         // don't change during translate) to the grid, then derive
                         // the required pivot position.
                         let min_offset = if snap.translate_edge_snap {
-                            aabb_q.get(entity).ok().map(|aabb| {
+                            geom.aabb.get(entity).ok().map(|aabb| {
                                 world_aabb_min(aabb, start_t, start_r, start_s) - start_t
                             })
                         } else {
@@ -2085,7 +2200,9 @@ fn gizmo_drag(
             }
         }
         GizmoMode::Rotate => {
-            let delta_angle = screen_delta_to_angle(total_delta, axis.direction(), cam_gt);
+            // Rotation axis in world space (world or the object's own axis).
+            let world_axis = gizmo_state.drag_basis * axis.direction();
+            let delta_angle = screen_delta_to_angle(total_delta, world_axis, cam_gt);
             gizmo_state.drag_angle += delta_angle;
 
             // If snap is on, snap the accumulated drag_angle to the step and
@@ -2096,25 +2213,33 @@ fn gizmo_drag(
             } else {
                 gizmo_state.drag_angle
             };
-            let rotation = Quat::from_axis_angle(axis.direction(), effective_angle);
+            let world_rot = Quat::from_axis_angle(world_axis, effective_angle);
+            let pivot = gizmo_state.drag_pivot;
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
-                    let start = gizmo_state
+                    let (start_t, start_r, start_s) = gizmo_state
                         .drag_starts
                         .get(i)
-                        .map(|(_, p, r, _)| (*p, *r))
-                        .unwrap_or((t.translation, t.rotation));
-                    if selected_entities.len() == 1 {
-                        t.rotation = rotation * start.1;
-                    } else {
-                        t.translation = center + rotation * (start.0 - center);
-                        t.rotation = rotation * start.1;
-                    }
+                        .map(|(_, p, r, s)| (*p, *r, *s))
+                        .unwrap_or((t.translation, t.rotation, t.scale));
+                    let parent = gizmo_state
+                        .drag_parents
+                        .get(i)
+                        .copied()
+                        .unwrap_or(bevy::math::Affine3A::IDENTITY);
+                    // Rotate about the shared world pivot so single and group
+                    // rotations both pivot in place.
+                    transform_space::pivot_rotation(
+                        &mut t, start_t, start_r, start_s, world_rot, pivot, &parent,
+                    );
                 }
             }
         }
         GizmoMode::Scale => {
-            let delta_scale = screen_delta_to_scale(total_delta, axis.direction(), cam_gt);
+            // Scale is always along the object's own axes; the handle's world
+            // direction is what the screen delta projects onto.
+            let handle_dir = gizmo_state.drag_basis * axis.direction();
+            let delta_scale = screen_delta_to_scale(total_delta, handle_dir, cam_gt);
             gizmo_state.drag_scale_factor += delta_scale;
             let snap_step = if snap.scale_enabled && snap.scale_snap > 0.0 {
                 Some(snap.scale_snap)
@@ -2128,6 +2253,8 @@ fn gizmo_drag(
                     None => v,
                 }
             };
+            let f = gizmo_state.drag_scale_factor;
+            let pivot = gizmo_state.drag_pivot;
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
                     let (start_t, start_r, start_scale) = gizmo_state
@@ -2135,28 +2262,23 @@ fn gizmo_drag(
                         .get(i)
                         .map(|(_, p, r, s)| (*p, *r, *s))
                         .unwrap_or((t.translation, t.rotation, t.scale));
-                    // Capture original world-space bottom Y before mutating scale
-                    // so we can shift the pivot to keep the bottom fixed.
-                    let start_bottom_y = if snap.scale_bottom_anchor && matches!(axis, GizmoAxis::Y)
-                    {
-                        aabb_q
-                            .get(entity)
-                            .ok()
-                            .map(|aabb| world_aabb_min(aabb, start_t, start_r, start_scale).y)
-                    } else {
-                        None
-                    };
-                    let f = gizmo_state.drag_scale_factor;
+                    let parent = gizmo_state
+                        .drag_parents
+                        .get(i)
+                        .copied()
+                        .unwrap_or(bevy::math::Affine3A::IDENTITY);
+                    let mut new_scale = start_scale;
                     match axis {
-                        GizmoAxis::X => t.scale.x = apply(start_scale.x + f, snap_step),
-                        GizmoAxis::Y => t.scale.y = apply(start_scale.y + f, snap_step),
-                        GizmoAxis::Z => t.scale.z = apply(start_scale.z + f, snap_step),
+                        GizmoAxis::X => new_scale.x = apply(start_scale.x + f, snap_step),
+                        GizmoAxis::Y => new_scale.y = apply(start_scale.y + f, snap_step),
+                        GizmoAxis::Z => new_scale.z = apply(start_scale.z + f, snap_step),
                         _ => {}
                     }
-                    if let (Some(old_y), Ok(aabb)) = (start_bottom_y, aabb_q.get(entity)) {
-                        let new_y = world_aabb_min(aabb, start_t, t.rotation, t.scale).y;
-                        t.translation.y += old_y - new_y;
-                    }
+                    // Scale about the world pivot so the object stays in place
+                    // (translation is compensated through the parent frame).
+                    transform_space::pivot_scale(
+                        &mut t, start_t, start_r, start_scale, new_scale, pivot, &parent,
+                    );
                 }
             }
         }

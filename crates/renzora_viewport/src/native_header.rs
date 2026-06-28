@@ -19,11 +19,11 @@ use renzora_undo::{execute, SpawnShapeCmd, UndoContext};
 use bevy::ecs::world::CommandQueue;
 use std::sync::Arc;
 
-use renzora_editor_framework::{EditorCommands, ToolSection, ToolbarRegistry};
+use renzora_editor_framework::{EditorCommands, GizmoSpace, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::widgets::{
-    checkbox, drag_value, drag_value_flat, scroll_area, DragRange, OverlaySurface,
+    drag_value, drag_value_flat, scroll_area, toggle_switch, DragRange, OverlaySurface,
 };
 use renzora_ember::theme::{
     border, hover_bg, panel_bg, popup_bg, rgb, tab_active, text_muted, text_primary, value_text,
@@ -110,6 +110,11 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let shapes_gap = gap(commands, 8.0);
     let shapes_dd = build_shapes_dropdown(commands, fonts);
 
+    // World/Local space toggle for the transform gizmo (3D only).
+    let space_gap = gap(commands, 8.0);
+    let space_btn = space_toggle(commands, fonts);
+    commands.entity(space_btn).insert(ThreeDOnly);
+
     let gap3 = gap(commands, 8.0);
     let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
     let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
@@ -169,11 +174,80 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // inline snapping, camera speed, the Display / Snap / Camera dropdowns, and
     // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
-        undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd,
+        undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd, space_gap, space_btn,
         center_gap, view_dd, mode_dd, gap5, translate, rotate, scale, gap6, cam_speed, gap3,
         display_dd, snap_dd, camera_dd, gap4, maximize,
     ]);
     row
+}
+
+// ── World / Local gizmo-space toggle ─────────────────────────────────────────
+
+#[derive(Component)]
+struct SpaceToggleBtn;
+
+#[derive(Component)]
+struct SpaceToggleText;
+
+/// A pill that flips the transform gizmo between World and Local space.
+fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let label = commands
+        .spawn((
+            Text::new("World"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_primary())),
+            SpaceToggleText,
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    let btn = commands
+        .spawn((
+            Node {
+                height: Val::Px(BTN_H),
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            SpaceToggleBtn,
+            Name::new("vp-space-toggle"),
+        ))
+        .id();
+    commands.entity(btn).add_child(label);
+    btn
+}
+
+/// Click flips the space; cycles World ↔ Local.
+fn space_toggle_click(
+    q: Query<&Interaction, (Changed<Interaction>, With<SpaceToggleBtn>)>,
+    mut space: ResMut<GizmoSpace>,
+) {
+    for i in &q {
+        if *i == Interaction::Pressed {
+            *space = match *space {
+                GizmoSpace::World => GizmoSpace::Local,
+                GizmoSpace::Local => GizmoSpace::World,
+            };
+        }
+    }
+}
+
+/// Keep the pill's label in sync with the active space.
+fn update_space_toggle(space: Res<GizmoSpace>, mut texts: Query<&mut Text, With<SpaceToggleText>>) {
+    if !space.is_changed() {
+        return;
+    }
+    let label = match *space {
+        GizmoSpace::World => "World",
+        GizmoSpace::Local => "Local",
+    };
+    for mut t in &mut texts {
+        t.0 = label.to_string();
+    }
 }
 
 fn gap(commands: &mut Commands, w: f32) -> Entity {
@@ -248,7 +322,12 @@ pub(crate) fn register(app: &mut App) {
             tool_button_click,
             // Nested tuple: keeps the top-level system count within Bevy's
             // 20-element tuple limit for `add_systems`.
-            (shape_spawn_click, update_shape_menu),
+            (
+                shape_spawn_click,
+                update_shape_menu,
+                space_toggle_click,
+                update_space_toggle,
+            ),
         )
             .run_if(in_state(SplashState::Editor)),
     );
@@ -915,7 +994,7 @@ fn option_row(
     row
 }
 
-/// A label + two-way checkbox row, bound to a `ViewportSettings` field.
+/// A label + two-way switch row, bound to a `ViewportSettings` field.
 fn check_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -923,7 +1002,7 @@ fn check_row(
     get: impl Fn(&World) -> bool + Send + Sync + 'static,
     set: impl Fn(&mut World, bool) + Send + Sync + 'static,
 ) -> Entity {
-    let cb = checkbox(commands, false);
+    let cb = toggle_switch(commands, false);
     bind_2way(commands, cb, get, move |w, v: &bool| set(w, *v));
     let lbl = commands
         .spawn((

@@ -187,6 +187,33 @@ pub enum GizmoMode {
     None,
 }
 
+/// Reference frame the transform gizmo operates in — shared so the gizmo and
+/// the viewport toolbar toggle agree.
+///
+/// `World`: handles align to the world axes (X/Y/Z). `Local`: handles align to
+/// the selected object's own orientation. Both write back through any parent
+/// transform, so the object moves/rotates/scales correctly regardless of how
+/// it's nested. Scale is always evaluated along local axes (a non-uniform world
+/// scale of a rotated object can't be expressed as a `Transform`), so the
+/// toggle only changes the scale gizmo's handle orientation, not its math.
+#[derive(bevy::prelude::Resource, Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GizmoSpace {
+    #[default]
+    World,
+    Local,
+}
+
+impl GizmoSpace {
+    /// World-space orientation for the gizmo's axes, given the selection's world
+    /// rotation. World mode ignores it; Local mode aligns to it.
+    pub fn basis(self, world_rotation: bevy::prelude::Quat) -> bevy::prelude::Quat {
+        match self {
+            Self::World => bevy::prelude::Quat::IDENTITY,
+            Self::Local => world_rotation,
+        }
+    }
+}
+
 /// Unified active tool — replaces scattered `GizmoMode`, `TerrainToolState`, `FoliageToolState`.
 ///
 /// Only one tool is active at a time. The viewport toolbar sets this directly.
