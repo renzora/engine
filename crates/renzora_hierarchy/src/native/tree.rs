@@ -52,6 +52,10 @@ fn flatten(
     expanded: &HashSet<Entity>,
     renaming: Option<Entity>,
     parent_lines: &mut Vec<bool>,
+    // The ancestor entity at each depth (parallel to `parent_lines`), so each
+    // row's connector lines know which parent they belong to — used by the drag
+    // highlight to light up only the prospective drop parent's guides.
+    lineage: &mut Vec<Entity>,
     out: &mut Vec<RowSnapshot>,
 ) {
     let count = nodes.len();
@@ -74,13 +78,16 @@ fn flatten(
             depth: parent_lines.len(),
             is_last,
             parent_lines: parent_lines.clone(),
+            ancestors: lineage.clone(),
             is_expanded,
             has_children,
             is_renaming: renaming == Some(node.entity),
         });
         if has_children && is_expanded {
             parent_lines.push(!is_last);
-            flatten(&node.children, expanded, renaming, parent_lines, out);
+            lineage.push(node.entity);
+            flatten(&node.children, expanded, renaming, parent_lines, lineage, out);
+            lineage.pop();
             parent_lines.pop();
         }
     }
@@ -154,7 +161,8 @@ pub(crate) fn update_flatten_cache(
     let mut rows = Vec::new();
     {
         let mut parent_lines = Vec::new();
-        flatten(nodes, exp_ref, renaming, &mut parent_lines, &mut rows);
+        let mut lineage = Vec::new();
+        flatten(nodes, exp_ref, renaming, &mut parent_lines, &mut lineage, &mut rows);
     }
     // Fold the row's parity into its content hash so a row that changes odd/even
     // (e.g. when a sibling above is added/removed) repaints with the right stripe.

@@ -116,7 +116,13 @@ pub(crate) fn hier_drag(
         target = Some((row.entity, zone));
         break;
     }
-    drag.target = target;
+    // Keep the last target while the cursor is in a gap (the suffix-toggle column,
+    // the empty space below the last row, or a sub-pixel seam between rows) so the
+    // drop indicator + parent-line highlight stay put instead of flickering off.
+    // Only clears on release (the reset above).
+    if target.is_some() {
+        drag.target = target;
+    }
 
     // Toggle the per-row Before/After edge indicators.
     let (tgt_e, tgt_z) = match drag.target {

@@ -51,6 +51,9 @@ pub(crate) struct RowSnapshot {
     pub depth: usize,
     pub is_last: bool,
     pub parent_lines: Vec<bool>,
+    /// Ancestor entity at each depth (parallel to `parent_lines`), so a connector
+    /// line knows which parent it belongs to (drives the drag highlight).
+    pub ancestors: Vec<Entity>,
     pub is_expanded: bool,
     pub has_children: bool,
     /// This row is being inline-renamed → render an edit field instead of label.
@@ -83,6 +86,7 @@ impl RowSnapshot {
         self.has_material.hash(&mut h);
         self.label_color.hash(&mut h);
         self.parent_lines.hash(&mut h);
+        self.ancestors.hash(&mut h);
         self.is_renaming.hash(&mut h);
         h.finish()
     }
@@ -102,6 +106,49 @@ fn over(base: Color, top: Color) -> Color {
         (t.blue * t.alpha + b.blue * b.alpha * (1.0 - t.alpha)) / a,
         a,
     )
+}
+
+/// The parent **group** whose guide lines should highlight for the current drag
+/// target. This is the group the cursor is visually inside, which differs from
+/// the literal drop target: hovering the body of a *leaf* row (or anywhere in a
+/// Before/After zone) resolves to that row's parent, so the whole containing
+/// group stays lit as you move across its children. Only the middle of an
+/// *expandable* row resolves to that row itself (drop-into-this-group). `None`
+/// when no drag is active.
+fn drag_highlight_parent(world: &World) -> Option<Entity> {
+    let drag = world.get_resource::<HierDrag>()?;
+    if !drag.active {
+        return None;
+    }
+    let (target, zone) = drag.target?;
+    let has_children = world.get::<Children>(target).is_some_and(|c| !c.is_empty());
+    // An *open* parent's children sit right below it, so the area below it (the
+    // After zone) flows into that parent's group — resolving it to the target
+    // too keeps the group lit across the AsChild/After seam just under the
+    // parent instead of flickering to the grandparent.
+    let expanded = world
+        .get_resource::<super::HierExpanded>()
+        .is_some_and(|e| e.0.contains(&target));
+    match zone {
+        TreeDropZone::AsChild if has_children => Some(target),
+        TreeDropZone::After if has_children && expanded => Some(target),
+        // Leaf AsChild, or a Before/After reorder: the group is the target's parent.
+        _ => world.get::<ChildOf>(target).map(|c| c.parent()),
+    }
+}
+
+/// While a hierarchy drag is in progress, paint a tree connector line WHITE when
+/// its owning ancestor is the highlighted parent group — so the whole group's
+/// guide lines light up. Falls back to the normal `tree_line()` color otherwise.
+/// Value-diffed, so it's free on non-drag frames.
+fn highlight_line_on_drag(commands: &mut Commands, line: Entity, owner: Entity) {
+    bind_bg(commands, line, move |world: &World| {
+        if drag_highlight_parent(world) == Some(owner) {
+            Color::WHITE
+        } else {
+            rgb(tree_line())
+        }
+    });
 }
 
 /// Build one row entity (returns it; the keyed list parents it).
@@ -144,13 +191,25 @@ pub(crate) fn build_row(
     for (level, &has_more) in s.parent_lines.iter().enumerate() {
         if has_more {
             let x = BASE_X + level as f32 * INDENT + LINE_OFFSET;
-            kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, true, 0.0));
+            let line = renzora_ember::widgets::tree_vline(commands, x, 0.0, true, 0.0);
+            if let Some(&owner) = s.ancestors.get(level) {
+                highlight_line_on_drag(commands, line, owner);
+            }
+            kids.push(line);
         }
     }
     if s.depth > 0 {
         let x = BASE_X + (s.depth - 1) as f32 * INDENT + LINE_OFFSET;
-        kids.push(renzora_ember::widgets::tree_vline(commands, x, 0.0, !s.is_last, CENTER_Y));
-        kids.push(renzora_ember::widgets::tree_hline(commands, x, CENTER_Y, 5.0));
+        let vline = renzora_ember::widgets::tree_vline(commands, x, 0.0, !s.is_last, CENTER_Y);
+        let hline = renzora_ember::widgets::tree_hline(commands, x, CENTER_Y, 5.0);
+        // Both this row's vertical stub and its horizontal tick belong to its
+        // direct parent (`ancestors[depth-1]`).
+        if let Some(&owner) = s.ancestors.get(s.depth - 1) {
+            highlight_line_on_drag(commands, vline, owner);
+            highlight_line_on_drag(commands, hline, owner);
+        }
+        kids.push(vline);
+        kids.push(hline);
     }
 
     if let Some([r, g, b]) = s.label_color {
