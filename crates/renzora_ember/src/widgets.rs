@@ -301,6 +301,8 @@ impl Plugin for WidgetsPlugin {
                     sortable::sortable_drag,
                     text_input::caret_blink,
                     text_input::text_input_highlight,
+                    text_input::text_input_measure,
+                    text_input::text_input_caret_pos,
                 ),
                 (
                     spin_slider::spin_drag,
