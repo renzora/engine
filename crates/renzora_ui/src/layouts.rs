@@ -288,7 +288,6 @@ pub fn scene_layout() -> DockTree {
             DockTree::Leaf {
                 tabs: vec![
                     "viewport".into(),
-                    "render_pipeline".into(),
                     "code_editor".into(),
                 ],
                 active_tab: 0,
@@ -426,10 +425,7 @@ fn layout_debug() -> DockTree {
                 DockTree::horizontal(
                     DockTree::horizontal(
                         DockTree::leaf("system_profiler"),
-                        DockTree::Leaf {
-                            tabs: vec!["render_stats".into(), "render_pipeline".into()],
-                            active_tab: 0,
-                        },
+                        DockTree::leaf("render_stats"),
                         0.5,
                     ),
                     DockTree::horizontal(

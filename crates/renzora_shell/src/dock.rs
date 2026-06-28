@@ -240,7 +240,7 @@ fn layout_debug() -> DockTree {
                 DockTree::horizontal(
                     DockTree::horizontal(
                         DockTree::leaf("system_profiler"),
-                        DockTree::tabs(&["render_stats", "render_pipeline"]),
+                        DockTree::leaf("render_stats"),
                         0.5,
                     ),
                     DockTree::horizontal(
@@ -281,7 +281,7 @@ pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
         // Main area: viewport on top, assets/console/etc tabbed below.
         DockTree::vertical(
-            DockTree::tabs(&["viewport", "render_pipeline", "code_editor"]),
+            DockTree::tabs(&["viewport", "code_editor"]),
             DockTree::tabs(&[
                 "assets",
                 "hub_store",

@@ -732,7 +732,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Debug / profiling
     ("performance", "Performance", "gauge", "Debug"),
     ("render_stats", "Render Stats", "chart-bar", "Debug"),
-    ("render_pipeline", "Render Pipeline", "graph", "Debug"),
     ("ecs_stats", "ECS Stats", "list-numbers", "Debug"),
     ("memory_profiler", "Memory", "memory", "Debug"),
     ("system_profiler", "System", "cpu", "Debug"),

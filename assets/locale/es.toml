@@ -108,7 +108,6 @@ version = "1.0"
 "panel.stress_test" = "Prueba de estrés"
 "panel.recorder" = "Grabadora"
 "panel.arena_presets" = "Presets de arena"
-"panel.render_pipeline" = "Pipeline de renderizado"
 "panel.render_stats" = "Estadísticas de render"
 "panel.system_profiler" = "Perfilador del sistema"
 "panel.particles" = "Partículas"
@@ -836,13 +835,6 @@ version = "1.0"
 "particles.color" = "Color"
 "particles.opacity" = "Opacidad"
 
-# ─── Pipeline de renderizado ──────────────────────────────────────────────────
-"render_pipeline.passes" = "Pasadas de render"
-"render_pipeline.nodes" = "Nodos"
-"render_pipeline.connections" = "Conexiones"
-"render_pipeline.active" = "Activo"
-"render_pipeline.disabled" = "Desactivado"
-"render_pipeline.add_pass" = "Añadir pasada"
 
 # ─── Vista previa studio ─────────────────────────────────────────────────────
 "studio.lighting" = "Iluminación"

@@ -136,7 +136,6 @@ version = "1.0"
 "panel.stress_test" = "Stress Test"
 "panel.recorder" = "Recorder"
 "panel.arena_presets" = "Arena Presets"
-"panel.render_pipeline" = "Render Pipeline"
 "panel.shape_library" = "Shape Library"
 "panel.mixer" = "Mixer"
 "panel.network_monitor" = "Network Monitor"
@@ -763,14 +762,6 @@ version = "1.0"
 "particles.size" = "Size"
 "particles.color" = "Color"
 "particles.opacity" = "Opacity"
-
-# ─── Render Pipeline ─────────────────────────────────────────────────────────
-"render_pipeline.passes" = "Render Passes"
-"render_pipeline.nodes" = "Nodes"
-"render_pipeline.connections" = "Connections"
-"render_pipeline.active" = "Active"
-"render_pipeline.disabled" = "Disabled"
-"render_pipeline.add_pass" = "Add Pass"
 
 # ─── Studio Preview ──────────────────────────────────────────────────────────
 "studio.lighting" = "Lighting"

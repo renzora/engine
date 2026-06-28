@@ -633,7 +633,7 @@ fn tab_meta(id: &str) -> (String, &'static str) {
     (humanize(id), "circle")
 }
 
-/// `render_pipeline` → `Render Pipeline`.
+/// `code_editor` → `Code Editor`.
 pub fn humanize(id: &str) -> String {
     id.split('_')
         .map(|w| {

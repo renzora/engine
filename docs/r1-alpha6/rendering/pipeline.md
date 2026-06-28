@@ -196,7 +196,7 @@ if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
 
 `renzora_debugger` ships several render-focused editor panels:
 
-- **Render Stats** / **Render Pipeline** — draw counts and per-pass / pipeline information.
+- **Render Stats** — draw counts and per-pass information.
 - **Lumen** — the GI diagnostics view (`LumenDiagState`: bake timings, voxel-sample counts, sky-cubemap presence).
 - **Culling Debug** / **Camera Debug** — frustum and camera state.
 - **Material Resolver** — how a material graph resolved to its final shader.

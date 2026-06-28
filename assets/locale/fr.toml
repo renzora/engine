@@ -110,7 +110,6 @@ version = "1.0"
 "panel.stress_test" = "Test de charge"
 "panel.recorder" = "Enregistreur"
 "panel.arena_presets" = "Préréglages d'arène"
-"panel.render_pipeline" = "Pipeline de rendu"
 "panel.render_stats" = "Stats de rendu"
 "panel.gamepad" = "Manette"
 "panel.system_profiler" = "Profileur système"
@@ -838,13 +837,6 @@ version = "1.0"
 "particles.color" = "Couleur"
 "particles.opacity" = "Opacité"
 
-# ─── Pipeline de rendu ────────────────────────────────────────────────────────
-"render_pipeline.passes" = "Passes de rendu"
-"render_pipeline.nodes" = "Nœuds"
-"render_pipeline.connections" = "Connexions"
-"render_pipeline.active" = "Actif"
-"render_pipeline.disabled" = "Désactivé"
-"render_pipeline.add_pass" = "Ajouter une passe"
 
 # ─── Aperçu studio ───────────────────────────────────────────────────────────
 "studio.lighting" = "Éclairage"

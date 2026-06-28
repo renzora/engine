@@ -110,7 +110,6 @@ version = "1.0"
 "panel.stress_test" = "ストレステスト"
 "panel.recorder" = "レコーダー"
 "panel.arena_presets" = "アリーナプリセット"
-"panel.render_pipeline" = "レンダリングパイプライン"
 "panel.render_stats" = "レンダリング統計"
 "panel.system_profiler" = "システムプロファイラー"
 "panel.particles" = "パーティクル"
@@ -838,13 +837,6 @@ version = "1.0"
 "particles.color" = "色"
 "particles.opacity" = "不透明度"
 
-# ─── レンダリングパイプライン ─────────────────────────────────────────────────
-"render_pipeline.passes" = "レンダーパス"
-"render_pipeline.nodes" = "ノード"
-"render_pipeline.connections" = "接続"
-"render_pipeline.active" = "アクティブ"
-"render_pipeline.disabled" = "無効"
-"render_pipeline.add_pass" = "パスを追加"
 
 # ─── スタジオプレビュー ───────────────────────────────────────────────────────
 "studio.lighting" = "ライティング"

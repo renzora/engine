@@ -108,7 +108,6 @@ version = "1.0"
 "panel.stress_test" = "Stresstest"
 "panel.recorder" = "Aufnahme"
 "panel.arena_presets" = "Arena-Voreinstellungen"
-"panel.render_pipeline" = "Render-Pipeline"
 "panel.render_stats" = "Render-Statistik"
 "panel.system_profiler" = "Systemprofilierung"
 "panel.particles" = "Partikel"
@@ -834,13 +833,6 @@ version = "1.0"
 "particles.color" = "Farbe"
 "particles.opacity" = "Deckkraft"
 
-# ─── Render-Pipeline ──────────────────────────────────────────────────────────
-"render_pipeline.passes" = "Render-Durchläufe"
-"render_pipeline.nodes" = "Knoten"
-"render_pipeline.connections" = "Verbindungen"
-"render_pipeline.active" = "Aktiv"
-"render_pipeline.disabled" = "Deaktiviert"
-"render_pipeline.add_pass" = "Durchlauf hinzufügen"
 
 # ─── Studio-Vorschau ──────────────────────────────────────────────────────────
 "studio.lighting" = "Beleuchtung"
