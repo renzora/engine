@@ -791,8 +791,14 @@ fn tab_drag(
                                             .map(|(e, _, _, _)| e)
                                     })
                                     .collect();
+                                // `replace_children`, not `insert_children(0, …)`:
+                                // reordering existing children via Bevy 0.19's
+                                // `place` can panic ("insertion index should be
+                                // <= len") because it clamps the index before
+                                // removing the moved child. `replace_children`
+                                // rebuilds the collection wholesale and avoids it.
                                 if !ordered.is_empty() {
-                                    commands.entity(tabbar).insert_children(0, &ordered);
+                                    commands.entity(tabbar).replace_children(&ordered);
                                 }
                             }
                         }

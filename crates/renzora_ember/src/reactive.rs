@@ -711,8 +711,21 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
                 }
                 // Set the container's children to the new order (moves existing,
                 // attaches newly-built ones).
+                //
+                // Use `replace_children`, NOT `insert_children(0, …)`. Bevy
+                // 0.19's `OrderedRelationshipSourceCollection::place` (which
+                // `insert_children` calls per already-related child) clamps the
+                // target index with `index.min(self.len())` *before* removing
+                // the entity from the collection, then inserts *after* the
+                // removal — so moving an existing child to a tail index panics
+                // with "insertion index (is N) should be <= len (is N-1)".
+                // Whether it fires depends on the exact add/move/remove pattern
+                // of a given reconcile, so it surfaced only for specific folders
+                // (e.g. the blueprints folder's item set). `replace_children`
+                // clears the collection and re-extends it from the slice with no
+                // `place` calls, sidestepping the bug entirely.
                 if !ordered.is_empty() {
-                    commands.entity(kl.container).insert_children(0, &ordered);
+                    commands.entity(kl.container).replace_children(&ordered);
                 }
             }
             queue.apply(world);
