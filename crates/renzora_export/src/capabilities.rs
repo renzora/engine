@@ -100,11 +100,34 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: false,
     },
     Capability {
+        id: "dev_extras",
+        label: "Editor/dev conveniences",
+        help: "Hot-reload file watching, reflection doc-strings (inspector tooltips), clipboard \
+               access, OS font discovery, and bevy's settings system — all editor/dev only, with \
+               zero usage in a shipped game. (Clipboard's `arboard` backend is pulled separately \
+               by the engine and needs its own gate for the full saving.)",
+        bevy_features: &[
+            "file_watcher",
+            "reflect_documentation",
+            "system_clipboard",
+            "clipboard_image",
+            "system_font_discovery",
+            "bevy_settings",
+        ],
+        runtime_features: &[],
+        default_on: false,
+    },
+    Capability {
         id: "image_extra",
-        label: "Uncommon image formats",
-        help: "EXR/HDR, TIFF, GIF, BMP, TGA, PNM, QOI decoders. PNG/JPEG/DDS/KTX2 are always kept. \
-               Auto-enabled when such files are in the project.",
-        bevy_features: &["exr", "tiff", "gif", "bmp", "tga", "pnm", "qoi", "ff", "ico"],
+        label: "Image-format decoders",
+        help: "Every optional texture decoder — DDS, JPEG, WebP, basis-universal, EXR/HDR, TIFF, \
+               GIF, BMP, TGA, PNM, QOI. PNG (+ its zlib) and KTX2 are always kept (window icon / \
+               compressed textures). Auto-enabled per the image files actually in the project, so \
+               a textureless or single-format game drops the decoders it never uses.",
+        bevy_features: &[
+            "dds", "jpeg", "webp", "basis-universal",
+            "exr", "tiff", "gif", "bmp", "tga", "pnm", "qoi", "ff", "ico",
+        ],
         runtime_features: &[],
         default_on: false,
     },
@@ -264,7 +287,10 @@ pub const CAPABILITIES: &[Capability] = &[
 /// File extensions that imply a detectable capability is needed.
 fn detection_extensions(id: &str) -> &'static [&'static str] {
     match id {
-        "image_extra" => &["exr", "hdr", "tif", "tiff", "gif", "bmp", "tga", "pnm", "qoi"],
+        "image_extra" => &[
+            "dds", "jpg", "jpeg", "jpe", "webp", "basis",
+            "exr", "hdr", "tif", "tiff", "gif", "bmp", "tga", "pnm", "qoi", "ico",
+        ],
         // Rhai backend only when the project ships .rhai scripts (Lua is always in).
         "rhai" => &["rhai"],
         // Visual scripting only when the project ships blueprint graphs.
