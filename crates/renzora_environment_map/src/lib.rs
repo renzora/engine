@@ -49,26 +49,54 @@ impl Default for EnvironmentMapComponentSettings {
     }
 }
 
-/// Force a one-shot re-sync of every `EffectRouting` consumer the moment the IBL
-/// bake comes online.
+/// Re-fire the whole `EffectRouting` chain for a short window after a
+/// `WorldEnvironment` **source** appears, so the IBL + atmosphere apply on
+/// scene/project load without the user nudging the sun or env value.
 ///
-/// On scene load the camera's `GeneratedEnvironmentMapLight` (the atmosphere →
-/// cubemap bake) only appears a few frames *after* the `WorldEnvironment` entity
-/// — by then the `routing` / `settings` / `sun` `is_changed` flags that gate
-/// [`sync_environment_map`] (and `renzora_atmosphere::sync_atmosphere`) have
-/// lapsed, so the freshly-baked maps keep the camera's placeholder (dark)
-/// intensity until the user nudges the sun or the env-map value. Marking the
-/// routing changed when the bake is `Added` re-applies the authored intensity +
-/// atmosphere mode, so IBL lights up on load with no manual kick.
+/// Why a *window*, not a one-shot: on project load the pieces settle over several
+/// frames — the `WorldEnvironment` spawns, then `EffectRouting` rebuilds to
+/// include it, then the bake camera's `GeneratedEnvironmentMapLight` (the
+/// atmosphere → cubemap bake) appears. The `routing`/`settings`/`sun` `is_changed`
+/// flags that gate [`sync_environment_map`] and `renzora_atmosphere::sync_atmosphere`
+/// each lapse after a single frame, so a one-frame kick lands before the bake is
+/// ready and is missed → the scene loads dark until something is nudged. We arm a
+/// countdown when a source `Added`s and `set_changed()` the routing every frame of
+/// that window — covering the settle period.
 ///
-/// `gate_environment_generation` also re-adds this component on dormant→active,
-/// which harmlessly re-fires this (the values are unchanged); the component is
-/// stable in steady state, so this never loops.
-fn kick_routing_on_bake_ready(
-    added: Query<(), Added<GeneratedEnvironmentMapLight>>,
+/// Triggers, both needed:
+/// - a SOURCE appearing (`EnvironmentMapComponentSettings`, on the World
+///   Environment entity) — covers switching projects, where the editor bake
+///   camera persists and only the source is new.
+/// - the bake (`GeneratedEnvironmentMapLight`) appearing on a NON-play camera —
+///   the editor bake camera getting its bake is the "everything's ready" moment
+///   on a cold load, and it's the kick that actually relit the scene.
+///
+/// The bake filter `Without<PlayModeCamera>` is load-bearing: the bake is `Added`
+/// to the *play camera* every time play starts, so triggering on it unfiltered
+/// armed a `set_changed()` burst on every play toggle — forcing SSR/SSAO/etc. to
+/// re-specialize while the play camera's pipeline was being rebuilt, which
+/// invalidated render buffers ("thickness_buffer is invalid"). Excluding the play
+/// camera means the kick only fires for real scene/project loads.
+fn kick_routing_on_environment_load(
+    added_bake: Query<
+        (),
+        (
+            Added<GeneratedEnvironmentMapLight>,
+            Without<renzora::core::PlayModeCamera>,
+        ),
+    >,
+    added_source: Query<(), Added<EnvironmentMapComponentSettings>>,
     mut routing: ResMut<renzora::EffectRouting>,
+    mut frames_left: Local<u32>,
 ) {
-    if !added.is_empty() {
+    // ~10 frames comfortably covers WorldEnvironment spawn → routing rebuild →
+    // bake-camera `GeneratedEnvironmentMapLight` appearing on load.
+    const KICK_FRAMES: u32 = 10;
+    if !added_bake.is_empty() || !added_source.is_empty() {
+        *frames_left = KICK_FRAMES;
+    }
+    if *frames_left > 0 {
+        *frames_left -= 1;
         routing.set_changed();
     }
 }
@@ -108,8 +136,7 @@ fn sync_environment_map(
                 // cubemap is dark so IBL is already low, but applying
                 // the same horizon fade as the directional light keeps
                 // the scene from being "vaguely lit" by residual
-                // atmospheric scatter when there's no sun. Eyes-only
-                // realism — relying on actual lights, not engine fakes.
+                // atmospheric scatter when there's no sun.
                 let sun_factor = sun
                     .as_ref()
                     .map(|s| renzora_lighting::sun_horizon_factor(s.elevation))
@@ -128,31 +155,18 @@ fn sync_environment_map(
                         intensity,
                         ..default()
                     });
-                // CRITICAL: Bevy chains IBL intensity through three
-                // components, each gated by `Without<NextOne>` so it
-                // bakes once per camera:
-                //   AtmosphereEnvironmentMapLight
-                //     → GeneratedEnvironmentMapLight (frame 1)
-                //     → EnvironmentMapLight (frame 2)
-                // The PBR shader reads from `EnvironmentMapLight`, NOT
-                // from the upstream two. After frame 2 the chain is
-                // locked — the `AtmosphereEnvironmentMapLight` write
-                // above only matters if our sync happens to run before
-                // the first prepare (which it does in the runtime case
-                // where the WE entity is already in the scene file).
-                // The write below is what makes the editor case work,
-                // where the EditorCamera is spawned long before any WE
-                // entity exists and the chain bakes intensity 0 before
-                // routing has anything to set.
+                // The PBR shader reads from `EnvironmentMapLight`, fed by the bake
+                // chain (AtmosphereEnvironmentMapLight → GeneratedEnvironmentMapLight
+                // → EnvironmentMapLight). Write it directly too so the editor case
+                // works, where the camera is spawned long before any WE exists.
                 if let Ok(mut env) = env_lights.get_mut(*target) {
                     env.intensity = intensity;
                 }
             }
             None => {
                 // No source for this target — only push the "off" value
-                // when the routing actually changed (e.g. the
-                // WorldEnvironment was just removed from the source list).
-                // Otherwise we'd thrash the camera every frame.
+                // when the routing actually changed (e.g. the WE was just
+                // removed). Otherwise we'd thrash the camera every frame.
                 if routing_changed {
                     commands
                         .entity(*target)
@@ -278,7 +292,7 @@ impl Plugin for EnvironmentMapPlugin {
                 // Runs first so the same frame's `sync_environment_map` sees the
                 // forced `routing` change and re-applies intensity once the bake
                 // is ready (fixes "scene loads dark until the sun/env is nudged").
-                kick_routing_on_bake_ready,
+                kick_routing_on_environment_load,
                 sync_environment_map,
                 cleanup_environment_map,
                 gate_environment_generation,

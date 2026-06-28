@@ -200,6 +200,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn gizmo_layout(
     orbit: Option<Res<CameraOrbitSnapshot>>,
     settings: Option<Res<ViewportSettings>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     mut roots: Query<&mut Node, (With<AxisGizmoRoot>, Without<AxisTip>, Without<AxisLine>)>,
     mut tips: Query<
         (&AxisTip, &mut Node, &mut BackgroundColor, &mut ZIndex),
@@ -210,7 +211,9 @@ fn gizmo_layout(
         Without<AxisTip>,
     >,
 ) {
-    let show = settings.map(|s| s.show_axis_gizmo).unwrap_or(true);
+    // Hidden during play mode for a clean game view.
+    let playing = play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
+    let show = settings.map(|s| s.show_axis_gizmo).unwrap_or(true) && !playing;
     for mut node in &mut roots {
         let want = if show { Display::Flex } else { Display::None };
         if node.display != want {

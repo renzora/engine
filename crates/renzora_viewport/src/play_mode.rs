@@ -1,32 +1,19 @@
 //! Play mode — switches from editor camera to game camera for in-editor playtesting.
 
-use bevy::camera::RenderTarget;
-use bevy::core_pipeline::prepass::{
-    DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
-};
-use bevy::light::AtmosphereEnvironmentMapLight;
-use bevy::light::Atmosphere;
-use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
-use bevy::camera::Hdr;
 use bevy::window::{CursorGrabMode, CursorOptions};
-use renzora::core::{
-    DefaultCamera, EditorCamera, EditorCamera2d, PlayModeCamera, PlayModeState, PlayState,
-    SceneCamera, ViewportRenderTarget,
-};
-use renzora_editor_framework::camera::EditorUiCamera;
+use renzora::core::{DefaultCamera, PlayModeCamera, PlayModeState, PlayState, SceneCamera};
 use renzora_editor_framework::EditorSettings;
 
 use crate::external_runtime::{
     self, find_runtime_binary, replace_child, spawn_runtime, ExternalRuntime,
 };
 
-/// Snapshot of which editor cameras (`EditorCamera` / `EditorCamera2d`) were
-/// active when play mode was entered, so [`exit_play_mode`] reactivates exactly
-/// those — not both flavours (which would collide at order -1 on the viewport
-/// image). Inserted on enter, consumed on exit.
+/// The viewport-maximize state before play maximized it (only present when the
+/// "maximize viewport on play" setting drove the maximize), so [`exit_play_mode`]
+/// restores exactly what the user had.
 #[derive(Resource)]
-struct PrePlayActiveEditorCameras(Vec<Entity>);
+struct PrePlayMaximized(bool);
 
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
@@ -192,277 +179,75 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     world.trigger(renzora::core::SaveCurrentScene);
     console_info("PlayMode", "Scene saved before play mode");
 
-    // Find the game camera: prefer DefaultCamera, then first SceneCamera
+    // Find the game camera: prefer DefaultCamera, then first SceneCamera.
     let mut q = world.query_filtered::<(Entity, Option<&DefaultCamera>), With<SceneCamera>>();
-    let candidates: Vec<(Entity, bool)> = q
-        .iter(world)
-        .map(|(e, dc): (Entity, Option<&DefaultCamera>)| (e, dc.is_some()))
-        .collect();
-
-    console_info(
-        "PlayMode",
-        format!("Scene camera candidates: {}", candidates.len()),
-    );
-    for (e, is_default) in &candidates {
-        let name = world
-            .get::<Name>(*e)
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "unnamed".into());
-        console_info(
-            "PlayMode",
-            format!("  {:?} \"{}\" default={}", e, name, is_default),
-        );
+    let (mut def, mut first) = (None, None);
+    for (e, dc) in q.iter(world) {
+        if first.is_none() {
+            first = Some(e);
+        }
+        if dc.is_some() && def.is_none() {
+            def = Some(e);
+        }
     }
-
-    let game_camera = candidates
-        .iter()
-        .find(|(_, is_default)| *is_default)
-        .map(|(e, _)| *e)
-        .or_else(|| candidates.first().map(|(e, _)| *e));
-
-    let Some(cam_entity) = game_camera else {
+    let Some(cam_entity) = def.or(first) else {
         console_error("PlayMode", "No scene camera found — cannot enter play mode");
         warn!("Play mode: no scene camera found");
         return;
     };
 
-    let cam_name = world
-        .get::<Name>(cam_entity)
-        .map(|n| n.to_string())
-        .unwrap_or_else(|| "unnamed".into());
-    let is_2d_camera = world.get::<Camera2d>(cam_entity).is_some();
-    console_info(
-        "PlayMode",
-        format!(
-            "Selected game camera: {:?} \"{}\" mode={}",
-            cam_entity,
-            cam_name,
-            if is_2d_camera { "2D" } else { "3D" }
-        ),
-    );
-
-    // Disable both 3D and 2D editor cameras — either could be active
-    // depending on which view the user was in when they hit Play.
-    let mut editor_q = world.query_filtered::<Entity, With<EditorCamera>>();
-    let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
-    let mut editor_2d_q = world.query_filtered::<Entity, With<EditorCamera2d>>();
-    let editor_2d_entities: Vec<Entity> = editor_2d_q.iter(world).collect();
-    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
-        console_info("PlayMode", format!("Disabling editor camera {:?}", entity));
-    }
-    // Snapshot which editor cameras were *active* before play so exit can
-    // restore exactly those. Re-enabling **both** the 3D and 2D editor cameras
-    // on exit (the old behaviour) left two active cameras sharing order -1 on the
-    // viewport image → "Camera order ambiguities" + a torn-down surface texture
-    // on the play→editor swap.
-    let was_active: Vec<Entity> = editor_entities
-        .iter()
-        .chain(editor_2d_entities.iter())
-        .copied()
-        .filter(|e| world.get::<Camera>(*e).map(|c| c.is_active).unwrap_or(false))
-        .collect();
-    world.insert_resource(PrePlayActiveEditorCameras(was_active));
-    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
-        if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
-            camera.is_active = false;
-        }
-    }
-
-    // Set up game camera for rendering
-    let had_cam3d = world.get::<Camera3d>(cam_entity).is_some();
-    let had_camera = world.get::<Camera>(cam_entity).is_some();
-    console_info(
-        "PlayMode",
-        format!(
-            "Game camera {:?} state before setup: Camera3d={} Camera2d={} Camera={}",
-            cam_entity, had_cam3d, is_2d_camera, had_camera
-        ),
-    );
-
-    // Only force-insert Camera3d for 3D play. A Camera2d already has its
-    // own pipeline; adding Camera3d would attempt to attach the 3D bind
-    // group on top and crash wgpu.
-    if !is_2d_camera && !had_cam3d {
-        world.entity_mut(cam_entity).insert(Camera3d::default());
-        console_info("PlayMode", format!("Inserted Camera3d on {:?}", cam_entity));
-    }
-
-    if !had_camera {
-        world.entity_mut(cam_entity).insert(Camera::default());
-        console_info("PlayMode", format!("Inserted Camera on {:?}", cam_entity));
-    }
-
-    if let Some(mut cam) = world.get_mut::<Camera>(cam_entity) {
-        cam.is_active = true;
-        cam.order = 0;
-        console_info(
-            "PlayMode",
-            format!("Configured camera {:?}: active=true order=0", cam_entity),
-        );
-    }
-
-    // Decide where the game renders. If the editor's **Game** panel is docked,
-    // render into its off-screen image (constrained, in-panel play) instead of
-    // taking over the whole window. Otherwise keep the historical fullscreen
-    // behaviour. `GamePanel::docked` is refreshed every frame by
-    // `resolve_game_panel`, so it reflects the live dock when Play is pressed.
-    let game_image = world
-        .get_resource::<crate::GamePanel>()
-        .filter(|g| g.present)
-        .and_then(|g| g.image.clone());
-
-    if let Some(ref img) = game_image {
-        // Pre-size the game image to the panel *before* the camera first renders
-        // into it. Without this, the image would still be at its idle size and
-        // `resolve_game_panel` would resize it the next frame — a big size jump
-        // in the same frame the heavy game camera + its prepass spin up, which
-        // trips wgpu's pipelined surface teardown. Sizing up front keeps the
-        // target stable across the play swap.
-        let target_size = world
-            .get_resource::<crate::GamePanel>()
-            .map(|g| g.screen_size)
-            .filter(|s| s.x >= 1.0 && s.y >= 1.0)
-            .map(|s| {
-                let scale = world
-                    .get_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
-                    .map(|r| r.0.scale())
-                    .unwrap_or(1.0);
-                bevy::math::UVec2::new(
-                    ((s.x * scale).round() as u32).clamp(64, 7680),
-                    ((s.y * scale).round() as u32).clamp(64, 4320),
-                )
-            });
-        if let Some(size) = target_size {
-            let need_resize = world
-                .get_resource::<crate::GamePanel>()
-                .map(|g| g.current_size != size)
-                .unwrap_or(false);
-            if need_resize {
-                if let Some(mut images) = world.get_resource_mut::<Assets<Image>>() {
-                    if let Some(mut image) = images.get_mut(img) {
-                        image.resize(bevy::render::render_resource::Extent3d {
-                            width: size.x,
-                            height: size.y,
-                            depth_or_array_layers: 1,
-                        });
-                    }
-                }
-                if let Some(mut g) = world.get_resource_mut::<crate::GamePanel>() {
-                    g.current_size = size;
-                }
-            }
-        }
-        world
-            .entity_mut(cam_entity)
-            .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
-        console_info(
-            "PlayMode",
-            format!("Camera {:?} target set to Game panel (in-panel play)", cam_entity),
-        );
-    } else {
-        world.entity_mut(cam_entity).insert(RenderTarget::default());
-        console_info(
-            "PlayMode",
-            format!("Camera {:?} target set to primary window", cam_entity),
-        );
-    }
-
-    // Disable the editor UI camera **only for fullscreen play** — that hands the
-    // whole window to the game. For in-panel play we keep it on so the editor
-    // chrome (and the Game panel showing the image above) stays visible.
-    if game_image.is_none() {
-        let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
-        let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
-        for entity in ui_cams {
-            if let Some(mut camera) = world.get_mut::<Camera>(entity) {
-                camera.is_active = false;
-            }
-        }
-    }
-
-    // 3D-only render setup. None of this applies to a 2D camera, which uses its
-    // own pipeline and has no atmosphere/IBL bind group.
-    if !is_2d_camera {
-        // Match the editor camera's far plane (100km, see
-        // `renzora_engine::camera::spawn_editor_camera`). Default
-        // Bevy `PerspectiveProjection` has `far: 1000.0`, which clips
-        // atmosphere / sky / distant terrain in play mode and is the
-        // main reason "play view looks totally different to editor".
-        // Preserve any other authored projection fields the user set
-        // (fov, aspect, near) — just override the far.
-        if let Some(mut proj) = world.get_mut::<Projection>(cam_entity) {
-            if let Projection::Perspective(ref mut p) = *proj {
-                p.far = 100_000.0;
-            }
-        } else {
-            world
-                .entity_mut(cam_entity)
-                .insert(Projection::Perspective(PerspectiveProjection {
-                    far: 100_000.0,
-                    ..default()
-                }));
-        }
-        // Set the game camera up EXACTLY like the editor's primary 3D camera for
-        // Bevy 0.19 (see `renzora_engine::camera::spawn_editor_camera`): HDR + the
-        // prepass trio (depth/normal/motion, attached at first render for SSGI /
-        // Lumen `ScreenSpace`) + `AtmosphereSettings` (the per-view sky render
-        // mode) + the IBL probe `AtmosphereEnvironmentMapLight` (intensity 0;
-        // `EffectRouting` raises it from the `WorldEnvironment`).
-        //
-        // Crucially it must NOT carry `Atmosphere`. In 0.19 the atmosphere lives
-        // on a single global stationary "planet" entity (managed by
-        // `renzora_atmosphere`) whose `GlobalTransform` IS the planet center.
-        // Putting `Atmosphere` on the camera — which has a pose — moved the planet
-        // center onto the camera (burying the view ~6,360 km underground) and
-        // created a second, conflicting planet that blanked the sky on *every*
-        // camera (the regression: "no environment on game and viewport"). The
-        // camera renders the global planet's sky through `AtmosphereSettings`,
-        // exactly as the editor 3D camera does.
-        world.entity_mut(cam_entity).insert((
-            Hdr,
-            NormalPrepass,
-            DepthPrepass,
-            MotionVectorPrepass,
-            AtmosphereSettings::default(),
-            AtmosphereEnvironmentMapLight {
-                intensity: 0.0,
-                ..default()
-            },
-            Msaa::Off,
-        ));
-
-        // DeferredPrepass attached only in Deferred rendering mode -- mirrors
-        // the editor camera. With Forward mode, it stays absent and shading
-        // runs forward; with Deferred, the G-buffer gets generated and SSR
-        // / albedo-prepass-readers work.
-        let deferred = world
-            .get_resource::<renzora::ResolvedRenderingMode>()
-            .map(|m| m.is_deferred())
-            .unwrap_or(false);
-        if deferred {
-            world.entity_mut(cam_entity).insert(DeferredPrepass);
-        }
-    }
-
+    // Mark the authored scene camera as the play camera — kept for compatibility
+    // (scene_io's scene-transition handling, the camera controller's exclusions,
+    // debug overlays all key off `PlayModeCamera`). We DELIBERATELY do not touch
+    // its render pipeline, render target, or `is_active`, and we leave the editor +
+    // UI cameras alone. Rendering is handled entirely by `renzora_camera`'s
+    // `drive_editor_camera_in_play`, which points the existing editor viewport
+    // camera at this camera's pose — so the game renders through the editor's exact
+    // pipeline and play↔stop changes nothing on the GPU (no per-toggle pipeline
+    // rebuild = none of the recurring wgpu surface/buffer crashes).
     world.entity_mut(cam_entity).insert(PlayModeCamera);
-    console_info(
-        "PlayMode",
-        format!("Inserted PlayModeCamera marker on {:?}", cam_entity),
-    );
 
-    // Reset script states and unpause physics (via decoupled events)
+    // Reset script states and unpause physics (via decoupled events).
     world.trigger(renzora::core::ResetScriptStates);
     world.trigger(renzora::core::UnpausePhysics);
 
     play_mode.active_game_camera = Some(cam_entity);
     play_mode.state = PlayState::Playing;
 
+    // Clear the editor selection so no gizmo / selection outline draws over the
+    // running game.
+    if let Some(sel) = world.get_resource::<renzora_editor_framework::EditorSelection>() {
+        sel.clear();
+    }
+
+    // Optionally maximize the viewport for a clean, full-panel game view. Remember
+    // the pre-play maximize state so Stop restores exactly what the user had (in
+    // case they'd manually maximized already).
+    let maximize = world
+        .get_resource::<EditorSettings>()
+        .map(|s| s.maximize_viewport_on_play)
+        .unwrap_or(false);
+    if maximize {
+        let was = world
+            .get_resource::<renzora_ui::ViewportMaximized>()
+            .map(|m| m.0)
+            .unwrap_or(false);
+        world.insert_resource(PrePlayMaximized(was));
+        world
+            .get_resource_or_insert_with(renzora_ui::ViewportMaximized::default)
+            .0 = true;
+    }
+
+    let is_2d = world.get::<Camera2d>(cam_entity).is_some();
+    if is_2d {
+        console_info(
+            "PlayMode",
+            "Game camera is 2D — the in-panel view is driven by the 3D editor camera, so 2D scenes may not render correctly in-panel yet.",
+        );
+    }
     console_success(
         "PlayMode",
-        format!(
-            "=== PLAY MODE ACTIVE (camera: {:?} \"{}\") ===",
-            cam_entity, cam_name
-        ),
+        format!("=== PLAY MODE ACTIVE (camera: {:?}) ===", cam_entity),
     );
     info!("Entered play mode (camera: {:?})", cam_entity);
 }
@@ -471,116 +256,28 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     use renzora::core::console_log::*;
     console_info("PlayMode", "=== EXITING PLAY MODE ===");
 
-    // Remove PlayModeCamera and deactivate the game camera
+    // Drop the `PlayModeCamera` marker from the scene camera(s). We never mutated
+    // their render pipeline or activation, so there is nothing to tear down — and
+    // `drive_editor_camera_in_play` stops driving the editor camera the moment play
+    // state clears, so `renzora_camera`'s normal systems snap it back to the editor
+    // pose. No GPU teardown on stop = no pipelined-render race = no crash.
     let mut play_cam_q = world.query_filtered::<Entity, With<PlayModeCamera>>();
     let play_cams: Vec<Entity> = play_cam_q.iter(world).collect();
-
-    // Snapshot which play cameras are 2D — the 3D-specific component
-    // strip below would otherwise no-op for 2D, but keep the data clean
-    // so we don't rip Camera2d off an authored 2D scene camera.
-    let play_cam_kinds: Vec<(Entity, bool)> = play_cams
-        .iter()
-        .map(|e| (*e, world.get::<Camera2d>(*e).is_some()))
-        .collect();
-
-    for (entity, is_2d) in &play_cam_kinds {
-        let name = world
-            .get::<Name>(*entity)
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "unnamed".into());
-        console_info(
-            "PlayMode",
-            format!(
-                "Tearing down play camera {:?} \"{}\" mode={}",
-                entity,
-                name,
-                if *is_2d { "2D" } else { "3D" }
-            ),
-        );
+    for entity in play_cams {
+        world.entity_mut(entity).remove::<PlayModeCamera>();
     }
 
-    for (entity, is_2d) in play_cam_kinds {
-        if let Some(mut cam) = world.get_mut::<Camera>(entity) {
-            cam.is_active = false;
-        }
-        let mut e = world.entity_mut(entity);
-        e.remove::<PlayModeCamera>();
-        e.remove::<Camera>();
-        // `enter_play_mode` pointed this camera at the primary window via
-        // `RenderTarget::default()`. Strip it so the authored SceneCamera
-        // returns to its inactive editor baseline and can never paint the
-        // window behind the editor chrome if a later system reactivates it.
-        e.remove::<RenderTarget>();
-        if !is_2d {
-            // Strip 3D-only components we added on entry so the authored
-            // `SceneCamera` returns to its baseline. The bind group layout
-            // for the camera also goes away when `Camera3d` is removed,
-            // so a future play-mode entry rebuilds it cleanly. Camera2d
-            // is authored content — leave it intact.
-            e.remove::<Camera3d>();
-            e.remove::<Hdr>();
-            e.remove::<NormalPrepass>();
-            e.remove::<DepthPrepass>();
-            e.remove::<MotionVectorPrepass>();
-            e.remove::<DeferredPrepass>();
-            e.remove::<Atmosphere>();
-            e.remove::<AtmosphereSettings>();
-            e.remove::<AtmosphereEnvironmentMapLight>();
-            e.remove::<Msaa>();
-        }
+    // Restore the pre-play viewport-maximize state (only if play maximized it).
+    if let Some(prev) = world.remove_resource::<PrePlayMaximized>() {
+        world
+            .get_resource_or_insert_with(renzora_ui::ViewportMaximized::default)
+            .0 = prev.0;
     }
 
-    // Restore the editor cameras' render targets, but only re-activate the ones
-    // that were active before play (snapshot from `enter_play_mode`). Re-enabling
-    // both 3D and 2D would leave two cameras at order -1 on the viewport image —
-    // an order ambiguity that also surfaces as a destroyed surface texture on the
-    // swap. Fall back to all editor cameras if the snapshot is missing (e.g. play
-    // was entered before this field existed).
-    let viewport_image = world
-        .get_resource::<ViewportRenderTarget>()
-        .and_then(|vrt| vrt.image.clone());
-
-    let mut editor_q = world.query_filtered::<Entity, With<EditorCamera>>();
-    let editor_entities: Vec<Entity> = editor_q.iter(world).collect();
-    let mut editor_2d_q = world.query_filtered::<Entity, With<EditorCamera2d>>();
-    let editor_2d_entities: Vec<Entity> = editor_2d_q.iter(world).collect();
-
-    let was_active = world
-        .remove_resource::<PrePlayActiveEditorCameras>()
-        .map(|r| r.0);
-    for entity in editor_entities.iter().chain(editor_2d_entities.iter()) {
-        // Re-point every editor camera at the viewport image (cheap + keeps the
-        // target consistent), but only the previously-active ones get switched on.
-        if let Some(ref img) = viewport_image {
-            world
-                .entity_mut(*entity)
-                .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
-        }
-        let activate = match &was_active {
-            Some(list) => list.contains(entity),
-            None => true,
-        };
-        if activate {
-            console_info("PlayMode", format!("Re-enabling editor camera {:?}", entity));
-            if let Some(mut camera) = world.get_mut::<Camera>(*entity) {
-                camera.is_active = true;
-            }
-        }
-    }
-
-    // Re-enable the egui UI camera
-    let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
-    let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
-    for entity in ui_cams {
-        if let Some(mut camera) = world.get_mut::<Camera>(entity) {
-            camera.is_active = true;
-        }
-    }
-
-    // Re-pause physics (via decoupled event)
+    // Re-pause physics (via decoupled event).
     world.trigger(renzora::core::PausePhysics);
 
-    // Restore cursor
+    // Restore cursor (a gameplay script may have grabbed it).
     let mut cursor_q = world.query::<&mut CursorOptions>();
     if let Ok(mut cursor) = cursor_q.single_mut(world) {
         cursor.grab_mode = CursorGrabMode::None;

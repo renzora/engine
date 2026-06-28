@@ -178,7 +178,7 @@ impl Plugin for DebuggerPlugin {
         use renzora_ember::settings_sections::RegisterSettingsSection;
         app.register_settings_section(
             "stats_refresh",
-            "Stats & Status Bar",
+            "Status Bar",
             "gauge",
             build_stats_refresh_section,
         );

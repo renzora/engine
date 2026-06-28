@@ -79,6 +79,10 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         commands,
         img,
         move |w| {
+            // Edit and play share this panel and this camera: the panel always
+            // shows the slot's editor-camera image. In play mode `renzora_camera`
+            // drives that same camera to the game camera's pose, so the panel shows
+            // the game without any image/camera swap.
             w.get_resource::<Viewports>()
                 .and_then(|v| v.slots.get(index))
                 .and_then(|s| s.image.clone())

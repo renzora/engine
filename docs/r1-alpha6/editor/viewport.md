@@ -117,16 +117,14 @@ The **active** viewport is whichever one your cursor is over, so the gizmo and c
 
 The **Camera Preview** panel shows the scene from one of your *game* cameras, so you can frame an in-game shot while you keep editing from a different angle. It previews, in order: a selected object that has a camera, your default camera, or the first camera it finds in the scene. The preview matches your scene's sky and lighting so it looks like the final result.
 
-## Playing your game in a panel
+## Playing your game
 
-Press **Play** to play-test your game without leaving the editor. By default play takes over the whole window, but if the **Game** panel is open, the running game is drawn *inside that panel* instead — so your Scene viewport, hierarchy, inspector, and console all stay on screen while the game runs. It's the Scene / Game split you'd expect from other engines: the viewport keeps showing your editor camera, and the Game panel shows what the player sees through the active game camera.
+Press **Play** to play-test your game without leaving the editor. Edit mode and play mode **share the viewport panel**: when you press Play, the viewport switches from your editor camera to the running game (seen through the active game camera), constrained to the panel — your hierarchy, inspector, console, and the rest of the editor all stay on screen. Press **Stop** (or `Esc`) and the viewport flips straight back to the editor camera, right where you left it.
 
-The Game panel ships next to the Viewport tab in the default Scene layout. If you closed it, add it back from the dock's **+** (Add Panel) menu under **Scene → Game**, or drag it anywhere in the dock.
+- **Pressing Play brings the viewport tab to the front automatically**, so you see the game even if you were looking at another tab when you started.
+- Entering play gives a clean game view: it **clears your selection and hides the editor toolbars, the axis gizmo, and the viewport buttons**; Stop brings them back.
+- **Maximize on Play** (Settings → Viewport → Camera, **on by default**): pressing Play collapses the dock to just the viewport for a full-panel game view, and Stop restores your layout. Turn it off to keep the rest of your panels visible while playing.
+- If no viewport panel is open at all, play falls back to taking over the whole window.
+- The game's render resolution follows the active camera's resolution setting, just like the editor view.
 
-- **Where play renders is decided when you press Play.** If the Game panel is anywhere in your layout, the game renders into it; if not, play runs fullscreen as before.
-- Until you start playing, the panel shows its own **Play** button — click it to start the game right there. (The top-bar Play button and the Play shortcut work too.)
-- **Pressing Play brings the Game tab to the front automatically**, so you see the game even if you were looking at another tab when you started.
-- **Stop** (or `Esc`) returns to editing and shows the Play button again.
-- The game's render resolution follows the active camera's resolution setting, just like the viewport.
-
-> Input still goes to the game globally while playing in a panel — keyboard and mouse reach your scripts even though the game is windowed. A script that grabs the cursor (e.g. an FPS look controller) will grab it for the whole editor window, so use fullscreen play for those.
+> Input goes to the game globally while playing — keyboard and mouse reach your scripts even though the game is windowed. A script that grabs the cursor (e.g. an FPS look controller) grabs it for the whole editor window.

@@ -667,7 +667,7 @@ const CATS: &[(&str, &[Cat])] = &[
             (SettingsTab::Project, Some("project"), "folder-open", "Project"),
             (SettingsTab::Project, Some("rendering"), "monitor", "Rendering"),
             (SettingsTab::Project, Some("window"), "desktop", "Window"),
-            (SettingsTab::Project, Some("game_viewport"), "video-camera", "Game Viewport"),
+            (SettingsTab::Project, Some("game_viewport"), "video-camera", "Viewport"),
             (SettingsTab::Project, Some("rendering_2d"), "image-square", "2D Rendering"),
         ],
     ),
@@ -1977,6 +1977,14 @@ fn tab_viewport(
         },
     );
     settings_row(commands, fonts, body, 7, "Editor Camera", dd);
+    // Editor-level (not per-viewport) play behaviour, but it's about the viewport,
+    // so it lives here rather than under Scripting.
+    let t = ctl_toggle(
+        commands, true,
+        |w| w.resource::<EditorSettings>().maximize_viewport_on_play,
+        |w, &v| w.resource_mut::<EditorSettings>().maximize_viewport_on_play = v,
+    );
+    settings_row(commands, fonts, body, 8, "Maximize on Play", t);
 
     let (sec, body) = section(commands, fonts, "gauge", "Gizmos", A_TEAL);
     commands.entity(col).add_child(sec);

@@ -313,6 +313,14 @@ pub fn build_toolbar_host(
         });
         commands.entity(host).add_child(group);
     }
+    // Hide the whole toolbar strip during play mode so the running game gets a
+    // clean view (no editor toolbars). The per-group binds above still apply when
+    // not playing.
+    bind_display(commands, host, |w| {
+        !w.get_resource::<renzora::core::PlayModeState>()
+            .map(|p| p.is_in_play_mode())
+            .unwrap_or(false)
+    });
     host
 }
 

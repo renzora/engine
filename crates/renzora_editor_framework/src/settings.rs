@@ -229,6 +229,9 @@ pub struct EditorSettings {
     /// state. Falls back to in-editor play if the runtime binary can't be
     /// located next to the editor.
     pub external_play_window: bool,
+    /// When entering play mode, maximize the viewport (collapse the rest of the
+    /// dock to a single viewport leaf) for a clean game view; restored on Stop.
+    pub maximize_viewport_on_play: bool,
     /// Auto-import dropped assets with default settings instead of showing the import overlay
     pub auto_import_on_drop: bool,
     /// Numeric drag fields: a press on the bottom slider rail sets the value
@@ -283,6 +286,7 @@ impl Default for EditorSettings {
             script_rerun_on_ready_on_reload: true,
             hide_cursor_in_play_mode: true,
             external_play_window: true,
+            maximize_viewport_on_play: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,
             // Seed the UI's working copy from the persisted preference so the

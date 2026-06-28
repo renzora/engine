@@ -229,10 +229,63 @@ impl Plugin for CameraPlugin {
                     // drive the other views from their own stored angles.
                     mirror_focused_orbit_out,
                     apply_secondary_viewport_cameras,
+                    // Last: in play mode, point the focused editor camera at the
+                    // game camera so the viewport shows the running game.
+                    drive_editor_camera_in_play,
                 )
                     .chain()
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             );
+    }
+}
+
+/// In play mode, drive the focused **editor** camera to the active game camera's
+/// pose + projection.
+///
+/// Edit and play share one camera: the viewport already renders the editor
+/// camera, so moving that camera onto the game camera's view makes the viewport
+/// show the running game — with the editor's exact, proven render pipeline (live
+/// atmosphere, IBL, post-process, deferred). There's no second camera, no render-
+/// target swap, and no per-toggle component churn, so none of the bind-group /
+/// pipelined-render crashes can happen. On Stop, the regular camera systems resume
+/// and restore the editor pose from the (untouched) orbit state — it snaps back to
+/// where you were editing.
+fn drive_editor_camera_in_play(
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    scene_cameras: Query<
+        (&GlobalTransform, &Projection),
+        (With<renzora::core::SceneCamera>, Without<EditorCamera>),
+    >,
+    mut editor_cam: Query<(&mut Transform, &mut Projection), With<EditorCamera>>,
+) {
+    let Some(pm) = play_mode else {
+        return;
+    };
+    if !pm.is_in_play_mode() {
+        return;
+    }
+    let Some(game_cam) = pm.active_game_camera else {
+        return;
+    };
+    let Ok((gt, src_proj)) = scene_cameras.get(game_cam) else {
+        return;
+    };
+    let Ok((mut transform, mut projection)) = editor_cam.single_mut() else {
+        return;
+    };
+
+    let (scale, rotation, translation) = gt.to_scale_rotation_translation();
+    *transform = Transform {
+        translation,
+        rotation,
+        scale,
+    };
+    // Copy the game camera's projection (FOV/near); Bevy re-derives the aspect from
+    // the viewport render target. Don't let an authored short far plane (Bevy's
+    // 1 km default) clip the sky / distant terrain.
+    *projection = src_proj.clone();
+    if let Projection::Perspective(ref mut p) = *projection {
+        p.far = p.far.max(100_000.0);
     }
 }
 
@@ -1231,8 +1284,14 @@ fn apply_secondary_viewport_cameras(
     viewports: Res<renzora::core::viewport_types::Viewports>,
     vp_settings: Option<Res<ViewportSettings>>,
     fov: Res<EditorViewportFov>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     mut cameras: Query<(&ViewportCamera, &mut Transform, &mut Projection), Without<PlayModeCamera>>,
 ) {
+    // During play the viewport camera is driven to the game camera's pose by
+    // `drive_editor_camera_in_play` — don't fight it by re-applying orbit poses.
+    if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
+        return;
+    }
     let focused = viewports.focused;
     let mode = match vp_settings.map(|s| s.projection_mode).unwrap_or_default() {
         VpProjectionMode::Perspective => ProjectionMode::Perspective,
