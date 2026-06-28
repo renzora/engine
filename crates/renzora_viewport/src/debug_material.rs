@@ -46,4 +46,12 @@ impl Material for ViewportDebugMaterial {
     fn fragment_shader() -> ShaderRef {
         "embedded://renzora_viewport/viewport_debug.wgsl".into()
     }
+
+    // No `specialize`: Bevy's mesh pipeline already builds the vertex layout from
+    // the mesh's actual attributes and sets the `VERTEX_NORMALS` / `VERTEX_UVS_A`
+    // shader defs to match (for both the main and prepass pipelines, which use
+    // *different* attribute locations). The shader gates its inputs on those defs
+    // so a mesh missing normals or UV0 still gets a valid pipeline. Overriding
+    // the vertex buffers here would force the main-pass locations onto the
+    // prepass and crash it (prepass wants normal at @location(3), not @location(1)).
 }

@@ -35,19 +35,36 @@ struct DebugParams {
 @group(3) @binding(1) var mr_texture: texture_2d<f32>;
 @group(3) @binding(2) var mr_sampler: sampler;
 
+// `normal` / `uv` are gated on the standard Bevy mesh shader defs
+// (`VERTEX_NORMALS` / `VERTEX_UVS_A`), which the mesh pipeline sets per the
+// mesh's actual attributes and uses to build the matching vertex layout. A mesh
+// without those attributes still gets a valid pipeline; the missing fields fall
+// back to sensible constants below so every visualization mode keeps working.
 @vertex
 fn vertex(
     @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
+#ifdef VERTEX_NORMALS
     @location(1) normal: vec3<f32>,
+#endif
+#ifdef VERTEX_UVS_A
     @location(2) uv: vec2<f32>,
+#endif
 ) -> VertexOutput {
     var out: VertexOutput;
     let model = mesh_functions::get_world_from_local(instance_index);
     out.world_position = mesh_functions::mesh_position_local_to_world(model, vec4<f32>(position, 1.0));
     out.position = position_world_to_clip(out.world_position.xyz);
+#ifdef VERTEX_NORMALS
     out.world_normal = mesh_functions::mesh_normal_local_to_world(normal, instance_index);
+#else
+    out.world_normal = vec3<f32>(0.0, 1.0, 0.0);
+#endif
+#ifdef VERTEX_UVS_A
     out.uv = uv;
+#else
+    out.uv = vec2<f32>(0.0);
+#endif
     return out;
 }
 
