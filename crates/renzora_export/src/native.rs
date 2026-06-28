@@ -16,7 +16,7 @@ use std::sync::atomic::Ordering;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, react};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, scroll_view_pinned, spinner, text_input, OverlaySurface};
+use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, OverlaySurface};
 
 use crate::download::{self, DownloadProgress};
 use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode};
@@ -94,11 +94,10 @@ fn manage_export_modal(world: &mut World) {
     if visible && existing.is_empty() {
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
         let has_project = world.get_resource::<renzora::core::CurrentProject>().is_some();
-        let init = Init::read(world);
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
-            spawn_modal(&mut commands, &fonts, &init, has_project);
+            spawn_modal(&mut commands, &fonts, has_project);
         }
         queue.apply(world);
     } else if !visible && !existing.is_empty() {
@@ -202,18 +201,7 @@ fn collect_ron_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-struct Init {
-    binary_name: String,
-    output_dir: String,
-}
-impl Init {
-    fn read(world: &World) -> Self {
-        let s = world.resource::<ExportOverlayState>();
-        Self { binary_name: s.binary_name.clone(), output_dir: s.output_dir.clone() }
-    }
-}
-
-fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_project: bool) {
+fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
     let backdrop = commands
         .spawn((
             fullscreen(),
@@ -281,8 +269,8 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
     commands.entity(cols).add_children(&[sidebar, right_scroll]);
     commands.entity(settings_view).add_child(cols);
 
-    // Output + export button live in the settings view.
-    build_output(commands, fonts, settings_view, init);
+    // Export button sits below the columns; the output fields (name, directory,
+    // icon) now live in the Output tab inside the right pane.
     build_export_btn(commands, fonts, settings_view);
 
     // Log view — the live build terminal + progress bar + cancel. Shown while and
@@ -384,24 +372,108 @@ fn rebuild_right_pane(world: &mut World) {
 
 fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: Platform) {
     let desktop = matches!(p, Platform::WindowsX64 | Platform::LinuxX64 | Platform::MacOSX64 | Platform::MacOSArm64);
+    let host = Platform::current() == Some(p);
 
-    // Platform header.
-    let hdr = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), margin: UiRect::bottom(Val::Px(4.0)), ..default() }).id();
+    // Platform header — context above the category tabs.
+    let hdr = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), margin: UiRect::bottom(Val::Px(6.0)), ..default() }).id();
     let title = icon_title(commands, fonts, platform_icon(p), p.display_name());
     let sub = txt(commands, fonts, p.supported_devices(), 11.0, text_muted());
     commands.entity(hdr).add_children(&[title, sub]);
     commands.entity(pane).add_child(hdr);
 
-    // Runtime template status.
-    build_runtime_status(commands, fonts, pane, p);
+    // The six horizontal category tabs. Each builder returns a panel container;
+    // `tabs()` shows one at a time (the ember tab widget the editor uses
+    // elsewhere). Within a panel, each group is an ember collapsible `section`
+    // — the same widget the inspector/settings panels use for their categories.
+    let panels = vec![
+        build_output_tab(commands, fonts),
+        build_packaging_tab(commands, fonts, p, desktop, host),
+        build_features_tab(commands, fonts, host),
+        build_plugins_tab(commands, fonts),
+        build_compression_tab(commands, fonts),
+        build_options_tab(commands, fonts, p, desktop),
+    ];
+    let strip = tabs(
+        commands,
+        &fonts.ui,
+        &["Output", "Packaging", "Features", "Plugins", "Compression", "Options"],
+        panels.clone(),
+    );
+    // `tabs()` overwrites each panel's `Node` with `default() + display`, so a
+    // column layout has to be re-applied here — preserving the initial
+    // visibility it set (only panel 0 shown). `tab_select` later toggles only
+    // the `display` field, leaving these other fields intact.
+    for (i, &panel) in panels.iter().enumerate() {
+        commands.entity(panel).insert(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            display: if i == 0 { Display::Flex } else { Display::None },
+            ..default()
+        });
+    }
+    commands.entity(pane).add_child(strip);
+}
 
-    // Packaging (desktop). The lean static single-binary mode recompiles from
-    // source, which native cargo can only do for the host triple — so it's
+/// A placeholder container for one tab. Its `Node` is finalized in
+/// `build_settings` after `tabs()` (which clobbers whatever we set here).
+fn tab_panel(commands: &mut Commands) -> Entity {
+    commands.spawn(Node::default()).id()
+}
+
+// ── Output tab: binary name, export directory, icon ──────────────────────────
+
+fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let panel = tab_panel(commands);
+    let (sec, body) = section(commands, fonts, "folder-open", "Output", accent());
+
+    // Binary name. (Empty initial value; `bind_text_input` reflects the current
+    // state in on the first frame, so no `Init` snapshot is needed here.)
+    let name_row = labeled(commands, fonts, "Name:");
+    let name = text_input(commands, &fonts.ui, "Binary name", "");
+    style_input(commands, name);
+    bind_text_input(commands, name, |w| w.get_resource::<ExportOverlayState>().map(|s| s.binary_name.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() { s.binary_name = v; } });
+    commands.entity(name_row).add_child(name);
+
+    // Export directory.
+    let dir_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
+    let dir_lbl = txt(commands, fonts, "Folder:", 12.0, text_muted());
+    let dir = text_input(commands, &fonts.ui, "Export directory...", "");
+    style_input(commands, dir);
+    bind_text_input(commands, dir, |w| w.get_resource::<ExportOverlayState>().map(|s| s.output_dir.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() { s.output_dir = v; } });
+    let dir_browse = pill_button(commands, fonts, "folder", "Browse");
+    commands.entity(dir_browse).insert(OutputBrowseBtn);
+    commands.entity(dir_row).add_children(&[dir_lbl, dir, dir_browse]);
+
+    // Icon.
+    let icon_row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(2.0)), ..default() }, Name::new("icon-row"))).id();
+    let icon_lbl = txt(commands, fonts, "Icon:", 12.0, text_muted());
+    let icon_path = commands.spawn((Text::new("None".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
+    bind_text(commands, icon_path, |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.icon_path.clone()).unwrap_or_else(|| "None".to_string()));
+    let clear = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), IconClearBtn, cursor())).id();
+    let clx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 12.0);
+    commands.entity(clx).insert(FocusPolicy::Pass);
+    commands.entity(clear).add_child(clx);
+    bind_display(commands, clear, |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.icon_path.is_some()));
+    let icon_browse = pill_button(commands, fonts, "image", "Browse");
+    commands.entity(icon_browse).insert(IconBrowseBtn);
+    commands.entity(icon_row).add_children(&[icon_lbl, icon_path, clear, icon_browse]);
+
+    commands.entity(body).add_children(&[name_row, dir_row, icon_row]);
+    commands.entity(panel).add_child(sec);
+    panel
+}
+
+// ── Packaging tab: packaging mode + runtime template status ──────────────────
+
+fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool, host: bool) -> Entity {
+    let panel = tab_panel(commands);
+
+    // Packaging mode (desktop). The lean static single-binary mode recompiles
+    // from source, which native cargo can only do for the host triple — so it's
     // offered only when exporting for the platform the editor is running on.
     if desktop {
-        let host = Platform::current() == Some(p);
-        let sec = section(commands);
-        let h = section_label(commands, fonts, "file-archive", "Packaging");
+        let (sec, body) = section(commands, fonts, "file-archive", "Packaging Mode", accent());
         let labels: &[&str] = if host {
             &["Binary + .rpak", "Single executable", "Lean single binary"]
         } else {
@@ -424,27 +496,57 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
                 };
             },
         );
-        commands.entity(sec).add_children(&[h, radios]);
+        commands.entity(body).add_child(radios);
         if host {
-            let hint = txt(
-                commands,
-                fonts,
-                "Lean: recompiles a stripped static single binary (no engine dylibs). Installs Rust automatically if missing.",
-                11.0,
-                text_muted(),
-            );
-            commands.entity(sec).add_child(hint);
+            let hint = txt(commands, fonts, "Lean: recompiles a stripped static single binary (no engine dylibs). Installs Rust automatically if missing.", 11.0, text_muted());
+            commands.entity(body).add_child(hint);
         }
-        commands.entity(pane).add_child(sec);
+        commands.entity(panel).add_child(sec);
     }
 
-    // Engine features — strip unused Bevy capabilities from the lean recompile.
-    // Lean export only (host platform), and only the safe-leaf capabilities for
-    // now (see `capabilities.rs`).
-    if Platform::current() == Some(p) {
-        let sec = section(commands);
-        let h = section_label(commands, fonts, "sliders-horizontal", "Engine Features (lean only)");
-        commands.entity(sec).add_child(h);
+    let status = build_runtime_status(commands, fonts, p);
+    commands.entity(panel).add_child(status);
+    panel
+}
+
+/// Runtime-template status section (installed line + Download/Install buttons +
+/// download progress). Returns the section root for the caller to place.
+fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
+    let (sec, body) = section(commands, fonts, "download-simple", "Runtime Template", accent());
+    // Installed / not status line.
+    let (line, msg) = icon_msg(commands, fonts, "check-circle", text_muted());
+    bind_text(commands, msg, move |w| if w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p)) { "Runtime template installed".to_string() } else { "Runtime template not installed".to_string() });
+    commands.entity(body).add_child(line);
+    // Buttons.
+    let btns = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
+    let dl = pill_button(commands, fonts, "download-simple", "Download from GitHub");
+    commands.entity(dl).insert(DownloadBtn);
+    let inst = pill_button(commands, fonts, "folder-open", "Install from file...");
+    commands.entity(inst).insert(InstallBtn);
+    commands.entity(btns).add_children(&[dl, inst]);
+    commands.entity(body).add_child(btns);
+    // Download progress.
+    let (prog, pmsg) = icon_msg(commands, fonts, "spinner", text_muted());
+    bind_text(commands, pmsg, move |w| match w.get_resource::<ExportOverlayState>().and_then(|s| s.download_status.clone()) {
+        Some((dp, DownloadProgress::Fetching(m))) if dp == p => m,
+        Some((dp, DownloadProgress::Done(m))) if dp == p => m,
+        Some((dp, DownloadProgress::Error(m))) if dp == p => m,
+        _ => String::new(),
+    });
+    bind_display(commands, prog, move |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.download_status.as_ref().map(|(dp, _)| *dp == p)).unwrap_or(false));
+    commands.entity(body).add_child(prog);
+    sec
+}
+
+// ── Features tab: the lean engine-feature strip ──────────────────────────────
+
+fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -> Entity {
+    let panel = tab_panel(commands);
+    let (sec, body) = section(commands, fonts, "sliders-horizontal", "Engine Features", accent());
+    if host {
+        let note = txt(commands, fonts, "Strip unused engine capabilities from the lean single-binary recompile. Auto-detected from the project where possible.", 11.0, text_muted());
+        commands.entity(body).add_child(note);
+        let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
         for cap in crate::capabilities::CAPABILITIES {
             let id = cap.id;
             // Inlined `check_state` so the closures can capture the capability id.
@@ -463,133 +565,28 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
             let t = txt(commands, fonts, cap.label, 12.0, text_primary());
             commands.entity(row).add_children(&[cb, t]);
             let help = txt(commands, fonts, cap.help, 10.0, text_muted());
-            commands.entity(sec).add_children(&[row, help]);
+            commands.entity(list).add_children(&[row, help]);
         }
-        commands.entity(pane).add_child(sec);
+        let scroll = scroll_area(commands, list, 280.0);
+        commands.entity(body).add_child(scroll);
+    } else {
+        let note = txt(commands, fonts, "Engine-feature stripping is part of the lean single-binary export, which only builds for the host platform you're running the editor on.", 11.0, text_muted());
+        commands.entity(body).add_child(note);
     }
-
-    // Compression.
-    {
-        let row = labeled(commands, fonts, "Compression:");
-        let dv = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
-        bind_2way(commands, dv, |w| w.resource::<ExportOverlayState>().compression_level as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().compression_level = (v.round() as i32).clamp(1, 22));
-        commands.entity(row).add_child(dv);
-        commands.entity(pane).add_child(row);
-    }
-
-    // Mesh optimization.
-    {
-        let sec = section(commands);
-        let h = section_label(commands, fonts, "cube", "Mesh Optimization");
-        commands.entity(sec).add_child(h);
-        let simplify = check_state(commands, fonts, "Simplify meshes", |s| s.mesh_simplify, |s, v| s.mesh_simplify = v);
-        commands.entity(sec).add_child(simplify);
-        let ratio = labeled(commands, fonts, "Keep ratio:");
-        let dv = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 0.01);
-        bind_2way(commands, dv, |w| w.resource::<ExportOverlayState>().mesh_simplify_ratio, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_simplify_ratio = v.clamp(0.1, 1.0));
-        commands.entity(ratio).add_child(dv);
-        commands.entity(ratio).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
-        bind_display(commands, ratio, |w| w.resource::<ExportOverlayState>().mesh_simplify);
-        commands.entity(sec).add_child(ratio);
-        let quant = check_state(commands, fonts, "Quantize vertex attributes", |s| s.mesh_quantize, |s, v| s.mesh_quantize = v);
-        let lods = check_state(commands, fonts, "Generate LODs", |s| s.mesh_generate_lods, |s, v| s.mesh_generate_lods = v);
-        commands.entity(sec).add_children(&[quant, lods]);
-        let levels = labeled(commands, fonts, "Levels:");
-        let dv2 = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
-        bind_2way(commands, dv2, |w| w.resource::<ExportOverlayState>().mesh_lod_levels as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_lod_levels = (v.round() as u32).clamp(1, 5));
-        commands.entity(levels).add_child(dv2);
-        commands.entity(levels).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
-        bind_display(commands, levels, |w| w.resource::<ExportOverlayState>().mesh_generate_lods);
-        commands.entity(sec).add_child(levels);
-        commands.entity(pane).add_child(sec);
-    }
-
-    // Window (desktop).
-    if desktop {
-        let sec = section(commands);
-        let h = section_label(commands, fonts, "monitor", "Window");
-        let radios = radio_group(commands, &fonts.ui, &["Windowed", "Fullscreen", "Borderless"], 0);
-        bind_2way(
-            commands,
-            radios,
-            |w| match w.resource::<ExportOverlayState>().window_mode {
-                WindowMode::Fullscreen => 1usize,
-                WindowMode::Borderless => 2,
-                _ => 0,
-            },
-            |w, v: &usize| w.resource_mut::<ExportOverlayState>().window_mode = match v { 1 => WindowMode::Fullscreen, 2 => WindowMode::Borderless, _ => WindowMode::Windowed },
-        );
-        commands.entity(sec).add_children(&[h, radios]);
-        let size = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-        let szl = txt(commands, fonts, "Size:", 12.0, text_muted());
-        let dw = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 10.0);
-        bind_2way(commands, dw, |w| w.resource::<ExportOverlayState>().window_width as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().window_width = (v.round() as u32).clamp(320, 7680));
-        let xl = txt(commands, fonts, "x", 12.0, text_muted());
-        let dh = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 10.0);
-        bind_2way(commands, dh, |w| w.resource::<ExportOverlayState>().window_height as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().window_height = (v.round() as u32).clamp(240, 4320));
-        commands.entity(size).add_children(&[szl, dw, xl, dh]);
-        bind_display(commands, size, |w| matches!(w.resource::<ExportOverlayState>().window_mode, WindowMode::Windowed));
-        commands.entity(sec).add_child(size);
-        commands.entity(pane).add_child(sec);
-    }
-
-    // Options.
-    {
-        let sec = section(commands);
-        let h = section_label(commands, fonts, "gear", "Options");
-        let console = check_state(commands, fonts, "Console logging", |s| s.console_logging, |s, v| s.console_logging = v);
-        commands.entity(sec).add_children(&[h, console]);
-        if desktop && p.supports_dedicated_server() {
-            let server = check_state(commands, fonts, "Include dedicated server", |s| s.include_server, |s, v| s.include_server = v);
-            commands.entity(sec).add_child(server);
-        }
-        commands.entity(pane).add_child(sec);
-    }
-
-    // Plugins.
-    build_plugins(commands, fonts, pane);
-
-    // Icon.
-    build_icon(commands, fonts, pane);
+    commands.entity(panel).add_child(sec);
+    panel
 }
 
-fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, _p: Platform) {
-    let sec = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), margin: UiRect::bottom(Val::Px(4.0)), ..default() }).id();
-    // Installed / not status line.
-    let (line, msg) = icon_msg(commands, fonts, "check-circle", text_muted());
-    let p = _p;
-    bind_text(commands, msg, move |w| if w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p)) { "Runtime template installed".to_string() } else { "Runtime template not installed".to_string() });
-    commands.entity(sec).add_child(line);
-    // Buttons.
-    let btns = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-    let dl = pill_button(commands, fonts, "download-simple", "Download from GitHub");
-    commands.entity(dl).insert(DownloadBtn);
-    let inst = pill_button(commands, fonts, "folder-open", "Install from file...");
-    commands.entity(inst).insert(InstallBtn);
-    commands.entity(btns).add_children(&[dl, inst]);
-    commands.entity(sec).add_child(btns);
-    // Download progress.
-    let (prog, pmsg) = icon_msg(commands, fonts, "spinner", text_muted());
-    bind_text(commands, pmsg, move |w| match w.get_resource::<ExportOverlayState>().and_then(|s| s.download_status.clone()) {
-        Some((dp, DownloadProgress::Fetching(m))) if dp == p => m,
-        Some((dp, DownloadProgress::Done(m))) if dp == p => m,
-        Some((dp, DownloadProgress::Error(m))) if dp == p => m,
-        _ => String::new(),
-    });
-    bind_display(commands, prog, move |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.download_status.as_ref().map(|(dp, _)| *dp == p)).unwrap_or(false));
-    commands.entity(sec).add_child(prog);
-    commands.entity(pane).add_child(sec);
-}
+// ── Plugins tab ──────────────────────────────────────────────────────────────
 
-fn build_plugins(commands: &mut Commands, fonts: &EmberFonts, pane: Entity) {
-    // Built from a one-shot read; the plugin list is stable after scan.
-    let sec = section(commands);
-    let h = section_label(commands, fonts, "puzzle-piece", "Plugins");
-    commands.entity(sec).add_child(h);
+fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let panel = tab_panel(commands);
+    let (sec, body) = section(commands, fonts, "puzzle-piece", "Plugins", accent());
     let list = commands.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() }).id();
-    let scroll = scroll_area(commands, list, 160.0);
-    commands.entity(sec).add_child(scroll);
-    // Filled by a command that can read the world.
+    let scroll = scroll_area(commands, list, 240.0);
+    commands.entity(body).add_child(scroll);
+    // Filled by a command that can read the world (the plugin list is stable
+    // after the scan).
     commands.queue(move |world: &mut World| {
         let plugins: Vec<(String, String)> = world.get_resource::<ExportOverlayState>().map(|s| s.available_plugins.iter().map(|p| (p.id.clone(), format!("{:?}", p.scope))).collect()).unwrap_or_default();
         let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
@@ -597,7 +594,8 @@ fn build_plugins(commands: &mut Commands, fonts: &EmberFonts, pane: Entity) {
         {
             let mut c = Commands::new(&mut queue, world);
             if plugins.is_empty() {
-                c.entity(sec).insert(Node { display: Display::None, ..default() });
+                let note = c.spawn((Text::new("No plugins detected in this project.".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+                c.entity(list).add_child(note);
             }
             for (id, scope) in plugins {
                 let row = c.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
@@ -618,46 +616,95 @@ fn build_plugins(commands: &mut Commands, fonts: &EmberFonts, pane: Entity) {
         }
         queue.apply(world);
     });
-    commands.entity(pane).add_child(sec);
-}
-
-fn build_icon(commands: &mut Commands, fonts: &EmberFonts, pane: Entity) {
-    let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(4.0)), ..default() }, Name::new("icon-row"))).id();
-    let lbl = txt(commands, fonts, "Icon:", 12.0, text_muted());
-    let path = commands.spawn((Text::new("None".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
-    bind_text(commands, path, |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.icon_path.clone()).unwrap_or_else(|| "None".to_string()));
-    let clear = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), IconClearBtn, cursor())).id();
-    let clx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 12.0);
-    commands.entity(clx).insert(FocusPolicy::Pass);
-    commands.entity(clear).add_child(clx);
-    bind_display(commands, clear, |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.icon_path.is_some()));
-    let browse = pill_button(commands, fonts, "image", "Browse");
-    commands.entity(browse).insert(IconBrowseBtn);
-    commands.entity(row).add_children(&[lbl, path, clear, browse]);
-    commands.entity(pane).add_child(row);
-}
-
-// ── Output / progress / export button ────────────────────────────────────────
-
-fn build_output(commands: &mut Commands, fonts: &EmberFonts, panel: Entity, init: &Init) {
-    let sec = section(commands);
-    let h = section_label(commands, fonts, "folder-open", "Output");
-    let name_row = labeled(commands, fonts, "Name:");
-    let name = text_input(commands, &fonts.ui, "Binary name", &init.binary_name);
-    style_input(commands, name);
-    bind_text_input(commands, name, |w| w.get_resource::<ExportOverlayState>().map(|s| s.binary_name.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() { s.binary_name = v; } });
-    commands.entity(name_row).add_child(name);
-    let dir_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-    let dir = text_input(commands, &fonts.ui, "Export directory...", &init.output_dir);
-    style_input(commands, dir);
-    bind_text_input(commands, dir, |w| w.get_resource::<ExportOverlayState>().map(|s| s.output_dir.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() { s.output_dir = v; } });
-    let browse = pill_button(commands, fonts, "folder", "Browse");
-    commands.entity(browse).insert(OutputBrowseBtn);
-    commands.entity(dir_row).add_children(&[dir, browse]);
-    commands.entity(sec).add_children(&[h, name_row, dir_row]);
-    commands.entity(sec).insert(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), margin: UiRect::top(Val::Px(8.0)), ..default() });
     commands.entity(panel).add_child(sec);
+    panel
 }
+
+// ── Compression tab: asset compression + mesh optimization ───────────────────
+
+fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let panel = tab_panel(commands);
+
+    // Asset compression level.
+    let (csec, cbody) = section(commands, fonts, "file-archive", "Compression", accent());
+    let crow = labeled(commands, fonts, "Level (zstd):");
+    let dv = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
+    bind_2way(commands, dv, |w| w.resource::<ExportOverlayState>().compression_level as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().compression_level = (v.round() as i32).clamp(1, 22));
+    commands.entity(crow).add_child(dv);
+    commands.entity(cbody).add_child(crow);
+    commands.entity(panel).add_child(csec);
+
+    // Mesh optimization.
+    let (msec, mbody) = section(commands, fonts, "cube", "Mesh Optimization", accent());
+    let simplify = check_state(commands, fonts, "Simplify meshes", |s| s.mesh_simplify, |s, v| s.mesh_simplify = v);
+    commands.entity(mbody).add_child(simplify);
+    let ratio = labeled(commands, fonts, "Keep ratio:");
+    let dvr = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 0.01);
+    bind_2way(commands, dvr, |w| w.resource::<ExportOverlayState>().mesh_simplify_ratio, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_simplify_ratio = v.clamp(0.1, 1.0));
+    commands.entity(ratio).add_child(dvr);
+    commands.entity(ratio).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
+    bind_display(commands, ratio, |w| w.resource::<ExportOverlayState>().mesh_simplify);
+    commands.entity(mbody).add_child(ratio);
+    let quant = check_state(commands, fonts, "Quantize vertex attributes", |s| s.mesh_quantize, |s, v| s.mesh_quantize = v);
+    let lods = check_state(commands, fonts, "Generate LODs", |s| s.mesh_generate_lods, |s, v| s.mesh_generate_lods = v);
+    commands.entity(mbody).add_children(&[quant, lods]);
+    let levels = labeled(commands, fonts, "Levels:");
+    let dvl = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
+    bind_2way(commands, dvl, |w| w.resource::<ExportOverlayState>().mesh_lod_levels as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_lod_levels = (v.round() as u32).clamp(1, 5));
+    commands.entity(levels).add_child(dvl);
+    commands.entity(levels).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
+    bind_display(commands, levels, |w| w.resource::<ExportOverlayState>().mesh_generate_lods);
+    commands.entity(mbody).add_child(levels);
+    commands.entity(panel).add_child(msec);
+    panel
+}
+
+// ── Options tab: window + flags ──────────────────────────────────────────────
+
+fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, desktop: bool) -> Entity {
+    let panel = tab_panel(commands);
+
+    // Window (desktop).
+    if desktop {
+        let (wsec, wbody) = section(commands, fonts, "monitor", "Window", accent());
+        let radios = radio_group(commands, &fonts.ui, &["Windowed", "Fullscreen", "Borderless"], 0);
+        bind_2way(
+            commands,
+            radios,
+            |w| match w.resource::<ExportOverlayState>().window_mode {
+                WindowMode::Fullscreen => 1usize,
+                WindowMode::Borderless => 2,
+                _ => 0,
+            },
+            |w, v: &usize| w.resource_mut::<ExportOverlayState>().window_mode = match v { 1 => WindowMode::Fullscreen, 2 => WindowMode::Borderless, _ => WindowMode::Windowed },
+        );
+        commands.entity(wbody).add_child(radios);
+        let size = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
+        let szl = txt(commands, fonts, "Size:", 12.0, text_muted());
+        let dw = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 10.0);
+        bind_2way(commands, dw, |w| w.resource::<ExportOverlayState>().window_width as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().window_width = (v.round() as u32).clamp(320, 7680));
+        let xl = txt(commands, fonts, "x", 12.0, text_muted());
+        let dh = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 10.0);
+        bind_2way(commands, dh, |w| w.resource::<ExportOverlayState>().window_height as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().window_height = (v.round() as u32).clamp(240, 4320));
+        commands.entity(size).add_children(&[szl, dw, xl, dh]);
+        bind_display(commands, size, |w| matches!(w.resource::<ExportOverlayState>().window_mode, WindowMode::Windowed));
+        commands.entity(wbody).add_child(size);
+        commands.entity(panel).add_child(wsec);
+    }
+
+    // Flags.
+    let (osec, obody) = section(commands, fonts, "gear", "Options", accent());
+    let console = check_state(commands, fonts, "Console logging", |s| s.console_logging, |s, v| s.console_logging = v);
+    commands.entity(obody).add_child(console);
+    if desktop && p.supports_dedicated_server() {
+        let server = check_state(commands, fonts, "Include dedicated server", |s| s.include_server, |s, v| s.include_server = v);
+        commands.entity(obody).add_child(server);
+    }
+    commands.entity(panel).add_child(osec);
+    panel
+}
+
+// ── Progress / export button ─────────────────────────────────────────────────
 
 /// Rough crate count for a full lean build, used only to scale the progress bar
 /// (cargo gives no total in piped mode). Over/under-estimating just makes the bar
@@ -943,10 +990,6 @@ fn cursor() -> renzora_ember::cursor_icon::HoverCursor {
 
 fn txt(commands: &mut Commands, fonts: &EmberFonts, s: &str, size: f32, color: (u8, u8, u8)) -> Entity {
     commands.spawn((Text::new(s.to_string()), ui_font(&fonts.ui, size), TextColor(rgb(color)))).id()
-}
-
-fn section(commands: &mut Commands) -> Entity {
-    commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id()
 }
 
 fn labeled(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {

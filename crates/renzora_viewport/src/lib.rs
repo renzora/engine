@@ -17,6 +17,7 @@ pub mod model_flatten;
 mod native_axis_gizmo;
 mod native_camera_preview;
 mod native_drop;
+mod native_game;
 pub mod native_header;
 mod native_nav;
 mod native_viewport;
@@ -75,6 +76,8 @@ impl Plugin for ViewportPlugin {
             })
             .init_resource::<ViewportState>()
             .init_resource::<ViewportResizeRequest>()
+            .init_resource::<GamePanel>()
+            .init_resource::<GamePanelResize>()
             .init_resource::<NavOverlayState>()
             .init_resource::<ViewportSettings>()
             .init_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
@@ -115,6 +118,7 @@ impl Plugin for ViewportPlugin {
                 (
                     compute_viewport_render_resolution.before(resolve_viewport_slots),
                     resolve_viewport_slots,
+                    resolve_game_panel,
                 ),
                 render_systems::update_render_toggles,
                 (
@@ -219,6 +223,7 @@ impl Plugin for ViewportPlugin {
         app.add_systems(Update, external_runtime::apply_runtime_pause_render);
 
         native_viewport::register_native_viewport(app);
+        native_game::register(app);
         native_camera_preview::register(app);
     }
 }
@@ -295,6 +300,45 @@ impl Default for ViewportResizeRequest {
     }
 }
 
+/// Render target + on-screen geometry for the in-editor **Game** panel — the
+/// constrained play-mode view. When this panel is docked, pressing Play renders
+/// the game camera into [`GamePanel::image`] (shown by the panel's `ImageNode`)
+/// instead of taking over the whole window; the editor chrome stays up. When the
+/// panel isn't docked, play falls back to the historical fullscreen behaviour.
+///
+/// Mirrors a single [`ViewportSlot`] but stands alone: its camera is the game
+/// camera (switched on only in play mode by `play_mode`), not an editor view.
+#[derive(Resource, Default)]
+pub struct GamePanel {
+    /// Off-screen target the game camera draws into while playing in-panel.
+    pub image: Option<Handle<Image>>,
+    /// Current render-target resolution (pixels).
+    pub current_size: UVec2,
+    /// Whether the game panel exists anywhere in the dock (visible or as a
+    /// background tab). Drives the in-panel-vs-fullscreen play decision: if the
+    /// user has a Game panel in their layout at all, Play renders into it.
+    pub present: bool,
+    /// Whether the game panel is the *active* (foreground) tab of its leaf.
+    /// Drives render-target sizing (shrink to a token size while hidden).
+    pub visible: bool,
+    /// Screen-space top-left of the panel rect (logical px).
+    pub screen_position: Vec2,
+    /// Screen-space size of the panel rect (logical px).
+    pub screen_size: Vec2,
+}
+
+/// Atomic resize request for the game panel, written from the panel's geometry
+/// report system (`&World`) and consumed by [`resolve_game_panel`]. Reuses the
+/// viewport's [`SlotResizeRequest`] shape (width/height/hover/screen-origin).
+#[derive(Resource)]
+pub struct GamePanelResize(pub SlotResizeRequest);
+
+impl Default for GamePanelResize {
+    fn default() -> Self {
+        Self(SlotResizeRequest::new())
+    }
+}
+
 /// Creates one offscreen render target per viewport slot. Slot 0's image is also
 /// published as the shared `ViewportRenderTarget` (the UI-canvas backdrop /
 /// recorder read from it) and mirrored into the focused-viewport `ViewportState`.
@@ -303,29 +347,13 @@ fn setup_viewport(
     mut render_target: ResMut<ViewportRenderTarget>,
     mut viewport_state: ResMut<ViewportState>,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut game_panel: ResMut<GamePanel>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
     bevy::log::info!("[viewport] setup_viewport — creating {VIEWPORT_COUNT} render targets");
 
     for i in 0..VIEWPORT_COUNT {
-        let size = Extent3d {
-            width: DEFAULT_WIDTH,
-            height: DEFAULT_HEIGHT,
-            depth_or_array_layers: 1,
-        };
-
-        let mut image = Image {
-            data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
-            ..default()
-        };
-        image.texture_descriptor.size = size;
-        image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
-        image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
-            | TextureUsages::COPY_DST
-            | TextureUsages::COPY_SRC
-            | TextureUsages::RENDER_ATTACHMENT;
-
-        let image_handle = images.add(image);
+        let image_handle = images.add(make_render_target(DEFAULT_WIDTH, DEFAULT_HEIGHT));
 
         viewports.slots[i].image = Some(image_handle.clone());
         viewports.slots[i].current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
@@ -336,6 +364,34 @@ fn setup_viewport(
             viewport_state.current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
         }
     }
+
+    // The Game panel gets its own off-screen target — the game camera renders
+    // here during in-panel play (see `play_mode::enter_play_mode`).
+    let game_handle = images.add(make_render_target(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+    game_panel.image = Some(game_handle);
+    game_panel.current_size = UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+}
+
+/// Build a blank off-screen render-target image suitable for a camera to draw
+/// into and a UI `ImageNode` to display. Shared by the viewport slots and the
+/// Game panel so they stay byte-for-byte identical (format/usage/size).
+fn make_render_target(width: u32, height: u32) -> Image {
+    let size = Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let mut image = Image {
+        data: Some(vec![0u8; (size.width * size.height * 4) as usize]),
+        ..default()
+    };
+    image.texture_descriptor.size = size;
+    image.texture_descriptor.format = TextureFormat::Bgra8UnormSrgb;
+    image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
+        | TextureUsages::COPY_DST
+        | TextureUsages::COPY_SRC
+        | TextureUsages::RENDER_ATTACHMENT;
+    image
 }
 
 /// Derives the editor viewport's render resolution from the relevant scene
@@ -492,6 +548,67 @@ fn resolve_viewport_slots(
     viewport_state.hovered = slot.hovered;
     viewport_state.screen_position = slot.screen_position;
     viewport_state.screen_size = slot.screen_size;
+}
+
+/// Per-frame resolver for the [`GamePanel`] render target — the single-target
+/// analogue of [`resolve_viewport_slots`]. Tracks whether the game panel is the
+/// active tab, mirrors its reported rect, and resizes the off-screen image to the
+/// panel size × render-scale (shrinking to a token size while undocked so the
+/// idle target costs nothing).
+fn resolve_game_panel(
+    req: Res<GamePanelResize>,
+    ember_dock: Option<Res<renzora_ember::dock::Dock>>,
+    resolution: Option<Res<renzora::core::viewport_types::ViewportRenderResolution>>,
+    mut game: ResMut<GamePanel>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let r = &req.0;
+    // `present` = the panel exists anywhere (drives the play decision); `visible`
+    // = it's the active foreground tab (drives target sizing — only the visible
+    // tab is laid out, so only then is the reported rect meaningful).
+    let present = ember_dock
+        .as_ref()
+        .map(|d| d.tree.contains_panel("game"))
+        .unwrap_or(false);
+    let visible = ember_dock
+        .as_ref()
+        .map(|d| d.tree.is_active_tab("game"))
+        .unwrap_or(false);
+    let render_scale = resolution.as_ref().map(|r| r.0.scale()).unwrap_or(1.0);
+
+    let w = r.width.load(Ordering::Relaxed).clamp(64, 7680);
+    let h = r.height.load(Ordering::Relaxed).clamp(64, 4320);
+    game.present = present;
+    game.visible = visible;
+
+    // Only the visible (foreground) tab is laid out, so only then is the reported
+    // rect meaningful — and only then resize. While hidden we deliberately leave
+    // the image at its last size (no shrink-to-token): the game camera only ever
+    // renders here during play, and a big size jump (token→full) in the same
+    // frame the heavy game camera first renders has tripped wgpu's pipelined
+    // surface teardown. Keeping the size stable across the play swap avoids that.
+    if visible {
+        game.screen_position = Vec2::new(
+            f32::from_bits(r.screen_x.load(Ordering::Relaxed)),
+            f32::from_bits(r.screen_y.load(Ordering::Relaxed)),
+        );
+        game.screen_size = Vec2::new(w as f32, h as f32);
+
+        let requested = UVec2::new(
+            ((w as f32 * render_scale).round() as u32).max(1),
+            ((h as f32 * render_scale).round() as u32).max(1),
+        );
+        if game.current_size != requested {
+            if let Some(mut image) = game.image.as_ref().and_then(|h| images.get_mut(h)) {
+                image.resize(Extent3d {
+                    width: requested.x,
+                    height: requested.y,
+                    depth_or_array_layers: 1,
+                });
+                game.current_size = requested;
+            }
+        }
+    }
 }
 
 /// Render-target edge length for undocked slots. Slot 0 keeps rendering while
@@ -735,6 +852,8 @@ fn sync_viewport_camera_activation(
 /// again has its marker refreshed from the current value and is re-hidden.
 fn gate_scene_visibility(
     viewports: Res<renzora::core::viewport_types::Viewports>,
+    game_panel: Option<Res<GamePanel>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
     mut commands: Commands,
     mut candidates: Query<
         (Entity, &mut Visibility),
@@ -744,6 +863,17 @@ fn gate_scene_visibility(
             Without<bevy::ui::Node>,
             Without<renzora::core::HideInHierarchy>,
             Without<renzora::core::EditorCamera>,
+            // Never gate the lights or the world environment. Hiding a
+            // `DirectionalLight`/`WorldEnvironment` and re-showing it does NOT
+            // cleanly restore Bevy's directional shadow maps or the atmosphere/IBL
+            // bake (the bake only refreshes on change), so toggling to a
+            // viewport-less / Game tab and back left shadows dead and the
+            // environment unlit — including the play camera, which shares that
+            // bake. Only the meshes (the real GPU cost) get gated.
+            Without<DirectionalLight>,
+            Without<PointLight>,
+            Without<SpotLight>,
+            Without<renzora::WorldEnvironment>,
         ),
     >,
     mut gated: Query<(
@@ -754,7 +884,14 @@ fn gate_scene_visibility(
     parents: Query<&ChildOf>,
     chrome: Query<(), With<renzora::core::HideInHierarchy>>,
 ) {
-    let any_docked = viewports.slots.iter().any(|s| s.docked);
+    // The Game panel is another live view of the scene: while playing in-panel
+    // it's the *only* thing rendering the scene (the Viewport tab may be hidden
+    // behind it). Treat that as "docked" so the scene isn't gated to hidden out
+    // from under the game camera — the bug where pressing Play with only the
+    // Game tab open showed nothing but sky.
+    let game_showing = play_mode.as_ref().is_some_and(|p| p.is_in_play_mode())
+        && game_panel.as_ref().is_some_and(|g| g.visible);
+    let any_docked = viewports.slots.iter().any(|s| s.docked) || game_showing;
 
     if any_docked {
         for (entity, mut vis, gate) in &mut gated {

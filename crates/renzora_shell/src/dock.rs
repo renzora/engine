@@ -281,7 +281,7 @@ pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
         // Main area: viewport on top, assets/console/etc tabbed below.
         DockTree::vertical(
-            DockTree::tabs(&["viewport", "render_pipeline", "code_editor"]),
+            DockTree::tabs(&["viewport", "game", "render_pipeline", "code_editor"]),
             DockTree::tabs(&[
                 "assets",
                 "hub_store",

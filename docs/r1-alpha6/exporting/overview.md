@@ -15,7 +15,7 @@ So an "export" is really: take the already-built game binary for a target platfo
 
 ## Exporting from the editor
 
-Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-only). Triggering Export from the editor opens a modal overlay where you choose the target platform, packaging mode, and a handful of build settings:
+Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-only). Triggering Export from the editor opens a modal overlay with the target-platform list on the left and the build settings on the right, organized into horizontal tabs — **Output** (binary name, export directory, icon), **Packaging** (packaging mode + runtime template), **Features** (the lean engine-feature strip), **Plugins**, **Compression** (zstd level + mesh optimization), and **Options** (window + flags):
 
 | Setting | What it controls |
 |---|---|

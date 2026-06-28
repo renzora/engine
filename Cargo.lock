@@ -1010,7 +1010,6 @@ dependencies = [
  "bevy_math",
  "bevy_pbr",
  "bevy_picking",
- "bevy_platform 0.19.0",
  "bevy_reflect 0.19.0",
  "bevy_render",
  "bevy_shader",
@@ -1020,11 +1019,7 @@ dependencies = [
  "bevy_transform",
  "bevy_ui",
  "bevy_ui_render",
- "bevy_utils 0.19.0",
  "bevy_window",
- "ron 0.12.0",
- "serde",
- "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -1421,7 +1416,6 @@ dependencies = [
  "bevy_post_process",
  "bevy_ptr 0.19.0",
  "bevy_reflect 0.19.0",
- "bevy_remote",
  "bevy_render",
  "bevy_scene",
  "bevy_shader",
@@ -1755,7 +1749,6 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3120670bb2308980f723477c9d82476fcda31f08be9b256c3f0acdee82a65094"
 dependencies = [
- "async-io",
  "critical-section",
  "foldhash 0.2.0",
  "futures-channel",
@@ -1898,34 +1891,6 @@ dependencies = [
  "quote",
  "syn 2.0.114",
  "uuid",
-]
-
-[[package]]
-name = "bevy_remote"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c3a8f11f0017b2b7b8b8bb907c499ace3baa9cda240065457fb7391a3fa2ee8"
-dependencies = [
- "anyhow",
- "async-channel",
- "async-io",
- "bevy_app",
- "bevy_asset",
- "bevy_color",
- "bevy_derive",
- "bevy_dev_tools",
- "bevy_ecs",
- "bevy_log",
- "bevy_platform 0.19.0",
- "bevy_reflect 0.19.0",
- "bevy_render",
- "bevy_tasks",
- "bevy_utils 0.19.0",
- "http-body-util",
- "hyper",
- "serde",
- "serde_json",
- "smol-hyper",
 ]
 
 [[package]]
@@ -4705,59 +4670,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-body"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
-dependencies = [
- "bytes",
- "http",
-]
-
-[[package]]
-name = "http-body-util"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b021d93e26becf5dc7e1b75b1bed1fd93124b374ceb73f43d4d4eafec896a64a"
-dependencies = [
- "bytes",
- "futures-core",
- "http",
- "http-body",
- "pin-project-lite",
-]
-
-[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
-
-[[package]]
-name = "httpdate"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
-
-[[package]]
-name = "hyper"
-version = "1.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55281c53a1894c864990125767da440a4e630446785086f52523b20033b74498"
-dependencies = [
- "atomic-waker",
- "bytes",
- "futures-channel",
- "futures-core",
- "http",
- "http-body",
- "httparse",
- "httpdate",
- "itoa",
- "pin-project-lite",
- "smallvec",
- "tokio",
-]
 
 [[package]]
 name = "i_float"
@@ -10524,19 +10440,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "smol-hyper"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7428a49d323867702cd12b97b08a6b0104f39ec13b49117911f101271321bc1a"
-dependencies = [
- "async-executor",
- "async-io",
- "futures-io",
- "hyper",
- "pin-project-lite",
-]
-
-[[package]]
 name = "smol_str"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11138,15 +11041,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04aca6092e5978e708ee784e8ab9b5cf3cdb598b28f99a2f257446e7081a7025"
 dependencies = [
  "ahash",
-]
-
-[[package]]
-name = "tokio"
-version = "1.52.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fc7f01b389ac15039e4dc9531aa973a135d7a4135281b12d7c1bc79fd57fffe"
-dependencies = [
- "pin-project-lite",
 ]
 
 [[package]]

@@ -5,7 +5,6 @@ use bevy::core_pipeline::prepass::{
     DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass,
 };
 use bevy::light::AtmosphereEnvironmentMapLight;
-use bevy::light::atmosphere::ScatteringMedium;
 use bevy::light::Atmosphere;
 use bevy::pbr::AtmosphereSettings;
 use bevy::prelude::*;
@@ -28,12 +27,6 @@ use crate::external_runtime::{
 /// image). Inserted on enter, consumed on exit.
 #[derive(Resource)]
 struct PrePlayActiveEditorCameras(Vec<Entity>);
-
-/// A persistent strong handle to the play camera's `ScatteringMedium` so the
-/// atmosphere asset survives play→editor teardown (see [`enter_play_mode`]).
-/// Created once, reused for every subsequent play session.
-#[derive(Resource)]
-struct PlayAtmosphereMedium(Handle<ScatteringMedium>);
 
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
@@ -308,46 +301,88 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
         );
     }
 
-    world.entity_mut(cam_entity).insert(RenderTarget::default());
-    console_info(
-        "PlayMode",
-        format!("Camera {:?} target set to primary window", cam_entity),
-    );
+    // Decide where the game renders. If the editor's **Game** panel is docked,
+    // render into its off-screen image (constrained, in-panel play) instead of
+    // taking over the whole window. Otherwise keep the historical fullscreen
+    // behaviour. `GamePanel::docked` is refreshed every frame by
+    // `resolve_game_panel`, so it reflects the live dock when Play is pressed.
+    let game_image = world
+        .get_resource::<crate::GamePanel>()
+        .filter(|g| g.present)
+        .and_then(|g| g.image.clone());
 
-    // Disable the egui UI camera
-    let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
-    let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
-    for entity in ui_cams {
-        if let Some(mut camera) = world.get_mut::<Camera>(entity) {
-            camera.is_active = false;
+    if let Some(ref img) = game_image {
+        // Pre-size the game image to the panel *before* the camera first renders
+        // into it. Without this, the image would still be at its idle size and
+        // `resolve_game_panel` would resize it the next frame — a big size jump
+        // in the same frame the heavy game camera + its prepass spin up, which
+        // trips wgpu's pipelined surface teardown. Sizing up front keeps the
+        // target stable across the play swap.
+        let target_size = world
+            .get_resource::<crate::GamePanel>()
+            .map(|g| g.screen_size)
+            .filter(|s| s.x >= 1.0 && s.y >= 1.0)
+            .map(|s| {
+                let scale = world
+                    .get_resource::<renzora::core::viewport_types::ViewportRenderResolution>()
+                    .map(|r| r.0.scale())
+                    .unwrap_or(1.0);
+                bevy::math::UVec2::new(
+                    ((s.x * scale).round() as u32).clamp(64, 7680),
+                    ((s.y * scale).round() as u32).clamp(64, 4320),
+                )
+            });
+        if let Some(size) = target_size {
+            let need_resize = world
+                .get_resource::<crate::GamePanel>()
+                .map(|g| g.current_size != size)
+                .unwrap_or(false);
+            if need_resize {
+                if let Some(mut images) = world.get_resource_mut::<Assets<Image>>() {
+                    if let Some(mut image) = images.get_mut(img) {
+                        image.resize(bevy::render::render_resource::Extent3d {
+                            width: size.x,
+                            height: size.y,
+                            depth_or_array_layers: 1,
+                        });
+                    }
+                }
+                if let Some(mut g) = world.get_resource_mut::<crate::GamePanel>() {
+                    g.current_size = size;
+                }
+            }
+        }
+        world
+            .entity_mut(cam_entity)
+            .insert(RenderTarget::Image(Handle::<Image>::clone(img).into()));
+        console_info(
+            "PlayMode",
+            format!("Camera {:?} target set to Game panel (in-panel play)", cam_entity),
+        );
+    } else {
+        world.entity_mut(cam_entity).insert(RenderTarget::default());
+        console_info(
+            "PlayMode",
+            format!("Camera {:?} target set to primary window", cam_entity),
+        );
+    }
+
+    // Disable the editor UI camera **only for fullscreen play** — that hands the
+    // whole window to the game. For in-panel play we keep it on so the editor
+    // chrome (and the Game panel showing the image above) stays visible.
+    if game_image.is_none() {
+        let mut ui_cam_q = world.query_filtered::<Entity, With<EditorUiCamera>>();
+        let ui_cams: Vec<Entity> = ui_cam_q.iter(world).collect();
+        for entity in ui_cams {
+            if let Some(mut camera) = world.get_mut::<Camera>(entity) {
+                camera.is_active = false;
+            }
         }
     }
 
-    // 3D-only render setup: HDR + atmosphere + normal prepass. Atmosphere
-    // components must be attached at the moment Bevy first renders this
-    // camera — attaching them later would expand the bind group layout
-    // and crash wgpu with a binding mismatch. `EffectRouting` later
-    // replaces these values with whatever a `WorldEnvironment` entity
-    // authored, so the play camera ends up rendering identically to the
-    // editor 3D camera. None of this applies to a 2D camera, which uses
-    // its own pipeline and has no atmosphere bind group.
+    // 3D-only render setup. None of this applies to a 2D camera, which uses its
+    // own pipeline and has no atmosphere/IBL bind group.
     if !is_2d_camera {
-        // Reuse one persistent `ScatteringMedium` across play sessions instead of
-        // creating a fresh asset each time. `exit_play_mode` removes the game
-        // camera's `Atmosphere`, which would drop the only strong handle and GC
-        // the asset — but the render world (pipelined, a frame behind) still
-        // references it, so `prepare_atmosphere_bind_groups` would panic
-        // ("ScatteringMedium missing"). Holding the handle in a resource keeps
-        // the asset alive through the swap.
-        let medium_handle = if let Some(existing) = world.get_resource::<PlayAtmosphereMedium>() {
-            existing.0.clone()
-        } else {
-            let h = world
-                .resource_mut::<Assets<ScatteringMedium>>()
-                .add(ScatteringMedium::default());
-            world.insert_resource(PlayAtmosphereMedium(h.clone()));
-            h
-        };
         // Match the editor camera's far plane (100km, see
         // `renzora_engine::camera::spawn_editor_camera`). Default
         // Bevy `PerspectiveProjection` has `far: 1000.0`, which clips
@@ -367,21 +402,27 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
                     ..default()
                 }));
         }
+        // Set the game camera up EXACTLY like the editor's primary 3D camera for
+        // Bevy 0.19 (see `renzora_engine::camera::spawn_editor_camera`): HDR + the
+        // prepass trio (depth/normal/motion, attached at first render for SSGI /
+        // Lumen `ScreenSpace`) + `AtmosphereSettings` (the per-view sky render
+        // mode) + the IBL probe `AtmosphereEnvironmentMapLight` (intensity 0;
+        // `EffectRouting` raises it from the `WorldEnvironment`).
+        //
+        // Crucially it must NOT carry `Atmosphere`. In 0.19 the atmosphere lives
+        // on a single global stationary "planet" entity (managed by
+        // `renzora_atmosphere`) whose `GlobalTransform` IS the planet center.
+        // Putting `Atmosphere` on the camera — which has a pose — moved the planet
+        // center onto the camera (burying the view ~6,360 km underground) and
+        // created a second, conflicting planet that blanked the sky on *every*
+        // camera (the regression: "no environment on game and viewport"). The
+        // camera renders the global planet's sky through `AtmosphereSettings`,
+        // exactly as the editor 3D camera does.
         world.entity_mut(cam_entity).insert((
             Hdr,
             NormalPrepass,
-            // Mirrors the editor camera: depth + motion vectors at spawn so
-            // SSGI / Lumen `ScreenSpace` can read them (see
-            // `renzora_engine::camera` for the Bevy 0.18
-            // prepass-specialization rationale).
             DepthPrepass,
             MotionVectorPrepass,
-            Atmosphere {
-                inner_radius: 6_360_000.0,
-                outer_radius: 6_460_000.0,
-                ground_albedo: Vec3::splat(0.3),
-                medium: medium_handle,
-            },
             AtmosphereSettings::default(),
             AtmosphereEnvironmentMapLight {
                 intensity: 0.0,

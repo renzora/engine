@@ -122,6 +122,17 @@ impl DockTree {
         }
     }
 
+    /// Is `panel` present anywhere in the tree (visible or as a background tab)?
+    pub fn contains_panel(&self, panel: &str) -> bool {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.contains_panel(panel) || second.contains_panel(panel)
+            }
+            DockTree::Leaf { tabs, .. } => tabs.iter().any(|t| t == panel),
+            DockTree::Empty => false,
+        }
+    }
+
     /// Is `panel` the active (visible) tab in its leaf?
     pub fn is_active_tab(&self, panel: &str) -> bool {
         match self {
@@ -332,6 +343,7 @@ impl Plugin for DockPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Dock>()
             .init_resource::<DockDirty>()
+            .init_resource::<FocusPanelRequest>()
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
             .init_resource::<TabDrag>()
@@ -344,6 +356,7 @@ impl Plugin for DockPlugin {
                     crate::font::scan_project_fonts,
                     divider_drag,
                     tab_drag,
+                    apply_focus_request,
                     apply_tab_switch,
                     tab_hover,
                     tab_close_hover,
@@ -399,6 +412,14 @@ pub struct DockArea;
 /// switches do NOT set this — they update in place.
 #[derive(Resource, Default)]
 pub struct DockDirty(pub bool);
+
+/// External request to focus (make active) a panel by id. Other crates set this
+/// to programmatically bring a tab to the foreground — e.g. the viewport crate
+/// focusing the **Game** tab when play starts — and [`apply_focus_request`]
+/// routes it through the same in-place tab-switch a click performs (so labels
+/// recolor and the right pane shows). Consumed (reset to `None`) each frame.
+#[derive(Resource, Default)]
+pub struct FocusPanelRequest(pub Option<String>);
 
 // ── Components ───────────────────────────────────────────────────────────────
 
@@ -1220,6 +1241,28 @@ fn rebuild_dock(
         commands.entity(content).despawn();
     }
     dirty.0 = false;
+}
+
+/// Turn a [`FocusPanelRequest`] into a pending tab switch: locate the leaf that
+/// holds the requested panel and, if it isn't already the active tab, queue the
+/// same in-place switch a click would. Runs just before [`apply_tab_switch`] so
+/// the switch lands the same frame.
+fn apply_focus_request(
+    mut req: ResMut<FocusPanelRequest>,
+    mut pending: ResMut<PendingSwitch>,
+    leaves: Query<(Entity, &DockLeaf)>,
+) {
+    let Some(id) = req.0.take() else {
+        return;
+    };
+    for (entity, leaf) in &leaves {
+        if leaf.tabs.iter().any(|t| t == &id) {
+            if leaf.active != id {
+                pending.0 = Some((entity, id));
+            }
+            return;
+        }
+    }
 }
 
 /// Apply a pending tab switch in place: recolor label/icon and update the
