@@ -1,0 +1,10 @@
+{
+  "releases": [
+    {
+      "version": "r1-alpha6",
+      "commit": "dc6e1dccb9d91cb9da4af174051de91ce6a4b8e7",
+      "abi_hash": "10799222d6c2089a",
+      "status": "released"
+    }
+  ]
+}

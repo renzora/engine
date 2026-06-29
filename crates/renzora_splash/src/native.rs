@@ -75,6 +75,13 @@ fn card_gradient(top: Color, bot: Color) -> BackgroundGradient {
 }
 
 const VERSION: &str = "r1-alpha6";
+/// ABI hash + source commit of the current frozen release (the canonical record
+/// lives in `releases.json` at the repo root). The splash shows the ABI hash as
+/// a link to the exact engine commit that froze it, so a plugin author can see
+/// at a glance which ABI a prebuilt must target to load in this editor.
+const ABI_HASH: &str = "10799222d6c2089a";
+const RELEASE_COMMIT_URL: &str =
+    "https://github.com/renzora/engine/tree/dc6e1dccb9d91cb9da4af174051de91ce6a4b8e7";
 const WEBSITE_URL: &str = "https://renzora.com";
 const YOUTUBE_URL: &str = "https://youtube.com/@renzoragame";
 const DISCORD_URL: &str = "https://discord.gg/9UHUGUyDJv";
@@ -449,7 +456,21 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let version = commands
         .spawn((Text::new(format!("Renzora Engine · version {VERSION}")), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
         .id();
-    commands.entity(status).add_children(&[fps, dot, version]);
+    let hash_dot = commands
+        .spawn((Text::new("·".to_string()), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
+        .id();
+    // The ABI hash is a link to the release commit that froze it (see ABI_HASH).
+    let hash = commands
+        .spawn((
+            Text::new(ABI_HASH.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(c(120, 170, 235)),
+            Interaction::default(),
+            SplashUrl(RELEASE_COMMIT_URL.to_string()),
+            HoverCursor(SystemCursorIcon::Pointer),
+        ))
+        .id();
+    commands.entity(status).add_children(&[fps, dot, version, hash_dot, hash]);
 
     commands.entity(bottom).add_children(&[socials, status]);
 

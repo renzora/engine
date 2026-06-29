@@ -1,7 +1,8 @@
 {
-  "default": "r1-alpha5",
+  "default": "r1-alpha6",
   "versions": [
-    { "id": "r1-alpha6", "label": "r1-alpha6", "status": "next" },
-    { "id": "r1-alpha5", "label": "r1-alpha5", "status": "current" }
+    { "id": "r1-alpha7", "label": "r1-alpha7", "status": "next" },
+    { "id": "r1-alpha6", "label": "r1-alpha6", "status": "current" },
+    { "id": "r1-alpha5", "label": "r1-alpha5", "status": "archived" }
   ]
 }

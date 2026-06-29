@@ -168,18 +168,20 @@ profiling build that re-adds `trace_tracy` and so moves the ABI.
 
 ## 4. Versioning & documentation
 
-- **Current dev version: `r1-alpha6`.** From now on, **only edit
-  `docs/r1-alpha6/`.** `docs/r1-alpha5/` is released and **frozen** — do not
-  mirror changes into it. Top-level non-versioned `docs/*.md` are still fair game.
+- **Current dev version: `r1-alpha7`.** From now on, **only edit
+  `docs/r1-alpha7/`.** `docs/r1-alpha6/` is released and **frozen** (its frozen
+  ABI hash + release commit are recorded in `releases.json` at the repo root) —
+  do not mirror changes into it, nor into the older frozen `docs/r1-alpha5/`.
+  Top-level non-versioned `docs/*.md` are still fair game.
 - **Always update the docs after adding or changing a feature.** Stale docs are
   treated as a bug. If you ship a feature (new scripting function, new inspector
   field, new plugin capability, new editor panel), update the matching page under
-  `docs/r1-alpha6/` in the same change.
+  `docs/r1-alpha7/` in the same change.
 - Docs are also published at <https://renzora.com/docs>. Pushing `docs/r1-alpha*`
   changes to `main` auto-publishes via `.github/workflows/sync-docs.yml` (rsync
   into the website repo, which redeploys). You do not copy anything by hand.
 
-`docs/r1-alpha6/` sections include: `getting-started`, `setup`, `scripting`,
+`docs/r1-alpha7/` sections include: `getting-started`, `setup`, `scripting`,
 `api`, `editor`, `editor-dev`, `engine-core`, `rendering`, `extending`,
 `exporting`, `packaging`, `multiplayer`, `marketplace`, `platform-api`,
 `contributing`.
