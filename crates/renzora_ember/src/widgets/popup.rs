@@ -145,9 +145,14 @@ pub(crate) fn update_pointer_over_overlay(
 /// avoids.
 pub(crate) fn tag_popup_panels(q: Query<&Popup, Added<Popup>>, mut commands: Commands) {
     for p in &q {
-        commands
-            .entity(p.panel)
-            .try_insert((OverlaySurface, RelativeCursorPosition::default()));
+        // `HideInHierarchy` marks this as editor chrome so the scene saver never
+        // serializes it (a popup open when auto-save fires would otherwise be
+        // baked into the scene as leaked UI).
+        commands.entity(p.panel).try_insert((
+            OverlaySurface,
+            RelativeCursorPosition::default(),
+            renzora::HideInHierarchy,
+        ));
     }
 }
 

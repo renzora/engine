@@ -551,6 +551,13 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
             pruned
         );
     }
+    let ui_pruned = prune_leaked_ui(&mut scene);
+    if ui_pruned > 0 {
+        warn!(
+            "[scene] pruned {} leaked editor-UI entities (no UiCanvas ancestor) from string scene",
+            ui_pruned
+        );
+    }
 
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     match scene.write_to_world(world, &mut entity_map) {
@@ -810,6 +817,70 @@ fn scene_entity_is_ui(dyn_ent: &DynamicEntity) -> bool {
     })
 }
 
+/// Whether a serialized scene entity is a game-UI `UiCanvas` root. Legitimate
+/// game UI lives under one of these; matched by reflected type-path so this crate
+/// needn't depend on `renzora_ember`.
+fn scene_entity_is_canvas(dyn_ent: &DynamicEntity) -> bool {
+    dyn_ent.components.iter().any(|c| {
+        c.get_represented_type_info()
+            .map(|ti| ti.type_path() == "renzora_ember::game_ui::components::canvas::UiCanvas")
+            .unwrap_or(false)
+    })
+}
+
+/// Drop leaked editor UI: any `bevy_ui` node with no `UiCanvas` self-or-ancestor.
+///
+/// The only legitimate UI in a scene is game UI, which always sits under a
+/// [`UiCanvas`] root (the serializable source of truth, rebuilt on load); 3D
+/// content carries no `Node`. So a `Node` entity outside every canvas is editor
+/// chrome an over-eager save baked in — classically auto-save firing while an
+/// overlay (e.g. Settings) was open, serializing its whole node tree. Unlike
+/// [`prune_orphaned_entities`] (which only catches nodes whose parent is missing)
+/// this also removes *connected* chrome trees that kept an intact root, so it
+/// self-heals scenes already polluted before the save-side guard existed.
+fn prune_leaked_ui(scene: &mut DynamicScene) -> usize {
+    use std::collections::{HashMap, HashSet};
+    let ids: HashSet<Entity> = scene.entities.iter().map(|e| e.entity).collect();
+    if ids.is_empty() {
+        return 0;
+    }
+    let parent_of: HashMap<Entity, Entity> = scene
+        .entities
+        .iter()
+        .filter_map(|e| scene_entity_parent(e).map(|p| (e.entity, p)))
+        .collect();
+    let canvases: HashSet<Entity> = scene
+        .entities
+        .iter()
+        .filter(|e| scene_entity_is_canvas(e))
+        .map(|e| e.entity)
+        .collect();
+
+    // Whether `start` or any in-scene ancestor is a `UiCanvas`.
+    let under_canvas = |start: Entity| -> bool {
+        let mut cur = start;
+        let mut seen = HashSet::new();
+        loop {
+            if canvases.contains(&cur) {
+                return true;
+            }
+            if !seen.insert(cur) {
+                return false; // cycle guard
+            }
+            match parent_of.get(&cur) {
+                Some(p) if ids.contains(p) => cur = *p,
+                _ => return false,
+            }
+        }
+    };
+
+    let before = scene.entities.len();
+    scene
+        .entities
+        .retain(|e| !(scene_entity_is_ui(e) && !under_canvas(e.entity)));
+    before - scene.entities.len()
+}
+
 /// Load a scene from a RON file into the world.
 ///
 /// Tries the Vfs (rpak archive) first, then falls back to disk.
@@ -921,6 +992,18 @@ pub fn load_scene(world: &mut World, path: &Path) {
             "[scene] {} pruned {} orphaned entities (leaked editor-chrome / missing parent)",
             path.display(),
             pruned
+        );
+    }
+    let ui_pruned = prune_leaked_ui(&mut scene);
+    if ui_pruned > 0 {
+        console_info(
+            "Scene",
+            format!("Pruned {ui_pruned} leaked editor-UI entities (no UiCanvas ancestor) on load"),
+        );
+        warn!(
+            "[scene] {} pruned {} leaked editor-UI entities (no UiCanvas ancestor)",
+            path.display(),
+            ui_pruned
         );
     }
 

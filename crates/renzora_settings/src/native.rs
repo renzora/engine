@@ -533,6 +533,10 @@ fn spawn_overlay(
             Interaction::default(),
             // Capture the wheel so scrolling doesn't bleed to the dock behind.
             renzora_ember::widgets::ModalSurface,
+            // Editor chrome — keep this whole overlay tree out of scene saves
+            // (auto-save can fire while Settings is open; without this its nodes
+            // get serialized into the scene as leaked UI).
+            renzora::HideInHierarchy,
             NativeSettingsRoot,
             Name::new("settings-overlay"),
         ))
