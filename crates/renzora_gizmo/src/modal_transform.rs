@@ -612,10 +612,48 @@ pub fn modal_transform_apply_system(
 pub fn modal_transform_overlay_system(
     modal: Res<ModalTransformState>,
     transforms: Query<&Transform>,
+    // For the rotate ring radius (camera-distance gizmo scale, shared with the
+    // tool gizmo). One frame stale, which is imperceptible.
+    gizmo_state: Res<crate::GizmoState>,
+    camera: Query<&GlobalTransform, With<EditorCamera>>,
     mut gizmos: Gizmos<OverlayGizmoGroup>,
+    // Rotation ring/pie/label go in the always-on-top group so they read over
+    // the object (OverlayGizmoGroup's depth bias is toggled off by the
+    // selection-boundary-on-top setting, which would let the object occlude it).
+    mut top_gizmos: Gizmos<crate::TransformGizmoGroup>,
 ) {
     if !modal.active {
         return;
+    }
+
+    // Rotation feedback: a ring + swept-angle pie + degrees at the pivot. Modal
+    // rotate hides the tool gizmo, so without this there's only the HUD number.
+    if matches!(modal.mode, Some(ModalTransformMode::Rotate)) {
+        let normal = match modal.axis_constraint {
+            AxisConstraint::X | AxisConstraint::PlaneYZ => Vec3::X,
+            AxisConstraint::Y | AxisConstraint::PlaneXZ => Vec3::Y,
+            _ => Vec3::Z,
+        };
+        let angle = if let Some(deg) = modal.numeric_input.value() {
+            deg.to_radians()
+        } else {
+            (-modal.accumulated_delta.x + modal.accumulated_delta.y) * modal.sensitivity * 0.5
+        };
+        let radius = (crate::GIZMO_SIZE * gizmo_state.gizmo_scale * 0.7).max(0.01);
+        let color = modal.axis_constraint.color();
+        let rot = Quat::from_rotation_arc(Vec3::Z, normal);
+        top_gizmos.circle(Isometry3d::new(modal.pivot_world, rot), radius, color);
+        crate::draw_rotation_pie(&mut top_gizmos, modal.pivot_world, normal, angle, radius, color);
+        if let Ok(cam_gt) = camera.single() {
+            crate::draw_angle_label(
+                &mut top_gizmos,
+                modal.pivot_world,
+                cam_gt.translation(),
+                angle,
+                radius,
+                color,
+            );
+        }
     }
 
     for state in &modal.start_transforms {

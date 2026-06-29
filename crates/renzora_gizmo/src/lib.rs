@@ -46,7 +46,7 @@ use renzora_editor_framework::{
 
 pub(crate) const GIZMO_SIZE: f32 = 2.0;
 const GIZMO_SCALE_REF_DIST: f32 = 10.0;
-pub(crate) const GIZMO_PLANE_SIZE: f32 = 0.5;
+pub(crate) const GIZMO_PLANE_SIZE: f32 = 0.8;
 pub(crate) const GIZMO_PLANE_OFFSET: f32 = 0.6;
 
 // ── Pivot computation ───────────────────────────────────────────────────────
@@ -290,6 +290,10 @@ pub struct GizmoState {
     /// so transforms are correct under any nesting. Index-aligned with
     /// `drag_starts`.
     pub drag_parents: Vec<bevy::math::Affine3A>,
+    /// World point under the cursor at drag start, projected onto the dragged
+    /// axis line / plane. Translate keeps this point pinned to the cursor each
+    /// frame so the gizmo tracks the pointer exactly instead of drifting.
+    pub drag_grab: Vec3,
 }
 
 impl Default for GizmoState {
@@ -306,6 +310,7 @@ impl Default for GizmoState {
             drag_basis: Quat::IDENTITY,
             drag_pivot: Vec3::ZERO,
             drag_parents: Vec::new(),
+            drag_grab: Vec3::ZERO,
         }
     }
 }
@@ -395,6 +400,20 @@ impl Plugin for GizmoPlugin {
                     depth_bias: -1.0,
                     line: GizmoLineConfig {
                         width: 3.0,
+                        ..default()
+                    },
+                    render_layers: RenderLayers::layer(1),
+                    ..default()
+                },
+            )
+            .insert_gizmo_config(
+                PlaneGizmoGroup,
+                GizmoConfig {
+                    depth_bias: -1.0,
+                    line: GizmoLineConfig {
+                        // Thicker than the axes so the plane handles read as
+                        // chunky, grabbable brackets.
+                        width: 6.0,
                         ..default()
                     },
                     render_layers: RenderLayers::layer(1),
@@ -953,11 +972,17 @@ use bevy::gizmos::AppGizmoBuilder;
 pub struct OverlayGizmoGroup;
 
 /// Dedicated group for transform gizmo line elements (rotate circles, scale
-/// cubes, translate plane squares). Always renders on top of the scene,
-/// independent of the selection-bounding-box `on_top` setting.
+/// cubes). Always renders on top of the scene, independent of the
+/// selection-bounding-box `on_top` setting.
 #[derive(Default, Reflect, GizmoConfigGroup)]
 #[reflect(Default)]
 pub struct TransformGizmoGroup;
+
+/// Dedicated group for the translate plane-drag squares, drawn with a thicker
+/// line than the rest of the gizmo so the handles are easy to see and grab.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub struct PlaneGizmoGroup;
 
 /// Dedicated group for entity name labels (stroke-font text gizmos). Kept
 /// separate from `OverlayGizmoGroup` because that group's `depth_bias` is
@@ -987,6 +1012,9 @@ fn draw_line_gizmos(
     >,
     aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_q: Query<&Children>,
+    camera_q: Query<&GlobalTransform, With<EditorCamera>>,
+    // Thicker-lined group used only for the plane-drag squares.
+    mut plane_gizmos: Gizmos<PlaneGizmoGroup>,
 ) {
     // Modal transforms (G/R/S) take over input — hide the tool-mode handles so
     // they don't sit under the modal HUD while dragging. The modal *scale* HUD
@@ -1024,9 +1052,34 @@ fn draw_line_gizmos(
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
-            // Plane handles (XY/XZ/YZ filled quads) have no immediate-mode
-            // representation here — they were drawn by a native overlay that
-            // has not yet been ported.
+            // Plane-drag handles: a square bracket in each axis pair's plane
+            // whose inner corner sits at the gizmo origin so two of its edges
+            // run *along* the axis lines (attached to them). It extends into the
+            // camera-facing quadrant (signed axes), matching the arrows. Pick
+            // region in `gizmo_hover_detect` mirrors this exactly. Colors blend
+            // the two axis colors (XY=yellow, XZ=magenta, YZ=cyan); the
+            // active/hovered plane turns white.
+            let side = GIZMO_PLANE_SIZE * gs;
+            for plane in PLANES {
+                let base = match plane {
+                    GizmoAxis::XY => Color::srgb(1.0, 0.9, 0.1),
+                    GizmoAxis::XZ => Color::srgb(1.0, 0.2, 0.9),
+                    GizmoAxis::YZ => Color::srgb(0.1, 0.9, 0.95),
+                    _ => continue,
+                };
+                let color = if active == Some(plane) { Color::WHITE } else { base };
+                let (sa, sb) = plane.signed_plane_axes(gizmo_state.axis_signs).unwrap();
+                let a = basis * sa;
+                let b = basis * sb;
+                let c0 = pos;
+                let c1 = pos + a * side;
+                let c2 = pos + a * side + b * side;
+                let c3 = pos + b * side;
+                plane_gizmos.line(c0, c1, color);
+                plane_gizmos.line(c1, c2, color);
+                plane_gizmos.line(c2, c3, color);
+                plane_gizmos.line(c3, c0, color);
+            }
         }
         GizmoMode::Rotate => {
             let radius = GIZMO_SIZE * gs * 0.7;
@@ -1057,6 +1110,32 @@ fn draw_line_gizmos(
                 y_color,
             );
             gizmos.circle(Isometry3d::new(pos, basis), radius, z_color);
+
+            // While dragging a ring, fill the swept angle with a pie sector and
+            // show the angle in degrees, both always-on-top so they read over
+            // the object.
+            if let Some(active_axis) = gizmo_state.active_axis {
+                if gizmo_state.drag_angle.abs() > 1e-4 {
+                    draw_rotation_pie(
+                        &mut gizmos,
+                        pos,
+                        basis * active_axis.direction(),
+                        gizmo_state.drag_angle,
+                        radius,
+                        highlight,
+                    );
+                    if let Ok(cam_gt) = camera_q.single() {
+                        draw_angle_label(
+                            &mut gizmos,
+                            pos,
+                            cam_gt.translation(),
+                            gizmo_state.drag_angle,
+                            radius,
+                            highlight,
+                        );
+                    }
+                }
+            }
         }
         GizmoMode::Scale => {
             let scale_size = GIZMO_SIZE * gs;
@@ -1109,6 +1188,84 @@ fn draw_line_gizmos(
             }
         }
     }
+}
+
+/// Draw a "rotation pie": a filled-looking sector on the rotation plane that
+/// sweeps from a stable in-plane reference edge by `angle`, conveying how far
+/// the object has been rotated. Bevy gizmos can't fill, so the wedge is faked
+/// with an arc, two solid edges, and faint radial spokes. Generic over the
+/// gizmo group so both the tool gizmo (`TransformGizmoGroup`) and the modal
+/// overlay (`OverlayGizmoGroup`) can use it.
+pub(crate) fn draw_rotation_pie<C: GizmoConfigGroup>(
+    gizmos: &mut Gizmos<C>,
+    pivot: Vec3,
+    normal: Vec3,
+    angle: f32,
+    radius: f32,
+    color: Color,
+) {
+    let n = normal.normalize_or_zero();
+    if n.length_squared() < 1e-6 || radius <= 0.0 || angle.abs() < 1e-4 {
+        return;
+    }
+    // Stable in-plane reference for the "0°" edge (avoid a near-parallel hint).
+    let hint = if n.dot(Vec3::Y).abs() > 0.99 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
+    let u = (hint - n * hint.dot(n)).normalize_or_zero();
+    if u.length_squared() < 1e-6 {
+        return;
+    }
+    let v = n.cross(u);
+
+    // ~7.5° per segment, at least one.
+    let segs = (angle.abs() / 0.13).ceil().max(1.0) as i32;
+    let fill = color.with_alpha(0.18);
+    let mut prev = pivot + u * radius;
+    gizmos.line(pivot, prev, color); // start edge
+    for i in 1..=segs {
+        let t = angle * (i as f32 / segs as f32);
+        let p = pivot + (u * t.cos() + v * t.sin()) * radius;
+        gizmos.line(prev, p, color); // arc
+        gizmos.line(pivot, p, fill); // radial fill spoke
+        prev = p;
+    }
+    gizmos.line(pivot, prev, color); // end edge
+}
+
+/// Draw the rotation amount in degrees as a camera-facing stroke-text label at
+/// `pivot`. Uses the same always-on-top group as the pie so it reads over the
+/// object. (Bevy's stroke font is ASCII-only, so the `°` is dropped — the number
+/// is the degrees.)
+pub(crate) fn draw_angle_label<C: GizmoConfigGroup>(
+    gizmos: &mut Gizmos<C>,
+    pivot: Vec3,
+    cam_pos: Vec3,
+    radians: f32,
+    radius: f32,
+    color: Color,
+) {
+    let forward = (cam_pos - pivot).normalize_or_zero();
+    if forward == Vec3::ZERO {
+        return;
+    }
+    let right = Vec3::Y.cross(forward).normalize_or_zero();
+    if right == Vec3::ZERO {
+        return;
+    }
+    let up = forward.cross(right);
+    let rot = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
+    let text = format!("{:.1}\u{00B0}", radians.to_degrees());
+    let size = (radius * 0.35).max(0.05);
+    gizmos.text(
+        Isometry3d::new(pivot, rot),
+        text.as_str(),
+        size,
+        Vec2::new(0.0, -0.5),
+        color,
+    );
 }
 
 // ── Mode switching ──────────────────────────────────────────────────────────
@@ -1632,6 +1789,48 @@ fn viewport_cursor_ray(
     }
 }
 
+/// Parameter `s` of the point on the infinite line `origin + dir*s` (`dir`
+/// unit) closest to `ray`. `None` when the ray and line are near-parallel.
+/// Used to keep the dragged point pinned under the cursor along an axis.
+fn ray_line_param(ray: &Ray3d, origin: Vec3, dir: Vec3) -> Option<f32> {
+    let d = ray.direction.as_vec3();
+    let b = d.dot(dir);
+    let denom = 1.0 - b * b;
+    if denom.abs() < 1e-6 {
+        return None;
+    }
+    let w0 = ray.origin - origin;
+    Some((dir.dot(w0) - b * d.dot(w0)) / denom)
+}
+
+/// World point where `ray` meets the plane through `origin` with `normal`.
+/// `None` when the ray is parallel to (or pointing away from) the plane.
+fn ray_plane_point(ray: &Ray3d, origin: Vec3, normal: Vec3) -> Option<Vec3> {
+    let d = ray.direction.as_vec3();
+    let denom = d.dot(normal);
+    if denom.abs() < 1e-6 {
+        return None;
+    }
+    let t = (origin - ray.origin).dot(normal) / denom;
+    if t < 0.0 {
+        return None;
+    }
+    Some(ray.origin + d * t)
+}
+
+/// The world point under the cursor projected onto the active translate handle:
+/// the closest point on the axis line for a single axis, or the ray–plane hit
+/// for a plane handle. `None` if the cursor isn't over the viewport or the
+/// projection is degenerate.
+fn translate_cursor_point(ray: &Ray3d, pivot: Vec3, basis: Quat, axis: GizmoAxis) -> Option<Vec3> {
+    if axis.is_plane() {
+        ray_plane_point(ray, pivot, basis * axis.direction())
+    } else {
+        let dir = basis * axis.direction();
+        ray_line_param(ray, pivot, dir).map(|s| pivot + dir * s)
+    }
+}
+
 fn closest_distance_ray_segment(ray: &Ray3d, seg_a: Vec3, seg_b: Vec3) -> Option<f32> {
     let ro: Vec3 = ray.origin;
     let rd: Vec3 = ray.direction.as_vec3();
@@ -1789,19 +1988,14 @@ fn gizmo_hover_detect(
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
-            // Plane squares first — signed offsets so each plane sits in the
-            // same quadrant as the (flipped-toward-camera) single-axis arrows.
-            let plane_half = GIZMO_PLANE_SIZE * gs * 0.5;
-            let po = GIZMO_PLANE_OFFSET * gs;
+            // Plane squares first — inner corner at the origin, two edges along
+            // the (signed, camera-facing) axes, matching `draw_line_gizmos`.
+            let side = GIZMO_PLANE_SIZE * gs;
             for plane in PLANES {
                 let (sa, sb) = plane.signed_plane_axes(gizmo_state.axis_signs).unwrap();
-                let center = entity_pos + basis * sa * po + basis * sb * po;
-                // The picking math wants the (oriented) unsigned axes for the
-                // quad basis; signs are already accounted for in the center.
-                let (a, b) = plane.plane_axes().unwrap();
-                let (a, b) = (basis * a, basis * b);
-                let corner = center - a * plane_half - b * plane_half;
-                if ray_hits_plane_quad(&ray, corner, a, b, GIZMO_PLANE_SIZE * gs) {
+                let a = basis * sa;
+                let b = basis * sb;
+                if ray_hits_plane_quad(&ray, entity_pos, a, b, side) {
                     best = Some((plane, 0.0));
                     break;
                 }
@@ -1903,6 +2097,7 @@ fn gizmo_drag(
         ),
     >,
     geom: DragGeom,
+    window_q: Query<&Window, With<PrimaryWindow>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
@@ -1981,16 +2176,28 @@ fn gizmo_drag(
             } else {
                 Vec3::ZERO
             };
+            // Reference point under the cursor on the dragged axis/plane, so
+            // translate can keep it pinned to the pointer (cursor-locked drag).
+            let pivot0 = gizmo_state.drag_pivot;
+            let basis = gizmo_state.drag_basis;
+            gizmo_state.drag_grab = camera_q
+                .single()
+                .ok()
+                .zip(window_q.single().ok())
+                .and_then(|((cam_gt, projection), window)| {
+                    let vp = viewport.as_ref()?;
+                    let ray = viewport_cursor_ray(window, vp, cam_gt, projection)?;
+                    translate_cursor_point(&ray, pivot0, basis, axis)
+                })
+                .unwrap_or(pivot0);
             gizmo_state.active_axis = Some(axis);
             gizmo_state.drag_starts = starts;
             gizmo_state.drag_parents = parents;
             gizmo_state.drag_offset = Vec3::ZERO;
             gizmo_state.drag_angle = 0.0;
             gizmo_state.drag_scale_factor = 0.0;
-            // Hide and lock the cursor — same UX as camera drag, so the
-            // cursor can't fly off the viewport mid-drag and the user can
-            // make arbitrarily long mouse motions for fine control.
-            acquire_drag_cursor(&mut cursor_options);
+            // Leave the cursor visible and free while dragging — the drag tracks
+            // raw mouse motion either way, and locking it in place feels frozen.
             mouse_motion.clear();
             return;
         }
@@ -2096,60 +2303,22 @@ fn gizmo_drag(
     match *mode {
         GizmoMode::Select | GizmoMode::None => unreachable!(),
         GizmoMode::Translate => {
-            let scale = match projection {
-                Projection::Perspective(persp) => {
-                    distance * (persp.fov * 0.5).tan() * 2.0 / viewport.screen_size.y
-                }
-                Projection::Orthographic(ortho) => ortho.area.height() / viewport.screen_size.y,
-                _ => return,
+            // Cursor-locked: pin the grabbed point under the pointer. Project the
+            // cursor ray onto the active axis/plane and move by how far that
+            // point has travelled from the grab reference captured at drag start.
+            // Absolute (not accumulated), so the handle never drifts off-cursor.
+            let Ok(window) = window_q.single() else {
+                return;
             };
-
-            let offset = if axis.is_plane() {
-                // Decompose the screen-space mouse delta onto the plane's two
-                // world axes by solving the 2x2 linear system
-                //     mouse_delta * scale = sa * da + sb * db
-                // where sa/sb are the screen projections of `a`/`b` in
-                // world-units. The naive per-axis dot-product decomposition
-                // doesn't track the cursor when the plane is tilted relative
-                // to the camera (the screen projections of `a` and `b` are
-                // no longer orthogonal), and also under-counts due to
-                // foreshortening — both of which feel stiff and laggy.
-                let (a, b) = axis.plane_axes().unwrap();
-                let a = gizmo_state.drag_basis * a;
-                let b = gizmo_state.drag_basis * b;
-                let cam_right = cam_gt.right().as_vec3();
-                let cam_up = cam_gt.up().as_vec3();
-                let sa = Vec2::new(a.dot(cam_right), -a.dot(cam_up));
-                let sb = Vec2::new(b.dot(cam_right), -b.dot(cam_up));
-                let det = sa.x * sb.y - sa.y * sb.x;
-                if det.abs() < 1e-4 {
-                    // Plane is edge-on to the camera — no meaningful drag.
-                    Vec3::ZERO
-                } else {
-                    let qx = total_delta.x * scale;
-                    let qy = total_delta.y * scale;
-                    let da = (qx * sb.y - qy * sb.x) / det;
-                    let db = (sa.x * qy - sa.y * qx) / det;
-                    a * da + b * db
-                }
-            } else {
-                // Single-axis drag: project mouse delta onto the axis line in
-                // screen space, then unforeshorten by dividing by the squared
-                // screen length so the gizmo tracks the cursor 1:1 along the
-                // axis even when it's angled away from the camera.
-                let dir = gizmo_state.drag_basis * axis.signed_direction(gizmo_state.axis_signs);
-                let cam_right = cam_gt.right().as_vec3();
-                let cam_up = cam_gt.up().as_vec3();
-                let sa = Vec2::new(dir.dot(cam_right), -dir.dot(cam_up));
-                let len_sq = sa.length_squared();
-                if len_sq < 1e-6 {
-                    return;
-                }
-                dir * total_delta.dot(sa) * scale / len_sq
+            let Some(ray) = viewport_cursor_ray(window, viewport, cam_gt, projection) else {
+                return;
             };
-
-            gizmo_state.drag_offset += offset;
-            let total_offset = gizmo_state.drag_offset;
+            let Some(cur) =
+                translate_cursor_point(&ray, gizmo_state.drag_pivot, gizmo_state.drag_basis, axis)
+            else {
+                return;
+            };
+            let total_offset = cur - gizmo_state.drag_grab;
             for (i, &entity) in selected_entities.iter().enumerate() {
                 if let Ok(mut t) = transform_q.get_mut(entity) {
                     let (start_t, start_r, start_s) = gizmo_state
