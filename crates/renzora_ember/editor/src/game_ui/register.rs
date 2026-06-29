@@ -695,9 +695,19 @@ fn ensure_ui_visibility_components(
 /// The editor has both an editor camera (rendering to the viewport image)
 /// and a play-mode game camera. Without an explicit target, Bevy UI
 /// picks "the first Camera it finds," which is non-deterministic. This
-/// system inserts `UiTargetCamera` pointing at the active game camera
-/// while in play mode, and removes it otherwise so edit-mode renders go
-/// through whatever default Bevy picks (typically the editor camera).
+/// system inserts `UiTargetCamera` pointing at the editor camera while in
+/// play mode, and removes it otherwise so edit-mode renders go through
+/// whatever default Bevy picks (typically the editor camera).
+///
+/// **Why the editor camera, not the authored game camera:** play mode never
+/// renders through the authored scene camera. `renzora_camera`'s
+/// `drive_editor_camera_in_play` drives the *editor* viewport camera to the
+/// game camera's pose, so the editor camera is the one that actually renders
+/// the running game into the viewport image. Pointing the UI at the authored
+/// scene camera (which has no viewport render target in-editor) rendered it to
+/// a target nobody displays — the UI vanished in play mode. Hanging it off the
+/// editor camera composites it on top of the game, exactly like a shipped
+/// runtime composites UI over the game camera's window output.
 ///
 /// **Does not touch `Visibility`** — that's the user's / the script's
 /// concern. Earlier versions of this system also force-hid every canvas
@@ -706,14 +716,16 @@ fn ensure_ui_visibility_components(
 fn sync_ui_canvas_target_camera(
     mut commands: Commands,
     play_mode: Res<renzora::PlayModeState>,
+    editor_cam: Query<Entity, With<renzora::core::EditorCamera>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
 ) {
     let in_play = play_mode.is_in_play_mode();
-    let game_camera = play_mode.active_game_camera;
+    // The camera that actually renders the running game into the viewport image.
+    let render_camera = editor_cam.iter().next();
 
     for (entity, existing_target_cam) in &canvases {
         if in_play {
-            if let Some(cam_entity) = game_camera {
+            if let Some(cam_entity) = render_camera {
                 let needs_insert = match existing_target_cam {
                     Some(tc) => tc.entity() != cam_entity,
                     None => true,

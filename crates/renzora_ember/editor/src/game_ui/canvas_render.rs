@@ -146,9 +146,10 @@ pub(crate) fn sync_render_target_to_reference(
 /// Sync system — keeps every `UiCanvas` pointed at the editor's UI render
 /// camera while the editor is in edit mode. In play mode, the existing
 /// `sync_ui_canvas_target_camera` system takes over and points canvases
-/// at the active game camera instead. In standalone runtime, this system
-/// doesn't exist (it's editor-only) and canvases use Bevy's default
-/// camera-finding.
+/// at the editor viewport camera (which renders the running game into the
+/// viewport image) so the UI composites on top. In standalone runtime,
+/// this system doesn't exist (it's editor-only) and canvases use Bevy's
+/// default camera-finding.
 pub fn sync_canvases_to_editor_camera(
     mut commands: Commands,
     play_mode: Option<Res<renzora::PlayModeState>>,
