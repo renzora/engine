@@ -327,6 +327,7 @@ pub(crate) fn register(app: &mut App) {
                 update_shape_menu,
                 space_toggle_click,
                 update_space_toggle,
+                panel_toggle_dismiss,
             ),
         )
             .run_if(in_state(SplashState::Editor)),
@@ -833,6 +834,36 @@ fn panel_toggle(
     }
 }
 
+/// Close any open icon dropdown (the Display / Snap / Camera / Shapes
+/// `PanelToggle` popups) when the pointer presses outside both its trigger and
+/// its panel. The hand-rolled `PanelToggle` (like ember's `popover`) only
+/// toggled on a trigger press, so these popups never closed on an outside click;
+/// this mirrors `dropdown_dismiss` for the View/Mode dropdowns. A press inside
+/// the panel (e.g. flipping a render-flag switch) leaves it open.
+fn panel_toggle_dismiss(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut triggers: Query<(&Interaction, &mut PanelToggle)>,
+    panels: Query<&bevy::ui::RelativeCursorPosition>,
+    mut nodes: Query<&mut Node>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    for (trig_inter, mut t) in &mut triggers {
+        if !t.open {
+            continue;
+        }
+        let over_trigger = !matches!(trig_inter, Interaction::None);
+        let over_panel = panels.get(t.panel).is_ok_and(|r| r.cursor_over);
+        if !over_trigger && !over_panel {
+            t.open = false;
+            if let Ok(mut n) = nodes.get_mut(t.panel) {
+                n.display = Display::None;
+            }
+        }
+    }
+}
+
 fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let mut kids: Vec<Entity> = Vec::new();
 
@@ -891,6 +922,9 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
             BackgroundColor(rgb(popup_bg())),
             BorderColor::all(rgb(border())),
             GlobalZIndex(600),
+            // Lets `panel_toggle_dismiss` tell an inside-panel click (toggling a
+            // render flag) from an outside click that should close the dropdown.
+            bevy::ui::RelativeCursorPosition::default(),
             Name::new("vp-display-panel"),
         ))
         .id();

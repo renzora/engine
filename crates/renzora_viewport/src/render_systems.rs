@@ -128,10 +128,16 @@ fn viz_to_mode_index(v: VisualizationMode) -> Option<f32> {
 }
 
 /// Pick the debug-shader mode for the current settings, or None to unswap.
-/// `include_lighting`: when true, `!lighting` also triggers the flat-clay swap.
-/// Pass `false` for `StandardMaterial` (lighting is handled via `unlit` mutation)
-/// and `true` for custom materials whose shaders don't expose an unlit flag.
-fn desired_mode_inner(settings: &ViewportSettings, include_lighting: bool) -> Option<f32> {
+/// `is_custom`: custom materials (terrain, foliage, …) can't have their texture
+/// maps stripped or be flipped to `unlit` the way `StandardMaterial` can, so for
+/// them `!textures` / `!lighting` fall back to the flat-clay debug swap. For
+/// `StandardMaterial` (`is_custom = false`) both are handled in
+/// `update_render_toggles` by mutating the material in place — stripping its
+/// texture maps while leaving it lit — so real scene lighting + shadows survive a
+/// textures-off view instead of being replaced by the unlit, shadowless clay
+/// shader. (Textures-off used to swap StandardMaterial to flat clay too, which is
+/// why turning textures off looked like it also turned lighting + shadows off.)
+fn desired_mode_inner(settings: &ViewportSettings, is_custom: bool) -> Option<f32> {
     // Mesh hidden — let the standard-material pass discard its pixels instead
     // of swapping in the (still-solid) debug shader.
     if !settings.render_toggles.mesh {
@@ -140,10 +146,7 @@ fn desired_mode_inner(settings: &ViewportSettings, include_lighting: bool) -> Op
     if let Some(m) = viz_to_mode_index(settings.visualization_mode) {
         return Some(m);
     }
-    if !settings.render_toggles.textures {
-        return Some(MODE_FLAT_CLAY);
-    }
-    if include_lighting && !settings.render_toggles.lighting {
+    if is_custom && (!settings.render_toggles.textures || !settings.render_toggles.lighting) {
         return Some(MODE_FLAT_CLAY);
     }
     None
@@ -194,12 +197,12 @@ pub fn update_render_toggles(
         .read()
         .any(|e| matches!(e, AssetEvent::Added { .. }));
 
-    // When swap path is active, StandardMaterial is handled by the debug
-    // shader — don't mutate it here. Swap is active if viz is set OR
-    // textures toggle is off. Mesh-off bypasses the swap so we can discard
-    // pixels via the standard pipeline.
-    let swap_active = toggles.mesh
-        && (settings.visualization_mode != VisualizationMode::None || !toggles.textures);
+    // When the viz-swap path is active, StandardMaterial is handled by the debug
+    // shader — don't mutate it here. Only the visualization modes swap now;
+    // textures-off is handled below by stripping the material's texture maps in
+    // place so it stays lit + shadowed. Mesh-off bypasses the swap so we can
+    // discard pixels via the standard pipeline.
+    let swap_active = toggles.mesh && settings.visualization_mode != VisualizationMode::None;
     let is_default = toggles.mesh && toggles.textures && toggles.lighting && !toggles.wireframe;
 
     // Mesh-hidden path: discard every StandardMaterial fragment via alpha mask.
@@ -272,6 +275,20 @@ pub fn update_render_toggles(
         }
         if !toggles.lighting {
             material.unlit = true;
+        }
+        if !toggles.textures {
+            // Textures-off = a neutral "clay" view that is STILL lit by the real
+            // scene lights and receives shadows. Strip the texture maps and reset
+            // base color to a mid grey, but leave `unlit` driven solely by the
+            // lighting toggle above so shading + shadows are unaffected. (Without
+            // this, textures-off swapped the whole mesh to the unlit flat-clay
+            // shader, which read as lighting + shadows being turned off too.)
+            material.base_color = Color::srgb(0.8, 0.8, 0.8);
+            material.base_color_texture = None;
+            material.emissive_texture = None;
+            material.normal_map_texture = None;
+            material.metallic_roughness_texture = None;
+            material.occlusion_texture = None;
         }
     }
 }
@@ -356,9 +373,9 @@ fn apply_swap_generic<M: Material>(
     }
 }
 
-/// Viz-swap system for `StandardMaterial` — lighting is handled via the
-/// `unlit` flag mutation in `update_render_toggles`, so the swap only fires
-/// for viz modes and `!textures`.
+/// Viz-swap system for `StandardMaterial` — textures-off and lighting are both
+/// handled by mutating the material in place in `update_render_toggles` (strip
+/// texture maps / set `unlit`), so this swap only fires for visualization modes.
 pub fn apply_visualization_mode_for<M: Material>(
     mut commands: Commands,
     settings: Res<ViewportSettings>,
