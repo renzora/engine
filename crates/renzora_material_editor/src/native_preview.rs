@@ -10,9 +10,9 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{menu_item, screen_menu};
+use renzora_ember::widgets::{menu_item, screen_menu, toggle_switch};
 
 use crate::preview::{MaterialPreviewImage, MaterialPreviewOrbit, PreviewShape};
 use crate::MaterialEditorState;
@@ -24,7 +24,7 @@ impl Plugin for NativeMaterialPreview {
         app.register_panel_content("material_preview", false, build);
         app.add_systems(
             Update,
-            (mat_btn_click, shape_combo_open, orbit_drag, orbit_zoom).run_if(in_state(SplashState::Editor)),
+            (mat_btn_click, shape_combo_open, orbit_drag, orbit_pan, orbit_zoom).run_if(in_state(SplashState::Editor)),
         );
     }
 }
@@ -157,7 +157,25 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
     });
 
-    commands.entity(bar).add_children(&[combo, sep, rotate, bg]);
+    let sep2 = commands.spawn((Node { width: Val::Px(1.0), height: Val::Px(14.0), margin: UiRect::horizontal(Val::Px(2.0)), ..default() }, BackgroundColor(rgb(border())))).id();
+
+    // Backdrop (embedded HDRI environment) on/off — an ember switch driving
+    // `MaterialPreviewOrbit::show_backdrop`. On → skybox backdrop + reflections;
+    // off → flat clear color, IBL muted.
+    let bd_label = commands.spawn((Text::new("Backdrop"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    let bd_switch = toggle_switch(commands, true);
+    bind_2way(
+        commands,
+        bd_switch,
+        |w| orbit(w).map(|o| o.show_backdrop).unwrap_or(true),
+        |w, v: &bool| {
+            if let Some(mut o) = w.get_resource_mut::<MaterialPreviewOrbit>() {
+                o.show_backdrop = *v;
+            }
+        },
+    );
+
+    commands.entity(bar).add_children(&[combo, sep, rotate, bg, sep2, bd_label, bd_switch]);
     bar
 }
 
@@ -225,8 +243,52 @@ fn orbit_drag(
         if let Some(mut orbit) = orbit {
             let d = c - prev;
             if d != Vec2::ZERO {
-                orbit.yaw += d.x * 0.01;
-                orbit.pitch = (orbit.pitch - d.y * 0.01).clamp(-1.4, 1.4);
+                // "Grab the shape" feel: the surface follows the cursor, so the
+                // camera orbits opposite to the drag. Drag right → see the left
+                // side; drag down → see the top.
+                orbit.yaw -= d.x * 0.01;
+                orbit.pitch = (orbit.pitch + d.y * 0.01).clamp(-1.4, 1.4);
+            }
+        }
+    }
+    *last = Some(c);
+}
+
+/// Right-button drag pans the orbit target in the camera's screen plane, so you
+/// can recentre on an off-axis part of the shape. `Interaction::Pressed` only
+/// covers the left button, so we read the right button straight from
+/// `ButtonInput` and gate the *start* of the drag on the cursor being over the
+/// preview image (then keep panning even if it leaves).
+fn orbit_pan(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    mut last: Local<Option<Vec2>>,
+    q: Query<&RelativeCursorPosition, With<OrbitTarget>>,
+    orbit: Option<ResMut<MaterialPreviewOrbit>>,
+) {
+    if !mouse.pressed(MouseButton::Right) {
+        *last = None;
+        return;
+    }
+    let Some(c) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    // Only begin a pan if the press landed on the preview image.
+    if last.is_none() && !q.iter().any(|r| r.cursor_over) {
+        return;
+    }
+    if let Some(prev) = *last {
+        if let Some(mut orbit) = orbit {
+            let d = c - prev;
+            if d != Vec2::ZERO {
+                // Camera-space right/up from the orbit angles (same basis as
+                // `update_preview_camera_orbit`). Scale by distance so the pan
+                // speed feels consistent at any zoom.
+                let (sy, cy) = orbit.yaw.sin_cos();
+                let (sp, cp) = orbit.pitch.sin_cos();
+                let right = Vec3::new(cy, 0.0, -sy);
+                let up = Vec3::new(-sp * sy, cp, -sp * cy);
+                let k = orbit.distance * 0.0015;
+                // Drag right → scene slides right → target moves left, etc.
+                orbit.target += (-right * d.x + up * d.y) * k;
             }
         }
     }

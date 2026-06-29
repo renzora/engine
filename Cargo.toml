@@ -128,7 +128,7 @@ bevy = { version = "0.19", default-features = false, features = [
     # all shader languages
     "shader_format_glsl", "shader_format_spirv", "shader_format_wesl",
     # all image formats
-    "bmp", "dds", "exr", "ff", "gif", "ico", "jpeg", "pnm", "qoi", "tga",
+    "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "pnm", "qoi", "tga",
     "tiff", "webp", "zlib", "basis-universal", "compressed_image_saver",
     # (audio formats intentionally dropped — Renzora uses kira, not bevy_audio)
     # PBR / rendering detail

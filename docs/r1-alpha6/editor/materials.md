@@ -108,6 +108,17 @@ end
 
 > `set_material_color` is **Lua-only** and only changes base color on the script's own entity. For anything richer — animated patterns, glows that react to gameplay — build it in the node graph with `Parameter` nodes and material instances. See the [Scripting overview](/docs/r1-alpha5/scripting/overview) for what scripts can do.
 
+## Previewing your material
+
+The **Preview** panel renders your material on a test shape with an orbit camera — **drag** to rotate, **right-drag** to pan, **scroll** to zoom. Its toolbar gives you:
+
+- **Shape selector** — swap between sphere, cube, cylinder, torus, and plane.
+- **Auto-rotate** — spin the shape slowly so you can judge it from every angle.
+- **Background** — flip the flat backdrop between dark and light.
+- **Backdrop** — a switch that turns on a built-in **HDRI environment**. With it on, the preview shows a real outdoor sky behind the shape and lights the material with image-based reflections — the quickest way to see how metal, glass, or glossy surfaces actually catch the light. Turn it off to fall back to the plain dark/light background.
+
+> The HDRI is built into the editor, so the backdrop works in any project with nothing to set up.
+
 ## Tips
 
 - **Keep roughness above ~0.05.** Perfectly smooth surfaces can sparkle with artifacts.
