@@ -917,9 +917,45 @@ fn update_gizmo_transforms(
 fn update_gizmo_materials(
     gizmo_state: Res<GizmoState>,
     gizmo_mats: Option<Res<GizmoMaterials>>,
+    viewport_settings: Option<Res<ViewportSettings>>,
+    mut materials: ResMut<Assets<GizmoMaterial>>,
+    mut last_alpha: Local<Option<f32>>,
     mut query: Query<(&GizmoPart, &mut MeshMaterial3d<GizmoMaterial>), With<GizmoMesh>>,
 ) {
     let Some(mats) = gizmo_mats else { return };
+
+    // While a handle is actively dragged, fade every handle to translucent so
+    // the object underneath stays visible (the handles render always-on-top,
+    // so at full opacity they hide whatever you're moving). The drag opacity is
+    // user-configurable (Settings → Viewport). Only re-touch the material assets
+    // when the target alpha actually changes, to avoid per-frame churn.
+    let drag_alpha = viewport_settings
+        .map(|v| v.gizmo_drag_opacity)
+        .unwrap_or(0.25)
+        .clamp(0.0, 1.0);
+    let alpha = if gizmo_state.active_axis.is_some() {
+        drag_alpha
+    } else {
+        1.0
+    };
+    if *last_alpha != Some(alpha) {
+        *last_alpha = Some(alpha);
+        for handle in [
+            &mats.x_normal,
+            &mats.x_highlight,
+            &mats.y_normal,
+            &mats.y_highlight,
+            &mats.z_normal,
+            &mats.z_highlight,
+            &mats.center_normal,
+            &mats.center_highlight,
+        ] {
+            if let Some(mut m) = materials.get_mut(handle) {
+                m.base_color.alpha = alpha;
+                m.emissive.alpha = alpha;
+            }
+        }
+    }
 
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
 
@@ -1013,6 +1049,7 @@ fn draw_line_gizmos(
     aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_q: Query<&Children>,
     camera_q: Query<&GlobalTransform, With<EditorCamera>>,
+    viewport_settings: Option<Res<ViewportSettings>>,
     // Thicker-lined group used only for the plane-drag squares.
     mut plane_gizmos: Gizmos<PlaneGizmoGroup>,
 ) {
@@ -1044,6 +1081,19 @@ fn draw_line_gizmos(
     // picking basis), so visuals and hit-testing agree.
     let basis = gizmo_basis(*space, *mode, sel_gt.rotation());
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
+    // While actively dragging, fade the line elements (rings, scale lines/cubes,
+    // plane squares) so the object underneath stays visible. The rotation pie and
+    // angle label are deliberately left at full opacity — they're the drag readout.
+    // The fade amount is the user-configurable gizmo drag opacity (Settings →
+    // Viewport), matching the mesh handles.
+    let drag_fade = if gizmo_state.active_axis.is_some() {
+        viewport_settings
+            .map(|v| v.gizmo_drag_opacity)
+            .unwrap_or(0.25)
+            .clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
     let highlight = Color::srgb(1.0, 1.0, 0.3);
     let x_base = Color::srgb(1.0, 0.15, 0.15);
     let y_base = Color::srgb(0.15, 1.0, 0.15);
@@ -1068,6 +1118,7 @@ fn draw_line_gizmos(
                     _ => continue,
                 };
                 let color = if active == Some(plane) { Color::WHITE } else { base };
+                let color = color.with_alpha(drag_fade);
                 let (sa, sb) = plane.signed_plane_axes(gizmo_state.axis_signs).unwrap();
                 let a = basis * sa;
                 let b = basis * sb;
@@ -1098,6 +1149,11 @@ fn draw_line_gizmos(
             } else {
                 z_base
             };
+            let (x_color, y_color, z_color) = (
+                x_color.with_alpha(drag_fade),
+                y_color.with_alpha(drag_fade),
+                z_color.with_alpha(drag_fade),
+            );
 
             gizmos.circle(
                 Isometry3d::new(pos, basis * Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
@@ -1154,6 +1210,11 @@ fn draw_line_gizmos(
             } else {
                 z_base
             };
+            let (x_color, y_color, z_color) = (
+                x_color.with_alpha(drag_fade),
+                y_color.with_alpha(drag_fade),
+                z_color.with_alpha(drag_fade),
+            );
 
             // Lines from center to cube tips (oriented to the active space).
             let ax = basis * Vec3::X;

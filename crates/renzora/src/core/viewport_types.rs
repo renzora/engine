@@ -573,6 +573,11 @@ pub struct ViewportSettings {
     /// counter reflect actual render capacity at the cost of possible
     /// screen tearing.
     pub vsync: bool,
+    /// Opacity (0–1) the transform gizmo fades to while a handle is being
+    /// dragged. The handles render always-on-top, so at full opacity they hide
+    /// whatever you're moving; fading them lets the object stay visible during
+    /// the drag. `1.0` keeps the gizmo fully opaque (no fade).
+    pub gizmo_drag_opacity: f32,
 }
 
 impl Default for ViewportSettings {
@@ -598,6 +603,7 @@ impl Default for ViewportSettings {
             snap: SnapSettings::default(),
             pending_view_angle: None,
             vsync: true,
+            gizmo_drag_opacity: default_gizmo_drag_opacity(),
         }
     }
 }
@@ -664,6 +670,8 @@ pub struct PersistedViewportSettings {
     pub floor_y: f32,
     #[serde(default = "default_true")]
     pub vsync: bool,
+    #[serde(default = "default_gizmo_drag_opacity")]
+    pub gizmo_drag_opacity: f32,
 }
 
 impl PersistedViewportSettings {
@@ -714,6 +722,7 @@ impl PersistedViewportSettings {
             floor_snap_enabled: sn.floor_snap_enabled,
             floor_y: sn.floor_y,
             vsync: s.vsync,
+            gizmo_drag_opacity: s.gizmo_drag_opacity,
         }
     }
 
@@ -781,6 +790,7 @@ impl PersistedViewportSettings {
             floor_y: self.floor_y,
         };
         s.vsync = self.vsync;
+        s.gizmo_drag_opacity = self.gizmo_drag_opacity;
     }
 }
 
@@ -802,6 +812,10 @@ fn default_label_color() -> [u8; 3] {
 
 fn default_label_max_distance() -> f32 {
     40.0
+}
+
+fn default_gizmo_drag_opacity() -> f32 {
+    0.25
 }
 
 /// Editor-only preferences persisted in `project.toml` under `[editor]`.
@@ -876,6 +890,7 @@ mod tests {
             },
             pending_view_angle: None,
             vsync: false,
+            gizmo_drag_opacity: 0.6,
         }
     }
 
@@ -912,6 +927,7 @@ mod tests {
         assert_eq!(original.camera, restored.camera);
         assert_eq!(original.snap, restored.snap);
         assert_eq!(original.vsync, restored.vsync);
+        assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
     }
 
     #[test]

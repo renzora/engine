@@ -2100,6 +2100,20 @@ fn tab_viewport(
         |w, &i| w.resource_mut::<EditorSettings>().selection_boundary_on_top = i == 0,
     );
     settings_row(commands, fonts, body, 3, "Boundary", dd);
+    let dv = ctl_drag(
+        commands, fonts, vp.gizmo_drag_opacity, 0.0, 1.0, 0.05,
+        |w| w.resource::<ViewportSettings>().gizmo_drag_opacity,
+        |w, &v| w.resource_mut::<ViewportSettings>().gizmo_drag_opacity = v.clamp(0.0, 1.0),
+    );
+    settings_row(commands, fonts, body, 4, "Drag Opacity", dv);
+    note_row(
+        commands,
+        fonts,
+        body,
+        "How opaque the transform gizmo stays while you drag a handle. Lower \
+         values fade it so the object underneath stays visible; 1.0 keeps it \
+         fully opaque.",
+    );
 }
 
 // ── Scripting ────────────────────────────────────────────────────────────────

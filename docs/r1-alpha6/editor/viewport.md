@@ -47,7 +47,7 @@ Want to line something up dead-on from the front or top? The numpad snaps the ca
 | `Numpad 7` | Top (add `Ctrl` for Bottom) |
 | `Numpad 5` | Switch between perspective and flat (orthographic) |
 
-The viewport header also has a **3D / 2D / UI** selector: **2D** gives you a flat top-down camera for 2D games, and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha5/scripting/game-ui).
+The viewport header also has a **3D / 2D / UI** selector: **2D** is a placeholder for now — selecting it shows a dark "coming soon" backdrop while the 2D editor is still in development — and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha5/scripting/game-ui).
 
 ## Adding shapes from the toolbar
 
@@ -79,6 +79,8 @@ Switch between gizmo tools with these keys:
 | `R` | Scale | Colored lines with little cube caps |
 
 The colors map to the 3D axes: **X is red, Y is green, Z is blue**. A handle turns **yellow** when you hover or drag it. (You can see the Move arrows on the selected scooter in the screenshot above.)
+
+Because the handles draw on top of everything, they'd normally hide the object as you drag it. To keep the object visible, the whole gizmo **fades to translucent while you're dragging a handle** and snaps back to fully opaque on release. How transparent it gets is up to you — set **Settings → Viewport → Gizmos → Drag Opacity** (`0` = invisible during the drag, `1` = no fade). The setting is saved per project.
 
 Rotating and scaling pivot around the object's **bounding-box center**, so objects transform in place rather than drifting — this holds even for imported models whose pivot was authored at the world origin.
 

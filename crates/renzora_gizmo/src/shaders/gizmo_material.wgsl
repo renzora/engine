@@ -12,5 +12,7 @@ struct GizmoMaterialUniform {
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(material.base_color.rgb, 1.0);
+    // Honor base_color.a so the gizmo can fade to translucent while a handle
+    // is being dragged — otherwise the always-on-top handles hide the object.
+    return vec4<f32>(material.base_color.rgb, material.base_color.a);
 }
