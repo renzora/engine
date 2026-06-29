@@ -77,6 +77,77 @@ pub struct LastToggleState {
     toggles: Option<RenderToggles>,
 }
 
+/// Generated grey checkerboard used as the base-color texture when the Textures
+/// toggle is off. It mirrors the dark/light grey checker terrain shows when a
+/// chunk has no material ([`TerrainCheckerboardMaterial::default`]), so an
+/// untextured `StandardMaterial` reads the same way — a recognizable "no
+/// material" default rather than a flat grey fill. Built once at startup.
+#[derive(Resource)]
+pub struct DefaultCheckerTexture(pub Handle<Image>);
+
+impl FromWorld for DefaultCheckerTexture {
+    fn from_world(world: &mut World) -> Self {
+        let image = build_checker_image();
+        let mut images = world.resource_mut::<Assets<Image>>();
+        Self(images.add(image))
+    }
+}
+
+/// Encode a linear grey value to the sRGB bytes an `Rgba8UnormSrgb` texture
+/// decodes back to that same linear value on sample (so lighting matches the
+/// terrain checker, whose colors are specified in linear space).
+fn checker_srgb_bytes(linear: f32) -> [u8; 4] {
+    let s = Srgba::from(LinearRgba::new(linear, linear, linear, 1.0));
+    [
+        (s.red * 255.0).round() as u8,
+        (s.green * 255.0).round() as u8,
+        (s.blue * 255.0).round() as u8,
+        255,
+    ]
+}
+
+/// Bake the terrain-default grey checkerboard into a small point-sampled,
+/// repeating texture. Tiles crisply across a mesh's UVs (and wraps for UVs
+/// outside 0..1), the closest `StandardMaterial` equivalent of terrain's
+/// world-space procedural checker.
+fn build_checker_image() -> Image {
+    use bevy::asset::RenderAssetUsages;
+    use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
+    // TerrainCheckerboardMaterial::default() colors (linear grey).
+    let a = checker_srgb_bytes(0.32);
+    let b = checker_srgb_bytes(0.22);
+    const CELLS: usize = 2; // checker squares per axis across one UV tile
+    const SIZE: usize = CELLS * 2; // 2 px/cell — point-sampled, stays sharp
+    let mut data = Vec::with_capacity(SIZE * SIZE * 4);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let on = ((x / 2) + (y / 2)) % 2 == 0;
+            data.extend_from_slice(if on { &a } else { &b });
+        }
+    }
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE as u32,
+            height: SIZE as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+        address_mode_u: ImageAddressMode::Repeat,
+        address_mode_v: ImageAddressMode::Repeat,
+        mag_filter: ImageFilterMode::Nearest,
+        min_filter: ImageFilterMode::Nearest,
+        ..default()
+    });
+    image
+}
+
 // ── Debug material swap state (visualization modes) ─────────────────────────
 
 /// Per-entity backup of the original `MeshMaterial3d<M>` handle, parameterized
@@ -188,6 +259,7 @@ pub fn update_render_toggles(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut original_states: ResMut<OriginalMaterialStates>,
     mut last_state: ResMut<LastToggleState>,
+    checker: Res<DefaultCheckerTexture>,
     mut material_events: MessageReader<AssetEvent<StandardMaterial>>,
 ) {
     let toggles = settings.render_toggles;
@@ -277,17 +349,23 @@ pub fn update_render_toggles(
             material.unlit = true;
         }
         if !toggles.textures {
-            // Textures-off = a neutral "clay" view that is STILL lit by the real
-            // scene lights and receives shadows. Strip the texture maps and reset
-            // base color to a mid grey, but leave `unlit` driven solely by the
-            // lighting toggle above so shading + shadows are unaffected. (Without
-            // this, textures-off swapped the whole mesh to the unlit flat-clay
-            // shader, which read as lighting + shadows being turned off too.)
-            material.base_color = Color::srgb(0.8, 0.8, 0.8);
-            material.base_color_texture = None;
+            // Textures-off = the default "no material" checker, STILL lit by the
+            // real scene lights and receiving shadows. Swap the base-color map for
+            // the generated grey checker (matching terrain's untextured look) and
+            // drop the other maps; leave `unlit` driven solely by the lighting
+            // toggle above so shading + shadows are unaffected. (Without this,
+            // textures-off swapped the whole mesh to the unlit flat-clay shader,
+            // which read as lighting + shadows being turned off too.) Mirror the
+            // terrain checker's matte PBR (non-metallic, fairly rough) so every
+            // untextured surface reads consistently regardless of its material.
+            material.base_color = Color::WHITE;
+            material.base_color_texture = Some(checker.0.clone());
+            material.emissive = LinearRgba::BLACK;
             material.emissive_texture = None;
             material.normal_map_texture = None;
+            material.metallic = 0.0;
             material.metallic_roughness_texture = None;
+            material.perceptual_roughness = 0.8;
             material.occlusion_texture = None;
         }
     }
