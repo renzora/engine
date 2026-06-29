@@ -23,6 +23,10 @@ In the shot above, a color texture feeds the **Base Color** pin, another texture
 
 **Adding nodes:** right-click the graph (or press **`Spacebar`** with the cursor over it) to open a **searchable palette** at the cursor — type to filter, **Enter** picks the first match — and the node spawns where you clicked. The toolbar **Add Node** button opens the same palette. You can also **drag a cable off a pin** and release on empty space: the palette opens and the node you pick is auto-wired to that pin.
 
+**Dropping a texture:** drag an image straight from the **Assets** browser onto the graph and release — a **Sample Texture** node appears under the cursor with that image already bound, ready to wire into a pin. Drop several images at once and you get one node per image, cascaded so they don't stack exactly on top of each other.
+
+**Switching a sample's type:** every 2D texture-sample node carries a small **caret** button in its header. Click it to pick a different sampling mode for the same image — **Sample Texture**, **Sample Normal Map**, **Sample Texture LOD**, or **Sample Texture Grad** — without re-dropping it. The bound image is kept; any wires to pins the new mode doesn't have are dropped. (The rest of the header stays a drag handle for moving the node.) The switcher stays within plain-2D modes; array, 3D, and cubemap samples need a matching texture, so add those from the palette.
+
 **Comments / groups:** select some nodes and press **`C`** to wrap them in a labelled **comment box**. Dragging the box moves every node inside it; drag the corner grip to resize, edit the header to rename, and **✕** deletes the box (keeping its nodes). Comments are visual only and saved in the `.material` file.
 
 ### The Surface Output node

@@ -29,6 +29,13 @@ const NODE_W: f32 = 160.0;
 const HEAD_H: f32 = 26.0;
 const ROW_H: f32 = 22.0;
 const WIRE_W: f32 = 2.5;
+/// Width of a port's connection grab overlay (the interactive slot holding the
+/// dot). Kept tight to the dot so the rest of the label is free to drag the node;
+/// it's an absolute overlay, so it never shifts the label.
+const SLOT_W: f32 = 30.0;
+/// Base `GlobalZIndex` for nodes; the selected node is bumped to `NODE_Z + 1` so
+/// it draws and picks above overlapping peers (see [`ngv_apply_selection`]).
+const NODE_Z: i32 = 5;
 
 /// Registers the data-driven node-graph view systems.
 pub(crate) struct NodeGraphViewPlugin;
@@ -89,6 +96,22 @@ pub struct NodeGraphView {
     /// node at `canvas`, and auto-wires it to the dragged pin (`node`/`pin`/
     /// `is_output`/`color`). Cleared by the caller.
     pub connect_drag: Option<ConnectDrag>,
+    /// A "parked" cable left visibly connecting the source pin to the spot where
+    /// the connect-drag menu opened, so the cable doesn't vanish while the user
+    /// picks a node. The widget draws it and clears it on the next click (a menu
+    /// pick or a dismiss).
+    pub(crate) frozen_cable: Option<FrozenCable>,
+}
+
+/// A cable parked from a pin to a fixed screen point (the open connect-drag menu),
+/// keeping it visible until the user clicks. See [`NodeGraphView::frozen_cable`].
+/// The cable's colour is resolved live from the pin, so it isn't stored here.
+pub(crate) struct FrozenCable {
+    node: u64,
+    pin: String,
+    is_output: bool,
+    /// Logical-screen point the cable runs to (where the menu opened).
+    screen: Vec2,
 }
 
 /// A cable dragged from a pin and dropped on empty canvas — the caller opens its
@@ -123,6 +146,9 @@ struct NgvPort {
     is_output: bool,
     color: (u8, u8, u8),
     viewport: Entity,
+    /// The port's label, whose background is tinted while the grab slot is hovered
+    /// (sized to the text, so the highlight tracks the name, not the whole row).
+    label: Entity,
 }
 #[derive(Component)]
 struct NgvWire {
@@ -245,6 +271,9 @@ pub fn graph_node_view(
     // Optional inline value editor entity per input (index-aligned with `inputs`);
     // rendered on its own row under the pin. Pass `&[]` for none.
     input_editors: &[Option<Entity>],
+    // Optional widget mounted in the title bar in place of the title text (e.g. a
+    // dropdown that switches the node's type). Pass `None` for a plain title.
+    header_control: Option<Entity>,
 ) -> Entity {
     let node = commands
         .spawn((
@@ -273,22 +302,38 @@ pub fn graph_node_view(
             NgvNode { id: node_id, canvas, viewport },
             Interaction::default(),
             RelativeCursorPosition::default(),
-            GlobalZIndex(5),
+            GlobalZIndex(NODE_Z),
+            // Drag-to-move node → the 4-arrow Move cursor.
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Move),
             Name::new("ngv-node"),
         ))
         .id();
     let title_bar = commands
         .spawn((
-            Node { width: Val::Percent(100.0), height: Val::Px(HEAD_H), align_items: AlignItems::Center, padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::top(Val::Px(5.0)), ..default() },
+            Node { width: Val::Percent(100.0), height: Val::Px(HEAD_H), align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::top(Val::Px(5.0)), ..default() },
             BackgroundColor(rgb(color)),
             bevy::ui::FocusPolicy::Pass,
             Name::new("ngv-node-title"),
         ))
-        .with_children(|p| {
-            p.spawn((Text::new(title.to_string()), ui_font(&fonts.ui, 12.0), TextColor(rgb(on_accent())), bevy::text::TextLayout::no_wrap()));
-        })
         .id();
+    // The title fills the header and is FocusPolicy::Pass, so pressing it drags the
+    // node (the press falls through to the node root). An optional caller control
+    // (e.g. a type switcher) sits at the trailing edge and captures its own clicks,
+    // so it never steals a header drag.
+    let label = commands
+        .spawn((
+            Text::new(title.to_string()),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(on_accent())),
+            bevy::text::TextLayout::no_wrap(),
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), overflow: Overflow::clip(), ..default() },
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(title_bar).add_child(label);
+    if let Some(ctrl) = header_control {
+        commands.entity(title_bar).add_child(ctrl);
+    }
     commands.entity(node).add_child(title_bar);
 
     for (idx, (pin, label, pin_color)) in inputs.iter().enumerate() {
@@ -364,11 +409,14 @@ pub fn graph_node_view(
     node
 }
 
-/// A pin row whose **label + dot** form the connection slot (the interactive
-/// [`NgvPort`]) — easy to grab, while the row's empty space stays click-through
-/// so the node can be dragged from it. The slot hugs the node edge (justified
-/// left for inputs / right for outputs), so `port_map`'s `centre ± width/2` lands
-/// the cable endpoint on the dot at the node edge.
+/// A pin row: a click-through label, plus a **connection slot** (the interactive
+/// [`NgvPort`], holding the dot) that's an *absolute overlay* over the dot + the
+/// start of the label — so grabbing a cable works right where the dot and its name
+/// are, with no layout gap. Being overlaid (not in flow) means it never shifts the
+/// label. Its trailing portion of the row stays click-through, so the node still
+/// drags from there. The slot hugs the edge, so `port_map`'s `centre ± width/2`
+/// lands the cable endpoint at the node edge. Hovering the slot tints the row (see
+/// [`ngv_highlight_slots`]) to advertise the grab.
 #[allow(clippy::too_many_arguments)]
 fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport: Entity, pin: &str, label: &str, is_output: bool, color: (u8, u8, u8)) -> Entity {
     let row = commands
@@ -376,32 +424,52 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(ROW_H),
+                position_type: PositionType::Relative,
                 align_items: AlignItems::Center,
                 justify_content: if is_output { JustifyContent::FlexEnd } else { JustifyContent::FlexStart },
+                border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
+            BackgroundColor(Color::NONE),
             bevy::ui::FocusPolicy::Pass,
             Name::new("ngv-port-row"),
         ))
         .id();
+    let text = commands
+        .spawn((
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::text::TextLayout::no_wrap(),
+            // Sized to the text; its background is tinted on grab-hover, and the
+            // margin clears the dot at the node edge.
+            Node {
+                margin: if is_output { UiRect::right(Val::Px(14.0)) } else { UiRect::left(Val::Px(14.0)) },
+                padding: UiRect::axes(Val::Px(4.0), Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    // The grab overlay: absolute, edge-anchored, on top of the dot + label start.
     let slot = commands
         .spawn((
             Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
                 height: Val::Percent(100.0),
-                position_type: PositionType::Relative,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: if is_output { UiRect::right(Val::Px(12.0)) } else { UiRect::left(Val::Px(12.0)) },
+                left: if is_output { Val::Auto } else { Val::Px(0.0) },
+                right: if is_output { Val::Px(0.0) } else { Val::Auto },
+                width: Val::Px(SLOT_W),
                 ..default()
             },
-            NgvPort { node_id, pin: pin.to_string(), is_output, color, viewport },
+            NgvPort { node_id, pin: pin.to_string(), is_output, color, viewport, label: text },
             Interaction::default(),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Crosshair),
             Name::new("ngv-port-slot"),
         ))
-        .id();
-    let text = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::no_wrap(), bevy::ui::FocusPolicy::Pass))
         .id();
     let dot = commands
         .spawn((
@@ -423,8 +491,9 @@ fn port_row(commands: &mut Commands, fonts: &EmberFonts, node_id: u64, viewport:
             Name::new("ngv-port-dot"),
         ))
         .id();
-    commands.entity(slot).add_children(&[text, dot]);
-    commands.entity(row).add_child(slot);
+    commands.entity(slot).add_child(dot);
+    // Slot is added last so it overlays the label and captures the grab.
+    commands.entity(row).add_children(&[text, slot]);
     row
 }
 
@@ -596,7 +665,9 @@ fn ngv_port_rmb(mouse: Res<ButtonInput<MouseButton>>, ports: Query<(&Interaction
     }
 }
 
-/// While dragging from an output port, draw a live cable from it to the cursor.
+/// Draw the live cable: while dragging from a port, from it to the cursor; and
+/// while a connect-drag menu is open (`frozen_cable`), from the source pin to the
+/// menu's anchor so the cable stays connected instead of blinking out.
 #[allow(clippy::type_complexity)]
 fn ngv_preview(
     windows: Query<&Window>,
@@ -613,8 +684,18 @@ fn ngv_preview(
     let map = port_map(&ports);
     let cur = cursor(&windows);
     for (pv, mut node, mat) in &mut previews {
-        let pending = graphs.get(pv.viewport).ok().and_then(|g| g.pending_connect.clone());
-        let (Some((nid, pin, is_out, _scol)), Some(c)) = (pending, cur) else {
+        // Live drag follows the cursor; otherwise a parked (frozen) cable runs to
+        // the open menu's anchor.
+        let endpoint = graphs.get(pv.viewport).ok().and_then(|g| {
+            if let Some((nid, pin, is_out, _)) = g.pending_connect.clone() {
+                cur.map(|c| (nid, pin, is_out, c))
+            } else if let Some(f) = g.frozen_cable.as_ref() {
+                Some((f.node, f.pin.clone(), f.is_output, f.screen))
+            } else {
+                None
+            }
+        });
+        let Some((nid, pin, is_out, c)) = endpoint else {
             if node.display != Display::None {
                 node.display = Display::None;
             }
@@ -739,12 +820,20 @@ fn ngv_drag(
 /// Drive each node's border (width + colour) from its viewport's `selected` id,
 /// in place — so selecting a node never rebuilds it (which would kill an
 /// in-progress drag). Only writes when the selection state actually flips.
-fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Outline)>) {
-    for (n, mut outline) in &mut nodes {
+///
+/// Also raises a selected node's `GlobalZIndex` above its peers so it draws (and
+/// picks) on top — without this, clicking where two nodes overlap can land on the
+/// one behind. Base nodes sit at `NODE_Z`; the selected one at `NODE_Z + 1`.
+fn ngv_apply_selection(views: Query<&NodeGraphView>, mut nodes: Query<(&NgvNode, &mut Outline, &mut GlobalZIndex)>) {
+    for (n, mut outline, mut z) in &mut nodes {
         let sel = views.get(n.viewport).map(|v| v.selected.contains(&n.id)).unwrap_or(false);
         let want = if sel { rgb(accent()) } else { Color::NONE };
         if outline.color != want {
             outline.color = want;
+        }
+        let want_z = if sel { NODE_Z + 1 } else { NODE_Z };
+        if z.0 != want_z {
+            z.0 = want_z;
         }
     }
 }
@@ -761,6 +850,13 @@ fn ngv_connect(
     views: Query<&GraphView>,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
+        // A new click ends any parked connect-drag cable (the user is picking a
+        // menu node or dismissing the menu).
+        for (_, mut g, _, _, _) in &mut graphs {
+            if g.frozen_cable.is_some() {
+                g.frozen_cable = None;
+            }
+        }
         if let Some((_, p)) = ports.iter().find(|(i, _)| **i == Interaction::Pressed) {
             if let Ok((_, mut g, _, _, _)) = graphs.get_mut(p.viewport) {
                 g.pending_connect = Some((p.node_id, p.pin.clone(), p.is_output, p.color));
@@ -795,7 +891,10 @@ fn ngv_connect(
                 let size = vcn.size() * vcn.inverse_scale_factor();
                 let center = size * 0.5;
                 let canvas = center + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
-                g.connect_drag = Some(ConnectDrag { screen, canvas, node: snode, pin: spin, is_output: s_out, color: scol });
+                g.connect_drag = Some(ConnectDrag { screen, canvas, node: snode, pin: spin.clone(), is_output: s_out, color: scol });
+                // Park the cable visibly running to the menu until the next click,
+                // so it doesn't blink out while the user picks a node.
+                g.frozen_cable = Some(FrozenCable { node: snode, pin: spin, is_output: s_out, screen });
             }
         }
     }
@@ -803,11 +902,28 @@ fn ngv_connect(
 
 /// While dragging a cable, show only the **valid drop slots** (opposite direction
 /// with matching colour) enlarged; hide every incompatible dot. With no drag, dots
-/// rest at base size and just grow on hover.
-fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &Interaction, &Children)>, mut dots: Query<(&NgvPortDot, &mut Node)>) {
+/// rest at base size and just grow on hover. Also tints the hovered port's row to
+/// advertise that the area is a cable grab handle.
+fn ngv_highlight_slots(graphs: Query<&NodeGraphView>, ports: Query<(&NgvPort, &Interaction, &Children)>, mut dots: Query<(&NgvPortDot, &mut Node)>, mut bgs: Query<&mut BackgroundColor>) {
     for (port, interaction, children) in &ports {
         let pending = graphs.get(port.viewport).ok().and_then(|g| g.pending_connect.clone());
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        // A port is connectable in the current context: always when no cable is
+        // being dragged, else only if it's a compatible drop target (opposite
+        // direction, matching colour, a different node).
+        let connectable = match &pending {
+            Some((snode, _, s_out, scol)) => port.is_output != *s_out && port.color == *scol && port.node_id != *snode,
+            None => true,
+        };
+        // Tint the label background (sized to the text) only when hovering a port
+        // that can actually take a connection — so dragging a cable doesn't light up
+        // ports you can't drop on.
+        if let Ok(mut bg) = bgs.get_mut(port.label) {
+            let want = if hovered && connectable { Color::srgba(1.0, 1.0, 1.0, 0.10) } else { Color::NONE };
+            if bg.0 != want {
+                bg.0 = want;
+            }
+        }
         let (visible, size) = match &pending {
             Some((snode, spin, s_out, scol)) => {
                 let is_source = port.node_id == *snode && &port.pin == spin && port.is_output == *s_out;

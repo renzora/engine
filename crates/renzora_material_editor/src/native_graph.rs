@@ -12,11 +12,11 @@ use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, RelativeCursorPosition};
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{DocTabKind, EditorContext, EditorSelection, SplashState};
-use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_editor_framework::{AssetDragPayload, DocTabKind, EditorContext, EditorSelection, SplashState};
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::*;
@@ -45,6 +45,32 @@ fn category_icon(category: &str) -> &'static str {
     }
 }
 
+/// Image extensions accepted when dropping an asset onto the graph to spawn a
+/// texture-sample node (matches the inspector's texture-field drop set).
+const IMG_EXTS: [&str; 10] = ["png", "jpg", "jpeg", "ktx2", "tga", "bmp", "dds", "exr", "hdr", "webp"];
+
+/// Texture-sample node variants the node-header switcher cycles between. All bind
+/// a plain **2D** texture via `input_values["texture"]`, so switching one for
+/// another keeps the bound image and never changes the texture *dimension* the
+/// shader expects; pins that differ between variants are pruned on the switch. A
+/// dropped image starts as the first entry ("Sample Texture").
+///
+/// Deliberately excludes `sample_2d_array` / `sample_3d` / `sample_cubemap`: those
+/// expect a D2Array / D3 / Cube view, so binding a 2D image to them fails GPU
+/// validation. Add those from the palette with a matching texture instead.
+const SAMPLE_VARIANTS: [&str; 4] = [
+    "texture/sample",
+    "texture/sample_normal",
+    "texture/sample_lod",
+    "texture/sample_grad",
+];
+
+/// Index of `node_type` within [`SAMPLE_VARIANTS`], or `None` if it isn't a
+/// switchable texture-sample node.
+fn sample_variant_index(node_type: &str) -> Option<usize> {
+    SAMPLE_VARIANTS.iter().position(|t| *t == node_type)
+}
+
 pub struct NativeMaterialGraph;
 
 impl Plugin for NativeMaterialGraph {
@@ -56,7 +82,7 @@ impl Plugin for NativeMaterialGraph {
         app.register_panel_toolbar("material_graph", build_toolbar);
         app.add_systems(
             Update,
-            (apply_click, add_node_open, view_op_click, context_menu_open)
+            (apply_click, add_node_open, view_op_click, context_menu_open, mat_graph_image_drop, sample_switch_open)
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora_ember::dock::panel_active("material_graph")),
         );
@@ -75,12 +101,23 @@ impl Plugin for NativeMaterialGraph {
     }
 }
 
+/// Marker on the graph viewport; carries the pan/zoom canvas entity so the
+/// image-drop handler can read its [`UiTransform`] to map the cursor to a canvas
+/// position (the canvas transform mirrors the widget's internal pan/zoom).
 #[derive(Component)]
-struct MatGraph;
+struct MatGraph {
+    canvas: Entity,
+}
 #[derive(Component)]
 struct ApplyBtn;
 #[derive(Component)]
 struct AddNodeBtn;
+/// The little caret button in a texture-sample node's header; clicking it opens a
+/// screen-space menu to switch the node between [`SAMPLE_VARIANTS`].
+#[derive(Component)]
+struct SampleSwitchBtn {
+    node_id: u64,
+}
 #[derive(Clone, Copy)]
 enum ViewOp {
     Fit,
@@ -159,7 +196,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Canvas (the toolbar lives in the shared strip — see `build_toolbar`).
     let handle = node_graph_view(commands, fonts);
-    commands.entity(handle.viewport).insert(MatGraph);
+    commands.entity(handle.viewport).insert(MatGraph { canvas: handle.canvas });
     let (canvas, viewport) = (handle.canvas, handle.viewport);
 
     // Comment / group boxes mount behind the nodes (their own canvas layer).
@@ -219,6 +256,9 @@ struct NodeSnap {
     selected: bool,
     tex_path: Option<String>,
     thumb: Option<Handle<Image>>,
+    /// `Some(index)` when this is a switchable texture-sample node — drives the
+    /// in-header type-switcher dropdown (index into [`SAMPLE_VARIANTS`]).
+    sample_idx: Option<usize>,
 }
 
 fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
@@ -241,7 +281,8 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
                 _ => None,
             });
             let thumb = tex_path.as_ref().and_then(|p| assets.map(|a| a.load::<Image>(p)));
-            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb }
+            let sample_idx = sample_variant_index(&n.node_type);
+            NodeSnap { id: n.id, title, color, pos: n.position, inputs, outputs, selected: sel == Some(n.id), tex_path, thumb, sample_idx }
         })
         .collect();
     let items: Vec<(u64, u64)> = nodes
@@ -252,7 +293,9 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
             let mut h = hasher();
             // Structure only (NOT position OR selection) so neither dragging nor
             // selecting rebuilds a node — selection is applied in place by the view.
-            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path).hash(&mut h);
+            // `sample_idx` is included so switching a sample node's type rebuilds it
+            // (new pins + the dropdown's new selection).
+            (&n.title, n.color, &n.inputs, &n.outputs, &n.tex_path, n.sample_idx).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
@@ -260,9 +303,63 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
         items,
         build: Box::new(move |c, f, i| {
             let n = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &[])
+            let header = n.sample_idx.map(|_| sample_switch_button(c, f, n.id));
+            graph_node_view(c, f, canvas, viewport, n.id, &n.title, n.color, &n.inputs, &n.outputs, n.pos[0], n.pos[1], n.selected, n.thumb.clone(), &[], header)
         }),
     }
+}
+
+/// A small caret button for a texture-sample node's header. The node title already
+/// shows the current variant; clicking this opens a screen-space menu (via
+/// [`sample_switch_open`]) to switch it. It's a compact trailing button — not a
+/// full-width control — so the rest of the header stays a drag handle for the node.
+fn sample_switch_button(commands: &mut Commands, fonts: &EmberFonts, node_id: u64) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(18.0),
+                height: Val::Px(18.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.22)),
+            Interaction::default(),
+            SampleSwitchBtn { node_id },
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("mat-sample-switch"),
+        ))
+        .id();
+    let icon = icon_text(commands, &fonts.phosphor, "caret-down", on_accent(), 11.0);
+    commands.entity(btn).add_child(icon);
+    btn
+}
+
+/// Click a sample node's header caret → open a screen-space menu of the
+/// [`SAMPLE_VARIANTS`] at the cursor; choosing one swaps the node's type in place.
+/// Screen-space (not embedded in the zoom/pan canvas) so it neither scales nor
+/// clips with the graph.
+fn sample_switch_open(
+    q: Query<(&Interaction, &SampleSwitchBtn), Changed<Interaction>>,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    let Some((_, btn)) = q.iter().find(|(i, _)| **i == Interaction::Pressed) else { return };
+    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let node_id = btn.node_id;
+    let entries: Vec<SearchEntry> = SAMPLE_VARIANTS
+        .iter()
+        .enumerate()
+        .map(|(idx, t)| {
+            let name = node_def(t).map(|d| d.display_name).unwrap_or(t);
+            SearchEntry::new("image", name, "Texture", move |w| switch_sample_type(w, node_id, idx))
+        })
+        .collect();
+    search_menu(&mut commands, &fonts, cursor.x, cursor.y, entries);
 }
 
 /// Comment boxes, keyed on id only — drag / resize / retitle update in place.
@@ -733,6 +830,114 @@ fn mat_add_and_wire(world: &mut World, node_type: &str, base: [f32; 2], src: (u6
     s.compiled_wgsl = Some(result.fragment_shader);
     s.compile_errors = result.errors;
     s.is_dirty = true;
+}
+
+/// Swap a texture-sample node to another [`SAMPLE_VARIANTS`] entry in place,
+/// preserving its id, position, and bound texture. Connections that reference pins
+/// the new variant doesn't have (e.g. Sample Texture's `color` output when
+/// switching to Sample Normal Map, which only has `normal`) are dropped, then the
+/// shader recompiles and the graph is marked dirty.
+fn switch_sample_type(world: &mut World, node_id: u64, variant: usize) {
+    let Some(&new_type) = SAMPLE_VARIANTS.get(variant) else { return };
+    let Some(mut s) = world.get_resource_mut::<MaterialEditorState>() else { return };
+    if s.graph.get_node(node_id).map(|n| n.node_type.as_str()) == Some(new_type) {
+        return; // already this variant — nothing to do
+    }
+    let Some(node) = s.graph.get_node_mut(node_id) else { return };
+    node.node_type = new_type.to_string();
+
+    // Prune now-dangling connections (pins that don't exist on the new variant).
+    let pins = node_def(new_type).map(|d| (d.pins)()).unwrap_or_default();
+    let valid_in: std::collections::HashSet<String> = pins.iter().filter(|p| p.direction == PinDir::Input).map(|p| p.name.clone()).collect();
+    let valid_out: std::collections::HashSet<String> = pins.iter().filter(|p| p.direction == PinDir::Output).map(|p| p.name.clone()).collect();
+    s.graph.connections.retain(|c| {
+        let ok_from = c.from_node != node_id || valid_out.contains(&c.from_pin);
+        let ok_to = c.to_node != node_id || valid_in.contains(&c.to_pin);
+        ok_from && ok_to
+    });
+
+    let graph = s.graph.clone();
+    let result = renzora_shader::material::codegen::compile(&graph);
+    s.compiled_wgsl = Some(result.fragment_shader);
+    s.compile_errors = result.errors;
+    s.is_dirty = true;
+}
+
+/// Extract a [`Val::Px`] amount (0.0 for any non-px value), mirroring the widget's
+/// own `px` helper — used to read the canvas pan off its [`UiTransform`].
+fn px(v: Val) -> f32 {
+    if let Val::Px(p) = v {
+        p
+    } else {
+        0.0
+    }
+}
+
+/// Drop one or more image assets from the browser onto the graph canvas → spawn a
+/// "Sample Texture" node per image at the drop point (cascaded), each with its
+/// texture bound. Mirrors the inspector's texture drop, but creates the node
+/// rather than filling an existing field. Other asset types are left untouched
+/// (the panel's drop zone opens `.material` files as documents, etc.).
+///
+/// A parallel (not exclusive) system on purpose: the asset browser removes
+/// `AssetDragPayload` via a *deferred* command on release, and an exclusive system
+/// would force that removal to flush first, racing the drop away. A parallel
+/// system observes the payload before the removal is applied.
+#[allow(clippy::too_many_arguments)]
+fn mat_graph_image_drop(
+    mouse: Res<ButtonInput<MouseButton>>,
+    payload: Option<Res<AssetDragPayload>>,
+    project: Option<Res<CurrentProject>>,
+    graphs: Query<(&RelativeCursorPosition, &ComputedNode, &MatGraph)>,
+    canvases: Query<&UiTransform>,
+    state: Option<ResMut<MaterialEditorState>>,
+    mut commands: Commands,
+) {
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    let (Some(payload), Some(mut state)) = (payload, state) else { return };
+    if !payload.is_detached {
+        return;
+    }
+    // Dropped image paths (a multi-select drop carries several).
+    let all = if payload.paths.is_empty() { std::slice::from_ref(&payload.path) } else { payload.paths.as_slice() };
+    let imgs: Vec<&std::path::PathBuf> = all
+        .iter()
+        .filter(|p| p.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).is_some_and(|e| IMG_EXTS.contains(&e.as_str())))
+        .collect();
+    if imgs.is_empty() {
+        return;
+    }
+
+    // The graph viewport under the cursor + its canvas pan/zoom (mirrored onto the
+    // canvas `UiTransform`); map the cursor to a canvas point the same way the
+    // widget does for right-click placement.
+    let Some((rcp, vcn, mg)) = graphs.iter().find(|(rcp, _, _)| rcp.cursor_over) else { return };
+    let (pan, zoom) = canvases
+        .get(mg.canvas)
+        .map(|tf| (Vec2::new(px(tf.translation.x), px(tf.translation.y)), tf.scale.x))
+        .unwrap_or((Vec2::ZERO, 1.0));
+    let size = vcn.size() * vcn.inverse_scale_factor();
+    let base = size * 0.5 + (rcp.normalized.unwrap_or(Vec2::ZERO) * size - pan) / zoom.max(0.01);
+
+    for (i, p) in imgs.iter().enumerate() {
+        let rel = project.as_ref().map(|pr| pr.make_asset_relative(p)).unwrap_or_else(|| p.to_string_lossy().to_string());
+        // Cascade stacked drops so multiple nodes don't fully overlap.
+        let pos = [base.x + i as f32 * 28.0, base.y + i as f32 * 28.0];
+        let id = state.graph.add_node("texture/sample", pos);
+        if let Some(node) = state.graph.get_node_mut(id) {
+            node.input_values.insert("texture".to_string(), PinValue::TexturePath(rel));
+        }
+    }
+    let graph = state.graph.clone();
+    let result = renzora_shader::material::codegen::compile(&graph);
+    state.compiled_wgsl = Some(result.fragment_shader);
+    state.compile_errors = result.errors;
+    state.is_dirty = true;
+
+    // Consume the drag so no other release-frame handler also acts on it.
+    commands.remove_resource::<AssetDragPayload>();
 }
 
 /// Open the searchable add-node palette at `(x, y)`, spawning the chosen node at

@@ -166,7 +166,7 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
         items,
         build: Box::new(move |c, f, i| {
             let (id, title, color, pos, ins, outs, selected) = &nodes[i];
-            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None, &[])
+            graph_node_view(c, f, canvas, viewport, *id, title, *color, ins, outs, pos[0], pos[1], *selected, None, &[], None)
         }),
     }
 }
