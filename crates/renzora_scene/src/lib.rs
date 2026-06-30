@@ -81,6 +81,47 @@ pub(crate) fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
     false
 }
 
+// ============================================================================
+// Simulate-mode scene snapshot / restore
+// ============================================================================
+
+/// In-memory snapshot of the scene RON captured when Simulate mode starts, so
+/// Stop can revert every mutation the simulation made. `None` until taken.
+#[derive(Resource, Default)]
+pub struct SimulateSnapshot(pub Option<String>);
+
+/// Serialize the live scene into [`SimulateSnapshot`] before Simulate runs
+/// (fired by `enter_simulate_mode`).
+fn on_snapshot_scene_for_simulate(
+    _trigger: On<renzora::core::SnapshotSceneForSimulate>,
+    mut commands: Commands,
+) {
+    commands.queue(|world: &mut World| match scene_io::serialize_scene_to_string(world) {
+        Ok(ron) => world.resource_mut::<SimulateSnapshot>().0 = Some(ron),
+        Err(e) => renzora::core::console_log::console_error(
+            "Simulate",
+            format!("Failed to snapshot scene; Stop won't restore it: {e}"),
+        ),
+    });
+}
+
+/// Restore the scene from [`SimulateSnapshot`] when Simulate stops. Despawns the
+/// live scene entities FIRST, then re-spawns the snapshot — the same
+/// despawn→load sequence the tab switcher uses. Skipping the despawn is what
+/// duplicated every entity in the hierarchy.
+fn on_restore_simulate_snapshot(
+    _trigger: On<renzora::core::RestoreSimulateSnapshot>,
+    mut commands: Commands,
+) {
+    commands.queue(|world: &mut World| {
+        let Some(ron) = world.resource_mut::<SimulateSnapshot>().0.take() else {
+            return;
+        };
+        despawn_scene_entities(world);
+        scene_io::load_scene_from_string(world, &ron);
+    });
+}
+
 /// On re-entering the splash from the editor (File → Open Project),
 /// tear down the previous project's scene state. Without this:
 ///   - Previous project's entities stay in the world.
@@ -1291,6 +1332,13 @@ impl Plugin for ScenePlugin {
             // still references them).
             .add_observer(tab_asset_cache::evict_closed_tab)
             .add_observer(toast_skipped_scene_types)
+            // Simulate-mode scene snapshot/restore. Lives here because this is the
+            // crate with both `scene_io` and `despawn_scene_entities` — restoring
+            // MUST despawn the live scene before re-spawning the snapshot, exactly
+            // as the tab switcher does, or every entity gets duplicated.
+            .init_resource::<SimulateSnapshot>()
+            .add_observer(on_snapshot_scene_for_simulate)
+            .add_observer(on_restore_simulate_snapshot)
             // Re-entering Splash means the user is opening a different
             // project (or returning to the picker). Despawn the previous
             // project's scene entities and clear per-tab caches so the

@@ -1,0 +1,43 @@
+[package]
+name = "renzora_ragdoll"
+version = "0.1.0"
+edition = "2021"
+description = "Skeletal ragdoll physics distribution plugin. Auto-builds Avian rigid bodies + joints from a GLTF skeleton and toggles bones between animated and physically-simulated."
+
+# Distribution plugin: ships as a standalone .dll/.so/.dylib that
+# `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
+# startup, same model as `renzora_cloth`.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["dlopen", "lua", "editor"]
+dlopen = []
+lua = ["renzora_scripting/lua", "dep:mlua"]
+# Forwards to `renzora/editor` so `Ragdoll` registers into the Inspector's
+# "Add Component" list. Off in lean exports — the dev/editor build keeps it
+# on by default (see docs/r1-alpha7/editor-dev/inspector-fields.md).
+editor = ["renzora/editor"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_macros = { path = "../renzora_macros" }
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+# Bone discovery walks the same AnimatorState/AnimationCommandQueue the
+# skeletal animation system uses, so pausing/resuming playback when a ragdoll
+# toggles on/off goes through the existing command queue instead of reaching
+# into bevy's AnimationPlayer directly.
+renzora_animation = { path = "../renzora_animation", default-features = false }
+
+[dependencies.avian3d]
+path = "../avian/crates/avian3d"
+default-features = false
+features = ["3d", "f32", "default-collider", "parry-f32"]
+
+# Lua types referenced in the RagdollScriptExtension trait impl.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54"], optional = true }
+
+[lints]
+workspace = true

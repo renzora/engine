@@ -156,6 +156,7 @@ pub fn debug_log_play_mode(
             PlayState::Editing => "Editing",
             PlayState::Playing => "Playing",
             PlayState::Paused => "Paused",
+            PlayState::Simulating => "Simulating",
         };
         console_info("PlayMode", format!("State -> {}", state_str));
         *prev_state = Some(state);

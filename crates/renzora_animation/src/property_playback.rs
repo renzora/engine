@@ -216,10 +216,11 @@ pub struct PropAnimDebug {
 }
 
 /// Run condition: property animation plays in the exported runtime (no
-/// `PlayModeState` resource) or when the editor is in Playing state. While
-/// editing, the animation-editor scrub preview drives sampling instead.
+/// `PlayModeState` resource) or whenever scripts are running in the editor —
+/// both full Play and in-editor Simulate. While editing, the animation-editor
+/// scrub preview drives sampling instead.
 pub fn property_animation_active(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
-    play_mode.is_none_or(|pm| pm.is_playing())
+    play_mode.is_none_or(|pm| pm.is_scripts_running())
 }
 
 /// Advance each animator's property-clip time and apply the sampled values.

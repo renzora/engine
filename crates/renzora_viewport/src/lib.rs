@@ -522,6 +522,7 @@ fn update_input_focus(
     ember_inputs: Query<&renzora_ember::widgets::EmberTextInput>,
     drag_editing: Option<Res<renzora_ember::widgets::AnyDragValueEditing>>,
     over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
     // A focused bevy_ui (ember) text field "wants keyboard" — so editor
     // keybindings (G/R/S, Delete, …) don't fire while typing in the shell.
@@ -530,7 +531,12 @@ fn update_input_focus(
     // inspector number field would also trigger the numpad camera/view shortcuts.
     let ember_focused = ember_inputs.iter().any(|i| i.focused);
     let drag_editing = drag_editing.is_some_and(|r| r.0);
-    input_focus.ui_wants_keyboard = ember_focused || drag_editing;
+    // While simulating, scripts take over input: suppress every editor keyboard
+    // shortcut (and the editor-camera WASD) so the running game owns the keys —
+    // exactly the behaviour that lets a script's `is_key_*` see them. Stop is
+    // still reachable via Esc (checked before this guard) and the Stop button.
+    let simulating = play_mode.as_ref().is_some_and(|p| p.is_simulating());
+    input_focus.ui_wants_keyboard = ember_focused || drag_editing || simulating;
     // "Pointer over UI" = the cursor is over a floating overlay (dropdown / menu
     // / popup). The viewport's own hover flag (which already excludes overlays)
     // is what gates per-viewport interaction, so this only needs to flag the
@@ -601,8 +607,12 @@ fn handle_play_shortcuts(
     input_focus: Res<renzora::core::InputFocusState>,
     mut play_mode: ResMut<renzora::core::PlayModeState>,
 ) {
-    // Escape exits play mode — always, regardless of focus state
-    if keyboard.just_pressed(KeyCode::Escape) && play_mode.is_in_play_mode() {
+    // Escape exits play OR simulate mode — always, regardless of focus state.
+    // (Checked before the `ui_wants_keyboard` guard below, which Simulate forces
+    // on, so Esc remains the keyboard escape hatch out of a running simulation.)
+    if keyboard.just_pressed(KeyCode::Escape)
+        && (play_mode.is_in_play_mode() || play_mode.is_simulating())
+    {
         play_mode.request_stop = true;
         return;
     }

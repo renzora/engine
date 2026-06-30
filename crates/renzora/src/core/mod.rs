@@ -185,6 +185,19 @@ pub struct HotPluginNotice {
 #[derive(bevy::prelude::Event)]
 pub struct SaveCurrentScene;
 
+/// Snapshot the live scene into an in-memory buffer before entering Simulate
+/// mode, so [`RestoreSimulateSnapshot`] can revert every mutation the simulation
+/// makes (moved bodies, ragdoll pose, spawned/despawned entities) on Stop.
+/// Observed by `renzora_engine` (which owns scene (de)serialization); the editor
+/// only fires the event so the dependency direction stays one-way.
+#[derive(bevy::prelude::Event)]
+pub struct SnapshotSceneForSimulate;
+
+/// Restore the scene captured by [`SnapshotSceneForSimulate`] when leaving
+/// Simulate mode. A no-op if no snapshot was taken.
+#[derive(bevy::prelude::Event)]
+pub struct RestoreSimulateSnapshot;
+
 /// Fired by the editor immediately after a document tab is closed, with
 /// the closed tab's id. Lets per-tab caches (asset handles, undo stacks,
 /// etc.) drop their entries without coupling the editor to every
@@ -309,6 +322,12 @@ pub enum PlayState {
     Playing,
     /// Game is paused.
     Paused,
+    /// Simulating in-editor: scripts + physics + animation run, but the editor
+    /// stays fully live — editor camera, gizmos, selection and inspector all
+    /// remain active, unlike [`PlayState::Playing`] which swaps to the game
+    /// camera and hides the editor chrome. Entering snapshots the scene; Stop
+    /// restores it, so a simulation never permanently mutates the scene.
+    Simulating,
 }
 
 /// Resource that tracks play mode state and pending transitions.
@@ -319,6 +338,9 @@ pub struct PlayModeState {
     pub active_game_camera: Option<bevy::ecs::entity::Entity>,
     /// Set to `true` to request entering play mode next frame.
     pub request_play: bool,
+    /// Set to `true` to request entering Simulate mode next frame (run the
+    /// simulation while keeping the editor live; see [`PlayState::Simulating`]).
+    pub request_simulate: bool,
     /// Set to `true` to request stopping play mode next frame.
     pub request_stop: bool,
     /// Set to `true` to toggle pause.
@@ -335,13 +357,21 @@ impl PlayModeState {
     pub fn is_editing(&self) -> bool {
         self.state == PlayState::Editing
     }
-    /// Returns true if in Playing or Paused state (full play mode).
+    /// Returns true while simulating in-editor (editor chrome stays live).
+    pub fn is_simulating(&self) -> bool {
+        self.state == PlayState::Simulating
+    }
+    /// Returns true if in Playing or Paused state (full play mode). Deliberately
+    /// EXCLUDES `Simulating`: callers use this to hide editor chrome / swap to the
+    /// game camera, and Simulate keeps the editor live, so it must read as "not in
+    /// play mode" for all that tooling to stay active.
     pub fn is_in_play_mode(&self) -> bool {
         matches!(self.state, PlayState::Playing | PlayState::Paused)
     }
-    /// Returns true if scripts should be executing this frame.
+    /// Returns true if scripts (and the physics/animation they drive) should be
+    /// executing this frame — true in both full Play and in-editor Simulate.
     pub fn is_scripts_running(&self) -> bool {
-        self.state == PlayState::Playing
+        matches!(self.state, PlayState::Playing | PlayState::Simulating)
     }
 }
 
@@ -1351,6 +1381,7 @@ impl Default for GraphComment {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     // ── ProjectConfig TOML round-trip ──────────────────────────────────────
 

@@ -98,6 +98,7 @@ impl Plugin for ShellPlugin {
                 about::about_credit_click,
                 about::about_credit_hover,
                 relocalize_on_language_change,
+                (sim_btn_click, update_simulate_button),
             ),
         );
     }
@@ -585,6 +586,130 @@ fn update_play_button(
         if icon.name != icon_name {
             icon.name = icon_name.to_string();
             icon.resolved = false; // force `apply_icons` to re-render the glyph
+        }
+        if icon.color != Some(color) {
+            icon.color = Some(color);
+            icon.resolved = false;
+        }
+    }
+    for (mut text, mut tcolor) in &mut labels {
+        if text.0 != label_text {
+            text.0 = label_text.clone();
+        }
+        if tcolor.0 != color {
+            tcolor.0 = color;
+        }
+    }
+}
+
+/// Top-bar Simulate button: runs scripts + physics in-editor while the editor
+/// stays live (see `PlayState::Simulating`), sitting beside Play.
+#[derive(Component)]
+struct TopBarSimBtn;
+/// The Simulate button's phosphor glyph (swaps flask ↔ stop with state).
+#[derive(Component)]
+struct TopBarSimIcon;
+/// The Simulate button's "Simulate" / "Stop" text label.
+#[derive(Component)]
+struct TopBarSimLabel;
+
+/// Simulate's accent colour (blue) — distinct from Play's green so the two
+/// transport buttons read apart at a glance.
+const SIM_BLUE: (u8, u8, u8) = (86, 169, 247);
+
+/// Build the top-bar Simulate button. Mirrors [`build_play_button`].
+fn build_simulate_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            TopBarSimBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("top-bar-simulate"),
+        ))
+        .id();
+    let icon = glyph(commands, "flask", SIM_BLUE, 16.0);
+    commands
+        .entity(icon)
+        .insert((TopBarSimIcon, bevy::ui::FocusPolicy::Pass));
+    let label = commands
+        .spawn((
+            Text::new(renzora::lang::t("common.simulate")),
+            ui_font(font, 13.0),
+            TextColor(rgb(SIM_BLUE)),
+            TopBarSimLabel,
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    commands.entity(btn).add_children(&[icon, label]);
+    btn
+}
+
+/// Click the Simulate button → request simulate (from Editing) or stop (while
+/// simulating). Inert during full Play/external runtime (use the Play button to
+/// stop those), so the two transports don't fight.
+fn sim_btn_click(
+    btns: Query<&Interaction, (Changed<Interaction>, With<TopBarSimBtn>)>,
+    play_mode: Option<ResMut<renzora::core::PlayModeState>>,
+    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+) {
+    let Some(mut pm) = play_mode else { return };
+    let has_cam = !scene_cams.is_empty();
+    for interaction in &btns {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if pm.is_simulating() {
+            pm.request_stop = true;
+        } else if pm.is_editing() && has_cam {
+            pm.request_simulate = true;
+        }
+    }
+}
+
+/// Drive the Simulate button's glyph/label/color: blue "Simulate" when editing,
+/// red "Stop" while simulating, muted when there's no scene camera to drive.
+fn update_simulate_button(
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    theme: Option<Res<renzora_theme::ThemeManager>>,
+    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+    mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarSimIcon>>,
+    mut labels: Query<(&mut Text, &mut TextColor), With<TopBarSimLabel>>,
+) {
+    let Some(theme) = theme else { return };
+    let [rr, rg, rb, _] = theme.active_theme.semantic.error.to_array();
+    let red = Color::srgb_u8(rr, rg, rb);
+    let [mr, mg, mb, _] = theme.active_theme.text.muted.to_array();
+    let muted = Color::srgb_u8(mr, mg, mb);
+
+    let simulating = play_mode.as_ref().is_some_and(|p| p.is_simulating());
+    let has_cam = !scene_cams.is_empty();
+
+    let (icon_name, color) = if simulating {
+        ("stop", red)
+    } else if !has_cam {
+        ("flask", muted)
+    } else {
+        ("flask", rgb(SIM_BLUE))
+    };
+    let label_text = if simulating {
+        renzora::lang::t("common.stop")
+    } else {
+        renzora::lang::t("common.simulate")
+    };
+
+    for mut icon in &mut icons {
+        if icon.name != icon_name {
+            icon.name = icon_name.to_string();
+            icon.resolved = false;
         }
         if icon.color != Some(color) {
             icon.color = Some(color);
@@ -2266,6 +2391,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0);
     let play = build_play_button(commands, font);
+    let simulate = build_simulate_button(commands, font);
     let settings = icon_item(commands, "gear", text_muted(), 16.0);
     commands.entity(settings).insert((
         Interaction::default(),
@@ -2354,7 +2480,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     commands
         .entity(right)
-        .add_children(&[play, settings, window]);
+        .add_children(&[play, simulate, settings, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar

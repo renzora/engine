@@ -65,6 +65,23 @@ It's the same shape list as the shape-library panel and the hierarchy's **Add En
 
 > These use `Alt` so they don't clash with `Ctrl+Z` (undo). Note that `H` hides the selected object.
 
+## If the viewport feels slow
+
+Most of the cost of a frame is fullscreen image effects (global illumination,
+auto-exposure, bloom, anti-aliasing), and that cost grows with your display's
+resolution — so on older laptops, integrated GPUs, or high-DPI/Retina screens the
+editor can feel sluggish even on an empty scene. Open **Settings → Viewport →
+Performance → Graphics Quality** and drop it a notch:
+
+- **High** — everything on (the full look).
+- **Medium** *(default)* — turns off screen-space global illumination, the single
+  most expensive effect, while keeping bloom, anti-aliasing, and auto-exposure.
+- **Low** — turns those off too; the lightest, fastest mode for weak hardware.
+
+The choice is saved per project. (For pinning down exactly *which* effect costs
+you frames on a given machine, the **Render Toggles** debug panel — Add Panel →
+Debug → Render Toggles — lets you flip each one live.)
+
 ## Moving objects: the gizmo
 
 When you select an object, a set of colored handles — the **gizmo** — appears on it. Drag a handle to transform the object. The handles always draw on top of your scene and stay a comfortable size no matter how far away the camera is.
@@ -141,3 +158,14 @@ Press **Play** to play-test your game without leaving the editor. Edit mode and 
 - The game's render resolution follows the active camera's resolution setting, just like the editor view.
 
 > Input goes to the game globally while playing — keyboard and mouse reach your scripts even though the game is windowed. A script that grabs the cursor (e.g. an FPS look controller) grabs it for the whole editor window.
+
+## Simulate mode
+
+Next to **Play** is **Simulate** (the blue flask). It runs the live simulation — scripts, physics, and animation all tick exactly as in Play — **but keeps the editor fully live**: your editor camera, gizmos, selection, and inspector stay active, and the camera does *not* switch to the game camera. It's the mode to reach for when you want to *watch and poke at* a running simulation rather than play it: triggering a ragdoll, watching physics settle, or testing a script's behaviour while still selecting and inspecting entities.
+
+- **The viewport border turns green** while simulating, so it's always clear the scene is live and not just being edited.
+- **Scripts take over the keyboard.** While simulating, editor keyboard shortcuts (and the editor-camera WASD) are suppressed so your scripts receive the keys — that's how a script's `is_key_pressed("KeyR")` sees input. You can still orbit the camera with the mouse to watch from any angle.
+- **Stop restores the scene.** Simulate snapshots the scene on entry and reverts it on Stop (or `Esc`), so anything the simulation changed — moved bodies, a collapsed ragdoll, spawned or despawned entities — is undone and you're back exactly where you started. (Full **Play** does not restore; Simulate is the non-destructive option.)
+- Like Play, Simulate needs a scene camera in the scene; the button is muted until one exists.
+
+> Because physics only runs while a simulation is live, features like the [ragdoll plugin](/docs/r1-alpha7/scripting/ragdoll) do nothing in plain edit mode — use **Simulate** (or **Play**) to see them move.

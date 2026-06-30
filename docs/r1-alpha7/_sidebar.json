@@ -38,6 +38,7 @@
             { "slug": "scripting/blueprints", "title": "Visual Blueprints" },
             { "slug": "scripting/input", "title": "Input Handling" },
             { "slug": "scripting/physics", "title": "Physics" },
+            { "slug": "scripting/ragdoll", "title": "Ragdoll Physics" },
             { "slug": "scripting/game-ui", "title": "Game UI" }
           ]
         },

@@ -37,9 +37,20 @@ pub fn handle_play_mode_transitions(world: &mut World) {
     if play_mode.request_play && play_mode.is_editing() {
         play_mode.request_play = false;
         enter_play_mode(world, &mut play_mode);
-    } else if play_mode.request_stop && play_mode.is_in_play_mode() {
+    } else if play_mode.request_simulate && play_mode.is_editing() {
+        play_mode.request_simulate = false;
+        enter_simulate_mode(world, &mut play_mode);
+    } else if play_mode.request_stop
+        && (play_mode.is_in_play_mode() || play_mode.is_simulating())
+    {
         play_mode.request_stop = false;
-        exit_play_mode(world, &mut play_mode);
+        // Simulate and full Play tear down differently (Simulate restores the
+        // scene snapshot and never touched the camera/chrome), so branch here.
+        if play_mode.is_simulating() {
+            exit_simulate_mode(world, &mut play_mode);
+        } else {
+            exit_play_mode(world, &mut play_mode);
+        }
     } else if play_mode.request_pause {
         play_mode.request_pause = false;
         match play_mode.state {
@@ -49,6 +60,7 @@ pub fn handle_play_mode_transitions(world: &mut World) {
         }
     } else {
         play_mode.request_play = false;
+        play_mode.request_simulate = false;
         play_mode.request_stop = false;
         play_mode.request_pause = false;
     }
@@ -289,4 +301,55 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
 
     console_success("PlayMode", "=== PLAY MODE EXITED — back to editing ===");
     info!("Exited play mode");
+}
+
+/// Enter Simulate mode: run the simulation (scripts + physics + animation) while
+/// leaving the editor fully live. Unlike [`enter_play_mode`] this DELIBERATELY
+/// does not touch the camera, selection, viewport maximize, or editor chrome —
+/// the whole point is to keep editing while things move. The scene is snapshotted
+/// first so [`exit_simulate_mode`] can revert any mutation the simulation makes.
+fn enter_simulate_mode(world: &mut World, play_mode: &mut PlayModeState) {
+    use renzora::core::console_log::*;
+    console_info("Simulate", "=== ENTERING SIMULATE MODE ===");
+
+    // Snapshot the scene in-memory (observed by renzora_engine) so Stop restores
+    // it. We do this BEFORE unpausing physics so the captured state is the
+    // untouched, pre-simulate pose.
+    world.trigger(renzora::core::SnapshotSceneForSimulate);
+
+    // Run scripts (and the physics/animation they drive) — same wake-up as Play,
+    // minus the camera/chrome changes.
+    world.trigger(renzora::core::ResetScriptStates);
+    world.trigger(renzora::core::UnpausePhysics);
+
+    play_mode.state = PlayState::Simulating;
+    console_success(
+        "Simulate",
+        "=== SIMULATE ACTIVE (editor stays live; press Stop/Esc to revert) ===",
+    );
+    info!("Entered simulate mode");
+}
+
+/// Exit Simulate mode: re-pause physics, restore the pre-simulate scene snapshot,
+/// and return to editing. The editor camera/chrome were never changed, so there
+/// is nothing to undo there.
+fn exit_simulate_mode(world: &mut World, play_mode: &mut PlayModeState) {
+    use renzora::core::console_log::*;
+    console_info("Simulate", "=== EXITING SIMULATE MODE ===");
+
+    world.trigger(renzora::core::PausePhysics);
+
+    // Restore the cursor in case a gameplay script grabbed/hid it.
+    let mut cursor_q = world.query::<&mut CursorOptions>();
+    if let Ok(mut cursor) = cursor_q.single_mut(world) {
+        cursor.grab_mode = CursorGrabMode::None;
+        cursor.visible = true;
+    }
+
+    // Revert every mutation the simulation made (observed by renzora_engine).
+    world.trigger(renzora::core::RestoreSimulateSnapshot);
+
+    play_mode.state = PlayState::Editing;
+    console_success("Simulate", "=== SIMULATE EXITED — scene restored ===");
+    info!("Exited simulate mode");
 }

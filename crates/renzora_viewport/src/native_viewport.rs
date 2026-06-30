@@ -36,11 +36,37 @@ pub fn register_native_viewport(app: &mut App) {
     }
     app.add_systems(
         Update,
-        report_viewport_geometry.run_if(in_state(SplashState::Editor)),
+        (report_viewport_geometry, simulate_border).run_if(in_state(SplashState::Editor)),
     );
     crate::native_header::register(app);
     crate::native_nav::register(app);
     crate::native_axis_gizmo::register(app);
+}
+
+/// Paint the viewport panel border green while Simulate mode runs, and clear it
+/// when it stops — the in-editor "simulation is live" indicator. Writes only on
+/// the edit↔simulate transition (tracked in a `Local`), so it costs nothing per
+/// frame while the state is steady.
+fn simulate_border(
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    mut viewports: Query<(&mut Node, &mut BorderColor), With<NativeViewport>>,
+    mut was_simulating: Local<bool>,
+) {
+    let simulating = play_mode.as_ref().is_some_and(|p| p.is_simulating());
+    if simulating == *was_simulating {
+        return;
+    }
+    *was_simulating = simulating;
+
+    let (width, color) = if simulating {
+        (Val::Px(2.0), Color::srgb(0.16, 0.80, 0.36))
+    } else {
+        (Val::Px(0.0), Color::NONE)
+    };
+    for (mut node, mut border) in &mut viewports {
+        node.border = UiRect::all(width);
+        *border = BorderColor::all(color);
+    }
 }
 
 fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> Entity {
@@ -60,6 +86,9 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
                 ..default()
             },
             BackgroundColor(Color::srgb(0.08, 0.08, 0.10)),
+            // Transparent border by default; `simulate_border` paints it green
+            // while Simulate mode runs as the in-editor "this is live" indicator.
+            BorderColor::all(Color::NONE),
             RelativeCursorPosition::default(),
             Interaction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Crosshair),

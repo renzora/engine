@@ -9056,6 +9056,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_ragdoll"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "mlua",
+ "renzora",
+ "renzora_animation",
+ "renzora_macros",
+ "renzora_scripting",
+]
+
+[[package]]
 name = "renzora_rain"
 version = "0.1.0"
 dependencies = [
