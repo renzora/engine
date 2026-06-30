@@ -20,6 +20,8 @@ From the screenshot above:
 
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 
+The **Help** menu holds links to the documentation, YouTube, Discord, and the GitHub repo, plus **About Renzora Engine** — an overlay that shows the current version, a short description of the engine, and credits for the open-source community crates Renzora is built on. Each credit row links out to that project's repository; click anywhere outside the card (or press `Esc`) to close it.
+
 ## Workspaces
 
 The tabs in the center of the top bar are **workspaces**. Each one is a ready-made layout tuned for a job, so the right tools are already in front of you:

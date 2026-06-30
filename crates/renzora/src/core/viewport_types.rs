@@ -286,6 +286,82 @@ impl RenderResolution {
     }
 }
 
+/// Overall graphics-quality tier. A single user-facing switch that gates the
+/// expensive, *fullscreen / resolution-bound* render passes — the ones whose
+/// cost is per-pixel, not per-object, and so dominate on weak GPUs and high-DPI
+/// (Retina) displays even on an empty scene.
+///
+/// Each tier maps to a set of crash-safe `enabled` toggles on the routed effect
+/// sources (screen-space GI, auto-exposure, bloom, TAA); see
+/// `renzora_level_presets::graphics_quality`. It deliberately does **not** touch
+/// passes whose attachment layout is fixed at camera spawn (atmosphere / the
+/// prepass bundle) — toggling those at runtime trips a wgpu validation crash, so
+/// they stay resident regardless of tier.
+///
+/// The ladder removes the next-most-expensive pass at each step down:
+/// - `High`   — everything on (the full authored look).
+/// - `Medium` — screen-space GI off (the single biggest GPU cost); the tonemapped
+///   look — auto-exposure, bloom, TAA — is kept. **Default**: it's the best
+///   out-of-box trade for the low-end / Retina machines that motivated this.
+/// - `Low`    — GI, auto-exposure, bloom, and TAA all off; the lightest path,
+///   roughly a "compatibility" renderer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Serialize, Deserialize)]
+pub enum GraphicsQuality {
+    Low,
+    /// The shipping default: it kills the heaviest pass (SSGI) while keeping the
+    /// tonemapped look, so the engine runs acceptably on the kind of older /
+    /// integrated GPUs where the full stack drops to single-digit FPS. Capable
+    /// machines can raise it to `High` in Settings → Viewport → Performance.
+    #[default]
+    Medium,
+    High,
+}
+
+impl GraphicsQuality {
+    pub const ALL: &'static [GraphicsQuality] = &[Self::Low, Self::Medium, Self::High];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Low => "Low",
+            Self::Medium => "Medium",
+            Self::High => "High",
+        }
+    }
+
+    /// Parse a persisted label back into a tier. Unknown / empty (an older config
+    /// written before this field existed) resolves to the default `Medium`, so
+    /// upgrading projects inherit the lighter default.
+    pub fn from_label(label: &str) -> Self {
+        match label {
+            "Low" => Self::Low,
+            "High" => Self::High,
+            _ => Self::Medium,
+        }
+    }
+
+    /// Screen-space global illumination (Lumen / RT) — on only at `High`. This is
+    /// the costliest, most resolution-bound pass, so it's the first thing dropped.
+    pub fn gi(&self) -> bool {
+        matches!(self, Self::High)
+    }
+
+    /// Auto-exposure histogram pass — on at `Medium` and `High`.
+    pub fn auto_exposure(&self) -> bool {
+        !matches!(self, Self::Low)
+    }
+
+    /// Bloom downsample/upsample chain — on at `Medium` and `High`.
+    pub fn bloom(&self) -> bool {
+        !matches!(self, Self::Low)
+    }
+
+    /// Temporal anti-aliasing — on at `Medium` and `High`.
+    pub fn taa(&self) -> bool {
+        !matches!(self, Self::Low)
+    }
+}
+
 /// The render resolution the editor viewport is currently rendering at, derived
 /// each frame from the relevant scene camera's [`crate::core::CameraRenderResolution`]
 /// (selected camera → default camera → first scene camera). Read by the viewport
@@ -578,6 +654,11 @@ pub struct ViewportSettings {
     /// whatever you're moving; fading them lets the object stay visible during
     /// the drag. `1.0` keeps the gizmo fully opaque (no fade).
     pub gizmo_drag_opacity: f32,
+    /// Overall graphics-quality tier — gates the expensive fullscreen passes
+    /// (GI / auto-exposure / bloom / TAA). Enforced by
+    /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
+    /// editor stays responsive on weak / high-DPI hardware out of the box.
+    pub graphics_quality: GraphicsQuality,
 }
 
 impl Default for ViewportSettings {
@@ -604,6 +685,7 @@ impl Default for ViewportSettings {
             pending_view_angle: None,
             vsync: true,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
+            graphics_quality: GraphicsQuality::default(),
         }
     }
 }
@@ -672,6 +754,11 @@ pub struct PersistedViewportSettings {
     pub vsync: bool,
     #[serde(default = "default_gizmo_drag_opacity")]
     pub gizmo_drag_opacity: f32,
+    /// Graphics-quality tier label (`"Low"` / `"Medium"` / `"High"`). Missing in
+    /// configs written before this field existed → `default_graphics_quality()`
+    /// (`"Medium"`), so upgrading projects pick up the lighter default.
+    #[serde(default = "default_graphics_quality")]
+    pub graphics_quality: String,
 }
 
 impl PersistedViewportSettings {
@@ -723,6 +810,7 @@ impl PersistedViewportSettings {
             floor_y: sn.floor_y,
             vsync: s.vsync,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
+            graphics_quality: s.graphics_quality.label().to_string(),
         }
     }
 
@@ -791,11 +879,16 @@ impl PersistedViewportSettings {
         };
         s.vsync = self.vsync;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
+        s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
     }
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_graphics_quality() -> String {
+    GraphicsQuality::default().label().to_string()
 }
 
 fn default_grid_color_2d() -> [u8; 4] {
@@ -891,6 +984,8 @@ mod tests {
             pending_view_angle: None,
             vsync: false,
             gizmo_drag_opacity: 0.6,
+            // Non-default tier (default is Medium) so the round-trip exercises it.
+            graphics_quality: GraphicsQuality::High,
         }
     }
 
@@ -928,6 +1023,7 @@ mod tests {
         assert_eq!(original.snap, restored.snap);
         assert_eq!(original.vsync, restored.vsync);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
+        assert_eq!(original.graphics_quality, restored.graphics_quality);
     }
 
     #[test]

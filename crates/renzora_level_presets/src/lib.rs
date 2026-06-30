@@ -3,6 +3,7 @@
 //! Provides a single panel that spawns barebones template levels
 //! (meshes + lights + camera) similar to Unreal Engine's level templates.
 
+mod graphics_quality;
 mod native;
 pub mod state;
 
@@ -80,6 +81,9 @@ impl Plugin for LevelPresetsPlugin {
             )
                 .run_if(in_state(SplashState::Editor)),
         );
+
+        // Apply the user's Graphics Quality tier to the heavy fullscreen passes.
+        graphics_quality::register(app);
 
         // Native (ember/bevy_ui) panel content.
         app.add_plugins(native::NativeLevelPresets);

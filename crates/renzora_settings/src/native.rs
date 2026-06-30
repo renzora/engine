@@ -31,7 +31,7 @@ use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
 use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
 use renzora_viewport::settings::{
-    CollisionGizmoVisibility, EditorCameraSource, LabelScope, ViewportSettings,
+    CollisionGizmoVisibility, EditorCameraSource, GraphicsQuality, LabelScope, ViewportSettings,
 };
 
 const PANEL_W: f32 = 880.0;
@@ -2106,13 +2106,33 @@ fn tab_viewport(
     let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.performance"), A_TEAL);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "performance");
+    // Graphics Quality — gates the expensive fullscreen passes (GI / auto-exposure
+    // / bloom / TAA). The single biggest lever for FPS on weak / high-DPI GPUs.
+    let q_strs: Vec<String> = GraphicsQuality::ALL.iter().map(|s| loc_opt(s.label())).collect();
+    let q_labels: Vec<&str> = q_strs.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands, fonts, &q_labels,
+        GraphicsQuality::ALL
+            .iter()
+            .position(|s| *s == vp.graphics_quality)
+            .unwrap_or(1),
+        |w| {
+            let cur = w.resource::<ViewportSettings>().graphics_quality;
+            GraphicsQuality::ALL.iter().position(|s| *s == cur).unwrap_or(1)
+        },
+        |w, &i| {
+            let qv = GraphicsQuality::ALL.get(i).copied().unwrap_or_default();
+            w.resource_mut::<ViewportSettings>().graphics_quality = qv;
+        },
+    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.graphics_quality"), dd);
     let t = ctl_toggle(
         commands,
         vp.vsync,
         |w| w.resource::<ViewportSettings>().vsync,
         |w, &v| w.resource_mut::<ViewportSettings>().vsync = v,
     );
-    settings_row(commands, fonts, body, 0, &tr("settings.row.vsync"), t);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.vsync"), t);
 
     let (sec, body) = section(commands, fonts, "video-camera", &tr("settings.category.camera"), A_PURPLE);
     commands.entity(col).add_child(sec);

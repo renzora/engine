@@ -270,6 +270,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::DefaultCamera>()
             .register_type::<renzora::core::CameraRenderResolution>()
             .register_type::<renzora::core::viewport_types::RenderResolution>()
+            .register_type::<renzora::core::viewport_types::GraphicsQuality>()
             .register_type::<renzora::CameraPreset>()
             .register_type::<renzora::CameraPresets>()
             .register_type::<renzora::EntityTag>()

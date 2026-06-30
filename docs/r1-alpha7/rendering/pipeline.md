@@ -192,6 +192,37 @@ if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
 
 > Edges are resolved when you add them — Bevy does no lazy lookup. If your node references another crate's label (e.g. `LumenTraceLabel`), that plugin must register **before** yours, or the edge panics with "node does not exist". Register custom GI/reflection nodes in dependency order.
 
+## Graphics quality tiers
+
+Most of the cost of an idle scene is **fullscreen, resolution-bound** work on the
+active camera — screen-space GI, the auto-exposure histogram, bloom, and TAA —
+not geometry. That cost scales with pixel count, so it dominates on weak GPUs and
+high-DPI (Retina) displays even when the scene is empty. **Settings → Viewport →
+Performance → Graphics Quality** is the single switch that trades those passes for
+frame rate:
+
+| Tier | Screen-space GI | Auto-exposure | Bloom | TAA |
+|---|---|---|---|---|
+| **High** | on | on | on | on |
+| **Medium** *(default)* | **off** | on | on | on |
+| **Low** | off | off | off | off |
+
+The ladder drops the next-most-expensive pass at each step down; `Medium` is the
+shipping default because screen-space GI is the heaviest pass and removing it
+keeps the editor responsive on older / integrated GPUs while preserving the
+tonemapped look. The tier is stored per project (in `project.toml`'s `[editor]`
+section) on `ViewportSettings.graphics_quality`.
+
+Mechanically the tier is a **ceiling, not an authority**: it only ever forces an
+effect *off*, by flipping the `enabled` flag on the routed effect source (the same
+crash-safe switches the Render Toggles debug panel uses), and remembers what it
+disabled so raising the tier restores it. Where a tier leaves an effect on, the
+inspector still fully owns it. Passes whose attachment layout is fixed at camera
+spawn — the **atmosphere** and the **prepass bundle** — are deliberately *not*
+touched (toggling them at runtime trips a wgpu validation crash), so they stay
+resident at every tier. The enforcement lives in
+`renzora_level_presets::graphics_quality`.
+
 ## Debugging the pipeline
 
 `renzora_debugger` ships several render-focused editor panels:
