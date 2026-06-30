@@ -296,12 +296,17 @@ fn detect_file_keybindings(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
+    input_focus: Option<Res<renzora::core::InputFocusState>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
     if play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
     if keybindings.rebinding.is_some() {
+        return;
+    }
+    // Don't trigger Ctrl+S / Ctrl+O / … while the user is typing in a UI field.
+    if input_focus.is_some_and(|f| f.ui_wants_keyboard) {
         return;
     }
 

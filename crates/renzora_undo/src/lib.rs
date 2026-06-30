@@ -198,9 +198,15 @@ fn can_redo_active(world: &World) -> bool {
 fn shortcut_input(
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Option<Res<renzora::keybindings::KeyBindings>>,
+    input_focus: Option<Res<renzora::core::InputFocusState>>,
     mut undo_w: MessageWriter<RequestUndo>,
     mut redo_w: MessageWriter<RequestRedo>,
 ) {
+    // Don't fire Undo/Redo while the user is typing in a UI text field (e.g.
+    // Ctrl+Z mid-rename should undo the text edit, not a scene action).
+    if input_focus.is_some_and(|f| f.ui_wants_keyboard) {
+        return;
+    }
     // Route through KeyBindings so:
     //   - User-rebound Undo/Redo keys are respected
     //   - Command palette dispatches (KeyBindings::dispatch) fire the messages

@@ -264,7 +264,7 @@ pub fn modal_transform_input_system(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {

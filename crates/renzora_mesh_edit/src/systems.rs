@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
+use renzora::core::InputFocusState;
 use renzora_editor_framework::{ActiveTool, EditorSelection};
 
 use crate::edit_mesh::{EditMesh, VertexId};
@@ -104,7 +105,15 @@ pub fn exit_edit_mode(
 
 // ── Mode keys (1=verts, 2=edges, 3=faces) ───────────────────────────────────
 
-pub fn switch_select_mode(keys: Res<ButtonInput<KeyCode>>, mut sel: ResMut<MeshSelection>) {
+pub fn switch_select_mode(
+    keys: Res<ButtonInput<KeyCode>>,
+    input_focus: Res<InputFocusState>,
+    mut sel: ResMut<MeshSelection>,
+) {
+    // Don't hijack the digit keys while the user is typing into a UI field.
+    if input_focus.ui_wants_keyboard {
+        return;
+    }
     if keys.just_pressed(KeyCode::Digit1) {
         sel.mode = SelectMode::Vertex;
     } else if keys.just_pressed(KeyCode::Digit2) {
@@ -116,9 +125,13 @@ pub fn switch_select_mode(keys: Res<ButtonInput<KeyCode>>, mut sel: ResMut<MeshS
 
 pub fn select_all_toggle(
     keys: Res<ButtonInput<KeyCode>>,
+    input_focus: Res<InputFocusState>,
     mut sel: ResMut<MeshSelection>,
     edit_q: Query<&EditMesh>,
 ) {
+    if input_focus.ui_wants_keyboard {
+        return;
+    }
     if !keys.just_pressed(KeyCode::KeyA) {
         return;
     }
@@ -293,6 +306,7 @@ fn apply_pick<T: Copy + Eq + std::hash::Hash>(
 
 pub fn extrude_system(
     keys: Res<ButtonInput<KeyCode>>,
+    input_focus: Res<InputFocusState>,
     viewport: Option<Res<ViewportState>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
@@ -301,6 +315,9 @@ pub fn extrude_system(
     mut grab: ResMut<GrabState>,
     mut commands: Commands,
 ) {
+    if input_focus.ui_wants_keyboard {
+        return;
+    }
     if !keys.just_pressed(KeyCode::KeyE) {
         return;
     }
@@ -418,6 +435,7 @@ pub enum GrabState {
 
 pub fn grab_start(
     keys: Res<ButtonInput<KeyCode>>,
+    input_focus: Res<InputFocusState>,
     viewport: Option<Res<ViewportState>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
@@ -425,6 +443,9 @@ pub fn grab_start(
     sel: Res<MeshSelection>,
     mut grab: ResMut<GrabState>,
 ) {
+    if input_focus.ui_wants_keyboard {
+        return;
+    }
     if !keys.just_pressed(KeyCode::KeyG) {
         return;
     }

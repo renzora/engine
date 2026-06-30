@@ -102,6 +102,29 @@ fn rail_value(norm_x: f32, computed: &bevy::ui::ComputedNode, r: &DragRange) -> 
 #[derive(Resource, Default)]
 pub(crate) struct WheelOverDragValue(pub bool);
 
+/// True whenever any [`drag_value`] field is in keyboard-edit mode (the user
+/// clicked it and is typing a number).
+///
+/// A drag-value is its own widget and does **not** share [`super::EmberTextInput`],
+/// so the editor's input-focus tracker — which otherwise only watches text
+/// inputs — can't see that a numeric field is being typed into. Without this,
+/// typing digits into an inspector field also fires global keyboard shortcuts
+/// (the numpad camera view-angle keys, gizmo G/R/S, …). The focus tracker reads
+/// this resource and treats an editing drag-value as "keyboard is taken".
+#[derive(Resource, Default)]
+pub struct AnyDragValueEditing(pub bool);
+
+/// Keep [`AnyDragValueEditing`] in sync with whether any field is editing.
+pub(crate) fn track_drag_value_editing(
+    values: Query<&EmberDragValue>,
+    mut editing: ResMut<AnyDragValueEditing>,
+) {
+    let any = values.iter().any(|dv| dv.editing);
+    if editing.0 != any {
+        editing.0 = any;
+    }
+}
+
 /// Tracks which "thing" the current scroll gesture belongs to. A gesture is owned
 /// by a value field only if the cursor was over one when it *started*; mid-gesture
 /// the owner sticks, so a panel scroll that drifts across a field keeps scrolling

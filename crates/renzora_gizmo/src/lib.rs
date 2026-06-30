@@ -1347,7 +1347,7 @@ fn handle_selection_shortcuts(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if gizmo_state.active_axis.is_some() {
@@ -1404,7 +1404,7 @@ fn handle_selection_shortcuts(
         }
     }
 
-    if input_focus.egui_has_pointer && !viewport_state.hovered {
+    if input_focus.pointer_over_ui && !viewport_state.hovered {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -1711,7 +1711,7 @@ fn handle_file_shortcuts(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -1767,7 +1767,7 @@ fn switch_gizmo_mode(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {

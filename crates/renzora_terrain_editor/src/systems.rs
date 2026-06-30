@@ -1036,10 +1036,15 @@ pub fn terrain_stroke_end_system(
 /// Ctrl+Z / Ctrl+Y: undo/redo terrain edits.
 pub fn terrain_undo_redo_system(
     keyboard: Res<ButtonInput<KeyCode>>,
+    input_focus: Option<Res<renzora::core::InputFocusState>>,
     mut undo_stack: ResMut<TerrainUndoStack>,
     mut chunk_query: Query<&mut TerrainChunkData>,
     mut surface_query: Query<(Entity, &mut PaintableSurfaceData)>,
 ) {
+    // Don't undo/redo terrain while the user is typing in a UI field.
+    if input_focus.is_some_and(|f| f.ui_wants_keyboard) {
+        return;
+    }
     let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
     if !ctrl {
         return;

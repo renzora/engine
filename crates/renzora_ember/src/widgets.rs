@@ -222,6 +222,7 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::WheelOverDragValue>();
         app.init_resource::<drag_value::WheelGesture>();
         app.init_resource::<drag_value::DragValueConfig>();
+        app.init_resource::<drag_value::AnyDragValueEditing>();
         app.init_resource::<scroll_area::ScrollMemory>();
         app.add_systems(
             Update,
@@ -249,7 +250,11 @@ impl Plugin for WidgetsPlugin {
                     drag_value::drag_value_edit,
                     drag_value::drag_value_scroll.before(scroll_area::scroll_wheel),
                     // Nested to keep this tuple within Bevy's 20-system limit.
-                    (drag_value::drag_value_apply, drag_value::drag_value_handle_vis),
+                    (
+                        drag_value::drag_value_apply,
+                        drag_value::drag_value_handle_vis,
+                        drag_value::track_drag_value_editing,
+                    ),
                     toggle_switch::switch_interact,
                     toggle_switch::switch_apply,
                     popup::popup_toggle,

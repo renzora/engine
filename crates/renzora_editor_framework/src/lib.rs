@@ -518,7 +518,7 @@ fn reset_ui_scale_shortcut(
     input_focus: Res<renzora::core::InputFocusState>,
     mut settings: ResMut<EditorSettings>,
 ) {
-    if keybindings.rebinding.is_some() || input_focus.egui_wants_keyboard {
+    if keybindings.rebinding.is_some() || input_focus.ui_wants_keyboard {
         return;
     }
     if !keybindings.just_pressed(

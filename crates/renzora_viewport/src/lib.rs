@@ -520,17 +520,22 @@ const VIEWPORT_PANEL_IDS: [&str; renzora::core::viewport_types::VIEWPORT_COUNT] 
 fn update_input_focus(
     mut input_focus: ResMut<renzora::core::InputFocusState>,
     ember_inputs: Query<&renzora_ember::widgets::EmberTextInput>,
+    drag_editing: Option<Res<renzora_ember::widgets::AnyDragValueEditing>>,
     over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
 ) {
     // A focused bevy_ui (ember) text field "wants keyboard" — so editor
     // keybindings (G/R/S, Delete, …) don't fire while typing in the shell.
+    // A drag-value field in keyboard-edit mode counts too: it's a separate
+    // widget from EmberTextInput, so without this, typing digits into an
+    // inspector number field would also trigger the numpad camera/view shortcuts.
     let ember_focused = ember_inputs.iter().any(|i| i.focused);
-    input_focus.egui_wants_keyboard = ember_focused;
+    let drag_editing = drag_editing.is_some_and(|r| r.0);
+    input_focus.ui_wants_keyboard = ember_focused || drag_editing;
     // "Pointer over UI" = the cursor is over a floating overlay (dropdown / menu
     // / popup). The viewport's own hover flag (which already excludes overlays)
     // is what gates per-viewport interaction, so this only needs to flag the
     // overlay case for the gizmo's box-select guard.
-    input_focus.egui_has_pointer = over_overlay.is_some_and(|r| r.0);
+    input_focus.pointer_over_ui = over_overlay.is_some_and(|r| r.0);
 }
 
 // ── View toggle shortcuts ────────────────────────────────────────────────────
@@ -549,7 +554,7 @@ fn handle_view_shortcuts(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -605,7 +610,7 @@ fn handle_play_shortcuts(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
 

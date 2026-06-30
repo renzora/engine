@@ -360,7 +360,7 @@ fn handle_view_angle_keys(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -426,7 +426,7 @@ fn focus_selected(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -458,7 +458,7 @@ fn toggle_pivot_lock(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -491,7 +491,7 @@ fn frame_all(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {
@@ -598,7 +598,7 @@ fn camera_to_cursor(
     if keybindings.rebinding.is_some() {
         return;
     }
-    if input_focus.egui_wants_keyboard {
+    if input_focus.ui_wants_keyboard {
         return;
     }
     if mouse_button.pressed(MouseButton::Right) {

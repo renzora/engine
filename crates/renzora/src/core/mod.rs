@@ -830,12 +830,15 @@ pub struct IsolationMode {
 /// Tracks whether a UI text input has keyboard focus.
 ///
 /// When `true`, keyboard shortcuts should not fire so typing is not interrupted.
-/// Updated each frame by the viewport/editor systems from egui state.
+/// Updated each frame by the viewport/editor systems from the bevy_ui (ember)
+/// focus state.
 #[derive(Resource, Default)]
 pub struct InputFocusState {
-    pub egui_wants_keyboard: bool,
-    /// True when the pointer is over an egui panel (not the viewport).
-    pub egui_has_pointer: bool,
+    /// True when a UI text field (or an editing drag-value) has keyboard focus,
+    /// so global editor shortcuts hold off while the user is typing.
+    pub ui_wants_keyboard: bool,
+    /// True when the pointer is over a floating UI panel/overlay (not the viewport).
+    pub pointer_over_ui: bool,
     /// True when a panel is consuming the Delete key (e.g. the animation
     /// timeline with a keyframe selected). The entity-delete shortcut skips
     /// while this is set so Delete removes the keyframe, not the entity.
