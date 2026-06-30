@@ -51,11 +51,11 @@ fn memory_color(mb: f64) -> Color {
     }
 }
 
-fn trend_parts(t: MemoryTrend) -> (&'static str, Color) {
+fn trend_parts(t: MemoryTrend) -> (String, Color) {
     match t {
-        MemoryTrend::Increasing => ("\u{2191} Increasing", rgb((220, 100, 100))),
-        MemoryTrend::Decreasing => ("\u{2193} Decreasing", rgb((100, 200, 100))),
-        MemoryTrend::Stable => ("\u{2194} Stable", rgb((150, 150, 150))),
+        MemoryTrend::Increasing => (format!("\u{2191} {}", renzora::lang::t("memory.trend_increasing")), rgb((220, 100, 100))),
+        MemoryTrend::Decreasing => (format!("\u{2193} {}", renzora::lang::t("memory.trend_decreasing")), rgb((100, 200, 100))),
+        MemoryTrend::Stable => (format!("\u{2194} {}", renzora::lang::t("memory.trend_stable")), rgb((150, 150, 150))),
     }
 }
 
@@ -97,7 +97,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let unavailable = commands
         .spawn((
-            Text::new("Memory profiling unavailable"),
+            Text::new(renzora::lang::t("memory.unavailable")),
             ui_font(&fonts.ui, 14.0),
             TextColor(rgb(text_muted())),
             Node {
@@ -112,7 +112,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, content, |w| mem(w, |s| s.available));
 
     // Process memory.
-    let proc_label = section(commands, fonts, "Process Memory");
+    let proc_label = section(commands, fonts, &renzora::lang::t("memory.process_memory"));
     let proc_big = commands
         .spawn((
             Text::new(""),
@@ -124,7 +124,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text_color(commands, proc_big, |w| {
         memory_color(mem(w, |s| s.process_memory) as f64 / (1024.0 * 1024.0))
     });
-    let peak = label_row(commands, fonts, "Peak:", |w| format_memory(mem(w, |s| s.peak_memory)));
+    let peak = label_row(commands, fonts, &format!("{}:", renzora::lang::t("memory.peak")), |w| format_memory(mem(w, |s| s.peak_memory)));
     let graph = line_chart_live(
         commands,
         ChartStyle {
@@ -147,7 +147,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let trend_k = commands
         .spawn((
-            Text::new("Trend:"),
+            Text::new(format!("{}:", renzora::lang::t("memory.trend"))),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(SECONDARY)),
         ))
@@ -159,12 +159,12 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             TextColor(rgb(text_primary())),
         ))
         .id();
-    bind_text(commands, trend_v, |w| trend_parts(mem(w, |s| s.memory_trend)).0.to_string());
+    bind_text(commands, trend_v, |w| trend_parts(mem(w, |s| s.memory_trend)).0);
     bind_text_color(commands, trend_v, |w| trend_parts(mem(w, |s| s.memory_trend)).1);
     commands.entity(trend).add_children(&[trend_k, trend_v]);
 
     // Asset memory.
-    let asset_label = section(commands, fonts, "Asset Memory (Estimated)");
+    let asset_label = section(commands, fonts, &renzora::lang::t("memory.asset_memory_estimated"));
     let total_row = commands
         .spawn(Node {
             flex_direction: FlexDirection::Row,
@@ -202,7 +202,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         (100, 180, 220),
-        |w| format!("Meshes ({})", mem(w, |s| s.asset_memory.mesh_count)),
+        |w| format!("{} ({})", renzora::lang::t("memory.meshes"), mem(w, |s| s.asset_memory.mesh_count)),
         |w| asset_ratio(w, |a| a.meshes_bytes),
         |w| format_memory(mem(w, |s| s.asset_memory.meshes_bytes)),
     );
@@ -210,7 +210,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         (180, 140, 200),
-        |w| format!("Textures ({})", mem(w, |s| s.asset_memory.texture_count)),
+        |w| format!("{} ({})", renzora::lang::t("memory.textures"), mem(w, |s| s.asset_memory.texture_count)),
         |w| asset_ratio(w, |a| a.textures_bytes),
         |w| format_memory(mem(w, |s| s.asset_memory.textures_bytes)),
     );
@@ -218,13 +218,13 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         (200, 160, 100),
-        |w| format!("Materials ({})", mem(w, |s| s.asset_memory.material_count)),
+        |w| format!("{} ({})", renzora::lang::t("memory.materials"), mem(w, |s| s.asset_memory.material_count)),
         |w| asset_ratio(w, |a| a.materials_bytes),
         |w| format_memory(mem(w, |s| s.asset_memory.materials_bytes)),
     );
 
     // Allocation rate.
-    let rate_label = section(commands, fonts, "Allocation Rate");
+    let rate_label = section(commands, fonts, &renzora::lang::t("memory.allocation_rate"));
     let rate_v = commands
         .spawn((
             Text::new(""),
@@ -236,7 +236,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text_color(commands, rate_v, |w| alloc_parts(mem(w, |s| s.allocation_rate)).1);
     let warn = commands
         .spawn((
-            Text::new("\u{26a0} High allocation rate detected"),
+            Text::new(format!("\u{26a0} {}", renzora::lang::t("memory.high_alloc_rate"))),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb((220, 180, 80))),
         ))

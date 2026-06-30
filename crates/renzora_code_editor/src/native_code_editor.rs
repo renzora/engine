@@ -111,7 +111,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("code-empty-note"),
         ))
         .id();
-    let note_lbl = commands.spawn((Text::new("Open a script to start editing"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
+    let note_lbl = commands.spawn((Text::new(renzora::lang::t("code.open_to_edit")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
     commands.entity(note).add_child(note_lbl);
     bind_display(commands, note, |w| w.get_resource::<CodeEditorState>().is_none_or(|s| s.active_tab.is_none()));
 
@@ -361,7 +361,7 @@ fn status_text(world: &World) -> String {
         Language::Html => "HTML",
         Language::PlainText => "Text",
     };
-    let modified = if f.is_modified { "  \u{25cf} unsaved" } else { "" };
+    let modified = if f.is_modified { format!("  \u{25cf} {}", renzora::lang::t("code.unsaved")) } else { String::new() };
     format!("{}    {}{}", f.path.display(), lang, modified)
 }
 

@@ -41,12 +41,12 @@ enum ParamKind {
 }
 
 impl ParamKind {
-    fn label(self) -> &'static str {
-        match self {
-            ParamKind::Float => "Float",
-            ParamKind::Bool => "Bool",
-            ParamKind::Trigger => "Trigger",
-        }
+    fn label(self) -> String {
+        renzora::lang::t(match self {
+            ParamKind::Float => "animation.param_float",
+            ParamKind::Bool => "animation.param_bool",
+            ParamKind::Trigger => "animation.param_trigger",
+        })
     }
 }
 
@@ -108,8 +108,8 @@ fn ready(w: &World) -> bool {
 
 fn empty_msg(w: &World) -> String {
     match state(w).and_then(|s| s.selected_entity) {
-        None => "Select an animated entity in the Hierarchy".into(),
-        Some(_) => "No Animator on this entity — set one up in the Animation panel".into(),
+        None => renzora::lang::t("animation.select_animated_entity"),
+        Some(_) => renzora::lang::t("animation.no_animator"),
     }
 }
 
@@ -200,7 +200,7 @@ fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let lbl = commands
         .spawn((
-            Text::new("New"),
+            Text::new(renzora::lang::t("common.new")),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
         ))
@@ -328,15 +328,15 @@ fn params_snapshot(world: &World) -> KeyedSnapshot {
 
     let mut items_data: Vec<Item> = Vec::new();
     if !floats.is_empty() {
-        items_data.push(Item::Header("FLOATS"));
+        items_data.push(Item::Header("animation.params_floats"));
         items_data.extend(floats.into_iter().map(Item::Float));
     }
     if !bools.is_empty() {
-        items_data.push(Item::Header("BOOLS"));
+        items_data.push(Item::Header("animation.params_bools"));
         items_data.extend(bools.into_iter().map(Item::Bool));
     }
     if !triggers.is_empty() {
-        items_data.push(Item::Header("TRIGGERS"));
+        items_data.push(Item::Header("animation.params_triggers"));
         items_data.extend(triggers.into_iter().map(Item::Trigger));
     }
     if items_data.is_empty() {
@@ -375,6 +375,7 @@ fn params_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
+/// `label` is a translation key (e.g. `animation.params_floats`).
 fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
     let row = commands
         .spawn(Node {
@@ -388,7 +389,7 @@ fn section_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> E
         .id();
     let lbl = commands
         .spawn((
-            Text::new(label.to_string()),
+            Text::new(renzora::lang::t(label)),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
         ))
@@ -554,7 +555,7 @@ fn trash_button(
 fn empty_note(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .spawn((
-            Text::new("No parameters. Add one above."),
+            Text::new(renzora::lang::t("animation.no_parameters")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             Node {
@@ -727,7 +728,7 @@ fn kind_combo_open(
     let kids: Vec<Entity> = kinds
         .iter()
         .map(|&kind| {
-            menu_item(&mut commands, &fonts, "dot", kind.label(), move |w| {
+            menu_item(&mut commands, &fonts, "dot", &kind.label(), move |w| {
                 if let Some(mut s) = w.get_resource_mut::<NewParamScratch>() {
                     s.kind = kind;
                 }

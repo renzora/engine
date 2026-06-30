@@ -21,6 +21,7 @@ use renzora_ember::theme::{
 use renzora_ember::EmberPlugin;
 
 pub mod dock;
+mod about;
 mod plugin_install;
 
 use dock::DockTree;
@@ -88,7 +89,56 @@ impl Plugin for ShellPlugin {
                 (process_exit_request, exit_prompt_buttons, pending_exit_after_save),
             ),
         );
+        // Kept as its own `add_systems` call: the tuple above is already at the
+        // 20-element limit for system tuples.
+        app.add_systems(
+            Update,
+            (
+                about::process_about_request,
+                about::about_credit_click,
+                about::about_credit_hover,
+                relocalize_on_language_change,
+            ),
+        );
     }
+}
+
+/// Live re-localization: when the active language changes, rebuild the chrome so
+/// every widget re-reads `renzora::lang::t(...)` in the new language — the same
+/// despawn-`ShellRoot` + `DockDirty` path a theme switch uses, which respawns the
+/// chrome *and* the dock (so panel contents re-localize too, not just the bars).
+///
+/// Driven off the lock-free `revision()` counter rather than the `LanguageChanged`
+/// message, so it needs no message registration and works regardless of plugin
+/// load order. The counter is bumped by every pack registration, so it ticks
+/// several times during startup; we skip the first observed value (and any tick
+/// while the chrome isn't up yet) to avoid a spurious rebuild before the editor
+/// has even spawned — only a genuine *change* after that triggers a rebuild.
+fn relocalize_on_language_change(
+    mut last_rev: Local<u64>,
+    mut seen_once: Local<bool>,
+    roots: Query<Entity, With<ShellRoot>>,
+    mut dirty: ResMut<DockDirty>,
+    mut commands: Commands,
+) {
+    let rev = renzora::lang::revision();
+    if *last_rev == rev {
+        return;
+    }
+    *last_rev = rev;
+    // Swallow the first transition (startup registrations) and any change while
+    // the chrome is absent — nothing to rebuild yet.
+    if !*seen_once {
+        *seen_once = true;
+        return;
+    }
+    if roots.is_empty() {
+        return;
+    }
+    for e in &roots {
+        commands.entity(e).try_despawn();
+    }
+    dirty.0 = true;
 }
 
 /// Map the active `ThemeManager` theme into ember's runtime palette, and rebuild
@@ -458,7 +508,7 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
         .insert((TopBarPlayIcon, bevy::ui::FocusPolicy::Pass));
     let label = commands
         .spawn((
-            Text::new("Play"),
+            Text::new(renzora::lang::t("common.play")),
             ui_font(font, 13.0),
             TextColor(rgb(play_green())),
             TopBarPlayLabel,
@@ -517,12 +567,18 @@ fn update_play_button(
         || play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
     let has_cam = !scene_cams.is_empty();
 
-    let (icon_name, color, label_text) = if active {
-        ("stop", red, "Stop")
+    // `icon_name` is a phosphor glyph name (not localized); the label IS localized.
+    let (icon_name, color, playing) = if active {
+        ("stop", red, true)
     } else if !has_cam {
-        ("play", muted, "Play")
+        ("play", muted, false)
     } else {
-        ("play", green, "Play")
+        ("play", green, false)
+    };
+    let label_text = if playing {
+        renzora::lang::t("common.stop")
+    } else {
+        renzora::lang::t("common.play")
     };
 
     for mut icon in &mut icons {
@@ -537,7 +593,7 @@ fn update_play_button(
     }
     for (mut text, mut tcolor) in &mut labels {
         if text.0 != label_text {
-            text.0 = label_text.to_string();
+            text.0 = label_text.clone();
         }
         if tcolor.0 != color {
             tcolor.0 = color;
@@ -780,9 +836,13 @@ fn apply_panel_meta(
             continue;
         };
         if !info.title.is_empty() {
+            // Localize the tab title via `panel.<id>`, falling back to the
+            // registry's English title. Compared against the *localized* value so
+            // it doesn't thrash, and re-localizes live (this system runs each frame).
+            let title = renzora::lang::t_or(&format!("panel.{}", tab.id), &info.title);
             if let Ok(mut t) = texts.get_mut(tab.label) {
-                if t.0 != info.title {
-                    t.0 = info.title.clone();
+                if t.0 != title {
+                    t.0 = title;
                 }
             }
         }
@@ -1764,7 +1824,8 @@ fn build_status_bar(
         .id();
     renzora_ember::reactive::keyed_list(commands, left_content, status_snapshot_left);
 
-    // The theme dropup — a fixed element on the right, just before the metrics.
+    // The language + theme dropups — fixed elements on the right, before metrics.
+    let lang_picker = language_dropup(commands, fonts);
     let dropup = theme_dropup(commands, fonts, themes, active, theme_menu_open);
 
     let right_content = commands
@@ -1781,7 +1842,7 @@ fn build_status_bar(
         .id();
     renzora_ember::reactive::keyed_list(commands, right_content, status_snapshot_right);
 
-    commands.entity(bar).add_children(&[left_content, dropup, right_content]);
+    commands.entity(bar).add_children(&[left_content, lang_picker, dropup, right_content]);
     bar
 }
 
@@ -1842,9 +1903,14 @@ fn theme_dropup(
     commands.entity(panel).add_child(scroll);
 
     let icon = icon_text(commands, &fonts.phosphor, "palette", text_muted(), 12.0);
+    let theme_label = if active.is_empty() {
+        renzora::lang::t_or("status.theme", "Theme")
+    } else {
+        active.to_string()
+    };
     let label = commands
         .spawn((
-            Text::new(if active.is_empty() { "Theme" } else { active }),
+            Text::new(theme_label),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
@@ -1868,6 +1934,120 @@ fn theme_dropup(
             ThemeDropup,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("theme-dropup"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[icon, label, caret, panel]);
+    trigger
+}
+
+/// Marks the status-bar language picker trigger.
+#[derive(Component)]
+struct LanguageDropup;
+
+/// The language picker dropup in the status bar: shows the active language and
+/// opens a menu (flipped up) of every registered language — built-in packs plus
+/// any external `languages/*.toml`. Picking one calls `renzora::lang::set_active`
+/// and persists it via `renzora::save_language`; the resulting `LanguageChanged`
+/// drives whatever live relocalization is wired up. Mirrors `theme_dropup`.
+fn language_dropup(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let langs = renzora::lang::available();
+    let active = renzora::lang::active_code();
+
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                // Flip up (bar is at the window bottom), anchored to the right.
+                bottom: Val::Percent(100.0),
+                right: Val::Px(0.0),
+                margin: UiRect::bottom(Val::Px(4.0)),
+                flex_direction: FlexDirection::Column,
+                min_width: Val::Px(160.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
+            BorderColor::all(rgb(divider())),
+            GlobalZIndex(600),
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("language-menu"),
+        ))
+        .id();
+
+    let mut rows = Vec::new();
+    for m in &langs {
+        let code = m.code.clone();
+        let label = if m.name.is_empty() {
+            m.code.clone()
+        } else {
+            m.name.clone()
+        };
+        let icon = if m.code == active { "check" } else { "globe" };
+        rows.push(menu_item(commands, fonts, icon, &label, move |_w| {
+            renzora::lang::set_active(&code);
+            let _ = renzora::save_language(&code);
+        }));
+    }
+    let content = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .id();
+    commands.entity(content).add_children(&rows);
+    let scroll = scroll_area_keyed(commands, content, 260.0, "status-language-menu");
+    commands.entity(panel).add_child(scroll);
+
+    // Trigger shows the active language's native name (falls back to its code).
+    let active_name = langs
+        .iter()
+        .find(|m| m.code == active)
+        .map(|m| {
+            if m.name.is_empty() {
+                m.code.clone()
+            } else {
+                m.name.clone()
+            }
+        })
+        .unwrap_or_else(|| {
+            if active.is_empty() {
+                renzora::lang::t("settings.row.language")
+            } else {
+                active.clone()
+            }
+        });
+
+    let icon = icon_text(commands, &fonts.phosphor, "globe", text_muted(), 12.0);
+    let label = commands
+        .spawn((
+            Text::new(active_name),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let caret = icon_text(commands, &fonts.phosphor, "caret-up", text_muted(), 9.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                position_type: PositionType::Relative,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            Popup { panel, open: false },
+            LanguageDropup,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("language-dropup"),
         ))
         .id();
     commands.entity(trigger).add_children(&[icon, label, caret, panel]);
@@ -1924,7 +2104,7 @@ fn status_snapshot_left(world: &World) -> renzora_ember::reactive::KeyedSnapshot
         .get_resource::<renzora::ShellReadyStatus>()
         .and_then(|r| r.label.clone().map(|t| (t, r.color)))
         .map(|(t, c)| (t, c.map(|c| (c[0], c[1], c[2])).unwrap_or_else(text_muted)))
-        .unwrap_or_else(|| ("Ready".to_string(), text_muted()));
+        .unwrap_or_else(|| (renzora::lang::t_or("status.ready", "Ready"), text_muted()));
     let mut rows = vec![StatusRow::Label(label, color)];
     rows.extend(status_rows(world, renzora::ShellStatusAlign::Left));
     rows_snapshot(rows)
@@ -2020,10 +2200,10 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     let left = zone(commands, "top-left", JustifyContent::FlexStart, 2.0, 1.0);
     let left_kids = vec![
-        top_menu_item(commands, font, "File", TopMenuKind::File),
-        top_menu_item(commands, font, "Edit", TopMenuKind::Edit),
-        top_menu_item(commands, font, "View", TopMenuKind::View),
-        top_menu_item(commands, font, "Help", TopMenuKind::Help),
+        top_menu_item(commands, font, &renzora::lang::t("menu.file"), TopMenuKind::File),
+        top_menu_item(commands, font, &renzora::lang::t("menu.edit"), TopMenuKind::Edit),
+        top_menu_item(commands, font, &renzora::lang::t("menu.view"), TopMenuKind::View),
+        top_menu_item(commands, font, &renzora::lang::t("menu.help"), TopMenuKind::Help),
         account_menu_item(commands, font),
     ];
     commands.entity(left).add_children(&left_kids);
@@ -2204,9 +2384,14 @@ fn ribbon_item(
             Name::new(format!("ribbon:{label}")),
         ))
         .id();
+    // Localize the *display* of built-in workspace names (Scene, Scripting, …)
+    // via `layout.<slug>`; the stored `label` stays the workspace's identity (it's
+    // the persisted key + the entity Name). A user-renamed/added workspace has no
+    // matching key, so `t_or` falls back to its raw name.
+    let display = renzora::lang::t_or(&format!("layout.{}", label.to_lowercase()), label);
     let text = commands
         .spawn((
-            Text::new(label),
+            Text::new(display),
             ui_font(font, 12.0),
             TextColor(rgb(if active { text_primary() } else { text_muted() })),
         ))
@@ -2719,6 +2904,15 @@ fn top_menu_item(
     label: &str,
     kind: TopMenuKind,
 ) -> Entity {
+    // The debug Name is a stable identifier derived from the menu kind, NOT the
+    // (now localized) label — so translating the title doesn't rename the entity.
+    let name_id = match kind {
+        TopMenuKind::File => "file",
+        TopMenuKind::Edit => "edit",
+        TopMenuKind::View => "view",
+        TopMenuKind::Help => "help",
+        TopMenuKind::Account => "account",
+    };
     let item = commands
         .spawn((
             Node {
@@ -2732,7 +2926,7 @@ fn top_menu_item(
             bevy::ui::RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             TopMenu(kind),
-            Name::new(format!("menu:{label}")),
+            Name::new(format!("menu:{name_id}")),
         ))
         .id();
     renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
@@ -2775,7 +2969,7 @@ fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     });
     let label = commands
         .spawn((
-            Text::new("Sign In"),
+            Text::new(renzora::lang::t("auth.sign_in")),
             ui_font(font, 14.0),
             TextColor(rgb(text_muted())),
             bevy::ui::FocusPolicy::Pass,
@@ -2784,7 +2978,7 @@ fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     renzora_ember::reactive::bind_text(commands, label, |w| {
         w.get_resource::<renzora::core::AuthBridge>()
             .and_then(|b| b.signed_in_username.clone())
-            .unwrap_or_else(|| "Sign In".to_string())
+            .unwrap_or_else(|| renzora::lang::t("auth.sign_in"))
     });
     commands.entity(item).add_child(label);
     item
@@ -2919,7 +3113,7 @@ fn build_menu_items(
         TopMenuKind::Account => {
             if signed_in {
                 vec![
-                    menu_item(commands, fonts, "books", "My Library", |w| {
+                    menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
                         if let Some(mut dock) = w.get_resource_mut::<Dock>() {
                             dock.tree.focus_or_add_panel("hub_library");
                         }
@@ -2928,60 +3122,60 @@ fn build_menu_items(
                         }
                     }),
                     menu_sep(commands),
-                    menu_item(commands, fonts, "sign-out", "Sign Out", |w| {
+                    menu_item(commands, fonts, "sign-out", &renzora::lang::t("auth.sign_out"), |w| {
                         w.insert_resource(renzora::core::AuthSignOutRequest);
                     }),
                 ]
             } else {
-                vec![menu_item(commands, fonts, "sign-in", "Sign In", |w| {
+                vec![menu_item(commands, fonts, "sign-in", &renzora::lang::t("auth.sign_in"), |w| {
                     w.insert_resource(renzora::core::AuthToggleWindowRequest);
                 })]
             }
         }
         TopMenuKind::File => vec![
-            menu_item(commands, fonts, "folder-plus", "New Project", |w| {
+            menu_item(commands, fonts, "folder-plus", &renzora::lang::t("menu.file.new_project"), |w| {
                 renzora_editor_framework::handle_new_project(w)
             }),
-            menu_item(commands, fonts, "folder-open", "Open Project…", |w| {
+            menu_item(commands, fonts, "folder-open", &renzora::lang::t("menu.file.open_project"), |w| {
                 renzora_editor_framework::handle_open_project(w)
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "file-plus", "New Scene", |w| {
+            menu_item(commands, fonts, "file-plus", &renzora::lang::t("menu.file.new_scene"), |w| {
                 w.insert_resource(renzora::core::NewSceneRequested);
             }),
-            menu_item(commands, fonts, "file", "Open Scene…", |w| {
+            menu_item(commands, fonts, "file", &renzora::lang::t("menu.file.open_scene"), |w| {
                 w.insert_resource(renzora::core::OpenSceneRequested);
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "floppy-disk", "Save", |w| {
+            menu_item(commands, fonts, "floppy-disk", &renzora::lang::t("common.save"), |w| {
                 w.insert_resource(renzora::core::SaveSceneRequested);
             }),
-            menu_item(commands, fonts, "floppy-disk-back", "Save As…", |w| {
+            menu_item(commands, fonts, "floppy-disk-back", &renzora::lang::t_or("menu.file.save_as", "Save As…"), |w| {
                 w.insert_resource(renzora::core::SaveAsSceneRequested);
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "package", "Export Project…", |w| {
+            menu_item(commands, fonts, "package", &renzora::lang::t("menu.file.export_project"), |w| {
                 w.insert_resource(renzora::core::ExportRequested);
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "plug", "Install Plugin…", |w| {
+            menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| {
                 crate::plugin_install::open_install_dialog(w)
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "gear", "Settings", |w| {
+            menu_item(commands, fonts, "gear", &renzora::lang::t("common.settings"), |w| {
                 if let Some(mut s) = w.get_resource_mut::<renzora_editor_framework::EditorSettings>() {
                     s.show_settings = !s.show_settings;
                 }
             }),
         ],
         TopMenuKind::Edit => vec![
-            menu_item(commands, fonts, "arrow-u-up-left", "Undo", |w| {
+            menu_item(commands, fonts, "arrow-u-up-left", &renzora::lang::t("common.undo"), |w| {
                 let f = w.get_resource::<renzora_editor_framework::EditorActionHooks>().and_then(|h| h.undo);
                 if let Some(f) = f {
                     f(w);
                 }
             }),
-            menu_item(commands, fonts, "arrow-u-up-right", "Redo", |w| {
+            menu_item(commands, fonts, "arrow-u-up-right", &renzora::lang::t("common.redo"), |w| {
                 let f = w.get_resource::<renzora_editor_framework::EditorActionHooks>().and_then(|h| h.redo);
                 if let Some(f) = f {
                     f(w);
@@ -2989,20 +3183,20 @@ fn build_menu_items(
             }),
         ],
         TopMenuKind::View => vec![
-            menu_item(commands, fonts, "magnifying-glass-plus", "Zoom In", |w| {
+            menu_item(commands, fonts, "magnifying-glass-plus", &renzora::lang::t_or("menu.view.zoom_in", "Zoom In"), |w| {
                 w.insert_resource(renzora::core::CameraViewRequest::ZoomIn);
             }),
-            menu_item(commands, fonts, "magnifying-glass-minus", "Zoom Out", |w| {
+            menu_item(commands, fonts, "magnifying-glass-minus", &renzora::lang::t_or("menu.view.zoom_out", "Zoom Out"), |w| {
                 w.insert_resource(renzora::core::CameraViewRequest::ZoomOut);
             }),
-            menu_item(commands, fonts, "magnifying-glass", "Reset Zoom", |w| {
+            menu_item(commands, fonts, "magnifying-glass", &renzora::lang::t_or("menu.view.reset_zoom", "Reset Zoom"), |w| {
                 w.insert_resource(renzora::core::CameraViewRequest::ResetZoom);
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "corners-out", "Fit All", |w| {
+            menu_item(commands, fonts, "corners-out", &renzora::lang::t_or("menu.view.fit_all", "Fit All"), |w| {
                 w.insert_resource(renzora::core::CameraViewRequest::FrameAll);
             }),
-            menu_item(commands, fonts, "eye", "Isolation Mode", |w| {
+            menu_item(commands, fonts, "eye", &renzora::lang::t_or("menu.view.isolation_mode", "Isolation Mode"), |w| {
                 let mut iso = w
                     .remove_resource::<renzora::core::IsolationMode>()
                     .unwrap_or_default();
@@ -3010,25 +3204,29 @@ fn build_menu_items(
                 w.insert_resource(iso);
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "layout", "Reset Layout", reset_layout_action),
-            menu_item(commands, fonts, "browsers", "Reset Workspace", reset_workspace_action),
+            menu_item(commands, fonts, "layout", &renzora::lang::t("menu.window.reset_layout"), reset_layout_action),
+            menu_item(commands, fonts, "browsers", &renzora::lang::t_or("menu.view.reset_workspace", "Reset Workspace"), reset_workspace_action),
         ],
         TopMenuKind::Help => vec![
-            menu_item(commands, fonts, "graduation-cap", "Getting Started Tutorial", |w| {
+            menu_item(commands, fonts, "graduation-cap", &renzora::lang::t_or("menu.help.tutorial", "Getting Started Tutorial"), |w| {
                 w.insert_resource(renzora::core::TutorialRequested);
             }),
             menu_sep(commands),
-            menu_item(commands, fonts, "book-open", "Documentation", |_| {
+            menu_item(commands, fonts, "book-open", &renzora::lang::t("menu.help.documentation"), |_| {
                 open_url("https://renzora.com/docs")
             }),
-            menu_item(commands, fonts, "youtube-logo", "YouTube", |_| {
+            menu_item(commands, fonts, "youtube-logo", &renzora::lang::t("menu.help.youtube"), |_| {
                 open_url("https://youtube.com/@renzoragame")
             }),
-            menu_item(commands, fonts, "discord-logo", "Discord", |_| {
+            menu_item(commands, fonts, "discord-logo", &renzora::lang::t("menu.help.discord"), |_| {
                 open_url("https://discord.gg/9UHUGUyDJv")
             }),
-            menu_item(commands, fonts, "github-logo", "GitHub", |_| {
+            menu_item(commands, fonts, "github-logo", &renzora::lang::t_or("menu.help.github", "GitHub"), |_| {
                 open_url("https://github.com/renzora/engine")
+            }),
+            menu_sep(commands),
+            menu_item(commands, fonts, "info", &renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine"), |w| {
+                w.insert_resource(crate::about::ShowAboutRequested);
             }),
         ],
     }
@@ -3091,7 +3289,7 @@ fn reset_workspace_action(w: &mut World) {
 }
 
 /// Open `url` in the user's default browser (cross-platform).
-fn open_url(url: &str) {
+pub(crate) fn open_url(url: &str) {
     #[cfg(target_os = "windows")]
     let _ = std::process::Command::new("cmd")
         .args(["/C", "start", "", url])

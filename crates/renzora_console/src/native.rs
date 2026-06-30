@@ -261,8 +261,8 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },))
         .id();
 
-    let clear = text_button(commands, fonts, "trash", "Clear", ConsoleBtn::Clear);
-    let copy = text_button(commands, fonts, "clipboard", "Copy", ConsoleBtn::Copy);
+    let clear = text_button(commands, fonts, "trash", &renzora::lang::t("console.clear"), ConsoleBtn::Clear);
+    let copy = text_button(commands, fonts, "clipboard", &renzora::lang::t("console.copy"), ConsoleBtn::Copy);
     let sep1 = vsep(commands);
     let t_info = toggle_button(commands, fonts, "info", ConsoleBtn::Info, 14.0);
     let t_ok = toggle_button(commands, fonts, "check-circle", ConsoleBtn::Success, 14.0);
@@ -271,10 +271,10 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let sep2 = vsep(commands);
     let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", text_muted(), 12.0);
     // Fields start empty; `console_text_sync` mirrors them into `ConsoleState`.
-    let search = text_input(commands, &fonts.ui, "Search...", "");
+    let search = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
     commands.entity(search).insert(ConsoleField::Search);
     let funnel = icon_text(commands, &fonts.phosphor, "funnel", text_muted(), 12.0);
-    let category = text_input(commands, &fonts.ui, "Category...", "");
+    let category = text_input(commands, &fonts.ui, &renzora::lang::t("console.category"), "");
     commands.entity(category).insert(ConsoleField::Category);
 
     let spacer = commands
@@ -309,7 +309,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("console-autoscroll"),
         ))
         .id();
-    let auto_label = label_text(commands, fonts, "Auto-scroll", text_muted(), 11.0);
+    let auto_label = label_text(commands, fonts, &renzora::lang::t("console.autoscroll"), text_muted(), 11.0);
     commands.entity(auto).add_children(&[auto_icon, auto_label]);
 
     commands.entity(toolbar).add_children(&[
@@ -362,7 +362,7 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },))
         .id();
     let chevron = icon_text(commands, &fonts.phosphor, "caret-right", accent(), 14.0);
-    let input = text_input(commands, &fonts.mono, "Type /help for commands...", "");
+    let input = text_input(commands, &fonts.mono, &renzora::lang::t("console.command_hint"), "");
     commands.entity(input).insert(ConsoleField::Command);
     commands.entity(input).insert(Node {
         flex_grow: 1.0,
@@ -512,7 +512,7 @@ fn log_snapshot(world: &World) -> KeyedSnapshot {
     if visible.is_empty() {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
-            build: Box::new(|c, f, _| label_text(c, f, "No log entries", text_muted(), 13.0)),
+            build: Box::new(|c, f, _| label_text(c, f, &renzora::lang::t("console.empty"), text_muted(), 13.0)),
         };
     }
 

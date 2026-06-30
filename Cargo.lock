@@ -8569,6 +8569,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_lang"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "mlua",
+ "renzora",
+ "renzora_scripting",
+ "rhai",
+]
+
+[[package]]
 name = "renzora_lens_distortion"
 version = "0.1.0"
 dependencies = [
@@ -9110,6 +9121,7 @@ dependencies = [
  "renzora_globals",
  "renzora_hanabi",
  "renzora_input",
+ "renzora_lang",
  "renzora_lens_distortion",
  "renzora_lighting",
  "renzora_motion_blur",

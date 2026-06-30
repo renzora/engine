@@ -82,14 +82,14 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let empty_icon = icon_text(commands, &fonts.phosphor, "video-camera", text_muted(), 32.0);
     let empty_a = commands
         .spawn((
-            Text::new("Select an animated entity"),
+            Text::new(renzora::lang::t("animation.preview_select_entity")),
             ui_font(&fonts.ui, 13.0),
             TextColor(rgb(text_muted())),
         ))
         .id();
     let empty_b = commands
         .spawn((
-            Text::new("to preview animations here"),
+            Text::new(renzora::lang::t("animation.preview_to_preview_here")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
@@ -200,8 +200,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             .get_resource::<crate::AnimationEditorState>()
             .and_then(|s| s.selected_entity);
         match selected {
-            None => "Select an animated entity in the Hierarchy\nto preview it here".into(),
-            Some(_) => "No model found for this entity —\nselect a model entity to preview it here".into(),
+            None => renzora::lang::t("animation.preview_hint_no_selection"),
+            Some(_) => renzora::lang::t("animation.preview_hint_no_model"),
         }
     });
     commands.entity(chip).add_children(&[chip_ic, chip_lbl]);

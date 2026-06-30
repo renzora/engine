@@ -517,7 +517,7 @@ fn build_add_footer(
         .id();
     let mut rows = Vec::new();
     if available.is_empty() {
-        rows.push(muted_label(commands, fonts, "No scripts found in project."));
+        rows.push(muted_label(commands, fonts, &renzora::lang::t("comp.script.none_in_project")));
     }
     for (display, path) in available {
         let txt = commands
@@ -555,7 +555,7 @@ fn build_add_footer(
     commands.entity(plus).insert(bevy::ui::FocusPolicy::Pass);
     let plus_label = commands
         .spawn((
-            Text::new("Add Script"),
+            Text::new(renzora::lang::t("comp.script.add")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
             bevy::ui::FocusPolicy::Pass,
@@ -595,7 +595,7 @@ fn build_add_footer(
     // Drop-to-add target.
     let drop_txt = commands
         .spawn((
-            Text::new("Drop to add script"),
+            Text::new(renzora::lang::t("comp.script.drop")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             bevy::ui::FocusPolicy::Pass,

@@ -36,9 +36,9 @@ fn compatible(w: &World) -> bool {
 fn incompat_msg(w: &World) -> String {
     use renzora_shader::file::ShaderType;
     match w.get_resource::<ShaderEditorState>().map(|s| s.shader_file.shader_type) {
-        Some(ShaderType::Material) => "Material shaders use custom bind groups — preview in scene viewport".into(),
-        Some(ShaderType::PostProcess) => "Post-process preview not yet supported".into(),
-        _ => "Preview unavailable — shader uses custom material bindings".into(),
+        Some(ShaderType::Material) => renzora::lang::t("shader_preview.incompat_material"),
+        Some(ShaderType::PostProcess) => renzora::lang::t("shader_preview.incompat_postprocess"),
+        _ => renzora::lang::t("shader_preview.incompat_generic"),
     }
 }
 
@@ -48,7 +48,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
 
     // No-shader state.
-    let no_shader = note(commands, fonts, "No shader compiled");
+    let no_shader = note(commands, fonts, &renzora::lang::t("shader_preview.no_compiled"));
     bind_display(commands, no_shader, |w| !has_shader(w));
 
     // Incompatible state (has a shader but it can't preview).
@@ -72,7 +72,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let toolbar = commands
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), flex_shrink: 0.0, ..default() })
         .id();
-    let mesh_lbl = commands.spawn((Text::new("Mesh"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    let mesh_lbl = commands.spawn((Text::new(renzora::lang::t("shader_preview.mesh")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
     let combo = commands
         .spawn((
             Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(4.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border: UiRect::all(Val::Px(1.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },

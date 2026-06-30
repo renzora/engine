@@ -15,7 +15,7 @@ use bevy::window::SystemCursorIcon;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list, react, KeyedSnapshot};
-use renzora_ember::widgets::{bind_text_input, text_input};
+use renzora_ember::widgets::{bind_text_input, menu_item, scroll_area_keyed, text_input, Popup};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
 
@@ -474,8 +474,121 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands.entity(bottom).add_children(&[socials, status]);
 
-    commands.entity(col).add_children(&[top, middle, bottom]);
+    // Language picker pinned to the top-left (window controls own the top-right).
+    let lang_picker = build_language_picker(commands, fonts);
+
+    commands.entity(col).add_children(&[top, middle, bottom, lang_picker]);
     col
+}
+
+/// Compact language picker pinned to the splash top-left: a globe + the active
+/// language's native name that opens a dropdown of every registered language
+/// (built-in packs + any external `languages/*.toml`). Picking one applies and
+/// persists it (`set_active` + `save_language`), so the choice is already in
+/// effect when the editor opens. Uses the shared ember `Popup`/`menu_item`
+/// widgets — their toggle systems run in every state, including Splash.
+fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let langs = renzora::lang::available();
+    let active = renzora::lang::active_code();
+
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0), // open downward (trigger sits at the top)
+                left: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(4.0)),
+                flex_direction: FlexDirection::Column,
+                min_width: Val::Px(170.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(c(22, 24, 30)),
+            BorderColor::all(border_soft()),
+            GlobalZIndex(700),
+            bevy::ui::RelativeCursorPosition::default(),
+            Name::new("splash-language-menu"),
+        ))
+        .id();
+
+    let mut rows = Vec::new();
+    for m in &langs {
+        let code = m.code.clone();
+        let label = if m.name.is_empty() {
+            m.code.clone()
+        } else {
+            m.name.clone()
+        };
+        let icon = if m.code == active { "check" } else { "globe" };
+        rows.push(menu_item(commands, fonts, icon, &label, move |_w| {
+            renzora::lang::set_active(&code);
+            let _ = renzora::save_language(&code);
+        }));
+    }
+    let content = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .id();
+    commands.entity(content).add_children(&rows);
+    let scroll = scroll_area_keyed(commands, content, 280.0, "splash-language-menu");
+    commands.entity(panel).add_child(scroll);
+
+    let active_name = langs
+        .iter()
+        .find(|m| m.code == active)
+        .map(|m| {
+            if m.name.is_empty() {
+                m.code.clone()
+            } else {
+                m.name.clone()
+            }
+        })
+        .unwrap_or_else(|| {
+            if active.is_empty() {
+                "Language".to_string()
+            } else {
+                active.clone()
+            }
+        });
+
+    let icon = icon_text(commands, &fonts.phosphor, "globe", (150, 158, 178), 13.0);
+    let label = commands
+        .spawn((
+            Text::new(active_name),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(text_muted()),
+            FocusPolicy::Pass,
+        ))
+        .id();
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", (150, 158, 178), 9.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(14.0),
+                left: Val::Px(16.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
+                ..default()
+            },
+            BackgroundColor(btn_dark()),
+            Interaction::default(),
+            Popup { panel, open: false },
+            HoverCursor(SystemCursorIcon::Pointer),
+            Name::new("splash-language-picker"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[icon, label, caret, panel]);
+    trigger
 }
 
 

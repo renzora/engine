@@ -47,6 +47,16 @@ pub use gi::*;
 pub mod world_environment;
 pub use world_environment::*;
 
+// ── Language / localization contract ─────────────────────────────────────
+// The process-global translation table + `t()` lookup every crate calls, plus
+// the plugin-facing registration API. Lives here in the shared dylib so the
+// runtime binary, the editor bundle, and dlopen'd distribution plugins all read
+// and write ONE table across the boundary. The `renzora_lang` plugin populates
+// it (embedded built-ins + external `languages/*.toml` packs); any plugin can
+// contribute its own keys. Not glob-re-exported: callers write the explicit
+// `renzora::lang::t("…")` so localized call sites are greppable.
+pub mod lang;
+
 // ── Dynamic plugin FFI macro ────────────────────────────────────────────
 // `renzora::add!(MyPlugin)` exports the FFI symbols a Renzora editor /
 // runtime loader needs to instantiate the plugin from a `.dll` / `.so` /

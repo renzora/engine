@@ -147,11 +147,11 @@ fn build_body(
     };
 
     // ── Clips ──
-    children.push(header(commands, fonts, "Animation Clips"));
+    children.push(header(commands, fonts, &renzora::lang::t("animation.animation_clips")));
     if data.clips.is_empty() {
         let note = commands
             .spawn((
-                Text::new("No clips — drop a .anim file below"),
+                Text::new(renzora::lang::t("animation.no_clips_drop")),
                 ui_font(&fonts.ui, 10.0),
                 TextColor(rgb(text_muted())),
             ))
@@ -170,11 +170,11 @@ fn build_body(
         animator_add_clip,
         vec!["anim".to_string()],
     );
-    let r = inspector_row(commands, &fonts.ui, "Add Clip", add);
+    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.add_clip"), add);
     children.push(striped(commands, r, &mut stripe));
 
     // ── Playback ──
-    children.push(header(commands, fonts, "Playback"));
+    children.push(header(commands, fonts, &renzora::lang::t("animation.playback")));
 
     // Default clip dropdown: "(none)" + clip names.
     let mut labels: Vec<String> = vec!["(none)".into()];
@@ -219,7 +219,7 @@ fn build_body(
             }
         },
     );
-    let r = inspector_row(commands, &fonts.ui, "Default Clip", dd);
+    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.default_clip"), dd);
     children.push(striped(commands, r, &mut stripe));
 
     // Blend duration.
@@ -235,11 +235,11 @@ fn build_body(
             }
         },
     );
-    let r = inspector_row(commands, &fonts.ui, "Blend Time", dv);
+    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.blend_time"), dv);
     children.push(striped(commands, r, &mut stripe));
 
     // ── State Machine ──
-    children.push(header(commands, fonts, "State Machine"));
+    children.push(header(commands, fonts, &renzora::lang::t("animation.state_machine")));
     let sm = asset_drop_field(
         commands,
         fonts,
@@ -248,7 +248,7 @@ fn build_body(
         animator_sm_set,
         vec!["animsm".to_string()],
     );
-    let r = inspector_row(commands, &fonts.ui, "File", sm);
+    let r = inspector_row(commands, &fonts.ui, &renzora::lang::t("animation.file"), sm);
     children.push(striped(commands, r, &mut stripe));
 
     commands.entity(root).add_children(&children);

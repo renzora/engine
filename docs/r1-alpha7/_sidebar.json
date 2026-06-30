@@ -123,6 +123,7 @@
           "category": "Extending",
           "pages": [
             { "slug": "extending/plugins", "title": "Building Plugins" },
+            { "slug": "extending/localization", "title": "Localization" },
             { "slug": "extending/custom-nodes", "title": "Custom Blueprint Nodes" },
             { "slug": "extending/script-bindings", "title": "Script API Bindings" },
             { "slug": "extending/post-processing", "title": "Post-Processing Effects" },

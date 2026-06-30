@@ -43,7 +43,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(4.0), padding: UiRect::vertical(Val::Px(14.0)), ..default() })
         .id();
     let check = icon_text(commands, &fonts.phosphor, "check-circle", play_green(), 20.0);
-    let note_lbl = commands.spawn((Text::new("No problems detected"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    let note_lbl = commands.spawn((Text::new(renzora::lang::t("code.no_problems")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
     commands.entity(note).add_children(&[check, note_lbl]);
     bind_display(commands, note, |w| !has_problems(w));
 

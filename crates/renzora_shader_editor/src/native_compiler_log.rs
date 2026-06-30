@@ -41,12 +41,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), ..default() })
         .id();
     let check = icon_text(commands, &fonts.phosphor, "check-circle", play_green(), 12.0);
-    let success_lbl = commands.spawn((Text::new("Compiled successfully"), ui_font(&fonts.ui, 11.0), TextColor(rgb(play_green())))).id();
+    let success_lbl = commands.spawn((Text::new(renzora::lang::t("shader_preview.compiled_ok")), ui_font(&fonts.ui, 11.0), TextColor(rgb(play_green())))).id();
     commands.entity(success).add_children(&[check, success_lbl]);
     bind_display(commands, success, |w| !has_errors(w) && compiled(w));
 
     // No-output line.
-    let no_output = commands.spawn((Text::new("No compilation output"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    let no_output = commands.spawn((Text::new(renzora::lang::t("shader_preview.no_output")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
     bind_display(commands, no_output, |w| !has_errors(w) && !compiled(w));
 
     // Error list.

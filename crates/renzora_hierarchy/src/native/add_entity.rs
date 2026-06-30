@@ -36,10 +36,16 @@ pub(crate) fn hier_add_entity_open(
     if let Some(reg) = &spawn_reg {
         for p in reg.iter() {
             let id = p.id.to_string();
+            // Localize the preset name + category for display only — the spawn
+            // still keys off `p.id`, and the category is consistent per English
+            // string so grouping/sidebar matching stays intact.
+            let label =
+                renzora::lang::t_or(&format!("entity.preset.{}", slug(p.display_name)), p.display_name);
+            let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(p.category)), p.category);
             entries.push(SearchEntry::new(
                 p.icon,
-                p.display_name,
-                p.category,
+                label,
+                category,
                 move |w: &mut World| {
                     execute(
                         w,
@@ -57,10 +63,11 @@ pub(crate) fn hier_add_entity_open(
     if let Some(reg) = &shape_reg {
         for s in reg.iter() {
             let (shape_id, name, color) = (s.id.to_string(), s.name.to_string(), s.default_color);
+            let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(s.category)), s.category);
             entries.push(SearchEntry::new(
                 s.icon,
                 s.name,
-                s.category,
+                category,
                 move |w: &mut World| {
                     execute(
                         w,
@@ -83,10 +90,11 @@ pub(crate) fn hier_add_entity_open(
         for e in reg.iter() {
             if e.add_fn.is_some() && CATS.contains(&e.category) {
                 let (type_id, display_name) = (e.type_id.to_string(), e.display_name.to_string());
+                let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(e.category)), e.category);
                 entries.push(SearchEntry::new(
                     e.icon,
                     e.display_name,
-                    e.category,
+                    category,
                     move |w: &mut World| {
                         execute(
                             w,
@@ -105,5 +113,16 @@ pub(crate) fn hier_add_entity_open(
         }
     }
 
-    search_overlay(&mut commands, &fonts, "Add Entity", entries);
+    search_overlay(&mut commands, &fonts, &renzora::lang::t("hierarchy.add.title"), entries);
+}
+
+/// Slugify a preset/category name into a localization-key segment: lowercased,
+/// every non-alphanumeric run collapsed to `_`. Keeps `entity.preset.<slug>` /
+/// `entity.cat.<slug>` stable regardless of the human-readable casing.
+fn slug(s: &str) -> String {
+    s.trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
 }

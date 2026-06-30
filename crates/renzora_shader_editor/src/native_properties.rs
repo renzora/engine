@@ -47,8 +47,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let note = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(3.0), padding: UiRect::vertical(Val::Px(20.0)), ..default() })
         .id();
-    let n1 = commands.spawn((Text::new("No parameters defined"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
-    let n2 = commands.spawn((Text::new("Add // @param annotations to your shader"), ui_font(&fonts.ui, 10.0), TextColor(rgb(placeholder())))).id();
+    let n1 = commands.spawn((Text::new(renzora::lang::t("shader_props.no_params")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+    let n2 = commands.spawn((Text::new(renzora::lang::t("shader_props.add_param_hint")), ui_font(&fonts.ui, 10.0), TextColor(rgb(placeholder())))).id();
     commands.entity(note).add_children(&[n1, n2]);
     bind_display(commands, note, no_params);
 

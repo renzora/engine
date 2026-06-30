@@ -21,7 +21,7 @@ pub(crate) struct HierRenameInput(pub Entity);
 /// Build the inline rename field (used by `build_row` in place of the label),
 /// seeded with the current name.
 pub(crate) fn build_rename_field(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, name: &str) -> Entity {
-    let input = text_input(commands, &fonts.ui, "Name", name);
+    let input = text_input(commands, &fonts.ui, &renzora::lang::t("common.name"), name);
     commands.entity(input).insert((
         HierRenameInput(entity),
         Node {

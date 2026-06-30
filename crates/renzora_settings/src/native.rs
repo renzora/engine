@@ -45,6 +45,92 @@ const A_ORANGE: (u8, u8, u8) = (235, 150, 70);
 const A_GREEN: (u8, u8, u8) = (110, 200, 120);
 const A_TEAL: (u8, u8, u8) = (80, 200, 200);
 
+/// Short alias for the global translation lookup — `tr("key")` → localized
+/// `String`. Named `tr` (not `t`) to avoid colliding with the many `let t = …`
+/// toggle-entity locals throughout this file.
+fn tr(key: &str) -> String {
+    renzora::lang::t(key)
+}
+
+/// Slugify an option label for the shared `opt.<slug>` translation namespace:
+/// lowercase, each run of non-alphanumerics → one `_`, trimmed.
+fn opt_slug(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut pending_us = false;
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            if pending_us && !out.is_empty() {
+                out.push('_');
+            }
+            pending_us = false;
+            out.push(c.to_ascii_lowercase());
+        } else {
+            pending_us = true;
+        }
+    }
+    out
+}
+
+/// Localize a dropdown OPTION label via the shared `opt.<slug>` namespace,
+/// reusing a few `common.*` keys where the value already has one. The enum's
+/// `label()` identity (used for index/state matching) is unchanged — only the
+/// displayed string is translated.
+fn loc_opt(s: &str) -> String {
+    match s {
+        "None" => renzora::lang::t_or("common.none", s),
+        "Disabled" => renzora::lang::t_or("common.disabled", s),
+        "Default" => renzora::lang::t_or("common.default", s),
+        "Always" => renzora::lang::t_or("common.always", s),
+        _ => renzora::lang::t_or(&format!("opt.{}", opt_slug(s)), s),
+    }
+}
+
+/// Localize a sidebar GROUP header by its English identity (the `CATS` const
+/// stores English; translation happens at display so the const stays static).
+fn tr_group(group: &str) -> String {
+    let key = match group {
+        "PROJECT" => "settings.group.project",
+        "APPEARANCE" => "settings.group.appearance",
+        "EDITOR" => "settings.group.editor",
+        "CONTROLS" => "settings.group.controls",
+        "PLUGINS" => "settings.group.plugins",
+        _ => return group.to_string(),
+    };
+    tr(key)
+}
+
+/// Localize a sidebar CATEGORY label by its English identity (see `tr_group`).
+fn tr_cat(label: &str) -> String {
+    let key = match label {
+        "Project" => "common.project",
+        "Rendering" => "settings.cat.rendering",
+        "Window" => "settings.cat.window",
+        "Viewport" => "settings.tab.viewport",
+        "2D Rendering" => "settings.cat.rendering_2d",
+        "Fonts" => "settings.cat.fonts",
+        "Display" => "settings.cat.display",
+        "Hierarchy" => "settings.cat.hierarchy",
+        "Inspector" => "settings.cat.inspector",
+        "Theme" => "settings.tab.theme",
+        "Developer" => "settings.category.developer",
+        "Auto-Save" => "settings.cat.autosave",
+        "UI Workspace" => "settings.cat.workspace",
+        "Renderer" => "settings.cat.renderer",
+        "Grid" => "settings.cat.grid",
+        "Labels" => "settings.cat.labels",
+        "Performance" => "settings.cat.performance",
+        "Camera" => "settings.category.camera",
+        "Gizmos" => "settings.cat.gizmos",
+        "Scripting" => "settings.category.scripting",
+        "Code Editor" => "settings.cat.code_editor",
+        "Assets" => "settings.cat.assets",
+        "Input" => "settings.cat.input",
+        "Shortcuts" => "settings.tab.shortcuts",
+        _ => return label.to_string(),
+    };
+    tr(key)
+}
+
 // ── Markers / state ──────────────────────────────────────────────────────────
 
 #[derive(Resource, Default)]
@@ -58,6 +144,9 @@ struct NativeSettingsState {
     /// so it re-spawns with the new palette (it's a separate root from the chrome
     /// and wouldn't otherwise pick up the change while open).
     built_theme: Option<String>,
+    /// `renzora::lang::revision()` at last build — same idea as `built_theme`, so
+    /// switching language from the overlay's own picker re-localizes it live.
+    built_lang_rev: u64,
     /// Sub-selection within the active tab — a section focus key for a split tab
     /// (e.g. `"grid"` under Viewport) or a plugin section id under `Plugins`. The
     /// tab disambiguates which, so one field serves both. `None` = whole tab.
@@ -379,13 +468,20 @@ fn manage_native_settings(world: &mut World) {
         .get_resource::<ThemeManager>()
         .map(|t| t.active_theme_name.clone());
 
+    let lang_rev = renzora::lang::revision();
     let st = world.resource::<NativeSettingsState>();
     // Rebuild when the active theme switches so the overlay re-spawns with the
     // new palette (it's a separate root from the chrome).
     let theme_changed = st.built_theme != theme_name;
+    // …and when the language changes, so its own picker re-localizes live.
+    let lang_changed = st.built_lang_rev != lang_rev;
     let plugin_changed = st.built_sub != st.active_sub;
     let active_sub = st.active_sub.clone();
-    let (root, built, dirty) = (st.root, st.built_tab, st.dirty || theme_changed || plugin_changed);
+    let (root, built, dirty) = (
+        st.root,
+        st.built_tab,
+        st.dirty || theme_changed || lang_changed || plugin_changed,
+    );
 
     if !open {
         if let Some(r) = root {
@@ -420,6 +516,7 @@ fn manage_native_settings(world: &mut World) {
     st.built_tab = Some(tab);
     st.dirty = false;
     st.built_theme = theme_name;
+    st.built_lang_rev = lang_rev;
     st.built_sub = active_sub;
 }
 
@@ -574,7 +671,7 @@ fn spawn_overlay(
 fn build_title_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let label = commands
         .spawn((
-            Text::new("Settings"),
+            Text::new(tr("common.settings")),
             ui_font(&fonts.ui, 14.0),
             TextColor(rgb(text_primary())),
             Node {
@@ -742,7 +839,7 @@ fn build_sidebar(
     // Search box — filters categories live (see `filter_sidebar`). The ember
     // input defaults to `min_width: 180px` (wider than the 160px sidebar, so it
     // spilled over the divider) — pin it to fill the column instead.
-    let search = text_input(commands, &fonts.ui, "Search…", "");
+    let search = text_input(commands, &fonts.ui, &tr("common.search"), "");
     commands.entity(search).insert(SettingsSearchBox).queue(
         |mut e: EntityWorldMut| {
             if let Some(mut n) = e.get_mut::<Node>() {
@@ -779,18 +876,22 @@ fn build_sidebar(
         .id();
     let mut kids = Vec::new();
     for (gi, (group, cats)) in CATS.iter().enumerate() {
+        // Localized once per group; the group tag + row.group share this string
+        // so `filter_sidebar`'s header-matching stays consistent in any language.
+        let gname = tr_group(group);
         // A little breathing room above every group but the first.
-        let header = sidebar_group_header(commands, fonts, group, gi > 0);
-        commands.entity(header).insert(SettingsGroupTag(group.to_string()));
+        let header = sidebar_group_header(commands, fonts, &gname, gi > 0);
+        commands.entity(header).insert(SettingsGroupTag(gname.clone()));
         kids.push(header);
         for &(tab, focus, icon, label) in *cats {
             // A category is active when both its tab and its section focus
             // match the current selection.
             let selected = tab == active && active_sub == focus;
-            let row = sidebar_tab(commands, fonts, icon, label, tab, focus, selected);
+            let lname = tr_cat(label);
+            let row = sidebar_tab(commands, fonts, icon, &lname, tab, focus, selected);
             commands.entity(row).insert(SettingsCatRow {
-                group: group.to_string(),
-                label: label.to_string(),
+                group: gname.clone(),
+                label: lname,
             });
             kids.push(row);
         }
@@ -798,8 +899,9 @@ fn build_sidebar(
     // PLUGINS group: one sidebar category per registered plugin section.
     let plugins = sections.map(|s| s.0.as_slice()).unwrap_or_default();
     if !plugins.is_empty() {
-        let header = sidebar_group_header(commands, fonts, "PLUGINS", true);
-        commands.entity(header).insert(SettingsGroupTag("PLUGINS".to_string()));
+        let pname = tr_group("PLUGINS");
+        let header = sidebar_group_header(commands, fonts, &pname, true);
+        commands.entity(header).insert(SettingsGroupTag(pname.clone()));
         kids.push(header);
         for entry in plugins {
             let selected = active == SettingsTab::Plugins
@@ -813,7 +915,7 @@ fn build_sidebar(
                 selected,
             );
             commands.entity(row).insert(SettingsCatRow {
-                group: "PLUGINS".to_string(),
+                group: pname.clone(),
                 label: entry.title.clone(),
             });
             kids.push(row);
@@ -1121,10 +1223,7 @@ fn tab_plugins(
     if entries.is_empty() {
         let lbl = commands
             .spawn((
-                Text::new(
-                    "No plugin settings registered. Plugins add sections here \
-                     via `register_settings_section`.",
-                ),
+                Text::new(tr("settings.hint.no_plugins")),
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_muted())),
                 Node {
@@ -1166,7 +1265,7 @@ fn tab_project(
     if !has_project {
         let lbl = commands
             .spawn((
-                Text::new("No project is currently loaded."),
+                Text::new(tr("settings.hint.no_project")),
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_muted())),
                 Node {
@@ -1179,10 +1278,10 @@ fn tab_project(
         return;
     }
 
-    let (sec, body) = section(commands, fonts, "folder-open", "Project", A_BLUE);
+    let (sec, body) = section(commands, fonts, "folder-open", &tr("common.project"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "project");
-    let ti = text_input(commands, &fonts.ui, "Project name", "");
+    let ti = text_input(commands, &fonts.ui, &tr("settings.input.project_name_placeholder"), "");
     bind_text_input(
         commands,
         ti,
@@ -1198,7 +1297,7 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 0, "Name", ti);
+    settings_row(commands, fonts, body, 0, &tr("common.name"), ti);
 
     let scene_opts: Vec<&str> = scenes.iter().map(|s| s.as_str()).collect();
     let sc1 = scenes.to_vec();
@@ -1224,14 +1323,17 @@ fn tab_project(
             }
         },
     );
-    settings_row(commands, fonts, body, 1, "Boot Scene", dd);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.boot_scene"), dd);
 
     // Default UI font for the shipped game (ProjectConfig.ui_font). "Default"
     // keeps the embedded font; other entries are generics + project fonts.
-    let mut font_opts: Vec<String> = ["Default", "System UI", "Sans Serif", "Serif", "Monospace"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut font_opts: Vec<String> = vec![
+        tr("common.default"),
+        tr("settings.opt.system_ui"),
+        tr("settings.opt.sans_serif"),
+        tr("settings.opt.serif"),
+        tr("settings.opt.monospace"),
+    ];
     font_opts.extend(custom.iter().cloned());
     let font_refs: Vec<&str> = font_opts.iter().map(|s| s.as_str()).collect();
     let fo1 = font_opts.clone();
@@ -1257,16 +1359,22 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 2, "Game UI Font", dd);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.game_ui_font"), dd);
 
     // Rendering (3D pipeline).
-    let (sec, body) = section(commands, fonts, "monitor", "Rendering", A_BLUE);
+    let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.rendering"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "rendering");
+    let rmode_opts = [
+        tr("settings.opt.auto_per_platform"),
+        tr("settings.opt.forward"),
+        tr("settings.opt.deferred"),
+    ];
+    let rmode_refs: Vec<&str> = rmode_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
-        &["Auto (per platform)", "Forward", "Deferred"],
+        &rmode_refs,
         0,
         |w| match w
             .get_resource::<CurrentProject>()
@@ -1289,11 +1397,11 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 0, "Mode", dd);
-    note_row(commands, fonts, body, "Restart required for the rendering mode to take effect.");
+    settings_row(commands, fonts, body, 0, &tr("common.mode"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.restart_rendering"));
 
     // Window.
-    let (sec, body) = section(commands, fonts, "desktop", "Window", A_BLUE);
+    let (sec, body) = section(commands, fonts, "desktop", &tr("settings.cat.window"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "window");
     let dv = proj_u32_drag(
@@ -1301,13 +1409,13 @@ fn tab_project(
         |c| c.window.width,
         |c, v| c.window.width = v,
     );
-    settings_row(commands, fonts, body, 0, "Width", dv);
+    settings_row(commands, fonts, body, 0, &tr("common.width"), dv);
     let dv = proj_u32_drag(
         commands, fonts, 240.0, 4320.0,
         |c| c.window.height,
         |c, v| c.window.height = v,
     );
-    settings_row(commands, fonts, body, 1, "Height", dv);
+    settings_row(commands, fonts, body, 1, &tr("common.height"), dv);
     let t = ctl_toggle(
         commands,
         true,
@@ -1323,11 +1431,17 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 2, "Resizable", t);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.resizable"), t);
+    let wmode_opts = [
+        tr("settings.opt.windowed"),
+        tr("settings.opt.fullscreen"),
+        tr("settings.opt.borderless"),
+    ];
+    let wmode_refs: Vec<&str> = wmode_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
-        &["Windowed", "Fullscreen", "Borderless"],
+        &wmode_refs,
         0,
         |w| match w
             .get_resource::<CurrentProject>()
@@ -1350,16 +1464,18 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 3, "Mode", dd);
+    settings_row(commands, fonts, body, 3, &tr("common.mode"), dd);
 
     // Viewport (render resolution).
-    let (sec, body) = section(commands, fonts, "video-camera", "Viewport", A_PURPLE);
+    let (sec, body) = section(commands, fonts, "video-camera", &tr("settings.tab.viewport"), A_PURPLE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "game_viewport");
+    let stretch_opts = [tr("common.disabled"), tr("settings.tab.viewport")];
+    let stretch_refs: Vec<&str> = stretch_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
-        &["Disabled", "Viewport"],
+        &stretch_refs,
         0,
         |w| match w
             .get_resource::<CurrentProject>()
@@ -1381,23 +1497,30 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 0, "Stretch Mode", dd);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.stretch_mode"), dd);
     let dv = proj_u32_drag(
         commands, fonts, 16.0, 7680.0,
         |c| c.viewport.width,
         |c, v| c.viewport.width = v,
     );
-    settings_row(commands, fonts, body, 1, "Width", dv);
+    settings_row(commands, fonts, body, 1, &tr("common.width"), dv);
     let dv = proj_u32_drag(
         commands, fonts, 16.0, 4320.0,
         |c| c.viewport.height,
         |c, v| c.viewport.height = v,
     );
-    settings_row(commands, fonts, body, 2, "Height", dv);
+    settings_row(commands, fonts, body, 2, &tr("common.height"), dv);
+    let aspect_opts = [
+        tr("settings.opt.keep"),
+        tr("settings.opt.expand"),
+        tr("settings.opt.keep_width"),
+        tr("settings.opt.keep_height"),
+    ];
+    let aspect_refs: Vec<&str> = aspect_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
-        &["Keep", "Expand", "Keep Width", "Keep Height"],
+        &aspect_refs,
         0,
         |w| match w
             .get_resource::<CurrentProject>()
@@ -1422,16 +1545,18 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 3, "Aspect Mode", dd);
+    settings_row(commands, fonts, body, 3, &tr("settings.row.aspect_mode"), dd);
 
     // Rendering 2D.
-    let (sec, body) = section(commands, fonts, "image-square", "Rendering 2D", A_BLUE);
+    let (sec, body) = section(commands, fonts, "image-square", &tr("settings.section.rendering_2d"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "rendering_2d");
+    let filter_opts = [tr("settings.opt.nearest"), tr("settings.opt.linear")];
+    let filter_refs: Vec<&str> = filter_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
-        &["Nearest", "Linear"],
+        &filter_refs,
         0,
         |w| match w
             .get_resource::<CurrentProject>()
@@ -1453,7 +1578,7 @@ fn tab_project(
             save_project(w);
         },
     );
-    settings_row(commands, fonts, body, 0, "Image Filter", dd);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.image_filter"), dd);
 }
 
 /// A drag-value bound to a `u32` field of the current project's config,
@@ -1511,7 +1636,7 @@ fn tab_interface(
     custom: &[String],
     focus: Option<&str>,
 ) {
-    let (sec, body) = section(commands, fonts, "text-aa", "Fonts", A_BLUE);
+    let (sec, body) = section(commands, fonts, "text-aa", &tr("settings.cat.fonts"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "fonts");
 
@@ -1532,7 +1657,7 @@ fn tab_interface(
         move |w| ui_font_index(&w.resource::<EditorSettings>().ui_font, &cu),
         move |w, &i| w.resource_mut::<EditorSettings>().ui_font = ui_font_from_index(i, &cu2),
     );
-    settings_row(commands, fonts, body, 0, "UI Font", dd);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.ui_font"), dd);
 
     let mono_opts: Vec<String> = MonoFont::BUILTIN
         .iter()
@@ -1550,7 +1675,7 @@ fn tab_interface(
         move |w| mono_font_index(&w.resource::<EditorSettings>().mono_font, &cm),
         move |w, &i| w.resource_mut::<EditorSettings>().mono_font = mono_font_from_index(i, &cm2),
     );
-    settings_row(commands, fonts, body, 1, "Code Font", dd);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.code_font"), dd);
 
     let dv = ctl_drag(
         commands,
@@ -1562,9 +1687,61 @@ fn tab_interface(
         |w| w.resource::<EditorSettings>().font_size,
         |w, &v| w.resource_mut::<EditorSettings>().font_size = v,
     );
-    settings_row(commands, fonts, body, 2, "Font Size", dv);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.font_size"), dv);
 
-    let (sec, body) = section(commands, fonts, "monitor", "Display", A_PURPLE);
+    // ── Language ──
+    // Picker over every registered language (built-in + external `languages/`
+    // packs). Driven straight off the global translation table — its active
+    // code is the source of truth — and persisted to `~/.renzora/editor.toml`
+    // so the choice survives restarts. The row label itself is localized,
+    // demonstrating the end-to-end path.
+    let (sec, body) = section(commands, fonts, "globe", &tr("settings.row.language"), A_GREEN);
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "language");
+
+    let langs = renzora::lang::available();
+    let lang_labels: Vec<String> = langs
+        .iter()
+        .map(|m| {
+            if m.name.is_empty() {
+                m.code.clone()
+            } else {
+                m.name.clone()
+            }
+        })
+        .collect();
+    let lang_refs: Vec<&str> = lang_labels.iter().map(|s| s.as_str()).collect();
+    let codes: Vec<String> = langs.iter().map(|m| m.code.clone()).collect();
+    let active = renzora::lang::active_code();
+    let cur = codes.iter().position(|c| *c == active).unwrap_or(0);
+    let codes_get = codes.clone();
+    let codes_set = codes;
+    let dd = ctl_dropdown(
+        commands,
+        fonts,
+        &lang_refs,
+        cur,
+        move |_w| {
+            let a = renzora::lang::active_code();
+            codes_get.iter().position(|c| *c == a).unwrap_or(0)
+        },
+        move |_w, &i| {
+            if let Some(code) = codes_set.get(i) {
+                renzora::lang::set_active(code);
+                let _ = renzora::save_language(code);
+            }
+        },
+    );
+    settings_row(
+        commands,
+        fonts,
+        body,
+        0,
+        &renzora::lang::t("settings.row.language"),
+        dd,
+    );
+
+    let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.display"), A_PURPLE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "display");
     let dd = ctl_dropdown(
@@ -1579,15 +1756,10 @@ fn tab_interface(
             let _ = renzora::save_ui_scale(v);
         },
     );
-    settings_row(commands, fonts, body, 0, "UI Scale", dd);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "Scales the editor UI on top of the OS DPI setting. 100% follows the OS.",
-    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.ui_scale"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.ui_scale"));
 
-    let (sec, body) = section(commands, fonts, "list-bullets", "Hierarchy", A_BLUE);
+    let (sec, body) = section(commands, fonts, "list-bullets", &tr("settings.cat.hierarchy"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "hierarchy");
     let t = ctl_toggle(
@@ -1596,12 +1768,14 @@ fn tab_interface(
         |w| w.resource::<EditorSettings>().hierarchy_parent_stacking,
         |w, &v| w.resource_mut::<EditorSettings>().hierarchy_parent_stacking = v,
     );
-    settings_row(commands, fonts, body, 0, "Parent Stacking", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.parent_stacking"), t);
 
-    let (sec, body) = section(commands, fonts, "sliders", "Inspector", A_PURPLE);
+    let (sec, body) = section(commands, fonts, "sliders", &tr("settings.cat.inspector"), A_PURPLE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "inspector");
-    let labels: Vec<&str> = InspectorExpandDefault::ALL.iter().map(|m| m.label()).collect();
+    let label_strs: Vec<String> =
+        InspectorExpandDefault::ALL.iter().map(|m| loc_opt(m.label())).collect();
+    let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1615,19 +1789,14 @@ fn tab_interface(
                 .unwrap_or_default();
         },
     );
-    settings_row(commands, fonts, body, 0, "Default Expand", dd);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "Which component sections start open when you select an entity. \
-         \"Essentials Only\" keeps Name, Transform, and Scripts open.",
-    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.default_expand"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.default_expand"));
 
-    let filter_labels: Vec<&str> = InspectorComponentFilterStyle::ALL
+    let filter_strs: Vec<String> = InspectorComponentFilterStyle::ALL
         .iter()
-        .map(|m| m.label())
+        .map(|m| loc_opt(m.label()))
         .collect();
+    let filter_labels: Vec<&str> = filter_strs.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1646,14 +1815,8 @@ fn tab_interface(
                     .unwrap_or_default();
         },
     );
-    settings_row(commands, fonts, body, 1, "Component Filter", dd);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "How to pick a single component to focus: a vertical icon menu down the \
-         left edge, or a dropdown in the top bar.",
-    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.component_filter"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.component_filter"));
 
     let t = ctl_toggle(
         commands,
@@ -1661,14 +1824,8 @@ fn tab_interface(
         |w| w.resource::<EditorSettings>().drag_value_rail_sweep,
         |w, &v| w.resource_mut::<EditorSettings>().drag_value_rail_sweep = v,
     );
-    settings_row(commands, fonts, body, 2, "Rail Sweep", t);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "Drag the bottom slider rail of a numeric field to sweep it from min to \
-         max quickly; the number area still does the fine relative scrub.",
-    );
+    settings_row(commands, fonts, body, 2, &tr("settings.row.rail_sweep"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.rail_sweep"));
 }
 
 fn inspector_filter_style_index(v: InspectorComponentFilterStyle) -> usize {
@@ -1749,7 +1906,7 @@ fn mono_font_from_index(i: usize, custom: &[String]) -> MonoFont {
 // ── Editor ───────────────────────────────────────────────────────────────────
 
 fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: Option<&str>) {
-    let (sec, body) = section(commands, fonts, "wrench", "Developer", A_ORANGE);
+    let (sec, body) = section(commands, fonts, "wrench", &tr("settings.category.developer"), A_ORANGE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "developer");
     let t = ctl_toggle(
@@ -1763,9 +1920,9 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
             let _ = renzora::save_dev_mode(v);
         },
     );
-    settings_row(commands, fonts, body, 0, "Dev Mode", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.dev_mode"), t);
 
-    let (sec, body) = section(commands, fonts, "floppy-disk", "Auto-Save", A_GREEN);
+    let (sec, body) = section(commands, fonts, "floppy-disk", &tr("settings.cat.autosave"), A_GREEN);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "autosave");
     let t = ctl_toggle(
@@ -1778,7 +1935,7 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
             let _ = renzora::save_autosave(&snap);
         },
     );
-    settings_row(commands, fonts, body, 0, "Enable Auto-Save", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.enable_autosave"), t);
     let dv = ctl_drag(
         commands,
         fonts,
@@ -1794,15 +1951,10 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
             let _ = renzora::save_autosave(&snap);
         },
     );
-    settings_row(commands, fonts, body, 1, "Interval (seconds)", dv);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "Re-saves the open scene on a timer. The status bar counts down in place of \"Ready\".",
-    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.interval_secs"), dv);
+    note_row(commands, fonts, body, &tr("settings.hint.autosave"));
 
-    let (sec, body) = section(commands, fonts, "desktop", "UI Workspace", A_BLUE);
+    let (sec, body) = section(commands, fonts, "desktop", &tr("settings.cat.workspace"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "workspace");
     let t = ctl_toggle(
@@ -1811,13 +1963,14 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
         |w| w.resource::<EditorSettings>().ui_preview_by_default,
         |w, &v| w.resource_mut::<EditorSettings>().ui_preview_by_default = v,
     );
-    settings_row(commands, fonts, body, 0, "Preview", t);
+    settings_row(commands, fonts, body, 0, &tr("common.preview"), t);
 
-    let (sec, body) = section(commands, fonts, "monitor", "Renderer", A_BLUE);
+    let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.renderer"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "renderer");
     let avail: Vec<renzora::RendererBackend> = renzora::RendererBackend::available().to_vec();
-    let labels: Vec<&str> = avail.iter().map(|b| b.label()).collect();
+    let label_strs: Vec<String> = avail.iter().map(|b| loc_opt(b.label())).collect();
+    let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
     let av1 = avail.clone();
     let av2 = avail.clone();
     let dd = ctl_dropdown(
@@ -1837,8 +1990,8 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
             }
         },
     );
-    settings_row(commands, fonts, body, 0, "Graphics Backend", dd);
-    note_row(commands, fonts, body, "Takes effect after restarting the editor.");
+    settings_row(commands, fonts, body, 0, &tr("settings.row.graphics_backend"), dd);
+    note_row(commands, fonts, body, &tr("settings.hint.restart_editor"));
 }
 
 // ── Viewport ─────────────────────────────────────────────────────────────────
@@ -1850,7 +2003,7 @@ fn tab_viewport(
     vp: &ViewportSettings,
     focus: Option<&str>,
 ) {
-    let (sec, body) = section(commands, fonts, "grid-four", "Grid", A_GREEN);
+    let (sec, body) = section(commands, fonts, "grid-four", &tr("settings.cat.grid"), A_GREEN);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "grid");
     let t = ctl_toggle(
@@ -1859,21 +2012,21 @@ fn tab_viewport(
         |w| w.resource::<ViewportSettings>().show_grid,
         |w, &v| w.resource_mut::<ViewportSettings>().show_grid = v,
     );
-    settings_row(commands, fonts, body, 0, "Show Grid", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.show_grid"), t);
     let t = ctl_toggle(
         commands,
         vp.show_subgrid,
         |w| w.resource::<ViewportSettings>().show_subgrid,
         |w, &v| w.resource_mut::<ViewportSettings>().show_subgrid = v,
     );
-    settings_row(commands, fonts, body, 1, "Show Subgrid", t);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.show_subgrid"), t);
     let t = ctl_toggle(
         commands,
         vp.show_axis_gizmo,
         |w| w.resource::<ViewportSettings>().show_axis_gizmo,
         |w, &v| w.resource_mut::<ViewportSettings>().show_axis_gizmo = v,
     );
-    settings_row(commands, fonts, body, 2, "Axis Gizmo", t);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.axis_gizmo"), t);
     let cf = color_field(
         commands,
         |w| {
@@ -1891,10 +2044,10 @@ fn tab_viewport(
             ];
         },
     );
-    settings_row(commands, fonts, body, 3, "2D Grid Color", cf);
+    settings_row(commands, fonts, body, 3, &tr("settings.row.grid_color_2d"), cf);
 
     // Entity name labels (Bevy 0.19 stroke-font text gizmos).
-    let (sec, body) = section(commands, fonts, "text-aa", "Labels", A_GREEN);
+    let (sec, body) = section(commands, fonts, "text-aa", &tr("settings.cat.labels"), A_GREEN);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "labels");
     let t = ctl_toggle(
@@ -1903,8 +2056,9 @@ fn tab_viewport(
         |w| w.resource::<ViewportSettings>().show_labels,
         |w, &v| w.resource_mut::<ViewportSettings>().show_labels = v,
     );
-    settings_row(commands, fonts, body, 0, "Show Labels", t);
-    let scope_labels: Vec<&str> = LabelScope::ALL.iter().map(|s| s.label()).collect();
+    settings_row(commands, fonts, body, 0, &tr("settings.row.show_labels"), t);
+    let scope_strs: Vec<String> = LabelScope::ALL.iter().map(|s| loc_opt(s.label())).collect();
+    let scope_labels: Vec<&str> = scope_strs.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands, fonts, &scope_labels,
         LabelScope::ALL
@@ -1920,13 +2074,13 @@ fn tab_viewport(
             w.resource_mut::<ViewportSettings>().label_scope = sc;
         },
     );
-    settings_row(commands, fonts, body, 1, "Show On", dd);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.show_on"), dd);
     let dv = ctl_drag(
         commands, fonts, vp.label_size, 0.2, 5.0, 0.05,
         |w| w.resource::<ViewportSettings>().label_size,
         |w, &v| w.resource_mut::<ViewportSettings>().label_size = v,
     );
-    settings_row(commands, fonts, body, 2, "Label Size", dv);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.label_size"), dv);
     let cf = color_field(
         commands,
         |w| {
@@ -1941,15 +2095,15 @@ fn tab_viewport(
             ];
         },
     );
-    settings_row(commands, fonts, body, 3, "Label Color", cf);
+    settings_row(commands, fonts, body, 3, &tr("settings.row.label_color"), cf);
     let dv = ctl_drag(
         commands, fonts, vp.label_max_distance, 1.0, 500.0, 1.0,
         |w| w.resource::<ViewportSettings>().label_max_distance,
         |w, &v| w.resource_mut::<ViewportSettings>().label_max_distance = v,
     );
-    settings_row(commands, fonts, body, 4, "Max Distance", dv);
+    settings_row(commands, fonts, body, 4, &tr("settings.row.max_distance"), dv);
 
-    let (sec, body) = section(commands, fonts, "gauge", "Performance", A_TEAL);
+    let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.performance"), A_TEAL);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "performance");
     let t = ctl_toggle(
@@ -1958,9 +2112,9 @@ fn tab_viewport(
         |w| w.resource::<ViewportSettings>().vsync,
         |w, &v| w.resource_mut::<ViewportSettings>().vsync = v,
     );
-    settings_row(commands, fonts, body, 0, "VSync", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.vsync"), t);
 
-    let (sec, body) = section(commands, fonts, "video-camera", "Camera", A_PURPLE);
+    let (sec, body) = section(commands, fonts, "video-camera", &tr("settings.category.camera"), A_PURPLE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "camera");
     let cam = &vp.camera;
@@ -1969,44 +2123,45 @@ fn tab_viewport(
         |w| w.resource::<ViewportSettings>().camera.move_speed,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.move_speed = v,
     );
-    settings_row(commands, fonts, body, 0, "Move Speed", dv);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.move_speed"), dv);
     let dv = ctl_drag(
         commands, fonts, cam.look_sensitivity, 0.05, 2.0, 0.01,
         |w| w.resource::<ViewportSettings>().camera.look_sensitivity,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.look_sensitivity = v,
     );
-    settings_row(commands, fonts, body, 1, "Look Sensitivity", dv);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.look_sensitivity"), dv);
     let dv = ctl_drag(
         commands, fonts, cam.orbit_sensitivity, 0.05, 2.0, 0.01,
         |w| w.resource::<ViewportSettings>().camera.orbit_sensitivity,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.orbit_sensitivity = v,
     );
-    settings_row(commands, fonts, body, 2, "Orbit Sensitivity", dv);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.orbit_sensitivity"), dv);
     let dv = ctl_drag(
         commands, fonts, cam.pan_sensitivity, 0.1, 5.0, 0.01,
         |w| w.resource::<ViewportSettings>().camera.pan_sensitivity,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.pan_sensitivity = v,
     );
-    settings_row(commands, fonts, body, 3, "Pan Sensitivity", dv);
+    settings_row(commands, fonts, body, 3, &tr("settings.row.pan_sensitivity"), dv);
     let dv = ctl_drag(
         commands, fonts, cam.zoom_sensitivity, 0.1, 5.0, 0.01,
         |w| w.resource::<ViewportSettings>().camera.zoom_sensitivity,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.zoom_sensitivity = v,
     );
-    settings_row(commands, fonts, body, 4, "Zoom Sensitivity", dv);
+    settings_row(commands, fonts, body, 4, &tr("settings.row.zoom_sensitivity"), dv);
     let t = ctl_toggle(
         commands, cam.invert_y,
         |w| w.resource::<ViewportSettings>().camera.invert_y,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.invert_y = v,
     );
-    settings_row(commands, fonts, body, 5, "Invert Y", t);
+    settings_row(commands, fonts, body, 5, &tr("settings.row.invert_y"), t);
     let t = ctl_toggle(
         commands, cam.distance_relative_speed,
         |w| w.resource::<ViewportSettings>().camera.distance_relative_speed,
         |w, &v| w.resource_mut::<ViewportSettings>().camera.distance_relative_speed = v,
     );
-    settings_row(commands, fonts, body, 6, "Distance Speed", t);
-    let src_labels: Vec<&str> = EditorCameraSource::ALL.iter().map(|s| s.label()).collect();
+    settings_row(commands, fonts, body, 6, &tr("settings.row.distance_speed"), t);
+    let src_strs: Vec<String> = EditorCameraSource::ALL.iter().map(|s| loc_opt(s.label())).collect();
+    let src_labels: Vec<&str> = src_strs.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
         commands, fonts, &src_labels,
         EditorCameraSource::ALL
@@ -2022,7 +2177,7 @@ fn tab_viewport(
             w.resource_mut::<ViewportSettings>().camera.editor_camera_source = src;
         },
     );
-    settings_row(commands, fonts, body, 7, "Editor Camera", dd);
+    settings_row(commands, fonts, body, 7, &tr("settings.row.editor_camera"), dd);
     // Editor-level (not per-viewport) play behaviour, but it's about the viewport,
     // so it lives here rather than under Scripting.
     let t = ctl_toggle(
@@ -2030,13 +2185,15 @@ fn tab_viewport(
         |w| w.resource::<EditorSettings>().maximize_viewport_on_play,
         |w, &v| w.resource_mut::<EditorSettings>().maximize_viewport_on_play = v,
     );
-    settings_row(commands, fonts, body, 8, "Maximize on Play", t);
+    settings_row(commands, fonts, body, 8, &tr("settings.row.maximize_on_play"), t);
 
-    let (sec, body) = section(commands, fonts, "gauge", "Gizmos", A_TEAL);
+    let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.gizmos"), A_TEAL);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "gizmos");
+    let coll_opts = [tr("settings.opt.selected_only"), tr("common.always")];
+    let coll_refs: Vec<&str> = coll_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
-        commands, fonts, &["Selected Only", "Always"],
+        commands, fonts, &coll_refs,
         match vp.collision_gizmo_visibility {
             CollisionGizmoVisibility::SelectedOnly => 0,
             CollisionGizmoVisibility::Always => 1,
@@ -2053,9 +2210,11 @@ fn tab_viewport(
             };
         },
     );
-    settings_row(commands, fonts, body, 0, "Colliders", dd);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.colliders"), dd);
+    let sel_hl_opts = [tr("settings.opt.outline"), tr("settings.opt.gizmo")];
+    let sel_hl_refs: Vec<&str> = sel_hl_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
-        commands, fonts, &["Outline", "Gizmo"],
+        commands, fonts, &sel_hl_refs,
         1, // Gizmo default; reseeded by bind_2way
         |w| match w.resource::<EditorSettings>().selection_highlight_mode {
             SelectionHighlightMode::Outline => 0,
@@ -2069,8 +2228,9 @@ fn tab_viewport(
             };
         },
     );
-    settings_row(commands, fonts, body, 1, "Selection", dd);
-    let gran_labels: Vec<&str> = SelectionGranularity::ALL.iter().map(|g| g.label()).collect();
+    settings_row(commands, fonts, body, 1, &tr("settings.row.selection"), dd);
+    let gran_strs: Vec<String> = SelectionGranularity::ALL.iter().map(|g| loc_opt(g.label())).collect();
+    let gran_labels: Vec<&str> = gran_strs.iter().map(|g| g.as_str()).collect();
     let dd = ctl_dropdown(
         commands, fonts, &gran_labels,
         // Seed with the default; reseeded from the resource by bind_2way.
@@ -2087,9 +2247,11 @@ fn tab_viewport(
             w.resource_mut::<EditorSettings>().selection_granularity = g;
         },
     );
-    settings_row(commands, fonts, body, 2, "Click Selects", dd);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.click_selects"), dd);
+    let boundary_opts = [tr("settings.opt.on_top"), tr("settings.opt.depth_tested")];
+    let boundary_refs: Vec<&str> = boundary_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
-        commands, fonts, &["On Top", "Depth Tested"], 0,
+        commands, fonts, &boundary_refs, 0,
         |w| {
             if w.resource::<EditorSettings>().selection_boundary_on_top {
                 0
@@ -2099,27 +2261,20 @@ fn tab_viewport(
         },
         |w, &i| w.resource_mut::<EditorSettings>().selection_boundary_on_top = i == 0,
     );
-    settings_row(commands, fonts, body, 3, "Boundary", dd);
+    settings_row(commands, fonts, body, 3, &tr("settings.row.boundary"), dd);
     let dv = ctl_drag(
         commands, fonts, vp.gizmo_drag_opacity, 0.0, 1.0, 0.05,
         |w| w.resource::<ViewportSettings>().gizmo_drag_opacity,
         |w, &v| w.resource_mut::<ViewportSettings>().gizmo_drag_opacity = v.clamp(0.0, 1.0),
     );
-    settings_row(commands, fonts, body, 4, "Drag Opacity", dv);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "How opaque the transform gizmo stays while you drag a handle. Lower \
-         values fade it so the object underneath stays visible; 1.0 keeps it \
-         fully opaque.",
-    );
+    settings_row(commands, fonts, body, 4, &tr("settings.row.drag_opacity"), dv);
+    note_row(commands, fonts, body, &tr("settings.hint.drag_opacity"));
 }
 
 // ── Scripting ────────────────────────────────────────────────────────────────
 
 fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: Option<&str>) {
-    let (sec, body) = section(commands, fonts, "code", "Scripting", A_GREEN);
+    let (sec, body) = section(commands, fonts, "code", &tr("settings.category.scripting"), A_GREEN);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "scripting");
     let t = ctl_toggle(
@@ -2127,21 +2282,21 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
         |w| w.resource::<EditorSettings>().script_rerun_on_ready_on_reload,
         |w, &v| w.resource_mut::<EditorSettings>().script_rerun_on_ready_on_reload = v,
     );
-    settings_row(commands, fonts, body, 0, "Hot Reload", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.hot_reload"), t);
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().hide_cursor_in_play_mode,
         |w, &v| w.resource_mut::<EditorSettings>().hide_cursor_in_play_mode = v,
     );
-    settings_row(commands, fonts, body, 1, "Cursor", t);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.cursor"), t);
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().external_play_window,
         |w, &v| w.resource_mut::<EditorSettings>().external_play_window = v,
     );
-    settings_row(commands, fonts, body, 2, "External Window", t);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.external_window"), t);
 
-    let (sec, body) = section(commands, fonts, "code", "Code Editor", A_GREEN);
+    let (sec, body) = section(commands, fonts, "code", &tr("settings.cat.code_editor"), A_GREEN);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "code_editor");
     let t = ctl_toggle(
@@ -2149,38 +2304,38 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
         |w| w.resource::<EditorSettings>().code_auto_close_pairs,
         |w, &v| w.resource_mut::<EditorSettings>().code_auto_close_pairs = v,
     );
-    settings_row(commands, fonts, body, 0, "Auto-close pairs", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.auto_close_pairs"), t);
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().code_trim_trailing_whitespace_on_save,
         |w, &v| w.resource_mut::<EditorSettings>().code_trim_trailing_whitespace_on_save = v,
     );
-    settings_row(commands, fonts, body, 1, "Trim on save", t);
+    settings_row(commands, fonts, body, 1, &tr("settings.row.trim_on_save"), t);
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().code_show_minimap,
         |w, &v| w.resource_mut::<EditorSettings>().code_show_minimap = v,
     );
-    settings_row(commands, fonts, body, 2, "Minimap", t);
+    settings_row(commands, fonts, body, 2, &tr("settings.row.minimap"), t);
     let t = ctl_toggle(
         commands, false,
         |w| w.resource::<EditorSettings>().code_show_whitespace,
         |w, &v| w.resource_mut::<EditorSettings>().code_show_whitespace = v,
     );
-    settings_row(commands, fonts, body, 3, "Whitespace markers", t);
+    settings_row(commands, fonts, body, 3, &tr("settings.row.whitespace_markers"), t);
 }
 
 // ── Assets ───────────────────────────────────────────────────────────────────
 
 fn tab_assets(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
-    let (sec, body) = section(commands, fonts, "folder-open", "Import", A_BLUE);
+    let (sec, body) = section(commands, fonts, "folder-open", &tr("common.import"), A_BLUE);
     commands.entity(col).add_child(sec);
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().auto_import_on_drop,
         |w, &v| w.resource_mut::<EditorSettings>().auto_import_on_drop = v,
     );
-    settings_row(commands, fonts, body, 0, "Drop Import", t);
+    settings_row(commands, fonts, body, 0, &tr("settings.row.drop_import"), t);
 }
 
 // ── Theme ────────────────────────────────────────────────────────────────────
@@ -2188,7 +2343,7 @@ fn tab_assets(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
 const A_VIOLET: (u8, u8, u8) = (180, 130, 230);
 
 fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &[String]) {
-    let (sec, body) = section(commands, fonts, "palette", "Active Theme", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.active_theme"), A_VIOLET);
     commands.entity(col).add_child(sec);
 
     let opts: Vec<&str> = themes.iter().map(|s| s.as_str()).collect();
@@ -2209,12 +2364,12 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
             }
         },
     );
-    settings_row(commands, fonts, body, 0, "Theme", dd);
+    settings_row(commands, fonts, body, 0, &tr("settings.tab.theme"), dd);
 
     // Save button row.
     let save_lbl = commands
         .spawn((
-            Text::new("Save"),
+            Text::new(tr("common.save")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
         ))
@@ -2239,76 +2394,76 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
     settings_row(commands, fonts, body, 1, "", save);
 
     // Color-editing sections.
-    let (sec, body) = section(commands, fonts, "palette", "Semantic Colors", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.semantic_colors"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Accent", |t| t.semantic.accent, |t, c| t.semantic.accent = c);
-    theme_color_row(commands, fonts, body, 1, "Success", |t| t.semantic.success, |t, c| t.semantic.success = c);
-    theme_color_row(commands, fonts, body, 2, "Warning", |t| t.semantic.warning, |t, c| t.semantic.warning = c);
-    theme_color_row(commands, fonts, body, 3, "Error", |t| t.semantic.error, |t, c| t.semantic.error = c);
-    theme_color_row(commands, fonts, body, 4, "Selection", |t| t.semantic.selection, |t, c| t.semantic.selection = c);
-    theme_color_row(commands, fonts, body, 5, "Sel. Stroke", |t| t.semantic.selection_stroke, |t, c| t.semantic.selection_stroke = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.row.accent"), |t| t.semantic.accent, |t, c| t.semantic.accent = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.success"), |t| t.semantic.success, |t, c| t.semantic.success = c);
+    theme_color_row(commands, fonts, body, 2, &tr("common.warning"), |t| t.semantic.warning, |t, c| t.semantic.warning = c);
+    theme_color_row(commands, fonts, body, 3, &tr("common.error"), |t| t.semantic.error, |t, c| t.semantic.error = c);
+    theme_color_row(commands, fonts, body, 4, &tr("settings.row.selection"), |t| t.semantic.selection, |t, c| t.semantic.selection = c);
+    theme_color_row(commands, fonts, body, 5, &tr("settings.row.sel_stroke"), |t| t.semantic.selection_stroke, |t, c| t.semantic.selection_stroke = c);
 
-    let (sec, body) = section(commands, fonts, "palette", "Surfaces", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.surfaces"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Window", |t| t.surfaces.window, |t, c| t.surfaces.window = c);
-    theme_color_row(commands, fonts, body, 1, "Window Stroke", |t| t.surfaces.window_stroke, |t, c| t.surfaces.window_stroke = c);
-    theme_color_row(commands, fonts, body, 2, "Panel", |t| t.surfaces.panel, |t, c| t.surfaces.panel = c);
-    theme_color_row(commands, fonts, body, 3, "Popup", |t| t.surfaces.popup, |t, c| t.surfaces.popup = c);
-    theme_color_row(commands, fonts, body, 4, "Faint", |t| t.surfaces.faint, |t, c| t.surfaces.faint = c);
-    theme_color_row(commands, fonts, body, 5, "Extreme", |t| t.surfaces.extreme, |t, c| t.surfaces.extreme = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.cat.window"), |t| t.surfaces.window, |t, c| t.surfaces.window = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.window_stroke"), |t| t.surfaces.window_stroke, |t, c| t.surfaces.window_stroke = c);
+    theme_color_row(commands, fonts, body, 2, &tr("settings.row.panel"), |t| t.surfaces.panel, |t, c| t.surfaces.panel = c);
+    theme_color_row(commands, fonts, body, 3, &tr("settings.row.popup"), |t| t.surfaces.popup, |t, c| t.surfaces.popup = c);
+    theme_color_row(commands, fonts, body, 4, &tr("settings.row.faint"), |t| t.surfaces.faint, |t, c| t.surfaces.faint = c);
+    theme_color_row(commands, fonts, body, 5, &tr("settings.row.extreme"), |t| t.surfaces.extreme, |t, c| t.surfaces.extreme = c);
 
-    let (sec, body) = section(commands, fonts, "palette", "Text", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.text"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Primary", |t| t.text.primary, |t, c| t.text.primary = c);
-    theme_color_row(commands, fonts, body, 1, "Secondary", |t| t.text.secondary, |t, c| t.text.secondary = c);
-    theme_color_row(commands, fonts, body, 2, "Muted", |t| t.text.muted, |t, c| t.text.muted = c);
-    theme_color_row(commands, fonts, body, 3, "Heading", |t| t.text.heading, |t, c| t.text.heading = c);
-    theme_color_row(commands, fonts, body, 4, "Disabled", |t| t.text.disabled, |t, c| t.text.disabled = c);
-    theme_color_row(commands, fonts, body, 5, "Hyperlink", |t| t.text.hyperlink, |t, c| t.text.hyperlink = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.row.primary"), |t| t.text.primary, |t, c| t.text.primary = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.secondary"), |t| t.text.secondary, |t, c| t.text.secondary = c);
+    theme_color_row(commands, fonts, body, 2, &tr("settings.row.muted"), |t| t.text.muted, |t, c| t.text.muted = c);
+    theme_color_row(commands, fonts, body, 3, &tr("settings.row.heading"), |t| t.text.heading, |t, c| t.text.heading = c);
+    theme_color_row(commands, fonts, body, 4, &tr("common.disabled"), |t| t.text.disabled, |t, c| t.text.disabled = c);
+    theme_color_row(commands, fonts, body, 5, &tr("settings.row.hyperlink"), |t| t.text.hyperlink, |t, c| t.text.hyperlink = c);
 
-    let (sec, body) = section(commands, fonts, "palette", "Widgets", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.widgets"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Inactive BG", |t| t.widgets.inactive_bg, |t, c| t.widgets.inactive_bg = c);
-    theme_color_row(commands, fonts, body, 1, "Inactive FG", |t| t.widgets.inactive_fg, |t, c| t.widgets.inactive_fg = c);
-    theme_color_row(commands, fonts, body, 2, "Hovered BG", |t| t.widgets.hovered_bg, |t, c| t.widgets.hovered_bg = c);
-    theme_color_row(commands, fonts, body, 3, "Hovered FG", |t| t.widgets.hovered_fg, |t, c| t.widgets.hovered_fg = c);
-    theme_color_row(commands, fonts, body, 4, "Active BG", |t| t.widgets.active_bg, |t, c| t.widgets.active_bg = c);
-    theme_color_row(commands, fonts, body, 5, "Active FG", |t| t.widgets.active_fg, |t, c| t.widgets.active_fg = c);
-    theme_color_row(commands, fonts, body, 6, "Border", |t| t.widgets.border, |t, c| t.widgets.border = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.row.inactive_bg"), |t| t.widgets.inactive_bg, |t, c| t.widgets.inactive_bg = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.inactive_fg"), |t| t.widgets.inactive_fg, |t, c| t.widgets.inactive_fg = c);
+    theme_color_row(commands, fonts, body, 2, &tr("settings.row.hovered_bg"), |t| t.widgets.hovered_bg, |t, c| t.widgets.hovered_bg = c);
+    theme_color_row(commands, fonts, body, 3, &tr("settings.row.hovered_fg"), |t| t.widgets.hovered_fg, |t, c| t.widgets.hovered_fg = c);
+    theme_color_row(commands, fonts, body, 4, &tr("settings.row.active_bg"), |t| t.widgets.active_bg, |t, c| t.widgets.active_bg = c);
+    theme_color_row(commands, fonts, body, 5, &tr("settings.row.active_fg"), |t| t.widgets.active_fg, |t, c| t.widgets.active_fg = c);
+    theme_color_row(commands, fonts, body, 6, &tr("settings.row.border"), |t| t.widgets.border, |t, c| t.widgets.border = c);
 
-    let (sec, body) = section(commands, fonts, "palette", "Panels", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.panels"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Tree Line", |t| t.panels.tree_line, |t, c| t.panels.tree_line = c);
-    theme_color_row(commands, fonts, body, 1, "Drop Line", |t| t.panels.drop_line, |t, c| t.panels.drop_line = c);
-    theme_color_row(commands, fonts, body, 2, "Tab Active", |t| t.panels.tab_active, |t, c| t.panels.tab_active = c);
-    theme_color_row(commands, fonts, body, 3, "Tab Inactive", |t| t.panels.tab_inactive, |t, c| t.panels.tab_inactive = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.row.tree_line"), |t| t.panels.tree_line, |t, c| t.panels.tree_line = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.drop_line"), |t| t.panels.drop_line, |t, c| t.panels.drop_line = c);
+    theme_color_row(commands, fonts, body, 2, &tr("settings.row.tab_active"), |t| t.panels.tab_active, |t, c| t.panels.tab_active = c);
+    theme_color_row(commands, fonts, body, 3, &tr("settings.row.tab_inactive"), |t| t.panels.tab_inactive, |t, c| t.panels.tab_inactive = c);
 
     // Code-editor syntax token colors. Edits route through `ThemeManager` →
     // the shell theme bridge → ember's `SyntaxPalette`, so the open code editor
     // recolors live.
-    let (sec, body) = section(commands, fonts, "palette", "Syntax Tokens", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.syntax_tokens"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Normal", |t| t.syntax.normal, |t, c| t.syntax.normal = c);
-    theme_color_row(commands, fonts, body, 1, "Keyword", |t| t.syntax.keyword, |t, c| t.syntax.keyword = c);
-    theme_color_row(commands, fonts, body, 2, "Type", |t| t.syntax.r#type, |t, c| t.syntax.r#type = c);
-    theme_color_row(commands, fonts, body, 3, "Function", |t| t.syntax.function, |t, c| t.syntax.function = c);
-    theme_color_row(commands, fonts, body, 4, "Number", |t| t.syntax.number, |t, c| t.syntax.number = c);
-    theme_color_row(commands, fonts, body, 5, "String", |t| t.syntax.string, |t, c| t.syntax.string = c);
-    theme_color_row(commands, fonts, body, 6, "Comment", |t| t.syntax.comment, |t, c| t.syntax.comment = c);
-    theme_color_row(commands, fonts, body, 7, "Operator", |t| t.syntax.operator, |t, c| t.syntax.operator = c);
-    theme_color_row(commands, fonts, body, 8, "Constant", |t| t.syntax.constant, |t, c| t.syntax.constant = c);
-    theme_color_row(commands, fonts, body, 9, "Punctuation", |t| t.syntax.punctuation, |t, c| t.syntax.punctuation = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.row.normal"), |t| t.syntax.normal, |t, c| t.syntax.normal = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.keyword"), |t| t.syntax.keyword, |t, c| t.syntax.keyword = c);
+    theme_color_row(commands, fonts, body, 2, &tr("common.type"), |t| t.syntax.r#type, |t, c| t.syntax.r#type = c);
+    theme_color_row(commands, fonts, body, 3, &tr("settings.row.function"), |t| t.syntax.function, |t, c| t.syntax.function = c);
+    theme_color_row(commands, fonts, body, 4, &tr("settings.row.number"), |t| t.syntax.number, |t, c| t.syntax.number = c);
+    theme_color_row(commands, fonts, body, 5, &tr("settings.row.string"), |t| t.syntax.string, |t, c| t.syntax.string = c);
+    theme_color_row(commands, fonts, body, 6, &tr("settings.row.comment"), |t| t.syntax.comment, |t, c| t.syntax.comment = c);
+    theme_color_row(commands, fonts, body, 7, &tr("settings.row.operator"), |t| t.syntax.operator, |t, c| t.syntax.operator = c);
+    theme_color_row(commands, fonts, body, 8, &tr("settings.row.constant"), |t| t.syntax.constant, |t, c| t.syntax.constant = c);
+    theme_color_row(commands, fonts, body, 9, &tr("settings.row.punctuation"), |t| t.syntax.punctuation, |t, c| t.syntax.punctuation = c);
 
-    let (sec, body) = section(commands, fonts, "palette", "Editor Chrome", A_VIOLET);
+    let (sec, body) = section(commands, fonts, "palette", &tr("settings.section.editor_chrome"), A_VIOLET);
     commands.entity(col).add_child(sec);
-    theme_color_row(commands, fonts, body, 0, "Line Number", |t| t.syntax.line_number, |t, c| t.syntax.line_number = c);
-    theme_color_row(commands, fonts, body, 1, "Active Line No.", |t| t.syntax.line_number_active, |t, c| t.syntax.line_number_active = c);
-    theme_color_row(commands, fonts, body, 2, "Current Line", |t| t.syntax.current_line, |t, c| t.syntax.current_line = c);
-    theme_color_row(commands, fonts, body, 3, "Selection", |t| t.syntax.selection, |t, c| t.syntax.selection = c);
-    theme_color_row(commands, fonts, body, 4, "Cursor", |t| t.syntax.cursor, |t, c| t.syntax.cursor = c);
-    theme_color_row(commands, fonts, body, 5, "Indent Guide", |t| t.syntax.indent_guide, |t, c| t.syntax.indent_guide = c);
-    theme_color_row(commands, fonts, body, 6, "Bracket Match", |t| t.syntax.bracket_match, |t, c| t.syntax.bracket_match = c);
-    theme_color_row(commands, fonts, body, 7, "Find Match", |t| t.syntax.find_match, |t, c| t.syntax.find_match = c);
+    theme_color_row(commands, fonts, body, 0, &tr("settings.row.line_number"), |t| t.syntax.line_number, |t, c| t.syntax.line_number = c);
+    theme_color_row(commands, fonts, body, 1, &tr("settings.row.active_line_no"), |t| t.syntax.line_number_active, |t, c| t.syntax.line_number_active = c);
+    theme_color_row(commands, fonts, body, 2, &tr("settings.row.current_line"), |t| t.syntax.current_line, |t, c| t.syntax.current_line = c);
+    theme_color_row(commands, fonts, body, 3, &tr("settings.row.selection"), |t| t.syntax.selection, |t, c| t.syntax.selection = c);
+    theme_color_row(commands, fonts, body, 4, &tr("settings.row.cursor"), |t| t.syntax.cursor, |t, c| t.syntax.cursor = c);
+    theme_color_row(commands, fonts, body, 5, &tr("settings.row.indent_guide"), |t| t.syntax.indent_guide, |t, c| t.syntax.indent_guide = c);
+    theme_color_row(commands, fonts, body, 6, &tr("settings.row.bracket_match"), |t| t.syntax.bracket_match, |t, c| t.syntax.bracket_match = c);
+    theme_color_row(commands, fonts, body, 7, &tr("settings.row.find_match"), |t| t.syntax.find_match, |t, c| t.syntax.find_match = c);
 
     // ── Per-widget style editor ──────────────────────────────────────────────
     // Walk the ember `Theme` via reflection: every widget type → a section, every
@@ -2330,7 +2485,7 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
         .id();
     let hdr_lbl = commands
         .spawn((
-            Text::new("Widget Styles"),
+            Text::new(tr("settings.section.widget_styles")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_muted())),
             Node {
@@ -2341,7 +2496,7 @@ fn tab_theme(commands: &mut Commands, fonts: &EmberFonts, col: Entity, themes: &
         .id();
     let save_lbl = commands
         .spawn((
-            Text::new("Save to theme.toml"),
+            Text::new(tr("settings.btn.save_to_theme_toml")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
         ))
@@ -2601,12 +2756,12 @@ fn ember_theme_save_click(world: &mut World) {
 
 // ── Input ────────────────────────────────────────────────────────────────────
 
-fn kind_label(k: ActionKind) -> &'static str {
-    match k {
-        ActionKind::Button => "Button",
-        ActionKind::Axis1D => "Axis1D",
-        ActionKind::Axis2D => "Axis2D",
-    }
+fn kind_label(k: ActionKind) -> String {
+    tr(match k {
+        ActionKind::Button => "settings.opt.button",
+        ActionKind::Axis1D => "settings.opt.axis1d",
+        ActionKind::Axis2D => "settings.opt.axis2d",
+    })
 }
 
 fn format_binding(b: &InputBinding) -> String {
@@ -2656,19 +2811,14 @@ fn hrow(commands: &mut Commands, kids: &[Entity]) -> Entity {
 
 fn tab_input(commands: &mut Commands, fonts: &EmberFonts, col: Entity, input: &InputTabData) {
     // About.
-    let (sec, body) = section(commands, fonts, "info", "About Input Actions", A_BLUE);
+    let (sec, body) = section(commands, fonts, "info", &tr("settings.section.about_input"), A_BLUE);
     commands.entity(col).add_child(sec);
-    note_row(
-        commands,
-        fonts,
-        body,
-        "Named actions map physical inputs (keys, mouse, gamepad) to gameplay. Scripts read them by name.",
-    );
+    note_row(commands, fonts, body, &tr("settings.hint.input_actions"));
 
     // Add Action.
-    let (sec, body) = section(commands, fonts, "list-plus", "Add Action", A_GREEN);
+    let (sec, body) = section(commands, fonts, "list-plus", &tr("settings.section.add_action"), A_GREEN);
     commands.entity(col).add_child(sec);
-    let ti = text_input(commands, &fonts.ui, "Action name...", "");
+    let ti = text_input(commands, &fonts.ui, &tr("settings.input.action_name_placeholder"), "");
     commands.entity(ti).insert(NewActionInput);
     bind_text_input(
         commands,
@@ -2676,13 +2826,13 @@ fn tab_input(commands: &mut Commands, fonts: &EmberFonts, col: Entity, input: &I
         |w| w.resource::<NativeInputUi>().new_name.clone(),
         |w, s| w.resource_mut::<NativeInputUi>().new_name = s,
     );
-    let btn_b = text_button(commands, fonts, "Button", AddActionBtn { axis: false });
-    let btn_a = text_button(commands, fonts, "Axis2D", AddActionBtn { axis: true });
+    let btn_b = text_button(commands, fonts, &tr("settings.opt.button"), AddActionBtn { axis: false });
+    let btn_a = text_button(commands, fonts, &tr("settings.opt.axis2d"), AddActionBtn { axis: true });
     let row = hrow(commands, &[ti, btn_b, btn_a]);
     commands.entity(body).add_child(row);
 
     // Input Actions list.
-    let (sec, body) = section(commands, fonts, "game-controller", "Input Actions", A_PURPLE);
+    let (sec, body) = section(commands, fonts, "game-controller", &tr("settings.section.input_actions"), A_PURPLE);
     commands.entity(col).add_child(sec);
     for (i, action) in input.actions.iter().enumerate() {
         let expanded = input.selected == Some(i);
@@ -2799,7 +2949,7 @@ fn build_action_row(
                 save_input(w);
             },
         );
-        settings_row(commands, fonts, panel, 0, "Dead Zone", dv);
+        settings_row(commands, fonts, panel, 0, &tr("settings.row.dead_zone"), dv);
     }
 
     // Existing bindings.
@@ -2830,7 +2980,7 @@ fn build_action_row(
     if listening {
         let prompt = commands
             .spawn((
-                Text::new("Press any key or mouse button..."),
+                Text::new(tr("settings.input.press_any")),
                 ui_font(&fonts.ui, 11.0),
                 TextColor(rgb(renzora_ember::theme::warn_amber())),
                 Node {
@@ -2839,15 +2989,15 @@ fn build_action_row(
                 },
             ))
             .id();
-        let cancel = text_button(commands, fonts, "Cancel", CancelListenBtn);
+        let cancel = text_button(commands, fonts, &tr("common.cancel"), CancelListenBtn);
         let row = hrow(commands, &[prompt, cancel]);
         commands.entity(panel).add_child(row);
     } else {
-        let add = text_button(commands, fonts, "+ Add Binding", AddBindingBtn(i));
+        let add = text_button(commands, fonts, &tr("settings.btn.add_binding"), AddBindingBtn(i));
         let mut kids = vec![add];
         if action.kind == ActionKind::Axis2D {
             kids.push(text_button(commands, fonts, "WASD", CompositeBtn { action: i, arrows: false }));
-            kids.push(text_button(commands, fonts, "Arrows", CompositeBtn { action: i, arrows: true }));
+            kids.push(text_button(commands, fonts, &tr("settings.opt.arrows"), CompositeBtn { action: i, arrows: true }));
         }
         let row = hrow(commands, &kids);
         commands.entity(panel).add_child(row);
@@ -3083,7 +3233,7 @@ fn tab_shortcuts(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
     // Reset-all row.
     let reset_lbl = commands
         .spawn((
-            Text::new("Reset All to Defaults"),
+            Text::new(tr("settings.btn.reset_all")),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
         ))
@@ -3122,11 +3272,11 @@ fn rebind_button(commands: &mut Commands, fonts: &EmberFonts, action: EditorActi
     bind_text(commands, lbl, move |w| {
         let kb = w.resource::<KeyBindings>();
         if kb.rebinding == Some(action) {
-            "Press key...".to_string()
+            tr("settings.input.press_key")
         } else {
             kb.get(action)
                 .map(|b| b.display())
-                .unwrap_or_else(|| "Unbound".to_string())
+                .unwrap_or_else(|| tr("settings.input.unbound"))
         }
     });
     bind_text_color(commands, lbl, move |w| {

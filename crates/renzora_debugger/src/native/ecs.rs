@@ -84,7 +84,7 @@ fn hash_str(s: &str) -> u64 {
 fn build_ecs_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = root(commands);
 
-    let ent_label = section(commands, fonts, "Entities");
+    let ent_label = section(commands, fonts, &renzora::lang::t("ecs.entities"));
     let ent_big = big_stat(
         commands,
         fonts,
@@ -101,9 +101,9 @@ fn build_ecs_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let arch_k = small(commands, fonts, "Archetypes:", SECONDARY);
+    let arch_k = small(commands, fonts, &format!("{}:", renzora::lang::t("ecs.archetypes")), SECONDARY);
     let arch_v = bound(commands, fonts, text_primary(), |w| format!("{}", ecs(w, |s| s.archetype_count)));
-    let comp_k = small(commands, fonts, "Component Types:", SECONDARY);
+    let comp_k = small(commands, fonts, &format!("{}:", renzora::lang::t("ecs.component_types")), SECONDARY);
     let comp_v = bound(commands, fonts, text_primary(), |w| {
         format!("{}", ecs(w, |s| s.component_stats.len()))
     });
@@ -125,21 +125,21 @@ fn build_ecs_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         Section::Archetypes,
-        |w| format!("Archetypes ({})", ecs(w, |s| s.archetype_count)),
+        |w| format!("{} ({})", renzora::lang::t("ecs.archetypes"), ecs(w, |s| s.archetype_count)),
         archetypes_snapshot,
     );
     let comp = collapsible(
         commands,
         fonts,
         Section::Components,
-        |w| format!("Component Types ({})", ecs(w, |s| s.component_stats.len())),
+        |w| format!("{} ({})", renzora::lang::t("ecs.component_types"), ecs(w, |s| s.component_stats.len())),
         components_snapshot,
     );
     let res = collapsible(
         commands,
         fonts,
         Section::Resources,
-        |w| format!("Resources ({})", ecs(w, |s| s.resources.len())),
+        |w| format!("{} ({})", renzora::lang::t("ecs.resources"), ecs(w, |s| s.resources.len())),
         resources_snapshot,
     );
 
@@ -294,7 +294,7 @@ fn archetypes_snapshot(world: &World) -> KeyedSnapshot {
     }
     let archs = ecs(world, |s| s.top_archetypes.clone());
     if archs.is_empty() {
-        return note_snapshot("No archetypes");
+        return note_snapshot(renzora::lang::t("ecs.no_archetypes"));
     }
     let rows: Vec<(String, String)> = archs
         .iter()
@@ -331,7 +331,7 @@ fn components_snapshot(world: &World) -> KeyedSnapshot {
     }
     let stats = ecs(world, |s| s.component_stats.clone());
     if stats.is_empty() {
-        return note_snapshot("No components");
+        return note_snapshot(renzora::lang::t("ecs.no_components"));
     }
     let total = stats.len();
     let shown = total.min(30);
@@ -367,7 +367,7 @@ fn resources_snapshot(world: &World) -> KeyedSnapshot {
     }
     let res = ecs(world, |s| s.resources.clone());
     if res.is_empty() {
-        return note_snapshot("Resource tracking not enabled");
+        return note_snapshot(renzora::lang::t("ecs.resources_not_enabled"));
     }
     let names: Vec<String> = res.iter().take(50).map(|r| short_name(r).to_string()).collect();
     let items: Vec<(u64, u64)> = res.iter().take(50).map(|r| (hash_str(r), 0)).collect();
@@ -391,9 +391,9 @@ fn empty() -> KeyedSnapshot {
     }
 }
 
-fn note_snapshot(text: &'static str) -> KeyedSnapshot {
+fn note_snapshot(text: String) -> KeyedSnapshot {
     KeyedSnapshot {
         items: vec![(u64::MAX, 0)],
-        build: Box::new(move |c, f, _| note_row(c, f, text)),
+        build: Box::new(move |c, f, _| note_row(c, f, &text)),
     }
 }

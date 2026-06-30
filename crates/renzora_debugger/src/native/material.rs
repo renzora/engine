@@ -135,7 +135,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
 
     let absent = commands
         .spawn((
-            Text::new("(MaterialCache / MaterialPerfStats resource not present)"),
+            Text::new(renzora::lang::t("material.resources_absent")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
@@ -195,13 +195,13 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         })
     });
 
-    let hits = stat_row(commands, fonts, "Cache hits (lifetime)", |w| {
+    let hits = stat_row(commands, fonts, &renzora::lang::t("material.cache_hits"), |w| {
         format_count(mperf(w, |p| p.total_cache_hits))
     });
-    let compiles = stat_row(commands, fonts, "Compiles ran", |w| {
+    let compiles = stat_row(commands, fonts, &renzora::lang::t("material.compiles_ran"), |w| {
         format_count(mperf(w, |p| p.total_compiles))
     });
-    let ctime = stat_row(commands, fonts, "Total compile time", |w| {
+    let ctime = stat_row(commands, fonts, &renzora::lang::t("material.total_compile_time"), |w| {
         format_duration(mperf(w, |p| p.total_compile_time))
     });
     let fails = commands
@@ -219,7 +219,7 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     bind_display(commands, fails, |w| mperf(w, |p| p.total_failures) > 0);
 
     // Perf table.
-    let table_label = section(commands, fonts, "Per-material compile timing (sorted by last compile)");
+    let table_label = section(commands, fonts, &renzora::lang::t("material.perf_table"));
     let header = column_header(commands, fonts);
     bind_display(commands, header, |w| !mperf(w, |p| p.per_path.is_empty()));
     let body = commands
@@ -259,14 +259,16 @@ fn build_material_resolver(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     root
 }
 
-const COLS: [(&str, f32); 6] = [
-    ("Material", 200.0),
-    ("Kind", 40.0),
-    ("Last", 60.0),
-    ("Max", 60.0),
-    ("Compiles", 60.0),
-    ("Hits", 50.0),
-];
+fn cols() -> [(String, f32); 6] {
+    [
+        (renzora::lang::t("material.col_material"), 200.0),
+        (renzora::lang::t("material.col_kind"), 40.0),
+        (renzora::lang::t("perf.last"), 60.0),
+        (renzora::lang::t("perf.max"), 60.0),
+        (renzora::lang::t("material.col_compiles"), 60.0),
+        (renzora::lang::t("material.col_hits"), 50.0),
+    ]
+}
 
 fn column_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
@@ -284,7 +286,7 @@ fn column_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let cells: Vec<Entity> = COLS
+    let cells: Vec<Entity> = cols()
         .iter()
         .map(|(label, width)| cell(commands, fonts, label, *width, rgb(text_muted())))
         .collect();
@@ -344,7 +346,7 @@ fn table_snapshot(world: &World) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new("(no materials resolved yet)"),
+                    Text::new(renzora::lang::t("material.no_materials")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                 ))

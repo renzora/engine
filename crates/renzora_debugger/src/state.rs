@@ -165,10 +165,7 @@ impl Default for SystemTimingState {
             schedule_timings: Vec::new(),
             update_interval: 0.5,
             time_since_update: 0.0,
-            limitation_note: "Per-system timing is not collected in-process. \
-                For detailed profiling, build with `cargo run --features \
-                bevy/trace_chrome` and open the capture in chrome://tracing."
-                .to_string(),
+            limitation_note: renzora::lang::t("perf.limitation_note"),
         }
     }
 }

@@ -85,7 +85,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             ))
             .id();
 
-        let add = renzora_ember::widgets::icon_label_button(commands, fonts, "plus", "Add Entity");
+        let add = renzora_ember::widgets::icon_label_button(commands, fonts, "plus", &renzora::lang::t("hierarchy.add_entity"));
         commands
             .entity(add)
             .insert((add_entity::HierAddEntity, Name::new("add-entity")));

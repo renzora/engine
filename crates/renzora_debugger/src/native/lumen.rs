@@ -107,7 +107,7 @@ fn build_lumen(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = root(commands);
 
     // CPU bake.
-    let bake_label = section(commands, fonts, "CPU bake");
+    let bake_label = section(commands, fonts, &renzora::lang::t("lumen.cpu_bake"));
     let dur_row = commands
         .spawn(Node {
             flex_direction: FlexDirection::Row,
@@ -164,31 +164,31 @@ fn build_lumen(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     let warn = commands
         .spawn((
-            Text::new("\u{26a0} throttle saturated (more meshes queued)"),
+            Text::new(format!("\u{26a0} {}", renzora::lang::t("lumen.throttle_saturated"))),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(AMBER)),
         ))
         .id();
     bind_display(commands, warn, |w| lumen(w, saturated));
 
-    let lifetime_bakes = stat_row(commands, fonts, "Lifetime bakes", |w| {
+    let lifetime_bakes = stat_row(commands, fonts, &renzora::lang::t("lumen.lifetime_bakes"), |w| {
         format_count(lumen(w, |s| s.bake.total_bakes))
     });
-    let lifetime_samples = stat_row(commands, fonts, "Lifetime samples emitted", |w| {
+    let lifetime_samples = stat_row(commands, fonts, &renzora::lang::t("lumen.lifetime_samples"), |w| {
         format_count(lumen(w, |s| s.bake.total_samples_baked))
     });
 
     // Coverage.
-    let cov_label = section(commands, fonts, "Coverage");
-    let cov_entities = stat_row(commands, fonts, "Entities w/ MeshVoxelSamples", |w| {
+    let cov_label = section(commands, fonts, &renzora::lang::t("lumen.coverage"));
+    let cov_entities = stat_row(commands, fonts, &renzora::lang::t("lumen.entities_voxel_samples"), |w| {
         lumen(w, |s| s.mesh_voxel_samples_entities).to_string()
     });
-    let cov_sky = stat_row(commands, fonts, "Sky cubemap source bound", |w| {
+    let cov_sky = stat_row(commands, fonts, &renzora::lang::t("lumen.sky_cubemap_bound"), |w| {
         yesno(lumen(w, |s| s.has_sky_cubemap)).to_string()
     });
 
     // Cameras.
-    let cam_label = section(commands, fonts, "Voxel cache views");
+    let cam_label = section(commands, fonts, &renzora::lang::t("lumen.voxel_cache_views"));
     let cam_list = commands
         .spawn(Node {
             flex_direction: FlexDirection::Column,
@@ -213,7 +213,7 @@ fn cameras_snapshot(world: &World) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new("(no cameras with VoxelCacheView)"),
+                    Text::new(renzora::lang::t("lumen.no_cameras")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                 ))

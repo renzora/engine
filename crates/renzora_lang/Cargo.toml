@@ -1,0 +1,34 @@
+[package]
+name = "renzora_lang"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+# Forward the scripting backends so the `tr()` script function compiles only
+# when the host actually builds that backend (mirrors the other domain crates
+# that implement `ScriptExtension`). `renzora_runtime` turns these on.
+default = []
+# The trait method signatures reference `mlua::Lua` / `rhai::Engine`, so each
+# backend feature pulls in that crate (matching the workspace versions) on top of
+# forwarding the backend to the scripting crate.
+lua = ["renzora_scripting/lua", "dep:mlua"]
+rhai = ["renzora_scripting/rhai", "dep:rhai"]
+
+[dependencies]
+bevy = { workspace = true }
+# Contract dylib: the global translation table + `t()` live here, so the plugin
+# only *populates* it. No other `renzora_*` dep is needed for the core feature.
+renzora = { path = "../renzora" }
+# Only for the `ScriptExtension` trait (the `tr()` script function). Backends are
+# off by default and forwarded from the host via the `lua`/`rhai` features above.
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+rhai = { version = "1.21", features = ["sync"], optional = true }
+
+# mlua is unavailable on wasm; gate it off that target like the other extension
+# crates do, so a wasm build with `lua` still compiles (the Lua method is also
+# cfg'd out on wasm in the trait).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54"], optional = true }
+
+[lints]
+workspace = true

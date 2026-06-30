@@ -175,7 +175,7 @@ fn build_2d_placeholder(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let title = commands
         .spawn((
-            Text::new("2D Editor"),
+            Text::new(renzora::lang::t("viewport.2d_editor")),
             ui_font(&fonts.ui, 22.0),
             TextColor(Color::srgb(0.85, 0.85, 0.90)),
             bevy::picking::Pickable::IGNORE,
@@ -183,7 +183,7 @@ fn build_2d_placeholder(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let subtitle = commands
         .spawn((
-            Text::new("Coming soon"),
+            Text::new(renzora::lang::t("common.coming_soon")),
             ui_font(&fonts.ui, 14.0),
             TextColor(Color::srgb(0.50, 0.50, 0.58)),
             bevy::picking::Pickable::IGNORE,

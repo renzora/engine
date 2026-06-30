@@ -49,22 +49,22 @@ pub(crate) fn hier_context_menu(
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
     let mut kids: Vec<Entity> = Vec::new();
 
-    kids.push(menu_item(&mut commands, &fonts, "plus", "Add Child Entity", move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("hierarchy.context.add_child"), move |w| {
         add_child(w, target)
     }));
-    kids.push(menu_item(&mut commands, &fonts, "pencil-simple", "Rename", move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("hierarchy.context.rename"), move |w| {
         if let Some(mut r) = w.get_resource_mut::<super::rename::HierRename>() {
             r.0 = Some(target);
         }
     }));
-    kids.push(menu_item(&mut commands, &fonts, "copy", "Duplicate", move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "copy", &renzora::lang::t("hierarchy.context.duplicate"), move |w| {
         duplicate(w, target)
     }));
-    kids.push(menu_item(&mut commands, &fonts, "arrow-square-out", "Unparent", move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "arrow-square-out", &renzora::lang::t("hierarchy.context.unparent"), move |w| {
         w.entity_mut(target).remove::<ChildOf>();
     }));
     if multi {
-        kids.push(menu_item(&mut commands, &fonts, "folder-simple", "Group as Children", group_selection));
+        kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
     }
 
     // Label-color (entity color-coding) section.
@@ -72,34 +72,34 @@ pub(crate) fn hier_context_menu(
     kids.push(color_header(&mut commands, &fonts));
     kids.push(swatch_grid(&mut commands, target));
     if has_color {
-        kids.push(menu_item(&mut commands, &fonts, "x", "Clear Color", move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "x", &renzora::lang::t("hierarchy.context.clear_color"), move |w| {
             w.entity_mut(target).remove::<EntityLabelColor>();
         }));
     }
 
     if is_cam {
         kids.push(menu_sep(&mut commands));
-        kids.push(menu_item_styled(&mut commands, &fonts, "star", "Set as Default Camera", (255, 200, 80), renzora_ember::theme::text_primary(), move |w| {
+        kids.push(menu_item_styled(&mut commands, &fonts, "star", &renzora::lang::t("hierarchy.context.set_default_camera"), (255, 200, 80), renzora_ember::theme::text_primary(), move |w| {
             set_default_camera(w, target)
         }));
-        kids.push(menu_item(&mut commands, &fonts, "frame-corners", "Snap to Viewport", move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "frame-corners", &renzora::lang::t("hierarchy.context.snap_to_viewport"), move |w| {
             renzora_editor_framework::camera::snap_entity_to_editor_camera(w, target);
         }));
     }
 
     kids.push(menu_sep(&mut commands));
-    kids.push(menu_item(&mut commands, &fonts, "film-slate", "Instance Scene…", move |w| {
+    kids.push(menu_item(&mut commands, &fonts, "film-slate", &renzora::lang::t("hierarchy.context.instance_scene"), move |w| {
         instance_scene(w, target)
     }));
     if is_inst {
-        kids.push(menu_item(&mut commands, &fonts, "link-break", "Unpack Scene Instance", move |w| {
+        kids.push(menu_item(&mut commands, &fonts, "link-break", &renzora::lang::t("hierarchy.context.unpack_scene_instance"), move |w| {
             w.entity_mut(target).remove::<renzora::SceneInstance>();
             renzora::core::console_log::console_info("Scene", format!("Unpacked scene instance {target:?}"));
         }));
     }
 
     kids.push(menu_sep(&mut commands));
-    kids.push(menu_item_styled(&mut commands, &fonts, "trash", "Delete", renzora_ember::theme::close_red(), renzora_ember::theme::close_red(), move |w| {
+    kids.push(menu_item_styled(&mut commands, &fonts, "trash", &renzora::lang::t("hierarchy.context.delete"), renzora_ember::theme::close_red(), renzora_ember::theme::close_red(), move |w| {
         let entities: Vec<Entity> = match w.get_resource::<EditorSelection>() {
             Some(s) if s.is_selected(target) => s.get_all(),
             _ => vec![target],
@@ -125,7 +125,7 @@ fn color_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let ic = icon_text(commands, &fonts.phosphor, "palette", renzora_ember::theme::text_muted(), 11.0);
     let label = commands
         .spawn((
-            Text::new("Label Color"),
+            Text::new(renzora::lang::t("hierarchy.context.label_color")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(renzora_ember::theme::text_muted())),
         ))
@@ -246,8 +246,8 @@ fn instance_scene(world: &mut World, parent: Entity) {
     #[cfg(not(target_arch = "wasm32"))]
     let file = {
         let mut dlg = rfd::FileDialog::new()
-            .set_title("Instance Scene")
-            .add_filter("Scene File", &["bsn"]);
+            .set_title(renzora::lang::t("hierarchy.dialog.instance_scene_title"))
+            .add_filter(renzora::lang::t("hierarchy.dialog.scene_file"), &["bsn"]);
         if let Some(ref dir) = scenes_dir {
             dlg = dlg.set_directory(dir);
         }
@@ -285,7 +285,7 @@ fn instance_scene(world: &mut World, parent: Entity) {
         world.insert_resource(cache);
         if cycle {
             if let Some(mut toasts) = world.get_resource_mut::<renzora_ui::Toasts>() {
-                toasts.warning("You cannot add a scene to itself");
+                toasts.warning(renzora::lang::t("hierarchy.toast.cannot_add_self"));
             }
             return;
         }

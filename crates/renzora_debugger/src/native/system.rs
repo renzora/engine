@@ -183,7 +183,7 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     let root = root(commands);
 
     // Frame time.
-    let ft_label = section(commands, fonts, "Frame Time");
+    let ft_label = section(commands, fonts, &renzora::lang::t("perf.frame_time"));
     let ft_big = big(
         commands,
         fonts,
@@ -209,7 +209,7 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     );
 
     // FPS statistics.
-    let fps_label = section(commands, fonts, "FPS Statistics");
+    let fps_label = section(commands, fonts, &renzora::lang::t("perf.fps_statistics"));
     let fps_big = big(
         commands,
         fonts,
@@ -218,10 +218,10 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
         |w| fps_color(diag(w, |d| d.fps) as f32),
     );
     let fps_grid = faint_box(commands);
-    let avg = grid_row(commands, fonts, "Avg", |w| format!("{:.0}", diag(w, |d| d.avg_fps())));
-    let min = grid_row(commands, fonts, "Min", |w| format!("{:.0}", diag(w, |d| d.min_fps())));
-    let max = grid_row(commands, fonts, "Max", |w| format!("{:.0}", diag(w, |d| d.max_fps())));
-    let ents = grid_row(commands, fonts, "Entities", |w| format!("{}", diag(w, |d| d.entity_count)));
+    let avg = grid_row(commands, fonts, &renzora::lang::t("perf.avg"), |w| format!("{:.0}", diag(w, |d| d.avg_fps())));
+    let min = grid_row(commands, fonts, &renzora::lang::t("perf.min"), |w| format!("{:.0}", diag(w, |d| d.min_fps())));
+    let max = grid_row(commands, fonts, &renzora::lang::t("perf.max"), |w| format!("{:.0}", diag(w, |d| d.max_fps())));
+    let ents = grid_row(commands, fonts, &renzora::lang::t("perf.entities"), |w| format!("{}", diag(w, |d| d.entity_count)));
     commands.entity(fps_grid).add_children(&[avg, min, max, ents]);
 
     // Render stats (hidden until enabled).
@@ -234,12 +234,12 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
         })
         .id();
     bind_display(commands, rs_section, |w| rstats(w, |r| r.enabled));
-    let rs_label = section(commands, fonts, "Render Stats");
+    let rs_label = section(commands, fonts, &renzora::lang::t("panel.render_stats"));
     let rs_grid = faint_box(commands);
-    let dc = grid_row(commands, fonts, "Instances", |w| format!("{}", rstats(w, |r| r.mesh_instances)));
-    let tr = grid_row(commands, fonts, "Triangles", |w| format_count(rstats(w, |r| r.triangles)));
-    let vx = grid_row(commands, fonts, "Vertices", |w| format_count(rstats(w, |r| r.vertices)));
-    let gp = grid_row(commands, fonts, "GPU Time", |w| {
+    let dc = grid_row(commands, fonts, &renzora::lang::t("perf.instances"), |w| format!("{}", rstats(w, |r| r.mesh_instances)));
+    let tr = grid_row(commands, fonts, &renzora::lang::t("perf.triangles"), |w| format_count(rstats(w, |r| r.triangles)));
+    let vx = grid_row(commands, fonts, &renzora::lang::t("perf.vertices"), |w| format_count(rstats(w, |r| r.vertices)));
+    let gp = grid_row(commands, fonts, &renzora::lang::t("perf.gpu_time"), |w| {
         rstats(w, |r| {
             if r.gpu_timing_available {
                 format!("{:.2}ms", r.gpu_time_ms)
@@ -252,12 +252,12 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     commands.entity(rs_section).add_children(&[rs_label, rs_grid]);
 
     // GPU pass breakdown (real per-pass GPU timings from RenderDiagnosticsPlugin).
-    let sched_label = section(commands, fonts, "GPU Pass Breakdown");
+    let sched_label = section(commands, fonts, &renzora::lang::t("perf.gpu_pass_breakdown"));
     let sched_box = faint_box(commands);
     keyed_list(commands, sched_box, schedule_snapshot);
     let sched_note = commands
         .spawn((
-            Text::new("Per-pass GPU time (measured). CPU per-system timing needs an external profiler."),
+            Text::new(renzora::lang::t("perf.gpu_pass_note")),
             ui_font(&fonts.ui, 9.0),
             TextColor(rgb(text_muted())),
         ))
@@ -268,7 +268,7 @@ fn build_system_profiler(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     let lim = limitations_box(commands, fonts);
 
     // External profilers (static).
-    let ext_label = section(commands, fonts, "External Profilers");
+    let ext_label = section(commands, fonts, &renzora::lang::t("perf.external_profilers"));
     let ext = external_box(commands, fonts);
 
     commands.entity(root).add_children(&[
@@ -304,7 +304,7 @@ fn limitations_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let warn = icon_text(commands, &fonts.phosphor, "warning", (220, 180, 80), 14.0);
     let title = commands
         .spawn((
-            Text::new("Limitations"),
+            Text::new(renzora::lang::t("perf.limitations")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb((220, 180, 80))),
         ))
@@ -322,9 +322,9 @@ fn external_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bx = faint_box(commands);
     let mut kids: Vec<Entity> = Vec::new();
 
-    let chrome_head = labelled_icon(commands, fonts, "chart-bar", "Chrome Tracing");
+    let chrome_head = labelled_icon(commands, fonts, "chart-bar", &renzora::lang::t("perf.chrome_tracing"));
     kids.push(chrome_head);
-    kids.push(muted(commands, fonts, "Export traces to chrome://tracing", 9.0, text_muted()));
+    kids.push(muted(commands, fonts, &renzora::lang::t("perf.chrome_tracing_desc"), 9.0, text_muted()));
     let cmd = commands
         .spawn((
             Text::new("cargo run --features bevy/trace_chrome"),
@@ -377,7 +377,7 @@ fn schedule_snapshot(world: &World) -> KeyedSnapshot {
     if timings.is_empty() {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
-            build: Box::new(|c, f, _| muted(c, f, "No timing data available", 11.0, text_muted())),
+            build: Box::new(|c, f, _| muted(c, f, &renzora::lang::t("perf.no_timing_data"), 11.0, text_muted())),
         };
     }
     let total: f32 = timings.iter().map(|s| s.time_ms).sum();

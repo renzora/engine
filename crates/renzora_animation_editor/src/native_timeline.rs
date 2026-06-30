@@ -320,17 +320,17 @@ fn ready(w: &World) -> bool {
 fn empty_msg(w: &World) -> String {
     let Some(s) = state(w) else { return String::new() };
     if s.selected_entity.is_none() {
-        "Select an entity in the Hierarchy to animate".into()
+        renzora::lang::t("animation.select_entity_to_animate")
     } else if s
         .selected_entity
         .and_then(|e| w.get::<AnimatorComponent>(e))
         .is_none_or(|a| a.clips.is_empty())
     {
-        "No animation on this entity yet — create one below".into()
+        renzora::lang::t("animation.no_animation_create_below")
     } else if s.selected_clip.is_none() {
-        "Choose a clip from the toolbar's clip menu above".into()
+        renzora::lang::t("animation.choose_clip_above")
     } else {
-        "Loading clip…".into()
+        renzora::lang::t("animation.loading_clip")
     }
 }
 
@@ -405,7 +405,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())), bevy::text::TextLayout::justify(bevy::text::Justify::Center)))
         .id();
     bind_text(commands, note_lbl, empty_msg);
-    let create_btn = crate::setup::action_button(commands, fonts, "plus-circle", "Create Animation", crate::setup::CreateAnimBtn);
+    let create_btn = crate::setup::action_button(commands, fonts, "plus-circle", &renzora::lang::t("animation.create_animation"), crate::setup::CreateAnimBtn);
     bind_display(commands, create_btn, crate::setup::can_create_anim);
     commands.entity(note).add_children(&[note_lbl, create_btn]);
     bind_display(commands, note, |w| !ready(w));
@@ -421,7 +421,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .insert((KeyLane, RelativeCursorPosition::default()));
     bind_display(commands, tl.root, ready);
 
-    let htitle = commands.spawn((Text::new("Tracks"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    let htitle = commands.spawn((Text::new(renzora::lang::t("animation.tracks")), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
     let hspacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let add_track = commands
         .spawn((
@@ -432,7 +432,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let add_track_ic = icon_text(commands, &fonts.phosphor, "plus", accent(), 10.0);
-    let add_track_lbl = commands.spawn((Text::new("Add Track"), ui_font(&fonts.ui, 10.0), TextColor(rgb(accent())), bevy::text::TextLayout::no_wrap())).id();
+    let add_track_lbl = commands.spawn((Text::new(renzora::lang::t("timeline.add_track")), ui_font(&fonts.ui, 10.0), TextColor(rgb(accent())), bevy::text::TextLayout::no_wrap())).id();
     commands.entity(add_track).add_children(&[add_track_ic, add_track_lbl]);
     commands.entity(tl.header_corner).add_children(&[htitle, hspacer, add_track]);
     keyed_list(commands, tl.header_list, header_snapshot);
@@ -484,7 +484,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let combo_v = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { min_width: Val::Px(96.0), max_width: Val::Px(150.0), overflow: Overflow::clip(), ..default() }, bevy::text::TextLayout::no_wrap())).id();
-    bind_text(commands, combo_v, |w| state(w).and_then(|s| s.selected_clip.clone()).unwrap_or_else(|| "Select clip…".into()));
+    bind_text(commands, combo_v, |w| state(w).and_then(|s| s.selected_clip.clone()).unwrap_or_else(|| renzora::lang::t("timeline.select_clip")));
     let combo_c = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 9.0);
     commands.entity(combo).add_children(&[combo_v, combo_c]);
     let _ = clip_ic;
@@ -492,7 +492,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let sep3 = vsep(commands);
 
     // Speed presets.
-    let speed_lbl = commands.spawn((Text::new("Speed"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    let speed_lbl = commands.spawn((Text::new(renzora::lang::t("common.speed")), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
     let mut speed_btns: Vec<Entity> = Vec::with_capacity(SPEEDS.len());
     for &s in &SPEEDS {
         let btn = commands
@@ -556,7 +556,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let gap = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
 
     // Clip length (seconds) — scrub to lengthen/shorten the timeline.
-    let len_lbl = commands.spawn((Text::new("Len"), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
+    let len_lbl = commands.spawn((Text::new(renzora::lang::t("timeline.length_short")), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
     let len_dv = drag_value(commands, &fonts.mono, "", text_primary(), 2.0, 0.1);
     commands.entity(len_dv).insert(DragRange { min: 0.2, max: 600.0 });
     bind_2way(
@@ -695,7 +695,7 @@ fn prop_header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, trac
         .id();
     let (txt, col) = match label {
         Some(l) => (l.to_string(), text_primary()),
-        None => ("Select property…".to_string(), text_muted()),
+        None => (renzora::lang::t("timeline.select_property"), text_muted()),
     };
     let combo_lbl = commands.spawn((Text::new(txt), ui_font(&fonts.ui, 11.0), TextColor(rgb(col)), bevy::text::TextLayout::no_wrap(), Node { flex_grow: 1.0, overflow: Overflow::clip(), ..default() })).id();
     let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
@@ -1206,6 +1206,24 @@ fn interp_menu_choices() -> [(&'static str, &'static str, renzora::Interp); 9] {
     ]
 }
 
+/// Localized display string for an interpolation choice's English label (the
+/// English label stays the identity in `interp_menu_choices`; the `Interp` enum
+/// value is what's actually written, so only the menu text is translated).
+fn interp_label_tr(label: &str) -> String {
+    renzora::lang::t(match label {
+        "Linear" => "animation.interp_linear",
+        "Stepped (hold)" => "animation.interp_stepped",
+        "Smooth (in-out)" => "animation.interp_smooth",
+        "Ease In" => "animation.interp_ease_in",
+        "Ease Out" => "animation.interp_ease_out",
+        "Ease In-Out" => "animation.interp_ease_in_out",
+        "Back Out (overshoot)" => "animation.interp_back_out",
+        "Bounce Out" => "animation.interp_bounce_out",
+        "Elastic Out" => "animation.interp_elastic_out",
+        _ => return label.to_string(),
+    })
+}
+
 fn push(bridge: &AnimEditorBridge, action: AnimEditorAction) {
     if let Ok(mut p) = bridge.pending.lock() {
         p.push(action);
@@ -1490,7 +1508,7 @@ fn key_context_menu(
             .position(|m| ((m.time - scroll) * zoom + LANE_INSET - p.x).abs() < 7.0)
         {
             let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-            let label = format!("Delete marker '{}'", clip.markers[mi].name);
+            let label = format!("{} '{}'", renzora::lang::t("timeline.delete_marker"), clip.markers[mi].name);
             let del = menu_item(&mut commands, &fonts, "trash", &label, move |w| {
                 if let Some(mut cache) = w.get_resource_mut::<NativeAnimClip>() {
                     if let Some(clip) = cache.clip.as_mut() {
@@ -1510,7 +1528,7 @@ fn key_context_menu(
     if let Some(pick) = pick_key(clip, zoom, scroll, th, p) {
         let menu = screen_menu(&mut commands, cursor.x, cursor.y);
         let (lane_ref, idx) = (pick.lane, pick.index);
-        let del = menu_item(&mut commands, &fonts, "trash", "Delete keyframe", move |w| {
+        let del = menu_item(&mut commands, &fonts, "trash", &renzora::lang::t("timeline.delete_keyframe"), move |w| {
             if let Some(mut cache) = w.get_resource_mut::<NativeAnimClip>() {
                 if let Some(mut chan) = cache.lane_times(lane_ref) {
                     chan.remove(idx);
@@ -1521,7 +1539,7 @@ fn key_context_menu(
         let mut kids = vec![del];
         if let Lane::Prop { track } = lane_ref {
             // Foolproof: set this key to whatever the entity is currently posed to.
-            let set_item = menu_item(&mut commands, &fonts, "crosshair", "Set to current pose", move |w| {
+            let set_item = menu_item(&mut commands, &fonts, "crosshair", &renzora::lang::t("timeline.set_to_current_pose"), move |w| {
                 let entity = clip_entity(w);
                 set_key_to_live(w, entity, track, idx);
             });
@@ -1536,7 +1554,7 @@ fn key_context_menu(
                 .map(|k| k.interp);
             for (icon, label, interp) in interp_menu_choices() {
                 let shown_icon = if current == Some(interp) { "check" } else { icon };
-                let item = menu_item(&mut commands, &fonts, shown_icon, label, move |w| {
+                let item = menu_item(&mut commands, &fonts, shown_icon, &interp_label_tr(label), move |w| {
                     set_key_interp(w, track, idx, interp);
                 });
                 kids.push(item);
@@ -1563,7 +1581,7 @@ fn key_context_menu(
     }
     let entity = cache.key.as_ref().map(|(e, _)| *e);
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
-    let add = menu_item(&mut commands, &fonts, "plus", "Add keyframe here", move |w| {
+    let add = menu_item(&mut commands, &fonts, "plus", &renzora::lang::t("timeline.add_keyframe_here"), move |w| {
         add_key_at(w, entity, pi, time);
     });
     commands.entity(menu).add_children(&[add]);
@@ -1763,7 +1781,7 @@ fn clip_combo_open(
             let name = slot.name.clone();
             let looping = slot.looping;
             let speed = slot.speed;
-            let label = if default_clip.as_deref() == Some(&slot.name) { format!("{} (default)", slot.name) } else { slot.name.clone() };
+            let label = if default_clip.as_deref() == Some(&slot.name) { format!("{} {}", slot.name, renzora::lang::t("animation.default_suffix")) } else { slot.name.clone() };
             menu_item(&mut commands, &fonts, "film-strip", &label, move |w| {
                 if let Some(bridge) = w.get_resource::<AnimEditorBridge>() {
                     if let Ok(mut p) = bridge.pending.lock() {

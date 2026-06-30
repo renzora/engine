@@ -46,7 +46,7 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
 
     let title = commands
         .spawn((
-            Text::new("This scene is empty"),
+            Text::new(renzora::lang::t("hierarchy.starter.title")),
             ui_font(&fonts.ui, 14.0),
             TextColor(rgb(text_primary())),
             Node { margin: UiRect::bottom(Val::Px(2.0)), ..default() },
@@ -54,7 +54,7 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
         .id();
     let sub = commands
         .spawn((
-            Text::new("Pick a starter, or just add entities manually."),
+            Text::new(renzora::lang::t("hierarchy.starter.subtitle")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
             Node { margin: UiRect::bottom(Val::Px(8.0)), ..default() },

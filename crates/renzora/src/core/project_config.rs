@@ -252,6 +252,15 @@ struct EditorPrefFile {
     /// Seconds between auto-saves (the countdown shown in the status bar).
     #[serde(default = "default_autosave_interval_secs")]
     autosave_interval_secs: u32,
+    /// Active UI language code (e.g. `"en"`, `"fr"`, `"ja"`). Read at startup by
+    /// the localization runtime so the user's choice survives restarts; it's a
+    /// per-user preference, not a project property, hence it lives here.
+    #[serde(default = "default_language")]
+    language: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 fn default_autosave_interval_secs() -> u32 {
@@ -289,6 +298,7 @@ impl Default for EditorPrefFile {
             dev_mode: false,
             autosave_enabled: true,
             autosave_interval_secs: default_autosave_interval_secs(),
+            language: default_language(),
         }
     }
 }
@@ -342,6 +352,49 @@ pub fn save_ui_scale(ui_scale: f32) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.ui_scale = ui_scale;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load the persisted UI language code, defaulting to `"en"` when the file is
+/// absent or unreadable. Called by the localization runtime at startup.
+pub fn load_language() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        "en".to_string()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return default_language();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return default_language();
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.language)
+            .unwrap_or_else(|_| default_language())
+    }
+}
+
+/// Persist the active UI language code (read-modify-write so other prefs in the
+/// file survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_language(code: &str) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.language = code.to_string();
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

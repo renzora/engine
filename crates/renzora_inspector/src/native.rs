@@ -104,9 +104,6 @@ struct ComponentTooltip {
 #[derive(Component)]
 struct FilterDropdownHost;
 
-/// The "show everything" entry, shown as index 0 in the filter dropdown.
-const FILTER_ALL: &str = "All components";
-
 /// The user's chosen component-filter presentation (defaults to the vertical
 /// menu if settings aren't available yet).
 fn filter_style(world: &World) -> InspectorComponentFilterStyle {
@@ -326,7 +323,7 @@ fn build_top_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         inspected_entity(w).is_some()
             && filter_style(w) == InspectorComponentFilterStyle::Dropdown
     });
-    let input = text_input(commands, &fonts.ui, "Filter components...", "");
+    let input = text_input(commands, &fonts.ui, &renzora::lang::t("inspector.filter_placeholder"), "");
     commands.entity(input).insert((
         InspectorFilter,
         Node {
@@ -426,9 +423,10 @@ fn build_filter_dropdown(
     selected: &Option<String>,
 ) -> Entity {
     // Options: "All components" + one per present component, each with its icon.
+    let filter_all = renzora::lang::t("inspector.filter_all");
     let names: Vec<&str> = present.iter().map(|(n, _)| *n).collect();
     let mut options: Vec<(&str, &str)> = Vec::with_capacity(present.len() + 1);
-    options.push(("list", FILTER_ALL));
+    options.push(("list", filter_all.as_str()));
     options.extend(present.iter().map(|(name, icon)| (*icon, *name)));
 
     let init = selected
@@ -525,7 +523,7 @@ fn component_menu_button(
         // Inactive buttons blend into the (darker) rail so only the active one reads.
         (renzora_ember::theme::window_bg(), renzora_ember::theme::text_muted())
     };
-    let label = name.clone().unwrap_or_else(|| "All components".to_string());
+    let label = name.clone().unwrap_or_else(|| renzora::lang::t("inspector.filter_all"));
     let btn = commands
         .spawn((
             Node {
@@ -816,17 +814,17 @@ fn rebuild_inspector(world: &mut World) {
 
         match entity {
             None => {
-                let l = empty_label(&mut commands, &fonts, "No entity selected");
+                let l = empty_label(&mut commands, &fonts, &renzora::lang::t("inspector.no_selection"));
                 commands.entity(container).add_child(l);
             }
             Some(entity) => {
                 if sections.is_empty() {
                     let msg = if filter_active {
-                        "No components match the filter."
+                        renzora::lang::t("inspector.no_match")
                     } else {
-                        "No inspectable components."
+                        renzora::lang::t("inspector.no_components")
                     };
-                    let l = empty_label(&mut commands, &fonts, msg);
+                    let l = empty_label(&mut commands, &fonts, &msg);
                     commands.entity(container).add_child(l);
                 }
                 let locked_here = locked == Some(entity);
@@ -1071,6 +1069,38 @@ fn section_priority(title: &str) -> u8 {
     }
 }
 
+/// Lowercase, collapsing each run of non-alphanumerics to one `_`, for deriving a
+/// stable localization-key segment from a human label
+/// ("Wind Direction" → `wind_direction`). The reflection-driven component and
+/// field labels have no literal in source to translate, so we key off this.
+fn loc_slug(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_us = false;
+    for c in s.trim().chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+            prev_us = false;
+        } else if !prev_us {
+            out.push('_');
+            prev_us = true;
+        }
+    }
+    out.trim_matches('_').to_string()
+}
+
+/// Localized component header name, falling back to the English `display_name`.
+/// Keyed `comp.<slug>.name` (e.g. "Clouds" → `comp.clouds.name`).
+fn comp_name_loc(display_name: &str) -> String {
+    renzora::lang::t_or(&format!("comp.{}.name", loc_slug(display_name)), display_name)
+}
+
+/// Localized field label, falling back to the English `name`. Keyed in a SHARED
+/// `field.<slug>` namespace (e.g. "Wind Direction" → `field.wind_direction`) so a
+/// field name common to many components is translated once, not per component.
+fn field_label_loc(name: &str) -> String {
+    renzora::lang::t_or(&format!("field.{}", loc_slug(name)), name)
+}
+
 fn format_value(v: Option<&FieldValue>) -> String {
     match v {
         Some(FieldValue::Float(f)) => format!("{f:.3}"),
@@ -1135,11 +1165,14 @@ fn build_section(
     // Compose the shared ember section (caret · accent icon · title + colored
     // header + ember-owned collapse); override the body padding to the inspector's
     // tighter spacing and add the lock/enable/trash affordances to the header.
+    // `sec.title` stays the English identity (sort priority, collapse-state key);
+    // localize only the displayed string.
+    let sec_title = comp_name_loc(sec.title);
     let (root, header, body) = renzora_ember::widgets::section_with_header_open(
         commands,
         fonts,
         sec.icon,
-        sec.title,
+        &sec_title,
         sec.accent,
         sec.header_bg,
         sec.open,
@@ -1160,7 +1193,7 @@ fn build_section(
         // Body is filled by the registered native drawer once the build queue
         // has applied (it needs exclusive &mut World). See `rebuild_inspector`.
     } else if sec.custom {
-        let note = empty_label(commands, fonts, "Custom inspector — pending native UI");
+        let note = empty_label(commands, fonts, &renzora::lang::t("inspector.custom_pending"));
         commands.entity(body).add_child(note);
     } else {
         for (i, field) in sec.fields.iter().enumerate() {
@@ -1248,7 +1281,8 @@ fn build_field_row(
         let reset = build_reset_button(commands, fonts, field.get_fn, field.set_fn, entity);
         commands.entity(value).add_child(reset);
     }
-    renzora_ember::inspector::inspector_row(commands, &fonts.ui, field.name, value)
+    let label = field_label_loc(field.name);
+    renzora_ember::inspector::inspector_row(commands, &fonts.ui, &label, value)
 }
 
 /// Whether a field carries an editable value worth a reset button. `Button` is a
@@ -1430,7 +1464,8 @@ fn build_field_value(
             commands.entity(value_parent).add_child(f);
         }
         FieldKind::Button { icon } => {
-            let btn = renzora_ember::widgets::icon_label_button(commands, fonts, icon, field.name);
+            let btn_label = field_label_loc(field.name);
+            let btn = renzora_ember::widgets::icon_label_button(commands, fonts, icon, &btn_label);
             commands.entity(btn).insert((
                 Node {
                     flex_grow: 1.0,
@@ -1634,7 +1669,7 @@ fn asset_display(v: Option<FieldValue>) -> (String, bool) {
                 .unwrap_or(p);
             (name, true)
         }
-        _ => ("Drag asset here".to_string(), false),
+        _ => (renzora::lang::t("inspector.drag_asset"), false),
     }
 }
 
@@ -1664,7 +1699,7 @@ fn build_asset_field(
 ) -> Entity {
     let path_text = commands
         .spawn((
-            Text::new("Drag asset here"),
+            Text::new(renzora::lang::t("inspector.drag_asset")),
             ui_font(&fonts.ui, 11.0),
             TextColor(c(renzora_ember::theme::text_muted())),
             bevy::text::TextLayout::no_wrap(),
@@ -1855,7 +1890,7 @@ struct AddButton;
 fn add_bar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // A themed ember button (Styled(Role::Button)) — picks up Theme.button +
     // hover/press states, and is editable under "Button" in the Theme editor.
-    let btn = renzora_ember::widgets::icon_label_button(commands, fonts, "puzzle-piece", "Add Component");
+    let btn = renzora_ember::widgets::icon_label_button(commands, fonts, "puzzle-piece", &renzora::lang::t("inspector.add_component"));
     commands.entity(btn).insert((
         AddButton,
         // Full-width + centered; the theme fills padding/radius/colors.
@@ -2056,7 +2091,7 @@ fn open_add_component(world: &mut World) {
     let mut queue = CommandQueue::default();
     {
         let mut commands = Commands::new(&mut queue, world);
-        renzora_ember::widgets::search_overlay(&mut commands, &fonts, "Add Component", entries);
+        renzora_ember::widgets::search_overlay(&mut commands, &fonts, &renzora::lang::t("inspector.add_component"), entries);
     }
     queue.apply(world);
 }

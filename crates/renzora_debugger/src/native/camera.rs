@@ -100,12 +100,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(head).add_children(&[big, u]);
 
     // Camera list.
-    let list_label = super::section(commands, fonts, "Cameras");
+    let list_label = super::section(commands, fonts, &renzora::lang::t("cam_debug.cameras"));
     let list = faint_box(commands);
     keyed_list(commands, list, camera_snapshot);
 
     // Selected camera properties.
-    let sel_label = super::section(commands, fonts, "Selected Camera");
+    let sel_label = super::section(commands, fonts, &renzora::lang::t("cam_debug.selected_camera"));
     bind_display(commands, sel_label, |w| cam(w, |s| s.selected_camera.is_some()));
     let sel_box = faint_box(commands);
     bind_display(commands, sel_box, |w| cam(w, |s| s.selected_camera.is_some()));
@@ -114,26 +114,26 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     bind_text(commands, sel_name, |w| sel(w, |c| c.name.clone()));
     let mut sel_kids = vec![sel_name];
-    sel_kids.push(grid_row(commands, fonts, "Projection", |w| match sel(w, |c| c.projection_type) {
-        CameraProjectionType::Perspective => "Perspective".to_string(),
-        CameraProjectionType::Orthographic => "Orthographic".to_string(),
+    sel_kids.push(grid_row(commands, fonts, &renzora::lang::t("cam_debug.projection"), |w| match sel(w, |c| c.projection_type) {
+        CameraProjectionType::Perspective => renzora::lang::t("comp.camera.perspective"),
+        CameraProjectionType::Orthographic => renzora::lang::t("comp.camera.orthographic"),
     }));
-    sel_kids.push(grid_row(commands, fonts, "FOV", |w| {
+    sel_kids.push(grid_row(commands, fonts, &renzora::lang::t("cam_debug.fov"), |w| {
         sel(w, |c| c.fov_degrees).map(|f| format!("{:.1}\u{b0}", f)).unwrap_or_else(|| "\u{2014}".into())
     }));
-    sel_kids.push(grid_row(commands, fonts, "Near / Far", |w| format!("{:.2} / {:.0}", sel(w, |c| c.near), sel(w, |c| c.far))));
-    sel_kids.push(grid_row(commands, fonts, "Aspect", |w| format!("{:.3}", sel(w, |c| c.aspect_ratio))));
-    sel_kids.push(grid_row(commands, fonts, "Position", |w| vec3(sel(w, |c| c.position))));
-    sel_kids.push(grid_row(commands, fonts, "Rotation", |w| vec3(sel(w, |c| c.rotation_degrees))));
-    sel_kids.push(grid_row(commands, fonts, "Forward", |w| vec3(sel(w, |c| c.forward))));
+    sel_kids.push(grid_row(commands, fonts, &format!("{} / {}", renzora::lang::t("cam_debug.near"), renzora::lang::t("cam_debug.far")), |w| format!("{:.2} / {:.0}", sel(w, |c| c.near), sel(w, |c| c.far))));
+    sel_kids.push(grid_row(commands, fonts, &renzora::lang::t("cam_debug.aspect_short"), |w| format!("{:.3}", sel(w, |c| c.aspect_ratio))));
+    sel_kids.push(grid_row(commands, fonts, &renzora::lang::t("cam_debug.position"), |w| vec3(sel(w, |c| c.position))));
+    sel_kids.push(grid_row(commands, fonts, &renzora::lang::t("cam_debug.rotation"), |w| vec3(sel(w, |c| c.rotation_degrees))));
+    sel_kids.push(grid_row(commands, fonts, &renzora::lang::t("cam_debug.forward"), |w| vec3(sel(w, |c| c.forward))));
     commands.entity(sel_box).add_children(&sel_kids);
 
     // Debug visualization toggles.
-    let viz_label = super::section(commands, fonts, "Debug Visualization");
+    let viz_label = super::section(commands, fonts, &renzora::lang::t("cam_debug.debug_visualization"));
     let viz = faint_box(commands);
-    let t1 = checkbox_row(commands, fonts, "Show Frustum (selected)", |w| cam(w, |s| s.show_frustum_gizmos), |w, v| set(w, move |s| s.show_frustum_gizmos = v));
-    let t2 = checkbox_row(commands, fonts, "Show Camera Axes", |w| cam(w, |s| s.show_camera_axes), |w, v| set(w, move |s| s.show_camera_axes = v));
-    let t3 = checkbox_row(commands, fonts, "Show All Frustums", |w| cam(w, |s| s.show_all_frustums), |w, v| set(w, move |s| s.show_all_frustums = v));
+    let t1 = checkbox_row(commands, fonts, &renzora::lang::t("cam_debug.show_frustum_selected"), |w| cam(w, |s| s.show_frustum_gizmos), |w, v| set(w, move |s| s.show_frustum_gizmos = v));
+    let t2 = checkbox_row(commands, fonts, &renzora::lang::t("cam_debug.show_camera_axes"), |w| cam(w, |s| s.show_camera_axes), |w, v| set(w, move |s| s.show_camera_axes = v));
+    let t3 = checkbox_row(commands, fonts, &renzora::lang::t("cam_debug.show_all_frustums"), |w| cam(w, |s| s.show_all_frustums), |w, v| set(w, move |s| s.show_all_frustums = v));
     commands.entity(viz).add_children(&[t1, t2, t3]);
 
     commands.entity(root).add_children(&[head, list_label, list, sel_label, sel_box, viz_label, viz]);
@@ -201,7 +201,7 @@ fn camera_snapshot(world: &World) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new("No cameras in scene"),
+                    Text::new(renzora::lang::t("cam_debug.no_cameras")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                 ))
@@ -314,7 +314,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, info: &CameraInfo) ->
     let toggle_label = commands
         .spawn((Text::new(""), ui_font(&fonts.mono, 9.0), TextColor(rgb((220, 220, 220)))))
         .id();
-    bind_text(commands, toggle_label, move |w| if is_active(w, e) { "ON".into() } else { "OFF".into() });
+    bind_text(commands, toggle_label, move |w| if is_active(w, e) { renzora::lang::t("cam_debug.on") } else { renzora::lang::t("cam_debug.off") });
     bind_text_color(commands, toggle_label, move |w| {
         if is_active(w, e) {
             rgb((20, 40, 20))

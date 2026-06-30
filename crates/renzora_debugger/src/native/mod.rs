@@ -243,7 +243,7 @@ fn build_render_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // "Collecting…" placeholder until the first stats arrive.
     let collecting = commands
         .spawn((
-            Text::new("Collecting render data..."),
+            Text::new(renzora::lang::t("render.collecting")),
             ui_font(&fonts.ui, 14.0),
             TextColor(rgb(text_muted())),
             Node {
@@ -257,7 +257,7 @@ fn build_render_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let content = column(commands, 4.0);
     bind_display(commands, content, |w| render_stats(w, |r| r.enabled));
 
-    let gpu_label = section(commands, fonts, "GPU Timing");
+    let gpu_label = section(commands, fonts, &renzora::lang::t("render.gpu_timing"));
     let gpu_big = big_stat(
         commands,
         fonts,
@@ -293,14 +293,14 @@ fn build_render_stats(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         |w| render_stats(w, |r| r.gpu_time_history.clone()),
     );
 
-    let pipe_label = section(commands, fonts, "Scene Geometry");
-    let draws = label_row(commands, fonts, "Mesh Instances", |w| {
+    let pipe_label = section(commands, fonts, &renzora::lang::t("render.scene_geometry"));
+    let draws = label_row(commands, fonts, &renzora::lang::t("render.mesh_instances"), |w| {
         format_number(render_stats(w, |r| r.mesh_instances))
     });
-    let tris = label_row(commands, fonts, "Triangles", |w| {
+    let tris = label_row(commands, fonts, &renzora::lang::t("perf.triangles"), |w| {
         format_number(render_stats(w, |r| r.triangles))
     });
-    let verts = label_row(commands, fonts, "Vertices", |w| {
+    let verts = label_row(commands, fonts, &renzora::lang::t("perf.vertices"), |w| {
         format_number(render_stats(w, |r| r.vertices))
     });
 
@@ -317,7 +317,7 @@ fn build_performance(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = root(commands);
 
     // FPS.
-    let fps_label = section(commands, fonts, "Frames Per Second");
+    let fps_label = section(commands, fonts, &renzora::lang::t("perf.frames_per_second"));
     let fps_big = big_stat(
         commands,
         fonts,
@@ -332,9 +332,9 @@ fn build_performance(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let avg = small_stat(commands, fonts, |w| format!("Avg: {:.0}", diag(w, |d| d.avg_fps())));
-    let min = small_stat(commands, fonts, |w| format!("Min: {:.0}", diag(w, |d| d.min_fps())));
-    let max = small_stat(commands, fonts, |w| format!("Max: {:.0}", diag(w, |d| d.max_fps())));
+    let avg = small_stat(commands, fonts, |w| format!("{}: {:.0}", renzora::lang::t("perf.avg"), diag(w, |d| d.avg_fps())));
+    let min = small_stat(commands, fonts, |w| format!("{}: {:.0}", renzora::lang::t("perf.min"), diag(w, |d| d.min_fps())));
+    let max = small_stat(commands, fonts, |w| format!("{}: {:.0}", renzora::lang::t("perf.max"), diag(w, |d| d.max_fps())));
     commands.entity(avg_min_max).add_children(&[avg, min, max]);
     let fps_chart = line_chart_live(
         commands,
@@ -349,7 +349,7 @@ fn build_performance(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
 
     // Frame time.
-    let ft_label = section(commands, fonts, "Frame Time");
+    let ft_label = section(commands, fonts, &renzora::lang::t("perf.frame_time"));
     let ft_big = big_stat(
         commands,
         fonts,
@@ -370,7 +370,7 @@ fn build_performance(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
 
     // Entities.
-    let ent_label = section(commands, fonts, "Entities");
+    let ent_label = section(commands, fonts, &renzora::lang::t("perf.entities"));
     let ent_big = big_stat(
         commands,
         fonts,
@@ -391,15 +391,15 @@ fn build_performance(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
 
     // System (CPU / memory) — only shown when the platform reports them.
-    let sys_label = section(commands, fonts, "System");
+    let sys_label = section(commands, fonts, &renzora::lang::t("memory.system"));
     bind_display(commands, sys_label, |w| {
         diag(w, |d| d.cpu_usage.is_some() || d.memory_usage.is_some())
     });
-    let cpu = label_row(commands, fonts, "CPU:", |w| {
+    let cpu = label_row(commands, fonts, &format!("{}:", renzora::lang::t("perf.cpu")), |w| {
         format!("{:.1}%", diag(w, |d| d.cpu_usage).unwrap_or(0.0))
     });
     bind_display(commands, cpu, |w| diag(w, |d| d.cpu_usage.is_some()));
-    let mem = label_row(commands, fonts, "Memory:", |w| {
+    let mem = label_row(commands, fonts, &format!("{}:", renzora::lang::t("perf.memory")), |w| {
         format_bytes(diag(w, |d| d.memory_usage).unwrap_or(0))
     });
     bind_display(commands, mem, |w| diag(w, |d| d.memory_usage.is_some()));

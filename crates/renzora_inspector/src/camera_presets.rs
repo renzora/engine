@@ -139,7 +139,7 @@ fn rebuild_camera_presets(world: &mut World) {
                 let l = muted_label(
                     &mut commands,
                     &fonts,
-                    "No presets. Capture the current view to add one.",
+                    &renzora::lang::t("comp.camera_presets.empty"),
                 );
                 commands.entity(root).add_child(l);
             }
@@ -183,7 +183,7 @@ fn build_preset_row(
         .id();
 
     // Editable name (two-way bound to the preset at this index by position).
-    let ti = text_input(commands, &fonts.ui, "Preset", name);
+    let ti = text_input(commands, &fonts.ui, &renzora::lang::t("comp.camera_presets.name_placeholder"), name);
     commands.entity(ti).insert(Node {
         flex_grow: 1.0,
         min_width: Val::Px(0.0),
@@ -230,7 +230,7 @@ fn build_preset_row(
 }
 
 fn build_capture_button(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
-    let btn = icon_label_button(commands, fonts, "plus", "Capture current view");
+    let btn = icon_label_button(commands, fonts, "plus", &renzora::lang::t("comp.camera_presets.capture"));
     commands.entity(btn).insert((
         Node {
             width: Val::Percent(100.0),
@@ -258,7 +258,7 @@ fn editor_pose_or_warn(w: &mut World) -> Option<Transform> {
         Some(gt) => Some(gt.compute_transform()),
         None => {
             if let Some(mut t) = w.get_resource_mut::<renzora_ui::Toasts>() {
-                t.warning("No active editor camera to capture");
+                t.warning(renzora::lang::t("comp.camera_presets.no_camera"));
             }
             None
         }
@@ -288,7 +288,7 @@ fn capture_preset_click(
                 p.presets.push(CameraPreset::from_transform(name, &pose));
             }
             if let Some(mut t) = w.get_resource_mut::<renzora_ui::Toasts>() {
-                t.info("Captured camera preset");
+                t.info(renzora::lang::t("comp.camera_presets.captured"));
             }
         });
     }
@@ -343,7 +343,7 @@ fn snap_preset_click(
                 }
             }
             if let Some(mut t) = w.get_resource_mut::<renzora_ui::Toasts>() {
-                t.info("Snapped preset to viewport");
+                t.info(renzora::lang::t("comp.camera_presets.snapped"));
             }
         });
     }

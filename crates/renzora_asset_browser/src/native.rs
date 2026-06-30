@@ -74,12 +74,12 @@ pub(crate) enum SortMode {
 
 impl SortMode {
     const ALL: [SortMode; 4] = [SortMode::Name, SortMode::Type, SortMode::Size, SortMode::Modified];
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            SortMode::Name => "Name",
-            SortMode::Type => "Type",
-            SortMode::Size => "Size",
-            SortMode::Modified => "Date Modified",
+            SortMode::Name => renzora::lang::t("common.name"),
+            SortMode::Type => renzora::lang::t("common.type"),
+            SortMode::Size => renzora::lang::t("common.size"),
+            SortMode::Modified => renzora::lang::t("assets.sort.modified"),
         }
     }
 }
@@ -390,30 +390,30 @@ impl NewAsset {
         }
     }
     /// Menu label.
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            NewAsset::Folder => "Folder",
-            NewAsset::Material => "Material",
-            NewAsset::Blueprint => "Blueprint",
-            NewAsset::Lua => "Lua Script",
-            NewAsset::Rhai => "Rhai Script",
-            NewAsset::Particle => "Particle",
-            NewAsset::Template => "Template",
-            NewAsset::Bsn => "Scene (BSN)",
+            NewAsset::Folder => renzora::lang::t("assets.new.folder"),
+            NewAsset::Material => renzora::lang::t("assets.new.material"),
+            NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint"),
+            NewAsset::Lua => renzora::lang::t("assets.new.lua"),
+            NewAsset::Rhai => renzora::lang::t("assets.new.rhai"),
+            NewAsset::Particle => renzora::lang::t("assets.new.particle"),
+            NewAsset::Template => renzora::lang::t("assets.new.template"),
+            NewAsset::Bsn => renzora::lang::t("assets.new.bsn"),
         }
     }
     /// Small uppercase type subtitle shown under the title on the menu card
     /// (Unreal's "STATIC MESH" / "BASIC SHAPE" second line).
-    fn subtitle(self) -> &'static str {
+    fn subtitle(self) -> String {
         match self {
-            NewAsset::Folder => "Folder",
-            NewAsset::Material => "PBR Material",
-            NewAsset::Blueprint => "Visual Script",
-            NewAsset::Lua => "Lua Script",
-            NewAsset::Rhai => "Rhai Script",
-            NewAsset::Particle => "VFX",
-            NewAsset::Template => "UI Markup",
-            NewAsset::Bsn => "Scene",
+            NewAsset::Folder => renzora::lang::t("assets.new.folder"),
+            NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
+            NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint_sub"),
+            NewAsset::Lua => renzora::lang::t("assets.new.lua"),
+            NewAsset::Rhai => renzora::lang::t("assets.new.rhai"),
+            NewAsset::Particle => renzora::lang::t("assets.new.particle_sub"),
+            NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
+            NewAsset::Bsn => renzora::lang::t("assets.new.scene_sub"),
         }
     }
     /// Phosphor icon — mirrors each type's editor opener in [`open_action`].
@@ -959,9 +959,9 @@ fn asset_context_menu(
     };
     let win_h = win.height();
     let fav_label = if state.favorites.contains(&path) {
-        "Unfavorite"
+        renzora::lang::t("assets.context.unfavorite")
     } else {
-        "Favorite"
+        renzora::lang::t("assets.context.favorite")
     };
     // Flip the menu upward when the click lands low in the window so the (often
     // tall) "Create Asset" list grows up from the cursor instead of being clipped.
@@ -973,31 +973,31 @@ fn asset_context_menu(
     kids.push(menu_sep(&mut commands));
     // "Open in <Editor>" routes editor-backed assets to their panel/layout.
     if let Some((icon, label)) = open_action(&path) {
-        kids.push(menu_item(&mut commands, &fonts, icon, label, {
+        kids.push(menu_item(&mut commands, &fonts, icon, &label, {
             let path = path.clone();
             move |w| open_from_menu(w, &path)
         }));
         kids.push(menu_sep(&mut commands));
     }
     kids.extend([
-        menu_item(&mut commands, &fonts, "star", fav_label, {
+        menu_item(&mut commands, &fonts, "star", &fav_label, {
             let path = path.clone();
             move |w| toggle_favorite(w, &path)
         }),
-        menu_item(&mut commands, &fonts, "pencil-simple", "Rename", {
+        menu_item(&mut commands, &fonts, "pencil-simple", &renzora::lang::t("assets.context.rename"), {
             let path = path.clone();
             move |w| start_rename(w, &path)
         }),
-        menu_item(&mut commands, &fonts, "copy", "Duplicate", {
+        menu_item(&mut commands, &fonts, "copy", &renzora::lang::t("assets.context.duplicate"), {
             let path = path.clone();
             move |_| duplicate_asset(&path)
         }),
-        menu_item(&mut commands, &fonts, "folder-open", "Reveal in Explorer", {
+        menu_item(&mut commands, &fonts, "folder-open", &renzora::lang::t("assets.context.reveal"), {
             let path = path.clone();
             move |_| reveal_in_explorer(&path)
         }),
         menu_sep(&mut commands),
-        menu_item_styled(&mut commands, &fonts, "trash", "Delete", (224, 96, 88), (224, 96, 88), {
+        menu_item_styled(&mut commands, &fonts, "trash", &renzora::lang::t("assets.context.delete"), (224, 96, 88), (224, 96, 88), {
             let path = path.clone();
             move |w| delete_asset(w, &path)
         }),
@@ -1042,14 +1042,14 @@ fn add_menu_open(
 /// row carries the type's accent color (icon + label) so the menu reads as the
 /// same color language as the asset tiles.
 fn new_asset_menu_items(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
-    let mut kids = vec![menu_header(commands, fonts, "Create Asset")];
+    let mut kids = vec![menu_header(commands, fonts, &renzora::lang::t("assets.new.header"))];
     kids.extend(NewAsset::MENU.iter().map(|&kind| {
         menu_card(
             commands,
             fonts,
             kind.icon(),
-            kind.label(),
-            kind.subtitle(),
+            &kind.label(),
+            &kind.subtitle(),
             kind.color(),
             move |w| create_asset(w, kind),
         )
@@ -1102,7 +1102,7 @@ fn sort_menu_open(
         .iter()
         .map(|&mode| {
             let icon = if mode == cur_sort { "check" } else { "dot" };
-            menu_item(&mut commands, &fonts, icon, mode.label(), move |w| {
+            menu_item(&mut commands, &fonts, icon, &mode.label(), move |w| {
                 if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
                     s.sort = mode;
                 }
@@ -1114,7 +1114,7 @@ fn sort_menu_open(
         &mut commands,
         &fonts,
         if cur_desc { "arrow-up" } else { "check" },
-        "Ascending",
+        &renzora::lang::t("assets.sort.ascending"),
         |w| {
             if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
                 s.sort_desc = false;
@@ -1125,7 +1125,7 @@ fn sort_menu_open(
         &mut commands,
         &fonts,
         if cur_desc { "check" } else { "arrow-down" },
-        "Descending",
+        &renzora::lang::t("assets.sort.descending"),
         |w| {
             if let Some(mut s) = w.get_resource_mut::<NativeAssets>() {
                 s.sort_desc = true;
@@ -1930,17 +1930,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
-    let new_folder = icon_label_button(commands, fonts, "folder-plus", "New Folder");
+    let new_folder = icon_label_button(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
-    let add = icon_label_button(commands, fonts, "plus", "Add");
+    let add = icon_label_button(commands, fonts, "plus", &renzora::lang::t("common.add"));
     commands
         .entity(add)
         .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
-    let import = icon_label_button(commands, fonts, "download-simple", "Import");
+    let import = icon_label_button(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
     commands.entity(import).insert(ImportBtn);
 
     // Sort dropdown (opens a screen_menu of sort modes + direction).
-    let sort_btn = icon_label_button(commands, fonts, "sort-ascending", "Sort");
+    let sort_btn = icon_label_button(commands, fonts, "sort-ascending", &renzora::lang::t("assets.sort"));
     commands
         .entity(sort_btn)
         .insert((SortMenuBtn, bevy::ui::RelativeCursorPosition::default()));
@@ -2029,7 +2029,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(zoom_box).add_children(&[zoom_icon, zoom]);
 
     // Compact search field, placed just left of the zoom control.
-    let search = text_input(commands, &fonts.ui, "Search...", "");
+    let search = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
     commands.entity(search).insert((
         AssetSearch,
         Node {
@@ -2149,8 +2149,8 @@ fn crumb_snapshot(world: &World) -> KeyedSnapshot {
     let root_name = root
         .file_name()
         .and_then(|n| n.to_str())
-        .unwrap_or("Project")
-        .to_string();
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| renzora::lang::t("common.project"));
     let mut segs: Vec<(String, PathBuf)> = vec![(root_name, root.clone())];
     if let Ok(rel) = cur.strip_prefix(&root) {
         let mut acc = root.clone();
@@ -2366,7 +2366,7 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new("Empty folder"),
+                    Text::new(renzora::lang::t("assets.empty_folder")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                     Node { padding: UiRect::all(Val::Px(8.0)), ..default() },
@@ -2413,7 +2413,7 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
 /// The inline rename text field for a grid/list entry, seeded with its current
 /// name and tagged so `asset_rename_commit` can find it.
 fn rename_field(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
-    let input = text_input(commands, &fonts.ui, "Name", &entry.name);
+    let input = text_input(commands, &fonts.ui, &renzora::lang::t("common.name"), &entry.name);
     commands.entity(input).insert((
         AssetRenameInput(entry.path.clone()),
         Node {
@@ -3466,18 +3466,18 @@ fn is_editable_text(path: &Path) -> bool {
 
 /// Context-menu "Open …" label + icon for an asset, or `None` if it has no
 /// in-editor opener (a folder, texture, audio clip, …).
-fn open_action(path: &Path) -> Option<(&'static str, &'static str)> {
+fn open_action(path: &Path) -> Option<(&'static str, String)> {
     use renzora_editor_framework::DocTabKind;
     if path.is_dir() {
-        return Some(("folder-open", "Open"));
+        return Some(("folder-open", renzora::lang::t("common.open")));
     }
     match renzora_editor_framework::doc_kind_for_path(path) {
-        Some(DocTabKind::Material) => Some(("palette", "Open in Material Editor")),
-        Some(DocTabKind::Particle) => Some(("sparkle", "Open in Particle Editor")),
-        Some(DocTabKind::Blueprint) => Some(("blueprint", "Open in Blueprint Editor")),
-        Some(DocTabKind::Scene) => Some(("film-slate", "Open Scene")),
-        Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", "Open in Code Editor")),
-        _ if is_editable_text(path) => Some(("code", "Open in Code Editor")),
+        Some(DocTabKind::Material) => Some(("palette", renzora::lang::t("assets.open_in.material_editor"))),
+        Some(DocTabKind::Particle) => Some(("sparkle", renzora::lang::t("assets.open_in.particle_editor"))),
+        Some(DocTabKind::Blueprint) => Some(("blueprint", renzora::lang::t("assets.open_in.blueprint_editor"))),
+        Some(DocTabKind::Scene) => Some(("film-slate", renzora::lang::t("assets.open_in.scene"))),
+        Some(DocTabKind::Script) | Some(DocTabKind::Shader) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
+        _ if is_editable_text(path) => Some(("code", renzora::lang::t("assets.open_in.code_editor"))),
         _ => None,
     }
 }

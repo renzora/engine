@@ -102,7 +102,7 @@ fn spawn_dropped_scene(world: &mut World, path: PathBuf) {
         world.insert_resource(cache);
         if cycle {
             if let Some(mut toasts) = world.get_resource_mut::<Toasts>() {
-                toasts.warning("You cannot add a scene to itself");
+                toasts.warning(renzora::lang::t("hierarchy.toast.cannot_add_self"));
             }
             return;
         }

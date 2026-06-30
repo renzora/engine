@@ -81,7 +81,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let np_icon = icon_text(commands, &fonts.phosphor, "file-plus", text_muted(), 12.0);
     let np_text = commands
-        .spawn((Text::new("New Script"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
+        .spawn((Text::new(renzora::lang::t("code.new_script")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
         .id();
     commands.entity(new_btn).add_children(&[np_icon, np_text]);
     commands.entity(toolbar).add_child(new_btn);
@@ -142,13 +142,13 @@ fn scripts_snapshot(world: &World) -> KeyedSnapshot {
 
 fn build_items(world: &World) -> Vec<Item> {
     let Some(entity) = selected(world) else {
-        return vec![Item::Note("Select an entity to see its scripts".into())];
+        return vec![Item::Note(renzora::lang::t("code.select_entity_scripts"))];
     };
     let Some(sc) = world.get::<ScriptComponent>(entity) else {
-        return vec![Item::Note("This entity has no scripts.".into())];
+        return vec![Item::Note(renzora::lang::t("code.entity_no_scripts"))];
     };
     if sc.scripts.is_empty() {
-        return vec![Item::Note("No scripts attached".into())];
+        return vec![Item::Note(renzora::lang::t("comp.script.no_attached"))];
     }
     let root = project_root(world);
     sc.scripts
@@ -259,7 +259,7 @@ fn script_row(commands: &mut Commands, fonts: &EmberFonts, r: &RowData) -> Entit
     if !r.exists {
         open_kids.push(
             commands
-                .spawn((Text::new("missing"), ui_font(&fonts.ui, 9.5), TextColor(rgb(close_red()))))
+                .spawn((Text::new(renzora::lang::t("code.missing")), ui_font(&fonts.ui, 9.5), TextColor(rgb(close_red()))))
                 .id(),
         );
     }

@@ -366,14 +366,14 @@ fn scan_clips_click(
             .get_resource::<CurrentProject>()
             .map(|p| p.path.clone())
         else {
-            set_feedback(world, entity, "No project open".into(), true);
+            set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
             return;
         };
         let Some(model_path) = world
             .get::<MeshInstanceData>(entity)
             .and_then(|m| m.model_path.clone())
         else {
-            set_feedback(world, entity, "Selected entity has no model".into(), true);
+            set_feedback(world, entity, renzora::lang::t("animation.selected_no_model"), true);
             return;
         };
 
@@ -444,14 +444,14 @@ fn create_sm_click(
             .get_resource::<CurrentProject>()
             .map(|p| p.path.clone())
         else {
-            set_feedback(world, entity, "No project open".into(), true);
+            set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
             return;
         };
         let Some(animator) = world.get::<AnimatorComponent>(entity) else {
             return;
         };
         if animator.clips.is_empty() {
-            set_feedback(world, entity, "Add clips before creating a state machine".into(), true);
+            set_feedback(world, entity, renzora::lang::t("animation.add_clips_first"), true);
             return;
         }
 
@@ -543,7 +543,7 @@ fn create_anim_click(
         };
         let Some(project_root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone())
         else {
-            set_feedback(world, entity, "No project open".into(), true);
+            set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
             return;
         };
 

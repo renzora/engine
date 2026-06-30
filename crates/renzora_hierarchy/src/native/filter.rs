@@ -32,7 +32,7 @@ pub(crate) struct HierSearchInput;
 
 /// Build the header search box (filters the tree by entity name).
 pub(crate) fn build_search_box(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let input = text_input(commands, &fonts.ui, "Search…", "");
+    let input = text_input(commands, &fonts.ui, &renzora::lang::t("hierarchy.search"), "");
     commands.entity(input).insert((
         HierSearchInput,
         Node {
@@ -202,7 +202,7 @@ fn filter_row(commands: &mut Commands, fonts: &EmberFonts, row: &FRow) -> Entity
                 .id();
             let t = commands
                 .spawn((
-                    Text::new("Clear filter"),
+                    Text::new(renzora::lang::t("hierarchy.filter.clear")),
                     ui_font(&fonts.ui, 11.0),
                     TextColor(rgb(renzora_ember::theme::close_red())),
                 ))
@@ -211,7 +211,7 @@ fn filter_row(commands: &mut Commands, fonts: &EmberFonts, row: &FRow) -> Entity
             r
         }
         FRow::Type(name, icon, color) => check_row(commands, fonts, name, Some((*icon, *color)), name),
-        FRow::Other => check_row(commands, fonts, "Other", None, "__other__"),
+        FRow::Other => check_row(commands, fonts, &renzora::lang::t("hierarchy.filter.other"), None, "__other__"),
     }
 }
 

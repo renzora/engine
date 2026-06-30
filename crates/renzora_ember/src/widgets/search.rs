@@ -175,7 +175,8 @@ pub fn search_list(commands: &mut Commands, fonts: &EmberFonts, entries: Vec<Sea
         .id();
 
     // Fixed search bar just above the list (padded so the field never overflows).
-    let input = text_input(commands, &fonts.ui, "Search…", "");
+    let search_ph = renzora::lang::t("common.search");
+    let input = text_input(commands, &fonts.ui, &search_ph, "");
     commands.entity(input).insert((
         SearchInput,
         Node {
@@ -246,7 +247,8 @@ pub fn search_list(commands: &mut Commands, fonts: &EmberFonts, entries: Vec<Sea
     }
 
     // "All" jumps every category open.
-    sidebar_kids.push(sidebar_button(commands, fonts, "All", (214, 214, 224), None));
+    let all_label = renzora::lang::t_or("entity.cat.all", "All");
+    sidebar_kids.push(sidebar_button(commands, fonts, &all_label, (214, 214, 224), None));
 
     for (cat, items) in order.iter().zip(groups) {
         let accent = category_color(cat);
@@ -286,7 +288,7 @@ pub fn search_list(commands: &mut Commands, fonts: &EmberFonts, entries: Vec<Sea
         .id();
     let cats_label = commands
         .spawn((
-            Text::new("Categories"),
+            Text::new(renzora::lang::t("common.categories")),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(MUTED)),
             Node {
@@ -388,7 +390,8 @@ pub fn search_grid(
         ))
         .id();
 
-    let input = text_input(commands, &fonts.ui, "Search…", "");
+    let search_ph = renzora::lang::t("common.search");
+    let input = text_input(commands, &fonts.ui, &search_ph, "");
     commands.entity(input).insert((
         SearchInput,
         Node {

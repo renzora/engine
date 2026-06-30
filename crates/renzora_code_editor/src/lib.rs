@@ -199,7 +199,7 @@ pub(crate) fn build_code_editor_toolbar(
         .id();
 
     // Font size → the editor's live zoom (`CodeEditorState.font_size`).
-    let size_label = label(commands, "Size");
+    let size_label = label(commands, &renzora::lang::t("common.size"));
     let size = drag_value(commands, &fonts.ui, "", value_text(), 14.0, 1.0);
     commands.entity(size).insert(DragRange { min: 8.0, max: 48.0 });
     bind_2way(
@@ -218,7 +218,7 @@ pub(crate) fn build_code_editor_toolbar(
     );
 
     // Minimap + Whitespace → editor settings (toggle switches).
-    let mini_label = label(commands, "Minimap");
+    let mini_label = label(commands, &renzora::lang::t("code.minimap"));
     let mini = toggle_switch(commands, false);
     bind_2way(
         commands,
@@ -235,7 +235,7 @@ pub(crate) fn build_code_editor_toolbar(
         },
     );
 
-    let ws_label = label(commands, "Whitespace");
+    let ws_label = label(commands, &renzora::lang::t("code.whitespace"));
     let ws = toggle_switch(commands, false);
     bind_2way(
         commands,

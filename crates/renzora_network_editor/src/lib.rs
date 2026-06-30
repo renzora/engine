@@ -16,12 +16,20 @@ use renzora_network::{NetworkTransform, Networked};
 // Inspector entries (attachable components)
 // ============================================================================
 
+/// Resolve a localized string and leak it to satisfy the `&'static str`
+/// inspector-field contract. Inspector entries are constructed once at plugin
+/// registration, so this one-time leak per label is bounded (it does not grow
+/// per frame). The trade-off: labels won't re-localize on a live language swap.
+fn loc(key: &str) -> &'static str {
+    Box::leak(renzora::lang::t(key).into_boxed_str())
+}
+
 /// `Networked` — the "replicate this entity" marker. Adding it makes the
 /// server replicate the entity (and its `Transform`) to every client.
 fn networked_inspector() -> InspectorEntry {
     InspectorEntry {
         type_id: "networked",
-        display_name: "Networked",
+        display_name: loc("comp.networked"),
         icon: "share-network",
         category: "networking",
         has_fn: |world, entity| world.get::<Networked>(entity).is_some(),
@@ -41,7 +49,7 @@ fn networked_inspector() -> InspectorEntry {
 fn network_transform_inspector() -> InspectorEntry {
     InspectorEntry {
         type_id: "network_transform",
-        display_name: "Network Transform",
+        display_name: loc("comp.network_transform"),
         icon: "arrows-out-cardinal",
         category: "networking",
         has_fn: |world, entity| world.get::<NetworkTransform>(entity).is_some(),
@@ -54,9 +62,9 @@ fn network_transform_inspector() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
-            bool_field!("Interpolate", NetworkTransform, interpolate),
-            bool_field!("Sync Rotation", NetworkTransform, sync_rotation),
-            bool_field!("Sync Scale", NetworkTransform, sync_scale),
+            bool_field!(loc("comp.interpolate"), NetworkTransform, interpolate),
+            bool_field!(loc("comp.sync_rotation"), NetworkTransform, sync_rotation),
+            bool_field!(loc("comp.sync_scale"), NetworkTransform, sync_scale),
         ],
     }
 }

@@ -1581,7 +1581,7 @@ fn build_tree(
             let ic = icon_text(commands, phosphor, "plus", text_muted(), 14.0);
             let t = commands
                 .spawn((
-                    Text::new("Add Panel"),
+                    Text::new(renzora::lang::t("menu.add_panel")),
                     ui_font(font, 13.0),
                     TextColor(rgb(text_muted())),
                 ))
@@ -1747,14 +1747,27 @@ fn add_panel_click(
                 } else {
                     info.icon.clone()
                 };
-                let category = if info.category.is_empty() {
+                let category_en = if info.category.is_empty() {
                     "General".to_string()
                 } else {
                     info.category.clone()
                 };
+                // Localized category header. The slug (lowercased, non-alphanumerics
+                // → '_') keys `panel.cat.<slug>`; grouping still keys off this string,
+                // so all entries in one English category share one localized header.
+                let slug: String = category_en
+                    .trim()
+                    .to_lowercase()
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                    .collect();
+                let category = renzora::lang::t_or(&format!("panel.cat.{}", slug), &category_en);
+                // Localized panel display name — reuses the `panel.<id>` keys seeded
+                // by the chrome pass; falls back to the registry's English title.
+                let label = renzora::lang::t_or(&format!("panel.{}", id), &info.title);
                 entries.push(crate::widgets::SearchEntry::new(
                     icon,
-                    info.title.clone(),
+                    label,
                     category,
                     move |w: &mut World| {
                         let sibling = w.get::<DockLeaf>(leaf).and_then(|l| l.tabs.first().cloned());
@@ -1773,7 +1786,8 @@ fn add_panel_click(
                 ));
             }
         }
-        crate::widgets::grid_overlay(&mut commands, &fonts, "Add Panel", entries);
+        let title = renzora::lang::t("menu.add_panel");
+        crate::widgets::grid_overlay(&mut commands, &fonts, &title, entries);
     }
 }
 

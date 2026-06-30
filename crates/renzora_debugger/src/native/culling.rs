@@ -84,17 +84,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, pct, |w| cull(w, |s| s.total_entities) > 0);
 
     // Culling breakdown.
-    let bd_label = section(commands, fonts, "Culling Breakdown");
+    let bd_label = section(commands, fonts, &renzora::lang::t("cull.breakdown"));
     let bd = faint_box(commands);
-    let r_vis = bar_row(commands, fonts, "Visible", (100, 200, 100), |w| cull(w, visible), |w| frac(w, visible, |s| s.total_entities));
-    let r_fc = bar_row(commands, fonts, "Frustum Culled", (200, 150, 80), |w| cull(w, |s| s.frustum_culled), |w| frac(w, |s| s.frustum_culled, |s| s.total_entities));
-    let r_dc = bar_row(commands, fonts, "Distance Culled", (200, 100, 100), |w| cull(w, |s| s.distance_culled), |w| frac(w, |s| s.distance_culled, |s| s.total_entities));
-    let r_fade = bar_row(commands, fonts, "Fading", (180, 180, 100), |w| cull(w, |s| s.distance_faded), |w| frac(w, |s| s.distance_faded, |s| s.total_entities));
+    let r_vis = bar_row(commands, fonts, &renzora::lang::t("cull.visible"), (100, 200, 100), |w| cull(w, visible), |w| frac(w, visible, |s| s.total_entities));
+    let r_fc = bar_row(commands, fonts, &renzora::lang::t("cull.frustum_culled"), (200, 150, 80), |w| cull(w, |s| s.frustum_culled), |w| frac(w, |s| s.frustum_culled, |s| s.total_entities));
+    let r_dc = bar_row(commands, fonts, &renzora::lang::t("cull.distance_culled"), (200, 100, 100), |w| cull(w, |s| s.distance_culled), |w| frac(w, |s| s.distance_culled, |s| s.total_entities));
+    let r_fade = bar_row(commands, fonts, &renzora::lang::t("cull.fading"), (180, 180, 100), |w| cull(w, |s| s.distance_faded), |w| frac(w, |s| s.distance_faded, |s| s.total_entities));
     bind_display(commands, r_fade, |w| cull(w, |s| s.distance_faded) > 0);
     commands.entity(bd).add_children(&[r_vis, r_fc, r_dc, r_fade]);
 
     // Distance distribution.
-    let dd_label = section(commands, fonts, "Distance Distribution");
+    let dd_label = section(commands, fonts, &renzora::lang::t("cull.distance_distribution"));
     let dd = faint_box(commands);
     const LABELS: [&str; 5] = ["0-50m", "50-100m", "100-200m", "200-500m", "500m+"];
     let mut rows = Vec::new();
@@ -118,13 +118,13 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(dd).add_children(&rows);
 
     // Settings.
-    let set_label = section(commands, fonts, "Settings");
+    let set_label = section(commands, fonts, &renzora::lang::t("common.settings"));
     let set_box = faint_box(commands);
-    let enable = checkbox_row(commands, fonts, "Enable Distance Culling");
+    let enable = checkbox_row(commands, fonts, &renzora::lang::t("cull.enable_distance_culling"));
     let max_dist = slider_row(
         commands,
         fonts,
-        "Max Distance",
+        &renzora::lang::t("cull.max_distance"),
         10.0,
         2000.0,
         |v| format!("{:.0}m", v),
@@ -134,7 +134,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let fade = slider_row(
         commands,
         fonts,
-        "Fade Start",
+        &renzora::lang::t("cull.fade_start"),
         0.5,
         1.0,
         |v| format!("{:.2}", v),

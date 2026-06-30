@@ -144,7 +144,7 @@ fn build_monitor(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
 
     // Plugin not loaded.
-    let not_loaded = centered(commands, fonts, "wifi-slash", "Network plugin not loaded", None);
+    let not_loaded = centered(commands, fonts, "wifi-slash", &renzora::lang::t("network.plugin_not_loaded"), None);
     bind_display(commands, not_loaded, |w| w.get_resource::<NetworkStatus>().is_none());
 
     // Disconnected.
@@ -152,13 +152,13 @@ fn build_monitor(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "wifi-slash",
-        "Disconnected",
-        Some("Configure networking in Network Settings to get started."),
+        &renzora::lang::t("network.disconnected"),
+        Some(&renzora::lang::t("network.disconnected_hint")),
     );
     bind_display(commands, disconnected, |w| is_state(w, ConnectionState::Disconnected));
 
     // Connecting.
-    let connecting = centered(commands, fonts, "wifi-medium", "Connecting...", None);
+    let connecting = centered(commands, fonts, "wifi-medium", &renzora::lang::t("network.connecting"), None);
     bind_display(commands, connecting, |w| is_state(w, ConnectionState::Connecting));
 
     // Connected.
@@ -169,8 +169,8 @@ fn build_monitor(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() })
             .id();
         let wifi = icon_text(commands, &fonts.phosphor, "wifi-high", GREEN, 16.0);
-        let lbl = text(commands, fonts, "Connected", 13.0, GREEN);
-        let server = text(commands, fonts, "(Server)", 11.0, MUTED);
+        let lbl = text(commands, fonts, &renzora::lang::t("network.connected"), 13.0, GREEN);
+        let server = text(commands, fonts, &renzora::lang::t("network.server_tag"), 11.0, MUTED);
         bind_display(commands, server, |w| nstat(w, |s| s.is_server));
         commands.entity(header).add_children(&[wifi, lbl, server]);
 
@@ -179,10 +179,10 @@ fn build_monitor(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         // Client stats.
         let client = column(commands, 2.0);
         bind_display(commands, client, |w| !nstat(w, |s| s.is_server));
-        let rtt = stat_row(commands, fonts, "RTT", |w| format!("{:.1} ms", nstat(w, |s| s.rtt_ms)));
-        let jit = stat_row(commands, fonts, "Jitter", |w| format!("{:.1} ms", nstat(w, |s| s.jitter_ms)));
-        let loss = stat_row(commands, fonts, "Packet Loss", |w| format!("{:.1}%", nstat(w, |s| s.packet_loss) * 100.0));
-        let cid = stat_row(commands, fonts, "Client ID", |w| nstat(w, |s| s.client_id).map(|v| v.to_string()).unwrap_or_default());
+        let rtt = stat_row(commands, fonts, &renzora::lang::t("network.rtt"), |w| format!("{:.1} ms", nstat(w, |s| s.rtt_ms)));
+        let jit = stat_row(commands, fonts, &renzora::lang::t("network.jitter"), |w| format!("{:.1} ms", nstat(w, |s| s.jitter_ms)));
+        let loss = stat_row(commands, fonts, &renzora::lang::t("network.packet_loss"), |w| format!("{:.1}%", nstat(w, |s| s.packet_loss) * 100.0));
+        let cid = stat_row(commands, fonts, &renzora::lang::t("network.client_id"), |w| nstat(w, |s| s.client_id).map(|v| v.to_string()).unwrap_or_default());
         bind_display(commands, cid, |w| nstat(w, |s| s.client_id.is_some()));
         commands.entity(client).add_children(&[rtt, jit, loss, cid]);
 
@@ -192,7 +192,7 @@ fn build_monitor(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let count = commands
             .spawn((Text::new(""), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_primary()))))
             .id();
-        bind_text(commands, count, |w| format!("Clients: {}", nstat(w, |s| s.connected_clients.len())));
+        bind_text(commands, count, |w| format!("{}: {}", renzora::lang::t("network.clients"), nstat(w, |s| s.connected_clients.len())));
         let list = column(commands, 1.0);
         keyed_list(commands, list, clients_snapshot);
         let sp = spacer(commands, 2.0);
@@ -212,7 +212,7 @@ fn clients_snapshot(world: &World) -> KeyedSnapshot {
     if clients.is_empty() {
         return KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
-            build: Box::new(|c, f, _| text(c, f, "Waiting for clients...", 11.0, MUTED)),
+            build: Box::new(|c, f, _| text(c, f, &renzora::lang::t("network.waiting_for_clients"), 11.0, MUTED)),
         };
     }
     let items: Vec<(u64, u64)> = clients
@@ -289,8 +289,8 @@ fn entities_snapshot(world: &World) -> KeyedSnapshot {
                     c,
                     f,
                     "share-network",
-                    "No networked entities",
-                    Some("Add a Networked component to entities to see them listed here."),
+                    &renzora::lang::t("network_entities.empty"),
+                    Some(&renzora::lang::t("network_entities.empty_hint")),
                 )
             }),
         };
@@ -319,8 +319,8 @@ fn entities_snapshot(world: &World) -> KeyedSnapshot {
             }
             if let Some(own) = owner {
                 let s = match own {
-                    OwnerKind::Server => "Server".to_string(),
-                    OwnerKind::Client(id) => format!("Client {id}"),
+                    OwnerKind::Server => renzora::lang::t("network_entities.server"),
+                    OwnerKind::Client(id) => format!("{} {id}", renzora::lang::t("network_entities.client")),
                 };
                 kids.push(text(c, f, &s, 10.0, MUTED));
             }
@@ -362,18 +362,18 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Configured view.
     let cfg = column(commands, 4.0);
     bind_display(commands, cfg, has_cfg);
-    let title = text(commands, fonts, "Network Configuration", 13.0, text_primary());
+    let title = text(commands, fonts, &renzora::lang::t("network_settings.configuration"), 13.0, text_primary());
     let div = divider(commands);
     let grid = column(commands, 6.0);
     let rows = [
-        stat_row(commands, fonts, "Server Address", |w| net_cfg(w, |c| c.server_addr.clone())),
-        stat_row(commands, fonts, "Port", |w| net_cfg(w, |c| c.port.to_string())),
-        stat_row(commands, fonts, "Transport", |w| net_cfg(w, |c| c.transport.clone())),
-        stat_row(commands, fonts, "Tick Rate", |w| format!("{} Hz", net_cfg(w, |c| c.tick_rate))),
-        stat_row(commands, fonts, "Max Clients", |w| net_cfg(w, |c| c.max_clients.to_string())),
+        stat_row(commands, fonts, &renzora::lang::t("network.server_address"), |w| net_cfg(w, |c| c.server_addr.clone())),
+        stat_row(commands, fonts, &renzora::lang::t("network.port"), |w| net_cfg(w, |c| c.port.to_string())),
+        stat_row(commands, fonts, &renzora::lang::t("network_settings.transport"), |w| net_cfg(w, |c| c.transport.clone())),
+        stat_row(commands, fonts, &renzora::lang::t("network_settings.tick_rate"), |w| format!("{} Hz", net_cfg(w, |c| c.tick_rate))),
+        stat_row(commands, fonts, &renzora::lang::t("network_settings.max_clients"), |w| net_cfg(w, |c| c.max_clients.to_string())),
     ];
     commands.entity(grid).add_children(&rows);
-    let hint = text(commands, fonts, "Edit [network] in project.toml to change settings.", 10.0, MUTED);
+    let hint = text(commands, fonts, &renzora::lang::t("network_settings.edit_hint"), 10.0, MUTED);
     let sp = spacer(commands, 8.0);
     commands.entity(cfg).add_children(&[title, div, grid, sp, hint]);
 
@@ -382,8 +382,8 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands,
         fonts,
         "cloud-slash",
-        "Networking not configured",
-        Some("Add [network] to project.toml to configure server mode, transport, and connection settings."),
+        &renzora::lang::t("network_settings.not_configured"),
+        Some(&renzora::lang::t("network_settings.not_configured_hint")),
     );
     bind_display(commands, none, |w| !has_cfg(w));
 

@@ -56,6 +56,39 @@ fn col(c: renzora_theme::ThemeColor) -> Color {
     Color::srgb_u8(r, g, b)
 }
 
+/// Slugify an option label for the shared `opt.<slug>` translation namespace:
+/// lowercase, each run of non-alphanumerics → one `_`, trimmed.
+fn opt_slug(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut pending_us = false;
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            if pending_us && !out.is_empty() {
+                out.push('_');
+            }
+            pending_us = false;
+            out.push(c.to_ascii_lowercase());
+        } else {
+            pending_us = true;
+        }
+    }
+    out
+}
+
+/// Localize a dropdown OPTION label via the shared `opt.<slug>` namespace,
+/// reusing a few `common.*` keys where the value already has one. The enum's
+/// `label()` identity (used for index/state matching) is unchanged — only the
+/// displayed string is translated.
+fn loc_opt(s: &str) -> String {
+    match s {
+        "None" => renzora::lang::t_or("common.none", s),
+        "Disabled" => renzora::lang::t_or("common.disabled", s),
+        "Default" => renzora::lang::t_or("common.default", s),
+        "Always" => renzora::lang::t_or("common.always", s),
+        _ => renzora::lang::t_or(&format!("opt.{}", opt_slug(s)), s),
+    }
+}
+
 /// Build the header row.
 ///
 /// Historically this was child 0 of the primary viewport panel; it is now
@@ -193,7 +226,7 @@ struct SpaceToggleText;
 fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let label = commands
         .spawn((
-            Text::new("World"),
+            Text::new(renzora::lang::t("viewport.gizmo.world")),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
             SpaceToggleText,
@@ -242,11 +275,11 @@ fn update_space_toggle(space: Res<GizmoSpace>, mut texts: Query<&mut Text, With<
         return;
     }
     let label = match *space {
-        GizmoSpace::World => "World",
-        GizmoSpace::Local => "Local",
+        GizmoSpace::World => renzora::lang::t("viewport.gizmo.world"),
+        GizmoSpace::Local => renzora::lang::t("viewport.gizmo.local"),
     };
     for mut t in &mut texts {
-        t.0 = label.to_string();
+        t.0 = label.clone();
     }
 }
 
@@ -349,11 +382,13 @@ enum DropKind {
 }
 
 impl DropKind {
-    /// Option labels for this dropdown, in `ALL` order.
-    fn labels(self) -> Vec<&'static str> {
+    /// Localized option labels for this dropdown, in `ALL` order (the enum's
+    /// `label()` identity stays English for index matching; only the displayed
+    /// string is translated via the shared `opt.<slug>` namespace).
+    fn labels(self) -> Vec<String> {
         match self {
-            DropKind::View => ViewportView::ALL.iter().map(|v| v.label()).collect(),
-            DropKind::Mode => ViewportMode::ALL.iter().map(|m| m.label()).collect(),
+            DropKind::View => ViewportView::ALL.iter().map(|v| loc_opt(v.label())).collect(),
+            DropKind::Mode => ViewportMode::ALL.iter().map(|m| loc_opt(m.label())).collect(),
         }
     }
 }
@@ -382,7 +417,7 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
     for (i, label) in labels.iter().enumerate() {
         let txt = commands
             .spawn((
-                Text::new(*label),
+                Text::new(label.clone()),
                 ui_font(&fonts.ui, 12.0),
                 TextColor(rgb(text_primary())),
             ))
@@ -435,7 +470,7 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
     // Trigger button: current label + caret.
     let label_e = commands
         .spawn((
-            Text::new(labels.first().copied().unwrap_or("")),
+            Text::new(labels.first().cloned().unwrap_or_default()),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
         ))
@@ -622,11 +657,11 @@ fn update_dropdown_visuals(
         // Trigger label tracks the live setting.
         if let Ok(mut text) = texts.get_mut(trig.label) {
             let label = match trig.kind {
-                DropKind::View => settings.viewport_view.label(),
-                DropKind::Mode => settings.viewport_mode.label(),
+                DropKind::View => loc_opt(settings.viewport_view.label()),
+                DropKind::Mode => loc_opt(settings.viewport_mode.label()),
             };
             if text.0 != label {
-                text.0 = label.to_string();
+                text.0 = label;
             }
         }
         let want = if trig.open || *interaction == Interaction::Hovered {
@@ -867,40 +902,40 @@ fn panel_toggle_dismiss(
 fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let mut kids: Vec<Entity> = Vec::new();
 
-    kids.push(section_label(commands, fonts, "Visualization"));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.visualization")));
     for (i, m) in VisualizationMode::ALL.iter().enumerate() {
-        kids.push(option_row(commands, fonts, DisplayOption::Viz(i), m.label()));
+        kids.push(option_row(commands, fonts, DisplayOption::Viz(i), &loc_opt(m.label())));
     }
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, "Render"));
-    kids.push(toggle_row!(commands, fonts, "Mesh", render_toggles.mesh));
-    kids.push(toggle_row!(commands, fonts, "Textures", render_toggles.textures));
-    kids.push(toggle_row!(commands, fonts, "Wireframe", render_toggles.wireframe));
-    kids.push(toggle_row!(commands, fonts, "Lighting", render_toggles.lighting));
-    kids.push(toggle_row!(commands, fonts, "Shadows", render_toggles.shadows));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.render")));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.mesh"), render_toggles.mesh));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.textures"), render_toggles.textures));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.shading.wireframe"), render_toggles.wireframe));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.lighting"), render_toggles.lighting));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.shadows"), render_toggles.shadows));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, "Overlays"));
-    kids.push(toggle_row!(commands, fonts, "Grid", show_grid));
-    kids.push(toggle_row!(commands, fonts, "Sub-grid", show_subgrid));
-    kids.push(toggle_row!(commands, fonts, "Axis Gizmo", show_axis_gizmo));
-    kids.push(toggle_row!(commands, fonts, "Scene Icons", show_scene_icons));
-    kids.push(toggle_row!(commands, fonts, "Labels", show_labels));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.overlays")));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.grid"), show_grid));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.subgrid"), show_subgrid));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.axis_gizmo"), show_axis_gizmo));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.scene_icons"), show_scene_icons));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.labels"), show_labels));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, "Collision Gizmos"));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.collision_gizmos")));
     kids.push(option_row(
         commands,
         fonts,
         DisplayOption::Collision(true),
-        "Selected Only",
+        &renzora::lang::t("viewport.display.selected_only"),
     ));
     kids.push(option_row(
         commands,
         fonts,
         DisplayOption::Collision(false),
-        "Always",
+        &renzora::lang::t("common.always"),
     ));
 
     let panel = commands
@@ -1635,17 +1670,26 @@ fn drag_row_build(
 #[allow(clippy::vec_init_then_push)]
 fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let mut kids: Vec<Entity> = Vec::new();
-    kids.push(section_label(commands, fonts, "Projection"));
-    kids.push(proj_row(commands, fonts, ProjectionMode::Perspective, "Perspective"));
-    kids.push(proj_row(commands, fonts, ProjectionMode::Orthographic, "Orthographic"));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.projection")));
+    kids.push(proj_row(commands, fonts, ProjectionMode::Perspective, &renzora::lang::t("viewport.camera.perspective")));
+    kids.push(proj_row(commands, fonts, ProjectionMode::Orthographic, &renzora::lang::t("viewport.camera.orthographic")));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, "View Angles"));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.view_angles")));
     for (label, sc, yaw, pitch) in VIEW_ANGLES {
+        let lbl = match *label {
+            "Front" => renzora::lang::t("viewport.camera.front"),
+            "Back" => renzora::lang::t("viewport.camera.back"),
+            "Left" => renzora::lang::t("viewport.camera.left"),
+            "Right" => renzora::lang::t("viewport.camera.right"),
+            "Top" => renzora::lang::t("viewport.camera.top"),
+            "Bottom" => renzora::lang::t("viewport.camera.bottom"),
+            other => other.to_string(),
+        };
         kids.push(click_row(
             commands,
             fonts,
-            &format!("{label}  ({sc})"),
+            &format!("{lbl}  ({sc})"),
             HeaderClick::ViewAngle {
                 yaw: *yaw,
                 pitch: *pitch,
@@ -1654,21 +1698,21 @@ fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     }
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, "Sensitivities"));
-    kids.push(drag_row!(commands, fonts, "Look", 0.05, 2.0, 0.05, camera.look_sensitivity));
-    kids.push(drag_row!(commands, fonts, "Orbit", 0.05, 2.0, 0.05, camera.orbit_sensitivity));
-    kids.push(drag_row!(commands, fonts, "Pan", 0.1, 5.0, 0.1, camera.pan_sensitivity));
-    kids.push(drag_row!(commands, fonts, "Zoom", 0.1, 5.0, 0.1, camera.zoom_sensitivity));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.camera.sensitivities")));
+    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.look"), 0.05, 2.0, 0.05, camera.look_sensitivity));
+    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.orbit"), 0.05, 2.0, 0.05, camera.orbit_sensitivity));
+    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.pan"), 0.1, 5.0, 0.1, camera.pan_sensitivity));
+    kids.push(drag_row!(commands, fonts, &renzora::lang::t("viewport.camera.zoom"), 0.1, 5.0, 0.1, camera.zoom_sensitivity));
 
     kids.push(separator_row(commands));
-    kids.push(toggle_row!(commands, fonts, "Invert Y Axis", camera.invert_y));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.camera.invert_y"), camera.invert_y));
     kids.push(toggle_row!(
         commands,
         fonts,
-        "Distance Relative Speed",
+        &renzora::lang::t("viewport.camera.distance_relative_speed"),
         camera.distance_relative_speed
     ));
-    kids.push(click_row(commands, fonts, "Reset to Defaults", HeaderClick::CamReset));
+    kids.push(click_row(commands, fonts, &renzora::lang::t("inspector.component.reset"), HeaderClick::CamReset));
 
     let panel = dropdown_panel(commands, &kids);
     let trigger = icon_trigger_node(commands, fonts, "cube");
@@ -1682,11 +1726,11 @@ fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
 #[allow(clippy::vec_init_then_push)]
 fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let mut kids: Vec<Entity> = Vec::new();
-    kids.push(section_label(commands, fonts, "Object Snapping"));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.snap.object_snapping")));
     kids.push(snap_dist_row(
         commands,
         fonts,
-        "Objects",
+        &renzora::lang::t("viewport.snap.objects"),
         SnapBtnKind::Object,
         HeaderClick::ToggleObjectSnap,
         0.1,
@@ -1698,7 +1742,7 @@ fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     kids.push(snap_dist_row(
         commands,
         fonts,
-        "Floor",
+        &renzora::lang::t("viewport.snap.floor"),
         SnapBtnKind::Floor,
         HeaderClick::ToggleFloorSnap,
         -1000.0,
@@ -1709,12 +1753,12 @@ fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     ));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, "Transform Aids"));
-    kids.push(toggle_row!(commands, fonts, "Edge Snap", snap.translate_edge_snap));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.snap.transform_aids")));
+    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.snap.edge_snap"), snap.translate_edge_snap));
     kids.push(toggle_row!(
         commands,
         fonts,
-        "Scale from Bottom",
+        &renzora::lang::t("viewport.snap.scale_from_bottom"),
         snap.scale_bottom_anchor
     ));
 

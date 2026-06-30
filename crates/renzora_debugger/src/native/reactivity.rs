@@ -69,35 +69,35 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
 
     // Totals grid.
-    let totals_label = section(commands, fonts, "This Frame");
+    let totals_label = section(commands, fonts, &renzora::lang::t("reactivity.this_frame"));
     let totals = faint_box(commands);
     let rows = [
-        label_row(commands, fonts, "Bindings run", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.bindings_run"), |w| {
             rs(w, |s| s.bindings_total).to_string()
         }),
-        label_row(commands, fonts, "New values", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.new_values"), |w| {
             rs(w, |s| s.changed_this_frame).to_string()
         }),
-        label_row(commands, fonts, "Changes/sec", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.changes_per_sec"), |w| {
             rs(w, |s| format!("{:.0}", s.changes_per_sec))
         }),
-        label_row(commands, fonts, "Bindings time", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.bindings_time"), |w| {
             rs(w, |s| format!("{:.2} ms", s.reactions_us / 1000.0))
         }),
-        label_row(commands, fonts, "Keyed lists", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.keyed_lists"), |w| {
             rs(w, |s| s.lists_total).to_string()
         }),
-        label_row(commands, fonts, "Lists time", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.lists_time"), |w| {
             rs(w, |s| format!("{:.2} ms", s.lists_us / 1000.0))
         }),
-        label_row(commands, fonts, "Rows rebuilt", |w| {
+        label_row(commands, fonts, &renzora::lang::t("reactivity.rows_rebuilt"), |w| {
             rs(w, |s| s.rows_rebuilt_this_frame).to_string()
         }),
     ];
     commands.entity(totals).add_children(&rows);
 
     // Top-N tables (fixed rows bound by rank; hidden while the rank is empty).
-    let cost_label = section(commands, fonts, "Top Cost (avg µs/frame)");
+    let cost_label = section(commands, fonts, &renzora::lang::t("reactivity.top_cost"));
     let cost_box = faint_box(commands);
     let cost_rows: Vec<Entity> = (0..ReactiveStats::TOP_N)
         .map(|i| {
@@ -111,7 +111,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .collect();
     commands.entity(cost_box).add_children(&cost_rows);
 
-    let churn_label = section(commands, fonts, "Top Churn (new values/sec)");
+    let churn_label = section(commands, fonts, &renzora::lang::t("reactivity.top_churn"));
     let churn_box = faint_box(commands);
     let churn_rows: Vec<Entity> = (0..ReactiveStats::TOP_N)
         .map(|i| {
@@ -125,7 +125,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .collect();
     commands.entity(churn_box).add_children(&churn_rows);
 
-    let lists_label = section(commands, fonts, "Keyed Lists (snapshot µs/frame)");
+    let lists_label = section(commands, fonts, &renzora::lang::t("reactivity.keyed_lists_section"));
     let lists_box = faint_box(commands);
     let list_rows: Vec<Entity> = (0..8)
         .map(|i| list_row(commands, fonts, i))

@@ -162,21 +162,21 @@ fn build_scripting(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     bind_display(commands, errors, |w| scr(w, |s| s.totals.scripts_with_errors > 0));
 
-    let e_ents = stat_row(commands, fonts, "Entities w/ ScriptComponent", |w| {
+    let e_ents = stat_row(commands, fonts, &renzora::lang::t("scripting.entities_with_script"), |w| {
         scr(w, |s| s.entities_with_script).to_string()
     });
-    let e_att = stat_row(commands, fonts, "Total attachments", |w| {
+    let e_att = stat_row(commands, fonts, &renzora::lang::t("scripting.total_attachments"), |w| {
         scr(w, |s| s.total_script_attachments).to_string()
     });
-    let e_back = stat_row(commands, fonts, "Backends registered", |w| {
+    let e_back = stat_row(commands, fonts, &renzora::lang::t("scripting.backends_registered"), |w| {
         scr(w, |s| s.backend_count).to_string()
     });
-    let e_folder = stat_row(commands, fonts, "Scripts folder", |w| {
+    let e_folder = stat_row(commands, fonts, &renzora::lang::t("scripting.scripts_folder"), |w| {
         scr(w, |s| s.scripts_folder.clone()).unwrap_or_else(|| "<unset>".to_string())
     });
 
     // Table.
-    let table_label = section(commands, fonts, "Per-script timing");
+    let table_label = section(commands, fonts, &renzora::lang::t("scripting.per_script_timing"));
     let header = column_header(commands, fonts);
     bind_display(commands, header, |w| !scr(w, |s| s.per_script.is_empty()));
     let body = commands
@@ -195,13 +195,15 @@ fn build_scripting(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-const COLS: [(&str, f32); 5] = [
-    ("Script", 220.0),
-    ("Last", 60.0),
-    ("Avg", 60.0),
-    ("Max", 60.0),
-    ("Calls", 60.0),
-];
+fn cols() -> [(String, f32); 5] {
+    [
+        (renzora::lang::t("scripting.col_script"), 220.0),
+        (renzora::lang::t("perf.last"), 60.0),
+        (renzora::lang::t("perf.avg"), 60.0),
+        (renzora::lang::t("perf.max"), 60.0),
+        (renzora::lang::t("scripting.col_calls"), 60.0),
+    ]
+}
 
 fn column_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands
@@ -219,7 +221,7 @@ fn column_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let cells: Vec<Entity> = COLS
+    let cells: Vec<Entity> = cols()
         .iter()
         .map(|(label, width)| cell(commands, fonts, label, *width, rgb(text_muted()), 10.0, false))
         .collect();
@@ -329,7 +331,7 @@ fn table_snapshot(world: &World) -> KeyedSnapshot {
             items: vec![(u64::MAX, 0)],
             build: Box::new(|c, f, _| {
                 c.spawn((
-                    Text::new("(no scripts have ticked yet)"),
+                    Text::new(renzora::lang::t("scripting.no_scripts")),
                     ui_font(&f.ui, 11.0),
                     TextColor(rgb(text_muted())),
                 ))

@@ -236,7 +236,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
 
     // Header.
     let header = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
-    let title = icon_title(commands, fonts, "package", "Export Project");
+    let title = icon_title(commands, fonts, "package", &renzora::lang::t("export.title"));
     let close = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), CloseBtn, cursor())).id();
     let cx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 16.0);
     commands.entity(cx).insert(FocusPolicy::Pass);
@@ -247,7 +247,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
     commands.entity(panel).add_child(sep);
 
     if !has_project {
-        let w = txt(commands, fonts, "No project open. Open a project before exporting.", 12.0, RED);
+        let w = txt(commands, fonts, &renzora::lang::t("export.no_project"), 12.0, RED);
         commands.entity(panel).add_child(w);
         return;
     }
@@ -288,7 +288,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, has_project: bool) {
 
 fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let col = commands.spawn(Node { width: Val::Px(180.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }).id();
-    let head = section_label(commands, fonts, "desktop-tower", "Platform");
+    let head = section_label(commands, fonts, "desktop-tower", &renzora::lang::t("export.section.platform"));
     commands.entity(col).add_child(head);
     for &p in Platform::ALL {
         let btn = platform_button(commands, fonts, p);
@@ -302,9 +302,9 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         if let Some(err) = &s.release_fetch_error {
             format!("⚠ {err}")
         } else if let Some(info) = &s.release_info {
-            format!("Latest: {}", info.tag_name)
+            format!("{} {}", renzora::lang::t("export.status.latest"), info.tag_name)
         } else if s.release_fetch_started {
-            "Loading release…".to_string()
+            renzora::lang::t("export.status.loading_release")
         } else {
             String::new()
         }
@@ -395,10 +395,19 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
         build_compression_tab(commands, fonts),
         build_options_tab(commands, fonts, p, desktop),
     ];
+    let tab_labels = [
+        renzora::lang::t("export.tab.output"),
+        renzora::lang::t("export.tab.packaging"),
+        renzora::lang::t("export.tab.features"),
+        renzora::lang::t("export.tab.plugins"),
+        renzora::lang::t("export.tab.compression"),
+        renzora::lang::t("export.tab.options"),
+    ];
+    let tab_refs: Vec<&str> = tab_labels.iter().map(|s| s.as_str()).collect();
     let strip = tabs(
         commands,
         &fonts.ui,
-        &["Output", "Packaging", "Features", "Plugins", "Compression", "Options"],
+        &tab_refs,
         panels.clone(),
     );
     // `tabs()` overwrites each panel's `Node` with `default() + display`, so a
@@ -443,37 +452,37 @@ fn finish_tab(commands: &mut Commands, panel: Entity, sections: &[Entity]) {
 
 fn build_output_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let panel = tab_panel(commands);
-    let (sec, body) = section(commands, fonts, "folder-open", "Output", accent());
+    let (sec, body) = section(commands, fonts, "folder-open", &renzora::lang::t("export.section.output"), accent());
 
     // Binary name. (Empty initial value; `bind_text_input` reflects the current
     // state in on the first frame, so no `Init` snapshot is needed here.)
-    let name_row = labeled(commands, fonts, "Name:");
-    let name = text_input(commands, &fonts.ui, "Binary name", "");
+    let name_row = labeled(commands, fonts, &renzora::lang::t("export.field.name"));
+    let name = text_input(commands, &fonts.ui, &renzora::lang::t("export.placeholder.binary_name"), "");
     style_input(commands, name);
     bind_text_input(commands, name, |w| w.get_resource::<ExportOverlayState>().map(|s| s.binary_name.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() { s.binary_name = v; } });
     commands.entity(name_row).add_child(name);
 
     // Export directory.
     let dir_row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-    let dir_lbl = txt(commands, fonts, "Folder:", 12.0, text_muted());
-    let dir = text_input(commands, &fonts.ui, "Export directory...", "");
+    let dir_lbl = txt(commands, fonts, &renzora::lang::t("export.field.folder"), 12.0, text_muted());
+    let dir = text_input(commands, &fonts.ui, &renzora::lang::t("export.placeholder.output_dir"), "");
     style_input(commands, dir);
     bind_text_input(commands, dir, |w| w.get_resource::<ExportOverlayState>().map(|s| s.output_dir.clone()).unwrap_or_default(), |w, v| { if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() { s.output_dir = v; } });
-    let dir_browse = pill_button(commands, fonts, "folder", "Browse");
+    let dir_browse = pill_button(commands, fonts, "folder", &renzora::lang::t("export.btn.browse"));
     commands.entity(dir_browse).insert(OutputBrowseBtn);
     commands.entity(dir_row).add_children(&[dir_lbl, dir, dir_browse]);
 
     // Icon.
     let icon_row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), margin: UiRect::top(Val::Px(2.0)), ..default() }, Name::new("icon-row"))).id();
-    let icon_lbl = txt(commands, fonts, "Icon:", 12.0, text_muted());
-    let icon_path = commands.spawn((Text::new("None".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
-    bind_text(commands, icon_path, |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.icon_path.clone()).unwrap_or_else(|| "None".to_string()));
+    let icon_lbl = txt(commands, fonts, &renzora::lang::t("export.field.icon"), 12.0, text_muted());
+    let icon_path = commands.spawn((Text::new(renzora::lang::t("common.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Node { flex_grow: 1.0, ..default() }, bevy::text::TextLayout::no_wrap())).id();
+    bind_text(commands, icon_path, |w| w.get_resource::<ExportOverlayState>().and_then(|s| s.icon_path.clone()).unwrap_or_else(|| renzora::lang::t("common.none")));
     let clear = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), IconClearBtn, cursor())).id();
     let clx = icon_text(commands, &fonts.phosphor, "x", text_muted(), 12.0);
     commands.entity(clx).insert(FocusPolicy::Pass);
     commands.entity(clear).add_child(clx);
     bind_display(commands, clear, |w| w.get_resource::<ExportOverlayState>().is_some_and(|s| s.icon_path.is_some()));
-    let icon_browse = pill_button(commands, fonts, "image", "Browse");
+    let icon_browse = pill_button(commands, fonts, "image", &renzora::lang::t("export.btn.browse"));
     commands.entity(icon_browse).insert(IconBrowseBtn);
     commands.entity(icon_row).add_children(&[icon_lbl, icon_path, clear, icon_browse]);
 
@@ -492,13 +501,16 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
     // from source, which native cargo can only do for the host triple — so it's
     // offered only when exporting for the platform the editor is running on.
     if desktop {
-        let (sec, body) = section(commands, fonts, "file-archive", "Packaging Mode", accent());
-        let labels: &[&str] = if host {
-            &["Binary + .rpak", "Single executable", "Lean single binary"]
+        let (sec, body) = section(commands, fonts, "file-archive", &renzora::lang::t("export.section.packaging_mode"), accent());
+        let separate = renzora::lang::t("export.packaging.separate");
+        let single = renzora::lang::t("export.packaging.single_exe");
+        let lean = renzora::lang::t("export.packaging.lean");
+        let labels: Vec<&str> = if host {
+            vec![separate.as_str(), single.as_str(), lean.as_str()]
         } else {
-            &["Binary + .rpak", "Single executable"]
+            vec![separate.as_str(), single.as_str()]
         };
-        let radios = radio_group(commands, &fonts.ui, labels, 0);
+        let radios = radio_group(commands, &fonts.ui, &labels, 0);
         bind_2way(
             commands,
             radios,
@@ -517,7 +529,7 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
         );
         commands.entity(body).add_child(radios);
         if host {
-            let hint = txt(commands, fonts, "Lean: recompiles a stripped static single binary (no engine dylibs). Installs Rust automatically if missing.", 11.0, text_muted());
+            let hint = txt(commands, fonts, &renzora::lang::t("export.packaging.lean_hint"), 11.0, text_muted());
             commands.entity(body).add_child(hint);
         }
         secs.push(sec);
@@ -531,16 +543,16 @@ fn build_packaging_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform,
 /// Runtime-template status section (installed line + Download/Install buttons +
 /// download progress). Returns the section root for the caller to place.
 fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform) -> Entity {
-    let (sec, body) = section(commands, fonts, "download-simple", "Runtime Template", accent());
+    let (sec, body) = section(commands, fonts, "download-simple", &renzora::lang::t("export.section.runtime_template"), accent());
     // Installed / not status line.
     let (line, msg) = icon_msg(commands, fonts, "check-circle", text_muted());
-    bind_text(commands, msg, move |w| if w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p)) { "Runtime template installed".to_string() } else { "Runtime template not installed".to_string() });
+    bind_text(commands, msg, move |w| if w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(p)) { renzora::lang::t("export.runtime.installed") } else { renzora::lang::t("export.runtime.not_installed") });
     commands.entity(body).add_child(line);
     // Buttons.
     let btns = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-    let dl = pill_button(commands, fonts, "download-simple", "Download from GitHub");
+    let dl = pill_button(commands, fonts, "download-simple", &renzora::lang::t("export.btn.download_github"));
     commands.entity(dl).insert(DownloadBtn);
-    let inst = pill_button(commands, fonts, "folder-open", "Install from file...");
+    let inst = pill_button(commands, fonts, "folder-open", &renzora::lang::t("export.btn.install_from_file"));
     commands.entity(inst).insert(InstallBtn);
     commands.entity(btns).add_children(&[dl, inst]);
     commands.entity(body).add_child(btns);
@@ -561,9 +573,9 @@ fn build_runtime_status(commands: &mut Commands, fonts: &EmberFonts, p: Platform
 
 fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -> Entity {
     let panel = tab_panel(commands);
-    let (sec, body) = section(commands, fonts, "sliders-horizontal", "Engine Features", accent());
+    let (sec, body) = section(commands, fonts, "sliders-horizontal", &renzora::lang::t("export.section.engine_features"), accent());
     if host {
-        let note = txt(commands, fonts, "Strip unused engine capabilities from the lean single-binary recompile. Auto-detected from the project where possible.", 11.0, text_muted());
+        let note = txt(commands, fonts, &renzora::lang::t("export.features.note_host"), 11.0, text_muted());
         commands.entity(body).add_child(note);
         let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
         for (idx, cap) in crate::capabilities::CAPABILITIES.iter().enumerate() {
@@ -583,15 +595,19 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
                     }
                 },
             );
-            let t = txt(commands, fonts, cap.label, 12.0, text_primary());
+            // Localize the capability label + help (the Features list). Keys are
+            // `export.cap.<id>.{label,help}`, falling back to the English const.
+            let cap_label = renzora::lang::t_or(&format!("export.cap.{id}.label"), cap.label);
+            let cap_help = renzora::lang::t_or(&format!("export.cap.{id}.help"), cap.help);
+            let t = txt(commands, fonts, &cap_label, 12.0, text_primary());
             commands.entity(row).add_children(&[cb, t]);
-            let help = txt(commands, fonts, cap.help, 10.0, text_muted());
+            let help = txt(commands, fonts, &cap_help, 10.0, text_muted());
             commands.entity(item).add_children(&[row, help]);
             commands.entity(list).add_child(item);
         }
         commands.entity(body).add_child(list);
     } else {
-        let note = txt(commands, fonts, "Engine-feature stripping is part of the lean single-binary export, which only builds for the host platform you're running the editor on.", 11.0, text_muted());
+        let note = txt(commands, fonts, &renzora::lang::t("export.features.note_nonhost"), 11.0, text_muted());
         commands.entity(body).add_child(note);
     }
     finish_tab(commands, panel, &[sec]);
@@ -602,7 +618,7 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
 
 fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let panel = tab_panel(commands);
-    let (sec, body) = section(commands, fonts, "puzzle-piece", "Plugins", accent());
+    let (sec, body) = section(commands, fonts, "puzzle-piece", &renzora::lang::t("export.section.plugins"), accent());
     let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
     commands.entity(body).add_child(list);
     // Filled by a command that can read the world (the plugin list is stable
@@ -614,7 +630,7 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         {
             let mut c = Commands::new(&mut queue, world);
             if plugins.is_empty() {
-                let note = c.spawn((Text::new("No plugins detected in this project.".to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
+                let note = c.spawn((Text::new(renzora::lang::t("export.plugins.none")), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())))).id();
                 c.entity(list).add_child(note);
             }
             for (idx, (id, scope)) in plugins.into_iter().enumerate() {
@@ -646,28 +662,28 @@ fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     let panel = tab_panel(commands);
 
     // Asset compression level.
-    let (csec, cbody) = section(commands, fonts, "file-archive", "Compression", accent());
-    let crow = labeled(commands, fonts, "Level (zstd):");
+    let (csec, cbody) = section(commands, fonts, "file-archive", &renzora::lang::t("export.section.compression"), accent());
+    let crow = labeled(commands, fonts, &renzora::lang::t("export.field.compression_level"));
     let dv = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
     bind_2way(commands, dv, |w| w.resource::<ExportOverlayState>().compression_level as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().compression_level = (v.round() as i32).clamp(1, 22));
     commands.entity(crow).add_child(dv);
     commands.entity(cbody).add_child(crow);
 
     // Mesh optimization.
-    let (msec, mbody) = section(commands, fonts, "cube", "Mesh Optimization", accent());
-    let simplify = check_state(commands, fonts, "Simplify meshes", |s| s.mesh_simplify, |s, v| s.mesh_simplify = v);
+    let (msec, mbody) = section(commands, fonts, "cube", &renzora::lang::t("export.section.mesh_opt"), accent());
+    let simplify = check_state(commands, fonts, &renzora::lang::t("export.mesh.simplify"), |s| s.mesh_simplify, |s, v| s.mesh_simplify = v);
     commands.entity(mbody).add_child(simplify);
-    let ratio = labeled(commands, fonts, "Keep ratio:");
+    let ratio = labeled(commands, fonts, &renzora::lang::t("export.field.keep_ratio"));
     let dvr = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 0.01);
     bind_2way(commands, dvr, |w| w.resource::<ExportOverlayState>().mesh_simplify_ratio, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_simplify_ratio = v.clamp(0.1, 1.0));
     commands.entity(ratio).add_child(dvr);
     commands.entity(ratio).insert(Node { margin: UiRect::left(Val::Px(20.0)), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() });
     bind_display(commands, ratio, |w| w.resource::<ExportOverlayState>().mesh_simplify);
     commands.entity(mbody).add_child(ratio);
-    let quant = check_state(commands, fonts, "Quantize vertex attributes", |s| s.mesh_quantize, |s, v| s.mesh_quantize = v);
-    let lods = check_state(commands, fonts, "Generate LODs", |s| s.mesh_generate_lods, |s, v| s.mesh_generate_lods = v);
+    let quant = check_state(commands, fonts, &renzora::lang::t("export.mesh.quantize"), |s| s.mesh_quantize, |s, v| s.mesh_quantize = v);
+    let lods = check_state(commands, fonts, &renzora::lang::t("export.mesh.generate_lods"), |s| s.mesh_generate_lods, |s, v| s.mesh_generate_lods = v);
     commands.entity(mbody).add_children(&[quant, lods]);
-    let levels = labeled(commands, fonts, "Levels:");
+    let levels = labeled(commands, fonts, &renzora::lang::t("export.field.lod_levels"));
     let dvl = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 1.0);
     bind_2way(commands, dvl, |w| w.resource::<ExportOverlayState>().mesh_lod_levels as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().mesh_lod_levels = (v.round() as u32).clamp(1, 5));
     commands.entity(levels).add_child(dvl);
@@ -686,8 +702,11 @@ fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, d
 
     // Window (desktop).
     if desktop {
-        let (wsec, wbody) = section(commands, fonts, "monitor", "Window", accent());
-        let radios = radio_group(commands, &fonts.ui, &["Windowed", "Fullscreen", "Borderless"], 0);
+        let (wsec, wbody) = section(commands, fonts, "monitor", &renzora::lang::t("export.section.window"), accent());
+        let windowed = renzora::lang::t("export.window.windowed");
+        let fullscreen = renzora::lang::t("export.window.fullscreen");
+        let borderless = renzora::lang::t("export.window.borderless");
+        let radios = radio_group(commands, &fonts.ui, &[windowed.as_str(), fullscreen.as_str(), borderless.as_str()], 0);
         bind_2way(
             commands,
             radios,
@@ -700,7 +719,7 @@ fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, d
         );
         commands.entity(wbody).add_child(radios);
         let size = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), ..default() }).id();
-        let szl = txt(commands, fonts, "Size:", 12.0, text_muted());
+        let szl = txt(commands, fonts, &renzora::lang::t("export.field.size"), 12.0, text_muted());
         let dw = drag_value(commands, &fonts.ui, "", text_primary(), 0.0, 10.0);
         bind_2way(commands, dw, |w| w.resource::<ExportOverlayState>().window_width as f32, |w, v: &f32| w.resource_mut::<ExportOverlayState>().window_width = (v.round() as u32).clamp(320, 7680));
         let xl = txt(commands, fonts, "x", 12.0, text_muted());
@@ -713,11 +732,11 @@ fn build_options_tab(commands: &mut Commands, fonts: &EmberFonts, p: Platform, d
     }
 
     // Flags.
-    let (osec, obody) = section(commands, fonts, "gear", "Options", accent());
-    let console = check_state(commands, fonts, "Console logging", |s| s.console_logging, |s, v| s.console_logging = v);
+    let (osec, obody) = section(commands, fonts, "gear", &renzora::lang::t("export.section.options"), accent());
+    let console = check_state(commands, fonts, &renzora::lang::t("export.options.console_logging"), |s| s.console_logging, |s, v| s.console_logging = v);
     commands.entity(obody).add_child(console);
     if desktop && p.supports_dedicated_server() {
-        let server = check_state(commands, fonts, "Include dedicated server", |s| s.include_server, |s, v| s.include_server = v);
+        let server = check_state(commands, fonts, &renzora::lang::t("export.options.include_server"), |s| s.include_server, |s, v| s.include_server = v);
         commands.entity(obody).add_child(server);
     }
     secs.push(osec);
@@ -776,9 +795,9 @@ fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     });
     let heading = txt(commands, fonts, "", 14.0, text_primary());
     bind_text(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
-        Some(ExportProgress::Done(_)) => "Export complete".to_string(),
-        Some(ExportProgress::Error(_)) => "Export failed".to_string(),
-        _ => "Exporting…".to_string(),
+        Some(ExportProgress::Done(_)) => renzora::lang::t("export.status.complete"),
+        Some(ExportProgress::Error(_)) => renzora::lang::t("export.status.failed"),
+        _ => renzora::lang::t("export.status.exporting"),
     });
     bind_text_color(commands, heading, |w| match w.get_resource::<ExportOverlayState>().map(|s| s.progress.clone()) {
         Some(ExportProgress::Done(_)) => rgb(GREEN),
@@ -813,15 +832,15 @@ fn build_log_view(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Buttons: Copy log (left), Cancel/Back (right).
     let btn_row = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
-    let copy_btn = pill_button(commands, fonts, "clipboard", "Copy log");
+    let copy_btn = pill_button(commands, fonts, "clipboard", &renzora::lang::t("export.btn.copy_log"));
     commands.entity(copy_btn).insert(CopyLogBtn);
     let btn = commands.spawn((Node { min_width: Val::Px(100.0), height: Val::Px(32.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(rgb(section_bg())), Interaction::default(), CancelOrBackBtn, cursor())).id();
-    let btn_label = commands.spawn((Text::new("Cancel"), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
+    let btn_label = commands.spawn((Text::new(renzora::lang::t("common.cancel")), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary())), FocusPolicy::Pass)).id();
     bind_text(commands, btn_label, |w| {
         if w.get_resource::<ExportOverlayState>().map(|s| s.active_task.is_some()).unwrap_or(false) {
-            "Cancel".to_string()
+            renzora::lang::t("common.cancel")
         } else {
-            "Back".to_string()
+            renzora::lang::t("export.btn.back")
         }
     });
     commands.entity(btn).add_child(btn_label);
@@ -837,7 +856,7 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) 
     bind_bg(commands, btn, |w| if can_export(w) { rgb(accent()) } else { rgb(section_bg()) });
     let ic = icon_text(commands, &fonts.phosphor, "rocket-launch", (255, 255, 255), 14.0);
     commands.entity(ic).insert(FocusPolicy::Pass);
-    let t = commands.spawn((Text::new("Export".to_string()), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
+    let t = commands.spawn((Text::new(renzora::lang::t("common.export")), ui_font(&fonts.ui, 13.0), TextColor(Color::WHITE), FocusPolicy::Pass)).id();
     commands.entity(btn).add_children(&[ic, t]);
     commands.entity(row).add_child(btn);
     commands.entity(panel).add_child(row);
@@ -929,7 +948,7 @@ fn export_click(q: Query<&Interaction, (With<ExportBtn>, Changed<Interaction>)>,
 fn output_browse_click(q: Query<&Interaction, (With<OutputBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
-            if let Some(dir) = rfd::FileDialog::new().set_title("Select output directory").pick_folder() {
+            if let Some(dir) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_output")).pick_folder() {
                 w.resource_mut::<ExportOverlayState>().output_dir = dir.to_string_lossy().to_string();
             }
         });
@@ -939,7 +958,7 @@ fn output_browse_click(q: Query<&Interaction, (With<OutputBrowseBtn>, Changed<In
 fn icon_browse_click(q: Query<&Interaction, (With<IconBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
-            if let Some(f) = rfd::FileDialog::new().set_title("Select icon").add_filter("Images", &["png", "ico", "svg"]).pick_file() {
+            if let Some(f) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_icon")).add_filter(renzora::lang::t("export.filter.images"), &["png", "ico", "svg"]).pick_file() {
                 w.resource_mut::<ExportOverlayState>().icon_path = Some(f.to_string_lossy().to_string());
             }
         });
@@ -954,7 +973,7 @@ fn download_click(q: Query<&Interaction, (With<DownloadBtn>, Changed<Interaction
             let task = download::spawn_download(p, runtime_dir);
             let mut s = w.resource_mut::<ExportOverlayState>();
             s.download_task = Some(task);
-            s.download_status = Some((p, DownloadProgress::Fetching("Starting download…".to_string())));
+            s.download_status = Some((p, DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting"))));
         });
     }
 }
@@ -962,7 +981,7 @@ fn download_click(q: Query<&Interaction, (With<DownloadBtn>, Changed<Interaction
 fn install_click(q: Query<&Interaction, (With<InstallBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
-            let Some(file) = rfd::FileDialog::new().set_title("Select runtime template binary").pick_file() else { return };
+            let Some(file) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_runtime")).pick_file() else { return };
             let p = w.resource::<ExportOverlayState>().platform;
             let runtime_dir = w.resource::<TemplateManager>().runtime_dir();
             let _ = std::fs::create_dir_all(&runtime_dir);

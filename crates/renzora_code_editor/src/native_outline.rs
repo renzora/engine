@@ -59,7 +59,7 @@ fn outline_token(world: &World) -> u64 {
 
 /// What the outline shows this frame.
 enum Item {
-    Note(&'static str),
+    Note(String),
     Symbol(OutlineSymbol),
 }
 
@@ -77,11 +77,11 @@ fn active(world: &World) -> Option<(String, Language)> {
 
 fn outline_snapshot(world: &World) -> KeyedSnapshot {
     let items: Vec<Item> = match active(world) {
-        None => vec![Item::Note("No file open")],
+        None => vec![Item::Note(renzora::lang::t("code.no_file"))],
         Some((content, lang)) => {
             let syms = extract_symbols(&content, lang);
             if syms.is_empty() {
-                vec![Item::Note("No symbols in this file")]
+                vec![Item::Note(renzora::lang::t("code.no_symbols"))]
             } else {
                 syms.into_iter().map(Item::Symbol).collect()
             }

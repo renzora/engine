@@ -45,8 +45,8 @@ physics = [
 # so it survives `--no-default-features` (every game is at least Lua-scriptable);
 # `rhai`/`blueprint`/`script_http` are in `default` so the lean export strips
 # them unless a capability keeps them (Rhai-less desktop, no-blueprint, no-http).
-lua = ["renzora_scripting/lua"]
-rhai = ["renzora_scripting/rhai"]
+lua = ["renzora_scripting/lua", "renzora_lang/lua"]
+rhai = ["renzora_scripting/rhai", "renzora_lang/rhai"]
 script_http = ["renzora_scripting/script_http"]
 # Code gate for the runtime's `bevy::solari` GPU ray-tracing probe. Paired with
 # the root `bevy/bevy_solari` feature by the exporter's Solari capability — both
@@ -101,6 +101,10 @@ renzora = { path = "../renzora", default-features = false }
 # `default-features = false`: the backends + blueprint + script_http are switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
+# Core language runtime: loads embedded + external `languages/*.toml` packs
+# into the shared translation table. Non-optional — every build is localized,
+# and missing translations degrade to English, so there's nothing to gate.
+renzora_lang = { path = "../renzora_lang" }
 renzora_blueprint = { path = "../renzora_blueprint", optional = true }
 renzora_input = { path = "../renzora_input" }
 renzora_physics = { path = "../renzora_physics", optional = true }

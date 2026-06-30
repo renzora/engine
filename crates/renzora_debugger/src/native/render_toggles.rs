@@ -70,7 +70,7 @@ pub(super) fn register(app: &mut App) {
     app.init_resource::<RenderToggles>();
     // Standalone panel: content builder + Add-Panel menu entry (Debug group).
     app.register_panel_content("render_toggles", true, build);
-    app.register_shell_panel("render_toggles", "Render Toggles", "sliders-horizontal", "Debug");
+    app.register_shell_panel("render_toggles", renzora::lang::t("render.toggles_title"), "sliders-horizontal", "Debug");
     // PostUpdate so these win over the editor's own Update-stage camera
     // activation / effect-routing systems, and before render extraction.
     app.add_systems(
@@ -88,10 +88,10 @@ pub(super) fn register(app: &mut App) {
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = super::root(commands);
-    let label = super::section(commands, fonts, "Render Toggles");
+    let label = super::section(commands, fonts, &renzora::lang::t("render.toggles_title"));
     let hint = commands
         .spawn((
-            Text::new("Uncheck to stop that work — isolate GPU cost (not saved)"),
+            Text::new(renzora::lang::t("render.toggles_hint")),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
         ))
@@ -101,21 +101,21 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let r1 = checkbox_row(
         commands,
         fonts,
-        "Preview cameras (offscreen)",
+        &renzora::lang::t("render.toggle_preview_cameras"),
         |w| get(w, |t| t.preview_cameras),
         |w, v| set(w, move |t| t.preview_cameras = v),
     );
     let r2 = checkbox_row(
         commands,
         fonts,
-        "Global illumination (Lumen/RT)",
+        &renzora::lang::t("render.toggle_gi"),
         |w| get(w, |t| t.gi),
         |w, v| set(w, move |t| t.gi = v),
     );
     let r3 = checkbox_row(
         commands,
         fonts,
-        "Auto exposure",
+        &renzora::lang::t("render.toggle_auto_exposure"),
         |w| get(w, |t| t.auto_exposure),
         |w, v| set(w, move |t| t.auto_exposure = v),
     );
@@ -124,10 +124,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // (renzora_viewport's update_shadow_settings / update_render_toggles), so we
     // keep no copy of our own and never fight or flicker. "Meshes off" discards
     // all mesh pixels → the cleanest safe way to blank the scene geometry.
-    let r4 = checkbox_row(commands, fonts, "Shadows", |w| vp(w, |t| t.shadows), |w, v| vp_set(w, move |t| t.shadows = v));
-    let r5 = checkbox_row(commands, fonts, "Meshes (blank scene)", |w| vp(w, |t| t.mesh), |w, v| vp_set(w, move |t| t.mesh = v));
-    let r6 = checkbox_row(commands, fonts, "Textures", |w| vp(w, |t| t.textures), |w, v| vp_set(w, move |t| t.textures = v));
-    let r7 = checkbox_row(commands, fonts, "Lighting (unlit)", |w| vp(w, |t| t.lighting), |w, v| vp_set(w, move |t| t.lighting = v));
+    let r4 = checkbox_row(commands, fonts, &renzora::lang::t("render.toggle_shadows"), |w| vp(w, |t| t.shadows), |w, v| vp_set(w, move |t| t.shadows = v));
+    let r5 = checkbox_row(commands, fonts, &renzora::lang::t("render.toggle_meshes"), |w| vp(w, |t| t.mesh), |w, v| vp_set(w, move |t| t.mesh = v));
+    let r6 = checkbox_row(commands, fonts, &renzora::lang::t("render.textures"), |w| vp(w, |t| t.textures), |w, v| vp_set(w, move |t| t.textures = v));
+    let r7 = checkbox_row(commands, fonts, &renzora::lang::t("render.toggle_lighting"), |w| vp(w, |t| t.lighting), |w, v| vp_set(w, move |t| t.lighting = v));
     commands.entity(box_).add_children(&[r1, r2, r3, r4, r5, r6, r7]);
 
     commands.entity(root).add_children(&[label, hint, box_]);

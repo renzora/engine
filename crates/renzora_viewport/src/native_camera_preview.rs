@@ -43,7 +43,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let empty = commands
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() })
         .id();
-    let empty_lbl = commands.spawn((Text::new("No cameras in scene"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
+    let empty_lbl = commands.spawn((Text::new(renzora::lang::t("viewport.no_cameras")), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
     commands.entity(empty).add_child(empty_lbl);
     bind_display(commands, empty, |w| previewing(w).is_none());
 
