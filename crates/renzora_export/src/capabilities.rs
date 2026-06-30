@@ -35,8 +35,8 @@ pub const CAPABILITIES: &[Capability] = &[
     // ── Safe-leaf Bevy features (default off = auto-stripped) ───────────────
     Capability {
         id: "solari",
-        label: "Raytraced GI (Solari)",
-        help: "Bevy Solari hardware ray-traced lighting. On only when the Solari plugin is used.",
+        label: "Raytraced Lighting (Solari)",
+        help: "Bevy Solari hardware ray-traced direct + indirect lighting (DI + GI). On only when the Solari plugin is used.",
         bevy_features: &["bevy_solari"],
         runtime_features: &["solari"],
         default_on: false,
