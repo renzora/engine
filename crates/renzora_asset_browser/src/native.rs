@@ -11,8 +11,10 @@ use std::path::{Path, PathBuf};
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
+use bevy::window::SystemCursorIcon;
 
 use renzora_editor_framework::{EditorCommands, MaterialThumbnailRegistry, ModelThumbnailRegistry, SplashState};
+use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
@@ -472,6 +474,8 @@ fn unique_path(folder: &Path, filename: &str, is_folder: bool) -> PathBuf {
 pub fn register_native_asset_browser(app: &mut App) {
     app.init_resource::<NativeAssets>();
     app.init_resource::<renzora::core::SelectAllClaimed>();
+    app.init_resource::<renzora::core::AssetBrowserCwd>();
+    app.init_resource::<renzora::core::AssetDropScrollRequest>();
     app.register_panel_content("assets", false, build);
     // View systems — gated on the panel being the active (visible) tab. While
     // the Assets tab is a hidden background tab these stand down, so directory
@@ -551,6 +555,21 @@ pub fn register_native_asset_browser(app: &mut App) {
     app.add_systems(
         Update,
         select_all_shortcut.run_if(in_state(SplashState::Editor)),
+    );
+    // Publish the current folder so drag-and-drop imports (handled in
+    // renzora_import_ui) target the folder on screen, not the importer default.
+    // Ungated by panel visibility — it's a single cheap resource write, and the
+    // drop handler needs a fresh value even if the Assets tab isn't the active
+    // one when the file lands.
+    app.add_systems(
+        Update,
+        publish_cwd.run_if(in_state(SplashState::Editor)),
+    );
+    // After a drop-import, pin the grid to the bottom for a short window so the
+    // freshly-copied file scrolls into view once the rescan surfaces it.
+    app.add_systems(
+        Update,
+        scroll_grid_on_drop.run_if(in_state(SplashState::Editor)),
     );
     // PreUpdate (after input is collected) so it can consume Delete before the
     // gizmo's Update entity-delete sees the press. After `UiSystems::Focus` so
@@ -1767,6 +1786,58 @@ fn project_root(w: &World) -> Option<PathBuf> {
     w.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
 }
 
+/// Republish the current folder as a project-relative, forward-slashed path
+/// (`""` = project root) into [`AssetBrowserCwd`](renzora::core::AssetBrowserCwd)
+/// so the importer's drop handler targets it. Mirrors the relative-path
+/// computation in `import_click`.
+fn publish_cwd(
+    mut cwd: ResMut<renzora::core::AssetBrowserCwd>,
+    state: Res<NativeAssets>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+) {
+    let val = project.as_ref().map(|project| {
+        let folder = state.current.clone().unwrap_or_else(|| project.path.clone());
+        folder
+            .strip_prefix(&project.path)
+            .ok()
+            .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default()
+    });
+    if cwd.0 != val {
+        cwd.0 = val;
+    }
+}
+
+/// Consume [`AssetDropScrollRequest`](renzora::core::AssetDropScrollRequest) and
+/// pin the grid's scroll view to the bottom for ~1.2 s afterwards. The window
+/// (not a one-shot) matters because the dropped file isn't on disk / in the
+/// listing yet the frame it's requested — `scroll_to(f32::MAX)` re-clamps to the
+/// growing bottom each frame until the rescan has surfaced the new tile.
+fn scroll_grid_on_drop(
+    time: Res<Time>,
+    mut req: ResMut<renzora::core::AssetDropScrollRequest>,
+    mut until: Local<Option<f32>>,
+    grid_area: Query<&Children, With<GridArea>>,
+    mut scrolls: Query<&mut EmberScroll>,
+) {
+    let now = time.elapsed_secs();
+    if req.0 {
+        req.0 = false;
+        *until = Some(now + 1.2);
+    }
+    let Some(deadline) = *until else { return };
+    if now >= deadline {
+        *until = None;
+        return;
+    }
+    let Ok(kids) = grid_area.single() else { return };
+    let Some(viewport) = kids.iter().find(|&e| scrolls.contains(e)) else { return };
+    if let Ok(mut s) = scrolls.get_mut(viewport) {
+        // f32::MAX is clamped to the scrollable range by `scroll_update`.
+        s.scroll_to(f32::MAX);
+    }
+}
+
 /// The folder being shown (the explicit nav target, else the project root).
 fn current_folder(w: &World) -> Option<PathBuf> {
     w.get_resource::<NativeAssets>()
@@ -2015,28 +2086,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(rgb(renzora_ember::theme::hover_bg())),
             Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
             AssetBack,
             Name::new("assets-back"),
         ))
         .id();
     let back_icon = icon_text(commands, &fonts.phosphor, "arrow-left", text_primary(), 13.0);
     commands.entity(back).add_child(back_icon);
-    // Invisible at the project root (nowhere to go up to) but still occupies its
-    // slot via `Visibility::Hidden`, so the breadcrumb keeps a constant left
-    // position whether or not the back button shows.
-    bind_with(
-        commands,
-        back,
-        |w| current_folder(w) != project_root(w),
-        |w, e, show: &bool| {
-            if let Some(mut v) = w.get_mut::<Visibility>(e) {
-                let want = if *show { Visibility::Inherited } else { Visibility::Hidden };
-                if *v != want {
-                    *v = want;
-                }
-            }
-        },
-    );
+    // Collapsed at the project root (nowhere to go up to). Now that the crumb
+    // box frames the path, we fully remove the button from layout via
+    // `Display::None` rather than just hiding it, so it leaves no empty gap.
+    bind_display(commands, back, |w| current_folder(w) != project_root(w));
 
     let new_folder = icon_label_button(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
@@ -2084,12 +2144,36 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(view_btn).add_child(view_icon);
 
-    // Breadcrumb in a dark inset box, with the back button to its left.
+    // Breadcrumb path, sitting just right of the "new folder" button with the
+    // back button to its left, wrapped in an inset framed box so the path reads
+    // as its own distinct control (matching the zoom/search boxes).
+    let crumb_box = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                flex_shrink: 1.0,
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::panel_bg())),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
+            Name::new("assets-crumb-box"),
+        ))
+        .id();
     let crumbs = commands
         .spawn(Node {
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
             column_gap: Val::Px(2.0),
+            flex_shrink: 1.0,
+            min_width: Val::Px(0.0),
+            overflow: Overflow::clip(),
             ..default()
         })
         .id();
@@ -2151,10 +2235,6 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     ));
 
-    commands
-        .entity(toolbar)
-        .add_children(&[add, import, new_folder, spacer, sort_btn, view_btn, search, zoom_box]);
-
     // Grid (also hosts list-view rows: a 100%-wide row wraps to its own line, so
     // the same wrapping container stacks them vertically). `update_grid_layout`
     // retunes the gaps/padding per view.
@@ -2184,12 +2264,13 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // grid space (vs. on a tile or the tree).
     commands.entity(grid_scroll).insert((GridArea, bevy::ui::RelativeCursorPosition::default()));
 
-    // Live item count — sits at the right of the breadcrumb bar.
+    // Live item count — trails the breadcrumb path in the toolbar.
     let count = commands
         .spawn((
             Text::new("0 items"),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
+            Node { margin: UiRect::left(Val::Px(4.0)), flex_shrink: 0.0, ..default() },
         ))
         .id();
     bind_with(
@@ -2210,31 +2291,28 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
-    // Breadcrumb bar (back + path on the left, item count on the right),
-    // directly under the top toolbar.
-    let crumb_spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
-    let crumb_bar = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
-                border: UiRect::bottom(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::window_bg())),
-            BorderColor::all(rgb(renzora_ember::theme::border())),
-            Name::new("assets-crumb-bar"),
-        ))
-        .id();
-    commands.entity(crumb_bar).add_children(&[back, crumbs, crumb_spacer, count]);
+    // The framed breadcrumb box holds the back button + path; the item count
+    // trails just outside it.
+    commands.entity(crumb_box).add_children(&[back, crumbs]);
 
-    commands
-        .entity(content)
-        .add_children(&[toolbar, crumb_bar, grid_scroll]);
+    // Single toolbar row: action buttons | breadcrumb box + count | spacer |
+    // sort/view/search/zoom. The breadcrumb sits right of "new folder" so the
+    // current path reads inline with the actions, freeing the vertical space the
+    // old dedicated crumb bar used.
+    commands.entity(toolbar).add_children(&[
+        add,
+        import,
+        new_folder,
+        crumb_box,
+        count,
+        spacer,
+        sort_btn,
+        view_btn,
+        search,
+        zoom_box,
+    ]);
+
+    commands.entity(content).add_children(&[toolbar, grid_scroll]);
 
     // Responsive: when the panel is too narrow, hide the grid + splitter so the
     // tree fills it as a file browser (see `responsive_layout` / `narrow`).
@@ -2242,6 +2320,57 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, splitter, |w| !w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow));
 
     commands.entity(root).add_children(&[tree_pane, splitter, content]);
+
+    // Drop-to-import highlight — an accent-bordered overlay shown only while an
+    // OS file drag hovers the window (`FileDragHovering`, set by the importer).
+    // Absolute + `Pickable::IGNORE` so it covers the panel without disturbing the
+    // tree|content flex layout or intercepting clicks. `bind_display` keeps it
+    // `Display::None` (and thus inert) whenever no drag is in progress.
+    let drop_hl = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(accent()).with_alpha(0.10)),
+            BorderColor::all(rgb(accent())),
+            GlobalZIndex(500),
+            Pickable::IGNORE,
+            Name::new("assets-drop-highlight"),
+        ))
+        .id();
+    bind_display(commands, drop_hl, |w| {
+        w.get_resource::<renzora::core::FileDragHovering>().is_some_and(|h| h.0)
+    });
+    let pill = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(8.0),
+                padding: UiRect::axes(Val::Px(14.0), Val::Px(9.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            Pickable::IGNORE,
+        ))
+        .id();
+    let pill_ic = icon_text(commands, &fonts.phosphor, "download-simple", accent(), 18.0);
+    let pill_tx = commands
+        .spawn((Text::new("Drop to import".to_string()), ui_font(&fonts.ui, 13.0), TextColor(rgb(text_primary()))))
+        .id();
+    commands.entity(pill).add_children(&[pill_ic, pill_tx]);
+    commands.entity(drop_hl).add_child(pill);
+    commands.entity(root).add_child(drop_hl);
+
     root
 }
 
@@ -2278,18 +2407,27 @@ fn crumb_snapshot(world: &World) -> KeyedSnapshot {
             (k.finish(), h.finish())
         })
         .collect();
+    let last = segs.len().saturating_sub(1);
     KeyedSnapshot {
         items,
-        build: Box::new(move |c, f, i| crumb_seg(c, f, i, &segs[i].0, &segs[i].1)),
+        build: Box::new(move |c, f, i| crumb_seg(c, f, i, &segs[i].0, &segs[i].1, i == last)),
     }
 }
 
-fn crumb_seg(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str, path: &Path) -> Entity {
+fn crumb_seg(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    idx: usize,
+    name: &str,
+    path: &Path,
+    is_current: bool,
+) -> Entity {
     let row = commands
         .spawn(Node {
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
             column_gap: Val::Px(2.0),
+            flex_shrink: 0.0,
             ..default()
         })
         .id();
@@ -2297,17 +2435,42 @@ fn crumb_seg(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str
     if idx > 0 {
         kids.push(icon_text(commands, &fonts.phosphor, "caret-right", text_muted(), 9.0));
     }
-    let label = commands
+    // Each segment is a padded, clickable chip: hand cursor + a hover wash so it
+    // clearly reads as navigable. The current (last) folder is emphasized and
+    // left un-lit on hover since clicking it is a no-op.
+    let chip = commands
         .spawn((
-            Text::new(name.to_string()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect::axes(Val::Px(5.0), Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
             Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
             CrumbNav(path.to_path_buf()),
             Name::new("crumb"),
         ))
         .id();
-    kids.push(label);
+    if !is_current {
+        bind_bg(commands, chip, move |w| match w.get::<Interaction>(chip) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
+            _ => Color::NONE,
+        });
+    }
+    let color = if is_current { text_primary() } else { text_muted() };
+    let label = commands
+        .spawn((
+            Text::new(name.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(color)),
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    commands.entity(chip).add_child(label);
+    kids.push(chip);
     commands.entity(row).add_children(&kids);
     row
 }

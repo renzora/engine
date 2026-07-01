@@ -258,6 +258,31 @@ pub(crate) fn run_import(world: &mut World) {
     });
 }
 
+/// Pick a file path under `dest` that doesn't collide. If `name` is taken,
+/// inserts `1`, `2`, … before the extension (`tex.png` → `tex1.png`). Used by
+/// the copy path for non-model assets, which land directly in the destination
+/// folder rather than in a per-model `<stem>/` subfolder.
+fn unique_file(dest: &std::path::Path, name: &str) -> PathBuf {
+    let candidate = dest.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path = std::path::Path::new(name);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(name);
+    let ext = path.extension().and_then(|e| e.to_str());
+    for i in 1..u32::MAX {
+        let cand = match ext {
+            Some(e) => format!("{}{}.{}", stem, i, e),
+            None => format!("{}{}", stem, i),
+        };
+        let p = dest.join(cand);
+        if !p.exists() {
+            return p;
+        }
+    }
+    dest.join(name)
+}
+
 /// Pick a model-folder name under `dest` that doesn't already exist.
 /// Returns (`name`, `dest/name`). If `base` is taken, tries `base1`, `base2`, …
 fn unique_model_dir(dest: &std::path::Path, base: &str) -> (String, PathBuf) {
@@ -305,6 +330,40 @@ fn import_worker(
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
+
+        // Non-model assets have no conversion step. "Importing" one just copies
+        // it verbatim into the destination folder the user picked — images,
+        // audio, `.bsn`, `.particle`, `.material`, fonts and scripts all take
+        // this path. The layout / extract / optimize options are model-only, so
+        // copies always land directly in `dest` (no per-stem subfolder).
+        if renzora_import::formats::detect_format(source_path).is_none() {
+            let _ = tx.send(ImportMsg::Progress {
+                current: i + 1,
+                total,
+                label: format!("Copying {}", file_name),
+            });
+            let out = unique_file(&dest, &file_name);
+            match std::fs::copy(source_path, &out) {
+                Ok(bytes) => {
+                    imported += 1;
+                    let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                        file_name: file_name.clone(),
+                        success: true,
+                        message: format!("{:.1} KB", bytes as f64 / 1024.0),
+                    }));
+                }
+                Err(e) => {
+                    let msg = format!("copy failed: {}", e);
+                    errors.push(format!("{}: {}", file_name, msg));
+                    let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                        file_name: file_name.clone(),
+                        success: false,
+                        message: msg,
+                    }));
+                }
+            }
+            continue;
+        }
 
         // --- Phase: converting ---
         let _ = tx.send(ImportMsg::Progress {

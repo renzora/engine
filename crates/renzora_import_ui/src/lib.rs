@@ -1,9 +1,13 @@
-//! Import overlay for converting and importing 3D models into Renzora projects.
+//! Import overlay for bringing external assets into Renzora projects.
 //!
 //! Provides a modal overlay triggered by file drops or the asset browser's
-//! import button. All models are converted to GLB and placed in the project's
-//! assets directory.
+//! import button. **3D models** are converted to GLB; **every other permitted
+//! kind** (images, audio, `.bsn` scenes, `.particle`, `.material`, fonts,
+//! scripts) is copied verbatim into the destination folder. See [`kinds`] for
+//! the classification that routes each file.
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod kinds;
 #[cfg(not(target_arch = "wasm32"))]
 mod native;
 #[cfg(not(target_arch = "wasm32"))]
@@ -19,36 +23,90 @@ impl Plugin for ImportPlugin {
         info!("[editor] ImportPlugin");
         #[cfg(not(target_arch = "wasm32"))]
         {
+            use renzora::core::RenzoraShellExt;
             _app.init_resource::<overlay::ImportOverlayState>()
+                .init_resource::<renzora::core::FileDragHovering>()
                 .add_systems(Update, (collect_dropped_files, import_orchestrate_system).chain());
             native::register(_app);
+            // A left-side status-bar item showing live import progress. Its
+            // `render` runs each frame, so the `[done/total]` + phase updates as
+            // the worker advances; it draws nothing while idle.
+            _app.register_shell_status_item(renzora::core::ShellStatusItem {
+                id: "import-progress",
+                align: renzora::core::ShellStatusAlign::Left,
+                order: -10,
+                render: import_status_segments,
+            });
         }
     }
 }
 
-/// Drain Bevy's global file-drop events into the overlay's pending list.
-/// Persisted via `EventReader` so each drop is processed exactly once.
+/// Drain Bevy's global file-drop events. Handles three things off the same
+/// event stream:
+///
+/// * **Hover feedback** — `HoveredFile` / `HoveredFileCanceled` flip
+///   [`FileDragHovering`](renzora::core::FileDragHovering) so the asset browser
+///   can highlight itself as the drop target. The flag is a resource (not
+///   recomputed per frame) because winit fires `HoveredFile` once on entry, then
+///   nothing until the drop/cancel.
+/// * **Target folder** — a drop lands in the folder the asset browser is showing
+///   ([`AssetBrowserCwd`](renzora::core::AssetBrowserCwd)), not the importer's
+///   last-used/default target. This is what fixes images silently going to
+///   `assets/models`.
+/// * **Queueing** — importable dropped files are appended to the pending list;
+///   `MessageReader` makes each event process exactly once.
 #[cfg(not(target_arch = "wasm32"))]
 fn collect_dropped_files(
     mut events: MessageReader<bevy::window::FileDragAndDrop>,
     mut state: Option<ResMut<overlay::ImportOverlayState>>,
+    mut hovering: Option<ResMut<renzora::core::FileDragHovering>>,
+    mut scroll_req: Option<ResMut<renzora::core::AssetDropScrollRequest>>,
+    cwd: Option<Res<renzora::core::AssetBrowserCwd>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
+    use bevy::window::FileDragAndDrop;
+
+    let mut dropped: Vec<std::path::PathBuf> = Vec::new();
+    let mut hover_now: Option<bool> = None;
+    for ev in events.read() {
+        match ev {
+            FileDragAndDrop::HoveredFile { .. } => hover_now = Some(true),
+            FileDragAndDrop::HoveredFileCanceled { .. } => hover_now = Some(false),
+            FileDragAndDrop::DroppedFile { path_buf, .. } => {
+                hover_now = Some(false);
+                if crate::kinds::is_importable(path_buf) {
+                    dropped.push(path_buf.clone());
+                }
+            }
+        }
+    }
+
+    // Publish hover state even when there are no importable files, so the
+    // highlight tracks any OS drag over the window.
+    if let (Some(h), Some(v)) = (hovering.as_mut(), hover_now) {
+        if h.0 != v {
+            h.0 = v;
+        }
+    }
+
     let Some(state) = state.as_mut() else {
-        events.clear();
         return;
     };
-    let dropped: Vec<std::path::PathBuf> = events
-        .read()
-        .filter_map(|ev| match ev {
-            bevy::window::FileDragAndDrop::DroppedFile { path_buf, .. } => Some(path_buf.clone()),
-            _ => None,
-        })
-        .filter(|p| renzora_import::formats::is_supported(p))
-        .collect();
     if dropped.is_empty() {
         return;
     }
+
+    // Ask the asset browser to scroll its grid to the newly-imported files.
+    if let Some(req) = scroll_req.as_mut() {
+        req.0 = true;
+    }
+
+    // Land the drop in the folder the browser is showing. `Some("")` = project
+    // root (a valid target); `None` = no browser, so keep the current target.
+    if let Some(dir) = cwd.and_then(|c| c.0.clone()) {
+        state.target_directory = dir;
+    }
+
     let was_empty = state.pending_files.is_empty();
     for path in &dropped {
         if !state.pending_files.contains(path) {
@@ -87,13 +145,24 @@ fn import_orchestrate_system(world: &mut World) {
     let requested_target = world.remove_resource::<renzora::core::ImportTargetDir>();
 
     if import_requested {
-        let mut state = world.resource_mut::<overlay::ImportOverlayState>();
         if let Some(ref target) = requested_target {
-            state.target_directory = target.0.clone();
+            world.resource_mut::<overlay::ImportOverlayState>().target_directory =
+                target.0.clone();
         }
-        // An explicit Import click always opens the overlay (the user needs
-        // the file picker). `auto_import` only governs drag-and-drop.
-        state.visible = true;
+        // New workflow: an explicit Import click opens the **OS file picker
+        // first**, then shows the overlay pre-loaded with the chosen files —
+        // rather than opening an empty overlay the user then has to Browse from.
+        // The picker is filtered to every importable kind (models + copyable
+        // assets). If the user cancels but files are already queued (e.g. from a
+        // prior drop), we still surface the overlay so those aren't stranded.
+        let picked = native::pick_and_queue_files(world);
+        let has_pending = !world
+            .resource::<overlay::ImportOverlayState>()
+            .pending_files
+            .is_empty();
+        if picked || has_pending {
+            world.resource_mut::<overlay::ImportOverlayState>().visible = true;
+        }
     }
 
     // Auto-import path: kick off the worker silently when files are pending
@@ -126,6 +195,28 @@ fn import_orchestrate_system(world: &mut World) {
             state.progress = overlay::ImportProgress::Idle;
             state.log_entries.clear();
         }
+    }
+}
+
+/// Status-bar segments for the left side: a spinner-style icon + `[done/total]`
+/// progress while an import runs, and nothing at all otherwise (idle / done /
+/// error are conveyed by the corner toast). Runs every frame via the shell's
+/// status registry, so the label tracks the worker live.
+#[cfg(not(target_arch = "wasm32"))]
+fn import_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment> {
+    let Some(state) = world.get_resource::<overlay::ImportOverlayState>() else {
+        return Vec::new();
+    };
+    if let overlay::ImportProgress::Working { current, total, label } = &state.progress {
+        let (r, g, b) = renzora_ember::theme::accent();
+        let text = if label.is_empty() {
+            format!("Importing {}/{}", current, total)
+        } else {
+            format!("Importing [{}/{}] {}", current, total, label)
+        };
+        vec![renzora::core::ShellStatusSegment::new("circle-notch", text, [r, g, b])]
+    } else {
+        Vec::new()
     }
 }
 

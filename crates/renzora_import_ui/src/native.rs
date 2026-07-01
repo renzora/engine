@@ -30,7 +30,6 @@ use crate::overlay::{close_overlay, poll_import_task, run_import, ImportLayout, 
 
 const GREEN: (u8, u8, u8) = (89, 191, 115);
 const RED: (u8, u8, u8) = (239, 68, 68);
-const FILE_ORANGE: (u8, u8, u8) = (255, 170, 100);
 
 /// Which sidebar section is showing in the right pane. Lives in [`ImportNav`] so
 /// the pane-visibility bindings and the nav-row highlights read one source of
@@ -67,6 +66,7 @@ pub(crate) fn register(app: &mut App) {
             file_browse_click,
             dest_folder_click,
             nav_click,
+            enforce_nav_section,
             import_click,
             cancel_click,
             toast_dismiss_click,
@@ -212,9 +212,19 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
         .id();
     commands.entity(backdrop).add_child(panel);
 
-    // Header.
+    // Header. The title tracks the queued files' kind — "Import 3D Models" for a
+    // pure model queue, "Import Images"/"Import Audio"/… for a uniform non-model
+    // queue, and the generic "Import Assets" for an empty or mixed queue.
     let header = row_between(commands);
-    let title = title_row(commands, fonts, "cube", "Import 3D Models");
+    let title = commands
+        .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }, FocusPolicy::Pass))
+        .id();
+    let title_ic = icon_text(commands, &fonts.phosphor, "package", text_primary(), 18.0);
+    let title_tx = commands
+        .spawn((Text::new("Import Assets".to_string()), ui_font(&fonts.ui, 18.0), TextColor(rgb(text_primary()))))
+        .id();
+    bind_text(commands, title_tx, import_title);
+    commands.entity(title).add_children(&[title_ic, title_tx]);
     let close = commands
         .spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), CancelBtn, hover_cursor()))
         .id();
@@ -255,17 +265,22 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts, init: &Init, has_pro
             BorderColor::all(rgb(divider())),
         ))
         .id();
-    let nav = [
-        ("files", "Files", ImportSection::Files),
+    // Files and Destination apply to every kind and are always shown. The
+    // Settings/Extract/Optimize sections only make sense for models (they feed
+    // the GLB conversion), so their nav rows hide whenever the queue has no
+    // model in it — a pure image/audio/… import is just a copy-to-destination.
+    let mut items: Vec<Entity> = Vec::new();
+    items.push(nav_item(commands, fonts, "files", "Files", ImportSection::Files));
+    for (icon, label, sec) in [
         ("gear", "Settings", ImportSection::Settings),
         ("puzzle-piece", "Extract", ImportSection::Extract),
         ("cube", "Optimize", ImportSection::Optimize),
-        ("folder-open", "Destination", ImportSection::Destination),
-    ];
-    let mut items: Vec<Entity> = nav
-        .iter()
-        .map(|(icon, label, sec)| nav_item(commands, fonts, icon, label, *sec))
-        .collect();
+    ] {
+        let row = nav_item(commands, fonts, icon, label, sec);
+        bind_display(commands, row, queue_has_model);
+        items.push(row);
+    }
+    items.push(nav_item(commands, fonts, "folder-open", "Destination", ImportSection::Destination));
     // Output nav row: only present once an import has logged results.
     let output = nav_item(commands, fonts, "list-bullets", "Output", ImportSection::Output);
     bind_display(commands, output, |w| w.get_resource::<ImportOverlayState>().is_some_and(|s| !s.log_entries.is_empty()));
@@ -385,6 +400,62 @@ fn active_flag(w: &World, sec: ImportSection) -> Active {
     Active(w.get_resource::<ImportNav>().is_some_and(|n| n.active == sec))
 }
 
+/// True if the queue holds at least one 3D model — the gate for the model-only
+/// sidebar sections (Settings / Extract / Optimize) and the model options.
+fn queue_has_model(w: &World) -> bool {
+    w.get_resource::<ImportOverlayState>().is_some_and(|s| {
+        s.pending_files
+            .iter()
+            .any(|p| renzora_import::formats::detect_format(p).is_some())
+    })
+}
+
+/// Header label reflecting the queue: uniform-kind queues get a specific title,
+/// empty / mixed queues get the generic "Import Assets".
+fn import_title(w: &World) -> String {
+    use crate::kinds::{detect_kind, AssetKind};
+    let Some(state) = w.get_resource::<ImportOverlayState>() else {
+        return "Import Assets".to_string();
+    };
+    if state.pending_files.is_empty() {
+        return "Import Assets".to_string();
+    }
+    let kinds: Vec<AssetKind> = state.pending_files.iter().filter_map(|p| detect_kind(p)).collect();
+    let first = kinds.first().copied();
+    let uniform = first.is_some_and(|k| kinds.iter().all(|&x| x == k));
+    match first.filter(|_| uniform) {
+        Some(AssetKind::Model) => "Import 3D Models",
+        Some(AssetKind::Image) => "Import Images",
+        Some(AssetKind::Audio) => "Import Audio",
+        Some(AssetKind::Scene) => "Import Scenes",
+        Some(AssetKind::Particle) => "Import Particles",
+        Some(AssetKind::Material) => "Import Materials",
+        Some(AssetKind::Font) => "Import Fonts",
+        Some(AssetKind::Script) => "Import Scripts",
+        None => "Import Assets",
+    }
+    .to_string()
+}
+
+/// Keep the active section valid: if a model-only section is showing but the
+/// queue no longer has a model (the user removed the last one), fall back to
+/// Files so the content pane never shows options that don't apply.
+fn enforce_nav_section(state: Option<Res<ImportOverlayState>>, nav: Option<ResMut<ImportNav>>) {
+    let (Some(state), Some(mut nav)) = (state, nav) else { return };
+    let model_only = matches!(
+        nav.active,
+        ImportSection::Settings | ImportSection::Extract | ImportSection::Optimize
+    );
+    if model_only
+        && !state
+            .pending_files
+            .iter()
+            .any(|p| renzora_import::formats::detect_format(p).is_some())
+    {
+        nav.active = ImportSection::Files;
+    }
+}
+
 fn nav_click(q: Query<(&Interaction, &NavBtn), Changed<Interaction>>, mut nav: Option<ResMut<ImportNav>>) {
     let Some(nav) = nav.as_mut() else { return };
     for (i, b) in &q {
@@ -416,7 +487,7 @@ fn pane_header(commands: &mut Commands, fonts: &EmberFonts, title: &str, subtitl
 
 fn build_files_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
     let p = pane(commands, ImportSection::Files);
-    let head = pane_header(commands, fonts, "Files", "Add the 3D models you want to import.");
+    let head = pane_header(commands, fonts, "Files", "Add the files you want to import — models, images, audio, and more.");
 
     // Dropzone — the empty state is this panel, so there's no separate "no
     // files" hint. Only the Browse button is clickable; the card itself is
@@ -440,7 +511,7 @@ fn build_files_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity)
         ))
         .id();
     let cloud = icon_text(commands, &fonts.phosphor, "cloud-arrow-down", text_muted(), 30.0);
-    let dz_t = txt(commands, fonts, "Drag & drop models here", 12.0, text_primary());
+    let dz_t = txt(commands, fonts, "Drag & drop files here", 12.0, text_primary());
     let browse = pill_button(commands, fonts, "folder-open", "Browse files");
     commands.entity(browse).insert(FileBrowseBtn);
     commands.entity(dz).add_children(&[cloud, dz_t, browse]);
@@ -723,7 +794,8 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, path: &std::path::Path)
             FocusPolicy::Pass,
         ))
         .id();
-    let icon = icon_text(commands, &fonts.phosphor, "cube", FILE_ORANGE, 12.0);
+    let (glyph, color) = crate::kinds::kind_icon(path);
+    let icon = icon_text(commands, &fonts.phosphor, glyph, color, 12.0);
     commands.entity(icon).insert(FocusPolicy::Pass);
     let nm = commands.spawn((Text::new(name), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), FocusPolicy::Pass, Node { flex_grow: 1.0, ..default() })).id();
     let ex = commands.spawn((Text::new(ext), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted())), FocusPolicy::Pass)).id();
@@ -812,31 +884,35 @@ fn remove_file_click(q: Query<(&Interaction, &RemoveFileBtn), Changed<Interactio
 
 fn file_browse_click(q: Query<&Interaction, (With<FileBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
-        commands.queue(do_file_browse);
+        commands.queue(|w: &mut World| { pick_and_queue_files(w); });
     }
 }
 
-fn do_file_browse(world: &mut World) {
-    let Some(paths) = rfd::FileDialog::new()
-        .set_title("Select 3D model files")
-        .add_filter("3D Models", renzora_import::supported_extensions())
-        .add_filter("All Files", &["*"])
-        .pick_files()
-    else {
-        return;
+/// Open the OS file picker (filtered to every importable kind) and append the
+/// chosen files to the queue. Returns `true` if at least one new file was added.
+/// Shared by the asset-browser Import trigger (`lib.rs`) and the overlay's own
+/// **Browse files** button, so both honour the same filter and de-dup rules.
+pub(crate) fn pick_and_queue_files(world: &mut World) -> bool {
+    let Some(paths) = crate::kinds::pick_importable_files() else {
+        return false;
     };
     let mut state = world.resource_mut::<ImportOverlayState>();
     let was_empty = state.pending_files.is_empty();
+    let mut added = false;
     for p in &paths {
         if !state.pending_files.contains(p) {
             state.pending_files.push(p.clone());
+            added = true;
         }
     }
+    // Auto-detect unit scale from the first model in a fresh queue (no-op for
+    // non-model picks — `detect_unit_scale` returns None for those).
     if was_empty && state.settings.scale == 1.0 {
         if let Some(scale) = paths.first().and_then(|p| renzora_import::units::detect_unit_scale(p)) {
             state.settings.scale = scale;
         }
     }
+    added
 }
 
 /// Click a destination folder row → it becomes the import target directory.
@@ -929,7 +1005,7 @@ fn spawn_toast(commands: &mut Commands, fonts: &EmberFonts) {
 
     // Header: title + dismiss ×.
     let header = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id();
-    let title = icon_label(commands, fonts, "download-simple", "Importing models", text_primary(), 12.0);
+    let title = icon_label(commands, fonts, "download-simple", "Importing assets", text_primary(), 12.0);
     let close = commands.spawn((Node { padding: UiRect::all(Val::Px(2.0)), ..default() }, Interaction::default(), ToastDismissBtn, hover_cursor())).id();
     let close_x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 13.0);
     commands.entity(close_x).insert(FocusPolicy::Pass);
@@ -1000,14 +1076,6 @@ fn txt(commands: &mut Commands, fonts: &EmberFonts, s: &str, size: f32, color: (
 
 fn row_between(commands: &mut Commands) -> Entity {
     commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::SpaceBetween, ..default() }).id()
-}
-
-fn title_row(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    let row = commands.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }, FocusPolicy::Pass)).id();
-    let ic = icon_text(commands, &fonts.phosphor, icon, text_primary(), 18.0);
-    let t = commands.spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 18.0), TextColor(rgb(text_primary())))).id();
-    commands.entity(row).add_children(&[ic, t]);
-    row
 }
 
 fn icon_label(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str, color: (u8, u8, u8), size: f32) -> Entity {

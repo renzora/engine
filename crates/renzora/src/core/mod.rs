@@ -780,6 +780,28 @@ pub struct ImportRequested;
 #[derive(Resource)]
 pub struct ImportTargetDir(pub String);
 
+/// The asset browser's current folder, project-relative and forward-slashed
+/// (`""` = project root; `None` = no browser/project active). The browser
+/// republishes it each frame so drag-and-drop imports land in the folder the
+/// user is looking at, instead of the importer's default target. Read by the
+/// importer's drop handler.
+#[derive(Resource, Default)]
+pub struct AssetBrowserCwd(pub Option<String>);
+
+/// True while an OS file drag is hovering the editor window — set when a
+/// `HoveredFile` event arrives and cleared on the matching drop or cancel. The
+/// importer owns it (it already drains the file-drop events); the asset browser
+/// reads it to render a "drop to import" highlight over its panel.
+#[derive(Resource, Default)]
+pub struct FileDragHovering(pub bool);
+
+/// Set `true` by the importer when files are dropped onto the editor, so the
+/// asset browser scrolls its grid to the freshly-imported items. The browser
+/// resets it once consumed, then pins the grid to the bottom for a short window
+/// (long enough for the ~0.5 s rescan to surface the new file and grow the grid).
+#[derive(Resource, Default)]
+pub struct AssetDropScrollRequest(pub bool);
+
 /// Set true while the pointer is over a panel that owns the `Ctrl/Cmd+A`
 /// shortcut for its own selection (currently the asset browser's file grid).
 ///

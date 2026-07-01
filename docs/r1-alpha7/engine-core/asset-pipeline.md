@@ -10,7 +10,7 @@ Renzora's asset handling is split across four engine crates, each with one job:
 |---|---|---|
 | Registry | `renzora_asset_registry` | A **metadata-only** index of every file in the project (path, kind, size, mtime). Never reads asset bytes. |
 | VFS + reader | `renzora_engine` (`vfs.rs`, `asset_reader.rs`) | A virtual filesystem backed by an `.rpak` archive **or** raw disk, plus a custom Bevy `AssetReader` with a defined lookup order. |
-| Import | `renzora_import` (+ `renzora_import_ui`) | Converts non-glTF 3D models to GLB at import time. |
+| Import | `renzora_import` (+ `renzora_import_ui`) | Converts non-glTF 3D models to GLB, and copies every other permitted asset (images, audio, `.bsn`, `.particle`, `.material`, fonts, scripts) into the project at import time. |
 | Scene I/O | `renzora_engine` (`scene_io.rs`) | Serializes the ECS world to RON (`.ron`) and loads it back. |
 
 Loading the actual bytes is still Bevy's job — these layers decide *what exists*, *where to read it from*, and *what to convert it into*.
@@ -117,25 +117,44 @@ Notes:
 
 ### The import overlay (`renzora_import_ui`)
 
-Dropping a model onto the editor (or using the asset browser's **Import** button)
-opens the import modal. It's a **two-pane dialog**: a left sidebar lists the
-sections and a right pane shows the active one, so the modal stays a fixed size
-instead of scrolling through every option at once. The modal always opens on
-**Files**.
+The importer accepts more than 3D models. Every file falls into one of two
+buckets, decided by `renzora_import_ui::kinds::detect_kind`:
 
-- **Files** — a drag-and-drop card (a **Browse files** button picks from disk)
-  above the queued-file list. The sidebar's Files row carries a count badge of
-  how many files are queued.
+- **Models** (glTF/GLB/FBX/OBJ/STL/PLY/USD/ABC/DAE/BVH/Blend) — run through the
+  full GLB conversion pipeline with the model-only options below.
+- **Copyable assets** — images (`png/jpg/jpeg/bmp/tga/webp/hdr/exr/ktx2/dds`),
+  audio (`wav/ogg/mp3/flac`), `.bsn` scenes, `.particle`, `.material`, fonts
+  (`ttf/otf`) and scripts (`lua/rhai`). These have no conversion step; importing
+  one **copies it verbatim** into the destination folder (name-collisions get a
+  numeric suffix, `tex.png` → `tex1.png`).
+
+**Workflow.** Clicking the asset browser's **Import** button (or the command
+palette's *File: Import…*) opens the **OS file picker first**, filtered to every
+importable kind. Once files are chosen, the modal appears pre-loaded with them —
+there's no separate "open empty modal, then Browse" step. (Drag-and-drop still
+works too, and honours the same kind filter.)
+
+It's a **two-pane dialog**: a left sidebar lists the sections and a right pane
+shows the active one, so the modal stays a fixed size instead of scrolling
+through every option at once. The modal always opens on **Files**, and its title
+tracks the queue's kind (*Import 3D Models* / *Import Images* / … / the generic
+*Import Assets* for an empty or mixed queue).
+
+- **Files** — a drag-and-drop card (a **Browse files** button re-opens the
+  picker) above the queued-file list. Each row's icon reflects the file's kind.
+  The sidebar's Files row carries a count badge of how many files are queued.
 - **Settings** — scale, up-axis, **Flip UVs** and **Generate normals** as
-  label-left / control-right rows, fed into `ImportSettings`.
+  label-left / control-right rows, fed into `ImportSettings`. *Model-only: the
+  nav row hides when the queue has no model.*
 - **Extract** — toggles for skeleton/skin, animations, textures and materials.
+  *Model-only.*
 - **Optimize** — the mesh-optimization passes (vertex cache / overdraw / vertex
-  fetch).
+  fetch). *Model-only.*
 - **Destination** — a **folder tree of the project's own directories** (the same
   picker style as the marketplace install flow). Click a folder to set the
   import target; the first row, *assets (project root)*, targets the project
   root. The **Organize** radios choose a per-file `<stem>/` folder or a combined
-  destination.
+  destination (copied assets always land directly in the target folder).
 - **Output** — per-file import results. The sidebar row only appears once an
   import has logged results.
 
@@ -148,6 +167,22 @@ background regardless of whether the toast is dismissed.
 > Drag-and-drop with **Auto-import on drop** enabled (the default) skips the
 > modal entirely and imports silently; the toast flow is the explicit
 > Import-button path.
+
+**Where a drop lands.** While an OS file drag hovers the window, the asset
+browser draws a **drop-to-import highlight** over its panel. The browser
+republishes its current folder into `renzora::core::AssetBrowserCwd`, and the
+importer's drop handler targets that folder — so a dropped file lands in the
+folder you're looking at (and appears there once the browser's ~0.5 s rescan
+picks it up), not the importer's default target. The hover flag itself lives in
+`renzora::core::FileDragHovering`, set by the importer and read by the browser.
+
+**Feedback on a drop.** A silent auto-import (no modal, no toast) still reports
+itself two ways: the shell **status bar** shows a left-aligned `Importing
+[done/total] …` item (registered by `renzora_import_ui` via the status registry,
+live-updating each frame and blank when idle), and the browser **scrolls its grid
+to the bottom** so the freshly-copied file scrolls into view. The scroll is
+requested through `renzora::core::AssetDropScrollRequest` and held for a short
+window so it tracks the grid growing as the rescan lands the new tile.
 
 The public surface (`renzora_import`) includes `detect_format`, `supported_extensions`, `ModelFormat`, `convert_to_glb` / `convert_to_glb_with_progress`, `ImportSettings`, `UpAxis`, `optimize_glb`, and `compact_glb`, plus the `extract_animations_from_*` helpers.
 
