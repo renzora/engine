@@ -79,6 +79,7 @@ editor = [
     "dep:renzora_shape_library",
     "dep:renzora_system_monitor",
     "dep:renzora_terrain_editor",
+    "dep:renzora_tilemap_editor",
     "dep:renzora_test_component",
     "dep:renzora_theme_status",
     "dep:renzora_tutorial",
@@ -164,6 +165,7 @@ renzora_shader_editor      = { path = "../renzora_shader_editor", optional = tru
 renzora_shape_library      = { path = "../renzora_shape_library", optional = true }
 renzora_system_monitor     = { path = "../renzora_system_monitor", optional = true }
 renzora_terrain_editor     = { path = "../renzora_terrain_editor", optional = true }
+renzora_tilemap_editor     = { path = "../renzora_tilemap/editor", optional = true }
 renzora_test_component     = { path = "../renzora_test_component", optional = true }
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
 renzora_tutorial           = { path = "../renzora_tutorial", optional = true }

@@ -1,0 +1,13 @@
+[package]
+name = "renzora_tilemap"
+version = "0.1.0"
+edition = "2021"
+description = "2D tilemap runtime: a chunked quad-mesh renderer driven by a reflectable TilemapLayer component."
+
+[dependencies]
+bevy = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

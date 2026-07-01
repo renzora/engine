@@ -8080,6 +8080,7 @@ dependencies = [
  "renzora_terrain_editor",
  "renzora_test_component",
  "renzora_theme_status",
+ "renzora_tilemap_editor",
  "renzora_tonemapping",
  "renzora_tonemapping_editor",
  "renzora_tutorial",
@@ -8367,6 +8368,17 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
+]
+
+[[package]]
+name = "renzora_hair"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "mlua",
+ "renzora",
+ "renzora_macros",
+ "renzora_scripting",
 ]
 
 [[package]]
@@ -9151,6 +9163,7 @@ dependencies = [
  "renzora_ssao",
  "renzora_ssr",
  "renzora_terrain",
+ "renzora_tilemap",
  "renzora_tonemapping",
  "renzora_volumetric_fog",
  "renzora_water",
@@ -9555,6 +9568,26 @@ dependencies = [
  "renzora_macros",
  "renzora_postprocess",
  "serde",
+]
+
+[[package]]
+name = "renzora_tilemap"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "serde",
+]
+
+[[package]]
+name = "renzora_tilemap_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_ember",
+ "renzora_tilemap",
+ "renzora_ui",
 ]
 
 [[package]]

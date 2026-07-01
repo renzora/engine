@@ -192,6 +192,15 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: true,
     },
     Capability {
+        id: "tilemap",
+        label: "2D tilemap",
+        help: "The 2D tilemap runtime (chunked quad-mesh renderer). Drop for a \
+               game with no tilemaps — e.g. a pure-3D game.",
+        bevy_features: &[],
+        runtime_features: &["tilemap"],
+        default_on: true,
+    },
+    Capability {
         id: "physics",
         label: "Physics (rigid bodies & collisions)",
         help: "The avian rigid-body physics engine (~6.5 MiB). Also powers water buoyancy \

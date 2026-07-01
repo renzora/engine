@@ -578,7 +578,12 @@ impl Plugin for GizmoPlugin {
                 .chain()
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                 .run_if(renzora::core::not_in_play_mode)
-                .run_if(renzora::core::in_two_view),
+                .run_if(renzora::core::in_two_view)
+                // Stand down while a viewport brush (e.g. tilemap paint) is
+                // active, so a paint click doesn't re-select or drag the entity.
+                .run_if(|b: Option<Res<renzora::core::ViewportBrushActive>>| {
+                    b.map(|b| !b.0).unwrap_or(true)
+                }),
         );
 
         // 2D editor grid drawn via Bevy gizmos (not an egui overlay)

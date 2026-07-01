@@ -330,6 +330,14 @@ pub enum PlayState {
     Simulating,
 }
 
+/// Editor signal: a viewport "brush"/paint tool is currently active (e.g. the
+/// tilemap paint tool). While set, the 2D pick/drag systems stand down so a
+/// click paints instead of re-selecting or dragging the entity out from under
+/// the brush. Any editor tool may raise it; it lives in the contract so the
+/// gizmo crate can read it without depending on the tool's crate.
+#[derive(Resource, Default)]
+pub struct ViewportBrushActive(pub bool);
+
 /// Resource that tracks play mode state and pending transitions.
 #[derive(Resource, Default)]
 pub struct PlayModeState {

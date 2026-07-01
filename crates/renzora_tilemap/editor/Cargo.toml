@@ -1,0 +1,15 @@
+[package]
+name = "renzora_tilemap_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_tilemap: the Tilemap palette panel (click-on-atlas tile picker), the paint/erase tool, tileset drag-drop, and the Tilemap entity preset. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_tilemap = { path = ".." }
+renzora_ember = { path = "../../renzora_ember" }
+renzora_ui = { path = "../../renzora_ui" }
+
+[lints]
+workspace = true
