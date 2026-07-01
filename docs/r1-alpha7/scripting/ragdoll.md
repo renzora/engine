@@ -18,6 +18,21 @@ Bones start `Kinematic`: the `AnimationPlayer` drives them exactly as if the plu
 
 > **Ragdoll only simulates in Play or Simulate mode.** It is a physics feature, and the editor pauses the simulation while editing. Toggling `Ragdoll.active` (or calling `enable_ragdoll()`) in edit mode just freezes the pose. Use **[Simulate](/docs/r1-alpha7/editor/viewport#simulate-mode)** (the blue flask, beside Play) to watch the skeleton fall while keeping the editor live — Stop restores the scene afterward.
 
+## Tuning
+
+`Ragdoll` has fields beyond `active` for how the simulated skeleton feels. They're read once, when the bone bodies and joints are first generated (the moment the skeleton finishes loading) — editing them on an already-built ragdoll has no effect. To re-tune, edit the values *before* the skeleton finishes generating (e.g. before the first Play), or remove and re-add the `Ragdoll` component to force regeneration.
+
+| Field | Default | Effect |
+|---|---|---|
+| `stiffness` | `0.85` | `0` (loose/floppy) to `1` (rigid). Maps to the swing/twist joint compliance Avian uses to resist bending *within* the limits below — this, not the limits alone, is what makes a joint hold its bend instead of flopping freely. |
+| `swing_limit_degrees` | `60.0` | Max degrees a joint may swing off its bone's rest axis (an elbow/knee opening, a shoulder lifting). `0` locks the joint straight. |
+| `twist_limit_degrees` | `30.0` | Max degrees a joint may twist about its bone's rest axis. `0` locks out twisting entirely. |
+| `linear_damping` | `2.0` | Drag on each bone's linear velocity. The main knob against limbs whipping around too fast. |
+| `angular_damping` | `4.0` | Drag on each bone's angular velocity — resists spinning limbs independently of `linear_damping`. |
+| `gravity_scale` | `0.6` | Per-bone gravity multiplier. Lower falls and settles more slowly — the direct knob against a ragdoll that drops too fast. |
+
+Joint translation (the point itself, not its bend) always stays rigid regardless of `stiffness` — limbs shouldn't visibly pull apart at the socket.
+
 ## Scripting
 
 | Function | Lua | Rhai | Effect |
@@ -49,8 +64,8 @@ end
 ## Limitations (v1)
 
 - Auto-generated only — there is no manual bone-to-collider mapping UI or API yet.
-- No editor tooling: tune collider sizes/joint behavior by editing the generated components after the fact, or via script.
-- One joint type (`SphericalJoint`, ball-and-socket) for every bone pair — no per-bone angular limits yet.
+- Tuning is whole-ragdoll, not per-bone: one `stiffness`/limits/damping/gravity setting applies to every bone and joint a `Ragdoll` generates, not e.g. stiffer arms than legs.
+- One joint type (`SphericalJoint`, ball-and-socket) for every bone pair.
 
 ## Related
 

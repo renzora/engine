@@ -17,6 +17,10 @@ use std::collections::{HashMap, HashSet};
 const BONE_RADIUS_FRACTION: f32 = 0.18;
 /// Floor for leaf-bone (hands, feet, head tip, ...) sphere colliders.
 const MIN_LEAF_RADIUS: f32 = 0.03;
+/// Compliance (m/N) at `Ragdoll::stiffness == 0.0` — loose enough to feel
+/// floppy without the joint visibly falling apart. `stiffness == 1.0` maps
+/// to `0.0` (avian's default — perfectly rigid).
+const MAX_JOINT_COMPLIANCE: f32 = 0.001;
 /// How many frames to keep polling for the skinned mesh before giving up. A
 /// `Ragdoll` loaded from a scene races the async GLB instantiation that spawns
 /// the skeleton, so the mesh usually isn't present for the first few frames;
@@ -41,7 +45,7 @@ pub fn build_ragdolls(
     transforms: Query<&Transform>,
     mut waited: Local<HashMap<Entity, u32>>,
 ) {
-    for (root, _ragdoll) in &pending {
+    for (root, ragdoll) in &pending {
         let Some(joints) = find_skinned_joints(root, &skinned, &children) else {
             // Skeleton not spawned yet — retry next frame, but bound the wait so a
             // truly unskinned target warns once instead of polling forever.
@@ -80,10 +84,21 @@ pub fn build_ragdolls(
             let kids = children_of.get(&bone);
             let collider = bone_collider(kids, &transforms, avg_bone_len);
 
-            commands
-                .entity(bone)
-                .insert((RagdollBone, RigidBody::Kinematic, collider));
+            commands.entity(bone).insert((
+                RagdollBone,
+                RigidBody::Kinematic,
+                collider,
+                LinearDamping(ragdoll.linear_damping),
+                AngularDamping(ragdoll.angular_damping),
+                GravityScale(ragdoll.gravity_scale),
+            ));
         }
+
+        // Only swing/twist resist bending — point compliance stays rigid so
+        // limbs never visibly pull apart at the joint regardless of `stiffness`.
+        let compliance = (1.0 - ragdoll.stiffness.clamp(0.0, 1.0)) * MAX_JOINT_COMPLIANCE;
+        let swing = ragdoll.swing_limit_degrees.to_radians();
+        let twist = ragdoll.twist_limit_degrees.to_radians();
 
         for (&parent, kids) in &children_of {
             for &kid in kids {
@@ -97,7 +112,11 @@ pub fn build_ragdolls(
                 commands.spawn(
                     SphericalJoint::new(parent, kid)
                         .with_local_anchor1(kid_transform.translation)
-                        .with_local_anchor2(Vec3::ZERO),
+                        .with_local_anchor2(Vec3::ZERO)
+                        .with_swing_limits(-swing, swing)
+                        .with_twist_limits(-twist, twist)
+                        .with_swing_compliance(compliance)
+                        .with_twist_compliance(compliance),
                 );
             }
         }

@@ -1,0 +1,27 @@
+[package]
+name = "renzora_hair"
+version = "0.1.0"
+edition = "2021"
+description = "Spring-bone hair physics distribution plugin (verlet, no solver)"
+
+# Distribution plugin: cdylib shipped as .dll/.so/.dylib in plugins/.
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["dlopen", "lua", "editor"]
+dlopen = []                 # FFI exports gate — expansion site only
+lua = ["renzora_scripting/lua", "dep:mlua"]
+editor = ["renzora/editor"] # Hair registers to the Inspector
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_macros = { path = "../renzora_macros" }
+renzora_scripting = { path = "../renzora_scripting", default-features = false }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.10", features = ["lua54"], optional = true }
+
+[lints]
+workspace = true
