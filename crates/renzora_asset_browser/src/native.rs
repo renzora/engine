@@ -492,8 +492,6 @@ pub fn register_native_asset_browser(app: &mut App) {
             crumb_click,
             load_persisted,
             shortcut_click,
-            asset_drag,
-            drag_ghost,
             add_menu_open,
             sort_menu_open,
             view_toggle_click,
@@ -515,6 +513,19 @@ pub fn register_native_asset_browser(app: &mut App) {
         splitter_drag
             .run_if(in_state(SplashState::Editor))
             .run_if(panel_active("assets")),
+    );
+    // Drag lifecycle + ghost + spring are NOT gated on `panel_active("assets")`.
+    // A drag begins from the Assets panel (so it's visible then), but the spring
+    // below can switch the Assets leaf to a sibling tab mid-drag — which would
+    // freeze a panel-gated `asset_drag`/`drag_ghost`, leaving the payload uncleared
+    // and the ghost stranded on screen on release. Kept editor-gated only so the
+    // whole drag (press → follow → release cleanup) always runs to completion.
+    // `asset_drag_tab_spring` sets `FocusPanelRequest`, which the dock consumes
+    // (at worst one frame later — imperceptible against the 0.35s dwell) through
+    // the same in-place switch a tab click performs.
+    app.add_systems(
+        Update,
+        (asset_drag, drag_ghost, asset_drag_tab_spring).run_if(in_state(SplashState::Editor)),
     );
     app.add_systems(
         Update,
@@ -758,6 +769,67 @@ fn asset_drag(
     }
 }
 
+/// Spring-loaded tabs: while an asset drag is in flight, dwelling the cursor over
+/// a background dock tab brings that tab to the foreground — without releasing the
+/// drag. This lets you reveal a drop target that's hidden behind another tab (drop
+/// a mesh onto the viewport, a texture onto the inspector, …) the same way file
+/// managers spring open a folder you hover over mid-drag.
+///
+/// A short dwell delay is deliberate: merely sweeping the cursor *across* a tab bar
+/// on the way somewhere else shouldn't yank the layout around — only a pause on one
+/// tab does. Not gated on `panel_active("assets")`, since the target tab usually
+/// lives in a *different* leaf than the Assets panel and we must keep watching the
+/// drag regardless of which panel is focused.
+fn asset_drag_tab_spring(
+    payload: Option<Res<renzora_editor_framework::AssetDragPayload>>,
+    time: Res<Time>,
+    dock: Res<renzora_ember::dock::Dock>,
+    tabs: Query<(&bevy::ui::RelativeCursorPosition, &renzora_ember::dock::DockTab)>,
+    mut focus: ResMut<renzora_ember::dock::FocusPanelRequest>,
+    // (hovered tab id, seconds dwelled on it) — reset whenever the drag ends or
+    // the hovered tab changes, so each tab earns its own fresh dwell.
+    mut dwell: Local<Option<(String, f32)>>,
+) {
+    // No live drag (or the press hasn't crossed the drag threshold yet) → stand down.
+    if payload.is_none_or(|p| !p.is_detached) {
+        *dwell = None;
+        return;
+    }
+
+    // The background tab under the cursor, if any. Tabs that are already the active
+    // tab in their leaf have nothing to reveal, so skip them.
+    let hovered = tabs.iter().find_map(|(rcp, tab)| {
+        (rcp.cursor_over && !dock.tree.is_active_tab(&tab.id)).then(|| tab.id.clone())
+    });
+    let Some(id) = hovered else {
+        *dwell = None;
+        return;
+    };
+
+    // Accumulate dwell on the same tab; a change of tab restarts the timer.
+    let elapsed = match dwell.as_mut() {
+        Some((prev, secs)) if *prev == id => {
+            *secs += time.delta_secs();
+            *secs
+        }
+        _ => {
+            *dwell = Some((id.clone(), 0.0));
+            0.0
+        }
+    };
+    if elapsed >= SPRING_DWELL_SECS {
+        // Route through the same in-place switch a click performs. `apply_tab_switch`
+        // recolors labels and shows the pane; the drop-target crates react to the
+        // now-visible pane. Clear the dwell so we don't re-fire while still hovering.
+        focus.0 = Some(id);
+        *dwell = None;
+    }
+}
+
+/// Hover-dwell before a spring tab-switch fires. Long enough that crossing a tab
+/// bar in passing is ignored, short enough to feel responsive once you settle.
+const SPRING_DWELL_SECS: f32 = 0.35;
+
 /// The folder under the cursor to drop onto — a hovered grid folder tile, else a
 /// hovered tree folder row.
 fn drop_folder(
@@ -814,6 +886,11 @@ fn drag_ghost(
     payload: Option<Res<renzora_editor_framework::AssetDragPayload>>,
     fonts: Option<Res<EmberFonts>>,
     windows: Query<&Window>,
+    // The same thumbnail sources the tiles use, so the ghost carries the asset's
+    // real rendered preview instead of a generic glyph.
+    cache: Option<Res<ThumbnailCache>>,
+    model: Option<Res<ModelThumbnailRegistry>>,
+    material: Option<Res<MaterialThumbnailRegistry>>,
     mut ghosts: Query<(Entity, &mut Node), With<DragGhost>>,
 ) {
     let Some(payload) = payload.filter(|_| state.dragging) else {
@@ -860,18 +937,49 @@ fn drag_ghost(
             Name::new("asset-drag-ghost"),
         ))
         .id();
-    let ic = icon_text(&mut commands, &fonts.phosphor, icon_for(&payload.path, false), color, 14.0);
+    // Prefer the asset's real thumbnail (already rendered/cached — you had to see
+    // its tile to grab it), and fall back to the type glyph if it isn't ready.
+    let handle = thumb_kind(&payload.name).and_then(|kind| match kind {
+        ThumbKind::Image => cache.as_ref().and_then(|c| c.handle(&payload.path)),
+        ThumbKind::Model => model.as_ref().and_then(|r| r.handle(&payload.path)),
+        ThumbKind::Material => material.as_ref().and_then(|r| r.handle(&payload.path)),
+    });
+    let lead = match handle {
+        Some(image) => commands
+            .spawn((
+                ImageNode::new(image),
+                Node {
+                    width: Val::Px(GHOST_THUMB),
+                    height: Val::Px(GHOST_THUMB),
+                    flex_shrink: 0.0,
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                Pickable::IGNORE,
+            ))
+            .id(),
+        None => icon_text(&mut commands, &fonts.phosphor, icon_for(&payload.path, false), color, 14.0),
+    };
+    // For a multi-select drag, name the count rather than a single file.
+    let text = if payload.drag_count > 1 {
+        format!("{} items", payload.drag_count)
+    } else {
+        payload.name.clone()
+    };
     let lbl = commands
         .spawn((
-            Text::new(payload.name.clone()),
+            Text::new(text),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
             bevy::text::TextLayout::no_wrap(),
             Pickable::IGNORE,
         ))
         .id();
-    commands.entity(ghost).add_children(&[ic, lbl]);
+    commands.entity(ghost).add_children(&[lead, lbl]);
 }
+
+/// Edge length of the thumbnail preview in the drag ghost.
+const GHOST_THUMB: f32 = 32.0;
 
 /// A favorites/recent shortcut row: navigate (folder) or open (file).
 fn shortcut_click(
