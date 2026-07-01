@@ -52,6 +52,56 @@ impl CrashReport {
     }
 }
 
+/// Scrub build-machine paths out of panic text before it's stored, shown, or
+/// written to disk. Panic `Location`s are compiled into the binary with the
+/// source paths of the machine that BUILT it — a shipped release would
+/// otherwise show players absolute paths from the release machine, home
+/// directory and username included (GH issue #67 reported a crash dialog
+/// printing `C:\Users\<dev>\.cargo\registry\...\bevy_ecs-0.19.0\...`).
+/// Canonical container builds already remap these at compile time
+/// (`--remap-path-prefix` in `.cargo/config.toml`); this is the display-side
+/// backstop for host-built binaries and any path the remap misses.
+fn sanitize_paths(s: &str) -> String {
+    let mut out = s.to_string();
+
+    // `C:\Users\<name>\...` / `/home/<name>/...` / `/Users/<name>/...` → `~/...`
+    // — drop the home prefix and the username segment. This runs FIRST so a
+    // username containing spaces can't confuse the registry pass's
+    // walk-back-to-whitespace below.
+    for pat in ["C:\\Users\\", "C:/Users/", "c:\\users\\", "/home/", "/Users/"] {
+        while let Some(hit) = out.find(pat) {
+            let after_pat = hit + pat.len();
+            match out[after_pat..].find(['\\', '/']) {
+                Some(sep) => out.replace_range(hit..after_pat + sep, "~"),
+                // Path ends inside the username (e.g. a bare `/home/name`).
+                None => out.replace_range(hit.., "~"),
+            }
+        }
+    }
+
+    // `<cargo home>/registry/src/<index.crates.io-hash>/bevy_ecs-0.19.0/...`
+    // → `<registry>/bevy_ecs-0.19.0/...`. Everything before the crate name is
+    // the builder's machine, not information.
+    for pat in ["registry\\src\\", "registry/src/"] {
+        while let Some(hit) = out.find(pat) {
+            // Walk back to the start of the path (best effort: to the last
+            // whitespace/quote/paren).
+            let start = out[..hit]
+                .rfind([' ', '\t', '"', '\'', '('])
+                .map(|i| i + 1)
+                .unwrap_or(0);
+            // Skip the registry index segment (`index.crates.io-<hash>`).
+            let after_pat = hit + pat.len();
+            let Some(sep) = out[after_pat..].find(['\\', '/']) else {
+                break; // no crate segment follows; leave it rather than loop
+            };
+            out.replace_range(start..after_pat + sep + 1, "<registry>/");
+        }
+    }
+
+    out
+}
+
 /// Install the custom panic hook. Call this before `app.run()`. `is_editor`
 /// records whether this is an editor session so the hook can pick the right
 /// crash-file location + dialog behaviour (it can't read the Bevy `World`).
@@ -80,9 +130,9 @@ pub fn install_panic_hook(is_editor: bool) {
         let timestamp = chrono_lite_timestamp();
 
         let report = CrashReport {
-            message,
-            location,
-            backtrace: backtrace_str,
+            message: sanitize_paths(&message),
+            location: sanitize_paths(&location),
+            backtrace: sanitize_paths(&backtrace_str),
             timestamp,
         };
 
@@ -309,5 +359,33 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
         warn!("Previous session crashed: {}", report.message);
         state.report = Some(report);
         state.show_window = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_paths;
+
+    /// The exact location string from GH issue #67 — the builder's registry
+    /// path (username included) must not survive into the report.
+    #[test]
+    fn scrubs_builder_registry_path() {
+        let loc = r"C:\Users\piano\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.19.0\src\error\handler.rs:130:1";
+        assert_eq!(
+            sanitize_paths(loc),
+            r"<registry>/bevy_ecs-0.19.0\src\error\handler.rs:130:1"
+        );
+    }
+
+    #[test]
+    fn scrubs_home_dirs() {
+        assert_eq!(
+            sanitize_paths("at /home/dev/projects/game/src/main.rs:1:1"),
+            "at ~/projects/game/src/main.rs:1:1"
+        );
+        assert_eq!(
+            sanitize_paths(r"at C:\Users\Some Name\game\src\main.rs:1:1"),
+            r"at ~\game\src\main.rs:1:1"
+        );
     }
 }

@@ -106,8 +106,9 @@ impl Plugin for ShellPlugin {
 
 /// Live re-localization: when the active language changes, rebuild the chrome so
 /// every widget re-reads `renzora::lang::t(...)` in the new language — the same
-/// despawn-`ShellRoot` + `DockDirty` path a theme switch uses, which respawns the
-/// chrome *and* the dock (so panel contents re-localize too, not just the bars).
+/// despawn-`ShellRoot` path a theme switch uses; `manage_shell_root` respawns the
+/// chrome and re-arms `DockDirty`, so the dock rebuilds too (panel contents
+/// re-localize, not just the bars).
 ///
 /// Driven off the lock-free `revision()` counter rather than the `LanguageChanged`
 /// message, so it needs no message registration and works regardless of plugin
@@ -139,7 +140,11 @@ fn relocalize_on_language_change(
     for e in &roots {
         commands.entity(e).try_despawn();
     }
-    dirty.0 = true;
+    // Cancel (don't request) any pending dock rebuild — the dock tree dies with
+    // the chrome despawned above, and a same-frame `rebuild_dock` against it
+    // panics on the dead entities (see `theme_bridge` for the full story).
+    // `manage_shell_root` re-arms `DockDirty` when it respawns the chrome.
+    dirty.0 = false;
 }
 
 /// Map the active `ThemeManager` theme into ember's runtime palette, and rebuild
@@ -251,11 +256,22 @@ fn theme_bridge(
     // (already-built) chrome so the dropup re-spawns with the full set. If the
     // chrome isn't up yet, the list change needs no rebuild — `manage_shell_root`
     // will spawn it fresh from the current list.
+    //
+    // CANCEL any pending dock rebuild rather than requesting one: the `DockArea`
+    // lives under `ShellRoot`, so the despawn queued here dooms the whole dock
+    // tree. If `DockDirty` were set now and ember's `rebuild_dock` ran later this
+    // same frame (their relative order is unconstrained), it would queue detach/
+    // despawn/reparent commands against that doomed tree — and since our despawn
+    // applies first, those commands would hit dead entities and panic with
+    // "Entity despawned" (GH issue #67: instant crash on theme change; whether it
+    // fired depended on the schedule order the binary happened to build).
+    // `manage_shell_root` sets `DockDirty` when it respawns the chrome, which is
+    // the only correct moment to rebuild the dock.
     if switched || (themes_changed && !roots.is_empty()) {
         for e in &roots {
             commands.entity(e).try_despawn();
         }
-        dirty.0 = true;
+        dirty.0 = false;
     }
 }
 

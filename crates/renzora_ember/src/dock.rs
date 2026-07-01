@@ -1193,9 +1193,12 @@ fn rebuild_dock(
         }
     }
 
+    // `try_despawn`: a child may already have been despawned this frame by
+    // another system (e.g. a panel tearing down its own content, or a chrome
+    // rebuild racing this one) — a plain `despawn` on that stale handle panics.
     if let Some(children) = children {
         for child in children.iter() {
-            commands.entity(child).despawn();
+            commands.entity(child).try_despawn();
         }
     }
     let tree_root = build_tree(
@@ -1237,8 +1240,9 @@ fn rebuild_dock(
     commands.entity(area_entity).add_child(root_overlay);
 
     // Any preserved content not reused (its panel no longer exists) → despawn.
+    // `try_despawn` for the same stale-handle reason as the child sweep above.
     for (_, content) in preserved.drain() {
-        commands.entity(content).despawn();
+        commands.entity(content).try_despawn();
     }
     dirty.0 = false;
 }

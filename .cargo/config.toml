@@ -57,6 +57,20 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # to the host so workspace crates (linked statically) AND dlopen'd plugins/the
 # bundle share one compiled copy of the SDK contracts and matching `TypeId`s.
 
+# Path scrubbing: panic `Location`s (and debuginfo) embed the source paths of
+# the machine that BUILT the binary — without remapping, a shipped release
+# shows players absolute paths from the release machine (GH issue #67: a crash
+# dialog printing the developer's `C:\Users\<name>\.cargo\registry\...`). The
+# prefixes below are the CANONICAL Docker paths (the rust image's
+# CARGO_HOME=/usr/local/cargo; the repo mounted at /app/src), so container
+# builds ship clean `/cargo/...` + `/renzora/...` paths. On host builds the
+# prefixes match nothing and the flags are inert — releases must ship from the
+# container anyway. The crash reporter (`renzora_engine::crash`) additionally
+# scrubs registry/home prefixes at display time as a backstop for host builds.
+# NOTE: rustflags feed cargo's metadata hash, so adding/changing these renames
+# `bevy_dylib-<metadata>` and moves the plugin ABI (a one-time full rebuild;
+# prebuilt plugins rebuild with the next release as usual — see CLAUDE.md §3).
+
 # Windows: use rust-lld. MSVC link.exe hits LNK1189 (65535-object limit) on
 # bevy_dylib with dynamic_linking enabled. `rust-lld` (no .exe) is a special
 # value rustc resolves to its bundled lld from the sysroot — works on
@@ -64,7 +78,11 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 # rustflags (xwin lib paths) still merge in correctly.
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
-rustflags = ["-C", "prefer-dynamic"]
+rustflags = [
+    "-C", "prefer-dynamic",
+    "--remap-path-prefix=/usr/local/cargo=/cargo",
+    "--remap-path-prefix=/app/src=/renzora",
+]
 
 # macOS: embed @loader_path so the binary finds bevy_dylib, renzora.dylib,
 # and any dlopen'd distribution plugin next to itself.
@@ -72,12 +90,16 @@ rustflags = ["-C", "prefer-dynamic"]
 rustflags = [
     "-C", "link-arg=-Wl,-rpath,@loader_path",
     "-C", "prefer-dynamic",
+    "--remap-path-prefix=/usr/local/cargo=/cargo",
+    "--remap-path-prefix=/app/src=/renzora",
 ]
 
 [target.x86_64-apple-darwin]
 rustflags = [
     "-C", "link-arg=-Wl,-rpath,@loader_path",
     "-C", "prefer-dynamic",
+    "--remap-path-prefix=/usr/local/cargo=/cargo",
+    "--remap-path-prefix=/app/src=/renzora",
 ]
 
 # Linux: mold linker + $ORIGIN rpath so the binary finds bevy_dylib,
@@ -88,4 +110,6 @@ rustflags = [
     "-C", "link-arg=-fuse-ld=/usr/bin/mold",
     "-C", "link-arg=-Wl,-rpath,$ORIGIN",
     "-C", "prefer-dynamic",
+    "--remap-path-prefix=/usr/local/cargo=/cargo",
+    "--remap-path-prefix=/app/src=/renzora",
 ]
