@@ -1367,7 +1367,9 @@ impl Plugin for ScenePlugin {
             .add_systems(
                 Update,
                 (
-                    scene_io::rehydrate_meshes,
+                    // Chained: persisted mesh edits must replace the pristine
+                    // primitive mesh in the same frame it rehydrates.
+                    (scene_io::rehydrate_meshes, scene_io::apply_edited_meshes).chain(),
                     scene_io::rehydrate_cameras,
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_lights,
@@ -1386,7 +1388,7 @@ impl Plugin for ScenePlugin {
             .add_systems(
                 Update,
                 (
-                    scene_io::rehydrate_meshes,
+                    (scene_io::rehydrate_meshes, scene_io::apply_edited_meshes).chain(),
                     scene_io::rehydrate_cameras,
                     scene_io::rehydrate_suns,
                     scene_io::rehydrate_lights,

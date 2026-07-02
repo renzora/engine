@@ -274,7 +274,7 @@ impl Plugin for WidgetsPlugin {
                 ),
                 (
                     range::range_drag,
-                    tooltip::tooltip_hover,
+                    tooltip::hover_tooltip_system,
                     popover::popover_toggle,
                     modal::modal_toggle,
                     popup::screen_menu_clamp,

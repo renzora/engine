@@ -33,6 +33,11 @@ pub struct Vertex {
 pub struct Edge {
     pub verts: [VertexId; 2],
     pub faces: Vec<FaceId>,
+    /// True for edges that intentionally have no faces (vertex-extrude
+    /// "line" geometry). [`EditMesh::rebuild_edges`] derives edges from face
+    /// cycles, which would silently drop these — wire edges survive rebuilds,
+    /// while an ordinary edge whose faces were all deleted does not.
+    pub wire: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -142,6 +147,7 @@ impl EditMesh {
                     edges.push(Edge {
                         verts: [VertexId(key.0), VertexId(key.1)],
                         faces: Vec::new(),
+                        wire: false,
                     });
                     id
                 });
@@ -272,8 +278,16 @@ fn merge_coplanar_triangle_pairs(faces: &mut Vec<Face>, vertices: &[Vertex]) {
 impl EditMesh {
     /// Recompute `edges` and each face's edge list from face topology.
     /// Operators that add/remove faces should call this before baking.
+    /// Wire edges (vertex-extrude lines) are carried over; everything else
+    /// is derived fresh from the face cycles.
     pub fn rebuild_edges(&mut self) {
         let canon = |a: u32, b: u32| if a < b { (a, b) } else { (b, a) };
+        let wires: Vec<[VertexId; 2]> = self
+            .edges
+            .iter()
+            .filter(|e| e.wire)
+            .map(|e| e.verts)
+            .collect();
         self.edges.clear();
         let mut lookup: std::collections::HashMap<(u32, u32), EdgeId> =
             std::collections::HashMap::new();
@@ -289,6 +303,7 @@ impl EditMesh {
                     self.edges.push(Edge {
                         verts: [VertexId(key.0), VertexId(key.1)],
                         faces: Vec::new(),
+                        wire: false,
                     });
                     id
                 });
@@ -299,6 +314,17 @@ impl EditMesh {
         for (fi, face) in self.faces.iter().enumerate() {
             for eid in &face.edges {
                 self.edges[eid.0 as usize].faces.push(FaceId(fi as u32));
+            }
+        }
+        // Re-append wire edges that didn't get absorbed into a face.
+        for w in wires {
+            let key = canon(w[0].0, w[1].0);
+            if !lookup.contains_key(&key) {
+                self.edges.push(Edge {
+                    verts: [VertexId(key.0), VertexId(key.1)],
+                    faces: Vec::new(),
+                    wire: true,
+                });
             }
         }
     }
@@ -350,5 +376,315 @@ impl EditMesh {
         mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
         mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
         mesh.insert_indices(Indices::U32(indices));
+    }
+
+    /// Recompute every vertex normal from the surrounding faces. Newell's
+    /// method returns an area-scaled normal, so summing the raw (unnormalized)
+    /// face vectors gives area weighting for free. Verts with no faces keep
+    /// their previous normal.
+    pub fn recompute_normals(&mut self) {
+        let mut acc = vec![Vec3::ZERO; self.vertices.len()];
+        for face in &self.faces {
+            let n = face.verts.len();
+            if n < 3 {
+                continue;
+            }
+            let mut normal = Vec3::ZERO;
+            for i in 0..n {
+                let a = self.vertices[face.verts[i].0 as usize].position;
+                let b = self.vertices[face.verts[(i + 1) % n].0 as usize].position;
+                normal += (a - b).cross(a + b);
+            }
+            for v in &face.verts {
+                acc[v.0 as usize] += normal;
+            }
+        }
+        for (v, n) in self.vertices.iter_mut().zip(acc) {
+            if let Some(n) = n.try_normalize() {
+                v.normal = n;
+            }
+        }
+    }
+
+    /// Split an edge into `cuts + 1` segments. The new vertices are inserted
+    /// into the vert cycle of **every** face using the edge (neighbours of a
+    /// loop-cut ring become 5-gons rather than getting a T-junction), ordered
+    /// from `verts[0]` toward `verts[1]`. Edge topology is left stale —
+    /// batch splits, then call [`Self::rebuild_edges`].
+    ///
+    /// Returns the new vertex ids ordered from the `verts[0]` side.
+    pub fn split_edge_multi(&mut self, edge: EdgeId, cuts: u32) -> Vec<VertexId> {
+        let Some(e) = self.edges.get(edge.0 as usize) else {
+            return Vec::new();
+        };
+        if cuts == 0 {
+            return Vec::new();
+        }
+        let (a, b) = (e.verts[0].0, e.verts[1].0);
+        let face_ids: Vec<FaceId> = e.faces.clone();
+        let va = self.vertices[a as usize].clone();
+        let vb = self.vertices[b as usize].clone();
+        let mut new_ids: Vec<VertexId> = Vec::with_capacity(cuts as usize);
+        for i in 1..=cuts {
+            let t = i as f32 / (cuts + 1) as f32;
+            let id = VertexId(self.vertices.len() as u32);
+            self.vertices.push(Vertex {
+                position: va.position.lerp(vb.position, t),
+                normal: va.normal.lerp(vb.normal, t).normalize_or_zero(),
+                uv: va.uv.lerp(vb.uv, t),
+            });
+            new_ids.push(id);
+        }
+        for fid in face_ids {
+            let Some(face) = self.faces.get_mut(fid.0 as usize) else {
+                continue;
+            };
+            let n = face.verts.len();
+            for i in 0..n {
+                let x = face.verts[i].0;
+                let y = face.verts[(i + 1) % n].0;
+                if x == a && y == b {
+                    // Cycle runs a→b: insert in forward order after position i.
+                    for (k, id) in new_ids.iter().enumerate() {
+                        face.verts.insert(i + 1 + k, *id);
+                    }
+                    break;
+                } else if x == b && y == a {
+                    // Cycle runs b→a: insert reversed so the geometric order
+                    // along the edge is preserved.
+                    for (k, id) in new_ids.iter().rev().enumerate() {
+                        face.verts.insert(i + 1 + k, *id);
+                    }
+                    break;
+                }
+            }
+        }
+        new_ids
+    }
+
+    /// Split an edge once at parameter `t` (measured from `verts[0]`).
+    /// Same face-cycle insertion rules as [`Self::split_edge_multi`]; edge
+    /// topology is left stale. Returns the new vertex.
+    pub fn split_edge_at(&mut self, edge: EdgeId, t: f32) -> Option<VertexId> {
+        let e = self.edges.get(edge.0 as usize)?;
+        let (a, b) = (e.verts[0].0, e.verts[1].0);
+        let face_ids: Vec<FaceId> = e.faces.clone();
+        let va = self.vertices[a as usize].clone();
+        let vb = self.vertices[b as usize].clone();
+        let new_id = VertexId(self.vertices.len() as u32);
+        self.vertices.push(Vertex {
+            position: va.position.lerp(vb.position, t),
+            normal: va.normal.lerp(vb.normal, t).normalize_or_zero(),
+            uv: va.uv.lerp(vb.uv, t),
+        });
+        for fid in face_ids {
+            let Some(face) = self.faces.get_mut(fid.0 as usize) else {
+                continue;
+            };
+            let n = face.verts.len();
+            for i in 0..n {
+                let x = face.verts[i].0;
+                let y = face.verts[(i + 1) % n].0;
+                if (x == a && y == b) || (x == b && y == a) {
+                    face.verts.insert(i + 1, new_id);
+                    break;
+                }
+            }
+        }
+        Some(new_id)
+    }
+
+    /// Split a face by a new edge between two of its (non-adjacent) vertices.
+    /// The original `FaceId` keeps the `va..=vb` arc; the returned new face
+    /// takes the `vb..=va` remainder. Edge topology is left stale.
+    pub fn split_face(&mut self, fid: FaceId, va: VertexId, vb: VertexId) -> Option<FaceId> {
+        let face = self.faces.get(fid.0 as usize)?;
+        let n = face.verts.len();
+        let ia = face.verts.iter().position(|v| *v == va)?;
+        let ib = face.verts.iter().position(|v| *v == vb)?;
+        if ia == ib {
+            return None;
+        }
+        // Refuse to split along an existing boundary edge (adjacent verts).
+        if (ia + 1) % n == ib || (ib + 1) % n == ia {
+            return None;
+        }
+        let mut first: Vec<VertexId> = Vec::new();
+        let mut i = ia;
+        loop {
+            first.push(face.verts[i]);
+            if i == ib {
+                break;
+            }
+            i = (i + 1) % n;
+        }
+        let mut second: Vec<VertexId> = Vec::new();
+        let mut i = ib;
+        loop {
+            second.push(face.verts[i]);
+            if i == ia {
+                break;
+            }
+            i = (i + 1) % n;
+        }
+        self.faces[fid.0 as usize].verts = first;
+        self.faces[fid.0 as usize].edges.clear();
+        let new_id = FaceId(self.faces.len() as u32);
+        self.faces.push(Face {
+            verts: second,
+            edges: Vec::new(),
+        });
+        Some(new_id)
+    }
+
+    /// Weld vertices: every key in `target_map` is replaced by its value
+    /// (chains are resolved). Faces are remapped, consecutive duplicates
+    /// collapse, and faces left with fewer than 3 distinct verts die. Unused
+    /// vertices are compacted away. Rebuilds edge topology.
+    pub fn weld_verts(&mut self, target_map: &HashMap<u32, u32>) {
+        if target_map.is_empty() {
+            return;
+        }
+        let resolve = |mut v: u32| -> u32 {
+            // Resolve chains (a→b, b→c). Guard against accidental cycles.
+            let mut hops = 0;
+            while let Some(&next) = target_map.get(&v) {
+                if next == v || hops > 64 {
+                    break;
+                }
+                v = next;
+                hops += 1;
+            }
+            v
+        };
+
+        for face in &mut self.faces {
+            for v in &mut face.verts {
+                v.0 = resolve(v.0);
+            }
+            // Collapse consecutive duplicates around the cycle.
+            let mut deduped: Vec<VertexId> = Vec::with_capacity(face.verts.len());
+            for v in &face.verts {
+                if deduped.last() != Some(v) {
+                    deduped.push(*v);
+                }
+            }
+            while deduped.len() > 1 && deduped.first() == deduped.last() {
+                deduped.pop();
+            }
+            face.verts = deduped;
+        }
+        self.faces.retain(|f| {
+            let unique: std::collections::HashSet<u32> = f.verts.iter().map(|v| v.0).collect();
+            unique.len() >= 3
+        });
+
+        // Remap wire edges; drop those that collapsed to a point.
+        for e in &mut self.edges {
+            if e.wire {
+                e.verts[0].0 = resolve(e.verts[0].0);
+                e.verts[1].0 = resolve(e.verts[1].0);
+            }
+        }
+        self.edges.retain(|e| !e.wire || e.verts[0] != e.verts[1]);
+
+        self.compact_verts();
+        self.rebuild_edges();
+    }
+
+    /// Drop vertices not referenced by any face or wire edge and remap all
+    /// references. Call after ops that orphan verts (weld, delete).
+    pub fn compact_verts(&mut self) {
+        let mut used = vec![false; self.vertices.len()];
+        for f in &self.faces {
+            for v in &f.verts {
+                used[v.0 as usize] = true;
+            }
+        }
+        for e in &self.edges {
+            if e.wire {
+                used[e.verts[0].0 as usize] = true;
+                used[e.verts[1].0 as usize] = true;
+            }
+        }
+        if used.iter().all(|u| *u) {
+            return;
+        }
+        let mut remap: Vec<u32> = vec![u32::MAX; self.vertices.len()];
+        let mut kept: Vec<Vertex> = Vec::with_capacity(self.vertices.len());
+        for (i, v) in self.vertices.iter().enumerate() {
+            if used[i] {
+                remap[i] = kept.len() as u32;
+                kept.push(v.clone());
+            }
+        }
+        self.vertices = kept;
+        for f in &mut self.faces {
+            for v in &mut f.verts {
+                v.0 = remap[v.0 as usize];
+            }
+        }
+        for e in &mut self.edges {
+            e.verts[0].0 = remap[e.verts[0].0 as usize];
+            e.verts[1].0 = remap[e.verts[1].0 as usize];
+        }
+    }
+
+    /// Remove the given vertices plus every face and wire edge touching
+    /// them, then compact. Rebuilds edge topology.
+    pub fn remove_verts(&mut self, dead: &std::collections::HashSet<u32>) {
+        if dead.is_empty() {
+            return;
+        }
+        self.faces
+            .retain(|f| !f.verts.iter().any(|v| dead.contains(&v.0)));
+        self.edges.retain(|e| {
+            !e.wire || (!dead.contains(&e.verts[0].0) && !dead.contains(&e.verts[1].0))
+        });
+        // Verts referenced by nothing get dropped by compact; verts in `dead`
+        // are by construction unreferenced now.
+        self.compact_verts();
+        self.rebuild_edges();
+    }
+
+    /// Centroid of a face's vertices.
+    pub fn face_centroid(&self, face: &Face) -> Vec3 {
+        if face.verts.is_empty() {
+            return Vec3::ZERO;
+        }
+        face.verts
+            .iter()
+            .map(|v| self.vertices[v.0 as usize].position)
+            .sum::<Vec3>()
+            / face.verts.len() as f32
+    }
+
+    /// Axis-aligned bounds of all vertices. `None` when empty.
+    pub fn bounds(&self) -> Option<(Vec3, Vec3)> {
+        let mut it = self.vertices.iter();
+        let first = it.next()?.position;
+        let mut min = first;
+        let mut max = first;
+        for v in it {
+            min = min.min(v.position);
+            max = max.max(v.position);
+        }
+        Some((min, max))
+    }
+
+    /// 1-ring vertex adjacency (across face edges + wire edges), used by
+    /// smooth brushes and dissolve.
+    pub fn vertex_neighbors(&self) -> Vec<Vec<u32>> {
+        let mut out: Vec<Vec<u32>> = vec![Vec::new(); self.vertices.len()];
+        for e in &self.edges {
+            let (a, b) = (e.verts[0].0, e.verts[1].0);
+            if !out[a as usize].contains(&b) {
+                out[a as usize].push(b);
+            }
+            if !out[b as usize].contains(&a) {
+                out[b as usize].push(a);
+            }
+        }
+        out
     }
 }

@@ -313,10 +313,16 @@ impl UndoCommand for SpawnShapeCmd {
             return;
         };
         let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
+        // Fresh shapes wear the engine checker as their "no texture yet"
+        // look, tinted by the preset color.
+        let checker = world
+            .get_resource::<renzora::core::CheckerTexture>()
+            .map(|c| c.0.clone());
         let material = world
             .resource_mut::<Assets<StandardMaterial>>()
             .add(StandardMaterial {
                 base_color: self.color,
+                base_color_texture: checker,
                 perceptual_roughness: 0.9,
                 ..default()
             });
@@ -385,10 +391,16 @@ impl UndoCommand for DeleteShapesCmd {
                 continue;
             };
             let mesh = create_mesh(&mut world.resource_mut::<Assets<Mesh>>());
+            // Same default material as SpawnShapeCmd, checker included, so
+            // undoing a delete doesn't bring the shape back flat.
+            let checker = world
+                .get_resource::<renzora::core::CheckerTexture>()
+                .map(|c| c.0.clone());
             let material = world
                 .resource_mut::<Assets<StandardMaterial>>()
                 .add(StandardMaterial {
                     base_color: item.color,
+                    base_color_texture: checker,
                     perceptual_roughness: 0.9,
                     ..default()
                 });

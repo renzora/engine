@@ -112,6 +112,10 @@ let ng = node_graph(commands, fonts);
 
 > The **Gallery** workspace in the editor is a living catalog of this widget set — open it to see every widget rendered live with its current theme.
 
+### Tooltips (`HoverTooltip`)
+
+Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
+
 ### Code editor (`code_editor`)
 
 The `code_editor` widget is a monospace, syntax-highlighted, editable text view. It owns no document model: the host crate attaches a `CodeBindingSpec` (via `bind_code`) of closures that shuttle text in and out — `doc_key` (document identity), `load`, `store`, `make_highlighter` (a per-language tokenizer producing colored `CodeToken` runs), and an optional `font_size` (the live zoom). `renzora_code_editor` wires this to its `CodeEditorState` (open files, active tab, zoom).

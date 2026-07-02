@@ -87,65 +87,17 @@ pub struct DefaultCheckerTexture(pub Handle<Image>);
 
 impl FromWorld for DefaultCheckerTexture {
     fn from_world(world: &mut World) -> Self {
-        let image = build_checker_image();
+        // Reuse the engine-wide handle when it's already there (the runtime
+        // inserts renzora::core::CheckerTexture at startup) so Textures-off
+        // and "fresh untextured shape" share one image; otherwise build it
+        // from the same contract-crate source of truth.
+        if let Some(shared) = world.get_resource::<renzora::core::CheckerTexture>() {
+            return Self(shared.0.clone());
+        }
+        let image = renzora::core::build_checker_image();
         let mut images = world.resource_mut::<Assets<Image>>();
         Self(images.add(image))
     }
-}
-
-/// Encode a linear grey value to the sRGB bytes an `Rgba8UnormSrgb` texture
-/// decodes back to that same linear value on sample (so lighting matches the
-/// terrain checker, whose colors are specified in linear space).
-fn checker_srgb_bytes(linear: f32) -> [u8; 4] {
-    let s = Srgba::from(LinearRgba::new(linear, linear, linear, 1.0));
-    [
-        (s.red * 255.0).round() as u8,
-        (s.green * 255.0).round() as u8,
-        (s.blue * 255.0).round() as u8,
-        255,
-    ]
-}
-
-/// Bake the terrain-default grey checkerboard into a small point-sampled,
-/// repeating texture. Tiles crisply across a mesh's UVs (and wraps for UVs
-/// outside 0..1), the closest `StandardMaterial` equivalent of terrain's
-/// world-space procedural checker.
-fn build_checker_image() -> Image {
-    use bevy::asset::RenderAssetUsages;
-    use bevy::image::{ImageAddressMode, ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
-    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-
-    // TerrainCheckerboardMaterial::default() colors (linear grey).
-    let a = checker_srgb_bytes(0.32);
-    let b = checker_srgb_bytes(0.22);
-    const CELLS: usize = 2; // checker squares per axis across one UV tile
-    const SIZE: usize = CELLS * 2; // 2 px/cell — point-sampled, stays sharp
-    let mut data = Vec::with_capacity(SIZE * SIZE * 4);
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let on = ((x / 2) + (y / 2)) % 2 == 0;
-            data.extend_from_slice(if on { &a } else { &b });
-        }
-    }
-    let mut image = Image::new(
-        Extent3d {
-            width: SIZE as u32,
-            height: SIZE as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
-    );
-    image.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-        address_mode_u: ImageAddressMode::Repeat,
-        address_mode_v: ImageAddressMode::Repeat,
-        mag_filter: ImageFilterMode::Nearest,
-        min_filter: ImageFilterMode::Nearest,
-        ..default()
-    });
-    image
 }
 
 // ── Debug material swap state (visualization modes) ─────────────────────────

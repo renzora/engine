@@ -174,9 +174,17 @@ fn active_tool_is(expected: ActiveTool) -> impl FnMut(Option<Res<ActiveTool>>) -
     move |tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| *t == expected)
 }
 
-/// Toolbar visibility predicate: true if any entity in the world has `TerrainData`.
+/// Toolbar visibility predicate: a terrain exists AND the viewport is in
+/// Scene mode. The mesh Edit/Sculpt modes have their own toolbar section;
+/// showing terrain brushes there reads as the wrong tool set (they don't
+/// operate on the edited mesh).
 fn terrain_exists_in_scene(world: &World) -> bool {
-    first_terrain_entity(world).is_some()
+    use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
+    let scene_mode = world
+        .get_resource::<ViewportSettings>()
+        .map(|s| s.viewport_mode == ViewportMode::Scene)
+        .unwrap_or(true);
+    scene_mode && first_terrain_entity(world).is_some()
 }
 
 fn first_terrain_entity(world: &World) -> Option<Entity> {

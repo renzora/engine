@@ -97,6 +97,11 @@ pub fn exit_edit_mode(
         if let (Ok(edit), Ok(mesh3d)) = (edit_q.get(target), mesh_q.get(target)) {
             if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
                 edit.bake_to_mesh(&mut mesh);
+                if let Some(snapshot) = renzora::core::EditedMesh::from_mesh(&mesh) {
+                    commands
+                        .entity(target)
+                        .try_insert((snapshot, renzora::core::EditedMeshApplied));
+                }
             }
         }
         commands.entity(target).remove::<EditMesh>();
@@ -109,17 +114,98 @@ pub fn switch_select_mode(
     keys: Res<ButtonInput<KeyCode>>,
     input_focus: Res<InputFocusState>,
     mut sel: ResMut<MeshSelection>,
+    edit_q: Query<&EditMesh>,
 ) {
     // Don't hijack the digit keys while the user is typing into a UI field.
     if input_focus.ui_wants_keyboard {
         return;
     }
-    if keys.just_pressed(KeyCode::Digit1) {
-        sel.mode = SelectMode::Vertex;
+    let new_mode = if keys.just_pressed(KeyCode::Digit1) {
+        SelectMode::Vertex
     } else if keys.just_pressed(KeyCode::Digit2) {
-        sel.mode = SelectMode::Edge;
+        SelectMode::Edge
     } else if keys.just_pressed(KeyCode::Digit3) {
-        sel.mode = SelectMode::Face;
+        SelectMode::Face
+    } else {
+        return;
+    };
+    if new_mode == sel.mode {
+        return;
+    }
+    let old_mode = sel.mode;
+    sel.mode = new_mode;
+    // Flush the selection across modes (Blender-style): the old mode's
+    // selection converts into the new mode's terms.
+    let Some(edit) = sel.target.and_then(|t| edit_q.get(t).ok()) else {
+        return;
+    };
+    convert_selection(edit, &mut sel, old_mode, new_mode);
+}
+
+/// Switch the element select mode from `&mut World` context (toolbar and
+/// panel buttons), with the same selection flush the 1/2/3 keys perform.
+pub fn set_select_mode(world: &mut World, new_mode: SelectMode) {
+    world.resource_scope(|world, mut sel: Mut<MeshSelection>| {
+        if sel.mode == new_mode {
+            return;
+        }
+        let old = sel.mode;
+        sel.mode = new_mode;
+        if let Some(edit) = sel.target.and_then(|t| world.get::<EditMesh>(t)) {
+            convert_selection(edit, &mut sel, old, new_mode);
+        }
+    });
+}
+
+/// Blender's up/down selection flush: down (verts of edges/faces) is a
+/// straight expansion; up (edges/faces from verts) requires full coverage.
+fn convert_selection(
+    edit: &EditMesh,
+    sel: &mut MeshSelection,
+    from: SelectMode,
+    to: SelectMode,
+) {
+    use crate::edit_mesh::{EdgeId, FaceId};
+    // Derive the vert set from whatever the old mode had selected.
+    let verts: std::collections::HashSet<u32> = match from {
+        SelectMode::Vertex => sel.verts.iter().map(|v| v.0).collect(),
+        SelectMode::Edge => sel
+            .edges
+            .iter()
+            .filter_map(|e| edit.edges.get(e.0 as usize))
+            .flat_map(|e| [e.verts[0].0, e.verts[1].0])
+            .collect(),
+        SelectMode::Face => sel
+            .faces
+            .iter()
+            .filter_map(|f| edit.faces.get(f.0 as usize))
+            .flat_map(|f| f.verts.iter().map(|v| v.0))
+            .collect(),
+    };
+    match to {
+        SelectMode::Vertex => {
+            sel.verts = verts.into_iter().map(VertexId).collect();
+        }
+        SelectMode::Edge => {
+            sel.edges = edit
+                .edges
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| verts.contains(&e.verts[0].0) && verts.contains(&e.verts[1].0))
+                .map(|(i, _)| EdgeId(i as u32))
+                .collect();
+        }
+        SelectMode::Face => {
+            sel.faces = edit
+                .faces
+                .iter()
+                .enumerate()
+                .filter(|(_, f)| {
+                    !f.verts.is_empty() && f.verts.iter().all(|v| verts.contains(&v.0))
+                })
+                .map(|(i, _)| FaceId(i as u32))
+                .collect();
+        }
     }
 }
 
@@ -165,6 +251,7 @@ pub fn pick_element(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     grab: Res<GrabState>,
+    loop_cut: Res<crate::tools::LoopCutState>,
     viewport: Option<Res<ViewportState>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
@@ -174,7 +261,12 @@ pub fn pick_element(
     mut active_tool: ResMut<ActiveTool>,
     mut commands: Commands,
 ) {
-    if matches!(*grab, GrabState::Active { .. }) {
+    // Busy or just-finished grabs / loop cuts own the mouse — a commit click
+    // must not double as a pick.
+    if !matches!(*grab, GrabState::Idle) {
+        return;
+    }
+    if !matches!(*loop_cut, crate::tools::LoopCutState::Idle) {
         return;
     }
     if !mouse.just_pressed(MouseButton::Left) {
@@ -403,6 +495,9 @@ pub fn extrude_system(
         plane_point: centroid_world,
         axis,
         starts,
+        // Symmetry doesn't apply to extrude-seeded grabs: the mirrored side
+        // would need its own extrusion, which the op didn't create.
+        mirror_starts: Vec::new(),
         seeded_by_op: true,
     };
 }
@@ -413,6 +508,10 @@ pub fn extrude_system(
 pub enum GrabState {
     #[default]
     Idle,
+    /// A grab committed or cancelled this frame. Blocks `pick_element`
+    /// (which runs later in the chain) from also consuming the same click;
+    /// `grab_update` converts it back to `Idle` next frame.
+    JustFinished,
     Active {
         /// Origin of the total-delta measurement in world space. For
         /// view-plane grab this is the initial cursor hit; when an axis is
@@ -426,11 +525,41 @@ pub enum GrabState {
         axis: Option<Vec3>,
         /// (vertex index, original local position).
         starts: Vec<(u32, Vec3)>,
+        /// X-symmetry partners: verts mirroring the grabbed ones across the
+        /// local X plane. They receive the delta with `x` negated.
+        mirror_starts: Vec<(u32, Vec3)>,
         /// True when this grab was seeded by a topology op (extrude, inset,
         /// etc.) that already pushed a snapshot undo command. Cancelling
         /// must roll that op back by popping it off the undo stack.
         seeded_by_op: bool,
     },
+}
+
+/// Find the X-symmetry partner verts for a set of grabbed verts: the vert
+/// nearest each grabbed vert's mirrored position (within tolerance) that
+/// isn't itself grabbed. Verts sitting on the mirror plane pair with nothing.
+pub(crate) fn mirror_partners(edit: &EditMesh, grabbed: &[(u32, Vec3)]) -> Vec<(u32, Vec3)> {
+    const EPS: f32 = 1e-4;
+    let grabbed_set: std::collections::HashSet<u32> = grabbed.iter().map(|(i, _)| *i).collect();
+    let mut out: Vec<(u32, Vec3)> = Vec::new();
+    let mut taken: std::collections::HashSet<u32> = Default::default();
+    for (_, pos) in grabbed {
+        if pos.x.abs() <= EPS {
+            continue;
+        }
+        let mirrored = Vec3::new(-pos.x, pos.y, pos.z);
+        let found = edit
+            .vertices
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !grabbed_set.contains(&(*i as u32)) && !taken.contains(&(*i as u32)))
+            .find(|(_, v)| v.position.distance_squared(mirrored) < EPS * EPS);
+        if let Some((i, v)) = found {
+            taken.insert(i as u32);
+            out.push((i as u32, v.position));
+        }
+    }
+    out
 }
 
 pub fn grab_start(
@@ -441,6 +570,7 @@ pub fn grab_start(
     camera_q: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     edit_q: Query<(&EditMesh, &GlobalTransform)>,
     sel: Res<MeshSelection>,
+    modeling: Res<crate::tools::ModelingSettings>,
     mut grab: ResMut<GrabState>,
 ) {
     if input_focus.ui_wants_keyboard {
@@ -487,6 +617,11 @@ pub fn grab_start(
         .iter()
         .map(|&id| (id, edit.vertices[id as usize].position))
         .collect();
+    let mirror_starts = if modeling.symmetry_x {
+        mirror_partners(edit, &starts)
+    } else {
+        Vec::new()
+    };
 
     *grab = GrabState::Active {
         anchor_world: hit,
@@ -494,6 +629,7 @@ pub fn grab_start(
         plane_point: centroid_world,
         axis: None,
         starts,
+        mirror_starts,
         seeded_by_op: false,
     };
 }
@@ -509,25 +645,33 @@ pub fn grab_update(
     mut grab: ResMut<GrabState>,
     mut commands: Commands,
 ) {
-    let (mut anchor_world, plane_normal, plane_point, mut axis, starts, seeded_by_op) = match &*grab
-    {
-        GrabState::Active {
-            anchor_world,
-            plane_normal,
-            plane_point,
-            axis,
-            starts,
-            seeded_by_op,
-        } => (
-            *anchor_world,
-            *plane_normal,
-            *plane_point,
-            *axis,
-            starts.clone(),
-            *seeded_by_op,
-        ),
-        GrabState::Idle => return,
-    };
+    // One-frame cooldown after a commit/cancel so the click that ended the
+    // grab isn't reinterpreted by later systems this frame.
+    if matches!(*grab, GrabState::JustFinished) {
+        *grab = GrabState::Idle;
+        return;
+    }
+    let (mut anchor_world, plane_normal, plane_point, mut axis, starts, mirror_starts, seeded_by_op) =
+        match &*grab {
+            GrabState::Active {
+                anchor_world,
+                plane_normal,
+                plane_point,
+                axis,
+                starts,
+                mirror_starts,
+                seeded_by_op,
+            } => (
+                *anchor_world,
+                *plane_normal,
+                *plane_point,
+                *axis,
+                starts.clone(),
+                mirror_starts.clone(),
+                *seeded_by_op,
+            ),
+            _ => return,
+        };
     let Some(target) = sel.target else {
         *grab = GrabState::Idle;
         return;
@@ -547,12 +691,12 @@ pub fn grab_update(
                 renzora_undo::undo_once(world);
             });
         } else {
-            for (id, start) in &starts {
+            for (id, start) in starts.iter().chain(mirror_starts.iter()) {
                 edit.vertices[*id as usize].position = *start;
             }
             edit.dirty = true;
         }
-        *grab = GrabState::Idle;
+        *grab = GrabState::JustFinished;
         return;
     }
 
@@ -560,6 +704,7 @@ pub fn grab_update(
     if mouse.just_pressed(MouseButton::Left) {
         let deltas: Vec<(u32, Vec3, Vec3)> = starts
             .iter()
+            .chain(mirror_starts.iter())
             .filter_map(|(id, old)| {
                 let new = edit.vertices.get(*id as usize)?.position;
                 if (new - *old).length_squared() > 1e-12 {
@@ -579,7 +724,7 @@ pub fn grab_update(
             });
         }
         edit.dirty = true;
-        *grab = GrabState::Idle;
+        *grab = GrabState::JustFinished;
         return;
     }
 
@@ -624,11 +769,12 @@ pub fn grab_update(
             plane_point,
             axis,
             starts: starts.clone(),
+            mirror_starts: mirror_starts.clone(),
             seeded_by_op,
         };
         // Snap verts back to their start — subsequent frames will move
         // along the new constraint from zero.
-        for (id, start) in &starts {
+        for (id, start) in starts.iter().chain(mirror_starts.iter()) {
             edit.vertices[*id as usize].position = *start;
         }
         edit.dirty = true;
@@ -653,6 +799,11 @@ pub fn grab_update(
     for (id, start) in &starts {
         edit.vertices[*id as usize].position = *start + delta_local;
     }
+    // Symmetry partners take the delta with X flipped.
+    let delta_mirror = Vec3::new(-delta_local.x, delta_local.y, delta_local.z);
+    for (id, start) in &mirror_starts {
+        edit.vertices[*id as usize].position = *start + delta_mirror;
+    }
     edit.dirty = true;
 }
 
@@ -660,14 +811,24 @@ pub fn grab_update(
 
 pub fn bake_if_dirty(
     mut meshes: ResMut<Assets<Mesh>>,
-    mut edit_q: Query<(&mut EditMesh, &Mesh3d)>,
+    mut edit_q: Query<(Entity, &mut EditMesh, &Mesh3d)>,
+    mut commands: Commands,
 ) {
-    for (mut edit, mesh3d) in &mut edit_q {
+    for (entity, mut edit, mesh3d) in &mut edit_q {
         if !edit.dirty {
             continue;
         }
         if let Some(mut mesh) = meshes.get_mut(&mesh3d.0) {
             edit.bake_to_mesh(&mut mesh);
+            // Persist the edit: scene saves carry the geometry, and the
+            // rehydrator rebuilds it on load instead of the pristine
+            // primitive / glTF source. The Applied marker keeps the
+            // rehydrator's hands off while we're live-editing.
+            if let Some(snapshot) = renzora::core::EditedMesh::from_mesh(&mesh) {
+                commands
+                    .entity(entity)
+                    .try_insert((snapshot, renzora::core::EditedMeshApplied));
+            }
         }
         edit.dirty = false;
     }
@@ -779,7 +940,7 @@ fn selected_vert_ids(edit: &EditMesh, sel: &MeshSelection) -> Vec<u32> {
     }
 }
 
-fn viewport_cursor(
+pub(crate) fn viewport_cursor(
     viewport: &Option<Res<ViewportState>>,
     window_q: &Query<&Window, With<PrimaryWindow>>,
 ) -> Option<Vec2> {
@@ -846,7 +1007,7 @@ fn ray_plane(origin: Vec3, dir: Vec3, plane_point: Vec3, normal: Vec3) -> Option
     Some(origin + dir * t)
 }
 
-fn ray_triangle(origin: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> Option<f32> {
+pub(crate) fn ray_triangle(origin: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> Option<f32> {
     // Möller–Trumbore.
     let e1 = v1 - v0;
     let e2 = v2 - v0;
@@ -873,7 +1034,7 @@ fn ray_triangle(origin: Vec3, dir: Vec3, v0: Vec3, v1: Vec3, v2: Vec3) -> Option
     Some(t)
 }
 
-fn point_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+pub(crate) fn point_to_segment(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     let ab = b - a;
     let len2 = ab.length_squared();
     if len2 < 1e-6 {

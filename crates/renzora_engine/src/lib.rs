@@ -264,6 +264,7 @@ impl Plugin for RuntimePlugin {
         apply_rendering_mode(app, initial_mode);
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
+            .register_type::<renzora::core::EditedMesh>()
             .register_type::<MeshInstanceData>()
             .register_type::<SceneCamera>()
             .register_type::<renzora::SceneInstance>()
@@ -282,6 +283,24 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
+
+        // Engine-wide checker handle for untextured primitives. Registered
+        // UNCONDITIONALLY (editor and game sessions both spawn shapes) —
+        // it must not live in the `!is_editor` startup block below, where a
+        // first version of this silently never ran in the editor. Built at
+        // plugin-build time so the editor bundle's later
+        // `DefaultCheckerTexture::from_world` finds and reuses the handle;
+        // `add_default_rendering` runs before the engine plugins, so
+        // `Assets<Image>` already exists (headless server: it doesn't, and
+        // the checker is correctly skipped).
+        #[cfg(feature = "render_3d")]
+        if app.world().contains_resource::<Assets<Image>>() {
+            let handle = app
+                .world_mut()
+                .resource_mut::<Assets<Image>>()
+                .add(renzora::core::build_checker_image());
+            app.insert_resource(renzora::core::CheckerTexture(handle));
+        }
 
         // Register the .rmip asset loader so import-baked mipmapped
         // textures can be loaded via `asset_server.load("...rmip")`.
@@ -469,7 +488,13 @@ impl Plugin for RuntimePlugin {
             // purely visual, so it also skips on a dedicated server (no render
             // world; its `server.rpak` strips meshes, avoiding "Path not found").
             #[cfg(feature = "render_3d")]
-            app.add_systems(Update, scene_io::rehydrate_meshes)
+            // `apply_edited_meshes` is chained after the primitive rehydrate
+            // so an edited primitive's geometry deterministically wins the
+            // same-frame `Mesh3d` insert race.
+            app.add_systems(
+                Update,
+                (scene_io::rehydrate_meshes, scene_io::apply_edited_meshes).chain(),
+            )
                 .add_systems(
                     Update,
                     (

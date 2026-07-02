@@ -191,6 +191,11 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         |s| s.show_grid_2d,
         |s, v| s.show_grid_2d = v,
     );
+    // Grid cell size, in world units — its own setting, deliberately NOT the
+    // translate-snap step (tying them together made the snap pill silently
+    // restyle the grid). Shown only while the grid switch is on (its own
+    // visibility system, not `TwoDOnly` — one writer of `Node.display`).
+    let grid_size = grid_size_input(commands, fonts);
     let ruler_gap = gap(commands, 6.0);
     let ruler_switch = switch_2d(
         commands,
@@ -264,11 +269,78 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
         undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd, space_gap, space_btn,
-        center_gap, view_dd, mode_dd, zoom_readout, grid_gap, grid_switch, ruler_gap, ruler_switch,
-        gap5, translate, rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd, camera_dd,
-        gap4, maximize,
+        center_gap, view_dd, mode_dd, zoom_readout, grid_gap, grid_switch, grid_size, ruler_gap,
+        ruler_switch, gap5, translate, rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd,
+        camera_dd, gap4, maximize,
     ]);
     row
+}
+
+/// Marker on the 2D grid-size pill (visible only in 2D view with the grid on).
+#[derive(Component)]
+struct GridSize2dInput;
+
+/// A scrubbable whole-unit input for `ViewportSettings.grid_size_2d`, in a
+/// pill next to the Grid switch.
+fn grid_size_input(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), 1.0, 0.2);
+    commands.entity(dv).insert((
+        DragRange { min: 1.0, max: 1024.0 },
+        // Whole world units — a fractional grid size is never what a tile
+        // artist wants, and int snapping keeps the readout stable (see the
+        // DragSnap docs for the read-back rule).
+        renzora_ember::widgets::DragSnap(1.0),
+    ));
+    bind_2way(
+        commands,
+        dv,
+        |w: &World| {
+            w.get_resource::<ViewportSettings>()
+                .map(|s| s.grid_size_2d)
+                .unwrap_or(16.0)
+        },
+        |w: &mut World, v: &f32| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                let want = v.round().max(1.0);
+                if s.grid_size_2d != want {
+                    s.grid_size_2d = want;
+                }
+            }
+        },
+    );
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect::horizontal(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(hover_bg())),
+            GridSize2dInput,
+            Name::new("vp-2d-grid-size"),
+        ))
+        .id();
+    commands.entity(row).add_child(dv);
+    row
+}
+
+/// Show the grid-size pill only while the 2D grid is actually drawn (2D view
+/// AND the Grid switch on). Not `TwoDOnly` — that system would fight this one
+/// over `Node.display`.
+fn update_grid_size_input(
+    settings: Option<Res<ViewportSettings>>,
+    mut q: Query<&mut Node, With<GridSize2dInput>>,
+) {
+    let Some(settings) = settings else { return };
+    let show = settings.viewport_view == ViewportView::Two && settings.show_grid_2d;
+    for mut n in &mut q {
+        let want = if show { Display::Flex } else { Display::None };
+        if n.display != want {
+            n.display = want;
+        }
+    }
 }
 
 /// 2D-only label + ember switch, two-way bound to a `ViewportSettings` bool
@@ -468,6 +540,7 @@ pub(crate) fn register(app: &mut App) {
                 update_space_toggle,
                 panel_toggle_dismiss,
                 update_two_d_only,
+                update_grid_size_input,
                 update_zoom_readout,
             ),
         )
@@ -2251,6 +2324,7 @@ fn tool_button(
                 activate: entry.activate.clone(),
             },
             HoverCursor(SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(entry.tooltip),
             Name::new(format!("vp-tool:{}", entry.id)),
         ))
         .id();

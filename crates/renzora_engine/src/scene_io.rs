@@ -1650,6 +1650,7 @@ pub fn rehydrate_meshes(
     registry: Res<ShapeRegistry>,
     mut meshes: Option<ResMut<Assets<Mesh>>>,
     mut materials: Option<ResMut<Assets<StandardMaterial>>>,
+    checker: Option<Res<renzora::core::CheckerTexture>>,
 ) {
     let (Some(mut meshes), Some(mut materials)) = (meshes, materials) else {
         return;
@@ -1668,14 +1669,50 @@ pub fn rehydrate_meshes(
         }
 
         let base_color = color.map_or(Color::WHITE, |c| c.0);
+        // Same "no texture yet" checker the shape was spawned with — a
+        // reloaded untextured primitive shouldn't come back flat.
         let material = materials.add(StandardMaterial {
             base_color,
+            base_color_texture: checker.as_ref().map(|c| c.0.clone()),
             ..default()
         });
 
         commands
             .entity(entity)
             .try_insert((Mesh3d(mesh), MeshMaterial3d(material)));
+    }
+}
+
+/// Apply persisted mesh edits after scene load: entities carrying an
+/// [`renzora::core::EditedMesh`] without the applied marker get a fresh
+/// `Mesh3d` built from the stored geometry. Runs after `rehydrate_meshes`
+/// (chained at registration) so the edit override deterministically replaces
+/// the primitive/glTF mesh. The editor inserts the marker itself when baking,
+/// so live edits never round-trip through here.
+#[cfg(feature = "render_3d")]
+pub fn apply_edited_meshes(
+    mut commands: Commands,
+    query: Query<
+        (Entity, &renzora::core::EditedMesh),
+        Without<renzora::core::EditedMeshApplied>,
+    >,
+    mut meshes: Option<ResMut<Assets<Mesh>>>,
+) {
+    let Some(meshes) = meshes.as_mut() else {
+        return;
+    };
+    for (entity, edited) in &query {
+        if edited.positions.len() < 9 || edited.indices.len() < 3 {
+            // Degenerate payload — don't build an empty mesh over the source.
+            commands
+                .entity(entity)
+                .try_insert(renzora::core::EditedMeshApplied);
+            continue;
+        }
+        let handle = meshes.add(edited.to_mesh());
+        commands
+            .entity(entity)
+            .try_insert((Mesh3d(handle), renzora::core::EditedMeshApplied));
     }
 }
 
@@ -1815,11 +1852,20 @@ pub fn apply_sprite_sheet_crop(
             let idx = sheet.frame % (hframes * vframes);
             let col = (idx % hframes) as f32;
             let row = (idx / hframes) as f32;
+            // Inset the rect by a whisker on every side. At a fractional
+            // camera zoom, the interpolated UV at a quad edge can overshoot
+            // the cell boundary by float error; with nearest sampling that
+            // one-boundary miss fetches the NEIGHBOURING cell's edge texel,
+            // painting a 1px line down the whole tile edge (colored bleed —
+            // or a "gap" when the neighbour texel is transparent). 0.05px is
+            // far above the interpolation error and far below a visible
+            // sampling shift.
+            const EDGE_INSET: f32 = 0.05;
             Some(Rect::new(
-                col * frame_w,
-                row * frame_h,
-                (col + 1.0) * frame_w,
-                (row + 1.0) * frame_h,
+                col * frame_w + EDGE_INSET,
+                row * frame_h + EDGE_INSET,
+                (col + 1.0) * frame_w - EDGE_INSET,
+                (row + 1.0) * frame_h - EDGE_INSET,
             ))
         };
         if sprite.rect != desired {

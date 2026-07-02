@@ -238,6 +238,7 @@ pub fn update_shape_drag_preview(
     mut materials: ResMut<Assets<StandardMaterial>>,
     drag_state: Res<ShapeDragState>,
     registry: Res<ShapeRegistry>,
+    checker: Option<Res<renzora::core::CheckerTexture>>,
     mut preview_state: ResMut<ShapeDragPreviewState>,
     mut transform_query: Query<&mut Transform, With<ShapeDragPreview>>,
     visibility_query: Query<&Visibility, With<ShapeDragPreview>>,
@@ -257,8 +258,11 @@ pub fn update_shape_drag_preview(
             };
 
             let mesh = (entry.create_mesh)(&mut meshes);
+            // Match the checker the committed spawn will get so the preview
+            // doesn't visibly "change material" on drop.
             let material = materials.add(StandardMaterial {
                 base_color: Color::srgb(0.8, 0.7, 0.6),
+                base_color_texture: checker.as_ref().map(|c| c.0.clone()),
                 ..default()
             });
 
@@ -297,6 +301,7 @@ pub fn update_shape_drag_preview(
             let mesh = (entry.create_mesh)(&mut meshes);
             let material = materials.add(StandardMaterial {
                 base_color: Color::srgb(0.8, 0.7, 0.6),
+                base_color_texture: checker.as_ref().map(|c| c.0.clone()),
                 ..default()
             });
 

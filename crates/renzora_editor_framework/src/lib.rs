@@ -673,10 +673,25 @@ pub fn is_terrain_selected(world: &World) -> bool {
 
 /// Register the built-in Transform tools with the [`ToolbarRegistry`].
 /// Predicate: transform gizmo tools are hidden in 2D view (the 2D editor uses
-/// direct pick/drag, not the 3D translate/rotate/scale gizmos).
+/// direct pick/drag, not the 3D translate/rotate/scale gizmos) and in the
+/// mesh Edit/Sculpt modes (element editing disengages the entity gizmo, so
+/// the buttons would be dead weight next to the modeling section).
 fn visible_when_not_2d(w: &World) -> bool {
-    w.get_resource::<renzora::core::viewport_types::ViewportSettings>()
-        .map(|s| s.viewport_view != renzora::core::viewport_types::ViewportView::Two)
+    use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportView};
+    w.get_resource::<ViewportSettings>()
+        .map(|s| {
+            s.viewport_view != ViewportView::Two
+                && !matches!(s.viewport_mode, ViewportMode::Edit | ViewportMode::Sculpt)
+        })
+        .unwrap_or(true)
+}
+
+/// Hide in the mesh Edit/Sculpt modes only — for Select, which unlike the
+/// gizmo tools stays useful in the 2D view.
+fn visible_outside_mesh_modes(w: &World) -> bool {
+    use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
+    w.get_resource::<ViewportSettings>()
+        .map(|s| !matches!(s.viewport_mode, ViewportMode::Edit | ViewportMode::Sculpt))
         .unwrap_or(true)
 }
 
@@ -685,7 +700,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     // Icons are kebab-case Phosphor names resolved by the native toolbar renderer.
 
     // Transform section — Select stays in all views; the move/rotate/scale
-    // gizmo tools hide in 2D.
+    // gizmo tools hide in 2D. Everything hides in mesh Edit/Sculpt modes.
     registry.register(
         ToolEntry::new(
             "builtin.select",
@@ -694,6 +709,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             ToolSection::Transform,
         )
         .order(0)
+        .visible_if(visible_outside_mesh_modes)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
                 .copied() == Some(ActiveTool::Select)

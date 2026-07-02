@@ -228,6 +228,7 @@ fn toolbar_button(
             Interaction::default(),
             ToolbarButtonAction(action),
             crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            crate::widgets::HoverTooltip::new(tooltip),
             Name::new(format!("toolbar-btn:{tooltip}")),
         ))
         .id();

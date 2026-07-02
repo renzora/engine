@@ -18,8 +18,7 @@ use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, FocusPolicy};
-use bevy::window::PrimaryWindow;
+use bevy::ui::FocusPolicy;
 
 use renzora_editor_framework::{
     EditorCommands, EditorSelection, EditorSettings, FieldType, FieldValue,
@@ -89,13 +88,6 @@ struct ComponentMenuHost;
 #[derive(Component)]
 struct ComponentMenuButton {
     name: Option<String>,
-}
-
-/// Links a menu button to its (hidden) tooltip bubble so `component_menu_tooltip`
-/// can show/position it on hover.
-#[derive(Component)]
-struct ComponentTooltip {
-    tip: Entity,
 }
 
 /// Stable host for the top-bar component-filter dropdown (the alternative to the
@@ -186,7 +178,6 @@ pub fn register_native_inspector(app: &mut App) {
             asset_drop_highlight,
             inspector_filter_sync,
             component_menu_click,
-            component_menu_tooltip,
             expand_all_click,
             sync_expand_glyph,
         )
@@ -512,8 +503,10 @@ fn build_component_menu(
     out
 }
 
-/// One icon button in the left component menu. Carries a hidden tooltip child
-/// (the rail is icon-only) that `component_menu_tooltip` reveals + positions.
+/// One icon button in the left component menu. The rail is icon-only, so each
+/// button carries a [`HoverTooltip`] naming its component — the shared global
+/// bubble can't be clipped by the rail/panel the way the old per-button
+/// bubble children were.
 fn component_menu_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -542,46 +535,13 @@ fn component_menu_button(
             Interaction::default(),
             FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(label),
             ComponentMenuButton { name },
             Name::new("component-menu-button"),
         ))
         .id();
     let glyph = phosphor_glyph(commands, fonts, icon, glyph_color, 15.0);
-
-    // Tooltip bubble — a child positioned just off the button's right edge by
-    // default; `component_menu_tooltip` flips it left / clamps it vertically so it
-    // never leaves the window. Hidden until hovered.
-    let tip_text = commands
-        .spawn((
-            Text::new(label),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(c(renzora_ember::theme::text_primary())),
-            TextLayout::no_wrap(),
-            FocusPolicy::Pass,
-        ))
-        .id();
-    let tip = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Percent(100.0),
-                margin: UiRect::left(Val::Px(6.0)),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(c(renzora_ember::theme::window_bg())),
-            BorderColor::all(c(renzora_ember::theme::border())),
-            GlobalZIndex(9000),
-            FocusPolicy::Pass,
-            Name::new("component-menu-tooltip"),
-        ))
-        .id();
-    commands.entity(tip).add_child(tip_text);
-    commands.entity(btn).insert(ComponentTooltip { tip });
-    commands.entity(btn).add_children(&[glyph, tip]);
+    commands.entity(btn).add_child(glyph);
     btn
 }
 
@@ -639,71 +599,6 @@ fn component_menu_click(
         };
         if state.selected != next {
             state.selected = next;
-        }
-    }
-}
-
-/// Show + position the vertical menu's tooltips. The rail is icon-only, so each
-/// button carries a hidden bubble naming its component; on hover we reveal it and
-/// place it just off the button — preferring the right side, flipping to the left
-/// when it would overflow the window, and clamping it vertically so it's never
-/// cut off near the top/bottom edge. The dropdown style needs none of this.
-fn component_menu_tooltip(
-    buttons: Query<(&Interaction, &ComponentTooltip, &ComputedNode, &GlobalTransform)>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    cnodes: Query<&ComputedNode>,
-    mut nodes: Query<&mut Node>,
-) {
-    let win = windows.iter().next();
-    for (interaction, tt, btn_cn, gt) in &buttons {
-        if !matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
-            if let Ok(mut n) = nodes.get_mut(tt.tip) {
-                if n.display != Display::None {
-                    n.display = Display::None;
-                }
-            }
-            continue;
-        }
-
-        // GlobalTransform / ComputedNode are physical; Node offsets are logical.
-        let inv = btn_cn.inverse_scale_factor();
-        let center = gt.translation().truncate() * inv;
-        let bsize = btn_cn.size() * inv;
-        let tsize = cnodes
-            .get(tt.tip)
-            .map(|cn| cn.size() * cn.inverse_scale_factor())
-            .unwrap_or(Vec2::ZERO);
-
-        let gap = 6.0;
-        // Right side unless it would run past the window's right edge.
-        let place_right = win
-            .map(|w| center.x + bsize.x * 0.5 + gap + tsize.x <= w.width())
-            .unwrap_or(true);
-        // Vertically centre on the button, then clamp into the window. The node's
-        // `top` is relative to the button's top, so convert through global coords.
-        let btn_top = center.y - bsize.y * 0.5;
-        let desired_top = win
-            .map(|w| (center.y - tsize.y * 0.5).clamp(0.0, (w.height() - tsize.y).max(0.0)))
-            .unwrap_or(center.y - tsize.y * 0.5);
-        let top_offset = desired_top - btn_top;
-
-        if let Ok(mut n) = nodes.get_mut(tt.tip) {
-            if n.display != Display::Flex {
-                n.display = Display::Flex;
-            }
-            if place_right {
-                n.left = Val::Percent(100.0);
-                n.right = Val::Auto;
-                n.margin.left = Val::Px(gap);
-                n.margin.right = Val::Px(0.0);
-            } else {
-                n.right = Val::Percent(100.0);
-                n.left = Val::Auto;
-                n.margin.right = Val::Px(gap);
-                n.margin.left = Val::Px(0.0);
-            }
-            n.top = Val::Px(top_offset);
-            n.bottom = Val::Auto;
         }
     }
 }

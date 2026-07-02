@@ -8765,6 +8765,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_editor_framework",
+ "renzora_ember",
  "renzora_undo",
 ]
 

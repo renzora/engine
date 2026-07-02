@@ -370,6 +370,99 @@ impl EffectRouting {
 #[reflect(Component, Serialize, Deserialize)]
 pub struct MeshPrimitive(pub String);
 
+/// Serialized geometry override written by the mesh editor (Edit / Sculpt
+/// modes) whenever an entity's mesh is modified.
+///
+/// `MeshPrimitive` / `MeshInstanceData` rehydrate their meshes from the
+/// shape registry / source glTF on scene load, which would silently discard
+/// user edits — this component persists the edited geometry in the scene and
+/// wins over both (its rehydrate system runs after `rehydrate_meshes` and
+/// replaces the `Mesh3d` handle). Arrays are flat (`xyzxyz…`) because
+/// scene reflection round-trips flat `Vec<f32>` reliably.
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct EditedMesh {
+    /// Vertex positions, 3 floats per vertex.
+    pub positions: Vec<f32>,
+    /// Vertex normals, 3 floats per vertex.
+    pub normals: Vec<f32>,
+    /// UV coordinates, 2 floats per vertex.
+    pub uvs: Vec<f32>,
+    /// Triangle list indices.
+    pub indices: Vec<u32>,
+}
+
+impl EditedMesh {
+    /// Snapshot a triangle-list `Mesh`'s geometry. Returns `None` when the
+    /// mesh is missing positions or indices.
+    pub fn from_mesh(mesh: &Mesh) -> Option<Self> {
+        use bevy::mesh::VertexAttributeValues;
+        let positions = match mesh.attribute(Mesh::ATTRIBUTE_POSITION)? {
+            VertexAttributeValues::Float32x3(v) => v.iter().flatten().copied().collect(),
+            _ => return None,
+        };
+        let normals = match mesh.attribute(Mesh::ATTRIBUTE_NORMAL) {
+            Some(VertexAttributeValues::Float32x3(v)) => v.iter().flatten().copied().collect(),
+            _ => Vec::new(),
+        };
+        let uvs = match mesh.attribute(Mesh::ATTRIBUTE_UV_0) {
+            Some(VertexAttributeValues::Float32x2(v)) => v.iter().flatten().copied().collect(),
+            _ => Vec::new(),
+        };
+        let indices = match mesh.indices()? {
+            bevy::mesh::Indices::U16(v) => v.iter().map(|&i| i as u32).collect(),
+            bevy::mesh::Indices::U32(v) => v.clone(),
+        };
+        Some(Self {
+            positions,
+            normals,
+            uvs,
+            indices,
+        })
+    }
+
+    /// Rebuild a renderable `Mesh` from the stored geometry.
+    pub fn to_mesh(&self) -> Mesh {
+        use bevy::asset::RenderAssetUsages;
+        use bevy::mesh::{Indices, PrimitiveTopology};
+        let n = self.positions.len() / 3;
+        let positions: Vec<[f32; 3]> = self
+            .positions
+            .chunks_exact(3)
+            .map(|c| [c[0], c[1], c[2]])
+            .collect();
+        let normals: Vec<[f32; 3]> = if self.normals.len() == self.positions.len() {
+            self.normals
+                .chunks_exact(3)
+                .map(|c| [c[0], c[1], c[2]])
+                .collect()
+        } else {
+            vec![[0.0, 1.0, 0.0]; n]
+        };
+        let uvs: Vec<[f32; 2]> = if self.uvs.len() == n * 2 {
+            self.uvs.chunks_exact(2).map(|c| [c[0], c[1]]).collect()
+        } else {
+            vec![[0.0, 0.0]; n]
+        };
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        mesh.insert_indices(Indices::U32(self.indices.clone()));
+        mesh
+    }
+}
+
+/// Non-serialized marker: this entity's `Mesh3d` already reflects its
+/// [`EditedMesh`]. The editor inserts it when writing `EditedMesh`; the
+/// scene-load rehydrator only applies `EditedMesh` where it's absent, so
+/// live editor baking isn't redone (or worse, re-allocated) every frame.
+#[derive(Component)]
+pub struct EditedMeshApplied;
+
 /// Event fired when a model importer has pulled PBR material data out of a
 /// source file and needs somewhere to persist it as a `.material` graph.
 /// Importers (the import dialog and the viewport drop pipeline) trigger this

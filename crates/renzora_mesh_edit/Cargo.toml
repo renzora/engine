@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 renzora_undo = { path = "../renzora_undo" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
+renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 
