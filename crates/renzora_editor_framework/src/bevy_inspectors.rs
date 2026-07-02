@@ -460,8 +460,8 @@ fn sprite_image_entry() -> InspectorEntry {
 /// Add Component overlay; the `frame` field is the one users animate from the
 /// animation panel (it shows up in the Add Property picker via reflection).
 fn sprite_sheet_entry() -> InspectorEntry {
-    // Integer fields ride the Float widget (there's no dedicated int widget);
-    // set_fns round and clamp so drag edits land on whole frames.
+    // `FieldType::Int` — the widget's model snaps to whole numbers, matching
+    // the rounding set_fns, so drags don't fight the u32 read-back.
     fn get_sheet(world: &World, entity: Entity) -> Option<renzora::core::SpriteSheet> {
         world.get::<renzora::core::SpriteSheet>(entity).copied()
     }
@@ -488,7 +488,7 @@ fn sprite_sheet_entry() -> InspectorEntry {
         fields: vec![
             FieldDef {
                 name: "H Frames",
-                field_type: FieldType::Float { speed: 0.1, min: 1.0, max: 1024.0 },
+                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
                 get_fn: |world, entity| {
                     get_sheet(world, entity).map(|s| FieldValue::Float(s.hframes as f32))
                 },
@@ -504,7 +504,7 @@ fn sprite_sheet_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "V Frames",
-                field_type: FieldType::Float { speed: 0.1, min: 1.0, max: 1024.0 },
+                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
                 get_fn: |world, entity| {
                     get_sheet(world, entity).map(|s| FieldValue::Float(s.vframes as f32))
                 },
@@ -520,7 +520,7 @@ fn sprite_sheet_entry() -> InspectorEntry {
             },
             FieldDef {
                 name: "Frame",
-                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 1_048_576.0 },
+                field_type: FieldType::Int { min: 0.0, max: 1_048_576.0 },
                 get_fn: |world, entity| {
                     get_sheet(world, entity).map(|s| FieldValue::Float(s.frame as f32))
                 },

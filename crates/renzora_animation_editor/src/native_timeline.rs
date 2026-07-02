@@ -2161,8 +2161,13 @@ fn preview_property_animation(world: &mut World) {
         }
     }
     apply_property_tracks(world, entity, &tracks, scrub, verbose);
+    // Record what actually LANDED on the entity (read-back), not the raw
+    // sampled values: fields that quantize on write — `SpriteSheet.frame` is a
+    // u32, so a sampled 2.37 lands as 2 — would otherwise diverge from the
+    // next frame's read in the manual-pose check above, which reads as "the
+    // user posed it" and pauses playback on the very first Play frame.
     let written_now: Vec<Option<TrackValue>> =
-        tracks.iter().map(|t| renzora::sample_property_track(t, scrub)).collect();
+        tracks.iter().map(|t| read_track_value(world, entity, t)).collect();
     if let Some(mut pa) = world.get_resource_mut::<PreviewApplied>() {
         pa.time = scrub;
         pa.entity = Some(entity);

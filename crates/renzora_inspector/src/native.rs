@@ -206,6 +206,10 @@ pub fn register_native_inspector(app: &mut App) {
 #[derive(Clone, Copy)]
 enum FieldKind {
     Float { speed: f32, min: f32, max: f32 },
+    /// Whole-number drag field: the widget's model snaps to integers
+    /// (`DragSnap`), matching a `set_fn` that rounds into an int component
+    /// field — see `FieldType::Int`.
+    Int { min: f32, max: f32 },
     Vec3 { speed: f32 },
     Bool,
     Color,
@@ -1007,6 +1011,10 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                     },
                     FieldInit::Float(*v),
                 ),
+                (FieldType::Int { min, max }, Some(FieldValue::Float(v))) => (
+                    FieldKind::Int { min: *min, max: *max },
+                    FieldInit::Float(*v),
+                ),
                 (FieldType::Vec3 { speed }, Some(FieldValue::Vec3(a))) => {
                     (FieldKind::Vec3 { speed: *speed }, FieldInit::Vec3(*a))
                 }
@@ -1358,6 +1366,28 @@ fn build_field_value(
         FieldKind::Float { speed, min, max } => {
             let init = if let FieldInit::Float(v) = field.init { v } else { 0.0 };
             let dv = drag_value(commands, &fonts.ui, "", renzora_ember::theme::value_text(), init, speed.max(0.001));
+            if max > min {
+                commands.entity(dv).insert(DragRange { min, max });
+            }
+            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            bind_2way(
+                commands,
+                dv,
+                move |w| match get_fn(w, entity) {
+                    Some(FieldValue::Float(v)) => v,
+                    _ => 0.0,
+                },
+                move |w, v: &f32| set_fn(w, entity, FieldValue::Float(*v)),
+            );
+            commands.entity(value_parent).add_child(dv);
+        }
+        FieldKind::Int { min, max } => {
+            let init = if let FieldInit::Float(v) = field.init { v } else { 0.0 };
+            // Quarter-unit-per-pixel scrub (4 px per whole step) with the model
+            // snapped to integers — the snap is what stops the rounded set_fn
+            // read-back from fighting the drag.
+            let dv = drag_value(commands, &fonts.ui, "", renzora_ember::theme::value_text(), init, 0.25);
+            commands.entity(dv).insert(renzora_ember::widgets::DragSnap(1.0));
             if max > min {
                 commands.entity(dv).insert(DragRange { min, max });
             }

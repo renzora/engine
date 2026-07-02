@@ -39,6 +39,10 @@ pub(crate) struct EmberDragValue {
     /// absolutely from the cursor's position across the track (a fast min→max
     /// sweep) instead of the number area's fine relative scrub.
     rail_drag: bool,
+    /// Un-snapped accumulator for the relative scrub of a [`DragSnap`] field:
+    /// sub-step drag motion collects here, the model only sees snapped values.
+    /// `None` outside a scrub.
+    scrub_val: Option<f32>,
     /// Keyboard-edit mode: the field shows `buffer` and accepts typed digits.
     editing: bool,
     buffer: String,
@@ -60,6 +64,29 @@ pub(crate) struct EmberDragValue {
 pub struct DragRange {
     pub min: f32,
     pub max: f32,
+}
+
+/// Optional model quantization for a [`drag_value`]: every write into
+/// `Bound<f32>` (scrub, rail sweep, wheel nudge, keyboard commit) snaps to the
+/// nearest multiple of `0` — insert `DragSnap(1.0)` for an integer field.
+///
+/// This exists because a field whose *state* quantizes (an inspector `set_fn`
+/// rounding into a `u32`) must have a model that quantizes identically:
+/// `bind_2way` compares model against re-read state, and a fractional model
+/// (517.3) against a rounded read-back (517) registers as an external change
+/// that stomps the model mid-drag — the value visibly "fights" the cursor.
+/// Snapping at the model level keeps the round-trip exact. Fine scrub control
+/// is preserved by accumulating the un-snapped drag in `scrub_val` and only
+/// snapping what's published to the model.
+#[derive(Component, Clone, Copy)]
+pub struct DragSnap(pub f32);
+
+/// Snap `v` to the field's [`DragSnap`] step, if any.
+fn apply_snap(v: f32, snap: Option<&DragSnap>) -> f32 {
+    match snap {
+        Some(DragSnap(step)) if *step > 0.0 => (v / step).round() * step,
+        _ => v,
+    }
 }
 
 /// How far (px) the cursor may travel during a press and still count as a click
@@ -349,6 +376,7 @@ fn drag_value_impl(
             press_x: None,
             moved: false,
             rail_drag: false,
+            scrub_val: None,
             editing: false,
             buffer: String::new(),
             select_all: false,
@@ -404,6 +432,7 @@ pub(crate) fn drag_value_scroll(
         &EmberDragValue,
         &mut Bound<f32>,
         Option<&DragRange>,
+        Option<&DragSnap>,
         Option<&mut Styled>,
     )>,
 ) {
@@ -415,7 +444,7 @@ pub(crate) fn drag_value_scroll(
 
     // Pass 1: hover → accent-border highlight; note whether any field is hovered.
     let mut over_any = false;
-    for (interaction, dv, _bound, _range, styled) in &mut values {
+    for (interaction, dv, _bound, _range, _snap, styled) in &mut values {
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
         if hovered {
             over_any = true;
@@ -451,13 +480,20 @@ pub(crate) fn drag_value_scroll(
 
     // Pass 2: only if a field owns the gesture, scrub the hovered field(s).
     if field_scrub {
-        for (interaction, dv, mut bound, range, _) in &mut values {
+        for (interaction, dv, mut bound, range, snap, _) in &mut values {
             let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
             if hovered && !dv.editing {
-                let mut v = bound.0 + dy * wheel_step(dv.step, range);
+                // A snapped field's notch must be at least one snap step, or
+                // small wheel steps would round away to nothing.
+                let step = match snap {
+                    Some(DragSnap(s)) if *s > 0.0 => wheel_step(dv.step, range).max(*s),
+                    _ => wheel_step(dv.step, range),
+                };
+                let mut v = bound.0 + dy * step;
                 if let Some(r) = range {
                     v = v.clamp(r.min, r.max);
                 }
+                let v = apply_snap(v, snap);
                 if v != bound.0 {
                     bound.0 = v;
                 }
@@ -478,6 +514,7 @@ pub(crate) fn drag_value_drag(
         &mut EmberDragValue,
         &mut Bound<f32>,
         Option<&DragRange>,
+        Option<&DragSnap>,
         Option<&mut Styled>,
         &mut crate::cursor_icon::HoverCursor,
         &bevy::ui::RelativeCursorPosition,
@@ -491,7 +528,9 @@ pub(crate) fn drag_value_drag(
         .map(|p| p.x);
     // On unless a Settings toggle turns it off.
     let rail_enabled = config.as_ref().map(|c| c.rail_quick_drag).unwrap_or(true);
-    for (interaction, mut dv, mut bound, range, styled, mut cursor, rel, computed) in &mut values {
+    for (interaction, mut dv, mut bound, range, snap, styled, mut cursor, rel, computed) in
+        &mut values
+    {
         if dv.editing {
             continue;
         }
@@ -501,6 +540,7 @@ pub(crate) fn drag_value_drag(
                     dv.last_x = cursor_x;
                     dv.press_x = cursor_x;
                     dv.moved = false;
+                    dv.scrub_val = Some(bound.0);
                     // Rail sweep: a boxed, ranged field whose press lands in the
                     // bottom rail band drives the value absolutely from here on.
                     dv.rail_drag = false;
@@ -511,6 +551,7 @@ pub(crate) fn drag_value_drag(
                                 dv.rail_drag = true;
                                 dv.moved = true; // acts immediately; never edits
                                 if let Some(v) = rail_value(norm.x, computed, r) {
+                                    let v = apply_snap(v, snap);
                                     if v != bound.0 {
                                         bound.0 = v;
                                     }
@@ -526,6 +567,7 @@ pub(crate) fn drag_value_drag(
                             // to min/max even when dragged past the box edges).
                             if let (Some(r), Some(norm)) = (range, rel.normalized) {
                                 if let Some(v) = rail_value(norm.x, computed, r) {
+                                    let v = apply_snap(v, snap);
                                     if v != bound.0 {
                                         bound.0 = v;
                                     }
@@ -541,10 +583,18 @@ pub(crate) fn drag_value_drag(
                             if dv.moved {
                                 let delta = cx - last;
                                 if delta != 0.0 {
-                                    let mut v = bound.0 + delta * dv.step;
+                                    // Accumulate the raw scrub separately from the
+                                    // model so a snapped field keeps its sub-step
+                                    // motion (the model only sees snapped values;
+                                    // deriving each step from it would round the
+                                    // fine motion away and make slow drags stick).
+                                    let base = dv.scrub_val.unwrap_or(bound.0);
+                                    let mut v = base + delta * dv.step;
                                     if let Some(r) = range {
                                         v = v.clamp(r.min, r.max);
                                     }
+                                    dv.scrub_val = Some(v);
+                                    let v = apply_snap(v, snap);
                                     if v != bound.0 {
                                         bound.0 = v;
                                     }
@@ -571,6 +621,7 @@ pub(crate) fn drag_value_drag(
             dv.press_x = None;
             dv.moved = false;
             dv.rail_drag = false;
+            dv.scrub_val = None;
         }
     }
 }
@@ -593,6 +644,7 @@ pub(crate) fn drag_value_edit(
         &mut EmberDragValue,
         &mut Bound<f32>,
         Option<&DragRange>,
+        Option<&DragSnap>,
         Option<&mut Styled>,
         &mut crate::cursor_icon::HoverCursor,
     )>,
@@ -608,7 +660,7 @@ pub(crate) fn drag_value_edit(
     }
     let clicked = mouse.just_pressed(MouseButton::Left);
 
-    for (interaction, mut dv, mut bound, range, styled, mut cursor) in &mut values {
+    for (interaction, mut dv, mut bound, range, snap, styled, mut cursor) in &mut values {
         if !dv.editing {
             continue;
         }
@@ -676,6 +728,7 @@ pub(crate) fn drag_value_edit(
             EditAction::Commit | EditAction::Cancel => {
                 if matches!(action, EditAction::Commit) {
                     if let Some(v) = parse_commit(&dv.buffer, range) {
+                        let v = apply_snap(v, snap);
                         if v != bound.0 {
                             bound.0 = v;
                         }

@@ -52,6 +52,15 @@ pub enum FieldType {
         min: f32,
         max: f32,
     },
+    /// Whole-number field. Values still travel as [`FieldValue::Float`] (the
+    /// registry has one numeric wire type), but the widget snaps its model to
+    /// integers — REQUIRED for any `set_fn` that rounds into an integer
+    /// component field, or the fractional drag model and the rounded re-read
+    /// fight each other mid-drag (the value visibly stutters back).
+    Int {
+        min: f32,
+        max: f32,
+    },
     Vec3 {
         speed: f32,
     },
