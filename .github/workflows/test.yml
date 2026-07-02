@@ -43,6 +43,7 @@ jobs:
             --exclude bevy_hui \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
+            --exclude glam_matrix_extras \
             --exclude vleue_navigator \
             --exclude bevy_mod_openxr \
             --exclude bevy_mod_xr \
@@ -78,6 +79,7 @@ jobs:
             --exclude bevy_hui \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
+            --exclude glam_matrix_extras \
             --exclude vleue_navigator \
             --exclude bevy_mod_openxr \
             --exclude bevy_mod_xr \
