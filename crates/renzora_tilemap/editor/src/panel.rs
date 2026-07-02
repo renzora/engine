@@ -1,12 +1,17 @@
-//! The **Tilemap** palette panel — a zoomable/pannable tile selector.
+//! The **Tilemap** panel — tileset importing, a tilemap tab strip, and a
+//! zoomable/pannable tile palette.
 //!
-//! The tileset atlas is shown inside an ember [`scroll_view_xy`] (both
-//! scrollbars). On top of it:
+//! The panel is the import surface for tilemaps: dropping tileset image(s) on
+//! it spawns one [`TilemapLayer`] per image (see `tileset_drop` in the crate
+//! root), and a **tab strip** lists every tilemap in the scene, switching
+//! [`ActiveTilemap`]. The active tilemap's atlas is shown inside an ember
+//! [`scroll_view_xy`] (both scrollbars). On top of it:
 //! - **wheel** zooms toward the cursor; **right-drag** pans; the zoom is also
 //!   driven by the `−` / `+` buttons and the zoom dropdown in the header;
 //! - **left-drag** selects a rectangle of tiles (a click selects one); the
 //!   selection is shown with a highlight box + a corner handle you can drag to
-//!   grow it; the block is stamped as a unit by the paint tool;
+//!   grow it, and **arms the paint brush** — the block follows the cursor in
+//!   the 2D viewport and stamps as a unit;
 //! - a **Grid** switch overlays tile boundaries.
 //!
 //! The atlas image is swapped reactively via a single-item `keyed_list` keyed on
@@ -21,19 +26,37 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, ScrollPosition};
 
-use renzora::{EditorSelection, RenzoraShellExt, SplashState};
-use renzora_ember::font::{icon_text, EmberFonts};
+use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
+use renzora::{RenzoraShellExt, SplashState};
+use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, keyed_list, KeyedSnapshot};
-use renzora_ember::theme::text_muted;
-use renzora_ember::widgets::{dropdown, icon_button, scroll_view_xy, toggle_switch, EmberScroll, ScrollThumb};
+use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
+use renzora_ember::widgets::{
+    dropdown, icon_button, label, scroll_view_xy, toggle_switch, EmberScroll, ScrollThumb,
+};
 use renzora_tilemap::{TilemapLayer, TilesetHandle};
 
-use crate::TilemapBrush;
+use crate::{ActiveTilemap, TilemapBrush};
 
 /// Marker on the panel's content root — the full-panel tileset drop target.
 #[derive(Component)]
 pub(crate) struct TilemapPanelRoot;
+
+/// Marker on a tab in the tilemap tab strip; holds the layer entity it selects.
+#[derive(Component)]
+struct TilemapTab(Entity);
+
+/// Marker on the full-panel drop indicator overlay, shown while a tileset drag
+/// hovers the panel.
+#[derive(Component)]
+struct TilesetDropIndicator;
+
+/// Per-frame mirror of the scene's tilemaps (entity + display name), sorted for
+/// a stable tab order. Reactive snapshot closures only get `&World` and can't
+/// run a fresh query, so [`mirror_tilemap_list`] maintains this instead.
+#[derive(Resource, Default)]
+struct TilemapList(Vec<(Entity, String)>);
 
 /// Marker on the atlas `ImageNode` — the click-to-pick + zoom target.
 #[derive(Component)]
@@ -96,11 +119,15 @@ fn nearest_zoom_index(z: f32) -> usize {
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<TilemapZoom>();
     app.init_resource::<GridOn>();
+    app.init_resource::<TilemapList>();
     app.register_shell_panel("tilemap", "Tilemap", "grid-four", "2D");
     app.register_panel_content("tilemap", false, build);
     app.add_systems(
         Update,
         (
+            mirror_tilemap_list,
+            tilemap_tab_clicks,
+            tileset_drop_indicator,
             zoom_pan_atlas,
             zoom_step_buttons,
             apply_atlas_zoom,
@@ -111,6 +138,45 @@ pub(crate) fn register(app: &mut App) {
         )
             .run_if(in_state(SplashState::Editor)),
     );
+}
+
+/// Keep [`TilemapList`] mirroring the scene's `TilemapLayer` entities. Only
+/// writes on an actual change so the reactive tab strip doesn't churn.
+fn mirror_tilemap_list(
+    layers: Query<(Entity, Option<&Name>), With<TilemapLayer>>,
+    mut list: ResMut<TilemapList>,
+) {
+    let mut rows: Vec<(Entity, String)> = layers
+        .iter()
+        .map(|(e, n)| {
+            let name = n
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_else(|| "Tilemap".to_string());
+            (e, name)
+        })
+        .collect();
+    rows.sort_by_key(|(e, _)| *e);
+    if list.0 != rows {
+        list.0 = rows;
+    }
+}
+
+/// Clicking a tab makes its tilemap the active one; clicking the ACTIVE tab
+/// again deselects it (which also disarms the brush — see
+/// `sync_active_tilemap`), so the user can always put the panel down.
+fn tilemap_tab_clicks(
+    tabs: Query<(&Interaction, &TilemapTab), Changed<Interaction>>,
+    mut active: ResMut<ActiveTilemap>,
+) {
+    for (interaction, tab) in &tabs {
+        if *interaction == Interaction::Pressed {
+            active.0 = if active.0 == Some(tab.0) {
+                None
+            } else {
+                Some(tab.0)
+            };
+        }
+    }
 }
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -129,6 +195,19 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             RelativeCursorPosition::default(),
         ))
         .id();
+
+    // Tab strip: one tab per tilemap in the scene (rebuilt reactively).
+    let tabs = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(4.0),
+            row_gap: Val::Px(4.0),
+            ..default()
+        })
+        .id();
+    keyed_list(commands, tabs, tabs_snapshot);
 
     // Header: Grid switch on the left, zoom controls on the right.
     let header = commands
@@ -204,21 +283,130 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(scroll_box).add_child(scroll);
 
-    commands.entity(root).add_children(&[header, scroll_box]);
+    // Drop indicator: an accent border + hint covering the whole panel,
+    // toggled by `tileset_drop_indicator` while a tileset drag hovers. It
+    // ignores picking so it never steals the drop's hover from the root.
+    let drop_overlay = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                display: Display::None,
+                ..default()
+            },
+            BorderColor::all(rgb(accent())),
+            BackgroundColor(rgb(accent()).with_alpha(0.08)),
+            bevy::picking::Pickable::IGNORE,
+            TilesetDropIndicator,
+        ))
+        .id();
+    let drop_hint = commands
+        .spawn((
+            Text::new("Drop tileset to import"),
+            ui_font(&fonts.ui, 13.0),
+            TextColor(rgb(text_primary())),
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    commands.entity(drop_overlay).add_child(drop_hint);
+
+    commands
+        .entity(root)
+        .add_children(&[tabs, header, scroll_box, drop_overlay]);
     root
 }
 
-/// Single-item snapshot: the selected layer's atlas image + its selection
-/// highlight (with resize handle), keyed on tileset path + dimensions. The grid
-/// overlay is intentionally NOT part of this — see [`sync_grid_overlay`].
+/// Show the drop indicator while a detached drag carrying at least one tileset
+/// image hovers the panel.
+fn tileset_drop_indicator(
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    root: Query<&RelativeCursorPosition, With<TilemapPanelRoot>>,
+    mut overlays: Query<&mut Node, With<TilesetDropIndicator>>,
+) {
+    let want = payload.as_ref().is_some_and(|p| {
+        p.is_detached
+            && root.iter().any(|r| r.cursor_over)
+            && p.paths.iter().any(|path| crate::is_tileset(path))
+    });
+    for mut node in &mut overlays {
+        let display = if want { Display::Flex } else { Display::None };
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
+/// One tab per tilemap, keyed on entity + name + whether it's active (so a
+/// rename or an active-tilemap switch restyles just the affected tabs).
+fn tabs_snapshot(world: &World) -> KeyedSnapshot {
+    let active = world.get_resource::<ActiveTilemap>().and_then(|a| a.0);
+    let rows = world
+        .get_resource::<TilemapList>()
+        .map(|l| l.0.clone())
+        .unwrap_or_default();
+
+    let mut items = Vec::with_capacity(rows.len());
+    for (e, name) in &rows {
+        let mut hasher = DefaultHasher::new();
+        name.hash(&mut hasher);
+        (active == Some(*e)).hash(&mut hasher);
+        items.push((e.to_bits(), hasher.finish()));
+    }
+
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c: &mut Commands, fonts: &EmberFonts, i: usize| {
+            let (entity, name) = rows[i].clone();
+            let is_active = active == Some(entity);
+            let tab = c
+                .spawn((
+                    Node {
+                        padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                        align_items: AlignItems::Center,
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(if is_active { rgb(tab_active()) } else { Color::NONE }),
+                    Interaction::default(),
+                    TilemapTab(entity),
+                ))
+                .id();
+            let text = c
+                .spawn((
+                    Text::new(name),
+                    ui_font(&fonts.ui, 12.0),
+                    TextColor(if is_active {
+                        rgb(text_primary())
+                    } else {
+                        rgb(text_muted())
+                    }),
+                    bevy::picking::Pickable::IGNORE,
+                ))
+                .id();
+            c.entity(tab).add_child(text);
+            tab
+        }),
+    }
+}
+
+/// Single-item snapshot: the active tilemap's atlas image + its selection
+/// highlight (with resize handle), keyed on tileset path + dimensions. When no
+/// tilemap exists yet, the item is instead a hint that dropping a tileset here
+/// imports one. The grid overlay is intentionally NOT part of this — see
+/// [`sync_grid_overlay`].
 fn atlas_snapshot(world: &World) -> KeyedSnapshot {
     let mut items = Vec::new();
     let mut data: Option<(Handle<Image>, Vec2)> = None;
 
-    let sel = world
-        .get_resource::<EditorSelection>()
-        .and_then(|s| s.get());
-    if let Some(e) = sel {
+    let active = world.get_resource::<ActiveTilemap>().and_then(|a| a.0);
+    if let Some(e) = active {
         if let Some(tileset) = world.get::<TilesetHandle>(e) {
             let px = world
                 .get_resource::<Assets<Image>>()
@@ -237,12 +425,29 @@ fn atlas_snapshot(world: &World) -> KeyedSnapshot {
                 data = Some((tileset.image.clone(), px));
             }
         }
+    } else {
+        // No active tilemap. Distinguish "nothing imported yet" (the panel is
+        // the import surface, say so) from "tilemaps exist but none picked".
+        let any_tilemaps = world
+            .get_resource::<TilemapList>()
+            .is_some_and(|l| !l.0.is_empty());
+        items.push((2u64, any_tilemaps as u64));
     }
+    let no_active_hint = if world
+        .get_resource::<TilemapList>()
+        .is_some_and(|l| !l.0.is_empty())
+    {
+        "Select a tilemap above to pick a brush"
+    } else {
+        "Drop a tileset image here to create a tilemap"
+    };
 
     KeyedSnapshot {
         items,
-        build: Box::new(move |c: &mut Commands, _fonts: &EmberFonts, _i: usize| {
-            let (handle, px) = data.clone().expect("build only runs for emitted items");
+        build: Box::new(move |c: &mut Commands, fonts: &EmberFonts, _i: usize| {
+            let Some((handle, px)) = data.clone() else {
+                return label(c, &fonts.ui, no_active_hint);
+            };
             let img = c
                 .spawn((
                     ImageNode::new(handle),
@@ -303,7 +508,7 @@ fn atlas_snapshot(world: &World) -> KeyedSnapshot {
 /// the old lines with it).
 fn sync_grid_overlay(
     grid: Res<GridOn>,
-    selection: Res<EditorSelection>,
+    active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
     image_node: Query<Entity, With<TilesetImageNode>>,
@@ -323,7 +528,7 @@ fn sync_grid_overlay(
     }
     // want && !have → spawn lines under the current image.
     let Ok(img) = image_node.single() else { return };
-    let Some(e) = selection.get() else { return };
+    let Some(e) = active.0 else { return };
     let Ok((layer, tileset)) = layers.get(e) else { return };
     let Some(image) = images.get(&tileset.image) else { return };
     let s = image.size_f32();
@@ -459,7 +664,7 @@ fn zoom_step_buttons(
 /// Drive the atlas image's on-screen size from the zoom (native × zoom).
 fn apply_atlas_zoom(
     zoom: Res<TilemapZoom>,
-    selection: Res<EditorSelection>,
+    active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     tilesets: Query<&TilesetHandle>,
     mut image_nodes: Query<&mut Node, With<TilesetImageNode>>,
@@ -467,7 +672,7 @@ fn apply_atlas_zoom(
     let Ok(mut node) = image_nodes.single_mut() else {
         return;
     };
-    let Some(e) = selection.get() else { return };
+    let Some(e) = active.0 else { return };
     let Ok(tileset) = tilesets.get(e) else { return };
     let Some(img) = images.get(&tileset.image) else {
         return;
@@ -487,7 +692,7 @@ fn apply_atlas_zoom(
 /// of the atlas, so it scales with zoom).
 fn update_tile_highlight(
     brush: Res<TilemapBrush>,
-    selection: Res<EditorSelection>,
+    active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
     mut highlight: Query<&mut Node, With<TileHighlight>>,
@@ -495,7 +700,7 @@ fn update_tile_highlight(
     let Ok(mut node) = highlight.single_mut() else {
         return;
     };
-    let Some(e) = selection.get() else { return };
+    let Some(e) = active.0 else { return };
     let Ok((layer, tileset)) = layers.get(e) else {
         return;
     };
@@ -528,20 +733,32 @@ fn update_tile_highlight(
 }
 
 /// Left-drag a rectangle across the atlas to select a block of tiles (a single
-/// click selects one). Skips scrollbar + resize-handle interactions so grabbing
-/// those doesn't start a selection.
+/// click selects one) — selecting also **arms the paint brush**, so the block
+/// immediately rides the cursor in the 2D viewport. Skips scrollbar +
+/// resize-handle interactions so grabbing those doesn't start a selection.
+#[allow(clippy::too_many_arguments)]
 fn select_tiles_from_atlas(
     mouse: Res<ButtonInput<MouseButton>>,
-    selection: Res<EditorSelection>,
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
     thumbs: Query<&Interaction, With<ScrollThumb>>,
     handles: Query<&Interaction, With<SelectionHandle>>,
     mut brush: ResMut<TilemapBrush>,
+    mut settings: Option<ResMut<ViewportSettings>>,
     mut start: Local<Option<(u32, u32)>>,
     mut blocked: Local<bool>,
 ) {
+    // An asset drag passing over the atlas is a DROP gesture, not a tile
+    // selection — the held left button would otherwise sweep the brush rect
+    // (and arm the paint mode) while the user is just importing a tileset.
+    if payload.is_some() {
+        *start = None;
+        *blocked = true;
+        return;
+    }
     if !mouse.pressed(MouseButton::Left) {
         *start = None;
         *blocked = false;
@@ -563,7 +780,7 @@ fn select_tiles_from_atlas(
         return;
     };
     let Some(n) = rcp.normalized else { return };
-    let Some(entity) = selection.get() else { return };
+    let Some(entity) = active.0 else { return };
     let Ok((layer, tileset)) = layers.get(entity) else {
         return;
     };
@@ -583,6 +800,14 @@ fn select_tiles_from_atlas(
     );
     if mouse.just_pressed(MouseButton::Left) {
         *start = Some(cur);
+        // Picking tiles is the intent to paint — switch the viewport's Mode
+        // dropdown to Paint right away (Esc or Tab drops back to Scene; the
+        // dropdown is the mode's single source of truth).
+        if let Some(settings) = settings.as_deref_mut() {
+            if settings.viewport_mode != ViewportMode::Paint {
+                settings.viewport_mode = ViewportMode::Paint;
+            }
+        }
     }
     let s = start.unwrap_or(cur);
     let (c0, c1) = (s.0.min(cur.0), s.0.max(cur.0));
@@ -597,18 +822,19 @@ fn select_tiles_from_atlas(
 /// Drag the corner handle to grow the selection from its fixed top-left corner.
 fn resize_selection(
     handles: Query<&Interaction, With<SelectionHandle>>,
-    selection: Res<EditorSelection>,
+    payload: Option<Res<renzora_ui::AssetDragPayload>>,
+    active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
     layers: Query<(&TilemapLayer, &TilesetHandle)>,
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
     mut brush: ResMut<TilemapBrush>,
 ) {
-    if !handles.iter().any(|i| *i == Interaction::Pressed) {
+    if payload.is_some() || !handles.iter().any(|i| *i == Interaction::Pressed) {
         return;
     }
     let Ok(rcp) = atlas.single() else { return };
     let Some(n) = rcp.normalized else { return };
-    let Some(e) = selection.get() else { return };
+    let Some(e) = active.0 else { return };
     let Ok((layer, tileset)) = layers.get(e) else {
         return;
     };

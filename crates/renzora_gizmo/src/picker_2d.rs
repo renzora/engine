@@ -1,11 +1,21 @@
-//! 2D viewport interaction — click-to-pick, drag-to-move, resize handles,
-//! a rotate handle, and the viewport cursor.
+//! 2D viewport interaction — click-to-pick (with shift/ctrl multi-select),
+//! rubber-band box selection, drag-to-move (moves the whole multi-selection),
+//! resize handles, a rotate handle, and the viewport cursor.
 //!
 //! Shape: on left-click the picker decides whether the user grabbed the
 //! rotate handle or a resize handle of the currently-selected sprite, the
 //! body of any sprite, or empty space — and stores that decision in
 //! [`Drag2dState`]. [`drag_move_2d_system`] then executes Move / Resize /
-//! Rotate each frame until the mouse is released.
+//! Rotate each frame until the mouse is released. A press on empty space arms
+//! a rubber band instead ([`box_select_2d_system`]): drag to select every
+//! sprite the band touches (Shift adds to the selection, Ctrl toggles), while
+//! a no-drag release keeps the old click-empty-clears behaviour.
+//!
+//! Modifier clicks on a body: **Ctrl+click** toggles the entity in/out of the
+//! selection, **Shift+click** adds it. A plain click on an entity that's
+//! already part of a multi-selection keeps the selection and starts a group
+//! move — every selected entity keeps its own cursor offset in
+//! [`Drag2dState::move_set`], so the group translates rigidly.
 //!
 //! Rotation-aware throughout: hit-tests, alpha sampling, and resize all work
 //! in the sprite's LOCAL frame (cursor rotated by the inverse of the entity's
@@ -24,10 +34,14 @@ use bevy::prelude::*;
 use bevy::sprite::Sprite;
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 use renzora::core::viewport_types::{
-    ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
+    ViewportBoxSelect2d, ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
 };
 use renzora::core::{Node2d, PlayModeState};
 use renzora_editor_framework::EditorSelection;
+
+/// Cursor travel (window px) below which a rubber-band release counts as a
+/// plain click on empty space (clear selection) rather than a box select.
+const BOX_SELECT_MIN_PX: f32 = 4.0;
 
 /// Hit threshold for handle picking, in panel pixels. Generous so users
 /// don't have to be sub-pixel accurate on a small sprite.
@@ -146,9 +160,18 @@ impl ResizeHandle {
 pub enum DragMode {
     #[default]
     None,
-    /// Translate the entity. `offset` is `entity_translation - cursor_world`
-    /// captured at drag start so the entity stays pinned to the grab point.
-    Move { offset: Vec2 },
+    /// Translate the selection. Per-entity cursor offsets live in
+    /// [`Drag2dState::move_set`] (captured at drag start so every entity stays
+    /// pinned to its own grab offset — that's what makes a group move rigid).
+    Move,
+    /// Rubber-band selection from a press on empty space. `start_win` is the
+    /// press position in WINDOW pixels; `additive`/`toggle` capture the
+    /// modifiers held at press time (Shift adds, Ctrl toggles).
+    BoxSelect {
+        start_win: Vec2,
+        additive: bool,
+        toggle: bool,
+    },
     /// Resize via one of the eight handles. Bounds are LOCAL half-extent
     /// boxes captured at drag start (so the math doesn't accumulate float
     /// drift); `center`/`angle` are the entity pose at drag start, used to
@@ -171,13 +194,19 @@ pub enum DragMode {
 #[derive(Resource, Default)]
 pub struct Drag2dState {
     pub mode: DragMode,
+    /// Primary entity of the drag (the one whose handles are hit-tested).
     pub entity: Option<Entity>,
+    /// Every entity a Move drag translates, with its `local_translation -
+    /// cursor_world` offset captured at drag start. Contains just the primary
+    /// for a single selection; the whole selection for a group move.
+    pub move_set: Vec<(Entity, Vec2)>,
 }
 
 impl Drag2dState {
     fn cancel(&mut self) {
         self.mode = DragMode::None;
         self.entity = None;
+        self.move_set.clear();
     }
 }
 
@@ -446,11 +475,14 @@ fn hit_test_handles(
 }
 
 /// On left-click, resolve what the user grabbed: the rotate handle or a
-/// resize handle of the currently-selected entity, the body of any sprite,
-/// or empty space. Updates `EditorSelection` and `Drag2dState` accordingly.
+/// resize handle of the currently-selected entity, the body of any sprite
+/// (with Shift-add / Ctrl-toggle multi-select), or empty space (arms the
+/// rubber band). Updates `EditorSelection` and `Drag2dState` accordingly.
+#[allow(clippy::too_many_arguments)]
 pub fn pick_2d_system(
     selection: Res<EditorSelection>,
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
     images: Res<Assets<Image>>,
@@ -481,9 +513,13 @@ pub fn pick_2d_system(
         return;
     };
     let cursor_panel = cursor - viewport.screen_position;
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
 
     // --- Step 1: handle hit-test on the *currently selected* entity. ---
-    if let Some(entity) = selection.get() {
+    // Skipped while a modifier is held: shift/ctrl clicks are selection
+    // edits, and a handle grab would swallow them.
+    if let (Some(entity), false) = (selection.get(), shift || ctrl) {
         let tr = transforms.get(entity).ok();
         let half = sprites
             .get(entity)
@@ -559,15 +595,54 @@ pub fn pick_2d_system(
         }
     }
 
-    if let Some((entity, _, translation)) = best {
-        selection.set(Some(entity));
+    if let Some((entity, _, _)) = best {
+        if ctrl {
+            // Ctrl+click: toggle membership, never start a drag — the user is
+            // editing the selection, not grabbing it.
+            selection.toggle(entity);
+            drag.cancel();
+            return;
+        }
+        if shift {
+            // Shift+click: add to the selection (no-op if already in it).
+            if !selection.is_selected(entity) {
+                let mut all = selection.get_all();
+                all.push(entity);
+                selection.set_multiple(all);
+            }
+            drag.cancel();
+            return;
+        }
+        // Plain click: an entity already inside a multi-selection keeps the
+        // group (so you can drag the whole thing); anything else becomes the
+        // sole selection.
+        if !selection.is_selected(entity) {
+            selection.set(Some(entity));
+        }
+        // Capture per-entity offsets for a rigid group move. Offsets are
+        // against the entity's own `Transform` (what the drag writes), so a
+        // parented entity doesn't jump by its parent's offset on grab.
+        drag.move_set = selection
+            .get_all()
+            .into_iter()
+            .filter_map(|e| {
+                let tr = transforms.get(e).ok()?;
+                Some((e, tr.translation.truncate() - cursor_world))
+            })
+            .collect();
         drag.entity = Some(entity);
-        drag.mode = DragMode::Move {
-            offset: translation - cursor_world,
-        };
+        drag.mode = DragMode::Move;
     } else {
-        selection.set(None);
-        drag.cancel();
+        // Empty space: arm the rubber band. Selection is intentionally left
+        // alone until release — a no-drag release clears it (plain click),
+        // a real band replaces/extends it (see `box_select_2d_system`).
+        drag.entity = None;
+        drag.move_set.clear();
+        drag.mode = DragMode::BoxSelect {
+            start_win: cursor,
+            additive: shift,
+            toggle: ctrl,
+        };
     }
 }
 
@@ -606,6 +681,11 @@ pub fn drag_move_2d_system(
         drag.cancel();
         return;
     }
+    // The rubber band has its own lifecycle (it must COMMIT on release, which
+    // the blanket cancel below would eat) — `box_select_2d_system` owns it.
+    if matches!(drag.mode, DragMode::BoxSelect { .. }) {
+        return;
+    }
     if !mouse.pressed(MouseButton::Left) {
         drag.cancel();
         return;
@@ -631,21 +711,26 @@ pub fn drag_move_2d_system(
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
 
     match drag.mode {
-        DragMode::None => {}
-        DragMode::Move { offset } => {
-            let Ok(mut tr) = transforms.get_mut(entity) else {
-                return;
-            };
-            let mut new_x = cursor_world.x + offset.x;
-            let mut new_y = cursor_world.y + offset.y;
-            if let Some(s) = settings.as_deref() {
-                if s.snap.translate_enabled {
-                    new_x = snap_to_grid(new_x, s.snap.translate_snap);
-                    new_y = snap_to_grid(new_y, s.snap.translate_snap);
+        DragMode::None | DragMode::BoxSelect { .. } => {}
+        DragMode::Move => {
+            // Group move: every selected entity follows the cursor with the
+            // offset it was grabbed at, so the formation stays rigid. Snap
+            // applies per entity — tiles land on the grid individually.
+            for (e, offset) in drag.move_set.clone() {
+                let Ok(mut tr) = transforms.get_mut(e) else {
+                    continue;
+                };
+                let mut new_x = cursor_world.x + offset.x;
+                let mut new_y = cursor_world.y + offset.y;
+                if let Some(s) = settings.as_deref() {
+                    if s.snap.translate_enabled {
+                        new_x = snap_to_grid(new_x, s.snap.translate_snap);
+                        new_y = snap_to_grid(new_y, s.snap.translate_snap);
+                    }
                 }
+                tr.translation.x = new_x;
+                tr.translation.y = new_y;
             }
-            tr.translation.x = new_x;
-            tr.translation.y = new_y;
         }
         DragMode::Resize {
             handle,
@@ -692,6 +777,117 @@ pub fn drag_move_2d_system(
             }
             tr.rotation = Quat::from_rotation_z(angle);
         }
+    }
+}
+
+/// Drive the rubber band: while the press is held, publish the band rect (in
+/// window pixels, clamped to the viewport panel) for the overlay to draw; on
+/// release, select every sprite whose AABB intersects the band — replacing the
+/// selection, adding to it (Shift), or toggling membership (Ctrl). A release
+/// with almost no travel is a plain empty-space click and keeps the old
+/// behaviour: clear the selection (unless a modifier was held).
+#[allow(clippy::too_many_arguments)]
+pub fn box_select_2d_system(
+    mouse: Res<ButtonInput<MouseButton>>,
+    viewport: Option<Res<ViewportState>>,
+    images: Res<Assets<Image>>,
+    selection: Res<EditorSelection>,
+    mut drag: ResMut<Drag2dState>,
+    mut band: ResMut<ViewportBoxSelect2d>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
+) {
+    let DragMode::BoxSelect {
+        start_win,
+        additive,
+        toggle,
+    } = drag.mode
+    else {
+        if band.0.is_some() {
+            band.0 = None;
+        }
+        return;
+    };
+    let Some(viewport) = viewport else {
+        band.0 = None;
+        drag.cancel();
+        return;
+    };
+    // Clamp the live corner to the panel so the band (and the world rect
+    // derived from it) never reaches under other panels.
+    let clamp = |p: Vec2| {
+        p.clamp(
+            viewport.screen_position,
+            viewport.screen_position + viewport.screen_size - Vec2::ONE,
+        )
+    };
+    let current = windows
+        .single()
+        .ok()
+        .and_then(|w| w.cursor_position())
+        .map(clamp)
+        .or_else(|| band.0.map(|(_, c)| c))
+        .unwrap_or(start_win);
+
+    if mouse.pressed(MouseButton::Left) {
+        band.0 = Some((start_win, current));
+        return;
+    }
+
+    // Release: commit.
+    let start = clamp(start_win);
+    band.0 = None;
+    drag.cancel();
+
+    if (current - start).length() < BOX_SELECT_MIN_PX {
+        if !additive && !toggle {
+            selection.set(None);
+        }
+        return;
+    }
+    let Ok((camera, cam_gt)) = cameras_2d.single() else {
+        return;
+    };
+    let (Some(wa), Some(wb)) = (
+        cursor_to_world(start, &viewport, camera, cam_gt),
+        cursor_to_world(current, &viewport, camera, cam_gt),
+    ) else {
+        return;
+    };
+    let rect = Rect::from_corners(wa, wb);
+
+    // Every sprite whose (unrotated) AABB touches the band. Rotation is
+    // ignored on purpose: for a marquee, the axis-aligned box is what users
+    // expect to be judged against, and it keeps the test cheap.
+    let hits: Vec<Entity> = sprites
+        .iter()
+        .filter_map(|(e, sprite, gt)| {
+            let size = sprite_size_from_query(sprite, &images)?;
+            if size.x <= 0.0 || size.y <= 0.0 {
+                return None;
+            }
+            let pos = gt.translation().truncate();
+            let half = size * 0.5;
+            let sprite_rect = Rect::from_center_half_size(pos, half);
+            (!rect.intersect(sprite_rect).is_empty()).then_some(e)
+        })
+        .collect();
+
+    if toggle {
+        for e in hits {
+            selection.toggle(e);
+        }
+    } else if additive {
+        let mut all = selection.get_all();
+        for e in hits {
+            if !all.contains(&e) {
+                all.push(e);
+            }
+        }
+        selection.set_multiple(all);
+    } else {
+        selection.set_multiple(hits);
     }
 }
 
@@ -799,7 +995,7 @@ pub fn update_cursor_2d(
         // pointer — a fast drag routinely outruns the handle.
         if let Some(drag) = drag.as_deref() {
             match drag.mode {
-                DragMode::Move { .. } => {
+                DragMode::Move => {
                     cursor_icon = Some(SystemCursorIcon::Move);
                     break 'resolve;
                 }
@@ -809,6 +1005,10 @@ pub fn update_cursor_2d(
                 }
                 DragMode::Resize { handle, angle, .. } => {
                     cursor_icon = Some(handle.cursor(angle));
+                    break 'resolve;
+                }
+                DragMode::BoxSelect { .. } => {
+                    cursor_icon = Some(SystemCursorIcon::Crosshair);
                     break 'resolve;
                 }
                 DragMode::None => {}
@@ -878,9 +1078,10 @@ pub fn keyboard_nudge_2d(
     if !viewport.is_some_and(|v| v.hovered) {
         return;
     }
-    let Some(entity) = selection.get() else {
+    let selected = selection.get_all();
+    if selected.is_empty() {
         return;
-    };
+    }
 
     let mut delta = Vec2::ZERO;
     if keys.just_pressed(KeyCode::ArrowLeft) {
@@ -906,9 +1107,12 @@ pub fn keyboard_nudge_2d(
     };
     delta *= multiplier;
 
-    let Ok(mut tr) = transforms.get_mut(entity) else {
-        return;
-    };
-    tr.translation.x += delta.x;
-    tr.translation.y += delta.y;
+    // Nudge the whole selection so multi-selects move as a group.
+    for entity in selected {
+        let Ok(mut tr) = transforms.get_mut(entity) else {
+            continue;
+        };
+        tr.translation.x += delta.x;
+        tr.translation.y += delta.y;
+    }
 }

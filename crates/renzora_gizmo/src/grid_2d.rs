@@ -10,11 +10,11 @@
 //! `ColorMaterial` — parked at [`GRID_Z`], far below the z range scene sprites
 //! occupy, so the normal transparent-phase z sort puts it behind them.
 //!
-//! Spacing comes from `ViewportSettings.snap.translate_snap` (the toolbar's
-//! "Grid Snap" pill) so the grid you see matches the snap step. Visibility is
-//! the 2D-only `ViewportSettings.show_grid_2d` toolbar switch — off by
-//! default, and deliberately independent of the 3D `show_grid` so hiding one
-//! view's grid doesn't blank the other's. The camera boundary stays a gizmo
+//! Spacing comes from `ViewportSettings.grid_size_2d` (the number input next
+//! to the toolbar's Grid switch) — its own setting, independent of the snap
+//! step. Visibility is the 2D-only `ViewportSettings.show_grid_2d` toolbar
+//! switch — off by default, and deliberately independent of the 3D
+//! `show_grid` so hiding one view's grid doesn't blank the other's. The camera boundary stays a gizmo
 //! (drawing over sprites is *desired* for a frame marker) and shows whenever
 //! the 2D view is active, grid on or off. Both are edit-mode only.
 
@@ -97,7 +97,11 @@ pub(crate) fn update_grid_2d(
         );
     }
 
-    let tile = settings.snap.translate_snap;
+    // The grid's OWN size setting (toolbar input next to the Grid switch) —
+    // deliberately not the snap step: tying them together made the snap pill
+    // silently restyle the grid, and the default 1-unit snap never lined up
+    // with 16-unit tiles.
+    let tile = settings.grid_size_2d;
     if !settings.show_grid_2d || tile <= 0.0 {
         hide(&mut grid);
         return;
@@ -131,12 +135,12 @@ pub(crate) fn update_grid_2d(
     // How many render-image pixels one world unit covers at the current zoom.
     let px_per_world = size.x / extent.x.max(1e-6);
 
-    // Adaptive spacing: the raw snap step (typically 1 world unit = 1 pixel in
-    // 2D) is sub-pixel at any zoom that shows the whole camera boundary, so a
-    // fixed-step grid only ever appeared when zoomed far in. Scale the DRAWN
-    // step up in powers of two until a cell spans a readable number of pixels —
-    // snapping still uses the raw `translate_snap`, and every adaptive line
-    // remains a multiple of it, so what you see stays snappable.
+    // Adaptive spacing: a small grid size is sub-pixel at any zoom that shows
+    // the whole camera boundary, so a fixed-step grid only ever appeared when
+    // zoomed far in. Scale the DRAWN step up in powers of two until a cell
+    // spans a readable number of pixels — every adaptive line remains a
+    // multiple of the configured size, so alignment reads correctly at any
+    // zoom.
     const MIN_CELL_PX: f32 = 12.0;
     let base_px = tile * px_per_world;
     if !base_px.is_finite() || base_px <= 0.0 {

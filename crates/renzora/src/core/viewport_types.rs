@@ -52,6 +52,14 @@ impl Default for ViewportState {
 #[derive(Resource, Default)]
 pub struct ViewportCursorRequest(pub Option<bevy::window::SystemCursorIcon>);
 
+/// Active 2D rubber-band selection: `(start, current)` in WINDOW pixels.
+/// Written by the 2D picker while a left-drag that started on empty space is
+/// in flight; drawn by the 2D viewport overlay. `None` when no band is
+/// active. Lives in the contract because the picker (gizmo crate) and the
+/// overlay (viewport crate) must share it without depending on each other.
+#[derive(Resource, Default)]
+pub struct ViewportBoxSelect2d(pub Option<(Vec2, Vec2)>);
+
 /// Number of editor viewport slots (the maximum number of camera views you can
 /// dock at once). Slot 0 is the primary viewport (full 3D/2D/UI + toolbar);
 /// slots 1.. are additional 3D-only camera views of the same scene.
@@ -636,6 +644,12 @@ pub struct ViewportSettings {
     /// Off by default: 2D scenes are usually pixel-art where the grid is
     /// noise until you're aligning tiles. Toolbar switch (2D view only).
     pub show_grid_2d: bool,
+    /// Cell size of the 2D grid, in world units. Its own setting — NOT the
+    /// snap step: the grid used to draw at `snap.translate_snap`, which made
+    /// the snap pill silently restyle the grid and left the lines misaligned
+    /// with the default 16-unit tiles. Editable inline next to the Grid
+    /// switch (2D view only).
+    pub grid_size_2d: f32,
     /// The 2D view's ruler bars (+ tick labels and the cursor marker ticks).
     /// On by default — they're the coordinate reference for the whole 2D
     /// editor — but toggleable for a chrome-free view. Toolbar switch
@@ -699,6 +713,8 @@ impl Default for ViewportSettings {
             show_grid: true,
             show_subgrid: true,
             show_grid_2d: false,
+            // Matches the default tilemap tile size (16 units = 16 px art).
+            grid_size_2d: 16.0,
             show_rulers_2d: true,
             show_cursor_coords_2d: true,
             // Faint by design — the 2D grid sits behind the sprites, so it
@@ -747,6 +763,10 @@ pub struct PersistedViewportSettings {
     /// projects saved before the switch existed open with the grid hidden.
     #[serde(default)]
     pub show_grid_2d: bool,
+    /// 2D grid cell size in world units. Defaults to 16 (the tilemap/pixel-art
+    /// convention) for projects saved before the field existed.
+    #[serde(default = "default_grid_size_2d")]
+    pub grid_size_2d: f32,
     /// 2D-view ruler toggle. Defaults on — rulers pre-date the switch, so
     /// older projects keep looking the way they did.
     #[serde(default = "default_true")]
@@ -823,6 +843,7 @@ impl PersistedViewportSettings {
             show_grid: s.show_grid,
             show_subgrid: s.show_subgrid,
             show_grid_2d: s.show_grid_2d,
+            grid_size_2d: s.grid_size_2d,
             show_rulers_2d: s.show_rulers_2d,
             show_cursor_coords_2d: s.show_cursor_coords_2d,
             grid_color_2d: s.grid_color_2d,
@@ -883,6 +904,7 @@ impl PersistedViewportSettings {
         s.show_grid = self.show_grid;
         s.show_subgrid = self.show_subgrid;
         s.show_grid_2d = self.show_grid_2d;
+        s.grid_size_2d = self.grid_size_2d;
         s.show_rulers_2d = self.show_rulers_2d;
         s.show_cursor_coords_2d = self.show_cursor_coords_2d;
         s.grid_color_2d = self.grid_color_2d;
@@ -938,6 +960,10 @@ impl PersistedViewportSettings {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_grid_size_2d() -> f32 {
+    16.0
 }
 
 fn default_graphics_quality() -> String {
@@ -1001,6 +1027,7 @@ mod tests {
             // Non-default (defaults are false / true / true) so the round-trip
             // exercises all three 2D toggles.
             show_grid_2d: true,
+            grid_size_2d: 32.0,
             show_rulers_2d: false,
             show_cursor_coords_2d: false,
             grid_color_2d: [128, 200, 255, 60],
@@ -1063,6 +1090,7 @@ mod tests {
         assert_eq!(original.show_grid, restored.show_grid);
         assert_eq!(original.show_subgrid, restored.show_subgrid);
         assert_eq!(original.show_grid_2d, restored.show_grid_2d);
+        assert_eq!(original.grid_size_2d, restored.grid_size_2d);
         assert_eq!(original.show_rulers_2d, restored.show_rulers_2d);
         assert_eq!(original.show_cursor_coords_2d, restored.show_cursor_coords_2d);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);

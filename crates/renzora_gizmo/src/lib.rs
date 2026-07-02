@@ -569,10 +569,12 @@ impl Plugin for GizmoPlugin {
         // same frame.
         app.init_resource::<picker_2d::Drag2dState>();
         app.init_resource::<renzora::core::viewport_types::ViewportCursorRequest>();
+        app.init_resource::<renzora::core::viewport_types::ViewportBoxSelect2d>();
         app.add_systems(
             Update,
             (
                 picker_2d::pick_2d_system,
+                picker_2d::box_select_2d_system,
                 picker_2d::drag_move_2d_system,
                 picker_2d::keyboard_nudge_2d,
             )
