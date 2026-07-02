@@ -278,6 +278,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::SpriteImagePath>()
             .register_type::<renzora::core::SpriteCustomSize>()
+            .register_type::<renzora::core::SpriteSheet>()
             .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
@@ -299,22 +300,34 @@ impl Plugin for RuntimePlugin {
         app.add_observer(camera::on_camera_2d_inserted);
         app.add_observer(camera::on_projection_inserted_for_2d);
 
-        // Sprite image binding — needs to run in both editor and runtime
-        // builds. In the editor it picks up drag-drop / inspector edits;
-        // in the runtime it re-binds Handle<Image> from the path string
-        // after scene reflection load (Handle IDs don't survive saves).
-        // The observer pattern catches reflection inserts where
-        // `Changed<>` doesn't. Two observers cover both insert orders:
-        // the path-insert observer fires when `SpriteImagePath` arrives
-        // (post-Sprite case), and the sprite-insert observer catches
-        // the reverse order (Sprite arrives after the path is already
-        // there — common with reflection scene loads).
-        app.add_observer(scene_io::on_sprite_image_path_inserted);
-        app.add_observer(scene_io::on_sprite_inserted_apply_image_path);
-        // Editor-side: mirror user-resized `Sprite.custom_size` into the
-        // serializable `SpriteCustomSize` so it survives scene save/load
-        // (bevy's `Sprite` itself is dropped by the save filter).
-        app.add_systems(Update, scene_io::mirror_sprite_custom_size);
+        // Sprite scene systems — the 2D half of the pipeline, stripped from a
+        // 3D-only lean export via the `render_2d` feature (mirror of how
+        // `render_3d` strips PBR from a 2D export).
+        #[cfg(feature = "render_2d")]
+        {
+            // Sprite image binding — needs to run in both editor and runtime
+            // builds. In the editor it picks up drag-drop / inspector edits;
+            // in the runtime it re-binds Handle<Image> from the path string
+            // after scene reflection load (Handle IDs don't survive saves).
+            // The observer pattern catches reflection inserts where
+            // `Changed<>` doesn't. Two observers cover both insert orders:
+            // the path-insert observer fires when `SpriteImagePath` arrives
+            // (post-Sprite case), and the sprite-insert observer catches
+            // the reverse order (Sprite arrives after the path is already
+            // there — common with reflection scene loads).
+            app.add_observer(scene_io::on_sprite_image_path_inserted);
+            app.add_observer(scene_io::on_sprite_inserted_apply_image_path);
+            // Editor-side: mirror user-resized `Sprite.custom_size` into the
+            // serializable `SpriteCustomSize` so it survives scene save/load
+            // (bevy's `Sprite` itself is dropped by the save filter).
+            app.add_systems(Update, scene_io::mirror_sprite_custom_size);
+            // Sprite-sheet cropping: derive `Sprite.rect` from the persisted
+            // `SpriteSheet` grid + loaded image size. Runs in both editor and
+            // runtime so a frame animated by the animation panel plays back
+            // identically in the exported game.
+            app.add_systems(Update, scene_io::apply_sprite_sheet_crop);
+            app.add_observer(scene_io::on_sprite_sheet_removed);
+        }
 
         app.add_plugins(debug_log::DebugLogPlugin);
 

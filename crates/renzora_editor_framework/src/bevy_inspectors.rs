@@ -391,6 +391,7 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     // backed by a Settings wrapper that routes from the
     // WorldEnvironment entity to all active cameras via EffectRouting.
     registry.register(sprite_image_entry());
+    registry.register(sprite_sheet_entry());
 }
 
 fn sprite_image_entry() -> InspectorEntry {
@@ -451,6 +452,92 @@ fn sprite_image_entry() -> InspectorEntry {
                 }
             },
         }],
+    }
+}
+
+/// Sprite-sheet frame cropping (`renzora::core::SpriteSheet`): slice the bound
+/// texture into an hframes × vframes grid and show one cell. Added via the
+/// Add Component overlay; the `frame` field is the one users animate from the
+/// animation panel (it shows up in the Add Property picker via reflection).
+fn sprite_sheet_entry() -> InspectorEntry {
+    // Integer fields ride the Float widget (there's no dedicated int widget);
+    // set_fns round and clamp so drag edits land on whole frames.
+    fn get_sheet(world: &World, entity: Entity) -> Option<renzora::core::SpriteSheet> {
+        world.get::<renzora::core::SpriteSheet>(entity).copied()
+    }
+    InspectorEntry {
+        type_id: "sprite_sheet",
+        display_name: "Sprite Sheet",
+        icon: "grid-four",
+        category: "rendering",
+        has_fn: |world, entity| world.get::<renzora::core::SpriteSheet>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert(renzora::core::SpriteSheet::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            // The engine-side removal observer clears the derived
+            // `Sprite.rect`, restoring the full image.
+            world
+                .entity_mut(entity)
+                .remove::<renzora::core::SpriteSheet>();
+        }),
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "H Frames",
+                field_type: FieldType::Float { speed: 0.1, min: 1.0, max: 1024.0 },
+                get_fn: |world, entity| {
+                    get_sheet(world, entity).map(|s| FieldValue::Float(s.hframes as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut sheet) =
+                            world.get_mut::<renzora::core::SpriteSheet>(entity)
+                        {
+                            sheet.hframes = (v.round().max(1.0)) as u32;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "V Frames",
+                field_type: FieldType::Float { speed: 0.1, min: 1.0, max: 1024.0 },
+                get_fn: |world, entity| {
+                    get_sheet(world, entity).map(|s| FieldValue::Float(s.vframes as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut sheet) =
+                            world.get_mut::<renzora::core::SpriteSheet>(entity)
+                        {
+                            sheet.vframes = (v.round().max(1.0)) as u32;
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Frame",
+                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 1_048_576.0 },
+                get_fn: |world, entity| {
+                    get_sheet(world, entity).map(|s| FieldValue::Float(s.frame as f32))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut sheet) =
+                            world.get_mut::<renzora::core::SpriteSheet>(entity)
+                        {
+                            // Wrapping happens at render time (frame % cells);
+                            // store what the user typed so scrubbing past the
+                            // end loops instead of pinning to the last cell.
+                            sheet.frame = (v.round().max(0.0)) as u32;
+                        }
+                    }
+                },
+            },
+        ],
     }
 }
 

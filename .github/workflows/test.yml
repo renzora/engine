@@ -37,6 +37,7 @@ jobs:
       - name: Run tests
         run: |
           cargo test --workspace \
+            --exclude bevy_firefly \
             --exclude bevy_gauge \
             --exclude bevy_hanabi \
             --exclude bevy_hui \
@@ -71,6 +72,7 @@ jobs:
       - name: Clippy
         run: |
           cargo clippy --workspace --no-deps \
+            --exclude bevy_firefly \
             --exclude bevy_gauge \
             --exclude bevy_hanabi \
             --exclude bevy_hui \

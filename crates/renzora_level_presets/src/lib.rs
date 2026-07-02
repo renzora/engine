@@ -78,6 +78,7 @@ impl Plugin for LevelPresetsPlugin {
                 process_level_commands,
                 // Camera-bucket effects live on the scene camera; seed each once.
                 seed_camera_effects,
+                strip_camera_effects_from_2d,
             )
                 .run_if(in_state(SplashState::Editor)),
         );
@@ -105,9 +106,13 @@ pub struct CameraEffectsSeeded;
 /// afterward and they won't come back. Covers every spawn path (presets,
 /// starters) plus pre-migration scenes. The existing `EffectRouting` fans the
 /// effect from the camera (a routing source) to the viewport cameras.
+///
+/// 2D cameras are excluded: the bucket is the *3D* image-quality set (TAA and
+/// auto-exposure need the 3D prepass/HDR path; bloom/tonemapping are tuned for
+/// it), and 2D lighting has its own per-camera config (`renzora_light2d`).
 fn seed_camera_effects(
     mut commands: Commands,
-    cams: Query<Entity, (With<SceneCamera>, Without<CameraEffectsSeeded>)>,
+    cams: Query<Entity, (With<SceneCamera>, Without<CameraEffectsSeeded>, Without<Camera2d>)>,
 ) {
     for cam in &cams {
         commands.entity(cam).insert((
@@ -123,6 +128,37 @@ fn seed_camera_effects(
             // tuned 9.7 preserves the stock look; Auto Exposure overrides it when on.
             bevy::camera::Exposure { ev100: 9.7 },
         ));
+    }
+}
+
+/// Migration: strip the 3D camera bucket from 2D scene cameras that the seeder
+/// tagged before it learned to skip `Camera2d`. Safe to remove unconditionally —
+/// the Add Component overlay never offers the bucket on a 2D camera, so seeding
+/// is the only way these components got there. The `Or` filter keeps this from
+/// queueing no-op removals every frame once a camera is clean.
+fn strip_camera_effects_from_2d(
+    mut commands: Commands,
+    cams: Query<
+        Entity,
+        (
+            With<SceneCamera>,
+            With<Camera2d>,
+            Or<(
+                With<renzora_bloom_effect::BloomSettings>,
+                With<renzora_auto_exposure::AutoExposureSettings>,
+                With<renzora_tonemapping::TonemappingSettings>,
+                With<renzora_antialiasing::TaaSettings>,
+            )>,
+        ),
+    >,
+) {
+    for cam in &cams {
+        commands.entity(cam).remove::<(
+            renzora_bloom_effect::BloomSettings,
+            renzora_auto_exposure::AutoExposureSettings,
+            renzora_tonemapping::TonemappingSettings,
+            renzora_antialiasing::TaaSettings,
+        )>();
     }
 }
 

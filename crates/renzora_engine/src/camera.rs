@@ -332,16 +332,20 @@ pub fn spawn_editor_2d_camera(mut commands: Commands, render_target: Res<Viewpor
 /// Pan + zoom controls for the editor 2D camera.
 ///
 /// Only acts when `viewport_view == Two`, the cursor is over the viewport
-/// panel, and we're in editing mode. Middle-mouse drag pans (screen pixels
-/// converted to world units via the orthographic scale so drag stays
-/// 1:1 with the cursor at any zoom). Scroll wheel adjusts ortho scale,
-/// translating the camera so the world point under the cursor stays
-/// pinned to the cursor — Photoshop-style zoom-toward-cursor.
+/// panel, and we're in editing mode. Middle- or right-mouse drag pans (screen
+/// pixels converted to world units via the orthographic scale so drag stays
+/// 1:1 with the cursor at any zoom; right-drag is safe here — the 2D view has
+/// no fly-camera or context menu on that button). Scroll wheel adjusts ortho
+/// scale, translating the camera so the world point under the cursor stays
+/// pinned to the cursor — Photoshop-style zoom-toward-cursor. Shift+scroll
+/// pans vertically and Ctrl+scroll horizontally instead of zooming; a native
+/// horizontal wheel (trackpads) always pans horizontally.
 pub fn editor_2d_camera_controller(
     settings: Option<Res<ViewportSettings>>,
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut mouse_motion: MessageReader<MouseMotion>,
     mut scroll_events: MessageReader<MouseWheel>,
     windows: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
@@ -362,8 +366,12 @@ pub fn editor_2d_camera_controller(
         return;
     };
 
-    // Pan: middle-mouse drag converts screen pixels to world units via scale.
-    if hovered && mouse_button.pressed(MouseButton::Middle) {
+    // Pan: middle- or right-mouse drag converts screen pixels to world units
+    // via scale.
+    if hovered
+        && (mouse_button.pressed(MouseButton::Middle)
+            || mouse_button.pressed(MouseButton::Right))
+    {
         let mut delta = Vec2::ZERO;
         for ev in mouse_motion.read() {
             delta += ev.delta;
@@ -383,11 +391,35 @@ pub fn editor_2d_camera_controller(
 
     // Zoom: scroll wheel. Each notch is 10% in/out, clamped to a
     // generous range so the camera doesn't disappear from extreme edits.
+    // With Shift (vertical) or Ctrl (horizontal) held the wheel pans instead.
     if hovered {
-        let mut zoom = 0.0_f32;
+        let (mut wheel_x, mut wheel_y) = (0.0_f32, 0.0_f32);
         for ev in scroll_events.read() {
-            zoom += ev.y;
+            wheel_x += ev.x;
+            wheel_y += ev.y;
         }
+        let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+        let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+        if shift || ctrl || wheel_x != 0.0 {
+            let scale = match &*projection {
+                Projection::Orthographic(o) => o.scale,
+                _ => 1.0,
+            };
+            // Panel pixels per wheel notch, converted to world units so a
+            // notch travels the same on-screen distance at any zoom.
+            let step = 60.0 * scale;
+            if shift {
+                // Wheel up → view moves up.
+                transform.translation.y += wheel_y * step;
+            } else if ctrl {
+                // Wheel up → view moves left (browser-style shift-wheel).
+                transform.translation.x -= wheel_y * step;
+            }
+            // Native horizontal wheel (trackpad / tilt wheel) always pans.
+            transform.translation.x += wheel_x * step;
+            return;
+        }
+        let zoom = wheel_y;
         if zoom != 0.0 {
             if let Projection::Orthographic(ref mut o) = *projection {
                 // Capture cursor world position BEFORE scale change so we

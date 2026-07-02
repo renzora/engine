@@ -48,6 +48,7 @@ pub fn parse_cursor(name: &str) -> Option<SystemCursorIcon> {
 fn apply_cursor_icon(
     #[cfg(feature = "game_ui")] drag: Res<DragState>,
     hovered: Query<(&Interaction, &HoverCursor)>,
+    viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
     windows: Query<Entity, With<PrimaryWindow>>,
     mut commands: Commands,
     mut last: Local<Option<SystemCursorIcon>>,
@@ -64,6 +65,9 @@ fn apply_cursor_icon(
             .iter()
             .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
             .map(|(_, hc)| hc.0)
+            // No UI widget claims the cursor → the viewport interaction layer
+            // may (Move over a selected sprite, resize/rotate over a handle).
+            .or_else(|| viewport_request.and_then(|r| r.0))
             .unwrap_or(SystemCursorIcon::Default)
     };
 

@@ -568,6 +568,7 @@ impl Plugin for GizmoPlugin {
         // click selects an entity *and* captures its drag offset in the
         // same frame.
         app.init_resource::<picker_2d::Drag2dState>();
+        app.init_resource::<renzora::core::viewport_types::ViewportCursorRequest>();
         app.add_systems(
             Update,
             (
@@ -585,16 +586,21 @@ impl Plugin for GizmoPlugin {
                     b.map(|b| !b.0).unwrap_or(true)
                 }),
         );
-
-        // 2D editor grid drawn via Bevy gizmos (not an egui overlay)
-        // so it renders into the offscreen image *under* sprites
-        // instead of being painted on top of the rendered viewport.
-        // Spacing comes from `ViewportSettings.snap.translate_snap`
-        // so it matches the toolbar's "Grid Snap" pill.
+        // Viewport hover cursor (Move / resize / rotate). NOT gated on
+        // `in_two_view`: it must keep running to clear the cursor request
+        // when the pointer leaves the viewport or the view leaves 2D.
         app.add_systems(
             Update,
-            grid_2d::draw_grid_2d_gizmos.run_if(renzora::core::in_two_view),
+            picker_2d::update_cursor_2d
+                .after(picker_2d::drag_move_2d_system)
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
+
+        // 2D editor grid: a faint line MESH at z=-900 so it renders behind the
+        // sprites (2D gizmos always sort on top — see grid_2d.rs), plus the
+        // amber camera-boundary gizmo. No `in_two_view` gate: the system must
+        // keep running outside the 2D view to hide the grid entity.
+        app.add_systems(Update, grid_2d::update_grid_2d);
     }
 }
 

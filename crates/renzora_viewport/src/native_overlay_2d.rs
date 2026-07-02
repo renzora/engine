@@ -43,12 +43,20 @@ const HANDLE_PX: f32 = 9.0;
 /// rendered viewport image) but BELOW every popup/menu in the editor — ember
 /// popovers/menus and the viewport header's dropdowns live at 500-700, so an
 /// open toolbar dropdown must paint over the rulers, not under them.
+/// Selection chrome sits BELOW the ruler bars: the outline of a selection
+/// near the panel edge slides *under* the rulers instead of striping across
+/// them (the rulers are frame chrome; nothing in-world may paint over them).
+const Z_SELECTION: i32 = 90;
+const Z_HANDLE: i32 = 91;
 const Z_RULER_BAR: i32 = 100;
 const Z_RULER_TICK: i32 = 101;
 const Z_RULER_LABEL: i32 = 102;
 const Z_CURSOR_READOUT: i32 = 110;
-const Z_SELECTION: i32 = 120;
-const Z_HANDLE: i32 = 121;
+
+/// Distance of the rotate handle above the selection's top-center handle, in
+/// window pixels. Matches `picker_2d::ROTATE_HANDLE_OFFSET_PX` so the drawn
+/// handle is exactly where the picker hit-tests it.
+const ROTATE_HANDLE_OFFSET_PX: f32 = 22.0;
 
 /// Accent colour for selection chrome (matches the 3D outline orange).
 const ACCENT: Color = Color::srgb(1.0, 0.6, 0.1);
@@ -171,14 +179,19 @@ fn render_overlay_2d(
     }
 
     // Draw only in 2D view + edit mode.
-    let in_2d = settings.map(|s| s.viewport_view).unwrap_or_default() == ViewportView::Two;
+    let (in_2d, show_rulers) = settings
+        .map(|s| (s.viewport_view == ViewportView::Two, s.show_rulers_2d))
+        .unwrap_or((false, true));
     let editing = !play.is_some_and(|p| p.is_in_play_mode());
     if !in_2d || !editing {
         return;
     }
 
     let Some(vs) = viewport else { return };
-    if vs.screen_size.x <= 1.0 || vs.screen_size.y <= 1.0 {
+    // A workspace without a viewport panel leaves `screen_position`/`screen_size`
+    // frozen at their last-docked values (the panel's resize requests stop), so
+    // the rect alone can't tell us the panel is gone — `docked` can.
+    if !vs.docked || vs.screen_size.x <= 1.0 || vs.screen_size.y <= 1.0 {
         return;
     }
     let Ok((camera, cam_gt)) = cameras_2d.single() else {
@@ -189,33 +202,38 @@ fn render_overlay_2d(
     let size = vs.screen_size;
 
     // ── Ruler bars (background) ──────────────────────────────────────────────
+    // Toolbar-toggleable (`show_rulers_2d`, on by default). The cursor
+    // coordinate readout below is NOT part of the toggle — it's useful chrome
+    // even in a ruler-free view.
     let bar = Color::srgba(0.10, 0.11, 0.13, 0.92);
     let tick_col = Color::srgba(1.0, 1.0, 1.0, 0.35);
-    // Top ruler.
-    commands.spawn((
-        overlay_node(origin.x, origin.y, size.x, RULER),
-        BackgroundColor(bar),
-        GlobalZIndex(Z_RULER_BAR),
-        bevy::ui::FocusPolicy::Pass,
-        bevy::picking::Pickable::IGNORE,
-        Overlay2dPart,
-        Name::new("ruler-top"),
-    ));
-    // Left ruler.
-    commands.spawn((
-        overlay_node(origin.x, origin.y, RULER, size.y),
-        BackgroundColor(bar),
-        GlobalZIndex(Z_RULER_BAR),
-        bevy::ui::FocusPolicy::Pass,
-        bevy::picking::Pickable::IGNORE,
-        Overlay2dPart,
-        Name::new("ruler-left"),
-    ));
+    if show_rulers {
+        // Top ruler.
+        commands.spawn((
+            overlay_node(origin.x, origin.y, size.x, RULER),
+            BackgroundColor(bar),
+            GlobalZIndex(Z_RULER_BAR),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::picking::Pickable::IGNORE,
+            Overlay2dPart,
+            Name::new("ruler-top"),
+        ));
+        // Left ruler.
+        commands.spawn((
+            overlay_node(origin.x, origin.y, RULER, size.y),
+            BackgroundColor(bar),
+            GlobalZIndex(Z_RULER_BAR),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::picking::Pickable::IGNORE,
+            Overlay2dPart,
+            Name::new("ruler-left"),
+        ));
+    }
 
     // Visible world bounds from the two panel corners.
     let tl = window_to_world(camera, cam_gt, &vs, origin);
     let br = window_to_world(camera, cam_gt, &vs, origin + size);
-    if let (Some(tl), Some(br)) = (tl, br) {
+    if let (true, Some(tl), Some(br)) = (show_rulers, tl, br) {
         let world_left = tl.x.min(br.x);
         let world_right = tl.x.max(br.x);
         let world_top = tl.y.max(br.y);
@@ -278,9 +296,12 @@ fn render_overlay_2d(
                     && cursor.x <= origin.x + size.x
                     && cursor.y <= origin.y + size.y;
                 if inside {
-                    // Marker lines projected onto each ruler.
-                    spawn_tick(&mut commands, cursor.x - 0.5, origin.y, 1.0, RULER, ACCENT);
-                    spawn_tick(&mut commands, origin.x, cursor.y - 0.5, RULER, 1.0, ACCENT);
+                    // Marker lines projected onto each ruler — meaningless
+                    // without the ruler bars behind them, so they toggle too.
+                    if show_rulers {
+                        spawn_tick(&mut commands, cursor.x - 0.5, origin.y, 1.0, RULER, ACCENT);
+                        spawn_tick(&mut commands, origin.x, cursor.y - 0.5, RULER, 1.0, ACCENT);
+                    }
                     if let (Some(world), Some(f)) = (
                         window_to_world(camera, cam_gt, &vs, cursor),
                         fonts.as_ref().map(|f| f.ui.clone()),
@@ -309,57 +330,64 @@ fn render_overlay_2d(
         return;
     };
 
-    // Resolve the selection's centre + half-size in world units. Sprites use
-    // their effective render size; bare Node2d groups get a small fixed box so
-    // empty groups still show feedback.
-    let (center, half) = if let Ok((gt, sprite)) = sprites.get(entity) {
+    // Resolve the selection's centre + half-size in world units, plus its z
+    // rotation. Sprites use their effective render size; bare Node2d groups
+    // get a small fixed box so empty groups still show feedback.
+    let (center, half, angle) = if let Ok((gt, sprite)) = sprites.get(entity) {
         let Some(s) = sprite_size(sprite, &images) else {
             return;
         };
         if s.x <= 0.0 || s.y <= 0.0 {
             return;
         }
-        (gt.translation().truncate(), s * 0.5)
+        let angle = gt.rotation().to_euler(EulerRot::XYZ).2;
+        (gt.translation().truncate(), s * 0.5, angle)
     } else if let Ok(gt) = node2ds.get(entity) {
-        (gt.translation().truncate(), Vec2::splat(20.0))
+        let angle = gt.rotation().to_euler(EulerRot::XYZ).2;
+        (gt.translation().truncate(), Vec2::splat(20.0), angle)
     } else {
         return;
     };
 
-    // Project the four AABB corners and take their window-space bounds. With no
-    // rotation (the 2D picker never rotates) this is exact; with rotation it's a
-    // conservative enclosing box, which is still a sensible selection frame.
-    let corners = [
-        Vec2::new(center.x - half.x, center.y - half.y),
-        Vec2::new(center.x + half.x, center.y - half.y),
-        Vec2::new(center.x - half.x, center.y + half.y),
-        Vec2::new(center.x + half.x, center.y + half.y),
-    ];
-    let mut min = Vec2::splat(f32::MAX);
-    let mut max = Vec2::splat(f32::MIN);
-    for c in corners {
-        let Some(w) = world_to_window(camera, cam_gt, &vs, c) else {
-            return;
-        };
-        min = min.min(w);
-        max = max.max(w);
-    }
-    let rect = max - min;
+    // The selection frame follows the entity's rotation: project the centre
+    // and the two (rotated) local half-axes into window space, then draw one
+    // border node of the projected size rotated via `UiTransform` — bevy_ui
+    // rotates a node about its own centre, which is exactly the frame pivot.
+    let rot = Rot2::radians(angle);
+    let Some(center_win) = world_to_window(camera, cam_gt, &vs, center) else {
+        return;
+    };
+    let Some(x_edge) = world_to_window(camera, cam_gt, &vs, center + rot * Vec2::new(half.x, 0.0))
+    else {
+        return;
+    };
+    let Some(y_edge) = world_to_window(camera, cam_gt, &vs, center + rot * Vec2::new(0.0, half.y))
+    else {
+        return;
+    };
+    let ax = x_edge - center_win;
+    let ay = y_edge - center_win;
+    let rect = Vec2::new(ax.length() * 2.0, ay.length() * 2.0);
     if rect.x <= 0.0 || rect.y <= 0.0 {
         return;
     }
+    // Screen-space rotation of the box (window y points down, so this is the
+    // world rotation mirrored — reading it off the projected axis keeps the
+    // two spaces from ever disagreeing).
+    let screen_rot = Rot2::radians(ax.to_angle());
 
     // Outline.
     commands.spawn((
         Node {
             position_type: PositionType::Absolute,
-            left: Val::Px(min.x),
-            top: Val::Px(min.y),
+            left: Val::Px(center_win.x - rect.x * 0.5),
+            top: Val::Px(center_win.y - rect.y * 0.5),
             width: Val::Px(rect.x),
             height: Val::Px(rect.y),
             border: UiRect::all(Val::Px(1.5)),
             ..default()
         },
+        bevy::ui::UiTransform::from_rotation(screen_rot),
         BackgroundColor(Color::NONE),
         BorderColor::all(ACCENT),
         GlobalZIndex(Z_SELECTION),
@@ -369,30 +397,33 @@ fn render_overlay_2d(
         Name::new("selection-outline-2d"),
     ));
 
-    // Eight resize handles at the corners + edge midpoints.
-    let cx = (min.x + max.x) * 0.5;
-    let cy = (min.y + max.y) * 0.5;
-    let handles = [
-        (min.x, min.y),
-        (cx, min.y),
-        (max.x, min.y),
-        (min.x, cy),
-        (max.x, cy),
-        (min.x, max.y),
-        (cx, max.y),
-        (max.x, max.y),
+    // Eight resize handles at the (rotated) corners + edge midpoints, each
+    // rotated with the frame so corner squares stay flush with the outline.
+    let local_offsets = [
+        Vec2::new(-half.x, half.y),
+        Vec2::new(0.0, half.y),
+        Vec2::new(half.x, half.y),
+        Vec2::new(-half.x, 0.0),
+        Vec2::new(half.x, 0.0),
+        Vec2::new(-half.x, -half.y),
+        Vec2::new(0.0, -half.y),
+        Vec2::new(half.x, -half.y),
     ];
-    for (hx, hy) in handles {
+    for offset in local_offsets {
+        let Some(pos) = world_to_window(camera, cam_gt, &vs, center + rot * offset) else {
+            continue;
+        };
         commands.spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(hx - HANDLE_PX * 0.5),
-                top: Val::Px(hy - HANDLE_PX * 0.5),
+                left: Val::Px(pos.x - HANDLE_PX * 0.5),
+                top: Val::Px(pos.y - HANDLE_PX * 0.5),
                 width: Val::Px(HANDLE_PX),
                 height: Val::Px(HANDLE_PX),
                 border: UiRect::all(Val::Px(1.0)),
                 ..default()
             },
+            bevy::ui::UiTransform::from_rotation(screen_rot),
             BackgroundColor(Color::WHITE),
             BorderColor::all(ACCENT),
             GlobalZIndex(Z_HANDLE),
@@ -401,6 +432,61 @@ fn render_overlay_2d(
             Overlay2dPart,
             Name::new("selection-handle-2d"),
         ));
+    }
+
+    // Rotate handle: a circle floating above the top-center handle along the
+    // box's local up, at a constant on-screen offset. The picker hit-tests
+    // the same spot (`picker_2d::ROTATE_HANDLE_OFFSET_PX`).
+    if let Some(top_center) = world_to_window(camera, cam_gt, &vs, center + rot * Vec2::new(0.0, half.y)) {
+        let dir = (top_center - center_win).normalize_or_zero();
+        if dir != Vec2::ZERO {
+            let pos = top_center + dir * ROTATE_HANDLE_OFFSET_PX;
+            // Connector stem from the outline to the handle, so the circle
+            // reads as attached to the selection.
+            let stem_len = ROTATE_HANDLE_OFFSET_PX - HANDLE_PX * 0.5;
+            let stem_center = top_center + dir * (stem_len * 0.5);
+            commands.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(stem_center.x - 0.5),
+                    top: Val::Px(stem_center.y - stem_len * 0.5),
+                    width: Val::Px(1.0),
+                    height: Val::Px(stem_len),
+                    ..default()
+                },
+                // The stem is a vertical bar; rotate it to lie along `dir`.
+                // `dir` is 90° off the bar's axis reference, hence the offset.
+                bevy::ui::UiTransform::from_rotation(Rot2::radians(
+                    dir.to_angle() - std::f32::consts::FRAC_PI_2,
+                )),
+                BackgroundColor(ACCENT),
+                GlobalZIndex(Z_HANDLE),
+                bevy::ui::FocusPolicy::Pass,
+                bevy::picking::Pickable::IGNORE,
+                Overlay2dPart,
+                Name::new("rotate-stem-2d"),
+            ));
+            let d = HANDLE_PX + 2.0;
+            commands.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(pos.x - d * 0.5),
+                    top: Val::Px(pos.y - d * 0.5),
+                    width: Val::Px(d),
+                    height: Val::Px(d),
+                    border: UiRect::all(Val::Px(1.5)),
+                    border_radius: BorderRadius::all(Val::Px(d * 0.5)),
+                    ..default()
+                },
+                BackgroundColor(Color::WHITE),
+                BorderColor::all(ACCENT),
+                GlobalZIndex(Z_HANDLE),
+                bevy::ui::FocusPolicy::Pass,
+                bevy::picking::Pickable::IGNORE,
+                Overlay2dPart,
+                Name::new("rotate-handle-2d"),
+            ));
+        }
     }
 }
 

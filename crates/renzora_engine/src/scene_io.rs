@@ -1694,6 +1694,7 @@ pub fn rehydrate_meshes(
 ///    rendering. This is the rehydration path mirroring
 ///    `rehydrate_meshes` for `MeshPrimitive`.
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "render_2d")]
 pub fn on_sprite_image_path_inserted(
     trigger: On<Insert, renzora::core::SpriteImagePath>,
     paths: Query<&renzora::core::SpriteImagePath>,
@@ -1722,6 +1723,7 @@ pub fn on_sprite_image_path_inserted(
 /// reverse insert order — preset spawns and drag-drop both insert
 /// Sprite and SpriteImagePath in the same bundle, so whichever
 /// observer fires last finds the other component already present.
+#[cfg(feature = "render_2d")]
 pub fn on_sprite_inserted_apply_image_path(
     trigger: On<Insert, bevy::sprite::Sprite>,
     paths: Query<&renzora::core::SpriteImagePath>,
@@ -1746,6 +1748,7 @@ pub fn on_sprite_inserted_apply_image_path(
 /// and is dropped wholesale by the save filter. Only meaningful while editing:
 /// gated on an editor camera existing and play mode being off so a shipped
 /// game (or a script animating sizes in play) doesn't churn component inserts.
+#[cfg(feature = "render_2d")]
 pub fn mirror_sprite_custom_size(
     editor_camera: Query<(), With<EditorCamera>>,
     play_mode: Option<Res<PlayModeState>>,
@@ -1776,15 +1779,79 @@ pub fn mirror_sprite_custom_size(
     }
 }
 
+/// Derive `Sprite.rect` from a [`renzora::core::SpriteSheet`] grid and the
+/// loaded image's pixel dimensions.
+///
+/// Runs every frame (editor and runtime) rather than on `Changed<SpriteSheet>`
+/// because the rect depends on the *image* as much as the grid: the texture
+/// loads asynchronously and can be swapped via `SpriteImagePath`, neither of
+/// which touches `SpriteSheet`. The write is compare-first so an idle sprite
+/// doesn't trip `Changed<Sprite>` (render re-extraction, the custom-size
+/// mirror) every frame.
+#[cfg(feature = "render_2d")]
+pub fn apply_sprite_sheet_crop(
+    images: Res<Assets<Image>>,
+    mut sprites: Query<(&renzora::core::SpriteSheet, &mut bevy::sprite::Sprite)>,
+) {
+    for (sheet, mut sprite) in &mut sprites {
+        let hframes = sheet.hframes.max(1);
+        let vframes = sheet.vframes.max(1);
+        let desired = if hframes == 1 && vframes == 1 {
+            // 1×1 grid = the whole image; leave the rect unset so the sprite
+            // behaves exactly like one without a SpriteSheet (native sizing
+            // keeps tracking the image if it's swapped).
+            None
+        } else {
+            // Image not loaded yet → keep the current rect and retry next
+            // frame once the asset lands.
+            let Some(image) = images.get(&sprite.image) else {
+                continue;
+            };
+            let size = image.size_f32();
+            let frame_w = size.x / hframes as f32;
+            let frame_h = size.y / vframes as f32;
+            // Wrap rather than clamp so a linear 0→N animation track loops
+            // cleanly through the sheet.
+            let idx = sheet.frame % (hframes * vframes);
+            let col = (idx % hframes) as f32;
+            let row = (idx / hframes) as f32;
+            Some(Rect::new(
+                col * frame_w,
+                row * frame_h,
+                (col + 1.0) * frame_w,
+                (row + 1.0) * frame_h,
+            ))
+        };
+        if sprite.rect != desired {
+            sprite.rect = desired;
+        }
+    }
+}
+
+/// Clear the derived crop when the sheet component is removed, restoring the
+/// full-image sprite. Without this the last frame's rect would stick around
+/// forever — nothing else writes `Sprite.rect`.
+#[cfg(feature = "render_2d")]
+pub fn on_sprite_sheet_removed(
+    trigger: On<Remove, renzora::core::SpriteSheet>,
+    mut sprites: Query<&mut bevy::sprite::Sprite>,
+) {
+    if let Ok(mut sprite) = sprites.get_mut(trigger.entity) {
+        sprite.rect = None;
+    }
+}
+
 /// Resolve the project's configured 2D image filter. Defaults to
 /// `Nearest` when no project is loaded — keeps the behaviour
 /// pixel-perfect by default.
+#[cfg(feature = "render_2d")]
 fn sprite_filter(project: Option<&renzora::CurrentProject>) -> renzora::core::TextureFilter {
     project
         .map(|p| p.config.rendering_2d.image_filter)
         .unwrap_or_default()
 }
 
+#[cfg(feature = "render_2d")]
 fn apply_sprite_image_path(
     entity: Entity,
     path: &str,
@@ -1835,6 +1902,7 @@ fn apply_sprite_image_path(
 /// for pixel art — every scaled pixel becomes a smear). Per-asset
 /// override via `load_with_settings` keeps 3D textures linear while
 /// sprite textures land with whatever the project asks for.
+#[cfg(feature = "render_2d")]
 fn load_sprite_image(
     asset_server: &AssetServer,
     path: &str,
@@ -1858,6 +1926,7 @@ fn load_sprite_image(
 /// `SpriteImagePath` but not `Sprite`. Defaults match the editor's
 /// preset: 100×100 placeholder for empty path, white-tinted with
 /// the loaded texture for a bound path.
+#[cfg(feature = "render_2d")]
 fn spawn_sprite_for_path(
     entity: Entity,
     path: &str,

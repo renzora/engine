@@ -20,13 +20,19 @@ toml = "0.8"
 default = [
     "navmesh", "terrain", "spline", "water", "audio", "particles",
     "animation", "blueprint", "game_ui", "postfx", "sky", "solari",
-    "rhai", "script_http", "physics", "render_3d", "tilemap",
+    "rhai", "script_http", "physics", "render_3d", "render_2d", "tilemap",
 ]
 # The 3D rendering pipeline (bevy_pbr + renzora_shader). Off = a 2D-only export
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
 # Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped
 # separately by the exporter's render_3d capability.
 render_3d = ["dep:renzora_shader", "renzora_engine/render_3d", "renzora/render_3d"]
+# The 2D sprite scene systems (image binding, size persistence, sprite-sheet
+# frame cropping). Off = a 3D-only export with no sprite game-code. Bevy's `2d`
+# meta-feature is NOT strippable yet — the window-blit present path
+# (viewport_stretch.rs in THIS crate) draws with a bevy `Sprite` in every
+# export — so this only gates renzora_engine's sprite systems for now.
+render_2d = ["renzora_engine/render_2d"]
 # avian physics (~6.5 MiB: avian3d + parry3d + bevy_transform_interpolation +
 # bevy_heavy + glam_matrix_extras). Forwards to every crate that touches avian:
 # the engine scene-save denies, water buoyancy, and the navmesh collider-obstacle

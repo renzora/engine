@@ -248,6 +248,20 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: true,
     },
     Capability {
+        id: "render_2d",
+        label: "2D sprites",
+        help: "The sprite scene systems: texture binding, size persistence, and \
+               sprite-sheet frame cropping/animation. Drop for a pure-3D game. \
+               (Tilemaps are a separate capability.)",
+        // No bevy features yet: bevy's `2d` meta can't be stripped while the
+        // window-blit present path (renzora_runtime::viewport_stretch) draws the
+        // offscreen viewport image with a bevy `Sprite` in every export — 3D
+        // included. When that blit moves off bevy_sprite, add "2d" here.
+        bevy_features: &[],
+        runtime_features: &["render_2d"],
+        default_on: true,
+    },
+    Capability {
         id: "audio",
         label: "Audio",
         help: "The audio subsystem. Drop for a silent game.",

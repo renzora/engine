@@ -177,6 +177,33 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
+    // 2D-only switches — the faint behind-sprites grid mesh
+    // (`ViewportSettings.show_grid_2d`, off by default; separate from the
+    // Display dropdown's 3D "Grid" toggle, which drives the 3D floor grid and
+    // is hidden in 2D along with the rest of the dropdown) and the ruler bars
+    // (`show_rulers_2d`, on by default).
+    let grid_gap = gap(commands, 6.0);
+    let grid_switch = switch_2d(
+        commands,
+        fonts,
+        "viewport.grid",
+        "vp-2d-grid-switch",
+        |s| s.show_grid_2d,
+        |s, v| s.show_grid_2d = v,
+    );
+    let ruler_gap = gap(commands, 6.0);
+    let ruler_switch = switch_2d(
+        commands,
+        fonts,
+        "viewport.rulers",
+        "vp-2d-ruler-switch",
+        |s| s.show_rulers_2d,
+        |s, v| s.show_rulers_2d = v,
+    );
+    for e in [grid_gap, grid_switch, ruler_gap, ruler_switch] {
+        commands.entity(e).insert(TwoDOnly);
+    }
+
     // Inline snapping: translate doubles as the 2D grid snap; rotate / scale and
     // the camera-speed widget are 3D-only (hidden in 2D — `ThreeDOnly`).
     let gap5 = gap(commands, 6.0);
@@ -237,9 +264,59 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
         undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd, space_gap, space_btn,
-        center_gap, view_dd, mode_dd, zoom_readout, gap5, translate, rotate, scale, gap6, cam_speed,
-        gap3, display_dd, snap_dd, camera_dd, gap4, maximize,
+        center_gap, view_dd, mode_dd, zoom_readout, grid_gap, grid_switch, ruler_gap, ruler_switch,
+        gap5, translate, rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd, camera_dd,
+        gap4, maximize,
     ]);
+    row
+}
+
+/// 2D-only label + ember switch, two-way bound to a `ViewportSettings` bool
+/// (the grid / ruler toggles). Lives inline in the toolbar (not a dropdown)
+/// so flipping chrome while tile-aligning is one click.
+fn switch_2d(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    label_key: &str,
+    name: &'static str,
+    get: impl Fn(&ViewportSettings) -> bool + Copy + Send + Sync + 'static,
+    set: impl Fn(&mut ViewportSettings, bool) + Send + Sync + 'static,
+) -> Entity {
+    let sw = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        sw,
+        move |w| {
+            w.get_resource::<ViewportSettings>()
+                .map(get)
+                .unwrap_or(false)
+        },
+        move |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                set(&mut s, *v);
+            }
+        },
+    );
+    let lbl = commands
+        .spawn((
+            Text::new(renzora::lang::t(label_key)),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+    let row = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                height: Val::Percent(100.0),
+                margin: UiRect::horizontal(Val::Px(2.0)),
+                ..default()
+            },
+            Name::new(name),
+        ))
+        .id();
+    commands.entity(row).add_children(&[lbl, sw]);
     row
 }
 

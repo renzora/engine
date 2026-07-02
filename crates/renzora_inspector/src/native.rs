@@ -879,6 +879,14 @@ fn inspector_signature(
                 for entry in reg.iter() {
                     if (entry.has_fn)(world, e) {
                         entry.type_id.hash(&mut h);
+                        // Presence-toggled sections (their enable switch
+                        // inserts/removes the underlying component, e.g. 2D
+                        // Lighting on a camera) change their rows without
+                        // changing the section set — fold the enabled bit in
+                        // so flipping the switch rebuilds the body.
+                        if let Some(is_enabled) = entry.is_enabled_fn {
+                            is_enabled(world, e).hash(&mut h);
+                        }
                     }
                 }
             }
@@ -982,6 +990,14 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         let mut fields = Vec::new();
         for f in &entry.fields {
             let val = (f.get_fn)(world, entity);
+            // A `None` read means "row not applicable right now" — the section's
+            // component is toggled off, or the field only applies to some
+            // states (e.g. occluder Width/Height on a polygon shape). Hide the
+            // row rather than falling through to a junk ReadOnly. Buttons are
+            // the exception: they have no value to read by design.
+            if val.is_none() && !matches!(f.field_type, FieldType::Button { .. }) {
+                continue;
+            }
             let (kind, init) = match (&f.field_type, &val) {
                 (FieldType::Float { speed, min, max }, Some(FieldValue::Float(v))) => (
                     FieldKind::Float {

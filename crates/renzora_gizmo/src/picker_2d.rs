@@ -1,30 +1,43 @@
 //! 2D viewport interaction — click-to-pick, drag-to-move, resize handles,
-//! and selection outline.
+//! a rotate handle, and the viewport cursor.
 //!
-//! Shape: on left-click the picker decides whether the user grabbed a
-//! resize handle of the currently-selected sprite, the body of any
-//! sprite, or empty space — and stores that decision in [`Drag2dState`].
-//! [`drag_move_2d_system`] then executes Move or Resize each frame until
-//! the mouse is released.
+//! Shape: on left-click the picker decides whether the user grabbed the
+//! rotate handle or a resize handle of the currently-selected sprite, the
+//! body of any sprite, or empty space — and stores that decision in
+//! [`Drag2dState`]. [`drag_move_2d_system`] then executes Move / Resize /
+//! Rotate each frame until the mouse is released.
+//!
+//! Rotation-aware throughout: hit-tests, alpha sampling, and resize all work
+//! in the sprite's LOCAL frame (cursor rotated by the inverse of the entity's
+//! z rotation), so a rotated sprite picks and resizes exactly along its own
+//! axes. The captured resize bounds are local half-extents; only the final
+//! translation is rotated back into world space.
+//!
+//! [`update_cursor_2d`] separately publishes the hover cursor each frame
+//! (Move over a selected body, directional resize over handles, grab over the
+//! rotate handle) via the shared [`ViewportCursorRequest`] — ember's cursor
+//! system consumes it, keeping a single writer of the window `CursorIcon`.
 //!
 //! All work is gated on `viewport_view == Two`.
-//!
-//! Note: the egui selection-outline overlay (registered with
-//! `ViewportOverlayRegistry`) was dropped in the egui purge and is pending a
-//! native re-implementation. The pick / drag / resize input logic is retained.
 
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
-use bevy::window::PrimaryWindow;
-use renzora::core::viewport_types::ViewportState;
+use bevy::window::{PrimaryWindow, SystemCursorIcon};
+use renzora::core::viewport_types::{
+    ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
+};
 use renzora::core::{Node2d, PlayModeState};
 use renzora_editor_framework::EditorSelection;
 
 /// Hit threshold for handle picking, in panel pixels. Generous so users
 /// don't have to be sub-pixel accurate on a small sprite.
 const HANDLE_HIT_RADIUS: f32 = 8.0;
-/// Which resize handle the user grabbed. Indexed by which corner / edge
-/// of the entity AABB the handle sits at.
+/// Distance of the rotate handle above the selection's top-center handle,
+/// in panel pixels. Matches the overlay drawing in `native_overlay_2d`.
+pub const ROTATE_HANDLE_OFFSET_PX: f32 = 22.0;
+
+/// Which resize handle the user grabbed. Named by which corner / edge
+/// of the entity's LOCAL box the handle sits at (N = local +Y).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ResizeHandle {
     NW,
@@ -38,9 +51,9 @@ pub enum ResizeHandle {
 }
 
 impl ResizeHandle {
-    /// Per-frame resize: given the cursor's current world position and the
-    /// AABB captured at drag start, returns `(new_translation, new_size)`
-    /// for the entity. The opposite handle stays anchored.
+    /// Per-frame resize in the sprite's LOCAL frame: given the cursor's local
+    /// position and the local bounds captured at drag start, returns
+    /// `(new_local_center, new_size)`. The opposite handle stays anchored.
     fn resize(self, cursor: Vec2, init_min: Vec2, init_max: Vec2) -> (Vec2, Vec2) {
         let (mut min_x, mut max_x, mut min_y, mut max_y) =
             (init_min.x, init_max.x, init_min.y, init_max.y);
@@ -91,6 +104,40 @@ impl ResizeHandle {
         let translation = Vec2::new((lo_x + hi_x) * 0.5, (lo_y + hi_y) * 0.5);
         (translation, size)
     }
+
+    /// The handle's outward direction in the entity's LOCAL frame (N = +Y).
+    fn local_dir(self) -> Vec2 {
+        match self {
+            ResizeHandle::NW => Vec2::new(-1.0, 1.0),
+            ResizeHandle::N => Vec2::new(0.0, 1.0),
+            ResizeHandle::NE => Vec2::new(1.0, 1.0),
+            ResizeHandle::W => Vec2::new(-1.0, 0.0),
+            ResizeHandle::E => Vec2::new(1.0, 0.0),
+            ResizeHandle::SW => Vec2::new(-1.0, -1.0),
+            ResizeHandle::S => Vec2::new(0.0, -1.0),
+            ResizeHandle::SE => Vec2::new(1.0, -1.0),
+        }
+    }
+
+    /// The directional resize cursor for this handle on an entity rotated by
+    /// `angle`. World +Y is screen-up, so a pure-N handle at zero rotation is
+    /// a NS resize; rotation shifts the direction through the four diagonal /
+    /// axis cursor buckets (45° sectors).
+    fn cursor(self, angle: f32) -> SystemCursorIcon {
+        let world = (self.local_dir().to_angle() + angle).to_degrees();
+        // Fold to 0..180 (a resize axis is direction-less) and bucket.
+        let folded = world.rem_euclid(180.0);
+        if folded < 22.5 || folded >= 157.5 {
+            SystemCursorIcon::EwResize
+        } else if folded < 67.5 {
+            // Up-right axis on screen (world y-up) = bottom-left↔top-right.
+            SystemCursorIcon::NeswResize
+        } else if folded < 112.5 {
+            SystemCursorIcon::NsResize
+        } else {
+            SystemCursorIcon::NwseResize
+        }
+    }
 }
 
 /// What the active drag is doing, plus enough captured state to do it
@@ -102,13 +149,23 @@ pub enum DragMode {
     /// Translate the entity. `offset` is `entity_translation - cursor_world`
     /// captured at drag start so the entity stays pinned to the grab point.
     Move { offset: Vec2 },
-    /// Resize via one of the eight handles. Initial bounds are captured
-    /// at drag start so the math doesn't accumulate float drift.
+    /// Resize via one of the eight handles. Bounds are LOCAL half-extent
+    /// boxes captured at drag start (so the math doesn't accumulate float
+    /// drift); `center`/`angle` are the entity pose at drag start, used to
+    /// map the cursor into the local frame and the result back out.
     Resize {
         handle: ResizeHandle,
         init_min: Vec2,
         init_max: Vec2,
+        center: Vec2,
+        angle: f32,
     },
+    /// Rotate via the handle above the selection. `start_angle` is the
+    /// entity's z rotation and `grab_angle` the cursor's polar angle around
+    /// the entity at drag start; the delta between the live cursor angle and
+    /// `grab_angle` is added to `start_angle`, so the handle follows the
+    /// cursor without snapping to it.
+    Rotate { start_angle: f32, grab_angle: f32 },
 }
 
 #[derive(Resource, Default)]
@@ -122,6 +179,12 @@ impl Drag2dState {
         self.mode = DragMode::None;
         self.entity = None;
     }
+}
+
+/// The entity's z rotation in radians. 2D scenes only rotate about z, so the
+/// XYZ euler decomposition's z component is exact for editor-authored poses.
+fn rotation_z(q: Quat) -> f32 {
+    q.to_euler(EulerRot::XYZ).2
 }
 
 /// Look up the editor 2D camera via the entity reference cached by
@@ -236,16 +299,16 @@ pub fn sprite_size_from_query(sprite: &Sprite, images: &Assets<Image>) -> Option
     Some(image.size_f32())
 }
 
-/// Sample the sprite's alpha at a world position. Returns `None` if
-/// the image isn't loaded (caller should fall back to AABB-only),
-/// or if the cursor lands outside the sprite's UV space. Honours
-/// `flip_x` / `flip_y` and `rect` (atlas sub-region) so picking
-/// matches what the user actually sees on screen.
+/// Sample the sprite's alpha at a LOCAL position (cursor relative to the
+/// sprite centre, already rotated into the sprite's frame). Returns `None`
+/// if the image isn't loaded (caller should fall back to box-only), or if
+/// the position lands outside the sprite's UV space. Honours `flip_x` /
+/// `flip_y` and `rect` (atlas sub-region) so picking matches what the user
+/// actually sees on screen.
 fn sample_sprite_alpha(
     sprite: &Sprite,
     images: &Assets<Image>,
-    cursor_world: Vec2,
-    sprite_world: Vec2,
+    local: Vec2,
     sprite_size: Vec2,
 ) -> Option<f32> {
     let image = images.get(&sprite.image)?;
@@ -259,7 +322,6 @@ fn sample_sprite_alpha(
 
     // Local position relative to sprite centre, then UV (0..1).
     // World Y is up, texture Y is down — flip the V axis.
-    let local = cursor_world - sprite_world;
     let mut u = local.x / sprite_size.x + 0.5;
     let mut v = 0.5 - local.y / sprite_size.y;
 
@@ -294,25 +356,98 @@ fn sample_sprite_alpha(
     image.get_color_at(px, py).ok().map(|c| c.alpha())
 }
 
-/// All eight handle positions for the entity's AABB, in world space.
-fn handle_world_positions(translation: Vec2, half: Vec2) -> [(ResizeHandle, Vec2); 8] {
-    let cx = translation.x;
-    let cy = translation.y;
+/// All eight handle positions for the entity's (possibly rotated) box, in
+/// world space.
+fn handle_world_positions(
+    translation: Vec2,
+    half: Vec2,
+    angle: f32,
+) -> [(ResizeHandle, Vec2); 8] {
+    let rot = Rot2::radians(angle);
+    let at = |x: f32, y: f32| translation + rot * Vec2::new(x, y);
     [
-        (ResizeHandle::NW, Vec2::new(cx - half.x, cy + half.y)),
-        (ResizeHandle::N, Vec2::new(cx, cy + half.y)),
-        (ResizeHandle::NE, Vec2::new(cx + half.x, cy + half.y)),
-        (ResizeHandle::W, Vec2::new(cx - half.x, cy)),
-        (ResizeHandle::E, Vec2::new(cx + half.x, cy)),
-        (ResizeHandle::SW, Vec2::new(cx - half.x, cy - half.y)),
-        (ResizeHandle::S, Vec2::new(cx, cy - half.y)),
-        (ResizeHandle::SE, Vec2::new(cx + half.x, cy - half.y)),
+        (ResizeHandle::NW, at(-half.x, half.y)),
+        (ResizeHandle::N, at(0.0, half.y)),
+        (ResizeHandle::NE, at(half.x, half.y)),
+        (ResizeHandle::W, at(-half.x, 0.0)),
+        (ResizeHandle::E, at(half.x, 0.0)),
+        (ResizeHandle::SW, at(-half.x, -half.y)),
+        (ResizeHandle::S, at(0.0, -half.y)),
+        (ResizeHandle::SE, at(half.x, -half.y)),
     ]
 }
 
-/// On left-click, resolve what the user grabbed: a handle of the
-/// currently-selected entity, the body of any sprite, or empty space.
-/// Updates `EditorSelection` and `Drag2dState` accordingly.
+/// Panel-space position of the rotate handle: [`ROTATE_HANDLE_OFFSET_PX`]
+/// pixels beyond the top-center resize handle, along the box's (rotated)
+/// local up direction. Computed in panel space so the offset is a constant
+/// on-screen distance at any zoom.
+fn rotate_handle_panel_pos(
+    center: Vec2,
+    half: Vec2,
+    angle: f32,
+    z: f32,
+    viewport: &ViewportState,
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+) -> Option<Vec2> {
+    let top_center = center + Rot2::radians(angle) * Vec2::new(0.0, half.y);
+    let c = world_to_panel(center.extend(z), viewport, camera, cam_gt)?;
+    let t = world_to_panel(top_center.extend(z), viewport, camera, cam_gt)?;
+    let dir = (t - c).normalize_or_zero();
+    if dir == Vec2::ZERO {
+        return None;
+    }
+    Some(t + dir * ROTATE_HANDLE_OFFSET_PX)
+}
+
+/// What the cursor is over, resolved for both click handling and the hover
+/// cursor: the selected entity's rotate handle, one of its resize handles,
+/// or nothing handle-shaped (body picking is separate).
+enum HandleHit {
+    Rotate,
+    Resize(ResizeHandle),
+}
+
+/// Hit-test the selected entity's rotate + resize handles at a panel-space
+/// cursor position. The rotate handle wins ties — it sits beyond the box, so
+/// overlap only happens on tiny selections where rotate is the harder grab.
+#[allow(clippy::too_many_arguments)]
+fn hit_test_handles(
+    translation: Vec3,
+    half: Vec2,
+    angle: f32,
+    cursor_panel: Vec2,
+    viewport: &ViewportState,
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+) -> Option<HandleHit> {
+    let center = translation.truncate();
+    if let Some(pos) =
+        rotate_handle_panel_pos(center, half, angle, translation.z, viewport, camera, cam_gt)
+    {
+        if (pos - cursor_panel).length() <= HANDLE_HIT_RADIUS {
+            return Some(HandleHit::Rotate);
+        }
+    }
+    for (handle, world_pos) in handle_world_positions(center, half, angle) {
+        let Some(panel_pos) = world_to_panel(
+            Vec3::new(world_pos.x, world_pos.y, translation.z),
+            viewport,
+            camera,
+            cam_gt,
+        ) else {
+            continue;
+        };
+        if (panel_pos - cursor_panel).length() <= HANDLE_HIT_RADIUS {
+            return Some(HandleHit::Resize(handle));
+        }
+    }
+    None
+}
+
+/// On left-click, resolve what the user grabbed: the rotate handle or a
+/// resize handle of the currently-selected entity, the body of any sprite,
+/// or empty space. Updates `EditorSelection` and `Drag2dState` accordingly.
 pub fn pick_2d_system(
     selection: Res<EditorSelection>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -324,7 +459,6 @@ pub fn pick_2d_system(
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
     transforms: Query<&Transform>,
-    world_root: Query<()>,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         return;
@@ -347,48 +481,58 @@ pub fn pick_2d_system(
         return;
     };
     let cursor_panel = cursor - viewport.screen_position;
-    let _ = world_root;
 
     // --- Step 1: handle hit-test on the *currently selected* entity. ---
     if let Some(entity) = selection.get() {
-        let translation_3d = transforms.get(entity).map(|t| t.translation).ok();
+        let tr = transforms.get(entity).ok();
         let half = sprites
             .get(entity)
             .ok()
             .and_then(|(_, s, _)| sprite_size_from_query(s, &images))
             .map(|s| s * 0.5);
-        if let (Some(t3d), Some(half)) = (translation_3d, half) {
-            let translation = t3d.truncate();
-            let init_min = translation - half;
-            let init_max = translation + half;
-            for (handle, world_pos) in handle_world_positions(translation, half) {
-                let Some(panel_pos) = world_to_panel(
-                    Vec3::new(world_pos.x, world_pos.y, t3d.z),
-                    &viewport,
-                    camera,
-                    cam_gt,
-                ) else {
-                    continue;
-                };
-                if (panel_pos - cursor_panel).length() <= HANDLE_HIT_RADIUS {
+        if let (Some(tr), Some(half)) = (tr, half) {
+            let angle = rotation_z(tr.rotation);
+            let translation = tr.translation.truncate();
+            match hit_test_handles(
+                tr.translation,
+                half,
+                angle,
+                cursor_panel,
+                &viewport,
+                camera,
+                cam_gt,
+            ) {
+                Some(HandleHit::Rotate) => {
                     drag.entity = Some(entity);
-                    drag.mode = DragMode::Resize {
-                        handle,
-                        init_min,
-                        init_max,
+                    drag.mode = DragMode::Rotate {
+                        start_angle: angle,
+                        grab_angle: (cursor_world - translation).to_angle(),
                     };
                     return;
                 }
+                Some(HandleHit::Resize(handle)) => {
+                    drag.entity = Some(entity);
+                    drag.mode = DragMode::Resize {
+                        handle,
+                        init_min: -half,
+                        init_max: half,
+                        center: translation,
+                        angle,
+                    };
+                    return;
+                }
+                None => {}
             }
         }
     }
 
-    // --- Step 2: AABB hit-test against all sprites, then alpha test. ---
-    // Pixel-perfect picking: a sprite with a transparent pixel at the
-    // click position shouldn't grab the click — let it fall through to
-    // whatever's behind. Alpha == 0.0 → skipped. If the image isn't
-    // loaded yet (alpha is `None`), fall back to the AABB hit so the
-    // sprite isn't unclickable while loading.
+    // --- Step 2: box hit-test against all sprites, then alpha test. ---
+    // The test runs in each sprite's local frame, so rotated sprites pick
+    // exactly along their drawn silhouette. Pixel-perfect picking: a sprite
+    // with a transparent pixel at the click position shouldn't grab the
+    // click — let it fall through to whatever's behind. Alpha == 0.0 →
+    // skipped. If the image isn't loaded yet (alpha is `None`), fall back to
+    // the box hit so the sprite isn't unclickable while loading.
     let mut best: Option<(Entity, f32, Vec2)> = None;
     for (entity, sprite, gt) in &sprites {
         let Some(size) = sprite_size_from_query(sprite, &images) else {
@@ -399,14 +543,11 @@ pub fn pick_2d_system(
         }
         let pos = gt.translation();
         let half = size * 0.5;
-        let aabb_hit =
-            (cursor_world.x - pos.x).abs() <= half.x && (cursor_world.y - pos.y).abs() <= half.y;
-        if !aabb_hit {
+        let local = Rot2::radians(-rotation_z(gt.rotation())) * (cursor_world - pos.truncate());
+        if local.x.abs() > half.x || local.y.abs() > half.y {
             continue;
         }
-        if let Some(alpha) =
-            sample_sprite_alpha(sprite, &images, cursor_world, pos.truncate(), size)
-        {
+        if let Some(alpha) = sample_sprite_alpha(sprite, &images, local, size) {
             if alpha <= 0.0 {
                 continue;
             }
@@ -442,16 +583,18 @@ fn snap_to_grid(value: f32, grid: f32) -> f32 {
 }
 
 /// Execute the active drag: Move snaps `Transform.translation` to
-/// `cursor_world + offset`; Resize recomputes size + translation from
-/// the captured AABB and the moving cursor. When the viewport's
-/// translate-snap toggle is on, both modes snap to its grid step so
-/// sprites land on whole pixel / tile boundaries. Releases drag when
-/// the mouse button is released or the cursor leaves the viewport.
+/// `cursor_world + offset`; Resize recomputes size + translation from the
+/// captured local bounds and the cursor mapped into the sprite's frame;
+/// Rotate turns the entity to follow the cursor's polar angle. When the
+/// viewport's translate-snap toggle is on, Move snaps to its grid step so
+/// sprites land on whole pixel / tile boundaries; Rotate snaps to the rotate
+/// step (or 15° with Shift). Releases drag when the mouse button is released
+/// or the cursor leaves the viewport.
 pub fn drag_move_2d_system(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     viewport: Option<Res<ViewportState>>,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+    settings: Option<Res<ViewportSettings>>,
     play_mode: Option<Res<PlayModeState>>,
     mut drag: ResMut<Drag2dState>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -474,30 +617,6 @@ pub fn drag_move_2d_system(
     if !viewport.hovered {
         return;
     }
-    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    let DragMode::Move { offset } = drag.mode else {
-        // Resize handled below; None means nothing to do.
-        if let DragMode::Resize {
-            handle,
-            init_min,
-            init_max,
-        } = drag.mode
-        {
-            return resize_step(
-                handle,
-                init_min,
-                init_max,
-                shift,
-                drag.entity,
-                &viewport,
-                &windows,
-                &cameras_2d,
-                &mut transforms,
-                &mut sprites,
-            );
-        }
-        return;
-    };
     let Some(entity) = drag.entity else { return };
     let Ok(window) = windows.single() else { return };
     let Some(cursor) = window.cursor_position() else {
@@ -509,20 +628,71 @@ pub fn drag_move_2d_system(
     let Some(cursor_world) = cursor_to_world(cursor, &viewport, camera, cam_gt) else {
         return;
     };
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
 
-    let Ok(mut tr) = transforms.get_mut(entity) else {
-        return;
-    };
-    let mut new_x = cursor_world.x + offset.x;
-    let mut new_y = cursor_world.y + offset.y;
-    if let Some(s) = settings.as_deref() {
-        if s.snap.translate_enabled {
-            new_x = snap_to_grid(new_x, s.snap.translate_snap);
-            new_y = snap_to_grid(new_y, s.snap.translate_snap);
+    match drag.mode {
+        DragMode::None => {}
+        DragMode::Move { offset } => {
+            let Ok(mut tr) = transforms.get_mut(entity) else {
+                return;
+            };
+            let mut new_x = cursor_world.x + offset.x;
+            let mut new_y = cursor_world.y + offset.y;
+            if let Some(s) = settings.as_deref() {
+                if s.snap.translate_enabled {
+                    new_x = snap_to_grid(new_x, s.snap.translate_snap);
+                    new_y = snap_to_grid(new_y, s.snap.translate_snap);
+                }
+            }
+            tr.translation.x = new_x;
+            tr.translation.y = new_y;
+        }
+        DragMode::Resize {
+            handle,
+            init_min,
+            init_max,
+            center,
+            angle,
+        } => resize_step(
+            handle,
+            init_min,
+            init_max,
+            center,
+            angle,
+            shift,
+            entity,
+            cursor_world,
+            &mut transforms,
+            &mut sprites,
+        ),
+        DragMode::Rotate {
+            start_angle,
+            grab_angle,
+        } => {
+            let Ok(mut tr) = transforms.get_mut(entity) else {
+                return;
+            };
+            let center = tr.translation.truncate();
+            let cursor_angle = (cursor_world - center).to_angle();
+            let mut angle = start_angle + (cursor_angle - grab_angle);
+            // Shift always coarse-snaps; otherwise honour the viewport's
+            // rotate-snap toggle (degrees, same as the 3D gizmo).
+            let snap_deg = if shift {
+                15.0
+            } else {
+                settings
+                    .as_deref()
+                    .filter(|s| s.snap.rotate_enabled)
+                    .map(|s| s.snap.rotate_snap)
+                    .unwrap_or(0.0)
+            };
+            if snap_deg > 0.0 {
+                angle = (angle.to_degrees() / snap_deg).round() * snap_deg;
+                angle = angle.to_radians();
+            }
+            tr.rotation = Quat::from_rotation_z(angle);
         }
     }
-    tr.translation.x = new_x;
-    tr.translation.y = new_y;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -530,26 +700,18 @@ fn resize_step(
     handle: ResizeHandle,
     init_min: Vec2,
     init_max: Vec2,
+    center: Vec2,
+    angle: f32,
     aspect_lock: bool,
-    entity: Option<Entity>,
-    viewport: &ViewportState,
-    windows: &Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: &Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    entity: Entity,
+    cursor_world: Vec2,
     transforms: &mut Query<&mut Transform>,
     sprites: &mut Query<&mut Sprite>,
 ) {
-    let Some(entity) = entity else { return };
-    let Ok(window) = windows.single() else { return };
-    let Some(cursor) = window.cursor_position() else {
-        return;
-    };
-    let Ok((camera, cam_gt)) = cameras_2d.single() else {
-        return;
-    };
-    let Some(cursor_world) = cursor_to_world(cursor, viewport, camera, cam_gt) else {
-        return;
-    };
-    let (mut new_translation, mut new_size) = handle.resize(cursor_world, init_min, init_max);
+    // Map the cursor into the sprite's local frame captured at drag start;
+    // all the box math below is rotation-free.
+    let local_cursor = Rot2::radians(-angle) * (cursor_world - center);
+    let (mut new_translation, mut new_size) = handle.resize(local_cursor, init_min, init_max);
 
     // Shift+drag on a corner handle locks the aspect ratio to the
     // initial size's. Edge handles are 1D resizes — aspect lock isn't
@@ -589,12 +751,113 @@ fn resize_step(
         }
     }
 
+    // Local center back to world space.
+    let world_translation = center + Rot2::radians(angle) * new_translation;
     if let Ok(mut tr) = transforms.get_mut(entity) {
-        tr.translation.x = new_translation.x;
-        tr.translation.y = new_translation.y;
+        tr.translation.x = world_translation.x;
+        tr.translation.y = world_translation.y;
     }
     if let Ok(mut sprite) = sprites.get_mut(entity) {
         sprite.custom_size = Some(new_size);
+    }
+}
+
+/// Publish the viewport cursor for the current hover / drag state:
+/// grab over the rotate handle, a directional resize cursor over resize
+/// handles, Move over the selected entity's body. Runs unconditionally in
+/// the editor (no `in_two_view` gate) so it can CLEAR the request when the
+/// pointer leaves the viewport or the view leaves 2D.
+#[allow(clippy::too_many_arguments)]
+pub fn update_cursor_2d(
+    selection: Option<Res<EditorSelection>>,
+    settings: Option<Res<ViewportSettings>>,
+    viewport: Option<Res<ViewportState>>,
+    play_mode: Option<Res<PlayModeState>>,
+    images: Res<Assets<Image>>,
+    drag: Option<Res<Drag2dState>>,
+    mut request: ResMut<ViewportCursorRequest>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
+    sprites: Query<(&Sprite, &GlobalTransform)>,
+    transforms: Query<&Transform>,
+) {
+    let mut cursor_icon: Option<SystemCursorIcon> = None;
+    // Deferred assignment (rather than early returns) so every bail-out path
+    // still clears a stale request.
+    'resolve: {
+        let in_2d = settings.map(|s| s.viewport_view == ViewportView::Two).unwrap_or(false);
+        let editing = !play_mode.is_some_and(|pm| pm.is_in_play_mode());
+        if !in_2d || !editing {
+            break 'resolve;
+        }
+        let Some(vs) = viewport else { break 'resolve };
+        if !vs.hovered {
+            break 'resolve;
+        }
+
+        // Mid-drag the cursor reflects the ACTION, not what's under the
+        // pointer — a fast drag routinely outruns the handle.
+        if let Some(drag) = drag.as_deref() {
+            match drag.mode {
+                DragMode::Move { .. } => {
+                    cursor_icon = Some(SystemCursorIcon::Move);
+                    break 'resolve;
+                }
+                DragMode::Rotate { .. } => {
+                    cursor_icon = Some(SystemCursorIcon::Grabbing);
+                    break 'resolve;
+                }
+                DragMode::Resize { handle, angle, .. } => {
+                    cursor_icon = Some(handle.cursor(angle));
+                    break 'resolve;
+                }
+                DragMode::None => {}
+            }
+        }
+
+        let Ok(window) = windows.single() else { break 'resolve };
+        let Some(cursor) = window.cursor_position() else {
+            break 'resolve;
+        };
+        let Ok((camera, cam_gt)) = cameras_2d.single() else {
+            break 'resolve;
+        };
+        let Some(cursor_world) = cursor_to_world(cursor, &vs, camera, cam_gt) else {
+            break 'resolve;
+        };
+        let cursor_panel = cursor - vs.screen_position;
+
+        let Some(entity) = selection.as_ref().and_then(|s| s.get()) else {
+            break 'resolve;
+        };
+        let Ok(tr) = transforms.get(entity) else {
+            break 'resolve;
+        };
+        let Some(size) = sprites
+            .get(entity)
+            .ok()
+            .and_then(|(s, _)| sprite_size_from_query(s, &images))
+        else {
+            break 'resolve;
+        };
+        let half = size * 0.5;
+        let angle = rotation_z(tr.rotation);
+
+        match hit_test_handles(tr.translation, half, angle, cursor_panel, &vs, camera, cam_gt) {
+            Some(HandleHit::Rotate) => cursor_icon = Some(SystemCursorIcon::Grab),
+            Some(HandleHit::Resize(handle)) => cursor_icon = Some(handle.cursor(angle)),
+            None => {
+                // Over the selected sprite's body (rotated frame) → Move.
+                let local = Rot2::radians(-angle) * (cursor_world - tr.translation.truncate());
+                if local.x.abs() <= half.x && local.y.abs() <= half.y {
+                    cursor_icon = Some(SystemCursorIcon::Move);
+                }
+            }
+        }
+    }
+
+    if request.0 != cursor_icon {
+        request.0 = cursor_icon;
     }
 }
 

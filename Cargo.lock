@@ -1146,6 +1146,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_firefly"
+version = "0.19.0"
+dependencies = [
+ "bevy",
+ "bitflags 2.11.1",
+ "bytemuck",
+ "fixedbitset",
+ "indexmap",
+ "serde",
+]
+
+[[package]]
 name = "bevy_gilrs"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4904,12 +4916,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "2.13.0"
+version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7714e70437a7dc3ac8eb7e6f8df75fd8eb422675fc7678aff7364301092b1017"
+checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown 0.16.1",
+ "hashbrown 0.17.1",
  "serde",
  "serde_core",
 ]
@@ -8645,6 +8657,15 @@ dependencies = [
  "renzora_tonemapping",
  "renzora_volumetric_fog",
  "serde",
+]
+
+[[package]]
+name = "renzora_light2d"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_firefly",
+ "renzora",
 ]
 
 [[package]]

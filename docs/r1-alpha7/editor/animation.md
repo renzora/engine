@@ -132,7 +132,7 @@ The Timeline panel edits the selected clip directly:
 
 ## Property animation
 
-Alongside imported skeletal clips, the **Timeline** is a full **dopesheet** for animating arbitrary **component fields** — Transform rotation/scale/translation, a light's intensity, a sky's elevation, or any reflected `f32`/`Vec3`/`Color`/`bool` field. This is the Godot/Unity-style workflow: pick an entity, add a property, drop keyframes, scrub.
+Alongside imported skeletal clips, the **Timeline** is a full **dopesheet** for animating arbitrary **component fields** — Transform rotation/scale/translation, a light's intensity, a sky's elevation, or any reflected `f32`/`Vec3`/`Color`/`bool` field (integer fields animate too — the sampled value rounds to the nearest whole number on write). This is the Godot/Unity-style workflow: pick an entity, add a property, drop keyframes, scrub.
 
 Property tracks live in the same `.anim` clip as skeletal tracks and play back in both the editor and exported games. They don't need a skeleton, so you can animate a primitive cube, a camera, or a directional light.
 
@@ -167,6 +167,15 @@ Property tracks live in the same `.anim` clip as skeletal tracks and play back i
 > Rotation is keyed as **Euler degrees** so a full 0→360° spin works (quaternion slerp would take the shortest path and not move). For a continuous spin, use keys **less than 180° apart** — e.g. 0° / 120° / 240° / 360°.
 >
 > Older clips (authored before easing existed) load with every key as **Linear** — backward-compatible by default.
+
+### Sprite flipbooks
+
+2D sprite-sheet animation is just a property track. Add a **Sprite Sheet** component to the sprite in the inspector (set **H Frames** / **V Frames** to the sheet's grid), then in the Timeline add a track bound to `SpriteSheet · Frame`:
+
+- For evenly-timed frames, key `Frame = 0` at the start and `Frame = N` (the total cell count) at the end with **Linear** interpolation — the frame index wraps past the last cell, so a looping clip cycles the whole sheet.
+- For hand-timed frames (holds, anticipation), drop a **Stepped** key per frame.
+
+The sampled value rounds to the nearest whole frame on write, and the same clip plays back identically in the exported game.
 
 ### Event markers
 

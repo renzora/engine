@@ -16,7 +16,7 @@ edition = "2021"
 # (via `renzora_runtime`, which forwards only the kept subsystems). `audio` just
 # re-exports the crate (see lib.rs); `animation` gates the scene-save deny of
 # `AnimatorReadState` (see scene_io.rs). See `renzora_export::capabilities`.
-default = ["audio", "animation", "terrain", "physics", "render_3d"]
+default = ["audio", "animation", "terrain", "physics", "render_3d", "render_2d"]
 # The 3D rendering pipeline: bevy_pbr (StandardMaterial/Mesh3d, deferred-vs-forward
 # renderer, contact shadows, deferred prepass) + the renzora_shader graph-material
 # system. Off = a 2D-only export (sprites + UI). Gates the scene-save 3D-material
@@ -24,6 +24,14 @@ default = ["audio", "animation", "terrain", "physics", "render_3d"]
 # full 2D build also needs the bevy `3d` meta-feature dropped at the root manifest
 # + bevy_light handling — see plan (2D MODE).
 render_3d = ["dep:renzora_shader", "renzora/render_3d"]
+# The 2D sprite scene systems (scene_io.rs: SpriteImagePath image binding,
+# SpriteCustomSize mirror, SpriteSheet frame cropping). Off = a 3D-only export
+# with no sprite game-code. Mirror of `render_3d` in the other direction. NOTE:
+# this cannot yet drop bevy's `2d` meta-feature at the root manifest — the
+# window-blit present path (`renzora_runtime::viewport_stretch`) renders the
+# offscreen viewport image with a bevy `Sprite` in EVERY export, 3D included.
+# Until that blit is reworked, `render_2d` strips only our own sprite systems.
+render_2d = []
 audio = ["dep:renzora_audio"]
 animation = ["dep:renzora_animation"]
 # `terrain` only gates the scene-save deny of `TerrainCheckerboardMaterial`

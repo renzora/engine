@@ -25,6 +25,7 @@ members = [
     # Vendored Bevy ecosystem crates. Listed explicitly (not via a
     # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
     # is its own vendored workspace.
+    "crates/bevy_firefly",
     "crates/bevy_hanabi",
     "crates/bevy_hui",
     "crates/bevy_mod_outline",

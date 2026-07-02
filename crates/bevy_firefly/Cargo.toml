@@ -1,0 +1,40 @@
+# Vendored from https://github.com/PVDoriginal/firefly @ 9fa7bd70c3c51c98ed0dea3ae9ef1c34ebf0cb33
+# (bevy_firefly 0.19.0, MIT OR Apache-2.0). Local changes vs upstream:
+#   - `bevy` points at the workspace dep so the crate compiles into the ONE
+#     shared bevy_dylib every dlopen plugin links (CLAUDE.md §3) instead of
+#     pulling its own bevy with a different feature set.
+#   - `#[reflect(Component, Default)]` added to the public components
+#     (FireflyConfig, PointLight2d, Occluder2d, ...) so the renzora inspector
+#     and the reflection-driven scene RON serializer can see them.
+#   - examples/assets/dev-dependencies dropped (not vendored).
+# Consumed by `renzora_light2d`; excluded from CI test/clippy like the other
+# vendored ecosystem crates.
+[package]
+name = "bevy_firefly"
+
+version = "0.19.0"
+description = "2d lighting crate for the Bevy game engine"
+
+repository = "https://github.com/PVDoriginal/firefly/"
+
+license = "MIT OR Apache-2.0"
+keywords = ["gamedev", "graphics", "2d", "lighting", "bevy"]
+
+edition = "2024"
+
+[dependencies]
+bevy = { workspace = true }
+
+bitflags = "2.10.0"
+bytemuck = "1.24.0"
+fixedbitset = "0.5.7"
+indexmap = "2.14.0"
+
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+serde = ["dep:serde", "bevy/serialize"]
+
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"

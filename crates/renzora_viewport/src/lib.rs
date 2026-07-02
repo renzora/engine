@@ -504,6 +504,7 @@ fn resolve_viewport_slots(
     viewport_state.hovered = slot.hovered;
     viewport_state.screen_position = slot.screen_position;
     viewport_state.screen_size = slot.screen_size;
+    viewport_state.docked = slot.docked;
 }
 
 /// Render-target edge length for undocked slots. Slot 0 keeps rendering while

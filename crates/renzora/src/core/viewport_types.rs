@@ -22,6 +22,12 @@ pub struct ViewportState {
     pub screen_position: Vec2,
     /// Screen-space size of the viewport panel.
     pub screen_size: Vec2,
+    /// Whether the focused viewport panel is actually visible in the live dock
+    /// (some leaf's active tab). `screen_position`/`screen_size` go STALE the
+    /// moment the panel leaves the layout — the panel's per-frame resize
+    /// requests stop — so screen-space chrome drawn outside the panel (the 2D
+    /// rulers) must check this instead of trusting the rect.
+    pub docked: bool,
 }
 
 impl Default for ViewportState {
@@ -32,9 +38,19 @@ impl Default for ViewportState {
             hovered: false,
             screen_position: Vec2::ZERO,
             screen_size: Vec2::new(DEFAULT_WIDTH as f32, DEFAULT_HEIGHT as f32),
+            docked: true,
         }
     }
 }
+
+/// The OS cursor the viewport interaction layer wants while the pointer is
+/// over the viewport (e.g. Move over a selected sprite, a directional resize
+/// cursor over a handle). `None` = no opinion. Written by the 2D picker each
+/// frame; consumed by ember's cursor system, which prioritises hovered UI
+/// widgets (their `HoverCursor` wins) and falls back to this before Default —
+/// one writer of the window's `CursorIcon`, no fighting systems.
+#[derive(Resource, Default)]
+pub struct ViewportCursorRequest(pub Option<bevy::window::SystemCursorIcon>);
 
 /// Number of editor viewport slots (the maximum number of camera views you can
 /// dock at once). Slot 0 is the primary viewport (full 3D/2D/UI + toolbar);
@@ -615,8 +631,18 @@ pub struct ViewportSettings {
     pub visualization_mode: VisualizationMode,
     pub show_grid: bool,
     pub show_subgrid: bool,
+    /// The 2D editor's own grid toggle — independent of the 3D `show_grid`
+    /// so turning the 2D grid off doesn't also kill the 3D floor grid.
+    /// Off by default: 2D scenes are usually pixel-art where the grid is
+    /// noise until you're aligning tiles. Toolbar switch (2D view only).
+    pub show_grid_2d: bool,
+    /// The 2D view's ruler bars (+ tick labels and the cursor marker ticks).
+    /// On by default — they're the coordinate reference for the whole 2D
+    /// editor — but toggleable for a chrome-free view. Toolbar switch
+    /// (2D view only). The cursor coordinate readout stays regardless.
+    pub show_rulers_2d: bool,
     /// 2D grid line colour (R, G, B, A in 0–255). Alpha controls the
-    /// minor-line opacity; major lines auto-bump the alpha by ~3× for
+    /// minor-line opacity; major lines auto-bump the alpha by ~2× for
     /// the typical Photoshop-style minor/major hierarchy.
     pub grid_color_2d: [u8; 4],
     pub show_axis_gizmo: bool,
@@ -668,7 +694,11 @@ impl Default for ViewportSettings {
             visualization_mode: VisualizationMode::default(),
             show_grid: true,
             show_subgrid: true,
-            grid_color_2d: [255, 255, 255, 42],
+            show_grid_2d: false,
+            show_rulers_2d: true,
+            // Faint by design — the 2D grid sits behind the sprites, so it
+            // only needs to whisper. Major lines double this automatically.
+            grid_color_2d: [255, 255, 255, 20],
             show_axis_gizmo: true,
             show_scene_icons: true,
             show_labels: false,
@@ -708,6 +738,14 @@ pub struct PersistedViewportSettings {
     pub visualization_mode: String,
     pub show_grid: bool,
     pub show_subgrid: bool,
+    /// 2D-view grid toggle. Defaults off (`#[serde(default)]` = false), so
+    /// projects saved before the switch existed open with the grid hidden.
+    #[serde(default)]
+    pub show_grid_2d: bool,
+    /// 2D-view ruler toggle. Defaults on — rulers pre-date the switch, so
+    /// older projects keep looking the way they did.
+    #[serde(default = "default_true")]
+    pub show_rulers_2d: bool,
     /// 2D grid line colour (R, G, B, A in 0–255). Defaults to subtle
     /// white when missing; major / minor split is automatic in the
     /// drawer.
@@ -775,6 +813,8 @@ impl PersistedViewportSettings {
             visualization_mode: format!("{:?}", s.visualization_mode),
             show_grid: s.show_grid,
             show_subgrid: s.show_subgrid,
+            show_grid_2d: s.show_grid_2d,
+            show_rulers_2d: s.show_rulers_2d,
             grid_color_2d: s.grid_color_2d,
             show_axis_gizmo: s.show_axis_gizmo,
             show_scene_icons: s.show_scene_icons,
@@ -832,6 +872,8 @@ impl PersistedViewportSettings {
         };
         s.show_grid = self.show_grid;
         s.show_subgrid = self.show_subgrid;
+        s.show_grid_2d = self.show_grid_2d;
+        s.show_rulers_2d = self.show_rulers_2d;
         s.grid_color_2d = self.grid_color_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
         s.show_scene_icons = self.show_scene_icons;
@@ -945,6 +987,10 @@ mod tests {
             visualization_mode: VisualizationMode::Normals,
             show_grid: false,
             show_subgrid: false,
+            // Non-default (defaults are false / true) so the round-trip
+            // exercises both 2D toggles.
+            show_grid_2d: true,
+            show_rulers_2d: false,
             grid_color_2d: [128, 200, 255, 60],
             show_axis_gizmo: false,
             show_scene_icons: false,
@@ -1004,6 +1050,8 @@ mod tests {
         ));
         assert_eq!(original.show_grid, restored.show_grid);
         assert_eq!(original.show_subgrid, restored.show_subgrid);
+        assert_eq!(original.show_grid_2d, restored.show_grid_2d);
+        assert_eq!(original.show_rulers_2d, restored.show_rulers_2d);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
         assert_eq!(original.show_labels, restored.show_labels);

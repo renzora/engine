@@ -312,6 +312,27 @@ pub fn apply_value_to_reflect(
                 *current = *v as f64;
                 return true;
             }
+            // Integer fields accept floats by rounding. Property-animation
+            // tracks only carry `TrackValue::Float` — an int field read as a
+            // key widens to float (`TrackValue::from_property_value`), so the
+            // sampled value must narrow back here or animating any integer
+            // field (e.g. `SpriteSheet.frame`) would silently write nothing.
+            if let Some(current) = field.try_downcast_mut::<i32>() {
+                *current = v.round() as i32;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<i64>() {
+                *current = v.round() as i64;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<u32>() {
+                *current = v.round().max(0.0) as u32;
+                return true;
+            }
+            if let Some(current) = field.try_downcast_mut::<usize>() {
+                *current = v.round().max(0.0) as usize;
+                return true;
+            }
             false
         }
         PropertyValue::Int(v) => {

@@ -100,6 +100,40 @@ pub struct SpriteImagePath(pub String);
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteCustomSize(pub Vec2);
 
+/// Grid-based sprite-sheet cropping: slice a `Sprite`'s texture into
+/// `hframes` columns × `vframes` rows and show one cell at a time.
+///
+/// This is the persistent, animatable side of frame cropping. Bevy's
+/// `Sprite.rect` is the runtime truth, but it's pixel coordinates tied to
+/// one specific image and (like the rest of `Sprite`) doesn't survive scene
+/// save/load — so this component stores the *grid*, and an engine system
+/// derives the rect from it plus the loaded image's dimensions every frame.
+/// Deriving late also covers async image loads and texture swaps, where a
+/// rect computed at insert time would be stale or unavailable.
+///
+/// `frame` is a row-major cell index (`frame = row * hframes + column`) and
+/// wraps modulo the cell count, so a property-animation track can sweep
+/// `0 → hframes*vframes` linearly for a looping flipbook. It lives here —
+/// not in a separate component — so the animation panel's reflection picker
+/// offers `SpriteSheet.frame` as an animatable field on any sprite that has
+/// the component.
+#[derive(Component, Reflect, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SpriteSheet {
+    /// Number of columns the texture is sliced into (min 1).
+    pub hframes: u32,
+    /// Number of rows the texture is sliced into (min 1).
+    pub vframes: u32,
+    /// Row-major cell index to display; wraps modulo `hframes * vframes`.
+    pub frame: u32,
+}
+
+impl Default for SpriteSheet {
+    fn default() -> Self {
+        Self { hframes: 1, vframes: 1, frame: 0 }
+    }
+}
+
 /// A reflection probe's authored environment source — the *persistent* side of a
 /// parallax-corrected cubemap probe.
 ///
