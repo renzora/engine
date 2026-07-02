@@ -211,9 +211,16 @@ fn gizmo_layout(
         Without<AxisTip>,
     >,
 ) {
-    // Hidden during play mode for a clean game view.
+    // Hidden during play mode for a clean game view, and in 2D view (the axis
+    // orientation gizmo is a 3D-orbit control).
     let playing = play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
-    let show = settings.map(|s| s.show_axis_gizmo).unwrap_or(true) && !playing;
+    let show = settings
+        .map(|s| {
+            s.show_axis_gizmo
+                && s.viewport_view != renzora::core::viewport_types::ViewportView::Two
+        })
+        .unwrap_or(true)
+        && !playing;
     for mut node in &mut roots {
         let want = if show { Display::Flex } else { Display::None };
         if node.display != want {

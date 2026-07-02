@@ -668,7 +668,7 @@ impl Default for ViewportSettings {
             visualization_mode: VisualizationMode::default(),
             show_grid: true,
             show_subgrid: true,
-            grid_color_2d: [255, 255, 255, 18],
+            grid_color_2d: [255, 255, 255, 42],
             show_axis_gizmo: true,
             show_scene_icons: true,
             show_labels: false,

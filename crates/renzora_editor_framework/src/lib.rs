@@ -672,11 +672,20 @@ pub fn is_terrain_selected(world: &World) -> bool {
 }
 
 /// Register the built-in Transform tools with the [`ToolbarRegistry`].
+/// Predicate: transform gizmo tools are hidden in 2D view (the 2D editor uses
+/// direct pick/drag, not the 3D translate/rotate/scale gizmos).
+fn visible_when_not_2d(w: &World) -> bool {
+    w.get_resource::<renzora::core::viewport_types::ViewportSettings>()
+        .map(|s| s.viewport_view != renzora::core::viewport_types::ViewportView::Two)
+        .unwrap_or(true)
+}
+
 /// Called once at plugin build time.
 fn register_builtin_tools(registry: &mut ToolbarRegistry) {
     // Icons are kebab-case Phosphor names resolved by the native toolbar renderer.
 
-    // Transform section — always visible
+    // Transform section — Select stays in all views; the move/rotate/scale
+    // gizmo tools hide in 2D.
     registry.register(
         ToolEntry::new(
             "builtin.select",
@@ -701,6 +710,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             ToolSection::Transform,
         )
         .order(1)
+        .visible_if(visible_when_not_2d)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
                 .copied() == Some(ActiveTool::Translate)
@@ -717,6 +727,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             ToolSection::Transform,
         )
         .order(2)
+        .visible_if(visible_when_not_2d)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
                 .copied() == Some(ActiveTool::Rotate)
@@ -733,6 +744,7 @@ fn register_builtin_tools(registry: &mut ToolbarRegistry) {
             ToolSection::Transform,
         )
         .order(3)
+        .visible_if(visible_when_not_2d)
         .active_if(|w| {
             w.get_resource::<ActiveTool>()
                 .copied() == Some(ActiveTool::Scale)

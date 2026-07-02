@@ -87,6 +87,19 @@ pub struct Node2d;
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteImagePath(pub String);
 
+/// Persisted mirror of `Sprite.custom_size` for a user-resized sprite.
+///
+/// Bevy's `Sprite` isn't `#[reflect(Serialize, Deserialize)]`, so scene save
+/// drops the whole component — including the size set by the 2D resize
+/// handles — and the rehydration path rebuilds a fresh `Sprite` at the
+/// image's native dimensions. This component IS serializable; an editor-side
+/// system keeps it in sync with `Sprite.custom_size` (present only while a
+/// custom size is set), and the load path applies it back so a resized
+/// sprite reopens at the size it was saved with.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SpriteCustomSize(pub Vec2);
+
 /// A reflection probe's authored environment source — the *persistent* side of a
 /// parallax-corrected cubemap probe.
 ///

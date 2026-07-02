@@ -20,8 +20,8 @@ use bevy::sprite::Sprite;
 use bevy::text::FontSource;
 use bevy::window::PrimaryWindow;
 
-use renzora::core::viewport_types::ViewportState;
-use renzora::core::{EditorCamera2d, Node2d};
+use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
+use renzora::core::{EditorCamera2d, Node2d, PlayModeState};
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
 
@@ -39,16 +39,28 @@ const TICK_TARGET_PX: f32 = 80.0;
 /// `HANDLE_HIT_RADIUS` the picker uses so what you see is what you can grab.
 const HANDLE_PX: f32 = 9.0;
 
+/// Z-band for the 2D overlay chrome. Must sit above the dock content (the
+/// rendered viewport image) but BELOW every popup/menu in the editor — ember
+/// popovers/menus and the viewport header's dropdowns live at 500-700, so an
+/// open toolbar dropdown must paint over the rulers, not under them.
+const Z_RULER_BAR: i32 = 100;
+const Z_RULER_TICK: i32 = 101;
+const Z_RULER_LABEL: i32 = 102;
+const Z_CURSOR_READOUT: i32 = 110;
+const Z_SELECTION: i32 = 120;
+const Z_HANDLE: i32 = 121;
+
 /// Accent colour for selection chrome (matches the 3D outline orange).
 const ACCENT: Color = Color::srgb(1.0, 0.6, 0.1);
 
 pub(crate) fn register(app: &mut App) {
+    // Not gated on `in_two_view`/`not_in_play_mode`: the system must run every
+    // frame so it can *clear* its overlay when the view leaves 2D (otherwise the
+    // last frame's rulers/handles linger in the 3D/UI/play views). It draws only
+    // while actually in 2D edit mode — see the guard inside.
     app.add_systems(
         Update,
-        render_overlay_2d
-            .run_if(in_state(renzora_editor_framework::SplashState::Editor))
-            .run_if(renzora::core::in_two_view)
-            .run_if(renzora::core::not_in_play_mode),
+        render_overlay_2d.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
 }
 
@@ -141,6 +153,8 @@ fn render_overlay_2d(
     mut commands: Commands,
     existing: Query<Entity, With<Overlay2dPart>>,
     viewport: Option<Res<ViewportState>>,
+    settings: Option<Res<ViewportSettings>>,
+    play: Option<Res<PlayModeState>>,
     fonts: Option<Res<EmberFonts>>,
     selection: Option<Res<EditorSelection>>,
     images: Res<Assets<Image>>,
@@ -149,9 +163,18 @@ fn render_overlay_2d(
     sprites: Query<(&GlobalTransform, &Sprite)>,
     node2ds: Query<&GlobalTransform, With<Node2d>>,
 ) {
-    // Clear last frame's overlay; everything below rebuilds it.
+    // Clear last frame's overlay first — unconditionally, so switching away from
+    // 2D (or entering play) removes the rulers/handles instead of leaving them
+    // stuck on screen.
     for e in &existing {
         commands.entity(e).despawn();
+    }
+
+    // Draw only in 2D view + edit mode.
+    let in_2d = settings.map(|s| s.viewport_view).unwrap_or_default() == ViewportView::Two;
+    let editing = !play.is_some_and(|p| p.is_in_play_mode());
+    if !in_2d || !editing {
+        return;
     }
 
     let Some(vs) = viewport else { return };
@@ -172,7 +195,7 @@ fn render_overlay_2d(
     commands.spawn((
         overlay_node(origin.x, origin.y, size.x, RULER),
         BackgroundColor(bar),
-        GlobalZIndex(8000),
+        GlobalZIndex(Z_RULER_BAR),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         Overlay2dPart,
@@ -182,7 +205,7 @@ fn render_overlay_2d(
     commands.spawn((
         overlay_node(origin.x, origin.y, RULER, size.y),
         BackgroundColor(bar),
-        GlobalZIndex(8000),
+        GlobalZIndex(Z_RULER_BAR),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         Overlay2dPart,
@@ -268,7 +291,7 @@ fn render_overlay_2d(
                             ui_font(&f, 11.0),
                             TextColor(Color::WHITE),
                             overlay_node(cursor.x + 12.0, cursor.y + 12.0, 0.0, 0.0),
-                            GlobalZIndex(8100),
+                            GlobalZIndex(Z_CURSOR_READOUT),
                             bevy::ui::FocusPolicy::Pass,
                             bevy::picking::Pickable::IGNORE,
                             Overlay2dPart,
@@ -339,7 +362,7 @@ fn render_overlay_2d(
         },
         BackgroundColor(Color::NONE),
         BorderColor::all(ACCENT),
-        GlobalZIndex(8200),
+        GlobalZIndex(Z_SELECTION),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         Overlay2dPart,
@@ -372,7 +395,7 @@ fn render_overlay_2d(
             },
             BackgroundColor(Color::WHITE),
             BorderColor::all(ACCENT),
-            GlobalZIndex(8201),
+            GlobalZIndex(Z_HANDLE),
             bevy::ui::FocusPolicy::Pass,
             bevy::picking::Pickable::IGNORE,
             Overlay2dPart,
@@ -406,7 +429,7 @@ fn spawn_tick(commands: &mut Commands, left: f32, top: f32, width: f32, height: 
     commands.spawn((
         overlay_node(left, top, width, height),
         BackgroundColor(color),
-        GlobalZIndex(8050),
+        GlobalZIndex(Z_RULER_TICK),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         Overlay2dPart,
@@ -421,7 +444,7 @@ fn spawn_label(commands: &mut Commands, font: &FontSource, text: &str, left: f32
         ui_font(font, 9.0),
         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.75)),
         overlay_node(left, top, 0.0, 0.0),
-        GlobalZIndex(8051),
+        GlobalZIndex(Z_RULER_LABEL),
         bevy::ui::FocusPolicy::Pass,
         bevy::picking::Pickable::IGNORE,
         Overlay2dPart,

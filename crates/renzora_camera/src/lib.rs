@@ -250,26 +250,101 @@ impl Plugin for CameraPlugin {
 /// pipelined-render crashes can happen. On Stop, the regular camera systems resume
 /// and restore the editor pose from the (untouched) orbit state — it snaps back to
 /// where you were editing.
+#[allow(clippy::type_complexity)]
 fn drive_editor_camera_in_play(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     scene_cameras: Query<
         (&GlobalTransform, &Projection),
-        (With<renzora::core::SceneCamera>, Without<EditorCamera>),
+        (
+            With<renzora::core::SceneCamera>,
+            Without<EditorCamera>,
+            Without<renzora::core::EditorCamera2d>,
+        ),
     >,
-    mut editor_cam: Query<(&mut Transform, &mut Projection), With<EditorCamera>>,
+    cameras_2d_kind: Query<(), With<bevy::camera::Camera2d>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    mut editor_cam: Query<
+        (&mut Transform, &mut Projection),
+        (With<EditorCamera>, Without<renzora::core::EditorCamera2d>),
+    >,
+    mut editor_cam_2d: Query<
+        (&Camera, &mut Transform, &mut Projection),
+        (With<renzora::core::EditorCamera2d>, Without<EditorCamera>),
+    >,
+    mut saved_2d_pose: Local<Option<(Transform, Projection)>>,
 ) {
-    let Some(pm) = play_mode else {
-        return;
-    };
-    if !pm.is_in_play_mode() {
+    let playing = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
+    let game_cam = play_mode.as_ref().and_then(|pm| pm.active_game_camera);
+    let game_is_2d = game_cam.is_some_and(|e| cameras_2d_kind.get(e).is_ok());
+
+    // The 2D editor camera's pan/zoom state lives IN its transform/projection
+    // (delta-based controller, no authoritative orbit resource like the 3D
+    // camera has) — so driving it during play must snapshot the editor pose
+    // and put it back on Stop, or play would trash where the user was editing.
+    if !(playing && game_is_2d) {
+        if let Some((t, p)) = saved_2d_pose.take() {
+            if let Ok((_, mut tr, mut pr)) = editor_cam_2d.single_mut() {
+                *tr = t;
+                *pr = p;
+            }
+        }
+    }
+    if !playing {
         return;
     }
-    let Some(game_cam) = pm.active_game_camera else {
+    let Some(game_cam) = game_cam else {
         return;
     };
     let Ok((gt, src_proj)) = scene_cameras.get(game_cam) else {
         return;
     };
+
+    if game_is_2d {
+        // 2D game camera: drive the editor 2D camera (Camera2d) — NOT the 3D
+        // editor camera. Transplanting an orthographic projection onto the
+        // Camera3d fed the sprites through the wrong pipeline and the panel
+        // kept showing the editor's own pan/zoom, so sprites never lined up
+        // with the camera-boundary rect during play.
+        let Ok((cam, mut tr, mut pr)) = editor_cam_2d.single_mut() else {
+            return;
+        };
+        if saved_2d_pose.is_none() {
+            *saved_2d_pose = Some((*tr, pr.clone()));
+        }
+
+        // The runtime renders the game camera into a project-resolution
+        // (W×H) target, so its visible world rect is W×H×ortho-scale from
+        // its top-left translation (viewport_origin is (0,1) by our Godot
+        // convention). The panel image has a different size/aspect, so fit
+        // that rect: scale to CONTAIN it (extra world may peek beyond one
+        // axis instead of letterbox bars) and center it in the panel.
+        let game_scale = match src_proj {
+            Projection::Orthographic(o) => o.scale,
+            _ => 1.0,
+        };
+        let (w, h) = project
+            .map(|p| {
+                (
+                    p.config.viewport.width.max(1) as f32,
+                    p.config.viewport.height.max(1) as f32,
+                )
+            })
+            .unwrap_or((1920.0, 1080.0));
+        let game_extent = Vec2::new(w, h) * game_scale;
+        let img = cam.logical_target_size().unwrap_or(game_extent);
+        let fit = (game_extent.x / img.x.max(1.0)).max(game_extent.y / img.y.max(1.0));
+
+        if let Projection::Orthographic(ref mut o) = *pr {
+            o.scale = fit;
+            o.viewport_origin = Vec2::new(0.0, 1.0);
+        }
+        let (_, _, translation) = gt.to_scale_rotation_translation();
+        let visible = img * fit;
+        tr.translation.x = translation.x - (visible.x - game_extent.x) * 0.5;
+        tr.translation.y = translation.y + (visible.y - game_extent.y) * 0.5;
+        return;
+    }
+
     let Ok((mut transform, mut projection)) = editor_cam.single_mut() else {
         return;
     };

@@ -57,6 +57,7 @@ impl Plugin for EngineEditorPlugin {
                     camera::share_ibl_to_secondary_viewports,
                     camera::update_editor_camera_matrix,
                     camera::editor_2d_camera_controller,
+                    camera::frame_2d_default,
                     auto_switch_view_on_2d_selection,
                 ),
             );

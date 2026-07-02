@@ -277,6 +277,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::SpriteImagePath>()
+            .register_type::<renzora::core::SpriteCustomSize>()
             .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
@@ -310,6 +311,10 @@ impl Plugin for RuntimePlugin {
         // there — common with reflection scene loads).
         app.add_observer(scene_io::on_sprite_image_path_inserted);
         app.add_observer(scene_io::on_sprite_inserted_apply_image_path);
+        // Editor-side: mirror user-resized `Sprite.custom_size` into the
+        // serializable `SpriteCustomSize` so it survives scene save/load
+        // (bevy's `Sprite` itself is dropped by the save filter).
+        app.add_systems(Update, scene_io::mirror_sprite_custom_size);
 
         app.add_plugins(debug_log::DebugLogPlugin);
 

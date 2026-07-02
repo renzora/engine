@@ -142,6 +142,13 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // ShapeRegistry the shape-library panel reads), grouped by category.
     let shapes_gap = gap(commands, 8.0);
     let shapes_dd = build_shapes_dropdown(commands, fonts);
+    // The shape menu is 3D-only (it spawns 3D primitives). The tool CONTAINER
+    // stays visible in 2D — its 3D transform tools (translate/rotate/scale) hide
+    // themselves via a per-tool predicate, but 2D-relevant registry tools (e.g.
+    // the tilemap Paint tool) must still show.
+    for e in [shapes_gap, shapes_dd] {
+        commands.entity(e).insert(ThreeDOnly);
+    }
 
     // World/Local space toggle for the transform gizmo (3D only).
     let space_gap = gap(commands, 8.0);
@@ -151,6 +158,24 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let gap3 = gap(commands, 8.0);
     let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
     let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
+
+    // 2D-only zoom readout (orthographic scale → percentage), updated by
+    // `update_zoom_readout`. Hidden in 3D/UI via `TwoDOnly`.
+    let zoom_readout = commands
+        .spawn((
+            Text::new("100%"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_muted())),
+            Node {
+                align_self: AlignSelf::Center,
+                margin: UiRect::horizontal(Val::Px(4.0)),
+                ..default()
+            },
+            TwoDOnly,
+            ZoomReadout,
+            Name::new("vp-2d-zoom"),
+        ))
+        .id();
 
     // Inline snapping: translate doubles as the 2D grid snap; rotate / scale and
     // the camera-speed widget are 3D-only (hidden in 2D — `ThreeDOnly`).
@@ -200,6 +225,10 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let display_dd = build_display_dropdown(commands, fonts);
     let snap_dd = build_snap_dropdown(commands, fonts);
     let camera_dd = build_camera_dropdown(commands, fonts);
+    // The Display / Snap / Camera dropdowns are all 3D controls — hide in 2D.
+    for e in [display_dd, snap_dd, camera_dd] {
+        commands.entity(e).insert(ThreeDOnly);
+    }
     let gap4 = gap(commands, 3.0);
     let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out");
 
@@ -208,8 +237,8 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
         undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd, space_gap, space_btn,
-        center_gap, view_dd, mode_dd, gap5, translate, rotate, scale, gap6, cam_speed, gap3,
-        display_dd, snap_dd, camera_dd, gap4, maximize,
+        center_gap, view_dd, mode_dd, zoom_readout, gap5, translate, rotate, scale, gap6, cam_speed,
+        gap3, display_dd, snap_dd, camera_dd, gap4, maximize,
     ]);
     row
 }
@@ -361,6 +390,8 @@ pub(crate) fn register(app: &mut App) {
                 space_toggle_click,
                 update_space_toggle,
                 panel_toggle_dismiss,
+                update_two_d_only,
+                update_zoom_readout,
             ),
         )
             .run_if(in_state(SplashState::Editor)),
@@ -1200,6 +1231,14 @@ struct SnapPillOf(SnapToggle);
 #[derive(Component)]
 struct ThreeDOnly;
 
+/// Tags header widgets shown ONLY in 2D view (the zoom readout).
+#[derive(Component)]
+struct TwoDOnly;
+
+/// Marker on the 2D zoom-percentage text.
+#[derive(Component)]
+struct ZoomReadout;
+
 /// The header bar background (driven from `theme.surfaces.panel`).
 #[derive(Component)]
 struct HeaderBg;
@@ -1415,6 +1454,42 @@ fn update_three_d_only(
         let want = if show { Display::Flex } else { Display::None };
         if n.display != want {
             n.display = want;
+        }
+    }
+}
+
+/// Sibling of [`update_three_d_only`]: shows `TwoDOnly` widgets only in 2D view.
+fn update_two_d_only(
+    settings: Option<Res<ViewportSettings>>,
+    mut q: Query<&mut Node, With<TwoDOnly>>,
+) {
+    let Some(settings) = settings else { return };
+    let show = settings.viewport_view == ViewportView::Two;
+    for mut n in &mut q {
+        let want = if show { Display::Flex } else { Display::None };
+        if n.display != want {
+            n.display = want;
+        }
+    }
+}
+
+/// Update the 2D zoom readout from the editor 2D camera's orthographic scale.
+/// Scale 1.0 reads as 100%; zooming in (smaller scale) grows the percentage.
+fn update_zoom_readout(
+    cameras_2d: Query<&Projection, With<renzora::core::EditorCamera2d>>,
+    mut texts: Query<&mut Text, With<ZoomReadout>>,
+) {
+    let Ok(Projection::Orthographic(o)) = cameras_2d.single() else {
+        return;
+    };
+    if o.scale <= 0.0 {
+        return;
+    }
+    let pct = (100.0 / o.scale).round() as i32;
+    for mut t in &mut texts {
+        let s = format!("{pct}%");
+        if t.0 != s {
+            t.0 = s;
         }
     }
 }

@@ -47,7 +47,21 @@ Want to line something up dead-on from the front or top? The numpad snaps the ca
 | `Numpad 7` | Top (add `Ctrl` for Bottom) |
 | `Numpad 5` | Switch between perspective and flat (orthographic) |
 
-The viewport header also has a **3D / 2D / UI** selector: **2D** is a placeholder for now — selecting it shows a dark "coming soon" backdrop while the 2D editor is still in development — and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha5/scripting/game-ui).
+The viewport header also has a **3D / 2D / UI** selector: **2D** switches the panel to the flat, orthographic 2D editor (see below), and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha5/scripting/game-ui).
+
+## The 2D view
+
+Pick **2D** in the header selector (or select any 2D node — the viewport switches automatically) to edit a 2D scene:
+
+- **Rulers** along the top and left edges show world coordinates and track your cursor; a live readout follows the pointer.
+- **Grid** — the grid adapts to your zoom: it draws at your **Grid Snap** step when you're zoomed in, and automatically coarsens (doubling the spacing as needed) as you zoom out, so it stays readable at any zoom level instead of vanishing. Snapping always uses the raw snap step, and every drawn line sits on a snap multiple. Brighter *section* lines mark every 8th cell (toggle with **Subgrid**).
+- The **amber rectangle** is your game's camera boundary — the exact area a Camera 2D at the origin shows at runtime, taken from the project's viewport resolution. World (0, 0) is its top-left corner, matching the runtime convention.
+- **Middle-mouse drag** pans, the **scroll wheel** zooms toward the cursor, and the header shows the current zoom percentage.
+- **Drop an image** from the asset browser into the viewport to create a sprite at the cursor. Drag the selection's corner/edge handles to resize it (hold `Shift` on a corner to keep the aspect ratio). Sprite position **and size** are saved with the scene and restored on reload.
+
+Pressing **Play** on a 2D scene renders the game through the 2D pipeline framed to the game camera's view, so what sits inside the camera boundary in the editor is exactly what shows on screen in play mode.
+
+While the 2D view is active the editor parks the 3D render pipeline (its fullscreen passes rasterize into a token-sized buffer), so 2D editing doesn't pay for bloom, TAA, or global illumination — and vice versa: the 2D camera is off whenever you're in the 3D view.
 
 ## Adding shapes from the toolbar
 

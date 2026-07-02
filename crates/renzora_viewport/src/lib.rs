@@ -199,6 +199,7 @@ impl Plugin for ViewportPlugin {
             Update,
             (
                 sync_viewport_camera_activation,
+                park_primary_3d_target,
                 gate_scene_visibility,
                 camera_preview::sync_camera_preview_activation,
             )
@@ -676,6 +677,8 @@ fn sync_viewport_camera_activation(
             Without<renzora::core::EditorCamera2d>,
         ),
     >,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     runtime: Option<Res<external_runtime::ExternalRuntime>>,
 ) {
     use renzora::core::viewport_types::ViewportView;
@@ -726,8 +729,19 @@ fn sync_viewport_camera_activation(
         }
     }
 
-    let want_2d = primary_docked && view == ViewportView::Two;
-    let want_ui = primary_docked && view == ViewportView::Ui;
+    // The 2D editor camera owns the primary image in 2D view — and also during
+    // in-panel play of a 2D game (whatever view was selected when Play was
+    // pressed): `drive_editor_camera_in_play` steers it onto the game camera's
+    // framing, so it must be the camera rendering the panel.
+    let playing_2d_game = play_mode
+        .as_ref()
+        .is_some_and(|pm| pm.is_in_play_mode())
+        && play_mode
+            .as_ref()
+            .and_then(|pm| pm.active_game_camera)
+            .is_some_and(|e| kind_2d.get(e).is_ok());
+    let want_2d = primary_docked && (view == ViewportView::Two || playing_2d_game);
+    let want_ui = primary_docked && view == ViewportView::Ui && !playing_2d_game;
     for mut camera in cameras_2d.iter_mut() {
         if camera.is_active != want_2d {
             camera.is_active = want_2d;
@@ -737,6 +751,70 @@ fn sync_viewport_camera_activation(
         if camera.is_active != want_ui {
             camera.is_active = want_ui;
         }
+    }
+}
+
+/// While the 2D editor camera owns the primary panel image, point the primary
+/// 3D camera at a token-sized parking image instead — and back at the slot-0
+/// image when 3D view returns.
+///
+/// The primary Camera3d can never be deactivated (it hosts the atmosphere/IBL
+/// probe — see `sync_viewport_camera_activation`), and its heavy passes
+/// (prepass, GI, bloom, TAA, auto-exposure, tonemapping, MSAA writeback) are
+/// per-pixel. In 2D view it used to keep rendering the full 3D scene into the
+/// shared image only for the 2D camera to clear over it — the entire 3D
+/// pipeline burned for output nobody ever saw. Rendering into a
+/// `UNDOCKED_TARGET_SIZE`² image instead is the same trick undocked slots use:
+/// every pass still runs (pipelines stay alive, so no add/remove wgpu churn),
+/// but rasterizes almost nothing.
+fn park_primary_3d_target(
+    settings: Option<Res<ViewportSettings>>,
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    play_mode: Option<Res<renzora::core::PlayModeState>>,
+    kind_2d: Query<(), With<bevy::camera::Camera2d>>,
+    mut images: ResMut<Assets<Image>>,
+    mut parking: Local<Option<Handle<Image>>>,
+    mut primary: Query<
+        &mut bevy::camera::RenderTarget,
+        With<renzora::core::PrimaryViewportCamera>,
+    >,
+) {
+    use renzora::core::viewport_types::ViewportView;
+
+    // Same "2D owns the primary image" condition as `sync_viewport_camera_activation`.
+    let view = settings.map(|s| s.viewport_view).unwrap_or_default();
+    let playing_2d_game = play_mode
+        .as_ref()
+        .is_some_and(|pm| pm.is_in_play_mode())
+        && play_mode
+            .as_ref()
+            .and_then(|pm| pm.active_game_camera)
+            .is_some_and(|e| kind_2d.get(e).is_ok());
+    let two_d_owns_image = view == ViewportView::Two || playing_2d_game;
+
+    // `RenderTarget` only exists once `sync_viewport_camera_targets` has bound
+    // the startup images, so this query is empty until then — fine, there is
+    // nothing to park before the first bind.
+    let Ok(mut target) = primary.single_mut() else {
+        return;
+    };
+
+    let desired: Handle<Image> = if two_d_owns_image {
+        parking
+            .get_or_insert_with(|| {
+                images.add(make_render_target(UNDOCKED_TARGET_SIZE, UNDOCKED_TARGET_SIZE))
+            })
+            .clone()
+    } else {
+        let Some(slot0) = viewports.slots.first().and_then(|s| s.image.clone()) else {
+            return;
+        };
+        slot0
+    };
+
+    let already = matches!(&*target, bevy::camera::RenderTarget::Image(t) if t.handle == desired);
+    if !already {
+        *target = bevy::camera::RenderTarget::Image(desired.into());
     }
 }
 

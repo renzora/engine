@@ -5,7 +5,7 @@ use crate::{
     ViewportCamera, ViewportRenderTarget,
 };
 use bevy::camera::visibility::RenderLayers;
-use bevy::camera::{Camera, RenderTarget};
+use bevy::camera::{Camera, ClearColorConfig, RenderTarget};
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::core_pipeline::Skybox;
 use bevy::image::Image;
@@ -292,9 +292,22 @@ pub fn spawn_editor_2d_camera(mut commands: Commands, render_target: Res<Viewpor
     let mut entity = commands.spawn((
         Camera2d,
         Camera {
-            // Match the 3D editor camera's order so cycling between views
-            // doesn't change z-stacking against any other cameras (e.g. UI).
-            order: -1,
+            // Render AFTER the primary 3D camera (order -1). The primary is
+            // always active (it owns the atmosphere/IBL probe, which panics if
+            // deactivated) and targets this same offscreen image, so in 2D view
+            // both cameras draw into it. A higher order makes the 2D camera run
+            // last; Camera2d clears the target first, so its output (grid +
+            // sprites + tilemaps) replaces the 3D pass instead of fighting a
+            // non-deterministic tie at the same order.
+            order: 0,
+            // Explicit clear — NOT `ClearColorConfig::Default`. Default only
+            // clears for the *first* camera on a target; as the second camera
+            // (after the always-on primary 3D camera) the 2D camera would
+            // otherwise composite on top of the 3D render, so the 3D scene + its
+            // infinite grid would show through and appear to "fight" the 2D grid
+            // while panning. A `Custom` clear wipes the 3D pass every frame, so
+            // 2D view shows only the 2D scene.
+            clear_color: ClearColorConfig::Custom(Color::srgb(0.11, 0.11, 0.13)),
             // Inactive until the user picks the 2D viewport view; otherwise
             // both editor cameras would race for the offscreen target.
             is_active: false,
@@ -426,6 +439,48 @@ pub fn editor_2d_camera_controller(
     } else {
         scroll_events.clear();
     }
+}
+
+/// Frame the project's game boundary to fill the panel the first time the 2D
+/// view is shown, so the default view isn't stuck zoomed far out. Runs once per
+/// session (tracked by a `Local`); afterwards the user's own pan/zoom sticks.
+pub fn frame_2d_default(
+    settings: Option<Res<ViewportSettings>>,
+    viewport: Option<Res<ViewportState>>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), With<EditorCamera2d>>,
+    mut framed: Local<bool>,
+) {
+    if *framed {
+        return;
+    }
+    if settings.map(|s| s.viewport_view).unwrap_or_default() != ViewportView::Two {
+        return;
+    }
+    let Some(vs) = viewport else { return };
+    let img = vs.current_size.as_vec2();
+    if img.x < 2.0 || img.y < 2.0 {
+        return;
+    }
+    let Some(project) = project else { return };
+    let w = project.config.viewport.width.max(1) as f32;
+    let h = project.config.viewport.height.max(1) as f32;
+    let Ok((mut transform, mut projection)) = camera_query.single_mut() else {
+        return;
+    };
+    let Projection::Orthographic(o) = projection.as_mut() else {
+        return;
+    };
+    // Ortho scale is world-units per image-pixel, so scale = boundary / image on
+    // the tighter axis fits the whole boundary; ×1.08 leaves an 8% margin.
+    let fit = (w / img.x).max(h / img.y) * 1.08;
+    o.scale = fit;
+    // viewport_origin is top-left, so the camera translation is the world point
+    // at the image's top-left corner — offset it so the boundary is centred.
+    let visible = img * fit;
+    transform.translation.x = w * 0.5 - visible.x * 0.5;
+    transform.translation.y = -h * 0.5 + visible.y * 0.5;
+    *framed = true;
 }
 
 /// Observer: every time a `Camera2d` is inserted (preset spawn, scene

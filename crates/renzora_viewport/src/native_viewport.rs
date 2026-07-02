@@ -147,19 +147,14 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         .id();
     if index == 0 {
         use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-        // In UI view the 3D image hides and the embedded UI editor (toolbar +
+        // In UI view the shared image hides and the embedded UI editor (toolbar +
         // scene backdrop + UI render + selection handles) takes over. In 2D view
-        // the image also hides behind the "coming soon" placeholder below.
+        // the image STAYS visible: the 2D editor camera renders the 2D scene (grid
+        // + sprites + tilemaps) into that same offscreen image, so hiding it would
+        // hide the 2D editor. Only UI view swaps the image out.
         renzora_ember::reactive::bind_display(commands, img, |w| {
-            !matches!(
-                w.get_resource::<ViewportSettings>().map(|s| s.viewport_view),
-                Some(ViewportView::Ui) | Some(ViewportView::Two)
-            )
+            w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) != Some(ViewportView::Ui)
         });
-        // 2D authoring isn't built yet — show a dark backdrop with a "coming soon"
-        // message instead of the 3D scene whenever the 2D view is selected.
-        let placeholder = build_2d_placeholder(commands, fonts);
-        commands.entity(content).add_child(placeholder);
         let editor = renzora_ember_editor::game_ui::build_ui_canvas(commands, fonts);
         renzora_ember::reactive::bind_display(commands, editor, |w| {
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
@@ -172,58 +167,6 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     } else {
         commands.entity(root).add_child(content);
     }
-    root
-}
-
-/// Dark full-bleed placeholder shown over the primary viewport while the 2D
-/// view is selected. The 2D editor isn't implemented yet, so rather than render
-/// a half-working 2D scene we cover the panel with a flat backdrop and a
-/// centred "coming soon" message. Display is toggled reactively on the 2D view.
-fn build_2d_placeholder(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-    use renzora_ember::font::ui_font;
-
-    let root = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                top: Val::Px(0.0),
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(8.0),
-                ..default()
-            },
-            BackgroundColor(Color::srgb(0.05, 0.05, 0.06)),
-            Name::new("viewport-2d-placeholder"),
-        ))
-        .id();
-
-    let title = commands
-        .spawn((
-            Text::new(renzora::lang::t("viewport.2d_editor")),
-            ui_font(&fonts.ui, 22.0),
-            TextColor(Color::srgb(0.85, 0.85, 0.90)),
-            bevy::picking::Pickable::IGNORE,
-        ))
-        .id();
-    let subtitle = commands
-        .spawn((
-            Text::new(renzora::lang::t("common.coming_soon")),
-            ui_font(&fonts.ui, 14.0),
-            TextColor(Color::srgb(0.50, 0.50, 0.58)),
-            bevy::picking::Pickable::IGNORE,
-        ))
-        .id();
-    commands.entity(root).add_child(title);
-    commands.entity(root).add_child(subtitle);
-
-    renzora_ember::reactive::bind_display(commands, root, |w| {
-        w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Two)
-    });
     root
 }
 

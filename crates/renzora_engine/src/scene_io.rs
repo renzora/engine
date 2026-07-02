@@ -1693,9 +1693,11 @@ pub fn rehydrate_meshes(
 ///    bound image (or placeholder colour for an empty path) restores
 ///    rendering. This is the rehydration path mirroring
 ///    `rehydrate_meshes` for `MeshPrimitive`.
+#[allow(clippy::too_many_arguments)]
 pub fn on_sprite_image_path_inserted(
     trigger: On<Insert, renzora::core::SpriteImagePath>,
     paths: Query<&renzora::core::SpriteImagePath>,
+    sizes: Query<&renzora::core::SpriteCustomSize>,
     has_sprite: Query<(), With<bevy::sprite::Sprite>>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
@@ -1707,10 +1709,11 @@ pub fn on_sprite_image_path_inserted(
         return;
     };
     let filter = sprite_filter(project.as_deref());
+    let persisted = sizes.get(entity).ok().map(|s| s.0);
     if has_sprite.get(entity).is_ok() {
-        apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server, filter);
+        apply_sprite_image_path(entity, &path.0, persisted, &mut sprites_mut, &asset_server, filter);
     } else {
-        spawn_sprite_for_path(entity, &path.0, &asset_server, &mut commands, filter);
+        spawn_sprite_for_path(entity, &path.0, persisted, &asset_server, &mut commands, filter);
     }
 }
 
@@ -1722,6 +1725,7 @@ pub fn on_sprite_image_path_inserted(
 pub fn on_sprite_inserted_apply_image_path(
     trigger: On<Insert, bevy::sprite::Sprite>,
     paths: Query<&renzora::core::SpriteImagePath>,
+    sizes: Query<&renzora::core::SpriteCustomSize>,
     mut sprites_mut: Query<&mut bevy::sprite::Sprite>,
     asset_server: Res<AssetServer>,
     project: Option<Res<renzora::CurrentProject>>,
@@ -1731,7 +1735,45 @@ pub fn on_sprite_inserted_apply_image_path(
         return;
     };
     let filter = sprite_filter(project.as_deref());
-    apply_sprite_image_path(entity, &path.0, &mut sprites_mut, &asset_server, filter);
+    let persisted = sizes.get(entity).ok().map(|s| s.0);
+    apply_sprite_image_path(entity, &path.0, persisted, &mut sprites_mut, &asset_server, filter);
+}
+
+/// Editor-side persistence bridge for sprite size: mirror `Sprite.custom_size`
+/// (runtime truth, set by the 2D resize handles / inspector) into the
+/// serializable [`renzora::core::SpriteCustomSize`] so scene save keeps it —
+/// bevy's `Sprite` itself doesn't round-trip through reflection serialization
+/// and is dropped wholesale by the save filter. Only meaningful while editing:
+/// gated on an editor camera existing and play mode being off so a shipped
+/// game (or a script animating sizes in play) doesn't churn component inserts.
+pub fn mirror_sprite_custom_size(
+    editor_camera: Query<(), With<EditorCamera>>,
+    play_mode: Option<Res<PlayModeState>>,
+    changed: Query<
+        (Entity, &bevy::sprite::Sprite, Option<&renzora::core::SpriteCustomSize>),
+        Changed<bevy::sprite::Sprite>,
+    >,
+    mut commands: Commands,
+) {
+    if editor_camera.is_empty() || play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode()) {
+        return;
+    }
+    for (entity, sprite, mirrored) in &changed {
+        match (sprite.custom_size, mirrored) {
+            (Some(size), Some(m)) if m.0 == size => {}
+            (Some(size), _) => {
+                commands
+                    .entity(entity)
+                    .try_insert(renzora::core::SpriteCustomSize(size));
+            }
+            (None, Some(_)) => {
+                commands
+                    .entity(entity)
+                    .try_remove::<renzora::core::SpriteCustomSize>();
+            }
+            (None, None) => {}
+        }
+    }
 }
 
 /// Resolve the project's configured 2D image filter. Defaults to
@@ -1746,6 +1788,7 @@ fn sprite_filter(project: Option<&renzora::CurrentProject>) -> renzora::core::Te
 fn apply_sprite_image_path(
     entity: Entity,
     path: &str,
+    persisted_size: Option<Vec2>,
     sprites_mut: &mut Query<&mut bevy::sprite::Sprite>,
     asset_server: &AssetServer,
     filter: renzora::core::TextureFilter,
@@ -1775,14 +1818,15 @@ fn apply_sprite_image_path(
         );
         sprite.image = expected;
         sprite.color = Color::WHITE;
-        // Use the image's native dimensions — Bevy reads them off the
-        // loaded asset when `custom_size` is `None`. Forcing a fixed
-        // size here would silently squash a 1024×1024 source into 100
-        // world units, blowing away most of the pixel-art detail.
-        sprite.custom_size = None;
+        // A saved `SpriteCustomSize` (user resized the sprite) wins;
+        // otherwise `None` → Bevy uses the image's native dimensions.
+        // Forcing a fixed size here would silently squash a 1024×1024
+        // source into 100 world units, blowing away most of the
+        // pixel-art detail.
+        sprite.custom_size = persisted_size;
     } else if sprite.color == placeholder_blue {
         sprite.color = Color::WHITE;
-        sprite.custom_size = None;
+        sprite.custom_size = persisted_size;
     }
 }
 
@@ -1817,6 +1861,7 @@ fn load_sprite_image(
 fn spawn_sprite_for_path(
     entity: Entity,
     path: &str,
+    persisted_size: Option<Vec2>,
     asset_server: &AssetServer,
     commands: &mut Commands,
     filter: renzora::core::TextureFilter,
@@ -1833,10 +1878,11 @@ fn spawn_sprite_for_path(
         // pixel dimensions, so a 32×32 source renders as 32 world units,
         // a 1024×1024 source as 1024. Critical for pixel art: forcing
         // a fixed size silently downsamples the source before our
-        // viewport upscale, killing the crisp-pixel look.
+        // viewport upscale, killing the crisp-pixel look. A saved
+        // `SpriteCustomSize` (the user resized it) overrides that.
         bevy::sprite::Sprite {
             color: Color::WHITE,
-            custom_size: None,
+            custom_size: persisted_size,
             image: load_sprite_image(asset_server, path, filter),
             ..Default::default()
         }
@@ -2040,8 +2086,14 @@ pub fn enforce_single_active_camera(
         return;
     }
 
-    let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
-    let in_editor = !editor_camera.is_empty() && !in_play_mode;
+    let _ = play_mode;
+    // Whenever the editor is running, scene cameras stay inactive — INCLUDING
+    // in-panel play mode. Play renders through the editor cameras
+    // (`drive_editor_camera_in_play` mirrors the game camera's pose onto
+    // them), so an active scene camera would render the entire game a second
+    // time straight to the window, invisible behind the editor UI. Only the
+    // shipped runtime (no editor camera) activates the default scene camera.
+    let in_editor = !editor_camera.is_empty();
 
     if in_editor {
         // Editor view: every scene camera should be inactive — the

@@ -717,11 +717,23 @@ fn sync_ui_canvas_target_camera(
     mut commands: Commands,
     play_mode: Res<renzora::PlayModeState>,
     editor_cam: Query<Entity, With<renzora::core::EditorCamera>>,
+    editor_cam_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
+    kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
 ) {
     let in_play = play_mode.is_in_play_mode();
-    // The camera that actually renders the running game into the viewport image.
-    let render_camera = editor_cam.iter().next();
+    // The camera that actually renders the running game into the viewport
+    // image. A 2D game plays through the editor 2D camera (the 3D editor
+    // camera is parked on a token render target then — UI hung off it would
+    // rasterize into a 64² image nobody displays).
+    let game_is_2d = play_mode
+        .active_game_camera
+        .is_some_and(|e| kind_2d.get(e).is_ok());
+    let render_camera = if game_is_2d {
+        editor_cam_2d.iter().next()
+    } else {
+        editor_cam.iter().next()
+    };
 
     for (entity, existing_target_cam) in &canvases {
         if in_play {
