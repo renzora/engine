@@ -1,5 +1,6 @@
 //! Native (bevy_ui) 2D viewport chrome — rulers, selection outline + resize
-//! handles, and a live cursor-coordinate readout.
+//! handles, and the cursor-coordinate readout (published to the status bar's
+//! left side via [`Cursor2dReadout`], not drawn beside the pointer).
 //!
 //! This is the screen-space half of the 2D editor: the world-space grid lives
 //! in `renzora_gizmo::grid_2d` (drawn into the offscreen image *under* the
@@ -30,6 +31,28 @@ use renzora_ember::font::{ui_font, EmberFonts};
 #[derive(Component)]
 struct Overlay2dPart;
 
+/// The cursor's 2D world coordinates, published for the status bar. `None`
+/// whenever there's nothing meaningful to show (not in 2D view, pointer off
+/// the panel, play mode). Lives here — not computed by the status item's
+/// `render(&World)` — because projecting cursor→world needs the editor 2D
+/// camera query, which a `&World` snapshot fn can't run.
+#[derive(Resource, Default)]
+struct Cursor2dReadout(Option<Vec2>);
+
+/// Status-bar segment: `⌖ 128, -64` on the left while the cursor is over the
+/// 2D viewport. Empty (item hidden) otherwise.
+fn cursor_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment> {
+    const MUTED: [u8; 3] = [150, 150, 164];
+    let Some(pos) = world.get_resource::<Cursor2dReadout>().and_then(|r| r.0) else {
+        return Vec::new();
+    };
+    vec![renzora::core::ShellStatusSegment::new(
+        "crosshair",
+        format!("{:.0}, {:.0}", pos.x, pos.y),
+        MUTED,
+    )]
+}
+
 /// Thickness of the ruler bars, in window pixels.
 const RULER: f32 = 18.0;
 /// Target spacing between labelled ruler ticks, in window pixels. The actual
@@ -51,7 +74,6 @@ const Z_HANDLE: i32 = 91;
 const Z_RULER_BAR: i32 = 100;
 const Z_RULER_TICK: i32 = 101;
 const Z_RULER_LABEL: i32 = 102;
-const Z_CURSOR_READOUT: i32 = 110;
 
 /// Distance of the rotate handle above the selection's top-center handle, in
 /// window pixels. Matches `picker_2d::ROTATE_HANDLE_OFFSET_PX` so the drawn
@@ -62,14 +84,25 @@ const ROTATE_HANDLE_OFFSET_PX: f32 = 22.0;
 const ACCENT: Color = Color::srgb(1.0, 0.6, 0.1);
 
 pub(crate) fn register(app: &mut App) {
+    use renzora::core::RenzoraShellExt;
     // Not gated on `in_two_view`/`not_in_play_mode`: the system must run every
     // frame so it can *clear* its overlay when the view leaves 2D (otherwise the
     // last frame's rulers/handles linger in the 3D/UI/play views). It draws only
     // while actually in 2D edit mode — see the guard inside.
+    app.init_resource::<Cursor2dReadout>();
     app.add_systems(
         Update,
         render_overlay_2d.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
+    // Cursor world coordinates live in the status bar's left side (next to
+    // "Ready"), not floating beside the pointer — a label glued to the cursor
+    // sits exactly where the user is looking/working.
+    app.register_shell_status_item(renzora::core::ShellStatusItem {
+        id: "cursor-2d",
+        align: renzora::core::ShellStatusAlign::Left,
+        order: -20,
+        render: cursor_status_segments,
+    });
 }
 
 /// Project a world-space point to window pixels through the 2D camera + panel
@@ -159,6 +192,7 @@ fn fmt_coord(v: f32, step: f32) -> String {
 #[allow(clippy::too_many_arguments)]
 fn render_overlay_2d(
     mut commands: Commands,
+    mut readout: ResMut<Cursor2dReadout>,
     existing: Query<Entity, With<Overlay2dPart>>,
     viewport: Option<Res<ViewportState>>,
     settings: Option<Res<ViewportSettings>>,
@@ -173,15 +207,25 @@ fn render_overlay_2d(
 ) {
     // Clear last frame's overlay first — unconditionally, so switching away from
     // 2D (or entering play) removes the rulers/handles instead of leaving them
-    // stuck on screen.
+    // stuck on screen. Same story for the status-bar coordinate readout: it's
+    // cleared here and only re-published when the cursor section below runs.
     for e in &existing {
         commands.entity(e).despawn();
     }
+    if readout.0.is_some() {
+        readout.0 = None;
+    }
 
     // Draw only in 2D view + edit mode.
-    let (in_2d, show_rulers) = settings
-        .map(|s| (s.viewport_view == ViewportView::Two, s.show_rulers_2d))
-        .unwrap_or((false, true));
+    let (in_2d, show_rulers, show_coords) = settings
+        .map(|s| {
+            (
+                s.viewport_view == ViewportView::Two,
+                s.show_rulers_2d,
+                s.show_cursor_coords_2d,
+            )
+        })
+        .unwrap_or((false, true, true));
     let editing = !play.is_some_and(|p| p.is_in_play_mode());
     if !in_2d || !editing {
         return;
@@ -302,22 +346,11 @@ fn render_overlay_2d(
                         spawn_tick(&mut commands, cursor.x - 0.5, origin.y, 1.0, RULER, ACCENT);
                         spawn_tick(&mut commands, origin.x, cursor.y - 0.5, RULER, 1.0, ACCENT);
                     }
-                    if let (Some(world), Some(f)) = (
-                        window_to_world(camera, cam_gt, &vs, cursor),
-                        fonts.as_ref().map(|f| f.ui.clone()),
-                    ) {
-                        let label = format!("{:.0}, {:.0}", world.x, world.y);
-                        commands.spawn((
-                            Text::new(label),
-                            ui_font(&f, 11.0),
-                            TextColor(Color::WHITE),
-                            overlay_node(cursor.x + 12.0, cursor.y + 12.0, 0.0, 0.0),
-                            GlobalZIndex(Z_CURSOR_READOUT),
-                            bevy::ui::FocusPolicy::Pass,
-                            bevy::picking::Pickable::IGNORE,
-                            Overlay2dPart,
-                            Name::new("cursor-coords"),
-                        ));
+                    // Coordinates go to the status bar (left side), not a
+                    // floating label chasing the pointer. Settings-toggleable
+                    // (Settings → Viewport → 2D Cursor Coordinates).
+                    if show_coords {
+                        readout.0 = window_to_world(camera, cam_gt, &vs, cursor);
                     }
                 }
             }

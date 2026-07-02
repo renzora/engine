@@ -2045,6 +2045,14 @@ fn tab_viewport(
         },
     );
     settings_row(commands, fonts, body, 3, &tr("settings.row.grid_color_2d"), cf);
+    // The 2D view's status-bar cursor-coordinate readout.
+    let t = ctl_toggle(
+        commands,
+        vp.show_cursor_coords_2d,
+        |w| w.resource::<ViewportSettings>().show_cursor_coords_2d,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_cursor_coords_2d = v,
+    );
+    settings_row(commands, fonts, body, 4, &tr("settings.row.cursor_coords_2d"), t);
 
     // Entity name labels (Bevy 0.19 stroke-font text gizmos).
     let (sec, body) = section(commands, fonts, "text-aa", &tr("settings.cat.labels"), A_GREEN);

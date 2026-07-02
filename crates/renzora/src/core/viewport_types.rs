@@ -639,8 +639,12 @@ pub struct ViewportSettings {
     /// The 2D view's ruler bars (+ tick labels and the cursor marker ticks).
     /// On by default — they're the coordinate reference for the whole 2D
     /// editor — but toggleable for a chrome-free view. Toolbar switch
-    /// (2D view only). The cursor coordinate readout stays regardless.
+    /// (2D view only).
     pub show_rulers_2d: bool,
+    /// The status-bar cursor-coordinate readout for the 2D view. On by
+    /// default; independent of the rulers so either can be shown alone.
+    /// Toolbar switch (2D view only).
+    pub show_cursor_coords_2d: bool,
     /// 2D grid line colour (R, G, B, A in 0–255). Alpha controls the
     /// minor-line opacity; major lines auto-bump the alpha by ~2× for
     /// the typical Photoshop-style minor/major hierarchy.
@@ -696,6 +700,7 @@ impl Default for ViewportSettings {
             show_subgrid: true,
             show_grid_2d: false,
             show_rulers_2d: true,
+            show_cursor_coords_2d: true,
             // Faint by design — the 2D grid sits behind the sprites, so it
             // only needs to whisper. Major lines double this automatically.
             grid_color_2d: [255, 255, 255, 20],
@@ -746,6 +751,10 @@ pub struct PersistedViewportSettings {
     /// older projects keep looking the way they did.
     #[serde(default = "default_true")]
     pub show_rulers_2d: bool,
+    /// 2D-view status-bar coordinate readout toggle. Defaults on (the
+    /// readout pre-dates the switch).
+    #[serde(default = "default_true")]
+    pub show_cursor_coords_2d: bool,
     /// 2D grid line colour (R, G, B, A in 0–255). Defaults to subtle
     /// white when missing; major / minor split is automatic in the
     /// drawer.
@@ -815,6 +824,7 @@ impl PersistedViewportSettings {
             show_subgrid: s.show_subgrid,
             show_grid_2d: s.show_grid_2d,
             show_rulers_2d: s.show_rulers_2d,
+            show_cursor_coords_2d: s.show_cursor_coords_2d,
             grid_color_2d: s.grid_color_2d,
             show_axis_gizmo: s.show_axis_gizmo,
             show_scene_icons: s.show_scene_icons,
@@ -874,6 +884,7 @@ impl PersistedViewportSettings {
         s.show_subgrid = self.show_subgrid;
         s.show_grid_2d = self.show_grid_2d;
         s.show_rulers_2d = self.show_rulers_2d;
+        s.show_cursor_coords_2d = self.show_cursor_coords_2d;
         s.grid_color_2d = self.grid_color_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
         s.show_scene_icons = self.show_scene_icons;
@@ -987,10 +998,11 @@ mod tests {
             visualization_mode: VisualizationMode::Normals,
             show_grid: false,
             show_subgrid: false,
-            // Non-default (defaults are false / true) so the round-trip
-            // exercises both 2D toggles.
+            // Non-default (defaults are false / true / true) so the round-trip
+            // exercises all three 2D toggles.
             show_grid_2d: true,
             show_rulers_2d: false,
+            show_cursor_coords_2d: false,
             grid_color_2d: [128, 200, 255, 60],
             show_axis_gizmo: false,
             show_scene_icons: false,
@@ -1052,6 +1064,7 @@ mod tests {
         assert_eq!(original.show_subgrid, restored.show_subgrid);
         assert_eq!(original.show_grid_2d, restored.show_grid_2d);
         assert_eq!(original.show_rulers_2d, restored.show_rulers_2d);
+        assert_eq!(original.show_cursor_coords_2d, restored.show_cursor_coords_2d);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
         assert_eq!(original.show_labels, restored.show_labels);
