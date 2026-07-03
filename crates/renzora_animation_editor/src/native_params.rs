@@ -718,7 +718,7 @@ fn kind_combo_open(
     let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let size = cn.size() * cn.inverse_scale_factor();

@@ -27,11 +27,27 @@ struct PersistedWorkspace {
     tree: DockTree,
 }
 
-/// The on-disk dock layout file: every workspace plus the active index.
+/// One floating dock window's persisted state: its tree + last client-area
+/// geometry (physical px), so tear-off windows come back on the same monitor
+/// at the same size after a restart.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct FloatingLayout {
+    pub tree: DockTree,
+    /// Client-area origin in physical screen px (`None` = let the OS place it).
+    pub position: Option<(i32, i32)>,
+    /// Client-area size in physical px.
+    pub size: (u32, u32),
+}
+
+/// The on-disk dock layout file: every workspace plus the active index, plus
+/// any floating dock windows (`#[serde(default)]` keeps pre-floating layout
+/// files loading).
 #[derive(Serialize, Deserialize)]
 struct PersistedLayout {
     active: usize,
     workspaces: Vec<PersistedWorkspace>,
+    #[serde(default)]
+    floating: Vec<FloatingLayout>,
 }
 
 /// Path to the persisted dock layout: `~/.renzora/layout.json`. Resolves the
@@ -45,10 +61,10 @@ fn layout_path() -> Option<std::path::PathBuf> {
     Some(home.join(".renzora").join("layout.json"))
 }
 
-/// Load the persisted workspaces + active index, or `None` when the file is
-/// absent / unreadable / malformed (callers then fall back to the built-in
-/// [`workspace_layouts`]).
-pub fn load_dock_layouts() -> Option<(Vec<(String, DockTree)>, usize)> {
+/// Load the persisted workspaces + active index + floating windows, or `None`
+/// when the file is absent / unreadable / malformed (callers then fall back to
+/// the built-in [`workspace_layouts`]).
+pub fn load_dock_layouts() -> Option<(Vec<(String, DockTree)>, usize, Vec<FloatingLayout>)> {
     #[cfg(target_arch = "wasm32")]
     {
         None
@@ -66,14 +82,19 @@ pub fn load_dock_layouts() -> Option<(Vec<(String, DockTree)>, usize)> {
             .map(|w| (w.name, w.tree))
             .collect::<Vec<_>>();
         let active = data.active.min(workspaces.len() - 1);
-        Some((workspaces, active))
+        Some((workspaces, active, data.floating))
     }
 }
 
-/// Serialize the workspaces + active index to the JSON we'd persist. Returns the
-/// string so the caller can skip a redundant disk write when nothing changed
-/// (the save system compares it against the last-written snapshot).
-pub fn layout_json(workspaces: &[(String, DockTree)], active: usize) -> Option<String> {
+/// Serialize the workspaces + active index + floating windows to the JSON we'd
+/// persist. Returns the string so the caller can skip a redundant disk write
+/// when nothing changed (the save system compares it against the last-written
+/// snapshot).
+pub fn layout_json(
+    workspaces: &[(String, DockTree)],
+    active: usize,
+    floating: &[FloatingLayout],
+) -> Option<String> {
     let data = PersistedLayout {
         active,
         workspaces: workspaces
@@ -83,6 +104,7 @@ pub fn layout_json(workspaces: &[(String, DockTree)], active: usize) -> Option<S
                 tree: tree.clone(),
             })
             .collect(),
+        floating: floating.to_vec(),
     };
     serde_json::to_string_pretty(&data).ok()
 }

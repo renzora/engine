@@ -20,6 +20,7 @@
           "category": "The Editor",
           "pages": [
             { "slug": "editor/scenes", "title": "Scenes & Hierarchy" },
+            { "slug": "editor/panels-windows", "title": "Panels & Windows" },
             { "slug": "editor/inspector", "title": "Inspector" },
             { "slug": "editor/viewport", "title": "Viewport & Camera" },
             { "slug": "editor/modeling", "title": "Modeling & Sculpting" },

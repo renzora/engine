@@ -523,7 +523,7 @@ fn add_node_open(
 ) {
     let Some(fonts) = fonts else { return };
     let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
     search_menu(&mut commands, &fonts, top_left.x, top_left.y + size.y + 2.0, bp_node_entries([80.0, 80.0]));

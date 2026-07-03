@@ -40,23 +40,41 @@ impl Plugin for ShellPlugin {
         // older saved set. (A workspace the user deliberately removed reappearing
         // is the accepted trade-off; the alternative hides new defaults.)
         let defaults = dock::workspace_layouts();
-        let (layouts, active) = match dock::load_dock_layouts() {
-            Some((mut saved, active)) => {
+        let (layouts, active, floating) = match dock::load_dock_layouts() {
+            Some((mut saved, active, floating)) => {
                 for (name, tree) in defaults {
                     if !saved.iter().any(|(n, _)| n == &name) {
                         saved.push((name, tree));
                     }
                 }
                 let active = active.min(saved.len().saturating_sub(1));
-                (saved, active)
+                (saved, active, floating)
             }
-            None => (defaults, 0),
+            None => (defaults, 0, Vec::new()),
         };
         // The dock starts on the active workspace (overrides DockPlugin's empty).
         app.insert_resource(Dock {
             tree: layouts[active].1.clone(),
         });
         app.insert_resource(ShellLayouts { layouts, active });
+        // Reopen persisted floating dock windows. The spawn system queues the
+        // requests until ember's fonts are ready, so pushing them this early is
+        // safe. (Inserted after `EmberPlugin` above, so `DockPlugin`'s
+        // `init_resource` won't overwrite it.)
+        if !floating.is_empty() {
+            app.insert_resource(renzora_ember::dock::DockWindowRequests(
+                floating
+                    .into_iter()
+                    .filter(|f| !matches!(f.tree, DockTree::Empty))
+                    .map(|f| renzora_ember::dock::DockWindowRequest {
+                        tree: f.tree,
+                        position: f.position.map(|(x, y)| IVec2::new(x, y)),
+                        size: UVec2::new(f.size.0.max(160), f.size.1.max(120)),
+                        grab: false,
+                    })
+                    .collect(),
+            ));
+        }
         app.init_resource::<renzora::ShellPanelRegistry>();
         app.init_resource::<renzora::ShellStatusRegistry>();
         seed_panel_meta(app);
@@ -1105,7 +1123,7 @@ fn build_panel_content(commands: &mut Commands, fonts: &EmberFonts, id: &str) ->
 fn ribbon_interact(
     mut drag: ResMut<RibbonDrag>,
     mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     rename: Res<RibbonRename>,
     pressed: Query<(&RibbonItem, &Interaction)>,
     items: Query<(&RibbonItem, &RelativeCursorPosition)>,
@@ -1234,7 +1252,7 @@ fn move_workspace(layouts: &mut ShellLayouts, dock: &Dock, from: usize, to: usiz
 /// Right-click a ribbon tab → context menu (Rename / Remove).
 fn ribbon_context_menu(
     mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
     items: Query<(&RibbonItem, &RelativeCursorPosition)>,
     layouts: Res<ShellLayouts>,
@@ -2852,14 +2870,27 @@ fn apply_workspace(index: usize, layouts: &mut ShellLayouts, dock: &mut Dock, di
 /// never churns the file). The live active workspace's tree is synced into its
 /// slot for the snapshot without mutating [`ShellLayouts`] — mutating it here
 /// would re-trigger change detection and spin the system every frame.
+#[allow(clippy::too_many_arguments)]
 fn persist_dock_layout(
     dock: Res<Dock>,
     layouts: Res<ShellLayouts>,
+    floats: Res<renzora_ember::dock::DockWindows>,
+    windows: Query<&Window>,
+    mut moved: MessageReader<bevy::window::WindowMoved>,
+    mut resized: MessageReader<bevy::window::WindowResized>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut pending: Local<bool>,
     mut last_saved: Local<Option<String>>,
 ) {
-    if dock.is_changed() || layouts.is_changed() {
+    // Floating-window geometry changes arrive as window events, not resource
+    // mutations — fold them into the trigger so an OS move/resize of a tear-off
+    // window persists once it settles.
+    let float_geo_changed = moved
+        .read()
+        .map(|m| m.window)
+        .chain(resized.read().map(|r| r.window))
+        .any(|w| floats.0.iter().any(|s| s.window == w));
+    if dock.is_changed() || layouts.is_changed() || floats.is_changed() || float_geo_changed {
         *pending = true;
     }
     if !*pending || mouse.pressed(MouseButton::Left) {
@@ -2873,7 +2904,27 @@ fn persist_dock_layout(
     if let Some(slot) = snapshot.get_mut(layouts.active) {
         slot.1 = dock.tree.clone();
     }
-    let Some(json) = dock::layout_json(&snapshot, layouts.active) else {
+    // Snapshot every floating dock window's tree + client geometry.
+    let floating: Vec<dock::FloatingLayout> = floats
+        .0
+        .iter()
+        .filter_map(|st| {
+            let win = windows.get(st.window).ok()?;
+            let position = match win.position {
+                bevy::window::WindowPosition::At(p) => Some((p.x, p.y)),
+                _ => None,
+            };
+            Some(dock::FloatingLayout {
+                tree: st.tree.clone(),
+                position,
+                size: (
+                    win.resolution.physical_width(),
+                    win.resolution.physical_height(),
+                ),
+            })
+        })
+        .collect();
+    let Some(json) = dock::layout_json(&snapshot, layouts.active, &floating) else {
         return;
     };
     if last_saved.as_deref() == Some(json.as_str()) {
@@ -3150,7 +3201,7 @@ fn top_menu_open(
         ),
         Changed<Interaction>,
     >,
-    windows: Query<&Window>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
     mut open: ResMut<OpenTopMenu>,
@@ -3190,7 +3241,7 @@ fn top_menu_hover(
         &bevy::ui::RelativeCursorPosition,
         &bevy::ui::ComputedNode,
     )>,
-    windows: Query<&Window>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
     mut open: ResMut<OpenTopMenu>,
@@ -3233,7 +3284,7 @@ fn top_menu_sync(
 /// node's normalized cursor position (scale-invariant; avoids UI `GlobalTransform`
 /// coordinate ambiguity). Used to anchor button dropdowns just under the button.
 fn anchor_below(
-    windows: &Query<&Window>,
+    windows: &Query<&Window, With<bevy::window::PrimaryWindow>>,
     rcp: &bevy::ui::RelativeCursorPosition,
     cn: &bevy::ui::ComputedNode,
 ) -> Option<Vec2> {

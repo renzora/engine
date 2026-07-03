@@ -604,7 +604,7 @@ fn splitter_drag(
     if mouse.just_released(MouseButton::Left) {
         state.divider_drag = None;
     }
-    let Some(cx) = windows.iter().next().and_then(|w| w.cursor_position()).map(|p| p.x) else {
+    let Some(cx) = windows.iter().find_map(|w| w.cursor_position()).map(|p| p.x) else {
         return;
     };
     if state.divider_drag.is_none()
@@ -748,7 +748,7 @@ fn asset_drag(
         }
         return;
     }
-    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    let cursor = windows.iter().find_map(|w| w.cursor_position());
     if mouse.just_pressed(MouseButton::Left) {
         if let Some(c) = cursor {
             // A pressed grid/list tile (file or folder)…
@@ -918,7 +918,7 @@ fn drag_ghost(
         }
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     // Reposition an existing ghost.
@@ -1078,7 +1078,7 @@ fn asset_context_menu(
     let Some(path) = state.hovered.clone() else {
         return;
     };
-    let Some(win) = windows.iter().next() else {
+    let Some(win) = windows.iter().find(|w| w.cursor_position().is_some()) else {
         return;
     };
     let Some(cursor) = win.cursor_position() else {
@@ -1153,7 +1153,7 @@ fn add_menu_open(
     let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     // Anchor the menu to the button's bottom-left (stable, cursor-independent).
@@ -1218,7 +1218,7 @@ fn sort_menu_open(
     let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let (cur_sort, cur_desc) = state.map(|s| (s.sort, s.sort_desc)).unwrap_or((SortMode::Name, false));
@@ -1289,7 +1289,7 @@ fn marquee_select(
         state.pre_marquee.clear();
         return;
     }
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
 
@@ -1395,7 +1395,7 @@ fn marquee_autoscroll(
     if state.marquee_start.is_none() || !mouse.pressed(MouseButton::Left) {
         return;
     }
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     // The grid's `scroll_view` outer (GridArea) wraps the `EmberScroll` viewport
@@ -3569,7 +3569,7 @@ fn tree_nav_click(
     mut state: ResMut<NativeAssets>,
     mut press: Local<Option<(PathBuf, Vec2)>>,
 ) {
-    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    let cursor = windows.iter().find_map(|w| w.cursor_position());
     if mouse.just_pressed(MouseButton::Left) {
         if let (Some((_, nav)), Some(c)) =
             (q.iter().find(|(i, _)| **i == Interaction::Pressed), cursor)

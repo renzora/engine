@@ -299,7 +299,7 @@ fn scenes_context_menu(
         return;
     }
     let Some(path) = state.hovered.clone() else { return };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);
     let kids = vec![
         menu_item(&mut commands, &fonts, "arrow-square-out", "Open", {

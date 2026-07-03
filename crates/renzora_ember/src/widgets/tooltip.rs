@@ -9,7 +9,6 @@
 //! keeps it from stealing hover from the widget under it.
 
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 
 use crate::font::{ui_font, EmberFonts};
 use crate::theme::*;
@@ -63,12 +62,14 @@ const OFFSET: Vec2 = Vec2::new(14.0, 20.0);
 pub(crate) fn hover_tooltip_system(
     mut commands: Commands,
     time: Res<Time>,
-    windows: Query<&Window, With<PrimaryWindow>>,
+    windows: Query<(Entity, &Window)>,
+    dock_windows: Option<Res<crate::dock::DockWindows>>,
     fonts: Option<Res<EmberFonts>>,
     tips: Query<(Entity, &Interaction, &HoverTooltip)>,
     mut root_q: Query<(Entity, &mut Node, &ComputedNode), With<HoverTipRoot>>,
     mut text_q: Query<&mut Text, With<HoverTipText>>,
     mut state: Local<Option<(Entity, f32)>>,
+    mut last_cam: Local<Option<Option<Entity>>>,
 ) {
     let hide = |root_q: &mut Query<(Entity, &mut Node, &ComputedNode), With<HoverTipRoot>>| {
         if let Ok((_, mut node, _)) = root_q.single_mut() {
@@ -81,10 +82,13 @@ pub(crate) fn hover_tooltip_system(
     let hovered = tips
         .iter()
         .find(|(_, i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed));
-    let (Some((widget, _, tip)), Some(cursor)) = (
-        hovered,
-        windows.iter().next().and_then(|w| w.cursor_position()),
-    ) else {
+    // The window the cursor is in — hover only fires there, so the tooltip's
+    // coordinates and rendering target both follow it (a widget in a floating
+    // dock window shows its tooltip in that window, not the primary).
+    let cursor_win = windows
+        .iter()
+        .find_map(|(e, w)| w.cursor_position().map(|c| (e, w, c)));
+    let (Some((widget, _, tip)), Some((win_entity, win, cursor))) = (hovered, cursor_win) else {
         *state = None;
         hide(&mut root_q);
         return;
@@ -106,7 +110,7 @@ pub(crate) fn hover_tooltip_system(
 
     // Lazily spawn the shared bubble as a ROOT node (no parent → no ancestor
     // can clip it away).
-    let Ok((_, mut node, cn)) = root_q.single_mut() else {
+    let Ok((root_entity, mut node, cn)) = root_q.single_mut() else {
         let Some(fonts) = fonts else { return };
         let root = commands
             .spawn((
@@ -150,18 +154,34 @@ pub(crate) fn hover_tooltip_system(
         }
     }
 
+    // Render the bubble on the cursor window's camera: `UiTargetCamera` toward
+    // a floating dock window's camera, or none (→ the primary default UI
+    // camera). Guarded on change so it doesn't churn the entity every frame.
+    let float_cam = dock_windows
+        .as_ref()
+        .and_then(|ws| ws.0.iter().find(|s| s.window == win_entity))
+        .map(|s| s.camera);
+    if *last_cam != Some(float_cam) {
+        *last_cam = Some(float_cam);
+        match float_cam {
+            Some(cam) => {
+                commands.entity(root_entity).insert(bevy::ui::UiTargetCamera(cam));
+            }
+            None => {
+                commands.entity(root_entity).remove::<bevy::ui::UiTargetCamera>();
+            }
+        }
+    }
+
     // Place beside the cursor, flipping/clamping at the window edges.
     // ComputedNode is physical px; Node offsets are logical.
     let size = cn.size() * cn.inverse_scale_factor();
-    let win = windows.iter().next();
     let mut pos = cursor + OFFSET;
-    if let Some(w) = win {
-        if pos.x + size.x > w.width() {
-            pos.x = (cursor.x - size.x - 8.0).max(0.0);
-        }
-        if pos.y + size.y > w.height() {
-            pos.y = (cursor.y - size.y - 8.0).max(0.0);
-        }
+    if pos.x + size.x > win.width() {
+        pos.x = (cursor.x - size.x - 8.0).max(0.0);
+    }
+    if pos.y + size.y > win.height() {
+        pos.y = (cursor.y - size.y - 8.0).max(0.0);
     }
     node.left = Val::Px(pos.x);
     node.top = Val::Px(pos.y);

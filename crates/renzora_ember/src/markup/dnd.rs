@@ -81,7 +81,7 @@ fn dnd_system(
     mut inbox: ResMut<ScriptUiInbox>,
     mut commands: Commands,
 ) {
-    let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+    let cursor = windows.iter().find_map(|w| w.cursor_position());
     let scale = ui_scale.0.max(f32::EPSILON);
 
     // ── Pickup → reparent the item to its canvas (screen space) ──

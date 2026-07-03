@@ -323,7 +323,7 @@ fn orbit_drag(
         *last = None;
         return;
     }
-    let Some(c) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(c) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     if let Some(prev) = *last {

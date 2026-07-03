@@ -307,10 +307,17 @@ pub fn build_toolbar_host(
         commands.entity(group).add_children(&kids);
         // Show this group while ANY of its visibility panels is the active
         // (visible) dock tab — for the viewport, that's any of the 4 slots.
+        // Floating dock windows count too: their panels are visible, and this
+        // strip (in the primary window) is still where their toolbar lives.
         let ids = registry.visible_panels_for(panel);
         bind_display(commands, group, move |w| {
-            w.get_resource::<Dock>()
-                .is_some_and(|d| ids.iter().any(|id| d.tree.is_active_tab(id)))
+            ids.iter().any(|id| {
+                crate::dock::panel_visible_anywhere(
+                    id,
+                    w.get_resource::<Dock>(),
+                    w.get_resource::<crate::dock::DockWindows>(),
+                )
+            })
         });
         commands.entity(host).add_child(group);
     }

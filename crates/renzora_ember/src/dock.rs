@@ -122,6 +122,43 @@ impl DockTree {
         }
     }
 
+    /// Collect every panel id in the tree (all tabs of all leaves) into `out`,
+    /// in tree order. Used when a floating dock window closes to hand its
+    /// panels back to the main dock instead of silently dropping them.
+    pub fn collect_panels(&self, out: &mut Vec<String>) {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.collect_panels(out);
+                second.collect_panels(out);
+            }
+            DockTree::Leaf { tabs, .. } => out.extend(tabs.iter().cloned()),
+            DockTree::Empty => {}
+        }
+    }
+
+    /// The first panel id in tree order, if any — used to title a floating
+    /// dock window after its lead panel.
+    pub fn first_panel(&self) -> Option<&str> {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.first_panel().or_else(|| second.first_panel())
+            }
+            DockTree::Leaf { tabs, .. } => tabs.first().map(|s| s.as_str()),
+            DockTree::Empty => None,
+        }
+    }
+
+    /// Add `panel` to the tree wherever it fits: focus it if present, append to
+    /// the first leaf, or become the root leaf when the tree is empty (which
+    /// `focus_or_add_panel` alone can't do — its walk has no leaf to append to).
+    pub fn adopt_panel(&mut self, panel: &str) {
+        if self.is_empty() {
+            *self = DockTree::leaf(panel);
+        } else {
+            self.focus_or_add_panel(panel);
+        }
+    }
+
     /// Is `panel` present anywhere in the tree (visible or as a background tab)?
     pub fn contains_panel(&self, panel: &str) -> bool {
         match self {
@@ -343,6 +380,11 @@ impl Plugin for DockPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Dock>()
             .init_resource::<DockDirty>()
+            .init_resource::<DockWindows>()
+            .init_resource::<DockWindowRequests>()
+            .init_resource::<DockWindowCloseRequests>()
+            .init_resource::<FloatDrag>()
+            .init_resource::<GlobalCursor>()
             .init_resource::<FocusPanelRequest>()
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
@@ -354,8 +396,19 @@ impl Plugin for DockPlugin {
                 (
                     crate::font::load_fonts,
                     crate::font::scan_project_fonts,
+                    // Screen-space cursor first: divider/tab drags and the
+                    // tear-off window follow all read it this frame.
+                    track_global_cursor,
                     divider_drag,
                     tab_drag,
+                    // Grip-press tear-offs land before the spawn below, so the
+                    // window appears the same frame, like the Ctrl+drag path.
+                    tab_grip_interact,
+                    // Same frame as the tear-off gesture so the new window
+                    // appears on the very next present.
+                    spawn_dock_windows,
+                    // After spawn (picks up the tear-off grab the same frame).
+                    float_window_drag,
                     apply_focus_request,
                     apply_tab_switch,
                     tab_hover,
@@ -369,7 +422,27 @@ impl Plugin for DockPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Update, (add_panel_click, apply_dock_style));
+            .add_systems(
+                Update,
+                (
+                    add_panel_click,
+                    apply_dock_style,
+                    float_window_controls,
+                    tab_grip_hover,
+                    tab_context_menu,
+                ),
+            )
+            // In PostUpdate, before `camera_system` evaluates render targets: a
+            // dock window and its camera must die in the same frame (see
+            // [`DockWindowCloseRequests`]). This also catches windows despawned
+            // externally (e.g. Alt+F4 via bevy's `close_when_requested`) in the
+            // same frame their `Window` component is removed.
+            .add_systems(
+                PostUpdate,
+                (process_dock_window_closes, guard_dock_target_cameras)
+                    .chain()
+                    .before(bevy::camera::CameraUpdateSystems),
+            );
     }
 }
 
@@ -392,8 +465,25 @@ pub struct Dock {
 ///
 /// Gate only *view* work — leave a panel's always-on systems (e.g. the console's
 /// log capture, which must keep collecting while hidden) ungated.
-pub fn panel_active(id: &'static str) -> impl Fn(Option<Res<Dock>>) -> bool + Clone {
-    move |dock: Option<Res<Dock>>| dock.is_some_and(|d| d.tree.is_active_tab(id))
+pub fn panel_active(
+    id: &'static str,
+) -> impl Fn(Option<Res<Dock>>, Option<Res<DockWindows>>) -> bool + Clone {
+    move |dock: Option<Res<Dock>>, wins: Option<Res<DockWindows>>| {
+        dock.is_some_and(|d| d.tree.is_active_tab(id))
+            || wins.is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(id)))
+    }
+}
+
+/// Is `panel` the active (visible) tab in the primary dock or any floating dock
+/// window? The non-run-condition companion to [`panel_active`] for callers that
+/// check from a `World` or with resources in hand.
+pub fn panel_visible_anywhere(
+    id: &str,
+    dock: Option<&Dock>,
+    wins: Option<&DockWindows>,
+) -> bool {
+    dock.is_some_and(|d| d.tree.is_active_tab(id))
+        || wins.is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(id)))
 }
 
 impl Default for Dock {
@@ -412,6 +502,120 @@ pub struct DockArea;
 /// switches do NOT set this — they update in place.
 #[derive(Resource, Default)]
 pub struct DockDirty(pub bool);
+
+// ── Floating dock windows ────────────────────────────────────────────────────
+
+/// One floating OS window hosting its own [`DockTree`] — created by
+/// Ctrl+dragging a tab out of a dock (tear-off) or programmatically via
+/// [`DockWindowRequests`]. Each window is a full dock: tabs, splits and
+/// drag-docking all work inside it, and tabs drag between windows.
+pub struct DockWindowState {
+    /// The OS window entity.
+    pub window: Entity,
+    /// The `Camera2d` rendering this window's UI.
+    pub camera: Entity,
+    /// The root UI node in this window (title bar + dock area + resize grip).
+    pub root: Entity,
+    /// The [`DockArea`] node the tree reconciles into.
+    pub area: Entity,
+    /// This window's live dock layout.
+    pub tree: DockTree,
+    /// Per-window rebuild flag — the floating counterpart of [`DockDirty`].
+    pub dirty: bool,
+}
+
+/// All live floating dock windows. The editor shell reads this to persist
+/// floating layouts; everything else goes through the dock's own systems.
+#[derive(Resource, Default)]
+pub struct DockWindows(pub Vec<DockWindowState>);
+
+/// Request to open a floating dock window. Push onto [`DockWindowRequests`];
+/// the dock spawns the OS window + camera + chrome next frame (or the same
+/// frame for the tear-off gesture, which runs before the spawn system).
+pub struct DockWindowRequest {
+    /// The layout the new window opens with.
+    pub tree: DockTree,
+    /// Desired client-area origin in physical screen px (`None` = OS default).
+    pub position: Option<IVec2>,
+    /// Client-area size in physical px.
+    pub size: UVec2,
+    /// Tear-off: the window follows the held cursor until mouse release.
+    pub grab: bool,
+}
+
+/// Queue of pending [`DockWindowRequest`]s (public seam — the shell uses this
+/// to restore persisted floating windows at startup).
+#[derive(Resource, Default)]
+pub struct DockWindowRequests(pub Vec<DockWindowRequest>);
+
+/// A floating dock window being dragged: the tear-off follow (until the
+/// gesture's button releases) and title-bar drags share this. Title-bar drags
+/// also resolve a re-dock drop — release over a tab bar or a dock root
+/// edge/corner in the main window and the panel docks back there.
+struct FloatDragState {
+    window: Entity,
+    /// Cursor → window-origin offset in logical px (scaled per frame, so the
+    /// grab survives the window crossing monitors with different DPI).
+    grab: Vec2,
+    /// Whether releasing over a dock target re-docks the panel. `false` for
+    /// the tear-off gesture (its release point is still inside the tab bar it
+    /// just left — re-docking there would undo the tear-off).
+    redock: bool,
+    action: Option<DropAction>,
+    shown_overlay: Option<Entity>,
+}
+
+/// The active floating-window drag, if any.
+#[derive(Resource, Default)]
+struct FloatDrag(Option<FloatDragState>);
+
+/// Marks a floating window's [`DockArea`] and links it back to its OS window.
+/// The primary dock area (the editor shell's) does NOT carry this — that's how
+/// dock systems tell "mutate `Dock.tree`" from "mutate this window's tree".
+#[derive(Component)]
+pub struct FloatingDockArea {
+    pub window: Entity,
+}
+
+/// A floating dock window's title bar — press starts a window drag (which can
+/// end in a re-dock, see [`FloatDragState`]).
+#[derive(Component)]
+struct FloatWindowBar(Entity);
+
+/// A floating dock window's close button (×).
+#[derive(Component)]
+struct FloatWindowClose(Entity);
+
+/// A floating dock window's edge/corner resize zone — press starts an OS
+/// resize toward the given octant.
+#[derive(Component)]
+struct FloatWindowResize {
+    window: Entity,
+    octant: bevy::math::CompassOctant,
+}
+
+/// Floating dock windows queued to close (window entities). All close paths —
+/// the title-bar ×, dragging the last panel out, a re-dock — go through this
+/// queue instead of despawning the window directly: [`process_dock_window_closes`]
+/// tears the window, its camera and its UI root down **together, before bevy's
+/// camera update**. A `Camera` whose `RenderTarget::Window` entity is already
+/// gone panics `camera_system` ("RenderTarget::Window missing"), so the camera
+/// must never outlive its window across that boundary — not even one frame.
+#[derive(Resource, Default)]
+struct DockWindowCloseRequests(Vec<Entity>);
+
+/// Last known cursor position in physical **screen** coordinates, tracked from
+/// [`bevy::window::CursorMoved`] messages (window client origin + event
+/// position). Unlike `Window::cursor_position()`, this keeps updating during a
+/// mouse-capture drag even once the cursor leaves the source window's bounds —
+/// bevy clamps the readable position to `None` outside the window, but the
+/// underlying move events keep flowing to the captured window with
+/// out-of-bounds coordinates. Cross-window tab drops and the tear-off window
+/// follow both depend on that.
+#[derive(Resource, Default)]
+pub struct GlobalCursor {
+    pub pos: Option<Vec2>,
+}
 
 /// External request to focus (make active) a panel by id. Other crates set this
 /// to programmatically bring a tab to the foreground — e.g. the viewport crate
@@ -445,6 +649,9 @@ pub struct DockLeaf {
     pub content: Entity,
     /// Id of the currently-visible tab — drives what content to show.
     pub active: String,
+    /// The [`DockArea`] this leaf was built into — routes tree mutations to the
+    /// primary dock or the owning floating window.
+    pub area: Entity,
     overlay: Entity,
 }
 
@@ -534,11 +741,14 @@ struct TabClose;
 #[derive(Component)]
 struct DropOverlay;
 
-/// The dock-wide drop preview for root edge/corner docking — a single overlay
-/// child of the [`DockArea`] node, shown while a drag targets a full-height /
-/// full-width root split. Recreated on every dock rebuild.
+/// The dock-wide drop preview for root edge/corner docking — one overlay child
+/// per [`DockArea`] node, shown while a drag targets a full-height / full-width
+/// root split of that area. Recreated on every dock rebuild.
 #[derive(Component)]
-struct RootDropOverlay;
+struct RootDropOverlay {
+    /// The dock area this overlay previews for.
+    area: Entity,
+}
 
 #[derive(Component)]
 struct TabBarOf(Entity);
@@ -553,6 +763,9 @@ struct Divider {
     first_wrap: Entity,
     horizontal: bool,
     path: Vec<bool>,
+    /// The dock area this divider's split belongs to — routes the ratio
+    /// persist to the right tree (primary vs a floating window's).
+    area: Entity,
 }
 
 /// Info passed to a leaf so its tab-bar empty area can act as a secondary
@@ -577,6 +790,8 @@ struct DraggedDivider(Option<DividerDrag>);
 
 struct DividerDrag {
     handle: Entity,
+    /// Physical screen-space grab point (from [`GlobalCursor`]) — screen space
+    /// keeps the drag alive even when the cursor leaves the window mid-drag.
     start_cursor: Vec2,
     start_ratio: f32,
 }
@@ -606,6 +821,12 @@ pub struct DockDragWatch {
 struct TabDragState {
     id: String,
     leaf: Entity,
+    /// The dock area the drag started in — the tree the panel is removed from.
+    source_area: Entity,
+    /// The OS window hosting `source_area`. During the drag this window holds
+    /// the mouse capture, so it's the only window whose cursor stays readable.
+    source_window: Entity,
+    /// Cursor at press, in the source window's logical coords.
     start_cursor: Vec2,
     active: bool,
     action: Option<DropAction>,
@@ -614,16 +835,107 @@ struct TabDragState {
     shown_marker: Option<Entity>,
 }
 
+/// Where a drop lands. Every variant carries the **target** dock area, which
+/// may differ from the drag's source area (cross-window drops).
 enum DropAction {
-    Split { rep: String, zone: DropZone },
+    Split { area: Entity, rep: String, zone: DropZone },
     /// Full-height / full-width split against the whole dock (edge/corner drop).
-    RootSplit { zone: DropZone },
-    Tab { rep: String, before: Option<String> },
+    RootSplit { area: Entity, zone: DropZone },
+    Tab { area: Entity, rep: String, before: Option<String> },
+}
+
+impl DropAction {
+    fn area(&self) -> Entity {
+        match self {
+            DropAction::Split { area, .. }
+            | DropAction::RootSplit { area, .. }
+            | DropAction::Tab { area, .. } => *area,
+        }
+    }
 }
 
 /// A pending in-place tab switch: (leaf entity, panel id to activate).
 #[derive(Resource, Default)]
 struct PendingSwitch(Option<(Entity, String)>);
+
+// ── Tree routing (primary dock vs floating windows) ─────────────────────────
+
+/// The live tree owning dock area `area`: a floating window's tree if `area`
+/// belongs to one, else the primary [`Dock`]'s.
+fn area_tree_mut<'a>(
+    area: Entity,
+    dock: &'a mut Dock,
+    wins: &'a mut DockWindows,
+) -> &'a mut DockTree {
+    match wins.0.iter_mut().find(|s| s.area == area) {
+        Some(st) => &mut st.tree,
+        None => &mut dock.tree,
+    }
+}
+
+/// Flag `area`'s tree for rebuild — [`DockDirty`] for the primary dock, the
+/// per-window flag for a floating one.
+fn flag_area_dirty(area: Entity, dirty: &mut DockDirty, wins: &mut DockWindows) {
+    match wins.0.iter_mut().find(|s| s.area == area) {
+        Some(st) => st.dirty = true,
+        None => dirty.0 = true,
+    }
+}
+
+/// The OS window hosting dock area `area` (the floating window's, else the
+/// primary window).
+fn area_window(area: Entity, wins: &DockWindows, primary: Option<Entity>) -> Option<Entity> {
+    wins.0
+        .iter()
+        .find(|s| s.area == area)
+        .map(|s| s.window)
+        .or(primary)
+}
+
+/// Does `global` (physical screen px) land inside `win`'s client area? Only
+/// answerable once winit has reported the window's position (`At`).
+fn window_contains(win: &Window, global: Vec2) -> bool {
+    let bevy::window::WindowPosition::At(origin) = win.position else {
+        return false;
+    };
+    let local = global - origin.as_vec2();
+    local.x >= 0.0
+        && local.y >= 0.0
+        && local.x < win.physical_width() as f32
+        && local.y < win.physical_height() as f32
+}
+
+/// `global` (physical screen px) converted into `win`-local physical px, if the
+/// window's position is known.
+fn window_local(win: &Window, global: Vec2) -> Option<Vec2> {
+    let bevy::window::WindowPosition::At(origin) = win.position else {
+        return None;
+    };
+    Some(global - origin.as_vec2())
+}
+
+/// Track the cursor in physical screen space from raw move messages — see
+/// [`GlobalCursor`] for why this can't just read `Window::cursor_position()`.
+fn track_global_cursor(
+    mut cursor: ResMut<GlobalCursor>,
+    mut moves: MessageReader<bevy::window::CursorMoved>,
+    windows: Query<&Window>,
+) {
+    for ev in moves.read() {
+        let Ok(win) = windows.get(ev.window) else {
+            continue;
+        };
+        // `position` is `Automatic` until winit reports the first `Moved` for
+        // this window. Falling back to a zero origin keeps single-window
+        // coordinates self-consistent (everything is relative to that window)
+        // so divider/tab drags still work before the position resolves.
+        let origin = match win.position {
+            bevy::window::WindowPosition::At(origin) => origin.as_vec2(),
+            _ => Vec2::ZERO,
+        };
+        cursor.pos = Some(origin + ev.position * win.scale_factor());
+    }
+}
 
 // ── Defaults a consumer overrides ────────────────────────────────────────────
 
@@ -661,22 +973,25 @@ fn as_ratio(v: Val) -> Option<f32> {
 
 /// Drag a divider handle to resize its split. Latches on press (continues off
 /// the handle), moves by cursor delta (no snap), resizes live + persists.
+///
+/// Works in physical screen space ([`GlobalCursor`] vs the container's
+/// physical size) so it's window-agnostic — the same code drives splits in the
+/// primary dock and in floating dock windows, and the drag survives the cursor
+/// briefly leaving the window (mouse capture keeps the move events coming).
 fn divider_drag(
     mut dragged: ResMut<DraggedDivider>,
     mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
+    cursor: Res<GlobalCursor>,
     dividers: Query<(Entity, &Interaction, &Divider)>,
     computed: Query<&bevy::ui::ComputedNode>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
+    mut wins: ResMut<DockWindows>,
 ) {
     if mouse.just_released(MouseButton::Left) {
         dragged.0 = None;
     }
-    let Ok(window) = windows.single() else {
-        return;
-    };
-    let Some(cursor) = window.cursor_position() else {
+    let Some(cursor) = cursor.pos else {
         return;
     };
 
@@ -711,11 +1026,13 @@ fn divider_drag(
     let Ok(cn) = computed.get(div.container) else {
         return;
     };
+    // Physical px on both sides of the division, so per-window scale factors
+    // (mixed-DPI monitors) cancel out.
     let extent = if div.horizontal {
         cn.size().x
     } else {
         cn.size().y
-    } * cn.inverse_scale_factor();
+    };
     if extent <= 0.0 {
         return;
     }
@@ -729,6 +1046,7 @@ fn divider_drag(
     let first_wrap = div.first_wrap;
     let horizontal = div.horizontal;
     let dpath = div.path.clone();
+    let darea = div.area;
 
     // Resize the first pane; the divider strip is a flex sibling, so flexbox
     // re-places it on the new boundary automatically — no handle to move.
@@ -739,49 +1057,95 @@ fn divider_drag(
             n.height = Val::Percent(ratio * 100.0);
         }
     }
-    dock.tree.update_ratio(&dpath, ratio);
+    area_tree_mut(darea, &mut dock, &mut wins).update_ratio(&dpath, ratio);
 }
 
 /// Drag a tab to re-dock; a plain click switches the active tab.
+///
+/// Multi-window aware:
+/// - **Ctrl+drag** tears the panel off into a new floating OS window that
+///   follows the cursor until release (see [`DockWindowRequest::grab`]).
+/// - A plain drag re-docks **across windows**: while the cursor is inside the
+///   source window the usual `RelativeCursorPosition` machinery resolves the
+///   drop; once it leaves (the pressed window holds the mouse capture, so no
+///   other window receives cursor events) the drop target is resolved manually
+///   from [`GlobalCursor`] against each window's leaf rects.
 #[allow(clippy::too_many_arguments)]
 fn tab_drag(
     mut drag: ResMut<TabDrag>,
-    mut dirty: ResMut<DockDirty>,
     mut pending: ResMut<PendingSwitch>,
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
-    mouse: Res<ButtonInput<MouseButton>>,
+    input: (
+        Res<ButtonInput<MouseButton>>,
+        Res<ButtonInput<KeyCode>>,
+        Res<GlobalCursor>,
+    ),
     windows: Query<&Window>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
     tabs: Query<(Entity, &Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
     tabbars: Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
-    mut leaves: Query<(Entity, &mut DockLeaf, &bevy::ui::RelativeCursorPosition)>,
-    area: Query<
-        (&bevy::ui::RelativeCursorPosition, &bevy::ui::ComputedNode),
+    mut leaves: Query<(
+        Entity,
+        &mut DockLeaf,
+        &bevy::ui::RelativeCursorPosition,
+        &bevy::ui::ComputedNode,
+        &bevy::ui::UiGlobalTransform,
+    )>,
+    areas: Query<
+        (
+            Entity,
+            &bevy::ui::RelativeCursorPosition,
+            &bevy::ui::ComputedNode,
+            Option<&FloatingDockArea>,
+        ),
         With<DockArea>,
     >,
-    root_overlay: Query<Entity, With<RootDropOverlay>>,
+    root_overlays: Query<(Entity, &RootDropOverlay)>,
     mut nodes: Query<&mut Node>,
-    mut dock: ResMut<Dock>,
+    model: (
+        ResMut<Dock>,
+        ResMut<DockDirty>,
+        ResMut<DockWindows>,
+        ResMut<DockWindowRequests>,
+        ResMut<DockWindowCloseRequests>,
+    ),
     mut watch: ResMut<DockDragWatch>,
 ) {
-    let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+    let (mouse, keys, global) = input;
+    let (mut dock, mut dirty, mut wins, mut requests, mut close_queue) = model;
 
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
-        if let Some(cur) = cursor {
-            for (_, interaction, tab, _) in &tabs {
-                if *interaction == Interaction::Pressed {
-                    drag.0 = Some(TabDragState {
-                        id: tab.id.clone(),
-                        leaf: tab.leaf,
-                        start_cursor: cur,
-                        active: false,
-                        action: None,
-                        ghost: None,
-                        shown_overlay: None,
-                        shown_marker: None,
-                    });
-                    break;
-                }
+        for (_, interaction, tab, _) in &tabs {
+            if *interaction == Interaction::Pressed {
+                let Ok((_, ld, ..)) = leaves.get(tab.leaf) else {
+                    continue;
+                };
+                let source_area = ld.area;
+                let Some(source_window) = area_window(source_area, &wins, primary.single().ok())
+                else {
+                    continue;
+                };
+                let Some(cur) = windows
+                    .get(source_window)
+                    .ok()
+                    .and_then(|w| w.cursor_position())
+                else {
+                    continue;
+                };
+                drag.0 = Some(TabDragState {
+                    id: tab.id.clone(),
+                    leaf: tab.leaf,
+                    source_area,
+                    source_window,
+                    start_cursor: cur,
+                    active: false,
+                    action: None,
+                    ghost: None,
+                    shown_overlay: None,
+                    shown_marker: None,
+                });
+                break;
             }
         }
     }
@@ -806,21 +1170,31 @@ fn tab_drag(
             }
             if state.active {
                 if let Some(action) = state.action {
+                    let target_area = action.area();
+                    let same_area = target_area == state.source_area;
                     // A reorder within the same leaf only changes tab order, not
                     // structure — do it in place (move the tab entity) instead of
                     // rebuilding the dock subtree, which avoids the layout flicker.
                     let inplace = match &action {
-                        DropAction::Tab { rep, before } => leaves
+                        DropAction::Tab { rep, before, .. } if same_area => leaves
                             .get(state.leaf)
                             .ok()
-                            .filter(|(_, ld, _)| ld.tabs.contains(rep))
-                            .map(|(_, ld, _)| reordered(&ld.tabs, &state.id, before.as_deref())),
+                            .filter(|(_, ld, ..)| ld.tabs.contains(rep))
+                            .map(|(_, ld, ..)| reordered(&ld.tabs, &state.id, before.as_deref())),
                         _ => None,
                     };
-                    apply_action(&mut dock.tree, &state.id, action);
+                    // Move the panel: out of the source tree, into the target's
+                    // (the same tree when the drop stayed in-window).
+                    area_tree_mut(state.source_area, &mut dock, &mut wins)
+                        .remove_panel(&state.id);
+                    insert_action(
+                        area_tree_mut(target_area, &mut dock, &mut wins),
+                        &state.id,
+                        &action,
+                    );
                     match inplace {
                         Some(new_tabs) => {
-                            if let Ok((_, mut ld, _)) = leaves.get_mut(state.leaf) {
+                            if let Ok((_, mut ld, ..)) = leaves.get_mut(state.leaf) {
                                 ld.tabs = new_tabs.clone();
                             }
                             if let Some((tabbar, _, _)) =
@@ -845,7 +1219,19 @@ fn tab_drag(
                                 }
                             }
                         }
-                        None => dirty.0 = true,
+                        None => {
+                            flag_area_dirty(target_area, &mut dirty, &mut wins);
+                            if !same_area {
+                                flag_area_dirty(state.source_area, &mut dirty, &mut wins);
+                                // Dragging the last panel out of a floating
+                                // window leaves an empty shell — close it.
+                                close_empty_dock_window(
+                                    state.source_area,
+                                    &wins,
+                                    &mut close_queue,
+                                );
+                            }
+                        }
                     }
                 }
             } else {
@@ -857,105 +1243,225 @@ fn tab_drag(
         return;
     }
 
-    let Some(cur) = cursor else {
-        return;
-    };
     let Some(state) = drag.0.as_mut() else {
         return;
     };
+    // The source window's cursor — `None` once the cursor leaves its bounds
+    // (the drag keeps running on [`GlobalCursor`] then).
+    let cursor = windows
+        .get(state.source_window)
+        .ok()
+        .and_then(|w| w.cursor_position());
+
     if !state.active {
-        if cur.distance(state.start_cursor) > TAB_DRAG_THRESHOLD {
-            state.active = true;
-            // Publish the dragged panel id so external drop targets (the workspace
-            // ribbon) can react while the drag is in flight.
-            watch.dragging = Some(state.id.clone());
-            if let Some(fonts) = &fonts {
-                state.ghost = Some(spawn_ghost(&mut commands, &fonts.ui, &state.id, cur));
-            }
-        } else {
+        let Some(cur) = cursor else {
             return;
+        };
+        if cur.distance(state.start_cursor) <= TAB_DRAG_THRESHOLD {
+            return;
+        }
+        // Ctrl+drag: tear the panel off into a floating OS window that follows
+        // the cursor until release, instead of a re-dock drag.
+        if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
+            let id = state.id.clone();
+            let scale = windows
+                .get(state.source_window)
+                .map(|w| w.scale_factor())
+                .unwrap_or(1.0);
+            let leaf_size = leaves.get(state.leaf).map(|(_, _, _, cn, _)| cn.size()).ok();
+            tear_off_panel(
+                &id,
+                state.source_area,
+                leaf_size,
+                scale,
+                global.pos,
+                true,
+                (&mut dock, &mut dirty, &mut wins, &mut requests, &mut close_queue),
+            );
+            drag.0 = None;
+            watch.dragging = None;
+            watch.claim = false;
+            return;
+        }
+        state.active = true;
+        // Publish the dragged panel id so external drop targets (the workspace
+        // ribbon) can react while the drag is in flight.
+        watch.dragging = Some(state.id.clone());
+        if let Some(fonts) = &fonts {
+            // A drag from a floating window renders its ghost on that window's
+            // camera (a root node with no target lands on the primary window).
+            let camera = wins
+                .0
+                .iter()
+                .find(|s| s.area == state.source_area)
+                .map(|s| s.camera);
+            state.ghost = Some(spawn_ghost(&mut commands, &fonts.ui, &state.id, cur, camera));
         }
     }
 
     if let Some(ghost) = state.ghost {
         if let Ok(mut n) = nodes.get_mut(ghost) {
-            n.left = Val::Px(cur.x + 12.0);
-            n.top = Val::Px(cur.y + 12.0);
+            match cursor {
+                Some(cur) => {
+                    n.display = Display::Flex;
+                    n.left = Val::Px(cur.x + 12.0);
+                    n.top = Val::Px(cur.y + 12.0);
+                }
+                // Cursor outside the source window (cross-window drag) — the
+                // ghost would pin to a stale spot, so hide it.
+                None => n.display = Display::None,
+            }
         }
     }
 
     let mut action: Option<DropAction> = None;
-    // (overlay entity, zone, is_root) — root hits use the dock-wide overlay
+    // (overlay entity, zone, is_root) — root hits use the area-wide overlay
     // with `set_root_zone_rect`, leaf hits the leaf overlay with `set_zone_rect`.
     let mut new_overlay: Option<(Entity, DropZone, bool)> = None;
     let mut new_marker: Option<(Entity, bool)> = None;
 
-    // Root edge/corner hit, in dock-local logical px. Corners outrank tab
-    // bars (the top edge is lined with them); plain edge bands don't.
-    let root_hit = area.single().ok().and_then(|(rcp, computed)| {
-        if !rcp.cursor_over {
-            return None;
-        }
-        let norm = rcp.normalized?;
-        let size = computed.size() * computed.inverse_scale_factor();
-        pick_root_zone((norm.x + 0.5) * size.x, (norm.y + 0.5) * size.y, size)
-    });
-    let root_overlay_e = root_overlay.iter().next();
+    if cursor.is_some() {
+        // ── In-window drop resolution (`RelativeCursorPosition` machinery).
+        // Only nodes in the cursor's window report `cursor_over`, so this
+        // naturally scopes to the window the drag is currently inside.
 
-    let over_bar = tabbars
-        .iter()
-        .find(|(_, _, rcp)| rcp.cursor_over)
-        .map(|(_, bar, _)| bar.0);
-    if let (Some((zone, true)), Some(overlay)) = (root_hit, root_overlay_e) {
-        action = Some(DropAction::RootSplit { zone });
-        new_overlay = Some((overlay, zone, true));
-    } else if let Some(leaf_ent) = over_bar {
-        if let Some((_, ld, _)) = leaves.iter().find(|(e, _, _)| *e == leaf_ent) {
-            let mut before: Option<String> = None;
-            let mut marker: Option<(Entity, bool)> = None;
-            for id in ld.tabs.iter() {
-                if let Some((_, _, tab, rcp)) = tabs.iter().find(|(_, _, t, _)| &t.id == id) {
-                    let nx = rcp.normalized.map_or(f32::INFINITY, |n| n.x);
-                    if nx < 0.0 {
-                        before = Some(id.clone());
-                        marker = Some((tab.marker, false));
-                        break;
+        // Root edge/corner hit, in dock-local logical px. Corners outrank tab
+        // bars (the top edge is lined with them); plain edge bands don't.
+        let root_hit = areas
+            .iter()
+            .find(|(_, rcp, _, _)| rcp.cursor_over)
+            .and_then(|(area_e, rcp, computed, _)| {
+                let norm = rcp.normalized?;
+                let size = computed.size() * computed.inverse_scale_factor();
+                let (zone, corner) =
+                    pick_root_zone((norm.x + 0.5) * size.x, (norm.y + 0.5) * size.y, size)?;
+                Some((area_e, zone, corner))
+            });
+        let overlay_for = |area_e: Entity| {
+            root_overlays
+                .iter()
+                .find(|(_, o)| o.area == area_e)
+                .map(|(e, _)| e)
+        };
+
+        let over_bar = tabbars
+            .iter()
+            .find(|(_, _, rcp)| rcp.cursor_over)
+            .map(|(_, bar, _)| bar.0);
+        if let Some((area_e, zone, overlay)) = root_hit
+            .filter(|(_, _, corner)| *corner)
+            .and_then(|(a, z, _)| overlay_for(a).map(|o| (a, z, o)))
+        {
+            action = Some(DropAction::RootSplit { area: area_e, zone });
+            new_overlay = Some((overlay, zone, true));
+        } else if let Some(leaf_ent) = over_bar {
+            if let Some((_, ld, ..)) = leaves.iter().find(|(e, ..)| *e == leaf_ent) {
+                let mut before: Option<String> = None;
+                let mut marker: Option<(Entity, bool)> = None;
+                for id in ld.tabs.iter() {
+                    if let Some((_, _, tab, rcp)) = tabs.iter().find(|(_, _, t, _)| &t.id == id) {
+                        let nx = rcp.normalized.map_or(f32::INFINITY, |n| n.x);
+                        if nx < 0.0 {
+                            before = Some(id.clone());
+                            marker = Some((tab.marker, false));
+                            break;
+                        }
                     }
                 }
-            }
-            if marker.is_none() {
-                if let Some(last) = ld.tabs.last() {
-                    marker = tabs
-                        .iter()
-                        .find(|(_, _, t, _)| &t.id == last)
-                        .map(|(_, _, t, _)| (t.marker, true));
+                if marker.is_none() {
+                    if let Some(last) = ld.tabs.last() {
+                        marker = tabs
+                            .iter()
+                            .find(|(_, _, t, _)| &t.id == last)
+                            .map(|(_, _, t, _)| (t.marker, true));
+                    }
+                    before = None;
                 }
-                before = None;
+                if let Some(rep) = ld.tabs.iter().find(|t| **t != state.id).cloned() {
+                    action = Some(DropAction::Tab {
+                        area: ld.area,
+                        rep,
+                        before,
+                    });
+                    new_marker = marker;
+                }
             }
-            if let Some(rep) = ld.tabs.iter().find(|t| **t != state.id).cloned() {
-                action = Some(DropAction::Tab { rep, before });
-                new_marker = marker;
+        } else if let Some((area_e, zone, overlay)) =
+            root_hit.and_then(|(a, z, _)| overlay_for(a).map(|o| (a, z, o)))
+        {
+            action = Some(DropAction::RootSplit { area: area_e, zone });
+            new_overlay = Some((overlay, zone, true));
+        } else {
+            for (_, ld, rcp, ..) in &leaves {
+                if rcp.cursor_over {
+                    if let Some(norm) = rcp.normalized {
+                        let (x, y) = (norm.x + 0.5, norm.y + 0.5);
+                        let zone = pick_zone(x, y);
+                        if let Some(rep) = ld.tabs.iter().find(|t| **t != state.id).cloned() {
+                            action = Some(if matches!(zone, DropZone::Center) {
+                                DropAction::Tab {
+                                    area: ld.area,
+                                    rep,
+                                    before: None,
+                                }
+                            } else {
+                                DropAction::Split {
+                                    area: ld.area,
+                                    rep,
+                                    zone,
+                                }
+                            });
+                            new_overlay = Some((ld.overlay, zone, false));
+                        }
+                    }
+                    break;
+                }
             }
         }
-    } else if let (Some((zone, false)), Some(overlay)) = (root_hit, root_overlay_e) {
-        action = Some(DropAction::RootSplit { zone });
-        new_overlay = Some((overlay, zone, true));
-    } else {
-        for (_, ld, rcp) in &leaves {
-            if rcp.cursor_over {
-                if let Some(norm) = rcp.normalized {
-                    let (x, y) = (norm.x + 0.5, norm.y + 0.5);
-                    let zone = pick_zone(x, y);
-                    if let Some(rep) = ld.tabs.iter().find(|t| **t != state.id).cloned() {
-                        action = Some(if matches!(zone, DropZone::Center) {
-                            DropAction::Tab { rep, before: None }
-                        } else {
-                            DropAction::Split { rep, zone }
-                        });
-                        new_overlay = Some((ld.overlay, zone, false));
-                    }
+    } else if let Some(gpos) = global.pos {
+        // ── Cross-window drop resolution. The source window holds the mouse
+        // capture, so windows under the cursor receive no cursor events and
+        // their `RelativeCursorPosition` never updates — hit-test dock leaves
+        // manually in physical screen space instead. Only the PRIMARY window
+        // is a target: floating windows are chromeless single-panel hosts (no
+        // tab bar), so extra tabs dropped into one would be unreachable.
+        let mut target: Option<(Entity, Entity)> = None; // (window, area)
+        if let Ok(pw) = primary.single() {
+            if pw != state.source_window
+                && windows.get(pw).is_ok_and(|w| window_contains(w, gpos))
+            {
+                if let Some((area_e, ..)) = areas.iter().find(|(.., f)| f.is_none()) {
+                    target = Some((pw, area_e));
                 }
-                break;
+            }
+        }
+        if let Some((win_e, area_e)) = target {
+            if let Some(local) = windows.get(win_e).ok().and_then(|w| window_local(w, gpos)) {
+                for (_, ld, _, cn, gt) in &leaves {
+                    if ld.area != area_e || !cn.contains_point(*gt, local) {
+                        continue;
+                    }
+                    if let Some(norm) = cn.normalize_point(*gt, local) {
+                        let zone = pick_zone(norm.x + 0.5, norm.y + 0.5);
+                        if let Some(rep) = ld.tabs.iter().find(|t| **t != state.id).cloned() {
+                            action = Some(if matches!(zone, DropZone::Center) {
+                                DropAction::Tab {
+                                    area: area_e,
+                                    rep,
+                                    before: None,
+                                }
+                            } else {
+                                DropAction::Split {
+                                    area: area_e,
+                                    rep,
+                                    zone,
+                                }
+                            });
+                            new_overlay = Some((ld.overlay, zone, false));
+                        }
+                    }
+                    break;
+                }
             }
         }
     }
@@ -1004,7 +1510,13 @@ fn tab_drag(
     }
 }
 
-fn spawn_ghost(commands: &mut Commands, font: &bevy::text::FontSource, id: &str, cursor: Vec2) -> Entity {
+fn spawn_ghost(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    id: &str,
+    cursor: Vec2,
+    camera: Option<Entity>,
+) -> Entity {
     let (title, icon) = tab_meta(id);
     let ghost = commands
         .spawn((
@@ -1026,6 +1538,11 @@ fn spawn_ghost(commands: &mut Commands, font: &bevy::text::FontSource, id: &str,
             Name::new("tab-ghost"),
         ))
         .id();
+    // Ghosts for drags out of a floating dock window render on that window's
+    // camera; without a target a root node lands on the primary window.
+    if let Some(camera) = camera {
+        commands.entity(ghost).insert(bevy::ui::UiTargetCamera(camera));
+    }
     let gi = glyph(commands, icon, text_primary(), 13.0);
     let gl = commands
         .spawn((
@@ -1132,45 +1649,831 @@ fn reordered(old: &[String], dragged: &str, before: Option<&str>) -> Vec<String>
     v
 }
 
-fn apply_action(tree: &mut DockTree, dragged: &str, action: DropAction) {
+/// Insert `dragged` into `tree` per `action`. The removal from the source tree
+/// already happened (possibly in a *different* window's tree — cross-window
+/// drops split the old remove+insert into two tree mutations). Total: if the
+/// stated sibling can't take the panel, it's adopted somewhere in the tree
+/// rather than silently dropped.
+fn insert_action(tree: &mut DockTree, dragged: &str, action: &DropAction) {
     match action {
-        DropAction::Split { rep, zone } => {
-            if rep == dragged {
-                return;
+        DropAction::Split { rep, zone, .. } => {
+            if rep == dragged || !tree.split_at(rep, dragged.to_string(), *zone) {
+                tree.adopt_panel(dragged);
             }
-            tree.remove_panel(dragged);
-            tree.split_at(&rep, dragged.to_string(), zone);
         }
-        DropAction::RootSplit { zone } => {
-            tree.remove_panel(dragged);
-            tree.split_root(dragged.to_string(), zone);
-        }
-        DropAction::Tab { rep, before } => {
-            tree.remove_panel(dragged);
-            tree.add_tab_before(&rep, dragged.to_string(), before.as_deref());
+        DropAction::RootSplit { zone, .. } => tree.split_root(dragged.to_string(), *zone),
+        DropAction::Tab { rep, before, .. } => {
+            if rep == dragged || !tree.add_tab_before(rep, dragged.to_string(), before.as_deref())
+            {
+                tree.adopt_panel(dragged);
+            }
         }
     }
 }
 
-/// (Re)build the dock subtree into the [`DockArea`] node when [`DockDirty`].
-fn rebuild_dock(
-    mut dirty: ResMut<DockDirty>,
-    mut commands: Commands,
-    fonts: Option<Res<EmberFonts>>,
-    dock: Res<Dock>,
-    area: Query<(Entity, Option<&Children>), With<DockArea>>,
-    leaves: Query<&DockLeaf>,
+/// Height of a floating dock window's title bar, logical px.
+const FLOAT_TITLEBAR_H: f32 = 26.0;
+
+/// If `area` belongs to a floating dock window whose tree just emptied, queue
+/// that window for close — [`process_dock_window_closes`] tears it down at the
+/// end of the frame. An empty floating shell has no way to gain panels, so
+/// leaving it open is just clutter.
+fn close_empty_dock_window(area: Entity, wins: &DockWindows, closes: &mut DockWindowCloseRequests) {
+    if let Some(st) = wins.0.iter().find(|s| s.area == area) {
+        if st.tree.is_empty() {
+            closes.0.push(st.window);
+        }
+    }
+}
+
+/// Undock `id` from `source_area` into a new floating window: remove it from
+/// the owning tree, size the window like the leaf it came from (`leaf_size` in
+/// physical px, plus the title bar), and queue the window request. `grab` makes
+/// the new window follow the held cursor until release (the drag gestures);
+/// the context-menu path passes `false` so the window just opens under the
+/// cursor. Shared by Ctrl+drag, the header grip, and the right-click menu.
+fn tear_off_panel(
+    id: &str,
+    source_area: Entity,
+    leaf_size: Option<Vec2>,
+    scale: f32,
+    cursor: Option<Vec2>,
+    grab: bool,
+    (dock, dirty, wins, requests, closes): (
+        &mut Dock,
+        &mut DockDirty,
+        &mut DockWindows,
+        &mut DockWindowRequests,
+        &mut DockWindowCloseRequests,
+    ),
 ) {
-    if !dirty.0 {
+    let size = leaf_size.unwrap_or(Vec2::new(480.0, 360.0) * scale);
+    let size = UVec2::new(
+        (size.x.clamp(240.0 * scale, 1600.0 * scale)) as u32,
+        (size.y + FLOAT_TITLEBAR_H * scale).clamp(160.0 * scale, 1200.0 * scale) as u32,
+    );
+    area_tree_mut(source_area, dock, wins).remove_panel(id);
+    flag_area_dirty(source_area, dirty, wins);
+    close_empty_dock_window(source_area, wins, closes);
+    // Put the title bar under the cursor so the tear-off reads as grabbing the
+    // new window by its header.
+    let position = cursor
+        .map(|p| (p - Vec2::new(60.0, FLOAT_TITLEBAR_H * 0.5) * scale).round().as_ivec2());
+    requests.0.push(DockWindowRequest {
+        tree: DockTree::leaf(id),
+        position,
+        size,
+        grab,
+    });
+}
+
+// ── Floating dock window lifecycle ───────────────────────────────────────────
+
+/// Drain [`DockWindowRequests`]: spawn the OS window, a `Camera2d` targeting
+/// it, and its chrome (title bar with close ×, the [`DockArea`], a corner
+/// resize grip). The window is undecorated to match the editor's borderless
+/// look — the title bar drives OS move via `start_drag_move`, the grip OS
+/// resize — which also keeps its `position` exactly the client-area origin
+/// (no title-bar offset in the screen-space math).
+fn spawn_dock_windows(
+    mut requests: ResMut<DockWindowRequests>,
+    mut wins: ResMut<DockWindows>,
+    mut drag: ResMut<FloatDrag>,
+    fonts: Option<Res<EmberFonts>>,
+    splash: Option<Res<State<renzora::SplashState>>>,
+    registry: Option<Res<renzora::core::ShellPanelRegistry>>,
+    mut commands: Commands,
+) {
+    if requests.0.is_empty() {
+        return;
+    }
+    // Keep requests queued until fonts exist (startup restore can race them),
+    // and — in the editor — until the splash/loading phases are over, so
+    // restored floating windows don't pop up over the splash screen. Games
+    // don't register `SplashState`; they spawn immediately.
+    let Some(fonts) = fonts else {
+        return;
+    };
+    if splash.is_some_and(|s| *s.get() != renzora::SplashState::Editor) {
+        return;
+    }
+    for req in requests.0.drain(..) {
+        let lead = req.tree.first_panel().unwrap_or("panels");
+        let title = registry
+            .as_ref()
+            .and_then(|r| r.panels.get(lead))
+            .map(|info| renzora::lang::t_or(&format!("panel.{lead}"), &info.title))
+            .unwrap_or_else(|| humanize(lead));
+
+        let window = commands
+            .spawn((
+                Window {
+                    title: format!("Renzora — {title}"),
+                    resolution: bevy::window::WindowResolution::new(req.size.x, req.size.y),
+                    position: req
+                        .position
+                        .map(bevy::window::WindowPosition::At)
+                        .unwrap_or(bevy::window::WindowPosition::Automatic),
+                    decorations: false,
+                    resizable: true,
+                    // Normal window level (NOT always-on-top): floats layer
+                    // like any OS window so they can live on other monitors
+                    // without sitting over everything. Clicking the maximized
+                    // main window will raise it over a float on the SAME
+                    // monitor — that's standard OS behavior; alt-tab or click
+                    // the float's taskbar entry to bring it back.
+                    ..default()
+                },
+                // Seed a cursor icon so the undecorated window always shows
+                // one; `apply_cursor_icon` retargets it on hover after that.
+                bevy::window::CursorIcon::System(bevy::window::SystemCursorIcon::Default),
+                // Engine chrome, not scene content: keep it out of the
+                // hierarchy panel AND out of the scene-clear sweep (which
+                // despawns named entities without this marker).
+                renzora::HideInHierarchy,
+                Name::new("dock-window"),
+            ))
+            .id();
+        let camera = commands
+            .spawn((
+                Camera2d,
+                Camera::default(),
+                bevy::camera::RenderTarget::Window(bevy::window::WindowRef::Entity(window)),
+                renzora::HideInHierarchy,
+                Name::new("dock-window-camera"),
+            ))
+            .id();
+
+        // Root column: title bar / dock area, framed by a dark border so the
+        // undecorated window reads as a panel against whatever is behind it.
+        // `UiTargetCamera` on the root routes the whole subtree onto this
+        // window's camera.
+        let root = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(crate::theme::window_bg())),
+                BorderColor::all(rgb(border())),
+                bevy::ui::UiTargetCamera(camera),
+                renzora::HideInHierarchy,
+                Name::new("dock-window-root"),
+            ))
+            .id();
+
+        let bar = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(FLOAT_TITLEBAR_H),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(6.0),
+                    padding: UiRect::horizontal(Val::Px(8.0)),
+                    flex_shrink: 0.0,
+                    border: UiRect::bottom(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(rgb(header_bg())),
+                BorderColor::all(rgb(divider())),
+                Interaction::default(),
+                FloatWindowBar(window),
+                Name::new("dock-window-titlebar"),
+            ))
+            .id();
+        let bar_title = commands
+            .spawn((
+                Text::new(title),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_primary())),
+                bevy::text::TextLayout::no_wrap(),
+            ))
+            .id();
+        let bar_fill = commands
+            .spawn((Node {
+                flex_grow: 1.0,
+                ..default()
+            },))
+            .id();
+        let close = icon_text(&mut commands, &fonts.phosphor, "x", text_muted(), 12.0);
+        commands.entity(close).insert((
+            Interaction::default(),
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            // Block so the press closes instead of starting a window drag.
+            bevy::ui::FocusPolicy::Block,
+            FloatWindowClose(window),
+        ));
+        commands.entity(bar).add_children(&[bar_title, bar_fill, close]);
+
+        let area = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    min_width: Val::Px(0.0),
+                    min_height: Val::Px(0.0),
+                    flex_basis: Val::Px(0.0),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                DockArea,
+                FloatingDockArea { window },
+                Name::new("dock-window-area"),
+            ))
+            .id();
+
+        let mut kids = vec![bar, area];
+        kids.extend(spawn_float_resize_zones(&mut commands, window));
+        commands.entity(root).add_children(&kids);
+
+        bevy::log::info!(
+            "[dock] spawned floating window {window} (camera {camera}, root {root}) for '{lead}'"
+        );
+        wins.0.push(DockWindowState {
+            window,
+            camera,
+            root,
+            area,
+            tree: req.tree,
+            dirty: true,
+        });
+        if req.grab {
+            drag.0 = Some(FloatDragState {
+                window,
+                grab: Vec2::new(60.0, FLOAT_TITLEBAR_H * 0.5),
+                // Tear-off: the release point is still over the tab bar the
+                // panel just left — re-docking there would undo the gesture.
+                redock: false,
+                action: None,
+                shown_overlay: None,
+            });
+        }
+    }
+}
+
+/// Edge + corner resize zones around a floating window's perimeter, each with
+/// the matching resize cursor. Thin absolute strips overlaid on the border;
+/// corners are spawned last so they win the hit-test where they overlap edges.
+fn spawn_float_resize_zones(commands: &mut Commands, window: Entity) -> Vec<Entity> {
+    use bevy::math::CompassOctant as O;
+    use bevy::window::SystemCursorIcon as C;
+    const EDGE: f32 = 5.0;
+    const CORNER: f32 = 12.0;
+    let full = Val::Percent(100.0);
+    let zones: [(O, C, Val, Val, Val, Val, Val, Val); 8] = [
+        // (octant, cursor, left, right, top, bottom, width, height)
+        (O::North, C::NsResize, Val::Px(CORNER), Val::Auto, Val::Px(0.0), Val::Auto, full, Val::Px(EDGE)),
+        (O::South, C::NsResize, Val::Px(CORNER), Val::Auto, Val::Auto, Val::Px(0.0), full, Val::Px(EDGE)),
+        (O::West, C::EwResize, Val::Px(0.0), Val::Auto, Val::Px(CORNER), Val::Auto, Val::Px(EDGE), full),
+        (O::East, C::EwResize, Val::Auto, Val::Px(0.0), Val::Px(CORNER), Val::Auto, Val::Px(EDGE), full),
+        (O::NorthWest, C::NwResize, Val::Px(0.0), Val::Auto, Val::Px(0.0), Val::Auto, Val::Px(CORNER), Val::Px(CORNER)),
+        (O::NorthEast, C::NeResize, Val::Auto, Val::Px(0.0), Val::Px(0.0), Val::Auto, Val::Px(CORNER), Val::Px(CORNER)),
+        (O::SouthWest, C::SwResize, Val::Px(0.0), Val::Auto, Val::Auto, Val::Px(0.0), Val::Px(CORNER), Val::Px(CORNER)),
+        (O::SouthEast, C::SeResize, Val::Auto, Val::Px(0.0), Val::Auto, Val::Px(0.0), Val::Px(CORNER), Val::Px(CORNER)),
+    ];
+    zones
+        .into_iter()
+        .map(|(octant, cursor, left, right, top, bottom, width, height)| {
+            commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left,
+                        right,
+                        top,
+                        bottom,
+                        width,
+                        height,
+                        ..default()
+                    },
+                    Interaction::default(),
+                    crate::cursor_icon::HoverCursor(cursor),
+                    FloatWindowResize { window, octant },
+                    bevy::ui::GlobalZIndex(200),
+                    Name::new("dock-window-resize"),
+                ))
+                .id()
+        })
+        .collect()
+}
+
+/// Floating window chrome: title-bar press starts a window drag (with re-dock
+/// on release, see [`float_window_drag`]), a resize zone starts an OS resize,
+/// the × queues the window's close (its panel returns to the main dock via
+/// [`process_dock_window_closes`]).
+fn float_window_controls(
+    bars: Query<(&Interaction, &FloatWindowBar), Changed<Interaction>>,
+    resizes: Query<(&Interaction, &FloatWindowResize), Changed<Interaction>>,
+    closes: Query<(&Interaction, &FloatWindowClose), Changed<Interaction>>,
+    mut windows: Query<&mut Window>,
+    mut drag: ResMut<FloatDrag>,
+    mut close_queue: ResMut<DockWindowCloseRequests>,
+) {
+    for (i, bar) in &bars {
+        if *i == Interaction::Pressed && drag.0.is_none() {
+            if let Ok(w) = windows.get_mut(bar.0) {
+                // Grab offset = where inside the window the cursor pressed, so
+                // the window doesn't jump under the cursor.
+                let grab = w.cursor_position().unwrap_or(Vec2::new(60.0, FLOAT_TITLEBAR_H * 0.5));
+                drag.0 = Some(FloatDragState {
+                    window: bar.0,
+                    grab,
+                    redock: true,
+                    action: None,
+                    shown_overlay: None,
+                });
+            }
+        }
+    }
+    for (i, rz) in &resizes {
+        if *i == Interaction::Pressed {
+            if let Ok(mut w) = windows.get_mut(rz.window) {
+                w.start_drag_resize(rz.octant);
+            }
+        }
+    }
+    for (i, close) in &closes {
+        if *i == Interaction::Pressed {
+            close_queue.0.push(close.0);
+        }
+    }
+}
+
+/// Show each tab's undock handle while its tab (or the handle itself — once
+/// shown, it blocks the tab's own hover) is hovered; hide it otherwise so
+/// unhovered tabs keep their exact look and hit-testing.
+fn tab_grip_hover(
+    grips: Query<(Entity, &Interaction, &TabGrip)>,
+    tabs: Query<&Interaction, With<DockTab>>,
+    mut nodes: Query<&mut Node>,
+) {
+    for (grip_entity, grip_interaction, grip) in &grips {
+        let hovered = matches!(grip_interaction, Interaction::Hovered | Interaction::Pressed)
+            || tabs
+                .get(grip.tab)
+                .is_ok_and(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+        if let Ok(mut node) = nodes.get_mut(grip_entity) {
+            let display = if hovered { Display::Flex } else { Display::None };
+            if node.display != display {
+                node.display = display;
+            }
+        }
+    }
+}
+
+/// Press a tab's undock handle → tear that panel off into a floating window
+/// that follows the cursor until release (the same gesture as Ctrl+dragging
+/// the tab, without the modifier).
+#[allow(clippy::too_many_arguments)]
+fn tab_grip_interact(
+    grips: Query<(&Interaction, &TabGrip), Changed<Interaction>>,
+    leaves: Query<&bevy::ui::ComputedNode, With<DockLeaf>>,
+    windows: Query<&Window>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    global: Res<GlobalCursor>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    mut wins: ResMut<DockWindows>,
+    mut requests: ResMut<DockWindowRequests>,
+    mut close_queue: ResMut<DockWindowCloseRequests>,
+) {
+    for (i, grip) in &grips {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        let scale = area_window(grip.area, &wins, primary.single().ok())
+            .and_then(|w| windows.get(w).ok())
+            .map(|w| w.scale_factor())
+            .unwrap_or(1.0);
+        let leaf_size = leaves.get(grip.leaf).map(|cn| cn.size()).ok();
+        tear_off_panel(
+            &grip.id.clone(),
+            grip.area,
+            leaf_size,
+            scale,
+            global.pos,
+            true,
+            (&mut dock, &mut dirty, &mut wins, &mut requests, &mut close_queue),
+        );
+    }
+}
+
+/// Right-click a tab → context menu with **Undock**: tears that panel off into
+/// a floating window opened under the cursor (no drag required).
+fn tab_context_menu(
+    mouse: Res<ButtonInput<MouseButton>>,
+    fonts: Option<Res<EmberFonts>>,
+    windows: Query<&Window>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    wins: Res<DockWindows>,
+    tabs: Query<(&DockTab, &bevy::ui::RelativeCursorPosition)>,
+    leaves: Query<(&DockLeaf, &bevy::ui::ComputedNode)>,
+    global: Res<GlobalCursor>,
+    mut commands: Commands,
+) {
+    if !mouse.just_pressed(MouseButton::Right) {
         return;
     }
     let Some(fonts) = fonts else {
         return;
     };
-    let Ok((area_entity, children)) = area.single() else {
+    for (tab, rcp) in &tabs {
+        if !rcp.cursor_over {
+            continue;
+        }
+        let Ok((ld, cn)) = leaves.get(tab.leaf) else {
+            break;
+        };
+        // Menu coordinates are the tab's window's logical cursor (tabs only
+        // exist in the primary window — floats are chromeless).
+        let win = area_window(ld.area, &wins, primary.single().ok())
+            .and_then(|w| windows.get(w).ok());
+        let Some(cur) = win.and_then(|w| w.cursor_position()) else {
+            break;
+        };
+        let scale = win.map(|w| w.scale_factor()).unwrap_or(1.0);
+        let id = tab.id.clone();
+        let area = ld.area;
+        let leaf_size = cn.size();
+        let gpos = global.pos;
+
+        let menu = crate::widgets::screen_menu(&mut commands, cur.x, cur.y);
+        let undock = crate::widgets::menu_item(
+            &mut commands,
+            &fonts,
+            "arrow-square-out",
+            &renzora::lang::t_or("menu.undock", "Undock"),
+            move |w: &mut World| {
+                // World-side mirror of `tear_off_panel` (menu items run as
+                // world closures). Route to the tree owning the leaf's area —
+                // in practice the primary dock, since floats have no tabs.
+                let floating = w
+                    .get_resource::<DockWindows>()
+                    .and_then(|ws| ws.0.iter().position(|s| s.area == area));
+                match floating {
+                    Some(idx) => {
+                        if let Some(mut ws) = w.get_resource_mut::<DockWindows>() {
+                            ws.0[idx].tree.remove_panel(&id);
+                            ws.0[idx].dirty = true;
+                        }
+                    }
+                    None => {
+                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                            dock.tree.remove_panel(&id);
+                        }
+                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                            d.0 = true;
+                        }
+                    }
+                }
+                let size = UVec2::new(
+                    leaf_size.x.clamp(240.0 * scale, 1600.0 * scale) as u32,
+                    (leaf_size.y + FLOAT_TITLEBAR_H * scale).clamp(160.0 * scale, 1200.0 * scale)
+                        as u32,
+                );
+                let position = gpos.map(|p| {
+                    (p - Vec2::new(60.0, FLOAT_TITLEBAR_H * 0.5) * scale).round().as_ivec2()
+                });
+                if let Some(mut req) = w.get_resource_mut::<DockWindowRequests>() {
+                    req.0.push(DockWindowRequest {
+                        tree: DockTree::leaf(id.clone()),
+                        position,
+                        size,
+                        grab: false,
+                    });
+                }
+            },
+        );
+        commands.entity(menu).add_children(&[undock]);
+        break;
+    }
+}
+
+/// Drive an in-flight floating-window drag: keep the window under the cursor
+/// (physical screen space, so it crosses monitors), and — for title-bar drags —
+/// resolve a re-dock target in the main window. Only *small, deliberate*
+/// targets re-dock: a leaf's tab bar (dock as a tab there) or the dock's root
+/// edge/corner bands (full-height/width split). Leaf centers don't — the main
+/// window is usually maximized, so a greedy target would re-dock every drop.
+#[allow(clippy::too_many_arguments)]
+fn float_window_drag(
+    mut drag: ResMut<FloatDrag>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    cursor: Res<GlobalCursor>,
+    mut windows: Query<&mut Window>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    areas: Query<
+        (
+            Entity,
+            &bevy::ui::ComputedNode,
+            &bevy::ui::UiGlobalTransform,
+            Option<&FloatingDockArea>,
+        ),
+        With<DockArea>,
+    >,
+    tabbars: Query<(&TabBarOf, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
+    leaves: Query<&DockLeaf>,
+    root_overlays: Query<(Entity, &RootDropOverlay)>,
+    mut nodes: Query<&mut Node>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    mut wins: ResMut<DockWindows>,
+    mut close_queue: ResMut<DockWindowCloseRequests>,
+) {
+    if drag.0.is_none() {
+        return;
+    }
+
+    // ── Release: apply the re-dock (if any) and end the drag. ──
+    if !mouse.pressed(MouseButton::Left) {
+        let Some(state) = drag.0.take() else {
+            return;
+        };
+        if let Some(e) = state.shown_overlay {
+            if let Ok(mut n) = nodes.get_mut(e) {
+                n.display = Display::None;
+            }
+        }
+        if let Some(action) = state.action {
+            // Move the float's panel (floats host exactly one) into the target
+            // tree, then close the emptied window.
+            let panel = wins
+                .0
+                .iter()
+                .find(|s| s.window == state.window)
+                .and_then(|s| s.tree.first_panel().map(str::to_string));
+            if let Some(panel) = panel {
+                if let Some(st) = wins.0.iter_mut().find(|s| s.window == state.window) {
+                    st.tree.remove_panel(&panel);
+                }
+                insert_action(
+                    area_tree_mut(action.area(), &mut dock, &mut wins),
+                    &panel,
+                    &action,
+                );
+                flag_area_dirty(action.area(), &mut dirty, &mut wins);
+                close_queue.0.push(state.window);
+            }
+        }
+        return;
+    }
+
+    let Some(state) = drag.0.as_mut() else {
         return;
     };
 
+    // ── Move the window under the cursor. ──
+    let Some(pos) = cursor.pos else {
+        return;
+    };
+    let Ok(mut window) = windows.get_mut(state.window) else {
+        return;
+    };
+    let scale = window.scale_factor();
+    let target = (pos - state.grab * scale).round().as_ivec2();
+    if window.position != bevy::window::WindowPosition::At(target) {
+        window.position = bevy::window::WindowPosition::At(target);
+    }
+
+    // ── Re-dock targeting (title-bar drags only), in the primary window. ──
+    let mut action: Option<DropAction> = None;
+    let mut overlay: Option<(Entity, DropZone, bool)> = None;
+    if state.redock {
+        let primary_local = primary.single().ok().and_then(|pw| {
+            windows
+                .get(pw)
+                .ok()
+                .filter(|w| window_contains(w, pos))
+                .and_then(|w| window_local(w, pos))
+        });
+        if let Some(local) = primary_local {
+            let primary_area = areas.iter().find(|(.., f)| f.is_none());
+            // Tab bars first: dock as a tab in that leaf.
+            let bar_hit = tabbars.iter().find_map(|(bar, cn, gt)| {
+                cn.contains_point(*gt, local).then_some(bar.0)
+            });
+            if let Some(leaf_ent) = bar_hit {
+                if let Ok(ld) = leaves.get(leaf_ent) {
+                    // Only main-window leaves are targets.
+                    if primary_area.is_some_and(|(a, ..)| a == ld.area) {
+                        if let Some(rep) = ld.tabs.first().cloned() {
+                            action = Some(DropAction::Tab {
+                                area: ld.area,
+                                rep,
+                                before: None,
+                            });
+                            overlay = Some((ld.overlay, DropZone::Center, false));
+                        }
+                    }
+                }
+            } else if let Some((area_e, cn, gt, _)) = primary_area {
+                // Root edge/corner bands of the main dock.
+                if let Some(norm) = cn.normalize_point(*gt, local) {
+                    let size = cn.size() * cn.inverse_scale_factor();
+                    let (x, y) = ((norm.x + 0.5) * size.x, (norm.y + 0.5) * size.y);
+                    if let Some((zone, _)) = pick_root_zone(x, y, size) {
+                        action = Some(DropAction::RootSplit { area: area_e, zone });
+                        overlay = root_overlays
+                            .iter()
+                            .find(|(_, o)| o.area == area_e)
+                            .map(|(e, _)| (e, zone, true));
+                    }
+                }
+            }
+        }
+    }
+    state.action = action;
+
+    // Show/hide the drop preview (same mechanics as the tab drag).
+    let overlay_e = overlay.map(|(e, _, _)| e);
+    if state.shown_overlay != overlay_e {
+        if let Some(old) = state.shown_overlay {
+            if let Ok(mut n) = nodes.get_mut(old) {
+                n.display = Display::None;
+            }
+        }
+        state.shown_overlay = overlay_e;
+    }
+    if let Some((e, zone, is_root)) = overlay {
+        if let Ok(mut n) = nodes.get_mut(e) {
+            n.display = Display::Flex;
+            if is_root {
+                set_root_zone_rect(&mut n, zone);
+            } else {
+                set_zone_rect(&mut n, zone);
+            }
+        }
+    }
+}
+
+/// Tear down closing floating dock windows: everything queued in
+/// [`DockWindowCloseRequests`] (the ×, last-panel-out, re-docks), plus
+/// `WindowCloseRequested` messages for our windows (Alt+F4 — handled here so
+/// the teardown is atomic; bevy's `close_when_requested` marker dance would
+/// despawn the window a frame before we'd notice), plus any window despawned
+/// externally (caught via `RemovedComponents` the same frame).
+///
+/// The window's panels return to the primary dock so they're never lost, and
+/// the window, its camera and its UI root despawn in ONE command batch. This
+/// system runs in `PostUpdate` **before** `CameraUpdateSystems`: a camera whose
+/// `RenderTarget::Window` entity is already gone panics `camera_system`, so the
+/// camera must never survive its window into that set — not even one frame.
+///
+/// Also despawns all remaining floating windows when the PRIMARY window is
+/// closed, so the app's `ExitCondition::OnAllClosed` fires instead of the
+/// process lingering with orphaned tool windows.
+fn process_dock_window_closes(
+    mut queue: ResMut<DockWindowCloseRequests>,
+    mut close_requested: MessageReader<bevy::window::WindowCloseRequested>,
+    mut removed: RemovedComponents<Window>,
+    primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
+    windows: Query<(), With<Window>>,
+    mut last_primary: Local<Option<Entity>>,
+    mut wins: ResMut<DockWindows>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    mut commands: Commands,
+) {
+    // Remember the primary window entity while it exists — once it's despawned
+    // it can't be queried, and the removal event alone doesn't say whose it
+    // was. (Our own float despawns surface here as removals a frame later, so
+    // "any removed window that isn't ours" would misread them as the primary.)
+    if let Ok(pw) = primary.single() {
+        *last_primary = Some(pw);
+    }
+
+    let mut to_close: Vec<(Entity, &'static str)> =
+        queue.0.drain(..).map(|e| (e, "requested")).collect();
+    // Alt+F4 / OS close on one of OUR windows only — the primary window's
+    // close is the shell chrome's (and bevy's) business.
+    for ev in close_requested.read() {
+        if wins.0.iter().any(|s| s.window == ev.window) {
+            to_close.push((ev.window, "os-close"));
+        }
+    }
+    let externally_removed: Vec<Entity> = removed.read().collect();
+    to_close.extend(externally_removed.iter().map(|e| (*e, "despawned-externally")));
+    // Belt-and-braces: a state whose window entity no longer exists but never
+    // surfaced through the paths above (missed events). Whatever despawned it,
+    // the camera + root must not linger.
+    for st in &wins.0 {
+        if !windows.contains(st.window) {
+            to_close.push((st.window, "window-vanished"));
+        }
+    }
+
+    let primary_gone = last_primary
+        .is_some_and(|pw| externally_removed.contains(&pw))
+        && !wins.0.is_empty();
+
+    for (e, why) in to_close {
+        let Some(idx) = wins.0.iter().position(|s| s.window == e) else {
+            continue;
+        };
+        let st = wins.0.swap_remove(idx);
+        bevy::log::info!(
+            "[dock] closing floating window {e} ({why}); camera {}, root {}",
+            st.camera,
+            st.root
+        );
+        let mut panels = Vec::new();
+        st.tree.collect_panels(&mut panels);
+        for p in panels {
+            if !dock.tree.contains_panel(&p) {
+                dock.tree.adopt_panel(&p);
+                dirty.0 = true;
+            }
+        }
+        commands.entity(st.window).try_despawn();
+        commands.entity(st.camera).try_despawn();
+        commands.entity(st.root).try_despawn();
+    }
+
+    // A non-dock window was despawned — that's the primary closing. Take every
+    // floating window down with it (their layouts are already persisted by the
+    // shell, and lingering windows would keep the app alive).
+    if primary_gone {
+        for st in wins.0.drain(..) {
+            bevy::log::info!("[dock] primary window closed; closing floating window {}", st.window);
+            commands.entity(st.window).try_despawn();
+            commands.entity(st.camera).try_despawn();
+            commands.entity(st.root).try_despawn();
+        }
+    }
+}
+
+/// Last line of defense against the `camera_system` panic ("RenderTarget::
+/// Window missing"): if ANY camera still targets a window entity that no
+/// longer exists — whatever despawned it, through whatever path — despawn the
+/// camera before bevy's camera update evaluates it. This never false-positives
+/// (a camera and its window spawn in the same command batch) and the warning
+/// makes an otherwise-invisible teardown bug diagnosable from the console log
+/// instead of a crash report.
+fn guard_dock_target_cameras(
+    cameras: Query<(Entity, &bevy::camera::RenderTarget), With<Camera>>,
+    windows: Query<(), With<Window>>,
+    mut commands: Commands,
+) {
+    for (cam, rt) in &cameras {
+        if let bevy::camera::RenderTarget::Window(bevy::window::WindowRef::Entity(w)) = rt {
+            if !windows.contains(*w) {
+                bevy::log::warn!(
+                    "[dock] camera {cam} targets missing window {w} — despawning the camera \
+                     to avoid a render panic (something despawned the window out from under it)"
+                );
+                commands.entity(cam).try_despawn();
+            }
+        }
+    }
+}
+
+/// (Re)build each dirty dock: the primary [`DockArea`] when [`DockDirty`], and
+/// every floating dock window whose per-window flag is set.
+fn rebuild_dock(
+    mut dirty: ResMut<DockDirty>,
+    mut wins: ResMut<DockWindows>,
+    mut commands: Commands,
+    fonts: Option<Res<EmberFonts>>,
+    dock: Res<Dock>,
+    areas: Query<(Entity, Option<&Children>, Option<&FloatingDockArea>), With<DockArea>>,
+    leaves: Query<&DockLeaf>,
+) {
+    let Some(fonts) = fonts else {
+        return;
+    };
+    if dirty.0 {
+        if let Some((area_entity, children, _)) = areas.iter().find(|(.., f)| f.is_none()) {
+            rebuild_area(&mut commands, &fonts, &dock.tree, area_entity, children, &leaves, false);
+            dirty.0 = false;
+        }
+    }
+    for st in wins.0.iter_mut().filter(|s| s.dirty) {
+        // The area may not exist yet the frame the window spawns (commands
+        // apply at the end of the frame) — leave it dirty and retry next frame.
+        if let Ok((area_entity, children, _)) = areas.get(st.area) {
+            rebuild_area(&mut commands, &fonts, &st.tree, area_entity, children, &leaves, true);
+            st.dirty = false;
+        }
+    }
+}
+
+/// Rebuild one dock area's subtree from `tree`. Shared by the primary dock and
+/// floating dock windows; `floating` leaves are chromeless (no tab bar — the
+/// window's own title bar plays that role).
+#[allow(clippy::too_many_arguments)]
+fn rebuild_area(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    tree: &DockTree,
+    area_entity: Entity,
+    children: Option<&Children>,
+    leaves: &Query<&DockLeaf>,
+    floating: bool,
+) {
     // Preserve each leaf's content entity (keyed by its active panel) and detach
     // it from the hierarchy so the despawn below doesn't take it — `build_tree`
     // re-parents it, so reordering/moving tabs keeps the panel (and its state)
@@ -1183,10 +2486,14 @@ fn rebuild_dock(
     // its old leaf still lists it as a child — so taffy panics with
     // `invalid SlotMap key` when removing that leaf. Leaving non-reused contents
     // attached lets them despawn safely with their old leaf instead.
+    //
+    // Scoped to THIS area's leaves: with floating dock windows, another window
+    // can legitimately show the same panel id — detaching its content here
+    // would steal a live panel out of that window.
     let mut reusable = std::collections::HashSet::new();
-    dock.tree.active_tab_ids(&mut reusable);
+    tree.active_tab_ids(&mut reusable);
     let mut preserved: HashMap<String, Entity> = HashMap::new();
-    for leaf in &leaves {
+    for leaf in leaves.iter().filter(|l| l.area == area_entity) {
         if !leaf.active.is_empty() && reusable.contains(&leaf.active) {
             preserved.insert(leaf.active.clone(), leaf.content);
             commands.entity(leaf.content).remove::<ChildOf>();
@@ -1202,12 +2509,14 @@ fn rebuild_dock(
         }
     }
     let tree_root = build_tree(
-        &mut commands,
+        commands,
         &fonts.ui,
         &fonts.phosphor,
+        area_entity,
+        floating,
         None,
         Vec::new(),
-        &dock.tree,
+        tree,
         &mut preserved,
     );
     commands.entity(area_entity).add_child(tree_root);
@@ -1233,7 +2542,7 @@ fn rebuild_dock(
             BackgroundColor(Color::NONE),
             BorderColor::all(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
-            RootDropOverlay,
+            RootDropOverlay { area: area_entity },
             Name::new("root-drop-overlay"),
         ))
         .id();
@@ -1244,7 +2553,6 @@ fn rebuild_dock(
     for (_, content) in preserved.drain() {
         commands.entity(content).try_despawn();
     }
-    dirty.0 = false;
 }
 
 /// Turn a [`FocusPanelRequest`] into a pending tab switch: locate the leaf that
@@ -1274,6 +2582,7 @@ fn apply_focus_request(
 fn apply_tab_switch(
     mut pending: ResMut<PendingSwitch>,
     mut dock: ResMut<Dock>,
+    mut wins: ResMut<DockWindows>,
     tabs: Query<(Entity, &DockTab)>,
     mut leaves: Query<&mut DockLeaf>,
     mut colors: Query<&mut TextColor>,
@@ -1281,7 +2590,9 @@ fn apply_tab_switch(
     let Some((leaf, id)) = pending.0.take() else {
         return;
     };
-    dock.tree.set_active_tab(&id);
+    if let Ok(ld) = leaves.get(leaf) {
+        area_tree_mut(ld.area, &mut dock, &mut wins).set_active_tab(&id);
+    }
 
     for (_tab_entity, tab) in &tabs {
         if tab.leaf != leaf {
@@ -1303,14 +2614,16 @@ fn apply_tab_switch(
 
 /// Tab background follows hover + active state (active wins).
 fn tab_hover(
-    dock: Res<Dock>,
+    leaves: Query<&DockLeaf>,
     theme: Res<crate::style::Theme>,
     mut tabs: Query<(&Interaction, &DockTab, &mut BackgroundColor)>,
     mut texts: Query<&mut TextColor>,
 ) {
     let d = &theme.dock;
     for (interaction, tab, mut bg) in &mut tabs {
-        let active = dock.tree.is_active_tab(&tab.id);
+        // Active per the tab's own leaf (not a tree lookup): with floating dock
+        // windows the same panel id can exist in several trees at once.
+        let active = leaves.get(tab.leaf).is_ok_and(|l| l.active == tab.id);
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
         let target = if active {
             d.tab_active.color()
@@ -1349,13 +2662,17 @@ fn tab_close_hover(
     }
 }
 
-/// Click a tab's × → remove that panel from the dock tree.
+/// Click a tab's × → remove that panel from its dock tree (primary or a
+/// floating window's; closing a floating window's last tab closes the window).
 fn tab_close_click(
     mouse: Res<ButtonInput<MouseButton>>,
     closes: Query<(&bevy::ui::RelativeCursorPosition, &ChildOf), With<TabClose>>,
     tabs: Query<&DockTab>,
+    leaves: Query<&DockLeaf>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
+    mut wins: ResMut<DockWindows>,
+    mut close_queue: ResMut<DockWindowCloseRequests>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
@@ -1365,8 +2682,11 @@ fn tab_close_click(
             continue;
         }
         if let Ok(tab) = tabs.get(parent.parent()) {
-            if dock.tree.remove_panel(&tab.id) {
-                dirty.0 = true;
+            let area = leaves.get(tab.leaf).map(|l| l.area).ok();
+            let Some(area) = area else { break };
+            if area_tree_mut(area, &mut dock, &mut wins).remove_panel(&tab.id) {
+                flag_area_dirty(area, &mut dirty, &mut wins);
+                close_empty_dock_window(area, &wins, &mut close_queue);
             }
         }
         break;
@@ -1375,10 +2695,13 @@ fn tab_close_click(
 
 // ── Reconciler ───────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn build_tree(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
+    area: Entity,
+    floating: bool,
     parent: Option<ParentSplit>,
     path: Vec<bool>,
     tree: &DockTree,
@@ -1436,7 +2759,9 @@ fn build_tree(
                 is_second: false,
                 path: path.clone(),
             };
-            let child_a = build_tree(commands, font, phosphor, Some(info_a), path_a, first, preserved);
+            let child_a = build_tree(
+                commands, font, phosphor, area, floating, Some(info_a), path_a, first, preserved,
+            );
             commands.entity(wrap_a).add_child(child_a);
 
             // The divider is a flush 1px line laid out as a flex sibling *between*
@@ -1503,6 +2828,7 @@ fn build_tree(
                         first_wrap: wrap_a,
                         horizontal: row,
                         path: path.clone(),
+                        area,
                     },
                     Name::new("divider-handle"),
                 ))
@@ -1536,7 +2862,9 @@ fn build_tree(
                 is_second: true,
                 path: path.clone(),
             };
-            let child_b = build_tree(commands, font, phosphor, Some(info_b), path_b, second, preserved);
+            let child_b = build_tree(
+                commands, font, phosphor, area, floating, Some(info_b), path_b, second, preserved,
+            );
             commands.entity(wrap_b).add_child(child_b);
 
             commands
@@ -1544,9 +2872,9 @@ fn build_tree(
                 .add_children(&[wrap_a, divider, wrap_b]);
             container
         }
-        DockTree::Leaf { tabs, active_tab } => {
-            build_leaf(commands, font, phosphor, parent, tabs, *active_tab, preserved)
-        }
+        DockTree::Leaf { tabs, active_tab } => build_leaf(
+            commands, font, phosphor, area, floating, parent, tabs, *active_tab, preserved,
+        ),
         DockTree::Empty => {
             let container = commands
                 .spawn((
@@ -1578,6 +2906,7 @@ fn build_tree(
                     // No leaf yet — picking sets the tree's root leaf.
                     AddPanelButton {
                         leaf: Entity::PLACEHOLDER,
+                        area,
                     },
                     Name::new("empty-add-panel"),
                 ))
@@ -1668,10 +2997,13 @@ pub(crate) fn apply_dock_style(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_leaf(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
+    area: Entity,
+    floating: bool,
     parent: Option<ParentSplit>,
     tabs: &[String],
     active: usize,
@@ -1705,7 +3037,9 @@ fn build_leaf(
             Name::new("leaf"),
         ))
         .id();
-    populate_leaf(commands, font, phosphor, parent, leaf, tabs, active, preserved);
+    populate_leaf(
+        commands, font, phosphor, area, floating, parent, leaf, tabs, active, preserved,
+    );
     leaf
 }
 
@@ -1713,6 +3047,24 @@ fn build_leaf(
 #[derive(Component)]
 struct AddPanelButton {
     leaf: Entity,
+    /// The dock area the leaf lives in — routes the add to the right tree.
+    area: Entity,
+}
+
+/// The undock handle at the left of a tab: press it to tear that panel off
+/// into a floating window — no Ctrl needed. Overlaid absolutely on the tab's
+/// left padding so it takes NO layout space (no gap in unhovered tabs), and
+/// kept `Display::None` until the tab is hovered so the hidden handle can't
+/// intercept clicks either. `FocusPolicy::Block` so pressing it undocks
+/// instead of switching/dragging the tab (the same trick the close × uses).
+#[derive(Component)]
+struct TabGrip {
+    /// The tab this handle sits in (drives hover visibility).
+    tab: Entity,
+    /// Panel id to undock.
+    id: String,
+    leaf: Entity,
+    area: Entity,
 }
 
 /// Click the tab bar `+` → open the shared search overlay of panels not already
@@ -1732,6 +3084,7 @@ fn add_panel_click(
             continue;
         }
         let leaf = btn.leaf;
+        let area = btn.area;
         let existing: std::collections::HashSet<String> = leaves
             .get(leaf)
             .map(|l| l.tabs.iter().cloned().collect())
@@ -1775,16 +3128,37 @@ fn add_panel_click(
                     category,
                     move |w: &mut World| {
                         let sibling = w.get::<DockLeaf>(leaf).and_then(|l| l.tabs.first().cloned());
-                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-                            match sibling {
-                                Some(sib) => {
-                                    dock.tree.add_tab(&sib, id.clone());
+                        // Route to the tree owning this leaf's area — a floating
+                        // dock window's, else the primary dock's.
+                        let floating = w
+                            .get_resource::<DockWindows>()
+                            .and_then(|ws| ws.0.iter().position(|s| s.area == area));
+                        match floating {
+                            Some(idx) => {
+                                if let Some(mut ws) = w.get_resource_mut::<DockWindows>() {
+                                    let st = &mut ws.0[idx];
+                                    match &sibling {
+                                        Some(sib) => {
+                                            st.tree.add_tab(sib, id.clone());
+                                        }
+                                        None => st.tree = DockTree::leaf(id.clone()),
+                                    }
+                                    st.dirty = true;
                                 }
-                                None => dock.tree = DockTree::leaf(id.clone()),
                             }
-                        }
-                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
-                            d.0 = true;
+                            None => {
+                                if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                                    match &sibling {
+                                        Some(sib) => {
+                                            dock.tree.add_tab(sib, id.clone());
+                                        }
+                                        None => dock.tree = DockTree::leaf(id.clone()),
+                                    }
+                                }
+                                if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                                    d.0 = true;
+                                }
+                            }
                         }
                     },
                 ));
@@ -1795,164 +3169,210 @@ fn add_panel_click(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn populate_leaf(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
+    area: Entity,
+    floating: bool,
     parent: Option<ParentSplit>,
     leaf: Entity,
     tabs: &[String],
     active: usize,
     preserved: &mut HashMap<String, Entity>,
 ) {
-    let tabbar = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(28.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(2.0),
-                // Snug: tabs sit flush to the leaf edges (no outer padding).
-                flex_shrink: 0.0,
-                // Hairline separator under the header.
-                border: UiRect::bottom(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(header_bg())),
-            BorderColor::all(rgb(divider())),
-            // Subtle drop shadow so the header reads as lifted above the content.
-            BoxShadow::new(
-                Color::srgba(0.0, 0.0, 0.0, 0.30),
-                Val::Px(0.0),
-                Val::Px(2.0),
-                Val::Px(0.0),
-                Val::Px(4.0),
-            ),
-            bevy::ui::RelativeCursorPosition::default(),
-            TabBarOf(leaf),
-            DockPart::TabBar,
-            crate::widgets::ThemeShaderSurface {
-                surface: crate::widgets::ThemeSurface::PanelHeader,
-            },
-            Name::new("tabbar"),
-        ))
-        .id();
-
-    let mut bar_kids: Vec<Entity> = Vec::new();
-    for (i, id) in tabs.iter().enumerate() {
-        let is_active = i == active;
-        let fg = if is_active { text_primary() } else { text_muted() };
-        let (title, icon) = tab_meta(id);
-        let tab = commands
+    // Floating windows are chromeless single-panel hosts: the OS window's
+    // own title bar plays the tab bar's role, so no tabs, no add-panel
+    // button, no tab-bar resize filler.
+    let tabbar = if floating {
+        None
+    } else {
+        let tabbar = commands
             .spawn((
                 Node {
-                    // Fill the full bar height so the active tab is snug to the
-                    // top (content stays vertically centered via align_items).
-                    height: Val::Percent(100.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Px(28.0),
                     flex_direction: FlexDirection::Row,
                     align_items: AlignItems::Center,
-                    column_gap: Val::Px(5.0),
-                    padding: UiRect::horizontal(Val::Px(9.0)),
-                    position_type: PositionType::Relative,
+                    column_gap: Val::Px(2.0),
+                    // Snug: tabs sit flush to the leaf edges (no outer padding).
                     flex_shrink: 0.0,
+                    // Hairline separator under the header.
+                    border: UiRect::bottom(Val::Px(1.0)),
                     ..default()
                 },
-                BackgroundColor(if is_active {
-                    rgb(tab_active())
-                } else {
-                    Color::NONE
-                }),
-                Interaction::default(),
+                BackgroundColor(rgb(header_bg())),
+                BorderColor::all(rgb(divider())),
+                // Subtle drop shadow so the header reads as lifted above the content.
+                BoxShadow::new(
+                    Color::srgba(0.0, 0.0, 0.0, 0.30),
+                    Val::Px(0.0),
+                    Val::Px(2.0),
+                    Val::Px(0.0),
+                    Val::Px(4.0),
+                ),
                 bevy::ui::RelativeCursorPosition::default(),
-                DockPart::Tab,
-                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-                Name::new(format!("tab:{id}")),
+                TabBarOf(leaf),
+                DockPart::TabBar,
+                crate::widgets::ThemeShaderSurface {
+                    surface: crate::widgets::ThemeSurface::PanelHeader,
+                },
+                Name::new("tabbar"),
             ))
             .id();
-        let tab_icon = icon_text(commands, phosphor, icon, fg, 13.0);
-        let tab_label = commands
-            .spawn((
-                Text::new(title),
-                ui_font(font, 12.0),
-                TextColor(rgb(fg)),
-                bevy::text::TextLayout::no_wrap(),
-            ))
-            .id();
-        let close = icon_text(commands, phosphor, "x", text_muted(), 11.0);
-        commands.entity(close).insert((
-            TabClose,
-            bevy::ui::RelativeCursorPosition::default(),
-            // Block so clicking the × closes the tab instead of selecting it.
-            bevy::ui::FocusPolicy::Block,
+
+        let mut bar_kids: Vec<Entity> = Vec::new();
+        for (i, id) in tabs.iter().enumerate() {
+            let is_active = i == active;
+            let fg = if is_active { text_primary() } else { text_muted() };
+            let (title, icon) = tab_meta(id);
+            let tab = commands
+                .spawn((
+                    Node {
+                        // Fill the full bar height so the active tab is snug to the
+                        // top (content stays vertically centered via align_items).
+                        height: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(5.0),
+                        padding: UiRect::horizontal(Val::Px(9.0)),
+                        position_type: PositionType::Relative,
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    BackgroundColor(if is_active {
+                        rgb(tab_active())
+                    } else {
+                        Color::NONE
+                    }),
+                    Interaction::default(),
+                    bevy::ui::RelativeCursorPosition::default(),
+                    DockPart::Tab,
+                    crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                    Name::new(format!("tab:{id}")),
+                ))
+                .id();
+            // Undock handle overlaid on the tab's left padding — hidden (and
+            // non-hit-testable) until the tab is hovered ([`tab_grip_hover`]);
+            // press to tear the panel off into a floating window
+            // ([`tab_grip_interact`]). Absolute so unhovered tabs keep their
+            // exact size — no reserved gap.
+            let grip_icon = icon_text(commands, phosphor, "dots-six-vertical", text_muted(), 10.0);
+            let grip = commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(0.0),
+                        top: Val::Px(0.0),
+                        width: Val::Px(10.0),
+                        height: Val::Percent(100.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        display: Display::None,
+                        ..default()
+                    },
+                    Interaction::default(),
+                    crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
+                    // Block so pressing the handle undocks instead of
+                    // selecting/dragging the tab (mirrors the close ×).
+                    bevy::ui::FocusPolicy::Block,
+                    Name::new("tab-undock-grip"),
+                ))
+                .id();
+            commands.entity(grip).add_child(grip_icon);
+            let tab_icon = icon_text(commands, phosphor, icon, fg, 13.0);
+            let tab_label = commands
+                .spawn((
+                    Text::new(title),
+                    ui_font(font, 12.0),
+                    TextColor(rgb(fg)),
+                    bevy::text::TextLayout::no_wrap(),
+                ))
+                .id();
+            let close = icon_text(commands, phosphor, "x", text_muted(), 11.0);
+            commands.entity(close).insert((
+                TabClose,
+                bevy::ui::RelativeCursorPosition::default(),
+                // Block so clicking the × closes the tab instead of selecting it.
+                bevy::ui::FocusPolicy::Block,
+            ));
+            let marker = commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(-2.0),
+                        top: Val::Px(0.0),
+                        height: Val::Percent(100.0),
+                        width: Val::Px(2.0),
+                        display: Display::None,
+                        ..default()
+                    },
+                    BackgroundColor(rgb(accent())),
+                    bevy::ui::FocusPolicy::Pass,
+                    InsertMarker,
+                    Name::new("insert-marker"),
+                ))
+                .id();
+            commands.entity(tab).insert(DockTab {
+                id: id.clone(),
+                leaf,
+                label: tab_label,
+                icon: tab_icon,
+                marker,
+            });
+            commands.entity(grip).insert(TabGrip {
+                tab,
+                id: id.clone(),
+                leaf,
+                area,
+            });
+            commands
+                .entity(tab)
+                .add_children(&[grip, tab_icon, tab_label, close, marker]);
+            bar_kids.push(tab);
+        }
+        let add_btn = icon_text(commands, phosphor, "plus", text_muted(), 13.0);
+        commands.entity(add_btn).insert((
+            Interaction::default(),
+            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            AddPanelButton { leaf, area },
+            Name::new("dock-add-panel"),
         ));
-        let marker = commands
+        bar_kids.push(add_btn);
+        let filler = commands
             .spawn((
                 Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(-2.0),
-                    top: Val::Px(0.0),
+                    flex_grow: 1.0,
                     height: Val::Percent(100.0),
-                    width: Val::Px(2.0),
-                    display: Display::None,
                     ..default()
                 },
-                BackgroundColor(rgb(accent())),
-                bevy::ui::FocusPolicy::Pass,
-                InsertMarker,
-                Name::new("insert-marker"),
+                Name::new("tabbar-filler"),
             ))
             .id();
-        commands.entity(tab).insert(DockTab {
-            id: id.clone(),
-            leaf,
-            label: tab_label,
-            icon: tab_icon,
-            marker,
-        });
-        commands
-            .entity(tab)
-            .add_children(&[tab_icon, tab_label, close, marker]);
-        bar_kids.push(tab);
-    }
-    let add_btn = icon_text(commands, phosphor, "plus", text_muted(), 13.0);
-    commands.entity(add_btn).insert((
-        Interaction::default(),
-        crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-        AddPanelButton { leaf },
-        Name::new("dock-add-panel"),
-    ));
-    bar_kids.push(add_btn);
-    let filler = commands
-        .spawn((
-            Node {
-                flex_grow: 1.0,
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            Name::new("tabbar-filler"),
-        ))
-        .id();
-    if let Some(p) = parent.filter(|p| p.aligned()) {
-        let cursor = crate::cursor_icon::parse_cursor(if p.horizontal {
-            "ew-resize"
-        } else {
-            "ns-resize"
-        })
-        .unwrap();
-        commands.entity(filler).insert((
-            Interaction::default(),
-            crate::cursor_icon::HoverCursor(cursor),
-            Divider {
-                container: p.container,
-                first_wrap: p.first_wrap,
-                horizontal: p.horizontal,
-                path: p.path,
-            },
-        ));
-    }
-    bar_kids.push(filler);
-    commands.entity(tabbar).add_children(&bar_kids);
+        if let Some(p) = parent.filter(|p| p.aligned()) {
+            let cursor = crate::cursor_icon::parse_cursor(if p.horizontal {
+                "ew-resize"
+            } else {
+                "ns-resize"
+            })
+            .unwrap();
+            commands.entity(filler).insert((
+                Interaction::default(),
+                crate::cursor_icon::HoverCursor(cursor),
+                Divider {
+                    container: p.container,
+                    first_wrap: p.first_wrap,
+                    horizontal: p.horizontal,
+                    path: p.path,
+                    area,
+                },
+            ));
+        }
+        bar_kids.push(filler);
+        commands.entity(tabbar).add_children(&bar_kids);
+        Some(tabbar)
+    };
 
     // Content region. Reuse the active panel's preserved content entity (kept
     // across this rebuild) so reordering/moving tabs doesn't recreate the panel;
@@ -2001,9 +3421,17 @@ fn populate_leaf(
         tabs: tabs.to_vec(),
         content,
         active: active_id,
+        area,
         overlay,
     });
-    commands
-        .entity(leaf)
-        .add_children(&[tabbar, content, overlay]);
+    match tabbar {
+        Some(tabbar) => {
+            commands
+                .entity(leaf)
+                .add_children(&[tabbar, content, overlay]);
+        }
+        None => {
+            commands.entity(leaf).add_children(&[content, overlay]);
+        }
+    }
 }

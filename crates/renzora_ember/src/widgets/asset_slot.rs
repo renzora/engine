@@ -117,7 +117,7 @@ pub(crate) fn dnd_system(
     mut nodes: Query<&mut Node>,
     mut texts: Query<(&mut Text, &mut TextColor)>,
 ) {
-    let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+    let cursor = windows.iter().find_map(|w| w.cursor_position());
 
     // Begin a potential drag.
     if dnd.payload.is_none() && mouse.just_pressed(MouseButton::Left) {

@@ -40,7 +40,7 @@ pub(crate) fn hier_context_menu(
     else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let (is_cam, is_inst, has_color) = props.get(target).unwrap_or((false, false, false));

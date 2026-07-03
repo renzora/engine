@@ -116,7 +116,7 @@ pub(crate) enum Drag {
 }
 
 fn cursor(windows: &Query<&Window>) -> Option<Vec2> {
-    windows.single().ok().and_then(|w| w.cursor_position())
+    windows.iter().find_map(|w| w.cursor_position())
 }
 
 fn fmt_time(t: f32) -> String {

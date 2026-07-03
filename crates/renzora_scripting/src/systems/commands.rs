@@ -28,7 +28,7 @@ pub fn apply_script_commands(
     mut reflection_queue: ResMut<ScriptReflectionQueue>,
     mut pending_scene: ResMut<renzora::PendingSceneLoad>,
     mut character_queue: ResMut<CharacterCommandQueue>,
-    mut cursor_query: Query<&mut CursorOptions>,
+    mut cursor_query: Query<&mut CursorOptions, With<bevy::window::PrimaryWindow>>,
     mut tw_queue: ResMut<renzora::TransformWriteQueue>,
     http_inbox: Res<crate::http::HttpInbox>,
     mut ran_once: Local<bool>,

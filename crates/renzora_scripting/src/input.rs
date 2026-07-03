@@ -30,7 +30,7 @@ pub fn update_script_input(
     mut script_input: ResMut<ScriptInput>,
     keyboard_events: Option<MessageReader<bevy::input::keyboard::KeyboardInput>>,
     mouse_buttons: Option<Res<ButtonInput<MouseButton>>>,
-    windows: Query<&Window>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     mouse_motion: Option<MessageReader<bevy::input::mouse::MouseMotion>>,
     scroll: Option<MessageReader<bevy::input::mouse::MouseWheel>>,
     gamepads: Query<(Entity, &Gamepad)>,

@@ -49,9 +49,10 @@ fn apply_cursor_icon(
     #[cfg(feature = "game_ui")] drag: Res<DragState>,
     hovered: Query<(&Interaction, &HoverCursor)>,
     viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
-    windows: Query<Entity, With<PrimaryWindow>>,
+    windows: Query<(Entity, &Window)>,
+    primary: Query<Entity, With<PrimaryWindow>>,
     mut commands: Commands,
-    mut last: Local<Option<SystemCursorIcon>>,
+    mut last: Local<Option<(Entity, SystemCursorIcon)>>,
 ) {
     #[cfg(feature = "game_ui")]
     let dragging = drag.is_dragging();
@@ -71,11 +72,32 @@ fn apply_cursor_icon(
             .unwrap_or(SystemCursorIcon::Default)
     };
 
-    if *last != Some(target) {
-        *last = Some(target);
-        if let Ok(win) = windows.single() {
-            commands.entity(win).insert(CursorIcon::System(target));
+    // The icon goes on the window the cursor is actually in — hover state only
+    // fires there, so a floating dock window's widgets set its own cursor.
+    // Fall back to the primary window so a `Default` reset still lands
+    // somewhere when the cursor is between windows.
+    let win = windows
+        .iter()
+        .find(|(_, w)| w.cursor_position().is_some())
+        .map(|(e, _)| e)
+        .or_else(|| primary.single().ok());
+    let Some(win) = win else { return };
+
+    if *last != Some((win, target)) {
+        // Reset the previous window's cursor when the pointer moves to another
+        // window mid-gesture (e.g. left a floating window showing a resize
+        // cursor) so it doesn't stick.
+        if let Some((old_win, old_icon)) = *last {
+            if old_win != win && old_icon != SystemCursorIcon::Default {
+                // `get_entity`: the old window may be a floating dock window
+                // that was just closed.
+                if let Ok(mut ec) = commands.get_entity(old_win) {
+                    ec.insert(CursorIcon::System(SystemCursorIcon::Default));
+                }
+            }
         }
+        *last = Some((win, target));
+        commands.entity(win).insert(CursorIcon::System(target));
     }
 }
 

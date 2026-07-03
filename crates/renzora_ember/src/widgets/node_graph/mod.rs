@@ -266,7 +266,7 @@ fn px(v: Val) -> f32 {
 }
 
 fn cursor(windows: &Query<&Window>) -> Option<Vec2> {
-    windows.single().ok().and_then(|w| w.cursor_position())
+    windows.iter().find_map(|w| w.cursor_position())
 }
 
 fn bezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> Vec2 {

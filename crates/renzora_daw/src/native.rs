@@ -1150,7 +1150,7 @@ fn clip_context_menu(
     else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let id = clip.0;
     let buffer = buffer.clone();
     let menu = screen_menu(&mut commands, cursor.x, cursor.y);

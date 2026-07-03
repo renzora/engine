@@ -44,7 +44,7 @@ pub(crate) fn hier_drag(
     mut edges: Query<(&HierDropEdge, &mut Node)>,
     cmds: Option<Res<EditorCommands>>,
 ) {
-    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+    let cursor = windows.iter().find_map(|w| w.cursor_position());
 
     // Release → apply the drop, then reset.
     if mouse.just_released(MouseButton::Left) {
@@ -159,7 +159,7 @@ pub(crate) fn hier_drag_tooltip(
         }
         return;
     }
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let label = |e: Entity| {

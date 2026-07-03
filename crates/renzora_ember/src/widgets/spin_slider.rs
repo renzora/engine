@@ -112,10 +112,7 @@ pub(crate) fn spin_drag(
     mut nodes: Query<&mut Node>,
     mut texts: Query<&mut Text>,
 ) {
-    let cursor_x = windows
-        .single()
-        .ok()
-        .and_then(|w| w.cursor_position())
+    let cursor_x = windows.iter().find_map(|w| w.cursor_position())
         .map(|p| p.x);
     for (interaction, mut s) in &mut spins {
         if *interaction == Interaction::Pressed {

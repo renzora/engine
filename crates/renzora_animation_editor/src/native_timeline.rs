@@ -1495,7 +1495,7 @@ fn key_context_menu(
     let (Some(fonts), Some(state)) = (fonts, state) else { return };
     let Some(p) = lane_cursor(&lane) else { return };
     let Some(clip) = cache.clip.as_ref() else { return };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let (zoom, scroll, th) = (state.timeline_zoom, state.timeline_scroll, state.track_height);
@@ -1769,7 +1769,7 @@ fn clip_combo_open(
     let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else { return };
     let Some(entity) = state.selected_entity else { return };
     let Ok(animator) = animators.get(entity) else { return };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else { return };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else { return };
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
     let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
@@ -1865,7 +1865,7 @@ fn prop_header_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let cursor = windows.iter().next().and_then(|w| w.cursor_position()).unwrap_or(Vec2::splat(200.0));
+        let cursor = windows.iter().find_map(|w| w.cursor_position()).unwrap_or(Vec2::splat(200.0));
         // Anchor the menu just below the combo.
         let size = cn.size() * cn.inverse_scale_factor();
         let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;

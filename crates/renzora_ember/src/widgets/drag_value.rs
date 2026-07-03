@@ -521,10 +521,7 @@ pub(crate) fn drag_value_drag(
         &bevy::ui::ComputedNode,
     )>,
 ) {
-    let cursor_x = windows
-        .single()
-        .ok()
-        .and_then(|w| w.cursor_position())
+    let cursor_x = windows.iter().find_map(|w| w.cursor_position())
         .map(|p| p.x);
     // On unless a Settings toggle turns it off.
     let rail_enabled = config.as_ref().map(|c| c.rail_quick_drag).unwrap_or(true);

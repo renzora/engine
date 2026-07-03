@@ -407,6 +407,7 @@ fn resolve_viewport_slots(
     resize_req: Res<ViewportResizeRequest>,
     docking: Option<Res<DockingState>>,
     ember_dock: Option<Res<renzora_ember::dock::Dock>>,
+    ember_windows: Option<Res<renzora_ember::dock::DockWindows>>,
     modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
     resolution: Option<Res<renzora::core::viewport_types::ViewportRenderResolution>>,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
@@ -443,7 +444,13 @@ fn resolve_viewport_slots(
         // reporting the viewport as docked (which kept the always-on slot-0
         // camera rendering the full scene behind empty workspaces).
         let docked = match (ember_dock.as_ref(), docking.as_ref()) {
-            (Some(d), _) => d.tree.is_active_tab(VIEWPORT_PANEL_IDS[i]),
+            // Floating dock windows count as docked too — a viewport torn off
+            // onto another monitor is still visible and must keep its camera.
+            (Some(d), _) => renzora_ember::dock::panel_visible_anywhere(
+                VIEWPORT_PANEL_IDS[i],
+                Some(d),
+                ember_windows.as_deref(),
+            ),
             (None, Some(d)) => d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]),
             (None, None) => true,
         };

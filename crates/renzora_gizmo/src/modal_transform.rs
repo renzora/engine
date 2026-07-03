@@ -243,7 +243,7 @@ pub fn modal_transform_input_system(
     aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children: Query<&Children>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    mut cursor_options: Query<&mut CursorOptions>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     input_focus: Res<InputFocusState>,
     camera_query: Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
@@ -382,7 +382,7 @@ pub fn modal_transform_keyboard_system(
     mouse_button: Res<ButtonInput<MouseButton>>,
     mut modal: ResMut<ModalTransformState>,
     mut transforms: Query<&mut Transform>,
-    mut cursor_options: Query<&mut CursorOptions>,
+    mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut commands: Commands,
 ) {
     if !modal.active {

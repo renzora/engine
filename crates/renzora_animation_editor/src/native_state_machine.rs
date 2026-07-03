@@ -1410,7 +1410,7 @@ fn state_clip_combo_open(
     let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let clips: Vec<String> = anim_state
@@ -1449,7 +1449,7 @@ fn trans_from_combo_open(
     let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let names: Vec<String> = sm_state.sm.states.iter().map(|s| s.name.clone()).collect();
@@ -1484,7 +1484,7 @@ fn trans_to_combo_open(
     let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let names: Vec<String> = sm_state.sm.states.iter().map(|s| s.name.clone()).collect();
@@ -1516,7 +1516,7 @@ fn cond_kind_combo_open(
     let Some((_, rcp, cn, combo)) = q.iter().find(|(i, _, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().next().and_then(|w| w.cursor_position()) else {
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
         return;
     };
     let idx = combo.0;
