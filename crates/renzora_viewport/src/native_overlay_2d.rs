@@ -147,6 +147,23 @@ fn window_to_world(
     camera.viewport_to_world_2d(cam_gt, scaled).ok()
 }
 
+/// Ruler tick step: normally the 1-2-5 "nice" spacing, but while the 2D grid
+/// is shown, a power-of-two multiple (or subdivision) of the grid size — so
+/// every labelled tick lands exactly on a grid line and the ruler never reads
+/// as misaligned with the grid. Subdivisions (negative powers) still align:
+/// grid lines sit on multiples of the grid size, which are multiples of any
+/// `size / 2ᵏ` step.
+fn ruler_step(raw: f32, grid_size: Option<f32>) -> f32 {
+    let Some(grid) = grid_size.filter(|g| *g > 0.0) else {
+        return nice_step(raw);
+    };
+    if !(raw > 0.0) {
+        return grid;
+    }
+    let level = (raw / grid).log2().ceil().clamp(-6.0, 32.0);
+    grid * 2f32.powf(level)
+}
+
 /// Round a raw spacing to the nearest 1-2-5×10ⁿ value so ruler ticks land on
 /// human-readable world coordinates regardless of zoom.
 fn nice_step(raw: f32) -> f32 {
@@ -221,15 +238,17 @@ fn render_overlay_2d(
     }
 
     // Draw only in 2D view + edit mode.
-    let (in_2d, show_rulers, show_coords) = settings
+    let (in_2d, show_rulers, show_coords, ruler_grid) = settings
         .map(|s| {
             (
                 s.viewport_view == ViewportView::Two,
                 s.show_rulers_2d,
                 s.show_cursor_coords_2d,
+                // While the grid is shown, ruler ticks align to it.
+                (s.show_grid_2d && s.grid_size_2d > 0.0).then_some(s.grid_size_2d),
             )
         })
-        .unwrap_or((false, true, true));
+        .unwrap_or((false, true, true, None));
     let editing = !play.is_some_and(|p| p.is_in_play_mode());
     if !in_2d || !editing {
         return;
@@ -291,8 +310,8 @@ fn render_overlay_2d(
         let span_y = (world_top - world_bottom).max(1e-6);
         let ppw_x = size.x / span_x;
         let ppw_y = size.y / span_y;
-        let step_x = nice_step(TICK_TARGET_PX / ppw_x);
-        let step_y = nice_step(TICK_TARGET_PX / ppw_y);
+        let step_x = ruler_step(TICK_TARGET_PX / ppw_x, ruler_grid);
+        let step_y = ruler_step(TICK_TARGET_PX / ppw_y, ruler_grid);
 
         let font = fonts.as_ref().map(|f| f.ui.clone());
 

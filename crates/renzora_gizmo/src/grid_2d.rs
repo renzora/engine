@@ -35,12 +35,15 @@ const GRID_Z: f32 = -900.0;
 #[derive(Component)]
 pub struct Grid2dMesh;
 
-/// One resolved grid pass: line spacing, snapped centre, cell counts, alpha.
-/// The full frame state is two of these + the line colour — cheap to compare,
-/// so the mesh is only rebuilt on pan/zoom/setting changes, not every frame.
+/// One resolved grid pass: line spacing, the first line's world position
+/// (an exact multiple of the spacing), cell counts, alpha. The full frame
+/// state is two of these + the line colour — cheap to compare, so the mesh is
+/// only rebuilt on pan/zoom/setting changes, not every frame.
 #[derive(Clone, Copy, PartialEq, Default)]
 pub(crate) struct GridPass {
-    center: Vec2,
+    /// World position of the pass's min-corner line intersection. Always a
+    /// multiple of `spacing` on both axes, so every generated line is too.
+    start: Vec2,
     spacing: f32,
     cells: UVec2,
     alpha: u8,
@@ -129,7 +132,6 @@ pub(crate) fn update_grid_2d(
     };
     let view_min = a.min(b);
     let view_max = a.max(b);
-    let center = (view_min + view_max) * 0.5;
     let extent = view_max - view_min;
 
     // How many render-image pixels one world unit covers at the current zoom.
@@ -157,11 +159,20 @@ pub(crate) fn update_grid_2d(
     let major_step = if settings.show_subgrid { 8 } else { 1 };
     let major_span = minor_span * major_step as f32;
 
-    // Each grid must be centred on a multiple of ITS OWN spacing. Lines sit at
-    // `centre + n*spacing`, so a centre that snaps in steps smaller than the
-    // spacing makes the lines shift as the camera pans — that was the "section
-    // divider jumping". Snap each centre to its own span.
-    let snap = |v: f32, step: f32| (v / step).round() * step;
+    // Each pass's first line sits on the multiple of ITS OWN spacing at (or
+    // just below) the view's min corner — so every line is an EXACT multiple
+    // of the spacing and always coincides with tile edges and the ruler's
+    // zero. (An earlier centre+half-extent construction shifted the whole
+    // pass by half a cell whenever its line count was odd: the grid visibly
+    // missed the tiles, disagreed with the ruler, and jumped as pan/zoom
+    // flipped the count's parity — the minor and major passes even shifted
+    // independently, reading as doubled lines.)
+    let start_for = |span: f32| -> Vec2 {
+        Vec2::new(
+            (view_min.x / span).floor() * span,
+            (view_min.y / span).floor() * span,
+        )
+    };
     // Enough cells to cover the visible extent + a margin, capped so an extreme
     // zoom-out can't ask for a runaway line count.
     let cells_for = |span: f32| -> UVec2 {
@@ -183,13 +194,13 @@ pub(crate) fn update_grid_2d(
 
     let key = GridKey {
         minor: GridPass {
-            center: Vec2::new(snap(center.x, tile), snap(center.y, tile)),
+            start: start_for(tile),
             spacing: tile,
             cells: cells_for(tile),
             alpha: if settings.show_subgrid { minor_alpha } else { 0 },
         },
         major: GridPass {
-            center: Vec2::new(snap(center.x, major_span), snap(center.y, major_span)),
+            start: start_for(major_span),
             spacing: major_span,
             cells: cells_for(major_span),
             alpha: major_alpha,
@@ -249,21 +260,23 @@ fn build_grid_mesh(key: &GridKey) -> Mesh {
         let color = Color::srgba_u8(key.color[0], key.color[1], key.color[2], pass.alpha)
             .to_linear()
             .to_f32_array();
-        let half = Vec2::new(
-            pass.cells.x as f32 * pass.spacing * 0.5,
-            pass.cells.y as f32 * pass.spacing * 0.5,
+        // `start` is a multiple of the spacing on both axes, so every line
+        // below lands on an exact spacing multiple — flush with tile edges.
+        let len = Vec2::new(
+            pass.cells.x as f32 * pass.spacing,
+            pass.cells.y as f32 * pass.spacing,
         );
         for i in 0..=pass.cells.x {
-            let x = pass.center.x - half.x + i as f32 * pass.spacing;
-            positions.push([x, pass.center.y - half.y, 0.0]);
-            positions.push([x, pass.center.y + half.y, 0.0]);
+            let x = pass.start.x + i as f32 * pass.spacing;
+            positions.push([x, pass.start.y, 0.0]);
+            positions.push([x, pass.start.y + len.y, 0.0]);
             colors.push(color);
             colors.push(color);
         }
         for j in 0..=pass.cells.y {
-            let y = pass.center.y - half.y + j as f32 * pass.spacing;
-            positions.push([pass.center.x - half.x, y, 0.0]);
-            positions.push([pass.center.x + half.x, y, 0.0]);
+            let y = pass.start.y + j as f32 * pass.spacing;
+            positions.push([pass.start.x, y, 0.0]);
+            positions.push([pass.start.x + len.x, y, 0.0]);
             colors.push(color);
             colors.push(color);
         }
