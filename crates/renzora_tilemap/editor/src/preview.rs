@@ -44,6 +44,8 @@ struct Target {
     /// A pending Shift+drag rectangle, as `(cells_wide, cells_high, erasing)`.
     /// `None` = plain brush-block ghost under the cursor.
     rect: Option<(i32, i32, bool)>,
+    /// Erase mode: the cursor ghost is a red cell, not the brush block.
+    erase: bool,
 }
 
 /// Position (and when the brush/tileset/pending-rect changed, rebuild) the
@@ -96,6 +98,7 @@ pub(crate) fn update_brush_preview(
                 tile_size: ts,
                 atlas_px: layer.atlas_tile_px.max(1) as f32,
                 rect: Some((max.x - min.x + 1, max.y - min.y + 1, erase)),
+                erase: paint.erase,
             });
         }
 
@@ -119,6 +122,7 @@ pub(crate) fn update_brush_preview(
             tile_size: ts,
             atlas_px: layer.atlas_tile_px.max(1) as f32,
             rect: None,
+            erase: paint.erase,
         })
     };
 
@@ -157,6 +161,7 @@ pub(crate) fn update_brush_preview(
     target.tile_size.to_bits().hash(&mut hasher);
     target.atlas_px.to_bits().hash(&mut hasher);
     target.rect.hash(&mut hasher);
+    target.erase.hash(&mut hasher);
     let key = hasher.finish();
     if *built == Some((root, key)) {
         return;
@@ -217,6 +222,21 @@ pub(crate) fn update_brush_preview(
                 ));
             }
         }
+        return;
+    }
+
+    if target.erase {
+        // Eraser cursor: erase strokes clear one cell per stroke cell (the
+        // brush block never stamps), so ghost a single red cell.
+        commands.spawn((
+            Sprite {
+                color: Color::srgba(1.0, 0.35, 0.3, 0.25),
+                custom_size: Some(Vec2::splat(ts)),
+                ..default()
+            },
+            Transform::from_xyz(ts * 0.5, ts * 0.5, 0.0),
+            ChildOf(root),
+        ));
         return;
     }
 

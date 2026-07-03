@@ -99,12 +99,15 @@ impl TilemapBrush {
 
 /// Whether tile painting is live RIGHT NOW. Derived every frame by
 /// [`sync_paint_mode`] from the viewport's Mode dropdown (`ViewportMode::Paint`
-/// + an active tilemap) — the dropdown is the single source of truth for the
-/// mode; this resource is the cheap bool the paint/preview/brush systems read.
-/// While on it raises [`ViewportBrushActive`] so the 2D picker stands down.
+/// or `ViewportMode::Erase` + an active tilemap) — the dropdown is the single
+/// source of truth for the mode; this resource is the cheap bool the
+/// paint/preview/brush systems read. While on it raises
+/// [`ViewportBrushActive`] so the 2D picker stands down.
 #[derive(Resource, Default)]
 pub struct TilemapPaintMode {
     pub active: bool,
+    /// True in Erase mode: strokes always erase, no Alt needed.
+    pub erase: bool,
 }
 
 /// An in-flight Shift+drag rectangle fill: `(anchor cell, current cell,
@@ -182,21 +185,24 @@ fn sync_active_tilemap(
 }
 
 /// Derive [`TilemapPaintMode`] from the viewport's Mode dropdown: painting is
-/// live while the mode is **Paint** and a tilemap is active. The dropdown is
-/// the single source of truth — the palette arms it by setting the mode (see
-/// `select_tiles_from_atlas`), Esc/Tab switch it back, and there is no
-/// separate toolbar button to disagree with it.
+/// live while the mode is **Paint** or **Erase** and a tilemap is active.
+/// The dropdown is the single source of truth — the palette arms it by
+/// setting the mode (see `select_tiles_from_atlas`), Esc/Tab switch it back,
+/// and there is no separate toolbar button to disagree with it.
 fn sync_paint_mode(
     settings: Option<Res<ViewportSettings>>,
     active: Res<ActiveTilemap>,
     mut paint: ResMut<TilemapPaintMode>,
 ) {
-    let want = settings
-        .map(|s| s.viewport_mode == renzora::core::viewport_types::ViewportMode::Paint)
-        .unwrap_or(false)
-        && active.0.is_some();
+    use renzora::core::viewport_types::ViewportMode;
+    let mode = settings.map(|s| s.viewport_mode).unwrap_or_default();
+    let want = matches!(mode, ViewportMode::Paint | ViewportMode::Erase) && active.0.is_some();
+    let erase = mode == ViewportMode::Erase;
     if paint.active != want {
         paint.active = want;
+    }
+    if paint.erase != erase {
+        paint.erase = erase;
     }
 }
 
@@ -239,7 +245,7 @@ fn toggle_paint_mode_shortcut(
     };
 }
 
-/// Esc drops the brush by switching the viewport mode back to Scene.
+/// Esc drops the brush/eraser by switching the viewport mode back to Select.
 fn escape_to_scene_mode(
     keys: Res<ButtonInput<KeyCode>>,
     paint: Res<TilemapPaintMode>,
@@ -250,7 +256,10 @@ fn escape_to_scene_mode(
         return;
     }
     if let Some(settings) = settings.as_deref_mut() {
-        if settings.viewport_mode == ViewportMode::Paint {
+        if matches!(
+            settings.viewport_mode,
+            ViewportMode::Paint | ViewportMode::Erase
+        ) {
             settings.viewport_mode = ViewportMode::Scene;
         }
     }
@@ -462,7 +471,9 @@ fn paint_tiles(
         return;
     }
 
-    let erasing = keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
+    // Erase mode makes every stroke an erase; in Paint mode Alt is the
+    // momentary eraser, as before.
+    let erasing = paint.erase || keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let Some(vs) = viewport else { return };
     if !vs.hovered && rect_drag.0.is_none() {

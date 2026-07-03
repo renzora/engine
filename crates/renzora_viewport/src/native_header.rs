@@ -539,6 +539,7 @@ pub(crate) fn register(app: &mut App) {
                 space_toggle_click,
                 update_space_toggle,
                 panel_toggle_dismiss,
+                sanitize_mode_for_view,
                 update_two_d_only,
                 update_grid_size_input,
                 update_zoom_readout,
@@ -810,7 +811,7 @@ fn update_dropdown_visuals(
     theme: Option<Res<ThemeManager>>,
     triggers: Query<(&DropTrigger, &Interaction, &mut BackgroundColor)>,
     options: Query<
-        (&DropOption, &Interaction, &mut BackgroundColor),
+        (&DropOption, &Interaction, &mut BackgroundColor, &mut Node),
         Without<DropTrigger>,
     >,
     mut texts: Query<&mut Text>,
@@ -855,7 +856,19 @@ fn update_dropdown_visuals(
         }
     }
 
-    for (opt, interaction, mut bg) in options {
+    for (opt, interaction, mut bg, mut node) in options {
+        // The Mode dropdown offers a per-view subset (no Sculpt in 2D, no
+        // Erase in 3D): rows are built once from `ALL` and hidden per view,
+        // so `DropOption::index` stays a stable index into `ALL`.
+        if opt.kind == DropKind::Mode {
+            let allowed = ViewportMode::ALL.get(opt.index).is_some_and(|m| {
+                ViewportMode::for_view(settings.viewport_view).contains(m)
+            });
+            let want = if allowed { Display::Flex } else { Display::None };
+            if node.display != want {
+                node.display = want;
+            }
+        }
         let is_current = current(opt.kind) == Some(opt.index);
         let want = if is_current {
             accent
@@ -1609,6 +1622,18 @@ fn update_three_d_only(
 }
 
 /// Sibling of [`update_three_d_only`]: shows `TwoDOnly` widgets only in 2D view.
+/// Keep the interaction mode legal for the active view: switching views
+/// while in a view-specific mode (Sculpt is 3D-only, Erase is 2D-only)
+/// falls back to Select, matching what the Mode dropdown offers. Covers
+/// every entry path — the dropdown, Tab shortcuts, and panels that set the
+/// mode directly.
+fn sanitize_mode_for_view(settings: Option<ResMut<ViewportSettings>>) {
+    let Some(mut s) = settings else { return };
+    if !ViewportMode::for_view(s.viewport_view).contains(&s.viewport_mode) {
+        s.viewport_mode = ViewportMode::Scene;
+    }
+}
+
 fn update_two_d_only(
     settings: Option<Res<ViewportSettings>>,
     mut q: Query<&mut Node, With<TwoDOnly>>,

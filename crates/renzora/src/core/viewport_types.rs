@@ -394,6 +394,10 @@ impl GraphicsQuality {
 pub struct ViewportRenderResolution(pub RenderResolution);
 
 /// High-level viewport interaction mode (Blender-style mode switcher).
+///
+/// `Scene` is the default pick/move mode — its user-facing label is
+/// **Select** (the variant keeps its historical name because it crosses the
+/// plugin ABI and is matched all over the editor crates).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ViewportMode {
     #[default]
@@ -401,24 +405,37 @@ pub enum ViewportMode {
     Edit,
     Sculpt,
     Paint,
-    Animate,
+    /// Tile eraser (2D only): the paint brush with erase always on.
+    Erase,
 }
 
 impl ViewportMode {
+    /// Every mode, in dropdown-row order. UI that offers a per-view subset
+    /// should use [`Self::for_view`]; `ALL` stays the index space the header
+    /// dropdown rows are built from.
     pub const ALL: &'static [ViewportMode] = &[
         Self::Scene,
         Self::Edit,
         Self::Sculpt,
         Self::Paint,
-        Self::Animate,
+        Self::Erase,
     ];
+    /// The modes the header's Mode dropdown offers for the given view:
+    /// Sculpt is mesh sculpting (3D only), Erase is the tile eraser (2D
+    /// only).
+    pub fn for_view(view: ViewportView) -> &'static [ViewportMode] {
+        match view {
+            ViewportView::Two => &[Self::Scene, Self::Edit, Self::Paint, Self::Erase],
+            _ => &[Self::Scene, Self::Edit, Self::Sculpt, Self::Paint],
+        }
+    }
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Scene => "Scene",
+            Self::Scene => "Select",
             Self::Edit => "Edit",
             Self::Sculpt => "Sculpt",
             Self::Paint => "Paint",
-            Self::Animate => "Animate",
+            Self::Erase => "Erase",
         }
     }
 }

@@ -33,7 +33,7 @@ The panel shows the active tilemap's atlas in a zoomable, pannable view:
 - **Wheel** zooms toward the cursor; **right-drag** pans. The `−` / `+` buttons and the zoom dropdown in the header do the same.
 - The **Grid** switch overlays tile boundaries on the atlas.
 
-Selecting tiles **arms the brush** by switching the viewport's **Mode** dropdown to **Paint** — the dropdown (next to the 3D/2D/UI selector) is the single source of truth for the mode. **Tab** toggles Scene ↔ Paint while the pointer is over the 2D viewport, and **Esc** drops back to Scene.
+Selecting tiles **arms the brush** by switching the viewport's **Mode** dropdown to **Paint** — the dropdown (next to the 3D/2D/UI selector) is the single source of truth for the mode. **Tab** toggles Select ↔ Paint while the pointer is over the 2D viewport, and **Esc** drops back to Select.
 
 ## Painting
 
@@ -42,7 +42,11 @@ In Paint mode, move the cursor over the 2D viewport — a **semi-transparent gho
 - **Left-drag** paints the block (multi-tile blocks stamp as a unit, keeping the orientation they have in the palette). Strokes are interpolated, so a fast drag never skips cells. Re-painting a cell replaces its tile instead of stacking a second one.
 - **Shift + drag** fills a **rectangle**: the press anchors a corner, the drag sizes the region (the ghost previews the tiled fill), and release stamps the brush block tiled across it. Hold **Alt** at the press to rectangle-*erase* instead (the region ghosts red).
 - **Alt + left-drag** erases cells. (Erasing is *not* on right-drag — that stays free for the 2D camera pan.)
-- **Esc** / **Tab** (or picking **Scene** in the Mode dropdown) drops the brush and returns the viewport to normal picking. Deselecting the tilemap in the tab strip does the same.
+- **Esc** / **Tab** (or picking **Select** in the Mode dropdown) drops the brush and returns the viewport to normal picking. Deselecting the tilemap in the tab strip does the same.
+
+## Erasing
+
+Besides the momentary **Alt** eraser, the 2D viewport's Mode dropdown has a dedicated **Erase** mode: every left-drag erases (one cell per stroke cell — the red cell ghost under the cursor shows which), and **Shift + drag** rectangle-erases without needing Alt. Erase uses the same active tilemap as Paint, and **Esc** drops back to Select the same way. Erase only appears in the dropdown while the viewport is in 2D view.
 
 While Paint mode is on the 2D selection/drag tools stand down, so painting never accidentally moves a sprite. Painting is edit-mode only — it's disabled in play mode.
 
