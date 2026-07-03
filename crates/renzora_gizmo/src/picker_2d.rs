@@ -163,7 +163,12 @@ pub enum DragMode {
     /// Translate the selection. Per-entity cursor offsets live in
     /// [`Drag2dState::move_set`] (captured at drag start so every entity stays
     /// pinned to its own grab offset — that's what makes a group move rigid).
-    Move,
+    /// `grab_world` is the cursor's world position at grab time: translate
+    /// snap quantizes the delta travelled since grab, NOT the absolute
+    /// position, so entities keep their phase relative to the grid (a
+    /// centre-anchored 16px tile lives at cell centres — multiples of 16
+    /// plus 8 — and absolute snapping would shove it half a cell off).
+    Move { grab_world: Vec2 },
     /// Rubber-band selection from a press on empty space. `start_win` is the
     /// press position in WINDOW pixels; `additive`/`toggle` capture the
     /// modifiers held at press time (Shift adds, Ctrl toggles).
@@ -631,7 +636,9 @@ pub fn pick_2d_system(
             })
             .collect();
         drag.entity = Some(entity);
-        drag.mode = DragMode::Move;
+        drag.mode = DragMode::Move {
+            grab_world: cursor_world,
+        };
     } else {
         // Empty space: arm the rubber band. Selection is intentionally left
         // alone until release — a no-drag release clears it (plain click),
@@ -657,12 +664,13 @@ fn snap_to_grid(value: f32, grid: f32) -> f32 {
     }
 }
 
-/// Execute the active drag: Move snaps `Transform.translation` to
+/// Execute the active drag: Move sets `Transform.translation` to
 /// `cursor_world + offset`; Resize recomputes size + translation from the
 /// captured local bounds and the cursor mapped into the sprite's frame;
 /// Rotate turns the entity to follow the cursor's polar angle. When the
-/// viewport's translate-snap toggle is on, Move snaps to its grid step so
-/// sprites land on whole pixel / tile boundaries; Rotate snaps to the rotate
+/// viewport's translate-snap toggle is on, Move quantizes the cursor's
+/// travel since grab to the grid step, so entities step in whole grid
+/// increments and keep their original alignment; Rotate snaps to the rotate
 /// step (or 15° with Shift). Releases drag when the mouse button is released
 /// or the cursor leaves the viewport.
 pub fn drag_move_2d_system(
@@ -712,24 +720,28 @@ pub fn drag_move_2d_system(
 
     match drag.mode {
         DragMode::None | DragMode::BoxSelect { .. } => {}
-        DragMode::Move => {
+        DragMode::Move { grab_world } => {
             // Group move: every selected entity follows the cursor with the
             // offset it was grabbed at, so the formation stays rigid. Snap
-            // applies per entity — tiles land on the grid individually.
+            // quantizes the delta travelled since grab — not the absolute
+            // position — so an entity moves in whole grid steps from where
+            // it started and keeps its phase on the grid. (Tiles are
+            // centre-anchored sprites at cell centres — multiples of the
+            // tile size PLUS half a tile — so snapping the absolute centre
+            // used to shove an aligned tile half a cell off on grab.)
+            let mut delta = cursor_world - grab_world;
+            if let Some(s) = settings.as_deref() {
+                if s.snap.translate_enabled {
+                    delta.x = snap_to_grid(delta.x, s.snap.translate_snap);
+                    delta.y = snap_to_grid(delta.y, s.snap.translate_snap);
+                }
+            }
             for (e, offset) in drag.move_set.clone() {
                 let Ok(mut tr) = transforms.get_mut(e) else {
                     continue;
                 };
-                let mut new_x = cursor_world.x + offset.x;
-                let mut new_y = cursor_world.y + offset.y;
-                if let Some(s) = settings.as_deref() {
-                    if s.snap.translate_enabled {
-                        new_x = snap_to_grid(new_x, s.snap.translate_snap);
-                        new_y = snap_to_grid(new_y, s.snap.translate_snap);
-                    }
-                }
-                tr.translation.x = new_x;
-                tr.translation.y = new_y;
+                tr.translation.x = grab_world.x + offset.x + delta.x;
+                tr.translation.y = grab_world.y + offset.y + delta.y;
             }
         }
         DragMode::Resize {
@@ -995,7 +1007,7 @@ pub fn update_cursor_2d(
         // pointer — a fast drag routinely outruns the handle.
         if let Some(drag) = drag.as_deref() {
             match drag.mode {
-                DragMode::Move => {
+                DragMode::Move { .. } => {
                     cursor_icon = Some(SystemCursorIcon::Move);
                     break 'resolve;
                 }
