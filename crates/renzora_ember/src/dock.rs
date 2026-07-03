@@ -261,6 +261,32 @@ impl DockTree {
         }
     }
 
+    /// Merge several tabs into the leaf containing `sibling`, in order, at
+    /// `before` (append when `None`). Group-drag counterpart of
+    /// [`Self::add_tab_before`]; the first inserted tab becomes active.
+    pub fn add_tabs_before(
+        &mut self,
+        sibling: &str,
+        new_tabs: &[String],
+        before: Option<&str>,
+    ) -> bool {
+        if let Some(DockTree::Leaf { tabs, active_tab }) = self.find_leaf_mut(sibling) {
+            let idx = before
+                .and_then(|b| tabs.iter().position(|t| t == b))
+                .unwrap_or(tabs.len())
+                .min(tabs.len());
+            for (n, t) in new_tabs.iter().enumerate() {
+                tabs.insert(idx + n, t.clone());
+            }
+            if !new_tabs.is_empty() {
+                *active_tab = idx;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
     /// Remove a panel from the tree, collapsing any emptied leaves/splits.
     pub fn remove_panel(&mut self, panel: &str) -> bool {
         let removed = match self {
@@ -330,6 +356,60 @@ impl DockTree {
         }
     }
 
+    /// Split the leaf containing `target`, placing an arbitrary `subtree` on
+    /// the given side. Group-drag counterpart of [`Self::split_at`] — the
+    /// dragged leaf's whole tab set moves as one unit.
+    pub fn split_at_with(&mut self, target: &str, subtree: DockTree, zone: DropZone) -> bool {
+        if subtree.is_empty() {
+            return true;
+        }
+        if let Some(leaf) = self.find_leaf_mut(target) {
+            let old = std::mem::replace(leaf, DockTree::Empty);
+            *leaf = match zone {
+                DropZone::Left => DockTree::horizontal(subtree, old, 0.5),
+                DropZone::Right => DockTree::horizontal(old, subtree, 0.5),
+                DropZone::Top => DockTree::vertical(subtree, old, 0.5),
+                DropZone::Bottom => DockTree::vertical(old, subtree, 0.5),
+                DropZone::Center => {
+                    *leaf = old;
+                    return false;
+                }
+            };
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Root-edge split with an arbitrary `subtree` — group-drag counterpart of
+    /// [`Self::split_root`]. `Center` merges the subtree's tabs into the tree
+    /// (adopting each panel) since a root center-drop has no side to take.
+    pub fn split_root_with(&mut self, subtree: DockTree, zone: DropZone) {
+        if subtree.is_empty() {
+            return;
+        }
+        if self.is_empty() {
+            *self = subtree;
+            return;
+        }
+        if matches!(zone, DropZone::Center) {
+            let mut ids = Vec::new();
+            subtree.collect_panels(&mut ids);
+            for id in ids {
+                self.adopt_panel(&id);
+            }
+            return;
+        }
+        let old = std::mem::replace(self, DockTree::Empty);
+        *self = match zone {
+            DropZone::Left => DockTree::horizontal(subtree, old, ROOT_DOCK_RATIO),
+            DropZone::Right => DockTree::horizontal(old, subtree, 1.0 - ROOT_DOCK_RATIO),
+            DropZone::Top => DockTree::vertical(subtree, old, ROOT_DOCK_RATIO),
+            DropZone::Bottom => DockTree::vertical(old, subtree, 1.0 - ROOT_DOCK_RATIO),
+            DropZone::Center => unreachable!(),
+        };
+    }
+
     /// Split the WHOLE tree against one edge: the new panel gets a full-height
     /// column (`Left`/`Right`) or full-width row (`Top`/`Bottom`) spanning the
     /// entire dock, regardless of the existing split structure. This is the
@@ -353,6 +433,56 @@ impl DockTree {
             DropZone::Bottom => DockTree::vertical(old, new_leaf, 1.0 - ROOT_DOCK_RATIO),
             DropZone::Center => unreachable!(),
         };
+    }
+
+    /// Detach the tree's bottom region: when the root is a vertical split,
+    /// remove and return its bottom child plus the split's ratio (the top
+    /// share, so a re-attach restores the exact height). `None` when the root
+    /// has no bottom region. Inverse of [`Self::attach_bottom`] — the editor's
+    /// collapsible bottom panel stashes the subtree this returns.
+    pub fn detach_bottom(&mut self) -> Option<(DockTree, f32)> {
+        let DockTree::Split {
+            direction: SplitDirection::Vertical,
+            ratio,
+            first,
+            second,
+        } = self
+        else {
+            return None;
+        };
+        let r = *ratio;
+        let bottom = std::mem::replace(&mut **second, DockTree::Empty);
+        *self = std::mem::replace(&mut **first, DockTree::Empty);
+        Some((bottom, r))
+    }
+
+    /// Re-attach `bottom` as a full-width bottom region under the whole tree,
+    /// giving the existing content `ratio` of the space. Inverse of
+    /// [`Self::detach_bottom`]. No-op for an empty `bottom`; an empty tree just
+    /// becomes `bottom`.
+    pub fn attach_bottom(&mut self, bottom: DockTree, ratio: f32) {
+        if bottom.is_empty() {
+            return;
+        }
+        if self.is_empty() {
+            *self = bottom;
+            return;
+        }
+        let old = std::mem::replace(self, DockTree::Empty);
+        *self = DockTree::vertical(old, bottom, ratio);
+    }
+
+    /// Remove and return the whole leaf containing `panel` — tab set and active
+    /// tab intact — collapsing the split it leaves behind. Unlike
+    /// [`Self::remove_panel`] (one tab), this moves a leaf wholesale, so a
+    /// multi-tab strip survives being stashed and re-attached as one unit.
+    pub fn take_leaf_containing(&mut self, panel: &str) -> Option<DockTree> {
+        let taken = {
+            let leaf = self.find_leaf_mut(panel)?;
+            std::mem::replace(leaf, DockTree::Empty)
+        };
+        self.cleanup_empty();
+        Some(taken)
     }
 }
 
@@ -388,6 +518,8 @@ impl Plugin for DockPlugin {
             .init_resource::<FocusPanelRequest>()
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
+            .init_resource::<BottomSnapRequest>()
+            .init_resource::<GrabRootDivider>()
             .init_resource::<TabDrag>()
             .init_resource::<DockDragWatch>()
             .init_resource::<crate::font::FontRegistry>()
@@ -430,6 +562,7 @@ impl Plugin for DockPlugin {
                     float_window_controls,
                     tab_grip_hover,
                     tab_context_menu,
+                    bottom_collapse_click,
                 ),
             )
             // In PostUpdate, before `camera_system` evaluates render targets: a
@@ -766,7 +899,52 @@ struct Divider {
     /// The dock area this divider's split belongs to — routes the ratio
     /// persist to the right tree (primary vs a floating window's).
     area: Entity,
+    /// True in a floating dock window — those never publish
+    /// [`BottomSnapRequest`] (the snap-closed gesture is a primary-dock
+    /// bottom-panel affair).
+    floating: bool,
 }
+
+/// Published when the user drags the PRIMARY area's root **vertical** divider
+/// hard down — past the ratio clamp, squeezing the bottom pane under
+/// [`BOTTOM_SNAP_PX`] — or clicks the bottom region's collapse chevron. The
+/// dock itself can't collapse anything (the bottom-panel stash is
+/// editor-shell state), so it hands the intent to the consumer via this
+/// seam; the payload is the pre-gesture ratio, so reopening can restore the
+/// height the panel had. Mirrors [`DockDragWatch`]'s outside-consumer
+/// pattern.
+#[derive(Resource, Default)]
+pub struct BottomSnapRequest(pub Option<f32>);
+
+/// Set by an outside consumer right after it re-attaches the bottom region
+/// while the mouse button is still held (the shell's "drag the collapsed
+/// strip open" gesture): once the rebuilt tree's primary root divider
+/// exists, [`divider_drag`] adopts it as the live drag, so the just-reopened
+/// panel keeps sizing under the held cursor. Cleared on adoption or when the
+/// button is released.
+#[derive(Resource, Default)]
+pub struct GrabRootDivider(pub bool);
+
+/// The collapse chevron at the right end of the bottom region's tab bar:
+/// clicking publishes [`BottomSnapRequest`] with the current root ratio so
+/// the consumer collapses the region (and reopening restores this height).
+#[derive(Component)]
+struct BottomCollapseBtn;
+
+/// The whole-leaf drag handle at the far left of a tab bar: dragging it
+/// moves the leaf's entire tab set as one unit — same drop zones as a
+/// single-tab drag, but the drop inserts the whole leaf (see the `group`
+/// paths in [`tab_drag`]).
+#[derive(Component)]
+struct LeafGrip {
+    leaf: Entity,
+}
+
+/// Snap threshold for [`BottomSnapRequest`]: the second pane's would-be
+/// height in physical px below which a root-divider drag reads as "close it".
+/// The ratio clamp already floors the pane at 10% of the area, so reaching
+/// this takes a deliberate overshoot well past where the divider stops.
+const BOTTOM_SNAP_PX: f32 = 48.0;
 
 /// Info passed to a leaf so its tab-bar empty area can act as a secondary
 /// resize handle for the parent split's boundary ("more to grip").
@@ -821,6 +999,10 @@ pub struct DockDragWatch {
 struct TabDragState {
     id: String,
     leaf: Entity,
+    /// True when the drag started on the leaf's [`LeafGrip`]: the whole tab
+    /// set moves as one unit instead of just `id` (which is then the leaf's
+    /// active tab, used for the ghost and target resolution).
+    group: bool,
     /// The dock area the drag started in — the tree the panel is removed from.
     source_area: Entity,
     /// The OS window hosting `source_area`. During the drag this window holds
@@ -987,13 +1169,39 @@ fn divider_drag(
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
     mut wins: ResMut<DockWindows>,
+    mut snap: ResMut<BottomSnapRequest>,
+    mut grab: ResMut<GrabRootDivider>,
 ) {
     if mouse.just_released(MouseButton::Left) {
         dragged.0 = None;
+        grab.0 = false;
     }
     let Some(cursor) = cursor.pos else {
         return;
     };
+
+    // Adopt a consumer-initiated grab (the shell's drag-the-collapsed-strip-
+    // open gesture): the mouse is already held, so take the primary root
+    // vertical divider as the live drag the moment the rebuilt tree provides
+    // it — no press on the handle needed.
+    if grab.0 && dragged.0.is_none() && mouse.pressed(MouseButton::Left) {
+        if let Some((entity, _, div)) = dividers
+            .iter()
+            .find(|(_, _, d)| !d.floating && !d.horizontal && d.path.is_empty())
+        {
+            let start_ratio = nodes
+                .get(div.first_wrap)
+                .ok()
+                .and_then(|n| as_ratio(n.height))
+                .unwrap_or(0.5);
+            dragged.0 = Some(DividerDrag {
+                handle: entity,
+                start_cursor: cursor,
+                start_ratio,
+            });
+            grab.0 = false;
+        }
+    }
 
     if dragged.0.is_none() {
         if !mouse.just_pressed(MouseButton::Left) {
@@ -1041,7 +1249,18 @@ fn divider_drag(
     } else {
         cursor.y - drag.start_cursor.y
     };
-    let ratio = (drag.start_ratio + moved / extent).clamp(0.1, 0.9);
+    let raw = drag.start_ratio + moved / extent;
+    // Snap-closed gesture: overshooting the primary root vertical divider far
+    // enough that the bottom pane would drop under the threshold ends the
+    // drag and asks the consumer (the shell's bottom panel) to collapse the
+    // region — the clamp below would otherwise just pin the pane at 10%.
+    if !div.horizontal && !div.floating && div.path.is_empty() && (1.0 - raw) * extent < BOTTOM_SNAP_PX
+    {
+        snap.0 = Some(drag.start_ratio);
+        dragged.0 = None;
+        return;
+    }
+    let ratio = raw.clamp(0.1, 0.9);
 
     let first_wrap = div.first_wrap;
     let horizontal = div.horizontal;
@@ -1084,6 +1303,7 @@ fn tab_drag(
     windows: Query<&Window>,
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
     tabs: Query<(Entity, &Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
+    grips: Query<(&Interaction, &LeafGrip)>,
     tabbars: Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
     mut leaves: Query<(
         Entity,
@@ -1116,36 +1336,53 @@ fn tab_drag(
     let (mut dock, mut dirty, mut wins, mut requests, mut close_queue) = model;
 
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
-        for (_, interaction, tab, _) in &tabs {
-            if *interaction == Interaction::Pressed {
-                let Ok((_, ld, ..)) = leaves.get(tab.leaf) else {
-                    continue;
+        // A grip press outranks a tab press (the grip sits inside the bar but
+        // not inside a tab, so both can't be Pressed at once anyway).
+        let pressed = grips
+            .iter()
+            .find(|(i, _)| **i == Interaction::Pressed)
+            .and_then(|(_, grip)| {
+                let (_, ld, ..) = leaves.get(grip.leaf).ok()?;
+                // Drag the whole tab set; `id` is the active tab (or the
+                // first) — it stands in for the leaf in target resolution.
+                let id = if ld.tabs.iter().any(|t| t == &ld.active) {
+                    ld.active.clone()
+                } else {
+                    ld.tabs.first()?.clone()
                 };
+                Some((id, grip.leaf, true))
+            })
+            .or_else(|| {
+                tabs.iter()
+                    .find(|(_, i, ..)| **i == Interaction::Pressed)
+                    .map(|(_, _, tab, _)| (tab.id.clone(), tab.leaf, false))
+            });
+        if let Some((id, leaf_e, group)) = pressed {
+            if let Ok((_, ld, ..)) = leaves.get(leaf_e) {
                 let source_area = ld.area;
-                let Some(source_window) = area_window(source_area, &wins, primary.single().ok())
-                else {
-                    continue;
-                };
-                let Some(cur) = windows
-                    .get(source_window)
-                    .ok()
-                    .and_then(|w| w.cursor_position())
-                else {
-                    continue;
-                };
-                drag.0 = Some(TabDragState {
-                    id: tab.id.clone(),
-                    leaf: tab.leaf,
-                    source_area,
-                    source_window,
-                    start_cursor: cur,
-                    active: false,
-                    action: None,
-                    ghost: None,
-                    shown_overlay: None,
-                    shown_marker: None,
-                });
-                break;
+                if let Some(source_window) =
+                    area_window(source_area, &wins, primary.single().ok())
+                {
+                    if let Some(cur) = windows
+                        .get(source_window)
+                        .ok()
+                        .and_then(|w| w.cursor_position())
+                    {
+                        drag.0 = Some(TabDragState {
+                            id,
+                            leaf: leaf_e,
+                            group,
+                            source_area,
+                            source_window,
+                            start_cursor: cur,
+                            active: false,
+                            action: None,
+                            ghost: None,
+                            shown_overlay: None,
+                            shown_marker: None,
+                        });
+                    }
+                }
             }
         }
     }
@@ -1172,6 +1409,31 @@ fn tab_drag(
                 if let Some(action) = state.action {
                     let target_area = action.area();
                     let same_area = target_area == state.source_area;
+                    // Group drag: take the WHOLE leaf out (tab set + active
+                    // index travel together) and insert it per the action.
+                    // Target resolution never offers the source leaf itself
+                    // (see the `group` skips below), so the take can't
+                    // invalidate the drop target.
+                    if state.group {
+                        let taken = area_tree_mut(state.source_area, &mut dock, &mut wins)
+                            .take_leaf_containing(&state.id);
+                        if let Some(leaf_tree) = taken {
+                            let target = area_tree_mut(target_area, &mut dock, &mut wins);
+                            insert_leaf_action(target, leaf_tree, &action);
+                            flag_area_dirty(target_area, &mut dirty, &mut wins);
+                            if !same_area {
+                                flag_area_dirty(state.source_area, &mut dirty, &mut wins);
+                                close_empty_dock_window(
+                                    state.source_area,
+                                    &wins,
+                                    &mut close_queue,
+                                );
+                            }
+                        }
+                        watch.dragging = None;
+                        watch.claim = false;
+                        return;
+                    }
                     // A reorder within the same leaf only changes tab order, not
                     // structure — do it in place (move the tab entity) instead of
                     // rebuilding the dock subtree, which avoids the layout flicker.
@@ -1234,7 +1496,7 @@ fn tab_drag(
                         }
                     }
                 }
-            } else {
+            } else if !state.group {
                 pending.0 = Some((state.leaf, state.id));
             }
         }
@@ -1261,8 +1523,12 @@ fn tab_drag(
             return;
         }
         // Ctrl+drag: tear the panel off into a floating OS window that follows
-        // the cursor until release, instead of a re-dock drag.
-        if keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight) {
+        // the cursor until release, instead of a re-dock drag. Not for group
+        // drags — floating windows are chromeless single-panel hosts, so a
+        // whole tab set torn off would leave its background tabs unreachable.
+        if !state.group
+            && (keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight))
+        {
             let id = state.id.clone();
             let scale = windows
                 .get(state.source_window)
@@ -1285,8 +1551,12 @@ fn tab_drag(
         }
         state.active = true;
         // Publish the dragged panel id so external drop targets (the workspace
-        // ribbon) can react while the drag is in flight.
-        watch.dragging = Some(state.id.clone());
+        // ribbon) can react while the drag is in flight. Group drags don't
+        // publish — the ribbon's claim moves a single panel, which would tear
+        // the group apart.
+        if !state.group {
+            watch.dragging = Some(state.id.clone());
+        }
         if let Some(fonts) = &fonts {
             // A drag from a floating window renders its ghost on that window's
             // camera (a root node with no target lands on the primary window).
@@ -1295,7 +1565,16 @@ fn tab_drag(
                 .iter()
                 .find(|s| s.area == state.source_area)
                 .map(|s| s.camera);
-            state.ghost = Some(spawn_ghost(&mut commands, &fonts.ui, &state.id, cur, camera));
+            // Group ghosts show how many background tabs ride along.
+            let extra = if state.group {
+                leaves
+                    .get(state.leaf)
+                    .map(|(_, ld, ..)| ld.tabs.len().saturating_sub(1))
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            state.ghost = Some(spawn_ghost(&mut commands, &fonts.ui, &state.id, extra, cur, camera));
         }
     }
 
@@ -1354,7 +1633,11 @@ fn tab_drag(
         {
             action = Some(DropAction::RootSplit { area: area_e, zone });
             new_overlay = Some((overlay, zone, true));
-        } else if let Some(leaf_ent) = over_bar {
+        } else if let Some(leaf_ent) =
+            // A group drag can't drop on its own bar — the "target" is the
+            // very leaf being moved.
+            over_bar.filter(|e| !(state.group && *e == state.leaf))
+        {
             if let Some((_, ld, ..)) = leaves.iter().find(|(e, ..)| *e == leaf_ent) {
                 let mut before: Option<String> = None;
                 let mut marker: Option<(Entity, bool)> = None;
@@ -1392,8 +1675,13 @@ fn tab_drag(
             action = Some(DropAction::RootSplit { area: area_e, zone });
             new_overlay = Some((overlay, zone, true));
         } else {
-            for (_, ld, rcp, ..) in &leaves {
+            for (leaf_e, ld, rcp, ..) in &leaves {
                 if rcp.cursor_over {
+                    // A group drag over its own leaf has no valid zone —
+                    // splitting a leaf against itself is a no-op at best.
+                    if state.group && leaf_e == state.leaf {
+                        break;
+                    }
                     if let Some(norm) = rcp.normalized {
                         let (x, y) = (norm.x + 0.5, norm.y + 0.5);
                         let zone = pick_zone(x, y);
@@ -1514,10 +1802,15 @@ fn spawn_ghost(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     id: &str,
+    extra: usize,
     cursor: Vec2,
     camera: Option<Entity>,
 ) -> Entity {
-    let (title, icon) = tab_meta(id);
+    let (mut title, icon) = tab_meta(id);
+    // A whole-leaf drag: show how many background tabs travel with it.
+    if extra > 0 {
+        title = format!("{title} +{extra}");
+    }
     let ghost = commands
         .spawn((
             Node {
@@ -1560,11 +1853,16 @@ fn spawn_ghost(
 /// top edge. Inside a corner, the nearer edge wins: closer to the side →
 /// full-height column, closer to the top/bottom → full-width row.
 const ROOT_CORNER_PX: f32 = 48.0;
-/// Thin bands along the dock's left/right/bottom edges that also root-dock
-/// (lower priority than tab bars). No top band: the topmost tab bars line
-/// that edge and tab drops there are far more common — the top corners still
-/// give access to a full-width top dock.
+/// Thin bands along the dock's left/right edges that also root-dock (lower
+/// priority than tab bars). No top band: the topmost tab bars line that edge
+/// and tab drops there are far more common — the top corners still give
+/// access to a full-width top dock.
 const ROOT_EDGE_BAND_PX: f32 = 16.0;
+/// The bottom band is much taller than the side bands: "drag it to the bottom"
+/// is the gesture that docks a panel (or a torn-off floating window) into the
+/// full-width bottom panel, so it must be an easy target — nothing else
+/// competes for the dock's bottom edge the way tab bars compete for the top.
+const ROOT_BOTTOM_BAND_PX: f32 = 48.0;
 
 /// Root edge/corner hit-test over the whole dock area. `(x, y)` is the cursor
 /// in dock-local logical px, `size` the dock's logical size. Returns the root
@@ -1586,7 +1884,7 @@ fn pick_root_zone(x: f32, y: f32, size: Vec2) -> Option<(DropZone, bool)> {
     if dx <= ROOT_EDGE_BAND_PX {
         return Some((zone_x, false));
     }
-    if dy <= ROOT_EDGE_BAND_PX && matches!(zone_y, DropZone::Bottom) {
+    if dy <= ROOT_BOTTOM_BAND_PX && matches!(zone_y, DropZone::Bottom) {
         return Some((zone_y, false));
     }
     None
@@ -1666,6 +1964,39 @@ fn insert_action(tree: &mut DockTree, dragged: &str, action: &DropAction) {
             if rep == dragged || !tree.add_tab_before(rep, dragged.to_string(), before.as_deref())
             {
                 tree.adopt_panel(dragged);
+            }
+        }
+    }
+}
+
+/// Insert a whole dragged leaf (`leaf_tree`) into `tree` per `action` — the
+/// group-drag counterpart of [`insert_action`]. Total in the same way: if the
+/// stated sibling can't take the subtree, every panel in it is adopted
+/// somewhere in the tree rather than silently dropped.
+fn insert_leaf_action(tree: &mut DockTree, leaf_tree: DockTree, action: &DropAction) {
+    let adopt_all = |tree: &mut DockTree, sub: &DockTree| {
+        let mut ids = Vec::new();
+        sub.collect_panels(&mut ids);
+        for id in ids {
+            tree.adopt_panel(&id);
+        }
+    };
+    match action {
+        DropAction::Split { rep, zone, .. } => {
+            if !tree.split_at_with(rep, leaf_tree.clone(), *zone) {
+                adopt_all(tree, &leaf_tree);
+            }
+        }
+        DropAction::RootSplit { zone, .. } => tree.split_root_with(leaf_tree, *zone),
+        DropAction::Tab { rep, before, .. } => {
+            let merged = match &leaf_tree {
+                DockTree::Leaf { tabs, .. } => {
+                    tree.add_tabs_before(rep, tabs, before.as_deref())
+                }
+                _ => false,
+            };
+            if !merged {
+                adopt_all(tree, &leaf_tree);
             }
         }
     }
@@ -2693,6 +3024,29 @@ fn tab_close_click(
     }
 }
 
+/// Click the bottom region's collapse chevron → publish [`BottomSnapRequest`]
+/// with the current root ratio, so the consumer (the shell's bottom panel)
+/// collapses the region and a reopen restores this exact height.
+fn bottom_collapse_click(
+    q: Query<&Interaction, (With<BottomCollapseBtn>, Changed<Interaction>)>,
+    dock: Res<Dock>,
+    mut snap: ResMut<BottomSnapRequest>,
+) {
+    for interaction in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if let DockTree::Split {
+            direction: SplitDirection::Vertical,
+            ratio,
+            ..
+        } = &dock.tree
+        {
+            snap.0 = Some(*ratio);
+        }
+    }
+}
+
 // ── Reconciler ───────────────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
@@ -2829,6 +3183,7 @@ fn build_tree(
                         horizontal: row,
                         path: path.clone(),
                         area,
+                        floating,
                     },
                     Name::new("divider-handle"),
                 ))
@@ -3223,6 +3578,29 @@ fn populate_leaf(
             .id();
 
         let mut bar_kids: Vec<Entity> = Vec::new();
+        // Whole-leaf drag handle at the far left of the bar: grab it to move
+        // the leaf's entire tab set as one unit (see [`LeafGrip`]).
+        let leaf_grip_icon =
+            icon_text(commands, phosphor, "dots-six-vertical", text_muted(), 12.0);
+        let leaf_grip = commands
+            .spawn((
+                Node {
+                    height: Val::Percent(100.0),
+                    width: Val::Px(14.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
+                LeafGrip { leaf },
+                Name::new("leaf-grip"),
+            ))
+            .id();
+        commands.entity(leaf_grip).add_child(leaf_grip_icon);
+        bar_kids.push(leaf_grip);
         for (i, id) in tabs.iter().enumerate() {
             let is_active = i == active;
             let fg = if is_active { text_primary() } else { text_muted() };
@@ -3350,6 +3728,13 @@ fn populate_leaf(
                 Name::new("tabbar-filler"),
             ))
             .id();
+        // Is this leaf the primary dock's whole bottom region (root vertical
+        // split, second child)? Those get a collapse chevron at the bar's
+        // right end — the click mirror of Ctrl+Space / the divider snap.
+        let is_root_bottom = !floating
+            && parent
+                .as_ref()
+                .is_some_and(|p| p.path.is_empty() && !p.horizontal && p.is_second);
         if let Some(p) = parent.filter(|p| p.aligned()) {
             let cursor = crate::cursor_icon::parse_cursor(if p.horizontal {
                 "ew-resize"
@@ -3366,10 +3751,33 @@ fn populate_leaf(
                     horizontal: p.horizontal,
                     path: p.path,
                     area,
+                    floating,
                 },
             ));
         }
         bar_kids.push(filler);
+        if is_root_bottom {
+            let chev = icon_text(commands, phosphor, "caret-down", text_muted(), 13.0);
+            let btn = commands
+                .spawn((
+                    Node {
+                        height: Val::Percent(100.0),
+                        width: Val::Px(24.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Interaction::default(),
+                    crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                    BottomCollapseBtn,
+                    Name::new("bottom-collapse"),
+                ))
+                .id();
+            commands.entity(btn).add_child(chev);
+            bar_kids.push(btn);
+        }
         commands.entity(tabbar).add_children(&bar_kids);
         Some(tabbar)
     };
@@ -3433,5 +3841,122 @@ fn populate_leaf(
         None => {
             commands.entity(leaf).add_children(&[content, overlay]);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The editor's bottom-panel toggle round-trips the bottom region through
+    /// detach + attach; the stash must come back bit-identical (tabs, active
+    /// tab, ratio) or a closed panel would reopen subtly rearranged.
+    #[test]
+    fn detach_attach_bottom_round_trips() {
+        let mut tree = DockTree::vertical(
+            DockTree::tabs(&["viewport", "code"]),
+            DockTree::tabs(&["assets", "console"]),
+            0.72,
+        );
+        let (bottom, ratio) = tree.detach_bottom().expect("root vertical split");
+        assert!(matches!(&tree, DockTree::Leaf { tabs, .. } if tabs == &["viewport", "code"]));
+        assert!(matches!(&bottom, DockTree::Leaf { tabs, .. } if tabs == &["assets", "console"]));
+        assert_eq!(ratio, 0.72);
+
+        tree.attach_bottom(bottom, ratio);
+        let DockTree::Split {
+            direction: SplitDirection::Vertical,
+            ratio,
+            second,
+            ..
+        } = &tree
+        else {
+            panic!("expected root vertical split after attach");
+        };
+        assert_eq!(*ratio, 0.72);
+        assert!(second.contains_panel("assets") && second.contains_panel("console"));
+    }
+
+    #[test]
+    fn detach_bottom_requires_vertical_root() {
+        let mut tree = DockTree::horizontal(DockTree::leaf("a"), DockTree::leaf("b"), 0.5);
+        assert!(tree.detach_bottom().is_none());
+        assert!(tree.contains_panel("a") && tree.contains_panel("b"));
+    }
+
+    /// Taking a leaf must move its whole tab set as one unit and collapse the
+    /// split it vacates (no `Empty` husk left for the reconciler).
+    #[test]
+    fn take_leaf_containing_moves_whole_leaf() {
+        let mut tree = DockTree::horizontal(
+            DockTree::leaf("viewport"),
+            DockTree::tabs(&["assets", "console", "mixer"]),
+            0.7,
+        );
+        let leaf = tree.take_leaf_containing("console").expect("leaf exists");
+        assert!(
+            matches!(&leaf, DockTree::Leaf { tabs, .. } if tabs == &["assets", "console", "mixer"])
+        );
+        assert!(matches!(&tree, DockTree::Leaf { tabs, .. } if tabs == &["viewport"]));
+        assert!(tree.take_leaf_containing("nonexistent").is_none());
+    }
+
+    /// The group-drag insert: splitting a leaf with a whole taken subtree
+    /// keeps the subtree's tab set (and active tab) intact.
+    #[test]
+    fn split_at_with_moves_group_intact() {
+        let mut tree = DockTree::horizontal(
+            DockTree::leaf("viewport"),
+            DockTree::tabs(&["hierarchy", "scenes", "shapes"]),
+            0.7,
+        );
+        let group = tree.take_leaf_containing("scenes").expect("leaf exists");
+        assert!(tree.split_at_with("viewport", group, DropZone::Bottom));
+        let DockTree::Split { second, .. } = &tree else {
+            panic!("expected split at root");
+        };
+        assert!(
+            matches!(&**second, DockTree::Leaf { tabs, .. } if tabs == &["hierarchy", "scenes", "shapes"])
+        );
+        // Center is not a split; the caller falls back to a tab merge.
+        let group2 = DockTree::tabs(&["a", "b"]);
+        assert!(!tree.split_at_with("viewport", group2, DropZone::Center));
+    }
+
+    /// A group Tab-drop merges every dragged tab into the target leaf at the
+    /// insertion point, in order, and activates the first.
+    #[test]
+    fn add_tabs_before_merges_group() {
+        let mut tree = DockTree::tabs(&["viewport", "code"]);
+        let dragged = ["hierarchy".to_string(), "scenes".to_string()];
+        assert!(tree.add_tabs_before("viewport", &dragged, Some("code")));
+        assert!(
+            matches!(&tree, DockTree::Leaf { tabs, active_tab: 1, .. }
+                if tabs == &["viewport", "hierarchy", "scenes", "code"])
+        );
+        assert!(!tree.add_tabs_before("nonexistent", &dragged, None));
+    }
+
+    /// A group root-edge drop rails the whole subtree against the dock edge;
+    /// a Center root drop (no side to take) adopts each panel instead.
+    #[test]
+    fn split_root_with_rails_group() {
+        let mut tree = DockTree::leaf("viewport");
+        tree.split_root_with(DockTree::tabs(&["assets", "console"]), DropZone::Bottom);
+        let DockTree::Split {
+            direction: SplitDirection::Vertical,
+            second,
+            ..
+        } = &tree
+        else {
+            panic!("expected root vertical split");
+        };
+        assert!(
+            matches!(&**second, DockTree::Leaf { tabs, .. } if tabs == &["assets", "console"])
+        );
+
+        let mut center = DockTree::leaf("viewport");
+        center.split_root_with(DockTree::tabs(&["a", "b"]), DropZone::Center);
+        assert!(center.contains_panel("a") && center.contains_panel("b"));
     }
 }

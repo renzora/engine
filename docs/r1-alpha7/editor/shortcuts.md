@@ -131,7 +131,7 @@ Mouse picking happens in the viewport; the keyboard handles the rest.
 | `Alt+Z` | Toggle wireframe |
 | `Alt+Shift+Z` | Toggle lighting |
 | `Ctrl+G` | Toggle grid |
-| `` Ctrl+` `` | Toggle bottom panel |
+| `Ctrl+Space` | Toggle bottom panel |
 | `T` | Toggle snap |
 | `Shift+T` | Toggle edge snap |
 | `Alt+T` | Toggle scale-from-bottom |
@@ -147,7 +147,7 @@ Mouse picking happens in the viewport; the keyboard handles the rest.
 
 ## Code editor
 
-These apply when the **Code** panel has keyboard focus (category "Code Editor"). Several reuse chords that mean something else in the viewport (`Ctrl+S`, `Ctrl+G`, `Ctrl+D`) — focus decides which action fires.
+These apply when the **Code** panel has keyboard focus (category "Code Editor"). Several reuse chords that mean something else in the viewport (`Ctrl+S`, `Ctrl+G`, `Ctrl+D`, `Ctrl+Space`) — focus decides which action fires.
 
 | Key | Action |
 |---|---|

@@ -8,7 +8,58 @@
 
 pub use renzora_ember::dock::{DockTree, DropZone, SplitDirection};
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+
+// ── Collapsible bottom panel ───────────────────────────────────────────────────
+
+/// One workspace's stashed bottom region while its bottom panel is closed: the
+/// detached subtree plus the root split ratio (top share) that restores its
+/// height on reopen. The panels inside a closed bottom panel exist *only* here
+/// — not in the workspace's tree — so this must persist with the layout or a
+/// save-while-closed would drop them.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ClosedBottom {
+    pub tree: DockTree,
+    pub ratio: f32,
+}
+
+/// Fallback reopen ratio when a stash has no recorded one (legacy strips that
+/// never lived in a root split). Matches the default scene layout.
+pub const BOTTOM_PANEL_RATIO: f32 = 0.72;
+
+/// Does `tree`'s root have a bottom region holding the classic bottom-strip
+/// panels (assets/console) — the shipped Scene default? Startup collapses only
+/// these; a workspace whose bottom region is something else (Animation's
+/// timeline) keeps it open until the user toggles it themselves.
+pub fn has_bottom_strip(tree: &DockTree) -> bool {
+    matches!(
+        tree,
+        DockTree::Split { direction: SplitDirection::Vertical, second, .. }
+            if second.contains_panel("assets") || second.contains_panel("console")
+    )
+}
+
+/// Detach the classic strip from a layout saved before the strip became a root
+/// region (it sat nested under the viewport): the leaf tabbing `assets`
+/// together with `console`. Requiring both panels keeps this from grabbing a
+/// standalone assets or console leaf in other workspaces (Scripting docks each
+/// separately). Reopens at the default ratio — the nested split's ratio meant
+/// something else.
+pub fn take_legacy_bottom_strip(tree: &mut DockTree) -> Option<ClosedBottom> {
+    let legacy = matches!(
+        tree.find_leaf_mut("assets"),
+        Some(DockTree::Leaf { tabs, .. }) if tabs.iter().any(|t| t == "console")
+    );
+    legacy
+        .then(|| tree.take_leaf_containing("assets"))
+        .flatten()
+        .map(|t| ClosedBottom {
+            tree: t,
+            ratio: BOTTOM_PANEL_RATIO,
+        })
+}
 
 // ── Persistence ────────────────────────────────────────────────────────────────
 //
@@ -48,6 +99,10 @@ struct PersistedLayout {
     workspaces: Vec<PersistedWorkspace>,
     #[serde(default)]
     floating: Vec<FloatingLayout>,
+    /// Bottom-panel stashes for workspaces whose bottom panel is closed, keyed
+    /// by workspace name (see [`ClosedBottom`] for why these must persist).
+    #[serde(default)]
+    closed_bottoms: BTreeMap<String, ClosedBottom>,
 }
 
 /// Path to the persisted dock layout: `~/.renzora/layout.json`. Resolves the
@@ -61,10 +116,16 @@ fn layout_path() -> Option<std::path::PathBuf> {
     Some(home.join(".renzora").join("layout.json"))
 }
 
-/// Load the persisted workspaces + active index + floating windows, or `None`
-/// when the file is absent / unreadable / malformed (callers then fall back to
-/// the built-in [`workspace_layouts`]).
-pub fn load_dock_layouts() -> Option<(Vec<(String, DockTree)>, usize, Vec<FloatingLayout>)> {
+/// Load the persisted workspaces + active index + floating windows + closed
+/// bottom-panel stashes, or `None` when the file is absent / unreadable /
+/// malformed (callers then fall back to the built-in [`workspace_layouts`]).
+#[allow(clippy::type_complexity)]
+pub fn load_dock_layouts() -> Option<(
+    Vec<(String, DockTree)>,
+    usize,
+    Vec<FloatingLayout>,
+    BTreeMap<String, ClosedBottom>,
+)> {
     #[cfg(target_arch = "wasm32")]
     {
         None
@@ -82,7 +143,7 @@ pub fn load_dock_layouts() -> Option<(Vec<(String, DockTree)>, usize, Vec<Floati
             .map(|w| (w.name, w.tree))
             .collect::<Vec<_>>();
         let active = data.active.min(workspaces.len() - 1);
-        Some((workspaces, active, data.floating))
+        Some((workspaces, active, data.floating, data.closed_bottoms))
     }
 }
 
@@ -94,6 +155,7 @@ pub fn layout_json(
     workspaces: &[(String, DockTree)],
     active: usize,
     floating: &[FloatingLayout],
+    closed_bottoms: &BTreeMap<String, ClosedBottom>,
 ) -> Option<String> {
     let data = PersistedLayout {
         active,
@@ -105,6 +167,7 @@ pub fn layout_json(
             })
             .collect(),
         floating: floating.to_vec(),
+        closed_bottoms: closed_bottoms.clone(),
     };
     serde_json::to_string_pretty(&data).ok()
 }
@@ -294,32 +357,32 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Scene workspace: main area (viewport + bottom tabs) on the left, a right
-/// column stacking hierarchy/scenes/shapes over inspector/gamepad/history.
-///
-/// Mirrors `renzora_ui::layouts::scene_layout` so the bevy_ui shell renders the
-/// same default the egui editor ships.
+/// Scene workspace: viewport beside a right column (hierarchy/scenes/shapes
+/// over inspector/gamepad/history), with the assets/console strip as a
+/// full-width **root** bottom region — that placement is what makes it the
+/// collapsible bottom panel (hidden on launch, Ctrl+Space toggles it, and a
+/// panel dragged to the bottom edge snaps into it; see the shell's
+/// `toggle_bottom_panel`).
 pub fn scene_layout() -> DockTree {
-    DockTree::horizontal(
-        // Main area: viewport on top, assets/console/etc tabbed below.
-        DockTree::vertical(
+    DockTree::vertical(
+        DockTree::horizontal(
             DockTree::tabs(&["viewport", "code_editor"]),
-            DockTree::tabs(&[
-                "assets",
-                "hub_store",
-                "console",
-                "mixer",
-                "sequencer",
-                "timeline",
-            ]),
-            0.72,
+            // Right column: hierarchy/scenes/shapes on top, inspector/gamepad/history below.
+            DockTree::vertical(
+                DockTree::tabs(&["hierarchy", "scenes", "shape_library"]),
+                DockTree::tabs(&["inspector", "gamepad", "history"]),
+                0.4,
+            ),
+            0.82,
         ),
-        // Right column: hierarchy/scenes/shapes on top, inspector/gamepad/history below.
-        DockTree::vertical(
-            DockTree::tabs(&["hierarchy", "scenes", "shape_library"]),
-            DockTree::tabs(&["inspector", "gamepad", "history"]),
-            0.4,
-        ),
-        0.82,
+        DockTree::tabs(&[
+            "assets",
+            "hub_store",
+            "console",
+            "mixer",
+            "sequencer",
+            "timeline",
+        ]),
+        BOTTOM_PANEL_RATIO,
     )
 }

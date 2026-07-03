@@ -24,7 +24,8 @@ pub mod dock;
 mod about;
 mod plugin_install;
 
-use dock::DockTree;
+use dock::{ClosedBottom, DockTree};
+use renzora::core::keybindings::{EditorAction, KeyBindings};
 
 #[derive(Default)]
 pub struct ShellPlugin;
@@ -40,18 +41,42 @@ impl Plugin for ShellPlugin {
         // older saved set. (A workspace the user deliberately removed reappearing
         // is the accepted trade-off; the alternative hides new defaults.)
         let defaults = dock::workspace_layouts();
-        let (layouts, active, floating) = match dock::load_dock_layouts() {
-            Some((mut saved, active, floating)) => {
+        let (mut layouts, active, floating, mut closed_bottoms) = match dock::load_dock_layouts() {
+            Some((mut saved, active, floating, closed)) => {
                 for (name, tree) in defaults {
                     if !saved.iter().any(|(n, _)| n == &name) {
                         saved.push((name, tree));
                     }
                 }
                 let active = active.min(saved.len().saturating_sub(1));
-                (saved, active, floating)
+                (saved, active, floating, closed)
             }
-            None => (defaults, 0, Vec::new()),
+            None => (defaults, 0, Vec::new(), Default::default()),
         };
+        // The bottom panel starts closed: stash each workspace's bottom strip
+        // (the assets/console row) out of its tree so every launch begins
+        // without it — Ctrl+Space brings it back (`toggle_bottom_panel`). A
+        // workspace already closed in a previous session keeps its persisted
+        // stash; one whose bottom region isn't the strip (Animation's
+        // timeline) is left open. `take_legacy_bottom_strip` catches layouts
+        // saved back when the strip sat nested under the viewport.
+        for (name, tree) in layouts.iter_mut() {
+            if closed_bottoms.contains_key(name.as_str()) {
+                continue;
+            }
+            let stash = if dock::has_bottom_strip(tree) {
+                tree.detach_bottom()
+                    .map(|(bottom, ratio)| ClosedBottom { tree: bottom, ratio })
+            } else {
+                dock::take_legacy_bottom_strip(tree)
+            };
+            if let Some(stash) = stash {
+                closed_bottoms.insert(name.clone(), stash);
+            }
+        }
+        app.insert_resource(BottomPanel {
+            closed: closed_bottoms,
+        });
         // The dock starts on the active workspace (overrides DockPlugin's empty).
         app.insert_resource(Dock {
             tree: layouts[active].1.clone(),
@@ -117,6 +142,15 @@ impl Plugin for ShellPlugin {
                 about::about_credit_hover,
                 relocalize_on_language_change,
                 (sim_btn_click, update_simulate_button),
+                toggle_bottom_panel,
+                (
+                    bottom_snap_collapse,
+                    sync_collapsed_bottom_bar,
+                    collapsed_bottom_tab_click,
+                    collapsed_bottom_open_click,
+                    collapsed_bottom_bar_drag,
+                    collapsed_bottom_tab_hover,
+                ),
             ),
         );
     }
@@ -771,6 +805,377 @@ struct ShellLayouts {
     active: usize,
 }
 
+/// Per-workspace stashes for the collapsible bottom panel, keyed by workspace
+/// name. An entry means that workspace's bottom region is currently detached
+/// from its tree and lives here (see [`ClosedBottom`]); no entry means the
+/// panel is open (or the workspace never had one). Persisted with the layout —
+/// the panels inside a closed bottom panel exist nowhere else.
+#[derive(Resource, Default)]
+struct BottomPanel {
+    closed: std::collections::BTreeMap<String, ClosedBottom>,
+}
+
+/// Ctrl+Space ([`EditorAction::ToggleBottomPanel`]): collapse or restore the
+/// active workspace's bottom panel.
+///
+/// Closing detaches the root vertical split's bottom child into
+/// [`BottomPanel`]; opening re-attaches it full-width at the remembered ratio.
+/// The stash round-trips the whole subtree, so tab order, active tab and any
+/// splits inside the bottom region survive the toggle. When the root has no
+/// bottom region (a layout saved before the strip became a root region),
+/// closing falls back to taking the classic assets/console strip from wherever
+/// it sits — after one round-trip it reopens as a root region and stays one.
+fn toggle_bottom_panel(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    keybindings: Option<Res<KeyBindings>>,
+    input_focus: Option<Res<renzora::core::InputFocusState>>,
+    layouts: Res<ShellLayouts>,
+    wins: Res<renzora_ember::dock::DockWindows>,
+    mut bottom: ResMut<BottomPanel>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    let Some(kb) = keybindings else { return };
+    if kb.rebinding.is_some() || input_focus.is_some_and(|f| f.ui_wants_keyboard) {
+        return;
+    }
+    if !kb.just_pressed(EditorAction::ToggleBottomPanel, &keyboard) {
+        return;
+    }
+    let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
+        return;
+    };
+    if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
+        // reopened
+    } else if let Some(stash) = dock
+        .tree
+        .detach_bottom()
+        .map(|(tree, ratio)| ClosedBottom { tree, ratio })
+        .or_else(|| dock::take_legacy_bottom_strip(&mut dock.tree))
+    {
+        bottom.closed.insert(name, stash);
+        dirty.0 = true;
+    }
+}
+
+/// Re-attach `name`'s stashed bottom region to the dock tree. Returns `true`
+/// if a stash existed and was reopened.
+///
+/// A stashed panel can re-appear while the bottom panel is closed (the tab
+/// bar's "+" menu, a focus request, a tear-off window). Re-attaching it
+/// anyway would put one panel id in two leaves, so those are dropped from
+/// the stash — the live copy wins.
+fn reopen_bottom_panel(
+    name: &str,
+    wins: &renzora_ember::dock::DockWindows,
+    bottom: &mut BottomPanel,
+    dock: &mut Dock,
+    dirty: &mut DockDirty,
+) -> bool {
+    let Some(mut stash) = bottom.closed.remove(name) else {
+        return false;
+    };
+    let mut ids = Vec::new();
+    stash.tree.collect_panels(&mut ids);
+    for id in ids {
+        if dock.tree.contains_panel(&id) || wins.0.iter().any(|s| s.tree.contains_panel(&id)) {
+            stash.tree.remove_panel(&id);
+        }
+    }
+    dock.tree.attach_bottom(stash.tree, stash.ratio);
+    dirty.0 = true;
+    true
+}
+
+/// Consume ember's [`BottomSnapRequest`]: a hard drag down on the primary
+/// root divider snaps the bottom panel closed (same stash as Ctrl+Space).
+/// The stash keeps the divider's **pre-drag** ratio, so reopening restores
+/// the height the panel had before the snap — not the squished mid-drag one
+/// the live tree holds by then.
+fn bottom_snap_collapse(
+    snap: Option<ResMut<renzora_ember::dock::BottomSnapRequest>>,
+    layouts: Res<ShellLayouts>,
+    mut bottom: ResMut<BottomPanel>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    let Some(mut snap) = snap else { return };
+    let Some(restore) = snap.0.take() else { return };
+    let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
+        return;
+    };
+    if bottom.closed.contains_key(&name) {
+        return;
+    }
+    if let Some((tree, _)) = dock.tree.detach_bottom() {
+        bottom.closed.insert(
+            name,
+            ClosedBottom {
+                tree,
+                ratio: restore,
+            },
+        );
+        dirty.0 = true;
+    }
+}
+
+/// The collapsed bottom-panel strip: a tab-bar-height row between the dock
+/// area and the status bar — exactly where the closed bottom panel's header
+/// would sit — showing the stashed region's tabs in a muted, closed state.
+/// Hidden while the bottom panel is open (or the workspace never had one).
+#[derive(Component)]
+struct CollapsedBottomBar;
+
+/// One tab in the collapsed strip; clicking reopens the bottom panel with
+/// this panel as the active tab.
+#[derive(Component)]
+struct CollapsedBottomTab(String);
+
+/// The open chevron at the right end of the collapsed strip; clicking
+/// reopens the bottom panel (counterpart of the open panel's collapse
+/// chevron).
+#[derive(Component)]
+struct CollapsedBottomOpenBtn;
+
+/// Keep the collapsed strip in sync with the active workspace's stash: shown
+/// with one tab per stashed panel while the bottom panel is closed, hidden
+/// while it's open. Tab children rebuild only when the stashed tab set (or
+/// the bar entity, after a chrome respawn) changes.
+fn sync_collapsed_bottom_bar(
+    layouts: Res<ShellLayouts>,
+    bottom: Res<BottomPanel>,
+    fonts: Option<Res<EmberFonts>>,
+    registry: Option<Res<renzora::core::ShellPanelRegistry>>,
+    bars: Query<Entity, With<CollapsedBottomBar>>,
+    mut nodes: Query<&mut Node>,
+    mut commands: Commands,
+    mut built: Local<Option<(Entity, Vec<String>)>>,
+) {
+    let (Some(fonts), Ok(bar)) = (fonts, bars.single()) else {
+        return;
+    };
+    let Ok(mut node) = nodes.get_mut(bar) else {
+        return;
+    };
+    let stash = layouts
+        .layouts
+        .get(layouts.active)
+        .and_then(|(n, _)| bottom.closed.get(n.as_str()));
+    let Some(stash) = stash else {
+        if node.display != Display::None {
+            node.display = Display::None;
+        }
+        return;
+    };
+    if node.display != Display::Flex {
+        node.display = Display::Flex;
+    }
+    let mut ids = Vec::new();
+    stash.tree.collect_panels(&mut ids);
+    // Keyed on the bar entity too: a theme/language chrome respawn creates a
+    // fresh (childless) bar, which must rebuild even for the same tab set.
+    if built.as_ref() == Some(&(bar, ids.clone())) {
+        return;
+    }
+    *built = Some((bar, ids.clone()));
+
+    commands.entity(bar).despawn_related::<Children>();
+    for id in ids {
+        let (title, icon) = registry
+            .as_ref()
+            .and_then(|r| r.panels.get(&id))
+            .map(|info| {
+                let icon = if info.icon.is_empty() {
+                    "circle".to_string()
+                } else {
+                    info.icon.clone()
+                };
+                (info.title.clone(), icon)
+            })
+            .unwrap_or_else(|| (renzora_ember::dock::humanize(&id), "circle".to_string()));
+        let tab = commands
+            .spawn((
+                Node {
+                    height: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(5.0),
+                    padding: UiRect::horizontal(Val::Px(9.0)),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                CollapsedBottomTab(id.clone()),
+                Name::new(format!("closed-bottom-tab:{id}")),
+            ))
+            .id();
+        let ic = icon_text(&mut commands, &fonts.phosphor, &icon, text_muted(), 13.0);
+        let label = commands
+            .spawn((
+                Text::new(title),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_muted())),
+                bevy::text::TextLayout::no_wrap(),
+            ))
+            .id();
+        commands.entity(tab).add_children(&[ic, label]);
+        commands.entity(bar).add_child(tab);
+    }
+
+    // Right-aligned open chevron (mirrors the open panel's collapse chevron).
+    let strip_filler = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            Name::new("closed-bottom-filler"),
+        ))
+        .id();
+    let chev = icon_text(&mut commands, &fonts.phosphor, "caret-up", text_muted(), 13.0);
+    let open_btn = commands
+        .spawn((
+            Node {
+                height: Val::Percent(100.0),
+                width: Val::Px(24.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            CollapsedBottomOpenBtn,
+            Name::new("closed-bottom-open"),
+        ))
+        .id();
+    commands.entity(open_btn).add_child(chev);
+    commands.entity(bar).add_children(&[strip_filler, open_btn]);
+}
+
+/// Click a collapsed-strip tab → reopen the bottom panel (same restore path
+/// as Ctrl+Space) with the clicked panel as the active tab.
+fn collapsed_bottom_tab_click(
+    tabs: Query<(&Interaction, &CollapsedBottomTab), Changed<Interaction>>,
+    layouts: Res<ShellLayouts>,
+    wins: Res<renzora_ember::dock::DockWindows>,
+    mut bottom: ResMut<BottomPanel>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    for (interaction, tab) in &tabs {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
+            return;
+        };
+        if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
+            dock.tree.set_active_tab(&tab.0);
+        }
+        return;
+    }
+}
+
+/// Click the collapsed strip's open chevron → reopen the bottom panel at its
+/// remembered height.
+fn collapsed_bottom_open_click(
+    btns: Query<&Interaction, (With<CollapsedBottomOpenBtn>, Changed<Interaction>)>,
+    layouts: Res<ShellLayouts>,
+    wins: Res<renzora_ember::dock::DockWindows>,
+    mut bottom: ResMut<BottomPanel>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+) {
+    for interaction in &btns {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
+            return;
+        };
+        reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty);
+        return;
+    }
+}
+
+/// Drag the collapsed strip's empty background upward → reopen the bottom
+/// panel and hand the still-held cursor to ember's root divider
+/// ([`renzora_ember::dock::GrabRootDivider`]), so the panel sizes live from
+/// the closed position — the gesture continues as a normal divider drag.
+/// Tabs and the open chevron sit above the bar and capture their own
+/// presses, so this only fires from the strip itself.
+fn collapsed_bottom_bar_drag(
+    mouse: Res<ButtonInput<MouseButton>>,
+    bars: Query<&Interaction, With<CollapsedBottomBar>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    layouts: Res<ShellLayouts>,
+    wins: Res<renzora_ember::dock::DockWindows>,
+    grab: Option<ResMut<renzora_ember::dock::GrabRootDivider>>,
+    mut bottom: ResMut<BottomPanel>,
+    mut dock: ResMut<Dock>,
+    mut dirty: ResMut<DockDirty>,
+    mut press_y: Local<Option<f32>>,
+) {
+    if !mouse.pressed(MouseButton::Left) {
+        *press_y = None;
+        return;
+    }
+    let Some(cursor_y) = windows
+        .single()
+        .ok()
+        .and_then(|w| w.cursor_position())
+        .map(|c| c.y)
+    else {
+        return;
+    };
+    if mouse.just_pressed(MouseButton::Left) {
+        if bars.iter().any(|i| matches!(i, Interaction::Pressed)) {
+            *press_y = Some(cursor_y);
+        }
+        return;
+    }
+    let Some(start_y) = *press_y else { return };
+    // A few px of upward travel arms the gesture (a plain click does nothing
+    // — the tabs and the chevron own click-to-open).
+    if start_y - cursor_y < 4.0 {
+        return;
+    }
+    *press_y = None;
+    let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
+        return;
+    };
+    if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
+        if let Some(mut grab) = grab {
+            grab.0 = true;
+        }
+    }
+}
+
+/// Collapsed-strip tabs highlight on hover (they're otherwise muted —
+/// reading as closed, not active).
+fn collapsed_bottom_tab_hover(
+    mut tabs: Query<
+        (&Interaction, &mut BackgroundColor),
+        Or<(With<CollapsedBottomTab>, With<CollapsedBottomOpenBtn>)>,
+    >,
+) {
+    for (interaction, mut bg) in &mut tabs {
+        let want = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            rgb(tab_active())
+        } else {
+            Color::NONE
+        };
+        if bg.0 != want {
+            bg.0 = want;
+        }
+    }
+}
+
 /// A ribbon workspace button (Scene, Blueprints, …). Carries its layout index;
 /// the active highlight comes from the reactive rebuild (see `ribbon_snapshot`).
 #[derive(Component)]
@@ -1298,9 +1703,10 @@ fn remove_workspace(world: &mut World, index: usize) {
         return;
     }
     let removing_active = index == active;
+    let removed_name;
     {
         let mut l = world.resource_mut::<ShellLayouts>();
-        l.layouts.remove(index);
+        removed_name = l.layouts.remove(index).0;
         let new_len = l.layouts.len();
         l.active = if active == index {
             active.min(new_len - 1)
@@ -1309,6 +1715,12 @@ fn remove_workspace(world: &mut World, index: usize) {
         } else {
             active
         };
+    }
+    // The workspace's panels are gone on purpose — including any stashed in a
+    // closed bottom panel. (If another workspace shares the name, its stash is
+    // collateral; names are effectively unique in practice.)
+    if let Some(mut bp) = world.get_resource_mut::<BottomPanel>() {
+        bp.closed.remove(&removed_name);
     }
     if removing_active {
         let new_tree = {
@@ -1333,6 +1745,7 @@ fn ribbon_rename_commit(
     keys: Res<ButtonInput<KeyCode>>,
     inputs: Query<(&EmberTextInput, &RibbonRenameInput)>,
     mut layouts: ResMut<ShellLayouts>,
+    mut bottom: ResMut<BottomPanel>,
     mut had_focus: Local<bool>,
 ) {
     let Some(index) = rename.0 else {
@@ -1362,7 +1775,14 @@ fn ribbon_rename_commit(
         return;
     }
     if let Some(slot) = layouts.layouts.get_mut(index) {
-        slot.0 = new;
+        let old = std::mem::replace(&mut slot.0, new.clone());
+        // A closed bottom-panel stash is keyed by workspace name — re-key it or
+        // the rename would orphan the stash (its panels live only there).
+        if old != new {
+            if let Some(stash) = bottom.closed.remove(&old) {
+                bottom.closed.insert(new, stash);
+            }
+        }
     }
 }
 
@@ -1882,11 +2302,40 @@ fn spawn_shell(
     // header for the viewport, code-editor controls for the code editor, etc.
     let toolbar = renzora_ember::toolbar::build_toolbar_host(commands, fonts, toolbars);
 
+    // Collapsed bottom-panel strip: the closed bottom panel's header stays
+    // visible in place (tabs included); [`sync_collapsed_bottom_bar`] shows it
+    // and fills the tabs whenever the active workspace's bottom panel is
+    // closed. Sized/styled to match a dock leaf's tab bar.
+    let collapsed_bottom = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(28.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                flex_shrink: 0.0,
+                border: UiRect::top(Val::Px(1.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(header_bg())),
+            BorderColor::all(rgb(divider())),
+            // Interactive: dragging the strip's background upward reopens the
+            // panel and continues as a live divider drag (see
+            // [`collapsed_bottom_bar_drag`]); the ns-resize cursor hints it.
+            Interaction::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
+            CollapsedBottomBar,
+            Name::new("collapsed-bottom-bar"),
+        ))
+        .id();
+
     let statusbar = build_status_bar(commands, fonts, themes, active, theme_menu_open);
 
     commands
         .entity(root)
-        .add_children(&[top_bar, doctabs, toolbar, dock_area, statusbar]);
+        .add_children(&[top_bar, doctabs, toolbar, dock_area, collapsed_bottom, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     let grips = build_resize_zones(commands);
@@ -2874,6 +3323,7 @@ fn apply_workspace(index: usize, layouts: &mut ShellLayouts, dock: &mut Dock, di
 fn persist_dock_layout(
     dock: Res<Dock>,
     layouts: Res<ShellLayouts>,
+    bottom: Res<BottomPanel>,
     floats: Res<renzora_ember::dock::DockWindows>,
     windows: Query<&Window>,
     mut moved: MessageReader<bevy::window::WindowMoved>,
@@ -2890,7 +3340,12 @@ fn persist_dock_layout(
         .map(|m| m.window)
         .chain(resized.read().map(|r| r.window))
         .any(|w| floats.0.iter().any(|s| s.window == w));
-    if dock.is_changed() || layouts.is_changed() || floats.is_changed() || float_geo_changed {
+    if dock.is_changed()
+        || layouts.is_changed()
+        || bottom.is_changed()
+        || floats.is_changed()
+        || float_geo_changed
+    {
         *pending = true;
     }
     if !*pending || mouse.pressed(MouseButton::Left) {
@@ -2924,7 +3379,8 @@ fn persist_dock_layout(
             })
         })
         .collect();
-    let Some(json) = dock::layout_json(&snapshot, layouts.active, &floating) else {
+    let Some(json) = dock::layout_json(&snapshot, layouts.active, &floating, &bottom.closed)
+    else {
         return;
     };
     if last_saved.as_deref() == Some(json.as_str()) {
@@ -3451,6 +3907,11 @@ fn reset_layout_action(w: &mut World) {
             slot.1 = default_tree.clone();
         }
     }
+    // The pristine default carries the bottom strip in-tree; a surviving stash
+    // would duplicate those panels on the next Ctrl+Space toggle.
+    if let Some(mut bp) = w.get_resource_mut::<BottomPanel>() {
+        bp.closed.remove(&active_name);
+    }
     if let Some(mut dock) = w.get_resource_mut::<Dock>() {
         dock.tree = default_tree;
     }
@@ -3472,6 +3933,11 @@ fn reset_workspace_action(w: &mut World) {
     if let Some(mut layouts) = w.get_resource_mut::<ShellLayouts>() {
         layouts.layouts = defaults;
         layouts.active = 0;
+    }
+    // Every default tree carries its bottom region in-tree; surviving stashes
+    // would duplicate those panels on the next Ctrl+Space toggle.
+    if let Some(mut bp) = w.get_resource_mut::<BottomPanel>() {
+        bp.closed.clear();
     }
     if let Some(mut dock) = w.get_resource_mut::<Dock>() {
         dock.tree = active_tree;

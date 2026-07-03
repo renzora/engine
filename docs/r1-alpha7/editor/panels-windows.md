@@ -17,6 +17,22 @@ Grab any panel's tab and drag it:
 
 While dragging, a highlight previews exactly where the panel will land. The `+` button in any tab bar adds another panel to that group, and the `×` on a tab closes it.
 
+**Move a whole tab group at once**: every tab bar has a **grip handle at its far left** (⋮⋮). Drag it to move the entire group — all its tabs, keeping their order and active tab — to any drop target a single tab accepts: split against another panel, dock against a window edge, or merge into another group's tab bar. The drag ghost shows the active panel's name plus `+N` for the tabs riding along.
+
+## The bottom panel
+
+The strip of panels along the bottom of the Scene workspace — Assets, Hub Store, Console, Mixer, Sequencer, Timeline — is the **bottom panel**. It starts **closed** when the editor launches, keeping the viewport unobstructed:
+
+- **Closed doesn't mean gone**: while closed, the panel collapses to just its **header strip** — a tab-bar-height row in the same place showing its tabs in a muted state. **Click any tab** to reopen the panel with that tab active.
+- **`Ctrl+Space`** toggles it open and closed. Closing remembers everything — tab order, active tab, height, even splits you made inside it — and reopening restores all of it.
+- **Chevron toggle**: the right end of the header carries a chevron in both states — **∨** on the open panel's tab bar collapses it, **∧** on the collapsed strip reopens it.
+- **Drag it closed**: pull the divider above the panel all the way down (past where it normally stops) and the panel snaps closed to the header strip. Reopening restores the height it had before the snap.
+- **Drag it open**: grab the collapsed strip's background and pull upward — the panel reopens and keeps sizing under your cursor as a live divider drag.
+- **Drag any panel toward the bottom edge** of the window (a generous snap band along the bottom) and it snaps into a full-width bottom dock. This works for docked tabs and for floating windows dragged back over the editor.
+- The toggle works per workspace: it collapses whatever is docked along the bottom of the current workspace's root, so a bottom region you built yourself toggles too.
+
+The open/closed state and the stashed panels persist in `~/.renzora/layout.json`, but every launch starts with the classic bottom strip closed.
+
 ## Floating windows
 
 Three ways to undock a panel into its own floating window:

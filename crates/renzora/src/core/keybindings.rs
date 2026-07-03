@@ -546,9 +546,13 @@ impl Default for KeyBindings {
         );
 
         // View defaults
+        // Ctrl+Space is also CodeTriggerAutocomplete, but the two never fire
+        // together: autocomplete only acts while the code editor is focused,
+        // and the bottom-panel toggle stands down whenever a text field holds
+        // keyboard focus (`InputFocusState::ui_wants_keyboard`).
         bindings.insert(
             EditorAction::ToggleBottomPanel,
-            KeyBinding::new(KeyCode::Backquote).ctrl(),
+            KeyBinding::new(KeyCode::Space).ctrl(),
         );
         // Z alone used to toggle wireframe but clashed with stray Z presses
         // near Ctrl+Z (undo) and the gizmo tools. Use Alt-modified forms.
