@@ -472,6 +472,104 @@ impl DockTree {
         *self = DockTree::vertical(old, bottom, ratio);
     }
 
+    /// Detach a bottom region even when it isn't the root split: find the
+    /// shallowest vertical split whose *bottom* child (`second`) contains
+    /// `panel`, remove and return that child plus the split's ratio, and
+    /// collapse the split so its top child takes its place. Also returns the
+    /// panel ids that were in that top child — an **anchor** so
+    /// [`Self::attach_bottom_at`] can restore the region under the same
+    /// neighbour instead of full-width at the root.
+    ///
+    /// This generalises [`Self::detach_bottom`] (which only fires when the
+    /// bottom region spans the whole width at the root) to a strip that sits
+    /// under one column with a full-height panel beside it. `None` when `panel`
+    /// is nowhere below a vertical divider.
+    pub fn detach_bottom_containing(
+        &mut self,
+        panel: &str,
+    ) -> Option<(DockTree, f32, Vec<String>)> {
+        // Is *this* split the one hosting the strip (panel in its bottom child)?
+        if let DockTree::Split {
+            direction: SplitDirection::Vertical,
+            ratio,
+            first,
+            second,
+        } = self
+        {
+            if second.contains_panel(panel) {
+                let r = *ratio;
+                let mut anchor = Vec::new();
+                first.collect_panels(&mut anchor);
+                let bottom = std::mem::replace(&mut **second, DockTree::Empty);
+                *self = std::mem::replace(&mut **first, DockTree::Empty);
+                return Some((bottom, r, anchor));
+            }
+        }
+        // Otherwise recurse into whichever child still holds the panel.
+        match self {
+            DockTree::Split { first, second, .. } => first
+                .detach_bottom_containing(panel)
+                .or_else(|| second.detach_bottom_containing(panel)),
+            _ => None,
+        }
+    }
+
+    /// Re-attach `bottom` beneath the region identified by `anchor`: descend to
+    /// the smallest subtree that still contains all of the (surviving) anchor
+    /// panels — their common ancestor — and re-split it vertically, giving that
+    /// region `ratio` of the height. Inverse of [`Self::detach_bottom_containing`].
+    ///
+    /// An empty anchor, or one whose panels have all left the tree, falls back
+    /// to a full-width root attach (identical to [`Self::attach_bottom`]) — so a
+    /// stash saved before anchors existed still reopens sensibly.
+    pub fn attach_bottom_at(&mut self, bottom: DockTree, ratio: f32, anchor: &[String]) {
+        if bottom.is_empty() {
+            return;
+        }
+        if self.is_empty() {
+            *self = bottom;
+            return;
+        }
+        let present: Vec<&str> = anchor
+            .iter()
+            .map(String::as_str)
+            .filter(|p| self.contains_panel(p))
+            .collect();
+        // Walk down to the anchor panels' common ancestor. Each step descends
+        // into the child that holds *all* of them; when neither does, this node
+        // is that ancestor. Empty anchor → stay at the root (full width).
+        let mut target: &mut DockTree = self;
+        if !present.is_empty() {
+            loop {
+                let descend = match &*target {
+                    DockTree::Split { first, second, .. } => {
+                        if present.iter().all(|p| first.contains_panel(p)) {
+                            Some(true)
+                        } else if present.iter().all(|p| second.contains_panel(p)) {
+                            Some(false)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                match descend {
+                    Some(true) => {
+                        let DockTree::Split { first, .. } = target else { unreachable!() };
+                        target = first.as_mut();
+                    }
+                    Some(false) => {
+                        let DockTree::Split { second, .. } = target else { unreachable!() };
+                        target = second.as_mut();
+                    }
+                    None => break,
+                }
+            }
+        }
+        let old = std::mem::replace(target, DockTree::Empty);
+        *target = DockTree::vertical(old, bottom, ratio);
+    }
+
     /// Remove and return the whole leaf containing `panel` — tab set and active
     /// tab intact — collapsing the split it leaves behind. Unlike
     /// [`Self::remove_panel`] (one tab), this moves a leaf wholesale, so a
@@ -558,6 +656,7 @@ impl Plugin for DockPlugin {
                 Update,
                 (
                     add_panel_click,
+                    tab_strip_wheel,
                     apply_dock_style,
                     float_window_controls,
                     tab_grip_hover,
@@ -1304,7 +1403,13 @@ fn tab_drag(
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
     tabs: Query<(Entity, &Interaction, &DockTab, &bevy::ui::RelativeCursorPosition)>,
     grips: Query<(&Interaction, &LeafGrip)>,
-    tabbars: Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
+    // Bundled into one tuple param so `tab_drag` stays under Bevy's 16-param
+    // system cap: `.0` = tab bars (drop-onto-bar targeting), `.1` = tab strips
+    // (in-place reorder re-sorts the strip's tab children).
+    bars: (
+        Query<(Entity, &TabBarOf, &bevy::ui::RelativeCursorPosition)>,
+        Query<(Entity, &TabScrollStrip)>,
+    ),
     mut leaves: Query<(
         Entity,
         &mut DockLeaf,
@@ -1459,8 +1564,11 @@ fn tab_drag(
                             if let Ok((_, mut ld, ..)) = leaves.get_mut(state.leaf) {
                                 ld.tabs = new_tabs.clone();
                             }
-                            if let Some((tabbar, _, _)) =
-                                tabbars.iter().find(|(_, b, _)| b.0 == state.leaf)
+                            // Re-sort the *strip's* children (the tabs) — not the
+                            // tab bar's, which also holds the grip, `+`, filler,
+                            // and collapse chevron a wholesale reorder would drop.
+                            if let Some((strip, _)) =
+                                bars.1.iter().find(|(_, s)| s.leaf == state.leaf)
                             {
                                 let ordered: Vec<Entity> = new_tabs
                                     .iter()
@@ -1477,7 +1585,7 @@ fn tab_drag(
                                 // removing the moved child. `replace_children`
                                 // rebuilds the collection wholesale and avoids it.
                                 if !ordered.is_empty() {
-                                    commands.entity(tabbar).replace_children(&ordered);
+                                    commands.entity(strip).replace_children(&ordered);
                                 }
                             }
                         }
@@ -1623,7 +1731,8 @@ fn tab_drag(
                 .map(|(e, _)| e)
         };
 
-        let over_bar = tabbars
+        let over_bar = bars
+            .0
             .iter()
             .find(|(_, _, rcp)| rcp.cursor_over)
             .map(|(_, bar, _)| bar.0);
@@ -2432,6 +2541,9 @@ fn tab_context_menu(
         let leaf_size = cn.size();
         let gpos = global.pos;
 
+        // Cloned for the second (Close) menu item, since the Undock closure
+        // moves `id`. `area` is `Copy`, so it stays available to both.
+        let close_id = id.clone();
         let menu = crate::widgets::screen_menu(&mut commands, cur.x, cur.y);
         let undock = crate::widgets::menu_item(
             &mut commands,
@@ -2479,7 +2591,47 @@ fn tab_context_menu(
                 }
             },
         );
-        commands.entity(menu).add_children(&[undock]);
+        // Close: remove the panel from whichever tree owns its area, then close
+        // the floating window if that emptied it — the world-side mirror of
+        // `tab_close_click` (the per-tab × button).
+        let close = crate::widgets::menu_item(
+            &mut commands,
+            &fonts,
+            "x",
+            &renzora::lang::t_or("menu.close_panel", "Close panel"),
+            move |w: &mut World| {
+                let floating = w
+                    .get_resource::<DockWindows>()
+                    .and_then(|ws| ws.0.iter().position(|s| s.area == area));
+                let mut emptied = None;
+                match floating {
+                    Some(idx) => {
+                        if let Some(mut ws) = w.get_resource_mut::<DockWindows>() {
+                            if ws.0[idx].tree.remove_panel(&close_id) {
+                                ws.0[idx].dirty = true;
+                                if ws.0[idx].tree.is_empty() {
+                                    emptied = Some(ws.0[idx].window);
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        if let Some(mut dock) = w.get_resource_mut::<Dock>() {
+                            dock.tree.remove_panel(&close_id);
+                        }
+                        if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
+                            d.0 = true;
+                        }
+                    }
+                }
+                if let Some(win) = emptied {
+                    if let Some(mut closes) = w.get_resource_mut::<DockWindowCloseRequests>() {
+                        closes.0.push(win);
+                    }
+                }
+            },
+        );
+        commands.entity(menu).add_children(&[undock, close]);
         break;
     }
 }
@@ -3406,6 +3558,18 @@ struct AddPanelButton {
     area: Entity,
 }
 
+/// The horizontally-clipping container holding a leaf's tabs. When the tabs
+/// overflow the leaf width it clips them (`Overflow::scroll_x`) and the wheel
+/// pans it ([`tab_strip_wheel`]) — there is no visible scrollbar, so it reads
+/// as tabs that quietly slide under the pinned `+`/collapse controls. Carries
+/// its leaf so the in-place tab reorder ([`tab_drag`]) can re-sort *the strip's*
+/// children (the tabs) rather than the tab bar's — the bar also holds the grip,
+/// `+`, and collapse chevron, which a wholesale reorder would drop.
+#[derive(Component)]
+struct TabScrollStrip {
+    leaf: Entity,
+}
+
 /// The undock handle at the left of a tab: press it to tear that panel off
 /// into a floating window — no Ctrl needed. Overlaid absolutely on the tab's
 /// left padding so it takes NO layout space (no gap in unhovered tabs), and
@@ -3524,6 +3688,40 @@ fn add_panel_click(
     }
 }
 
+/// Wheel over a tab strip pans it horizontally. The strip clips overflowing
+/// tabs but draws no scrollbar, so without this the tabs pushed past the leaf's
+/// right edge would be unreachable. Vertical wheel maps to horizontal because a
+/// 28px-tall strip has no vertical range; a trackpad's horizontal wheel passes
+/// through. Bevy clamps `ScrollPosition` to the scrollable range during layout,
+/// so we needn't clamp the far edge ourselves — only guard against going
+/// negative past the first tab.
+fn tab_strip_wheel(
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    mut strips: Query<
+        (&bevy::ui::RelativeCursorPosition, &mut bevy::ui::ScrollPosition),
+        With<TabScrollStrip>,
+    >,
+) {
+    use bevy::input::mouse::MouseScrollUnit;
+    let mut delta = 0.0;
+    for ev in wheel.read() {
+        // Line events are ~1 notch each; scale to about one tab's width. Pixel
+        // events (precision trackpads) are already in logical px.
+        let unit = if matches!(ev.unit, MouseScrollUnit::Line) { 24.0 } else { 1.0 };
+        // Wheel down (negative y) reveals tabs to the right; horizontal wheel
+        // adds directly.
+        delta += (-ev.y + ev.x) * unit;
+    }
+    if delta == 0.0 {
+        return;
+    }
+    for (rcp, mut scroll) in &mut strips {
+        if rcp.cursor_over {
+            scroll.x = (scroll.x + delta).max(0.0);
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn populate_leaf(
     commands: &mut Commands,
@@ -3601,6 +3799,12 @@ fn populate_leaf(
             .id();
         commands.entity(leaf_grip).add_child(leaf_grip_icon);
         bar_kids.push(leaf_grip);
+        // Tabs live inside a horizontally-clipping strip so a leaf with more
+        // tabs than fit never pushes the "+"/collapse controls off the bar:
+        // the overflowing tabs scroll instead (see [`tab_strip_wheel`]). The
+        // strip shows no scrollbar — the wheel is the only affordance, hence
+        // "invisible scroll".
+        let mut tab_kids: Vec<Entity> = Vec::new();
         for (i, id) in tabs.iter().enumerate() {
             let is_active = i == active;
             let fg = if is_active { text_primary() } else { text_muted() };
@@ -3708,15 +3912,52 @@ fn populate_leaf(
             commands
                 .entity(tab)
                 .add_children(&[grip, tab_icon, tab_label, close, marker]);
-            bar_kids.push(tab);
+            tab_kids.push(tab);
         }
-        let add_btn = icon_text(commands, phosphor, "plus", text_muted(), 13.0);
-        commands.entity(add_btn).insert((
-            Interaction::default(),
-            crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            AddPanelButton { leaf, area },
-            Name::new("dock-add-panel"),
-        ));
+        let tab_strip = commands
+            .spawn((
+                Node {
+                    height: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(2.0),
+                    // Allowed to shrink below the tabs' natural width and clip
+                    // the overflow (Overflow::scroll_x), rather than letting the
+                    // tabs spill past the "+" and collapse controls.
+                    min_width: Val::Px(0.0),
+                    flex_shrink: 1.0,
+                    overflow: Overflow::scroll_x(),
+                    ..default()
+                },
+                bevy::ui::ScrollPosition::default(),
+                bevy::ui::RelativeCursorPosition::default(),
+                TabScrollStrip { leaf },
+                Name::new("tab-strip"),
+            ))
+            .id();
+        commands.entity(tab_strip).add_children(&tab_kids);
+        bar_kids.push(tab_strip);
+        // "+" add-panel button, pinned to the bar *outside* the scroll strip so
+        // it stays put and clickable no matter how many tabs the leaf holds.
+        let add_icon = icon_text(commands, phosphor, "plus", text_muted(), 13.0);
+        let add_btn = commands
+            .spawn((
+                Node {
+                    height: Val::Percent(100.0),
+                    width: Val::Px(22.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                AddPanelButton { leaf, area },
+                Name::new("dock-add-panel"),
+            ))
+            .id();
+        commands.entity(add_btn).add_child(add_icon);
         bar_kids.push(add_btn);
         let filler = commands
             .spawn((
@@ -3882,6 +4123,56 @@ mod tests {
         let mut tree = DockTree::horizontal(DockTree::leaf("a"), DockTree::leaf("b"), 0.5);
         assert!(tree.detach_bottom().is_none());
         assert!(tree.contains_panel("a") && tree.contains_panel("b"));
+    }
+
+    /// A bottom strip that isn't full width (sits under one column, with a
+    /// full-height panel beside it) detaches, collapses its column, and reopens
+    /// under that same column — not full-width at the root.
+    #[test]
+    fn nested_bottom_detach_reattach_round_trips() {
+        let mut tree = DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::tabs(&["assets", "console"]),
+                0.7,
+            ),
+            DockTree::leaf("inspector"),
+            0.8,
+        );
+        let (bottom, ratio, anchor) = tree
+            .detach_bottom_containing("assets")
+            .expect("nested bottom detaches");
+        assert_eq!(ratio, 0.7);
+        assert_eq!(anchor, vec!["viewport".to_string()]);
+        // Collapsed: only the lone viewport column and the side panel remain.
+        assert!(!tree.contains_panel("assets") && !tree.contains_panel("console"));
+        assert!(matches!(
+            &tree,
+            DockTree::Split { direction: SplitDirection::Horizontal, .. }
+        ));
+
+        tree.attach_bottom_at(bottom, ratio, &anchor);
+        let DockTree::Split { direction: SplitDirection::Horizontal, first, .. } = &tree else {
+            panic!("root should stay horizontal, not become a full-width vertical split");
+        };
+        let DockTree::Split { direction: SplitDirection::Vertical, second, .. } = &**first else {
+            panic!("the viewport column should regain its bottom strip");
+        };
+        assert!(second.contains_panel("assets") && second.contains_panel("console"));
+    }
+
+    /// An empty anchor (a full-width stash, or one whose neighbours all left the
+    /// tree) reattaches full-width at the root — the pre-anchor behaviour.
+    #[test]
+    fn attach_bottom_at_empty_anchor_is_full_width() {
+        let mut tree = DockTree::horizontal(DockTree::leaf("a"), DockTree::leaf("b"), 0.5);
+        tree.attach_bottom_at(DockTree::leaf("assets"), 0.7, &[]);
+        let DockTree::Split { direction: SplitDirection::Vertical, ratio, second, .. } = &tree
+        else {
+            panic!("empty anchor should attach a full-width root vertical split");
+        };
+        assert_eq!(*ratio, 0.7);
+        assert!(second.contains_panel("assets"));
     }
 
     /// Taking a leaf must move its whole tab set as one unit and collapse the

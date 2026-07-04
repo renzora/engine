@@ -15,14 +15,20 @@ use serde::{Deserialize, Serialize};
 // ── Collapsible bottom panel ───────────────────────────────────────────────────
 
 /// One workspace's stashed bottom region while its bottom panel is closed: the
-/// detached subtree plus the root split ratio (top share) that restores its
-/// height on reopen. The panels inside a closed bottom panel exist *only* here
-/// — not in the workspace's tree — so this must persist with the layout or a
+/// detached subtree plus the split ratio (top share) that restores its height
+/// on reopen. The panels inside a closed bottom panel exist *only* here — not in
+/// the workspace's tree — so this must persist with the layout or a
 /// save-while-closed would drop them.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ClosedBottom {
     pub tree: DockTree,
     pub ratio: f32,
+    /// Panel ids of the region the strip sat under when it was detached — the
+    /// anchor that lets a non-full-width bottom reopen in its old place rather
+    /// than spanning the whole root. Empty for a full-width stash (reopens
+    /// full-width) and for legacy/pre-anchor stashes (`#[serde(default)]`).
+    #[serde(default)]
+    pub anchor: Vec<String>,
 }
 
 /// Fallback reopen ratio when a stash has no recorded one (legacy strips that
@@ -58,6 +64,7 @@ pub fn take_legacy_bottom_strip(tree: &mut DockTree) -> Option<ClosedBottom> {
         .map(|t| ClosedBottom {
             tree: t,
             ratio: BOTTOM_PANEL_RATIO,
+            anchor: Vec::new(),
         })
 }
 

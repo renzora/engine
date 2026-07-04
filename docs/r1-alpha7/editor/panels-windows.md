@@ -15,7 +15,7 @@ Grab any panel's tab and drag it:
 | **Drag a tab within its tab bar** | Reorder tabs |
 | **Drag a tab onto the workspace ribbon** | Spawn a new workspace containing just that panel |
 
-While dragging, a highlight previews exactly where the panel will land. The `+` button in any tab bar adds another panel to that group, and the `×` on a tab closes it.
+While dragging, a highlight previews exactly where the panel will land. The `+` button in any tab bar adds another panel to that group, and the `×` on a tab closes it. When a group holds more tabs than fit, the tabs **scroll horizontally** — hover the tabs and use the mouse wheel to slide the overflow into view. The scroll has no visible scrollbar, and the `+` button stays pinned to the right of the tabs so it's always reachable.
 
 **Move a whole tab group at once**: every tab bar has a **grip handle at its far left** (⋮⋮). Drag it to move the entire group — all its tabs, keeping their order and active tab — to any drop target a single tab accepts: split against another panel, dock against a window edge, or merge into another group's tab bar. The drag ghost shows the active panel's name plus `+N` for the tabs riding along.
 
@@ -39,7 +39,7 @@ Three ways to undock a panel into its own floating window:
 
 - **Ctrl + drag its tab** — the panel tears off into a window that follows your cursor; release to place it.
 - **Press the grip** — hover a tab and a small handle appears at its left edge; press it to tear off that panel (no Ctrl needed).
-- **Right-click its tab → Undock** — the panel opens as a window under the cursor.
+- **Right-click its tab** — a menu offers **Undock** (the panel opens as a window under the cursor) and **Close panel** (removes the panel from its group).
 
 Drop the window anywhere — including on another monitor. This is how you build a multi-monitor setup: keep the viewport maximized on one screen and float the Inspector, Console, or a second Viewport onto the others.
 

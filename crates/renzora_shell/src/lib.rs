@@ -65,8 +65,11 @@ impl Plugin for ShellPlugin {
                 continue;
             }
             let stash = if dock::has_bottom_strip(tree) {
-                tree.detach_bottom()
-                    .map(|(bottom, ratio)| ClosedBottom { tree: bottom, ratio })
+                tree.detach_bottom().map(|(bottom, ratio)| ClosedBottom {
+                    tree: bottom,
+                    ratio,
+                    anchor: Vec::new(),
+                })
             } else {
                 dock::take_legacy_bottom_strip(tree)
             };
@@ -704,7 +707,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
                 margin: UiRect::top(Val::Px(2.0)),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(2.0),
-                min_width: Val::Px(210.0),
+                min_width: Val::Px(120.0),
                 padding: UiRect::all(Val::Px(4.0)),
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
@@ -724,12 +727,12 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         (
             false,
             "frame-corners",
-            renzora::lang::t_or("shell.play_target.viewport", "Play in Viewport"),
+            renzora::lang::t_or("shell.play_target.viewport", "Viewport"),
         ),
         (
             true,
             "app-window",
-            renzora::lang::t_or("shell.play_target.runtime_window", "Play in Runtime Window"),
+            renzora::lang::t_or("shell.play_target.runtime_window", "Window"),
         ),
     ] {
         let row = commands
@@ -1009,13 +1012,12 @@ struct BottomPanel {
 /// Ctrl+Space ([`EditorAction::ToggleBottomPanel`]): collapse or restore the
 /// active workspace's bottom panel.
 ///
-/// Closing detaches the root vertical split's bottom child into
-/// [`BottomPanel`]; opening re-attaches it full-width at the remembered ratio.
-/// The stash round-trips the whole subtree, so tab order, active tab and any
-/// splits inside the bottom region survive the toggle. When the root has no
-/// bottom region (a layout saved before the strip became a root region),
-/// closing falls back to taking the classic assets/console strip from wherever
-/// it sits — after one round-trip it reopens as a root region and stays one.
+/// Closing detaches the bottom region into [`BottomPanel`] (see
+/// [`close_bottom_panel`] for the full-width / nested / legacy order); opening
+/// re-attaches it at the remembered ratio, in its old place — full-width when it
+/// was full-width, back under its column when it wasn't (see
+/// [`reopen_bottom_panel`]). The stash round-trips the whole subtree, so tab
+/// order, active tab and any splits inside the bottom region survive the toggle.
 fn toggle_bottom_panel(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Option<Res<KeyBindings>>,
@@ -1038,15 +1040,39 @@ fn toggle_bottom_panel(
     };
     if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
         // reopened
-    } else if let Some(stash) = dock
-        .tree
-        .detach_bottom()
-        .map(|(tree, ratio)| ClosedBottom { tree, ratio })
-        .or_else(|| dock::take_legacy_bottom_strip(&mut dock.tree))
-    {
+    } else if let Some(stash) = close_bottom_panel(&mut dock.tree) {
         bottom.closed.insert(name, stash);
         dirty.0 = true;
     }
+}
+
+/// Detach the active workspace's bottom panel into a stash, in preference order:
+///
+/// 1. A full-width bottom region at the root ([`DockTree::detach_bottom`]) —
+///    content-agnostic, so any workspace's root strip (Scene's assets/console,
+///    Animation's timeline) collapses. No anchor: it reopens full-width.
+/// 2. A *nested* assets/console strip that isn't full width — sits under one
+///    column with a full-height panel beside it. Detached with an anchor
+///    ([`DockTree::detach_bottom_containing`]) so it reopens in the same place.
+/// 3. A legacy strip saved before the bottom region existed.
+fn close_bottom_panel(tree: &mut DockTree) -> Option<ClosedBottom> {
+    if let Some((bottom, ratio)) = tree.detach_bottom() {
+        return Some(ClosedBottom {
+            tree: bottom,
+            ratio,
+            anchor: Vec::new(),
+        });
+    }
+    for marker in ["assets", "console"] {
+        if let Some((bottom, ratio, anchor)) = tree.detach_bottom_containing(marker) {
+            return Some(ClosedBottom {
+                tree: bottom,
+                ratio,
+                anchor,
+            });
+        }
+    }
+    dock::take_legacy_bottom_strip(tree)
 }
 
 /// Re-attach `name`'s stashed bottom region to the dock tree. Returns `true`
@@ -1073,7 +1099,8 @@ fn reopen_bottom_panel(
             stash.tree.remove_panel(&id);
         }
     }
-    dock.tree.attach_bottom(stash.tree, stash.ratio);
+    dock.tree
+        .attach_bottom_at(stash.tree, stash.ratio, &stash.anchor);
     dirty.0 = true;
     true
 }
@@ -1104,6 +1131,7 @@ fn bottom_snap_collapse(
             ClosedBottom {
                 tree,
                 ratio: restore,
+                anchor: Vec::new(),
             },
         );
         dirty.0 = true;
