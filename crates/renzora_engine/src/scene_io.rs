@@ -1816,6 +1816,38 @@ pub fn mirror_sprite_custom_size(
     }
 }
 
+/// Load-order safety net for the persisted sprite size: when
+/// `SpriteCustomSize` is inserted on an entity that already has a `Sprite`,
+/// push it onto the live `Sprite.custom_size`.
+///
+/// Scene files serialize `SpriteImagePath` before `SpriteCustomSize`, and the
+/// image-path observer spawns the `Sprite` as soon as the path lands — so the
+/// two insertion orders / observer-command flush timings split into two cases:
+/// if the `Sprite` already exists when the size component arrives, this
+/// observer applies it; if the size component is already present when the
+/// `Sprite` is inserted, `apply_sprite_image_path` reconciles it instead.
+/// Together they guarantee a user-resized sprite reopens at its saved size
+/// regardless of order. The compare-first write avoids tripping
+/// `Changed<Sprite>` when the value is already in sync (the common editor case,
+/// where `mirror_sprite_custom_size` re-inserts the same size it just read).
+#[cfg(feature = "render_2d")]
+pub fn on_sprite_custom_size_inserted(
+    trigger: On<Insert, renzora::core::SpriteCustomSize>,
+    sizes: Query<&renzora::core::SpriteCustomSize>,
+    mut sprites: Query<&mut bevy::sprite::Sprite>,
+) {
+    let entity = trigger.entity;
+    let Ok(size) = sizes.get(entity) else {
+        return;
+    };
+    let Ok(mut sprite) = sprites.get_mut(entity) else {
+        return;
+    };
+    if sprite.custom_size != Some(size.0) {
+        sprite.custom_size = Some(size.0);
+    }
+}
+
 /// Derive `Sprite.rect` from a [`renzora::core::SpriteSheet`] grid and the
 /// loaded image's pixel dimensions.
 ///
@@ -1940,6 +1972,19 @@ fn apply_sprite_image_path(
     } else if sprite.color == placeholder_blue {
         sprite.color = Color::WHITE;
         sprite.custom_size = persisted_size;
+    } else if let Some(size) = persisted_size {
+        // Image already bound and not a placeholder, yet the entity carries
+        // a saved resize size the live `Sprite` hasn't picked up. This is the
+        // scene-load case: `.bsn` serializes `SpriteImagePath` before
+        // `SpriteCustomSize`, so the image-path observer spawns/binds the
+        // Sprite (image set, white) while the size component isn't present
+        // yet — neither branch above restores it. When this observer re-runs
+        // as the Sprite is inserted, `SpriteCustomSize` is now present, so
+        // reconcile it here. Without this a resized sprite reopens (and ships)
+        // at its image's native dimensions.
+        if sprite.custom_size != Some(size) {
+            sprite.custom_size = Some(size);
+        }
     }
 }
 

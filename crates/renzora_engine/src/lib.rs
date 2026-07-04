@@ -336,6 +336,13 @@ impl Plugin for RuntimePlugin {
             // there — common with reflection scene loads).
             app.add_observer(scene_io::on_sprite_image_path_inserted);
             app.add_observer(scene_io::on_sprite_inserted_apply_image_path);
+            // Load-order safety net: a scene serializes `SpriteImagePath`
+            // before `SpriteCustomSize`, so the Sprite is spawned/bound before
+            // the saved size lands. This observer applies the size once it's
+            // inserted onto an entity that already has a Sprite; the pair of
+            // sprite-image observers covers the reverse order. Both editor and
+            // runtime, so a resized sprite keeps its size on reload and export.
+            app.add_observer(scene_io::on_sprite_custom_size_inserted);
             // Editor-side: mirror user-resized `Sprite.custom_size` into the
             // serializable `SpriteCustomSize` so it survives scene save/load
             // (bevy's `Sprite` itself is dropped by the save filter).
