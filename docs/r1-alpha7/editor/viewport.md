@@ -177,6 +177,22 @@ Press **Play** to play-test your game without leaving the editor. Edit mode and 
 
 > Input goes to the game globally while playing — keyboard and mouse reach your scripts even though the game is windowed. A script that grabs the cursor (e.g. an FPS look controller) grabs it for the whole editor window.
 
+### Choosing where Play runs
+
+The small **caret next to the Play button** opens the play-target menu:
+
+- **Play in Viewport** (the default) — the in-editor experience described above: the game runs inside the viewport panel with the rest of the editor around it.
+- **Play in Runtime Window** — Play launches the game as its **own process in its own OS window**, exactly like an exported build: the window uses your project's **Window settings** (Settings → Project → Window — title from the project name, resolution, windowed / fullscreen / borderless mode, resizable) and your window icon. The editor pauses behind a dark overlay while the game owns the screen, and wakes back up the moment you close the game window (or press **Stop**, which closes it for you).
+
+The choice is remembered across sessions (per-user, in `~/.renzora/editor.toml`) and every following Play uses it. The same switch also lives in **Settings → Scripting → External Window**.
+
+A few things to know about the runtime window:
+
+- Your scene is **saved to disk first** (same as regular Play), because the spawned runtime reads the project's files — it starts from the project's **main scene**, just like an exported game.
+- The engine is **one binary**: the editor relaunches its own executable with `--no-editor --project <your project>`, which boots it straight into game mode. If a dedicated `renzora-runtime` binary is staged next to the editor (packaged `renzora build` output), that leaner binary is used instead — same result either way.
+- Because it's a separate process, it's fully insulated from editor state: no editor cameras, gizmos, or overlays can leak in.
+- First launch can take a little while (the runtime loads the engine, plugins, and your project from cold); the editor shows its paused overlay until the game window appears.
+
 ## Simulate mode
 
 Next to **Play** is **Simulate** (the blue flask). It runs the live simulation — scripts, physics, and animation all tick exactly as in Play — **but keeps the editor fully live**: your editor camera, gizmos, selection, and inspector stay active, and the camera does *not* switch to the game camera. It's the mode to reach for when you want to *watch and poke at* a running simulation rather than play it: triggering a ragdoll, watching physics settle, or testing a script's behaviour while still selecting and inspecting entities.

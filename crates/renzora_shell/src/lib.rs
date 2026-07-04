@@ -142,6 +142,7 @@ impl Plugin for ShellPlugin {
                 about::about_credit_hover,
                 relocalize_on_language_change,
                 (sim_btn_click, update_simulate_button),
+                (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
                     bottom_snap_collapse,
@@ -666,6 +667,196 @@ fn update_play_button(
         }
         if tcolor.0 != color {
             tcolor.0 = color;
+        }
+    }
+}
+
+/// The slim caret beside the Play pill that opens the play-target menu.
+#[derive(Component)]
+struct PlayTargetCaret;
+/// A row in the play-target menu. `runtime_window` = Play spawns the runtime
+/// in its own OS window (project window settings); otherwise Play runs in the
+/// editor viewport panel.
+#[derive(Component)]
+struct PlayTargetOption {
+    runtime_window: bool,
+}
+/// The leading glyph of a play-target row — a check on the selected row, the
+/// option's own icon on the other (mirrors the theme menu's check-or-icon slot).
+#[derive(Component)]
+struct PlayTargetOptionIcon {
+    runtime_window: bool,
+}
+
+/// Build the play-target dropdown: a caret beside the Play pill opening a menu
+/// that picks where Play runs — inside the editor viewport, or in an actual
+/// runtime window using the project's window settings (title, resolution,
+/// window mode, resizable). Picking an option writes
+/// `EditorSettings.external_play_window` and persists it per-user, so the
+/// choice sticks across sessions; the next Play uses it.
+fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                right: Val::Px(0.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
+                min_width: Val::Px(210.0),
+                padding: UiRect::all(Val::Px(4.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::popup_bg())),
+            BorderColor::all(rgb(divider())),
+            GlobalZIndex(600),
+            RelativeCursorPosition::default(),
+            Name::new("play-target-menu"),
+        ))
+        .id();
+
+    let mut rows = Vec::new();
+    for (runtime_window, icon_name, label) in [
+        (
+            false,
+            "frame-corners",
+            renzora::lang::t_or("shell.play_target.viewport", "Play in Viewport"),
+        ),
+        (
+            true,
+            "app-window",
+            renzora::lang::t_or("shell.play_target.runtime_window", "Play in Runtime Window"),
+        ),
+    ] {
+        let row = commands
+            .spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(8.0),
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                    border_radius: BorderRadius::all(Val::Px(3.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                PlayTargetOption { runtime_window },
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                Name::new("play-target-option"),
+            ))
+            .id();
+        renzora_ember::reactive::bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                rgb(renzora_ember::theme::hover_bg())
+            }
+            _ => Color::NONE,
+        });
+        let ic = glyph(commands, icon_name, text_muted(), 12.0);
+        commands.entity(ic).insert((
+            PlayTargetOptionIcon { runtime_window },
+            bevy::ui::FocusPolicy::Pass,
+        ));
+        let t = commands
+            .spawn((
+                Text::new(label),
+                ui_font(font, 12.0),
+                TextColor(rgb(text_primary())),
+                bevy::ui::FocusPolicy::Pass,
+            ))
+            .id();
+        commands.entity(row).add_children(&[ic, t]);
+        rows.push(row);
+    }
+    commands.entity(panel).add_children(&rows);
+
+    let trigger = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(3.0), Val::Px(5.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            Popup { panel, open: false },
+            PlayTargetCaret,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("play-target-caret"),
+        ))
+        .id();
+    renzora_ember::reactive::bind_bg(commands, trigger, move |w| {
+        match w.get::<Interaction>(trigger) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                Color::srgba(1.0, 1.0, 1.0, 0.09)
+            }
+            _ => Color::NONE,
+        }
+    });
+    let caret = glyph(commands, "caret-down", text_muted(), 10.0);
+    commands.entity(caret).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(trigger).add_children(&[caret, panel]);
+    trigger
+}
+
+/// Pick a play-target row → write the setting, persist it, close the menu.
+fn play_target_option_click(
+    opts: Query<(&Interaction, &PlayTargetOption), Changed<Interaction>>,
+    mut settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
+    carets: Query<Entity, (With<PlayTargetCaret>, With<Popup>)>,
+    mut commands: Commands,
+) {
+    for (interaction, opt) in &opts {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if let Some(s) = settings.as_mut() {
+            s.external_play_window = opt.runtime_window;
+        }
+        let _ = renzora::save_play_runtime_window(opt.runtime_window);
+        for caret in &carets {
+            renzora_ember::widgets::close_popup(&mut commands, caret);
+        }
+    }
+}
+
+/// Keep each play-target row's leading glyph in sync with the current target:
+/// the selected row shows a green check, the other shows its own icon.
+fn update_play_target_menu(
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
+    theme: Option<Res<renzora_theme::ThemeManager>>,
+    mut icons: Query<(&mut renzora_ember::icons::Icon, &PlayTargetOptionIcon)>,
+) {
+    let Some(settings) = settings else { return };
+    let green = theme
+        .map(|t| {
+            let [r, g, b, _] = t.active_theme.semantic.success.to_array();
+            Color::srgb_u8(r, g, b)
+        })
+        .unwrap_or_else(|| rgb(play_green()));
+    for (mut icon, opt) in &mut icons {
+        let selected = settings.external_play_window == opt.runtime_window;
+        let (name, color) = if selected {
+            ("check", green)
+        } else if opt.runtime_window {
+            ("app-window", rgb(text_muted()))
+        } else {
+            ("frame-corners", rgb(text_muted()))
+        };
+        if icon.name != name {
+            icon.name = name.to_string();
+            icon.resolved = false;
+        }
+        if icon.color != Some(color) {
+            icon.color = Some(color);
+            icon.resolved = false;
         }
     }
 }
@@ -2874,6 +3065,21 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0);
     let play = build_play_button(commands, font);
+    // Play + its target caret grouped tightly so they read as one split button
+    // (the zone's 8px gap would otherwise pull them apart).
+    let play_caret = build_play_target_caret(commands, font);
+    let play_group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(1.0),
+                ..default()
+            },
+            Name::new("play-group"),
+        ))
+        .id();
+    commands.entity(play_group).add_children(&[play, play_caret]);
     let simulate = build_simulate_button(commands, font);
     let settings = icon_item(commands, "gear", text_muted(), 16.0);
     commands.entity(settings).insert((
@@ -2963,7 +3169,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     commands
         .entity(right)
-        .add_children(&[play, simulate, settings, window]);
+        .add_children(&[play_group, simulate, settings, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar

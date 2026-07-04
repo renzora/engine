@@ -64,17 +64,24 @@ impl ExternalRuntime {
     }
 }
 
-/// Locate the runtime binary that ships next to this editor build.
+/// Locate the runtime binary to launch for external play.
 ///
-/// In a packaged build the editor lives at `dist/{platform}/editor/<exe>`
-/// and the runtime sibling is at `dist/{platform}/runtime/renzora-runtime[.exe]`.
-/// `cargo run` from the workspace produces no such sibling, so this
-/// returns `None` and the caller falls back to in-editor play mode.
+/// The engine is ONE binary that boots as the game when told to skip the
+/// editor bundle, so the editor's own executable relaunched with
+/// `--no-editor` is always a valid runtime — that's the normal dev-loop
+/// answer, and what `cargo renzora` / `cargo run` sessions use. A dedicated
+/// `renzora-runtime[.exe]` (leaner: built by `build-all.sh`'s runtime lane
+/// without the editor feature set) is preferred when one is staged nearby:
+///
+/// 1. `<exe_dir>/runtime/renzora-runtime[.exe]`
+/// 2. `<exe_dir>/renzora-runtime[.exe]` — the flat sibling `build-all.sh`
+///    places beside the editor in `dist/<platform>/`.
+/// 3. `<exe_dir>/../runtime/renzora-runtime[.exe]` — a split
+///    `editor/` + `runtime/` package layout.
+/// 4. The editor binary itself (see above).
 pub fn find_runtime_binary() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
-    let editor_dir = exe.parent()?;
-    let dist_dir = editor_dir.parent()?;
-    let runtime_dir = dist_dir.join("runtime");
+    let exe_dir = exe.parent()?;
 
     let bin_name = if cfg!(target_os = "windows") {
         "renzora-runtime.exe"
@@ -82,17 +89,29 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
         "renzora-runtime"
     };
 
-    let candidate = runtime_dir.join(bin_name);
-    candidate.exists().then_some(candidate)
+    let candidates = [
+        exe_dir.join("runtime").join(bin_name),
+        exe_dir.join(bin_name),
+        exe_dir.parent().map(|d| d.join("runtime").join(bin_name))?,
+    ];
+    if let Some(found) = candidates.into_iter().find(|c| c.exists()) {
+        return Some(found);
+    }
+    Some(exe)
 }
 
 /// Spawn the runtime pointed at `project_path`. Returns the child handle
 /// on success. The runtime accepts `--project <path>` and treats either a
 /// directory (looks for `project.toml` inside) or the `.toml` itself as
 /// valid input — see `renzora_engine::parse_project_arg`.
+///
+/// `--no-editor` is always passed: it's what makes the self-relaunch fallback
+/// boot as a game, and a harmless no-op for a dedicated runtime binary (which
+/// has no editor bundle to suppress in the first place).
 pub fn spawn_runtime(binary: &Path, project_path: &Path) -> std::io::Result<Child> {
     use std::process::Command;
     Command::new(binary)
+        .arg("--no-editor")
         .arg("--project")
         .arg(project_path)
         .spawn()

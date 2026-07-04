@@ -223,12 +223,14 @@ pub struct EditorSettings {
     pub script_rerun_on_ready_on_reload: bool,
     /// Hide and lock the cursor when entering play mode
     pub hide_cursor_in_play_mode: bool,
-    /// Spawn the exported runtime binary as a child process when entering
-    /// play mode, instead of doing the in-editor camera switch. Gives a
-    /// "real exported game" experience — its own window, the project's
-    /// configured title/icon/decorations, and full insulation from editor
-    /// state. Falls back to in-editor play if the runtime binary can't be
-    /// located next to the editor.
+    /// Spawn the runtime as a child process when entering play mode, instead
+    /// of doing the in-editor camera switch. Gives a "real exported game"
+    /// experience — its own window with the project's configured title /
+    /// resolution / window mode / icon, and full insulation from editor state.
+    /// Uses the packaged `renzora-runtime` sibling when one exists, otherwise
+    /// relaunches this same binary with `--no-editor` (the engine is one
+    /// binary either way). Chosen from the Play button's target dropdown (or
+    /// Settings → Scripting) and persisted per-user in `~/.renzora/editor.toml`.
     pub external_play_window: bool,
     /// When entering play mode, maximize the viewport (collapse the rest of the
     /// dock to a single viewport leaf) for a clean game view; restored on Stop.
@@ -286,7 +288,9 @@ impl Default for EditorSettings {
             dev_mode: renzora::load_dev_mode(),
             script_rerun_on_ready_on_reload: true,
             hide_cursor_in_play_mode: true,
-            external_play_window: true,
+            // Seeded from the persisted per-user pref (the Play dropdown's
+            // choice); defaults to in-viewport play.
+            external_play_window: renzora::load_play_runtime_window(),
             maximize_viewport_on_play: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,

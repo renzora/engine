@@ -257,6 +257,13 @@ struct EditorPrefFile {
     /// per-user preference, not a project property, hence it lives here.
     #[serde(default = "default_language")]
     language: String,
+    /// Play-button target: `true` = Play launches the game in its own runtime
+    /// window (with the project's configured title/resolution/mode), `false` =
+    /// Play runs inside the editor viewport panel. Set from the Play button's
+    /// target dropdown; per-user because it's a workflow preference, not a
+    /// project property.
+    #[serde(default)]
+    play_runtime_window: bool,
 }
 
 fn default_language() -> String {
@@ -299,6 +306,7 @@ impl Default for EditorPrefFile {
             autosave_enabled: true,
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
+            play_runtime_window: false,
         }
     }
 }
@@ -523,6 +531,45 @@ pub fn save_dev_mode(dev_mode: bool) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.dev_mode = dev_mode;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load the persisted Play-button target (default `false` = in-viewport play).
+/// The editor seeds `EditorSettings.external_play_window` from this at startup
+/// so the Play dropdown's choice survives restarts.
+pub fn load_play_runtime_window() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        editor_pref_path()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+            .map(|f| f.play_runtime_window)
+            .unwrap_or(false)
+    }
+}
+
+/// Persist the Play-button target (read-modify-write, so other fields survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_play_runtime_window(runtime_window: bool) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.play_runtime_window = runtime_window;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

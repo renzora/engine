@@ -2320,7 +2320,11 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().external_play_window,
-        |w, &v| w.resource_mut::<EditorSettings>().external_play_window = v,
+        // Persisted like the Play dropdown's choice — both edit the same flag.
+        |w, &v| {
+            w.resource_mut::<EditorSettings>().external_play_window = v;
+            let _ = renzora::save_play_runtime_window(v);
+        },
     );
     settings_row(commands, fonts, body, 2, &tr("settings.row.external_window"), t);
 

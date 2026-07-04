@@ -17,15 +17,16 @@ struct PrePlayMaximized(bool);
 
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
-    // Try the external-runtime path first. If the user has the
-    // "external_play_window" setting on AND the runtime binary is
-    // discoverable, route Play/Stop to spawning/killing the child instead
-    // of doing the in-editor camera switch. The editor's own
-    // `PlayModeState` stays in `Editing` while the runtime owns the game.
+    // Try the external-runtime path first. If the Play target is set to
+    // "Runtime Window" (the Play button's dropdown / the external_play_window
+    // setting), route Play/Stop to spawning/killing the child instead of
+    // doing the in-editor camera switch. The editor's own `PlayModeState`
+    // stays in `Editing` while the runtime owns the game.
     //
-    // If the binary isn't discoverable (e.g. `cargo run` from a workspace
-    // with no `dist/{platform}/runtime/` sibling), this returns false and
-    // we fall through to in-editor play, so Play always does *something*.
+    // The launcher prefers a packaged `renzora-runtime` sibling and otherwise
+    // relaunches this binary with `--no-editor`, so it virtually always finds
+    // something; on the rare failure it returns false and we fall through to
+    // in-editor play, so Play always does *something*.
     if try_handle_external_runtime(world) {
         return;
     }
@@ -75,15 +76,6 @@ pub fn handle_play_mode_transitions(world: &mut World) {
 fn try_handle_external_runtime(world: &mut World) -> bool {
     use renzora::core::console_log::*;
 
-    // Feature gate: only act when the user opted in.
-    let enabled = world
-        .get_resource::<EditorSettings>()
-        .map(|s| s.external_play_window)
-        .unwrap_or(false);
-    if !enabled {
-        return false;
-    }
-
     // Inspect the request flags before mutating anything else.
     let Some(play_mode) = world.get_resource::<PlayModeState>() else {
         return false;
@@ -92,6 +84,19 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
         .get_resource::<ExternalRuntime>()
         .map(|r| r.is_alive())
         .unwrap_or(false);
+    // Target gate: only *spawn* when the Play target is "Runtime Window".
+    // Stopping a live child is deliberately NOT gated — the user can flip
+    // the target back to "Viewport" (Play dropdown) while a runtime is
+    // running, and Stop must still kill it rather than fall through to the
+    // in-editor path (which would clear the request without doing anything,
+    // leaving the child orphaned behind a stuck Stop button).
+    let enabled = world
+        .get_resource::<EditorSettings>()
+        .map(|s| s.external_play_window)
+        .unwrap_or(false);
+    if !enabled && !runtime_alive {
+        return false;
+    }
     let pending_play = play_mode.request_play && play_mode.is_editing();
     let pending_stop = play_mode.request_stop;
     // While a child runtime is alive, *every* play/stop request collapses
@@ -99,7 +104,7 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     // know about external runtime state) from accidentally spawning a
     // second instance.
     let want_stop = runtime_alive && (pending_play || pending_stop);
-    let want_play = !runtime_alive && pending_play;
+    let want_play = enabled && !runtime_alive && pending_play;
 
     if !want_play && !want_stop {
         return false;
@@ -153,7 +158,7 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     console_info(
         "PlayMode",
         format!(
-            "Spawning external runtime: {} --project {}",
+            "Spawning external runtime: {} --no-editor --project {}",
             binary.display(),
             project_path.display()
         ),

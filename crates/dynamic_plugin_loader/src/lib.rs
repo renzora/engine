@@ -161,6 +161,17 @@ mod platform {
                 }
             }
 
+            // NOTE for every skip below this point: the dll is now MAPPED and
+            // its static initializers have run — leak the handle via
+            // `leak_skipped` instead of letting `Library`'s Drop call
+            // FreeLibrary. A dll may spawn threads at load (the Tracy client
+            // in `renzora_tracy` starts its profiler thread the moment the
+            // dll is mapped), and FreeLibrary then deadlocks in the OS loader
+            // lock waiting on that thread — the shipped game hung at boot
+            // exactly here while skipping the editor-scope tracy plugin. We
+            // never unload accepted plugins either (see `_libraries`), so a
+            // skipped dll staying mapped is the same policy, minus the
+            // deadlock.
             let library = match unsafe { Library::new(&path) } {
                 Ok(lib) => lib,
                 Err(e) => {
@@ -198,6 +209,7 @@ mod platform {
                             .into(),
                     });
                 }
+                leak_skipped(library);
                 continue;
             }
 
@@ -217,6 +229,7 @@ mod platform {
                      beside the exe, not plugins/ (stale artifact?)",
                     stem
                 );
+                leak_skipped(library);
                 continue;
             }
 
@@ -246,6 +259,7 @@ mod platform {
                     "[dynamic-plugin] Skipping '{}' ({:?}, editor={})",
                     stem, scope, is_editor
                 );
+                leak_skipped(library);
                 continue;
             }
 
@@ -259,6 +273,7 @@ mod platform {
                             "[dynamic-plugin] Missing plugin_create in '{}': {e}",
                             path.display()
                         );
+                        leak_skipped(library);
                         continue;
                     }
                 };
@@ -285,9 +300,23 @@ mod platform {
                         "[dynamic-plugin] '{}' panicked during creation",
                         path.display()
                     );
+                    leak_skipped(library);
                 }
             }
         }
+    }
+
+    /// Deliberately keep a dlopen'd library we decided NOT to use mapped for
+    /// the life of the process, instead of letting `Library`'s Drop call
+    /// FreeLibrary/dlclose. By the time any skip decision is made the dll's
+    /// static initializers have already run and may have spawned threads —
+    /// the Tracy client inside `renzora_tracy` starts its profiler thread the
+    /// moment the dll is mapped — and unloading then deadlocks inside the OS
+    /// loader lock waiting on that thread. Accepted plugins are never
+    /// unloaded either (`DynamicPluginRegistry::_libraries`), so this is the
+    /// same lifetime policy applied to rejects.
+    fn leak_skipped(library: Library) {
+        std::mem::forget(library);
     }
 
     /// Load exactly ONE bundle cdylib by path — the editor bundle that ships
