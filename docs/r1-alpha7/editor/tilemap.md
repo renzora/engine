@@ -63,6 +63,20 @@ How it's stored depends on the shape of the pick:
 
 A **single (1×1)** selection still paints ordinary per-cell tiles, so normal tilemapping is unchanged — the composite behaviour only kicks in once you pick more than one cell.
 
+## Randomise (make a forest)
+
+Filling an area with a single tree gives you a rigid, obviously-tiled grid. The **Randomise** button (the dice icon) in the **viewport toolbar** turns that grid into a natural-looking scatter — the fast way to lay down a forest, a field of rocks, or scattered foliage. It only appears in 2D view once you have painted tiles selected.
+
+The workflow is **select-then-randomise**, so it works on tiles you've already placed:
+
+1. Paint (or rectangle-fill) a block of trees — a plain solid grid is fine.
+2. Switch to **Select** and select them — rubber-band drag over the block, or Ctrl/Shift+click to gather them.
+3. Click the **dice** button in the viewport toolbar.
+
+Each selected tile is moved to a random cell **within the selection's own bounding box**. There are no knobs to fiddle: on the **first** press a solid block naturally opens up into an uneven scatter (roughly 60–65% coverage) with gaps and clusters — the "forest" look — while the trees never spill outside the area you selected.
+
+Randomise is **repeatable** — click it again for a completely different layout. Repeat presses reshuffle the *same* trees within the *same* area: they don't thin the field further or pull it inward, so you can keep clicking until you like the arrangement. (Changing the selection starts a fresh pass over the new bounds.) Only real painted tiles are touched, so anything else in a mixed selection is left alone. Because each tile keeps a real grid cell (its `TilemapTile` moves with it), erasing and re-painting those cells still work normally.
+
 ## Selecting painted tiles
 
 Switch the Mode dropdown back to **Select** (or press **Esc**/**Tab**) and the normal 2D picking tools return:

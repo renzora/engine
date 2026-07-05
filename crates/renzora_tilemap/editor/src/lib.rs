@@ -20,12 +20,19 @@
 //!   (children of the layer, one per cell — see `renzora_tilemap`'s crate
 //!   doc) with stroke interpolation, **Shift+drag** fills a rectangle, and
 //!   Alt+left-drag erases. Right-drag stays free for the 2D camera pan.
+//! - a viewport-toolbar **Randomise** button ([`randomize_selection`]) — the
+//!   "make a forest" action. With painted tiles selected in 2D, one click
+//!   scatters them to random cells within their own bounding box, turning a
+//!   rigid grid into a natural, gappy field. Registered via [`ToolEntry`].
 //!
 //! Registered via `renzora::add!(TilemapEditorPlugin, Editor)` and linked only by
 //! the editor bundle.
 
 mod panel;
 mod preview;
+
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -35,7 +42,7 @@ use renzora::core::{
     CurrentProject, EditorCamera2d, Node2d, PlayModeState, SpriteAtlasRegion, SpriteCustomSize,
     SpriteImagePath, SpriteSheet, ViewportBrushActive,
 };
-use renzora::{EditorSelection, SplashState};
+use renzora::{AppEditorExt, EditorSelection, SplashState, ToolEntry, ToolSection};
 use renzora_tilemap::{TileObject, TileObjectCell, TilemapLayer, TilemapTile, TilesetHandle};
 use renzora_ui::AssetDragPayload;
 
@@ -229,9 +236,26 @@ impl Plugin for TilemapEditorPlugin {
             .init_resource::<ActiveTilemap>()
             .init_resource::<ArmedTilesetDrop>()
             .init_resource::<PaintRectDrag>()
-            .init_resource::<ViewportBrushActive>();
+            .init_resource::<ViewportBrushActive>()
+            .init_resource::<RandomizeState>();
 
         panel::register(app);
+
+        // A viewport-toolbar button (2D only, shown once tiles are selected):
+        // one click scatters the selection within its own bounds — see
+        // [`randomize_selection`]. It's an action, not a mode, so it never reads
+        // as "active".
+        app.register_tool(
+            ToolEntry::new(
+                "tilemap.randomise",
+                "dice-five",
+                "Randomise: scatter the selected tiles within their bounds",
+                ToolSection::Custom("tilemap"),
+            )
+            .visible_if(|w| is_2d_view(w) && selection_has_tiles(w))
+            .active_if(|_| false)
+            .on_activate(randomize_selection),
+        );
 
         // Chained so painting and the ghost preview see this frame's active
         // tilemap + resolved paint mode (a drop/tab click/mode switch one
@@ -257,6 +281,257 @@ impl Plugin for TilemapEditorPlugin {
 }
 
 renzora::add!(TilemapEditorPlugin, Editor);
+
+/// Whether the 2D view is the active viewport view (the Randomise button only
+/// makes sense there).
+fn is_2d_view(world: &World) -> bool {
+    world
+        .get_resource::<ViewportSettings>()
+        .is_some_and(|s| s.viewport_view == ViewportView::Two)
+}
+
+/// Whether the current selection contains at least one painted tile/object, so
+/// the Randomise button only appears when it has something to act on.
+fn selection_has_tiles(world: &World) -> bool {
+    world.get_resource::<EditorSelection>().is_some_and(|s| {
+        s.get_all()
+            .iter()
+            .any(|&e| world.get::<TilemapTile>(e).is_some())
+    })
+}
+
+/// Advanced once per Randomise click so each press produces a fresh layout.
+/// Editor-only and non-deterministic across sessions is fine; a static avoids
+/// threading a seed resource through the tool's `&mut World` activator.
+static RANDOMIZE_SEED: AtomicU64 = AtomicU64::new(0x243F_6A88_85A3_08D3);
+
+/// SplitMix64 — a tiny, well-distributed integer hash. Derives the per-tile
+/// target cell without pulling in a `rand` dependency.
+fn splitmix64(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut z = x;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Salt mixed with the per-tile hash + an attempt counter to derive candidate
+/// cells (one hash yields both coordinates via `% bw`, `/ bw % bh`).
+const RNG_STEP_SALT: u64 = 0x9E37_79B9_7F4A_7C15;
+
+/// Remembers the last Randomise pass so pressing the dice **again** reshuffles
+/// the SAME tiles within the SAME box instead of thinning + shrinking every
+/// press (which pulled the whole field inward). Keyed on the selected tile set:
+/// a *matching* selection is a repeat (no thinning, cached box); a *changed*
+/// selection is a fresh pass (recompute box, may thin a packed block into gaps).
+#[derive(Resource, Default)]
+struct RandomizeState(Option<RandomizeSnapshot>);
+
+struct RandomizeSnapshot {
+    /// Order-independent hash of the tile entities the last pass produced.
+    key: u64,
+    /// The bounding box (cells) that pass scattered within — reused on repeats
+    /// so the field never shrinks.
+    min: IVec2,
+    max: IVec2,
+}
+
+/// A selected painted tile gathered by [`randomize_selection`]: its entity, its
+/// object footprint (`None` for a plain single tile), and its layer's tile size.
+struct RandomTile {
+    entity: Entity,
+    footprint: Option<(u32, u32)>,
+    tile_size: f32,
+}
+
+/// The on-grid local position (layer space) a painted tile/object sits at,
+/// mirroring the stamp formulas in [`paint_tiles`]: a single tile centres on its
+/// cell; a composite object (footprint `w × h`) anchors at its top-left cell and
+/// extends right (+x) and up (−y from the anchor).
+fn grid_base_local(cell: IVec2, footprint: Option<(u32, u32)>, ts: f32) -> Vec2 {
+    if let Some((w, h)) = footprint {
+        let (w, h) = (w.max(1) as f32, h.max(1) as f32);
+        Vec2::new(
+            cell.x as f32 * ts + w * ts * 0.5,
+            (cell.y as f32 - h + 1.0) * ts + h * ts * 0.5,
+        )
+    } else {
+        Vec2::new(cell.x as f32 * ts + ts * 0.5, cell.y as f32 * ts + ts * 0.5)
+    }
+}
+
+/// Order-independent hash of a set of tile entities — the [`RandomizeState`] key
+/// identifying "the same selection" across presses.
+fn tile_set_key(entities: &[Entity]) -> u64 {
+    // XOR-fold per-entity hashes so order doesn't matter and no sort is needed.
+    entities
+        .iter()
+        .fold(0u64, |acc, e| acc ^ splitmix64(e.to_bits()))
+}
+
+/// **Randomise** the current viewport selection: move every selected tile/object
+/// to a random cell **within the selection's own bounding box** — the "grid of
+/// trees → forest" action, driven by the viewport-toolbar dice button.
+///
+/// The catch pressing it repeatedly must avoid is collapsing the field inward.
+/// So the first press on a given selection **thins** it (tiles that collide on a
+/// random cell are dropped, turning a packed block into a ~63%-coverage scatter
+/// with natural gaps) and records the selection's bounding box in
+/// [`RandomizeState`]. Every later press on that same (thinned) selection is a
+/// **repeat**: it reuses the cached box and places the tiles at *unique* cells —
+/// no more deletion and no shrinking box — so it just reshuffles the same trees
+/// into a fresh layout. Changing the selection starts a new pass.
+///
+/// `TilemapTile`, `Transform` and the entity `Name` all move to the new cell so
+/// the data stays truthful (erase/repaint by cell keep working). Only real
+/// painted tiles are touched; anything else in a mixed selection is left as-is.
+/// Runs as a deferred `&mut World` tool activator.
+fn randomize_selection(world: &mut World) {
+    let Some(selected) = world.get_resource::<EditorSelection>().map(|s| s.get_all()) else {
+        return;
+    };
+    if selected.is_empty() {
+        return;
+    }
+
+    // Pass 1: collect the painted tiles (footprint + tile size) and the bounding
+    // box of their cells. Non-tile entities are kept selected, untouched.
+    let mut tiles: Vec<RandomTile> = Vec::new();
+    let mut others: Vec<Entity> = Vec::new();
+    let mut min = IVec2::splat(i32::MAX);
+    let mut max = IVec2::splat(i32::MIN);
+    for &e in &selected {
+        let cell = match world.get::<TilemapTile>(e) {
+            Some(t) => IVec2::new(t.x, t.y),
+            None => {
+                others.push(e);
+                continue;
+            }
+        };
+        let layer_e = match world.get::<ChildOf>(e) {
+            Some(c) => c.parent(),
+            None => {
+                others.push(e);
+                continue;
+            }
+        };
+        let ts = match world.get::<TilemapLayer>(layer_e) {
+            Some(l) => l.tile_size,
+            None => {
+                others.push(e);
+                continue;
+            }
+        };
+        if ts <= 0.0 {
+            others.push(e);
+            continue;
+        }
+        let footprint = world
+            .get::<SpriteAtlasRegion>(e)
+            .map(|r| (r.w, r.h))
+            .or_else(|| world.get::<TileObject>(e).map(|o| (o.w, o.h)));
+        min = min.min(cell);
+        max = max.max(cell);
+        tiles.push(RandomTile {
+            entity: e,
+            footprint,
+            tile_size: ts,
+        });
+    }
+    if tiles.is_empty() {
+        return;
+    }
+
+    // Is this the same selection as the last pass? If so, reuse its box and don't
+    // thin (repeat); otherwise it's a fresh pass over this selection's own box.
+    let tile_ids: Vec<Entity> = tiles.iter().map(|t| t.entity).collect();
+    let key = tile_set_key(&tile_ids);
+    let cached = world
+        .get_resource::<RandomizeState>()
+        .and_then(|s| s.0.as_ref())
+        .filter(|snap| snap.key == key)
+        .map(|snap| (snap.min, snap.max));
+    let (bmin, bmax, thin) = match cached {
+        Some((mn, mx)) => (mn, mx, false),
+        None => (min, max, true),
+    };
+
+    let seed = splitmix64(RANDOMIZE_SEED.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed));
+    let bw = (bmax.x - bmin.x + 1).max(1) as u64;
+    let bh = (bmax.y - bmin.y + 1).max(1) as u64;
+    // Candidate cell for a tile's `base` hash on attempt `a` (one hash → both
+    // axes). Attempt varies the hash so a rejected cell retries elsewhere.
+    let cell_for = |base: u64, a: u64| {
+        let h = splitmix64(base ^ RNG_STEP_SALT.wrapping_mul(a + 1));
+        IVec2::new(
+            bmin.x + (h % bw) as i32,
+            bmin.y + ((h / bw) % bh) as i32,
+        )
+    };
+
+    // Pass 2: place each tile. On a fresh pass a collision drops the tile (gaps);
+    // on a repeat we probe for a free cell (no deletion — count stays put).
+    let mut occupied: HashSet<(i32, i32)> = HashSet::with_capacity(tiles.len());
+    let mut survivors = others;
+    let mut placed_tiles: Vec<Entity> = Vec::with_capacity(tiles.len());
+    for t in &tiles {
+        let base = splitmix64(t.entity.to_bits() ^ seed);
+        let cell = if thin {
+            let c = cell_for(base, 0);
+            if !occupied.insert((c.x, c.y)) {
+                world.despawn(t.entity);
+                continue;
+            }
+            c
+        } else {
+            // Repeat: find a free cell (up to 32 tries), else fall back to the
+            // first candidate and allow the rare overlap rather than deleting.
+            let mut chosen = cell_for(base, 0);
+            for a in 0..32 {
+                let c = cell_for(base, a);
+                if occupied.insert((c.x, c.y)) {
+                    chosen = c;
+                    break;
+                }
+            }
+            occupied.insert((chosen.x, chosen.y));
+            chosen
+        };
+        let g = grid_base_local(cell, t.footprint, t.tile_size);
+        if let Some(mut tf) = world.get_mut::<Transform>(t.entity) {
+            tf.translation.x = g.x;
+            tf.translation.y = g.y;
+        }
+        if let Some(mut tile) = world.get_mut::<TilemapTile>(t.entity) {
+            tile.x = cell.x;
+            tile.y = cell.y;
+        }
+        if let Some(mut name) = world.get_mut::<Name>(t.entity) {
+            *name = Name::new(if t.footprint.is_some() {
+                format!("Object ({}, {})", cell.x, cell.y)
+            } else {
+                format!("Tile ({}, {})", cell.x, cell.y)
+            });
+        }
+        placed_tiles.push(t.entity);
+        survivors.push(t.entity);
+    }
+
+    // Remember this pass keyed on the tiles that survived, so the next press on
+    // the same set is recognised as a repeat (reuse box, don't thin again).
+    if let Some(mut state) = world.get_resource_mut::<RandomizeState>() {
+        state.0 = Some(RandomizeSnapshot {
+            key: tile_set_key(&placed_tiles),
+            min: bmin,
+            max: bmax,
+        });
+    }
+    if survivors.len() != selected.len() {
+        if let Some(selection) = world.get_resource::<EditorSelection>() {
+            selection.set_multiple(survivors);
+        }
+    }
+}
 
 /// Keep [`ActiveTilemap`] pointing at a live layer: follow hierarchy selection
 /// when it lands on a tilemap and drop despawned entities. Deliberately does
