@@ -487,9 +487,15 @@ fn paint_tiles(
     mut commands: Commands,
     // Tupled Locals: `last_cell` gates stroke interpolation for 1×1 tiles;
     // `last_object` tracks the last multi-tile object's anchor so a drag tiles
-    // objects edge-to-edge instead of stamping one per cell. (The system is at
-    // the 16-param cap, so the two Locals share one slot.)
-    (mut last_cell, mut last_object): (Local<Option<IVec2>>, Local<Option<IVec2>>),
+    // objects edge-to-edge instead of stamping one per cell; `painting` latches
+    // whether the current mouse-hold is an actual paint gesture (press began over
+    // the viewport) vs. a drag that merely wandered in. (The system is at the
+    // 16-param cap, so the Locals share one slot.)
+    (mut last_cell, mut last_object, mut painting): (
+        Local<Option<IVec2>>,
+        Local<Option<IVec2>>,
+        Local<bool>,
+    ),
 ) {
     if !paint.active
         || play.is_some_and(|p| p.is_in_play_mode())
@@ -778,6 +784,7 @@ fn paint_tiles(
     if !mouse.pressed(MouseButton::Left) {
         *last_cell = None;
         *last_object = None;
+        *painting = false;
         if let Some((a, b, erase)) = rect_drag.0.take() {
             let min = a.min(b);
             let max = a.max(b);
@@ -837,6 +844,16 @@ fn paint_tiles(
     let erasing = paint.erase || keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight);
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     let Some(vs) = viewport else { return };
+    // Only a press that BEGAN over the viewport arms a stroke. `hovered` merely
+    // tracks the cursor, so without this a mouse-hold for something else — dragging
+    // a dock panel/tab, a scrollbar — that passes over the 2D viewport would start
+    // painting. Latch the gesture at press time from where the press landed.
+    if mouse.just_pressed(MouseButton::Left) {
+        *painting = vs.hovered;
+    }
+    if !*painting {
+        return;
+    }
     if !vs.hovered && rect_drag.0.is_none() {
         return;
     }
