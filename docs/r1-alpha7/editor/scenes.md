@@ -42,7 +42,10 @@ Click a row to select it. The viewport and the Inspector both follow your select
 | `Ctrl`+Click (or `Cmd`+Click) | Add or remove this object from the selection |
 | `Shift`+Click | Select everything between the last pick and this one |
 | Double-click | Rename it right in the tree |
+| Drag from empty space | Rubber-band select every row the box sweeps over |
 | `Escape` | Deselect everything |
+
+To **drag-select**, press in the empty area of the tree (below the last row) and drag a box over the rows you want — everything it touches is selected, and the list scrolls automatically when you reach its top or bottom edge. Hold `Ctrl` or `Shift` while you start the box to add to the current selection instead of replacing it. A plain click in that empty space clears the selection.
 
 You can also **Select All**, **Hide Selected**, or **Isolate Selected** (hide everything except your selection) from the editor's actions.
 

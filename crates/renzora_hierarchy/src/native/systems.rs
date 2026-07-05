@@ -62,12 +62,18 @@ fn find_tree_path(nodes: &[EntityNode], target: Entity, path: &mut Vec<Entity>) 
 /// model's subtree appears in the tree.
 pub(crate) fn hierarchy_reveal_selection(
     selection: Option<Res<EditorSelection>>,
+    marquee: Res<super::marquee::HierMarquee>,
     mut pending: ResMut<HierRevealPending>,
     mut last_sel: Local<Option<Entity>>,
 ) {
     let Some(selection) = selection else {
         return;
     };
+    // A live rubber-band changes the primary selection every frame as it sweeps;
+    // revealing (and scroll-centring) that moving target would fight the drag.
+    if marquee.active() {
+        return;
+    }
     let current = selection.get();
     if current == *last_sel {
         return;

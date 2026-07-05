@@ -13,6 +13,7 @@ mod components;
 mod context_menu;
 mod drag;
 mod filter;
+mod marquee;
 mod pin;
 mod rename;
 mod row;
@@ -62,6 +63,7 @@ pub fn register_native_hierarchy(app: &mut App) {
     app.init_resource::<HierRevealPending>();
     app.init_resource::<tree::HierFlatCache>();
     app.init_resource::<drag::HierDrag>();
+    app.init_resource::<marquee::HierMarquee>();
     app.init_resource::<filter::HierFilter>();
     app.init_resource::<filter::HierSearch>();
     app.init_resource::<rename::HierRename>();
@@ -162,8 +164,13 @@ pub fn register_native_hierarchy(app: &mut App) {
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,
             systems::hierarchy_badge_click,
-            drag::hier_drag,
-            drag::hier_drag_tooltip,
+            (
+                drag::hier_drag,
+                drag::hier_drag_tooltip,
+                marquee::hier_marquee,
+                marquee::hier_marquee_overlay,
+                marquee::hier_marquee_autoscroll,
+            ),
             scene_drop::arm_hier_scene_drop,
             scene_drop::commit_hier_scene_drop,
             context_menu::hier_context_menu,
