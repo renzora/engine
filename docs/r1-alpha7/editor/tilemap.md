@@ -43,6 +43,7 @@ In Paint mode, move the cursor over the 2D viewport — a **semi-transparent gho
 - **Left-drag** paints. A **single (1×1) brush** paints one tile per cell, interpolated so a fast drag never skips cells, and re-painting a cell replaces its tile instead of stacking a second one. A **multi-tile brush** paints [composite objects](#multi-tile-objects) — one object per position, tiled edge-to-edge as you drag.
 - **Shift + drag** fills a **rectangle**: the press anchors a corner, the drag sizes the region (the ghost previews the fill), and release fills it — a 1×1 brush tiles single tiles, a multi-tile brush tiles whole objects on a block-sized lattice. Hold **Alt** at the press to rectangle-*erase* instead (the region ghosts red).
 - **Alt + left-drag** erases. (Erasing is *not* on right-drag — that stays free for the 2D camera pan.)
+- **Right-click** (a click, not a drag) drops the brush and returns to Select — a quick way out of Paint/Erase without reaching for Esc/Tab. A right-*drag* still pans the 2D camera, so only a click with no movement switches the mode.
 - **Esc** / **Tab** (or picking **Select** in the Mode dropdown) drops the brush and returns the viewport to normal picking. Deselecting the tilemap in the tab strip does the same.
 
 ## Multi-tile objects

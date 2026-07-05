@@ -242,6 +242,7 @@ impl Plugin for TilemapEditorPlugin {
                 sync_active_tilemap,
                 toggle_paint_mode_shortcut,
                 escape_to_scene_mode,
+                right_click_to_select,
                 sync_paint_mode,
                 sync_brush_active,
                 paint_tiles,
@@ -359,6 +360,67 @@ fn escape_to_scene_mode(
         ) {
             settings.viewport_mode = ViewportMode::Scene;
         }
+    }
+}
+
+/// A right-*click* (press + release with no meaningful movement) over the 2D
+/// viewport drops the brush/eraser back to Select — a quick "get out of paint
+/// mode" without reaching for Esc/Tab or the dropdown. A right-*drag* is the 2D
+/// camera pan and must be preserved, so the switch only fires when the cursor
+/// barely moved between press and release; any drift past [`RIGHT_CLICK_DRAG_PX`]
+/// marks it a pan and cancels the switch.
+fn right_click_to_select(
+    mouse: Res<ButtonInput<MouseButton>>,
+    viewport: Option<Res<ViewportState>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut settings: Option<ResMut<ViewportSettings>>,
+    // Press position (window px) + whether the hold has become a drag.
+    mut press: Local<Option<Vec2>>,
+    mut dragged: Local<bool>,
+) {
+    use renzora::core::viewport_types::ViewportMode;
+    /// Movement (window px) past which a right hold is a pan, not a click.
+    const RIGHT_CLICK_DRAG_PX: f32 = 5.0;
+
+    let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+
+    if mouse.just_pressed(MouseButton::Right) {
+        *press = cursor;
+        *dragged = false;
+    }
+    // Latch "this became a pan" as soon as the cursor leaves the click radius,
+    // so a drag that returns near the start still counts as a pan.
+    if mouse.pressed(MouseButton::Right) && !*dragged {
+        if let (Some(p), Some(c)) = (*press, cursor) {
+            if p.distance(c) > RIGHT_CLICK_DRAG_PX {
+                *dragged = true;
+            }
+        }
+    }
+    if !mouse.just_released(MouseButton::Right) {
+        return;
+    }
+    let was_click = !*dragged && press.is_some();
+    *press = None;
+    *dragged = false;
+    if !was_click {
+        return; // it was a pan — leave the mode alone
+    }
+    // Only when the pointer is over the 2D viewport and we're actually painting.
+    if !viewport.is_some_and(|v| v.hovered) {
+        return;
+    }
+    let Some(settings) = settings.as_deref_mut() else {
+        return;
+    };
+    if settings.viewport_view != ViewportView::Two {
+        return;
+    }
+    if matches!(
+        settings.viewport_mode,
+        ViewportMode::Paint | ViewportMode::Erase
+    ) {
+        settings.viewport_mode = ViewportMode::Scene;
     }
 }
 
