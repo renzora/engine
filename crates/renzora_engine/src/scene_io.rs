@@ -1906,6 +1906,41 @@ pub fn apply_sprite_sheet_crop(
     }
 }
 
+/// Derive `Sprite.rect` from a [`renzora::core::SpriteAtlasRegion`] block —
+/// the multi-cell counterpart of [`apply_sprite_sheet_crop`]. A painted
+/// tilemap "object" (a tree stamped from a multi-tile palette block) is a
+/// single sprite showing a `w × h` slice of the atlas; this system keeps its
+/// `Sprite.rect` in sync with the persisted block on load and after texture
+/// swaps.
+///
+/// Unlike the sprite-sheet crop this needs no loaded image — the rect is
+/// `cell * tile_px`, pure arithmetic on the stored block — so it also lands
+/// correctly on the first frame after a scene load, before the atlas asset
+/// finishes loading. The same [`EDGE_INSET`](apply_sprite_sheet_crop) trick
+/// keeps a fractional camera zoom from bleeding the neighbouring atlas cell
+/// across the block's outer edge. Compare-first so an idle object doesn't trip
+/// `Changed<Sprite>` every frame.
+#[cfg(feature = "render_2d")]
+pub fn apply_sprite_atlas_region(
+    mut sprites: Query<(&renzora::core::SpriteAtlasRegion, &mut bevy::sprite::Sprite)>,
+) {
+    for (region, mut sprite) in &mut sprites {
+        let w = region.w.max(1);
+        let h = region.h.max(1);
+        let px = region.tile_px.max(1) as f32;
+        const EDGE_INSET: f32 = 0.05;
+        let desired = Some(Rect::new(
+            region.col as f32 * px + EDGE_INSET,
+            region.row as f32 * px + EDGE_INSET,
+            (region.col + w) as f32 * px - EDGE_INSET,
+            (region.row + h) as f32 * px - EDGE_INSET,
+        ));
+        if sprite.rect != desired {
+            sprite.rect = desired;
+        }
+    }
+}
+
 /// Clear the derived crop when the sheet component is removed, restoring the
 /// full-image sprite. Without this the last frame's rect would stick around
 /// forever — nothing else writes `Sprite.rect`.

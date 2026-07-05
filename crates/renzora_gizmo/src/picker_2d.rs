@@ -1039,31 +1039,56 @@ pub fn update_cursor_2d(
         };
         let cursor_panel = cursor - vs.screen_position;
 
-        let Some(entity) = selection.as_ref().and_then(|s| s.get()) else {
+        let Some(sel) = selection.as_ref() else {
             break 'resolve;
         };
-        let Ok(tr) = transforms.get(entity) else {
-            break 'resolve;
-        };
-        let Some(size) = sprites
-            .get(entity)
-            .ok()
-            .and_then(|(s, _)| sprite_size_from_query(s, &images))
-        else {
-            break 'resolve;
-        };
-        let half = size * 0.5;
-        let angle = rotation_z(tr.rotation);
 
-        match hit_test_handles(tr.translation, half, angle, cursor_panel, &vs, camera, cam_gt) {
-            Some(HandleHit::Rotate) => cursor_icon = Some(SystemCursorIcon::Grab),
-            Some(HandleHit::Resize(handle)) => cursor_icon = Some(handle.cursor(angle)),
-            None => {
-                // Over the selected sprite's body (rotated frame) → Move.
-                let local = Rot2::radians(-angle) * (cursor_world - tr.translation.truncate());
-                if local.x.abs() <= half.x && local.y.abs() <= half.y {
-                    cursor_icon = Some(SystemCursorIcon::Move);
+        // Resize/rotate handles are drawn for the PRIMARY only, so hit-test
+        // them there first — a handle grab wins over a plain move.
+        if let Some(entity) = sel.get() {
+            if let (Ok(tr), Some(size)) = (
+                transforms.get(entity),
+                sprites
+                    .get(entity)
+                    .ok()
+                    .and_then(|(s, _)| sprite_size_from_query(s, &images)),
+            ) {
+                let half = size * 0.5;
+                let angle = rotation_z(tr.rotation);
+                match hit_test_handles(tr.translation, half, angle, cursor_panel, &vs, camera, cam_gt)
+                {
+                    Some(HandleHit::Rotate) => {
+                        cursor_icon = Some(SystemCursorIcon::Grab);
+                        break 'resolve;
+                    }
+                    Some(HandleHit::Resize(handle)) => {
+                        cursor_icon = Some(handle.cursor(angle));
+                        break 'resolve;
+                    }
+                    None => {}
                 }
+            }
+        }
+
+        // Move when hovering ANY selected entity's body (rotated frame) — the
+        // whole selection drags together, so the cursor previews that over each.
+        for entity in sel.get_all() {
+            let Ok(tr) = transforms.get(entity) else {
+                continue;
+            };
+            let Some(size) = sprites
+                .get(entity)
+                .ok()
+                .and_then(|(s, _)| sprite_size_from_query(s, &images))
+            else {
+                continue;
+            };
+            let half = size * 0.5;
+            let angle = rotation_z(tr.rotation);
+            let local = Rot2::radians(-angle) * (cursor_world - tr.translation.truncate());
+            if local.x.abs() <= half.x && local.y.abs() <= half.y {
+                cursor_icon = Some(SystemCursorIcon::Move);
+                break;
             }
         }
     }

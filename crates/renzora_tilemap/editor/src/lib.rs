@@ -32,12 +32,28 @@ use bevy::window::PrimaryWindow;
 
 use renzora::core::viewport_types::{ViewportSettings, ViewportState, ViewportView};
 use renzora::core::{
-    CurrentProject, EditorCamera2d, Node2d, PlayModeState, SpriteCustomSize, SpriteImagePath,
-    SpriteSheet, ViewportBrushActive,
+    CurrentProject, EditorCamera2d, Node2d, PlayModeState, SpriteAtlasRegion, SpriteCustomSize,
+    SpriteImagePath, SpriteSheet, ViewportBrushActive,
 };
 use renzora::{EditorSelection, SplashState};
-use renzora_tilemap::{TilemapLayer, TilemapTile, TilesetHandle};
+use renzora_tilemap::{TileObject, TileObjectCell, TilemapLayer, TilemapTile, TilesetHandle};
 use renzora_ui::AssetDragPayload;
+
+/// Shared read query over a layer's painted children: each carries its grid
+/// cell, and either nothing (a single tile), a [`SpriteAtlasRegion`] (a
+/// solid-rectangle object) or a [`TileObject`] (a baked composite object). Used
+/// by the paint/erase helpers to find, replace and clear tiles and objects.
+type TileQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static TilemapTile,
+        &'static ChildOf,
+        Option<&'static SpriteAtlasRegion>,
+        Option<&'static TileObject>,
+    ),
+>;
 
 /// Image extensions accepted as a tileset atlas when dropped on the panel.
 const TILESET_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "ktx2", "rmip"];
@@ -56,10 +72,15 @@ pub(crate) fn is_tileset(path: &std::path::Path) -> bool {
 #[derive(Resource, Default)]
 pub struct ActiveTilemap(pub Option<Entity>);
 
-/// The current paint brush: a rectangular block of atlas tiles selected in the
-/// palette (drag to select more than one; a single click is a 1×1 block).
-/// `atlas_cols` is the column count of the atlas the selection came from, so the
-/// per-cell atlas index can be reconstructed when stamping.
+/// The current paint brush: the set of atlas cells picked in the palette.
+///
+/// A plain click/drag selects a solid rectangle; **Ctrl+click** toggles an
+/// individual cell and **Shift+click** adds one, so the set can be
+/// non-rectangular (a tree's canopy branches over a narrow trunk). `col`/`row`/
+/// `w`/`h` are the bounding box of `selected` (kept in sync), and `atlas_cols`
+/// is the source atlas's column count so a cell's atlas index can be
+/// reconstructed. When `selected` fills the bounding box it's a solid rect and
+/// paints via the cheap atlas-crop path; otherwise it bakes a composite object.
 #[derive(Resource)]
 pub struct TilemapBrush {
     pub col: u32,
@@ -67,6 +88,8 @@ pub struct TilemapBrush {
     pub w: u32,
     pub h: u32,
     pub atlas_cols: u32,
+    /// Picked atlas cells, absolute `(col, row)`. Kept unique.
+    pub selected: Vec<UVec2>,
 }
 
 impl Default for TilemapBrush {
@@ -77,23 +100,97 @@ impl Default for TilemapBrush {
             w: 1,
             h: 1,
             atlas_cols: 1,
+            selected: vec![UVec2::ZERO],
         }
     }
 }
 
 impl TilemapBrush {
-    /// The block's cells as `(dx, dy, atlas_index)` — `dx`/`dy` are offsets from
-    /// the stamp origin (grow right / down), `atlas_index` is the tile to place.
+    /// The picked cells as `(dx, dy, atlas_index)` — `dx`/`dy` are offsets from
+    /// the bounding-box top-left (grow right / down), `atlas_index` is the tile.
     pub fn cells(&self) -> Vec<(i32, i32, u32)> {
         let cols = self.atlas_cols.max(1);
-        let mut out = Vec::with_capacity((self.w * self.h) as usize);
-        for dy in 0..self.h.max(1) {
-            for dx in 0..self.w.max(1) {
-                let idx = (self.row + dy) * cols + (self.col + dx);
-                out.push((dx as i32, dy as i32, idx));
+        self.selected
+            .iter()
+            .map(|c| {
+                (
+                    (c.x - self.col) as i32,
+                    (c.y - self.row) as i32,
+                    c.y * cols + c.x,
+                )
+            })
+            .collect()
+    }
+
+    /// Recompute the bounding box from `selected`. Empty → a zero-size box.
+    fn recompute_bounds(&mut self) {
+        let Some(first) = self.selected.first() else {
+            self.col = 0;
+            self.row = 0;
+            self.w = 0;
+            self.h = 0;
+            return;
+        };
+        let (mut min, mut max) = (*first, *first);
+        for c in &self.selected {
+            min = min.min(*c);
+            max = max.max(*c);
+        }
+        self.col = min.x;
+        self.row = min.y;
+        self.w = max.x - min.x + 1;
+        self.h = max.y - min.y + 1;
+    }
+
+    /// Replace the selection with an explicit set of cells (kept as-is; the
+    /// caller guarantees uniqueness). Used by Shift+drag rectangle-add.
+    pub fn set_cells(&mut self, cells: Vec<UVec2>, atlas_cols: u32) {
+        self.selected = cells;
+        self.atlas_cols = atlas_cols;
+        self.recompute_bounds();
+    }
+
+    /// Replace the selection with the solid rectangle `[c0..=c1] × [r0..=r1]`.
+    pub fn set_rect(&mut self, c0: u32, r0: u32, c1: u32, r1: u32, atlas_cols: u32) {
+        self.selected.clear();
+        for r in r0.min(r1)..=r0.max(r1) {
+            for c in c0.min(c1)..=c0.max(c1) {
+                self.selected.push(UVec2::new(c, r));
             }
         }
-        out
+        self.atlas_cols = atlas_cols;
+        self.recompute_bounds();
+    }
+
+    /// Toggle a single cell in/out of the selection (Ctrl+click). Never empties
+    /// the selection — the last cell can't be toggled off.
+    pub fn toggle(&mut self, col: u32, row: u32, atlas_cols: u32) {
+        let cell = UVec2::new(col, row);
+        if let Some(i) = self.selected.iter().position(|&c| c == cell) {
+            if self.selected.len() > 1 {
+                self.selected.remove(i);
+            }
+        } else {
+            self.selected.push(cell);
+        }
+        self.atlas_cols = atlas_cols;
+        self.recompute_bounds();
+    }
+
+    /// Add a single cell to the selection if not already present (Shift+click).
+    pub fn add(&mut self, col: u32, row: u32, atlas_cols: u32) {
+        let cell = UVec2::new(col, row);
+        if !self.selected.contains(&cell) {
+            self.selected.push(cell);
+        }
+        self.atlas_cols = atlas_cols;
+        self.recompute_bounds();
+    }
+
+    /// Whether the picked cells exactly fill their bounding box (a solid
+    /// rectangle) — the cells are unique, so a full count means no holes.
+    pub fn is_solid_rect(&self) -> bool {
+        self.selected.len() as u32 == self.w.max(1) * self.h.max(1)
     }
 }
 
@@ -322,11 +419,15 @@ fn paint_tiles(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
     layers: Query<(&TilemapLayer, &TilesetHandle, &GlobalTransform)>,
-    tiles: Query<(Entity, &TilemapTile, &ChildOf)>,
+    tiles: TileQuery,
     mut sheets: Query<&mut SpriteSheet>,
     mut rect_drag: ResMut<PaintRectDrag>,
     mut commands: Commands,
-    mut last_cell: Local<Option<IVec2>>,
+    // Tupled Locals: `last_cell` gates stroke interpolation for 1×1 tiles;
+    // `last_object` tracks the last multi-tile object's anchor so a drag tiles
+    // objects edge-to-edge instead of stamping one per cell. (The system is at
+    // the 16-param cap, so the two Locals share one slot.)
+    (mut last_cell, mut last_object): (Local<Option<IVec2>>, Local<Option<IVec2>>),
 ) {
     if !paint.active
         || play.is_some_and(|p| p.is_in_play_mode())
@@ -335,6 +436,10 @@ fn paint_tiles(
         if rect_drag.0.is_some() {
             rect_drag.0 = None;
         }
+        // Clear stroke state so re-entering Paint starts fresh — a stale
+        // `last_object` anchor must not gate the first click of a new stroke.
+        *last_cell = None;
+        *last_object = None;
         return;
     }
     let Some(layer_entity) = active.0 else {
@@ -355,8 +460,14 @@ fn paint_tiles(
         return;
     };
     let atlas_px = layer.atlas_tile_px.max(1) as f32;
+    let tile_px = layer.atlas_tile_px.max(1);
     let cols = layer.effective_columns(img_size.x).max(1);
     let rows = ((img_size.y / atlas_px).floor() as u32).max(1);
+    // More than one picked cell paints a single composite "object" sprite (a
+    // tree/house) rather than one sprite per cell. A solid-rectangle pick uses
+    // the cheap atlas-crop object (`stamp_object`); a non-rectangular pick bakes
+    // a texture (`stamp_tile_object`). One cell → ordinary per-cell tiling.
+    let object_brush = brush.selected.len() > 1;
 
     // Shared per-cell ops (`fn`s, not closures — both need `commands`/`sheets`
     // mutably and are called from several paths below).
@@ -370,14 +481,22 @@ fn paint_tiles(
         layer_entity: Entity,
         image: &Handle<Image>,
         path: &str,
-        tiles: &Query<(Entity, &TilemapTile, &ChildOf)>,
+        tiles: &TileQuery,
         sheets: &mut Query<&mut SpriteSheet>,
         commands: &mut Commands,
     ) {
+        // Only a *single* tile (no composite object) at this cell is the replace
+        // target — an object here is left for the object paths.
         let existing = tiles
             .iter()
-            .find(|(_, t, p)| p.parent() == layer_entity && t.x == tc.x && t.y == tc.y)
-            .map(|(e, _, _)| e);
+            .find(|(_, t, p, region, object)| {
+                region.is_none()
+                    && object.is_none()
+                    && p.parent() == layer_entity
+                    && t.x == tc.x
+                    && t.y == tc.y
+            })
+            .map(|(e, _, _, _, _)| e);
         if let Some(existing) = existing {
             // Re-painting a cell just swaps the frame — cheaper than a
             // despawn/respawn and keeps any user tweaks on the entity.
@@ -417,17 +536,177 @@ fn paint_tiles(
             ChildOf(layer_entity),
         ));
     }
-    fn erase_cell(
-        tc: IVec2,
+    fn erase_cell(tc: IVec2, layer_entity: Entity, tiles: &TileQuery, commands: &mut Commands) {
+        // Erase the single tile at this exact cell, plus any composite object
+        // whose footprint covers it — so erasing anywhere on a stamped tree
+        // deletes the whole tree, not a phantom cell it doesn't own.
+        for (e, t, p, region, object) in tiles.iter() {
+            if p.parent() != layer_entity {
+                continue;
+            }
+            let hit = match entity_footprint(region, object) {
+                Some((w, h)) => object_covers(IVec2::new(t.x, t.y), w, h, tc),
+                None => t.x == tc.x && t.y == tc.y,
+            };
+            if hit {
+                commands.entity(e).try_despawn();
+            }
+        }
+    }
+    /// Clear what a new object at top-left cell `c` (footprint `w × h`) will sit
+    /// on: an object already anchored on `c` (clean re-stamp) and any loose
+    /// single tiles inside the footprint (so the object doesn't render tangled
+    /// with same-z tiles). Overlapping *other* objects are left alone — a drag
+    /// lays them down on purpose.
+    fn clear_under(
+        c: IVec2,
+        w: u32,
+        h: u32,
         layer_entity: Entity,
-        tiles: &Query<(Entity, &TilemapTile, &ChildOf)>,
+        tiles: &TileQuery,
         commands: &mut Commands,
     ) {
-        if let Some((e, _, _)) = tiles
-            .iter()
-            .find(|(_, t, p)| p.parent() == layer_entity && t.x == tc.x && t.y == tc.y)
-        {
-            commands.entity(e).try_despawn();
+        for (e, t, p, region, object) in tiles.iter() {
+            if p.parent() != layer_entity {
+                continue;
+            }
+            let remove = if region.is_some() || object.is_some() {
+                t.x == c.x && t.y == c.y
+            } else {
+                object_covers(c, w, h, IVec2::new(t.x, t.y))
+            };
+            if remove {
+                commands.entity(e).try_despawn();
+            }
+        }
+    }
+    /// Spawn one composite object for a **solid rectangular** pick, anchored at
+    /// top-left cell `c`. A single sprite cropped to the atlas block (persisted
+    /// via [`SpriteAtlasRegion`]) — the cheap path that shares the atlas
+    /// texture, used when the pick has no holes.
+    #[allow(clippy::too_many_arguments)]
+    fn stamp_object(
+        c: IVec2,
+        brush: &TilemapBrush,
+        tile_px: u32,
+        ts: f32,
+        layer_entity: Entity,
+        image: &Handle<Image>,
+        path: &str,
+        tiles: &TileQuery,
+        commands: &mut Commands,
+    ) {
+        let w = brush.w.max(1);
+        let h = brush.h.max(1);
+        clear_under(c, w, h, layer_entity, tiles, commands);
+        let cw = w as f32 * ts;
+        let ch = h as f32 * ts;
+        // `c` is the block's TOP-LEFT cell (palette orientation): it extends
+        // right (+x) and down (−y in world), matching the per-tile paint below.
+        let center_x = c.x as f32 * ts + cw * 0.5;
+        let center_y = (c.y as f32 - h as f32 + 1.0) * ts + ch * 0.5;
+        let px = tile_px.max(1) as f32;
+        // Same edge inset the engine's crop uses, so a fractional zoom can't
+        // bleed the neighbouring atlas cell across the block's outer edge.
+        const EDGE_INSET: f32 = 0.05;
+        let rect = Rect::new(
+            brush.col as f32 * px + EDGE_INSET,
+            brush.row as f32 * px + EDGE_INSET,
+            (brush.col + w) as f32 * px - EDGE_INSET,
+            (brush.row + h) as f32 * px - EDGE_INSET,
+        );
+        commands.spawn((
+            Name::new(format!("Object ({}, {})", c.x, c.y)),
+            Node2d,
+            TilemapTile { x: c.x, y: c.y },
+            Transform::from_xyz(center_x, center_y, 0.0),
+            Visibility::default(),
+            Sprite {
+                image: image.clone(),
+                custom_size: Some(Vec2::new(cw, ch)),
+                rect: Some(rect),
+                ..default()
+            },
+            SpriteImagePath(path.to_string()),
+            SpriteCustomSize(Vec2::new(cw, ch)),
+            SpriteAtlasRegion {
+                col: brush.col,
+                row: brush.row,
+                w,
+                h,
+                tile_px: tile_px.max(1),
+            },
+            ChildOf(layer_entity),
+        ));
+    }
+    /// Spawn one composite object for a **non-rectangular** pick (scattered
+    /// cells, e.g. a canopy over a narrow trunk), anchored at top-left cell `c`.
+    /// Records the picked cells in a [`TileObject`]; the runtime baker builds
+    /// the transparent-gap texture and inserts the `Sprite`, so this is one
+    /// entity that shows only the tiles the user chose.
+    #[allow(clippy::too_many_arguments)]
+    fn stamp_tile_object(
+        c: IVec2,
+        brush: &TilemapBrush,
+        tile_px: u32,
+        ts: f32,
+        layer_entity: Entity,
+        path: &str,
+        tiles: &TileQuery,
+        commands: &mut Commands,
+    ) {
+        let w = brush.w.max(1);
+        let h = brush.h.max(1);
+        clear_under(c, w, h, layer_entity, tiles, commands);
+        let cells: Vec<TileObjectCell> = brush
+            .cells()
+            .into_iter()
+            .map(|(dx, dy, _idx)| TileObjectCell {
+                dx: dx as u32,
+                dy: dy as u32,
+                col: brush.col + dx as u32,
+                row: brush.row + dy as u32,
+            })
+            .collect();
+        let cw = w as f32 * ts;
+        let ch = h as f32 * ts;
+        let center_x = c.x as f32 * ts + cw * 0.5;
+        let center_y = (c.y as f32 - h as f32 + 1.0) * ts + ch * 0.5;
+        commands.spawn((
+            Name::new(format!("Object ({}, {})", c.x, c.y)),
+            Node2d,
+            TilemapTile { x: c.x, y: c.y },
+            Transform::from_xyz(center_x, center_y, 0.0),
+            Visibility::default(),
+            SpriteCustomSize(Vec2::new(cw, ch)),
+            TileObject {
+                tileset_path: path.to_string(),
+                tile_px: tile_px.max(1),
+                w,
+                h,
+                cells,
+            },
+            ChildOf(layer_entity),
+        ));
+    }
+    /// Stamp one object at top-left cell `c`, picking the cheap atlas-crop path
+    /// for a solid-rectangle pick and the baked-texture path otherwise.
+    #[allow(clippy::too_many_arguments)]
+    fn stamp_auto(
+        c: IVec2,
+        brush: &TilemapBrush,
+        tile_px: u32,
+        ts: f32,
+        layer_entity: Entity,
+        image: &Handle<Image>,
+        path: &str,
+        tiles: &TileQuery,
+        commands: &mut Commands,
+    ) {
+        if brush.is_solid_rect() {
+            stamp_object(c, brush, tile_px, ts, layer_entity, image, path, tiles, commands);
+        } else {
+            stamp_tile_object(c, brush, tile_px, ts, layer_entity, path, tiles, commands);
         }
     }
 
@@ -436,6 +715,7 @@ fn paint_tiles(
     // commit (the region was authored in-world while dragging).
     if !mouse.pressed(MouseButton::Left) {
         *last_cell = None;
+        *last_object = None;
         if let Some((a, b, erase)) = rect_drag.0.take() {
             let min = a.min(b);
             let max = a.max(b);
@@ -449,19 +729,38 @@ fn paint_tiles(
             let bw = brush.w.max(1) as i32;
             let bh = brush.h.max(1) as i32;
             let bcols = brush.atlas_cols.max(1);
-            for y in min.y..=max.y {
-                for x in min.x..=max.x {
-                    let tc = IVec2::new(x, y);
-                    if erase {
-                        erase_cell(tc, layer_entity, &tiles, &mut commands);
-                    } else {
+            if erase {
+                for y in min.y..=max.y {
+                    for x in min.x..=max.x {
+                        erase_cell(IVec2::new(x, y), layer_entity, &tiles, &mut commands);
+                    }
+                }
+            } else if object_brush {
+                // Multi-tile object brush: tile whole objects on a block-sized
+                // lattice from the region's TOP-LEFT (min.x, max.y), so the
+                // fill reads as a field of trees/houses, not sliced cells.
+                let mut y = max.y;
+                while y >= min.y {
+                    let mut x = min.x;
+                    while x <= max.x {
+                        stamp_auto(
+                            IVec2::new(x, y), &brush, tile_px, ts, layer_entity,
+                            &tileset.image, &layer.tileset_path, &tiles, &mut commands,
+                        );
+                        x += bw;
+                    }
+                    y -= bh;
+                }
+            } else {
+                for y in min.y..=max.y {
+                    for x in min.x..=max.x {
                         // Tile the brush pattern from the region's TOP-LEFT
                         // (min.x, max.y) so it reads in palette orientation.
                         let dx = (x - min.x).rem_euclid(bw) as u32;
                         let dy = (max.y - y).rem_euclid(bh) as u32;
                         let idx = (brush.row + dy) * bcols + (brush.col + dx);
                         stamp_cell(
-                            tc, idx, cols, rows, ts, layer_entity, &tileset.image,
+                            IVec2::new(x, y), idx, cols, rows, ts, layer_entity, &tileset.image,
                             &layer.tileset_path, &tiles, &mut sheets, &mut commands,
                         );
                     }
@@ -511,10 +810,26 @@ fn paint_tiles(
     // leave holes.
     let from = last_cell.unwrap_or(cell);
     *last_cell = Some(cell);
-    for c in line_cells(from, cell) {
-        if erasing {
+    if erasing {
+        for c in line_cells(from, cell) {
             erase_cell(c, layer_entity, &tiles, &mut commands);
-        } else {
+        }
+    } else if object_brush {
+        // Multi-tile object brush: stamp ONE object per position. Only stamp
+        // once the cursor has left the last object's footprint, so a drag
+        // tiles objects edge-to-edge instead of smearing one per cell; a fresh
+        // click always stamps (`last_object` is cleared on release). No
+        // interpolation — objects are discrete placements, not a continuous
+        // stroke.
+        if last_object.is_none_or(|a| !object_covers(a, brush.w, brush.h, cell)) {
+            stamp_auto(
+                cell, &brush, tile_px, ts, layer_entity, &tileset.image,
+                &layer.tileset_path, &tiles, &mut commands,
+            );
+            *last_object = Some(cell);
+        }
+    } else {
+        for c in line_cells(from, cell) {
             // Stamp the whole brush block. `dx` grows right (+x), `dy` grows
             // down (−y in world), so the atlas's top-left tile lands on the
             // cursor cell and the block reads the same orientation it has in
@@ -528,6 +843,24 @@ fn paint_tiles(
             }
         }
     }
+}
+
+/// A painted child's object footprint in cells, if it's a composite object —
+/// from either a solid-rectangle [`SpriteAtlasRegion`] or a baked
+/// [`TileObject`]. `None` means it's an ordinary single tile.
+fn entity_footprint(region: Option<&SpriteAtlasRegion>, object: Option<&TileObject>) -> Option<(u32, u32)> {
+    region
+        .map(|r| (r.w, r.h))
+        .or_else(|| object.map(|o| (o.w, o.h)))
+}
+
+/// Whether the multi-tile object anchored at top-left cell `anchor`, with a
+/// `w × h` footprint that extends right (+x) and down (−y in world, palette
+/// orientation), covers `cell`. Used for erase-the-whole-object, clean
+/// re-stamp, and the drag stamp gate.
+fn object_covers(anchor: IVec2, w: u32, h: u32, cell: IVec2) -> bool {
+    let (w, h) = (w.max(1) as i32, h.max(1) as i32);
+    cell.x >= anchor.x && cell.x < anchor.x + w && cell.y <= anchor.y && cell.y > anchor.y - h
 }
 
 /// All grid cells on the line segment `a → b`, inclusive (Bresenham). Used to

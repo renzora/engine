@@ -158,6 +158,11 @@ pub(crate) fn update_brush_preview(
     let mut hasher = DefaultHasher::new();
     target.image.id().hash(&mut hasher);
     (brush.col, brush.row, brush.w, brush.h).hash(&mut hasher);
+    // The picked cells, so a non-rectangular pick with the same bounding box as
+    // a previous one still rebuilds the per-cell ghost.
+    for c in &brush.selected {
+        (c.x, c.y).hash(&mut hasher);
+    }
     target.tile_size.to_bits().hash(&mut hasher);
     target.atlas_px.to_bits().hash(&mut hasher);
     target.rect.hash(&mut hasher);

@@ -134,6 +134,37 @@ impl Default for SpriteSheet {
     }
 }
 
+/// A rectangular sub-region of an atlas image, in atlas cells — the persistent
+/// crop for a multi-tile "object" drawn as a **single** sprite (e.g. a tree
+/// stamped from a 3×3 tilemap-palette block is one entity, not nine tiles).
+///
+/// Sibling of [`SpriteSheet`]: where that picks *one* cell of a grid, this
+/// selects a `w × h` block starting at cell `(col, row)`. Like `SpriteSheet`
+/// it's the saved, image-independent description — Bevy's `Sprite.rect` is
+/// runtime-only and dropped by scene save — and an engine system derives the
+/// pixel rect from it every frame. The rect is pure arithmetic on the stored
+/// `tile_px`, so (unlike `SpriteSheet`) it needs no loaded image: cell `c`
+/// maps to pixel `c * tile_px`.
+///
+/// An entity has at most one of `SpriteSheet` / `SpriteAtlasRegion`; the two
+/// derive systems key off their own component, so they never fight over
+/// `Sprite.rect`.
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct SpriteAtlasRegion {
+    /// Top-left atlas cell column of the block.
+    pub col: u32,
+    /// Top-left atlas cell row of the block.
+    pub row: u32,
+    /// Block width in atlas cells (min 1).
+    pub w: u32,
+    /// Block height in atlas cells (min 1).
+    pub h: u32,
+    /// Pixel size of one atlas cell (square). Converts cells → pixels for the
+    /// derived rect.
+    pub tile_px: u32,
+}
+
 /// A reflection probe's authored environment source — the *persistent* side of a
 /// parallax-corrected cubemap probe.
 ///

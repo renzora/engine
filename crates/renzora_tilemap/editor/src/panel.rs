@@ -70,6 +70,12 @@ struct TileHighlight;
 #[derive(Component)]
 struct SelectionHandle;
 
+/// Marker on a per-cell selection tint (child of the atlas image). Shown for a
+/// non-rectangular pick so the user sees exactly which cells are selected — the
+/// bounding-box highlight alone can't convey holes.
+#[derive(Component)]
+struct TileCellMark;
+
 /// Marker on a grid-overlay line (child of the atlas image).
 #[derive(Component)]
 struct GridLine;
@@ -132,6 +138,7 @@ pub(crate) fn register(app: &mut App) {
             zoom_step_buttons,
             apply_atlas_zoom,
             update_tile_highlight,
+            update_cell_marks,
             sync_grid_overlay,
             select_tiles_from_atlas,
             resize_selection,
@@ -700,6 +707,20 @@ fn update_tile_highlight(
     let Ok(mut node) = highlight.single_mut() else {
         return;
     };
+    // A multi-tile pick is shown by a border PER cell (`update_cell_marks`) so
+    // every selected tile reads as its own selection; the single enclosing box
+    // is only right for a lone cell, so hide it once more than one is picked.
+    let want_display = if brush.selected.len() >= 2 {
+        Display::None
+    } else {
+        Display::Flex
+    };
+    if node.display != want_display {
+        node.display = want_display;
+    }
+    if want_display == Display::None {
+        return;
+    }
     let Some(e) = active.0 else { return };
     let Ok((layer, tileset)) = layers.get(e) else {
         return;
@@ -732,6 +753,87 @@ fn update_tile_highlight(
     }
 }
 
+/// Tint each individually-picked atlas cell so a **non-rectangular** selection
+/// (a tree's canopy over a narrow trunk, built with Ctrl/Shift+click) shows
+/// exactly which cells are in — the bounding-box highlight alone can't show
+/// holes. A plain solid-rectangle pick draws none (the box already conveys it).
+/// Rebuilds only when the pick or atlas changes.
+#[allow(clippy::too_many_arguments)]
+fn update_cell_marks(
+    brush: Res<TilemapBrush>,
+    active: Res<ActiveTilemap>,
+    images: Res<Assets<Image>>,
+    layers: Query<(&TilemapLayer, &TilesetHandle)>,
+    atlas_node: Query<Entity, With<TilesetImageNode>>,
+    marks: Query<Entity, With<TileCellMark>>,
+    mut commands: Commands,
+    mut built: Local<u64>,
+) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let dims = active.0.and_then(|e| layers.get(e).ok()).and_then(|(layer, tileset)| {
+        let s = images.get(&tileset.image)?.size_f32();
+        let cols = layer.effective_columns(s.x).max(1);
+        let rows = ((s.y / layer.atlas_tile_px.max(1) as f32).floor() as u32).max(1);
+        Some((cols, rows))
+    });
+    let Some((cols, rows)) = dims else {
+        if !marks.is_empty() {
+            for m in &marks {
+                commands.entity(m).try_despawn();
+            }
+            *built = 0;
+        }
+        return;
+    };
+
+    // A per-cell border is drawn for every multi-tile pick (solid or scattered)
+    // so each selected tile reads as its own selection. A lone cell keeps the
+    // single bounding-box highlight (with its resize handle) instead.
+    let multi = brush.selected.len() >= 2;
+    let mut hasher = DefaultHasher::new();
+    (multi, cols, rows).hash(&mut hasher);
+    for c in &brush.selected {
+        (c.x, c.y).hash(&mut hasher);
+    }
+    let key = hasher.finish();
+    if *built == key {
+        return;
+    }
+    *built = key;
+
+    for m in &marks {
+        commands.entity(m).try_despawn();
+    }
+    if !multi {
+        return;
+    }
+    let Ok(atlas_e) = atlas_node.single() else {
+        return;
+    };
+    for c in &brush.selected {
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(c.x as f32 / cols as f32 * 100.0),
+                top: Val::Percent(c.y as f32 / rows as f32 * 100.0),
+                width: Val::Percent(100.0 / cols as f32),
+                height: Val::Percent(100.0 / rows as f32),
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            // A border per picked cell (plus a faint fill) so a scattered pick
+            // reads as several distinct selections, not one enclosing box.
+            BackgroundColor(ACCENT.with_alpha(0.18)),
+            BorderColor::all(ACCENT),
+            TileCellMark,
+            bevy::picking::Pickable::IGNORE,
+            ChildOf(atlas_e),
+        ));
+    }
+}
+
 /// Left-drag a rectangle across the atlas to select a block of tiles (a single
 /// click selects one) — selecting also **arms the paint brush**, so the block
 /// immediately rides the cursor in the 2D viewport. Skips scrollbar +
@@ -739,6 +841,7 @@ fn update_tile_highlight(
 #[allow(clippy::too_many_arguments)]
 fn select_tiles_from_atlas(
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
     active: Res<ActiveTilemap>,
     images: Res<Assets<Image>>,
@@ -750,17 +853,23 @@ fn select_tiles_from_atlas(
     mut settings: Option<ResMut<ViewportSettings>>,
     mut start: Local<Option<(u32, u32)>>,
     mut blocked: Local<bool>,
+    // While a Shift+drag is in flight, the selection this drag started from —
+    // the dragged rectangle is UNIONed onto it so Shift+drag *adds* a block.
+    // `None` = a plain (replace) drag.
+    mut add_base: Local<Option<Vec<UVec2>>>,
 ) {
     // An asset drag passing over the atlas is a DROP gesture, not a tile
     // selection — the held left button would otherwise sweep the brush rect
     // (and arm the paint mode) while the user is just importing a tileset.
     if payload.is_some() {
         *start = None;
+        *add_base = None;
         *blocked = true;
         return;
     }
     if !mouse.pressed(MouseButton::Left) {
         *start = None;
+        *add_base = None;
         *blocked = false;
         return;
     }
@@ -798,8 +907,9 @@ fn select_tiles_from_atlas(
         (u * cols as f32).floor() as u32,
         (v * rows as f32).floor() as u32,
     );
+    let ctrl = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+    let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     if mouse.just_pressed(MouseButton::Left) {
-        *start = Some(cur);
         // Picking tiles is the intent to paint — switch the viewport's Mode
         // dropdown to Paint right away (Esc or Tab drops back to Scene; the
         // dropdown is the mode's single source of truth).
@@ -808,15 +918,37 @@ fn select_tiles_from_atlas(
                 settings.viewport_mode = ViewportMode::Paint;
             }
         }
+        // Ctrl+click toggles a single cell in/out — a click-only gesture to
+        // punch a hole or add one stray tile, so `start` stays cleared.
+        if ctrl {
+            brush.toggle(cur.0, cur.1, cols);
+            *start = None;
+            *add_base = None;
+            return;
+        }
+        // A drag anchors here. Shift makes it ADD to the current pick (grab a
+        // tree's branches as a second block), snapshotting the pre-drag set;
+        // a plain drag REPLACES.
+        *start = Some(cur);
+        *add_base = shift.then(|| brush.selected.clone());
     }
-    let s = start.unwrap_or(cur);
-    let (c0, c1) = (s.0.min(cur.0), s.0.max(cur.0));
-    let (r0, r1) = (s.1.min(cur.1), s.1.max(cur.1));
-    brush.col = c0;
-    brush.row = r0;
-    brush.w = c1 - c0 + 1;
-    brush.h = r1 - r0 + 1;
-    brush.atlas_cols = cols;
+    let Some(s) = *start else { return };
+    if let Some(base) = add_base.as_ref() {
+        // Shift+drag: union the dragged rectangle onto the snapshot.
+        let mut sel = base.clone();
+        for r in s.1.min(cur.1)..=s.1.max(cur.1) {
+            for c in s.0.min(cur.0)..=s.0.max(cur.0) {
+                let cell = UVec2::new(c, r);
+                if !sel.contains(&cell) {
+                    sel.push(cell);
+                }
+            }
+        }
+        brush.set_cells(sel, cols);
+    } else {
+        // Plain click/drag selects a solid rectangle (replace).
+        brush.set_rect(s.0, s.1, cur.0, cur.1, cols);
+    }
 }
 
 /// Drag the corner handle to grow the selection from its fixed top-left corner.
@@ -848,7 +980,8 @@ fn resize_selection(
     let v = (n.y + 0.5).clamp(0.0, 0.999);
     let cur_col = (u * cols as f32).floor() as u32;
     let cur_row = (v * rows as f32).floor() as u32;
-    brush.w = cur_col.saturating_sub(brush.col) + 1;
-    brush.h = cur_row.saturating_sub(brush.row) + 1;
-    brush.atlas_cols = cols;
+    // Dragging the corner handle re-selects a solid rectangle from the pick's
+    // top-left to the cursor (a rectangle gesture drops any scattered picks).
+    let (c0, r0) = (brush.col, brush.row);
+    brush.set_rect(c0, r0, cur_col.max(c0), cur_row.max(r0), cols);
 }

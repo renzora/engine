@@ -280,6 +280,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::SpriteImagePath>()
             .register_type::<renzora::core::SpriteCustomSize>()
             .register_type::<renzora::core::SpriteSheet>()
+            .register_type::<renzora::core::SpriteAtlasRegion>()
             .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();
@@ -353,6 +354,11 @@ impl Plugin for RuntimePlugin {
             // identically in the exported game.
             app.add_systems(Update, scene_io::apply_sprite_sheet_crop);
             app.add_observer(scene_io::on_sprite_sheet_removed);
+            // Multi-tile "object" cropping: derive `Sprite.rect` from the
+            // persisted `SpriteAtlasRegion` block so a tree/house stamped as a
+            // single sprite from a multi-tile palette selection renders (and
+            // reopens/ships) as one entity showing its atlas slice.
+            app.add_systems(Update, scene_io::apply_sprite_atlas_region);
         }
 
         app.add_plugins(debug_log::DebugLogPlugin);

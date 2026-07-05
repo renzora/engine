@@ -62,14 +62,22 @@ fn apply_cursor_icon(
     let target = if dragging {
         SystemCursorIcon::Grabbing
     } else {
-        hovered
+        let widget = hovered
             .iter()
             .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
-            .map(|(_, hc)| hc.0)
-            // No UI widget claims the cursor → the viewport interaction layer
-            // may (Move over a selected sprite, resize/rotate over a handle).
-            .or_else(|| viewport_request.and_then(|r| r.0))
-            .unwrap_or(SystemCursorIcon::Default)
+            .map(|(_, hc)| hc.0);
+        let request = viewport_request.and_then(|r| r.0);
+        // A concrete widget cursor (a button's `pointer`, a text field's `text`)
+        // always wins. But the viewport paints a blanket `crosshair` over its
+        // whole body, and that must NOT mask the 2D interaction layer's request
+        // (Move over a selected sprite, resize/rotate over a handle) — otherwise
+        // the picker cursor never shows. So when the only hovered cursor is that
+        // `crosshair` fallback, the viewport request takes precedence; the
+        // request is only ever set inside the 2D viewport, never over a widget.
+        match widget {
+            Some(c) if c != SystemCursorIcon::Crosshair => c,
+            other => request.or(other).unwrap_or(SystemCursorIcon::Default),
+        }
     };
 
     // The icon goes on the window the cursor is actually in — hover state only

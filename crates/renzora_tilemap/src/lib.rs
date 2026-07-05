@@ -17,9 +17,13 @@
 //! [`sync_tilesets`] rehydrates the `Handle<Image>` on load or whenever the
 //! path changes.
 
-use bevy::asset::AssetServer;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+use bevy::asset::{AssetServer, RenderAssetUsages};
 use bevy::image::{ImageFilterMode, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use serde::{Deserialize, Serialize};
 
 /// The authored tilemap, saved to scenes: the palette configuration painting
@@ -87,17 +91,159 @@ pub struct TilesetHandle {
     pub image: Handle<Image>,
 }
 
+/// A composite tilemap **object**: the set of atlas cells the user picked in
+/// the palette (a tree = trunk + canopy branches), baked into ONE sprite so it
+/// selects, moves, rotates, saves and ships as a single entity.
+///
+/// A single sprite can only show a rectangular slice of one image, so a
+/// non-rectangular pick (wide canopy over a narrow trunk) can't just crop the
+/// atlas — the bounding box would drag in the neighbouring bush/dirt tiles.
+/// Instead [`build_tile_object_sprites`] bakes a fresh texture: it copies just
+/// the picked cells into the object's `w × h` grid, leaving the gaps
+/// transparent. This component is the saved, image-independent description
+/// (mirroring how [`TilemapTile`]/`SpriteSheet` persist while `Sprite` doesn't),
+/// so the texture is regenerated on load and in the exported game.
+#[derive(Component, Reflect, Default, Clone, Debug, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct TileObject {
+    /// Asset-relative path of the source tileset atlas.
+    pub tileset_path: String,
+    /// Pixel size of one atlas cell (square).
+    pub tile_px: u32,
+    /// Bounding-box width in cells.
+    pub w: u32,
+    /// Bounding-box height in cells.
+    pub h: u32,
+    /// The picked cells: each maps a source atlas cell to a slot in the object.
+    pub cells: Vec<TileObjectCell>,
+}
+
+/// One picked cell of a [`TileObject`]: which atlas cell to copy (`col`, `row`)
+/// and where it sits in the object's grid (`dx` right, `dy` down from the
+/// bounding-box top-left). Plain `u32` fields so the reflection scene
+/// serializer round-trips it cleanly.
+#[derive(Reflect, Default, Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct TileObjectCell {
+    pub dx: u32,
+    pub dy: u32,
+    pub col: u32,
+    pub row: u32,
+}
+
+impl TileObject {
+    /// Content hash of what the baked texture depends on — the atlas, cell
+    /// size, and the exact picked cells. Re-bake only when this changes.
+    fn bake_key(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.tileset_path.hash(&mut hasher);
+        self.tile_px.hash(&mut hasher);
+        self.w.hash(&mut hasher);
+        self.h.hash(&mut hasher);
+        for c in &self.cells {
+            (c.dx, c.dy, c.col, c.row).hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+}
+
+/// Runtime-only marker: the entity's `Sprite` was baked from a [`TileObject`]
+/// whose content hashes to this key. Re-baking only when the key changes keeps
+/// the baker from rebuilding a texture (and re-uploading it) every frame.
+#[derive(Component)]
+struct TileObjectBaked(u64);
+
+/// Bake every [`TileObject`] into a single-sprite texture: allocate a
+/// transparent `w·tile_px × h·tile_px` RGBA image and copy each picked atlas
+/// cell into its slot. This is what makes a hand-picked, possibly
+/// non-rectangular set of tiles render as ONE sprite (unpicked cells stay
+/// transparent). Inserts the `Sprite` (the entity carries no `SpriteImagePath`,
+/// so nothing else builds it), and re-runs when the picked set changes or after
+/// a scene load rebuilds the entity without its runtime texture. Editor and
+/// shipped runtime both, so painted objects look identical in the exported game.
+fn build_tile_object_sprites(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    objects: Query<(
+        Entity,
+        &TileObject,
+        Option<&TileObjectBaked>,
+        Option<&renzora::core::SpriteCustomSize>,
+    )>,
+) {
+    for (entity, obj, baked, custom) in &objects {
+        let key = obj.bake_key();
+        if baked.map(|b| b.0) == Some(key) {
+            continue;
+        }
+        if obj.cells.is_empty() || obj.tile_px == 0 || obj.w == 0 || obj.h == 0 {
+            continue;
+        }
+        let tp = obj.tile_px;
+        let atlas_handle = asset_server.load::<Image>(obj.tileset_path.clone());
+        // Scope the atlas borrow so it ends before `images.add()` needs `&mut`.
+        let baked_img = {
+            let Some(atlas) = images.get(&atlas_handle) else {
+                continue; // atlas still loading — retry next frame
+            };
+            let asize = atlas.size_f32();
+            let (aw, ah) = (asize.x as u32, asize.y as u32);
+            let mut img = Image::new_fill(
+                Extent3d {
+                    width: obj.w * tp,
+                    height: obj.h * tp,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                &[0, 0, 0, 0],
+                TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            );
+            for cell in &obj.cells {
+                for py in 0..tp {
+                    for px in 0..tp {
+                        let (sx, sy) = (cell.col * tp + px, cell.row * tp + py);
+                        if sx >= aw || sy >= ah {
+                            continue;
+                        }
+                        if let Ok(color) = atlas.get_color_at(sx, sy) {
+                            let _ = img.set_color_at(cell.dx * tp + px, cell.dy * tp + py, color);
+                        }
+                    }
+                }
+            }
+            // Nearest sampling keeps the baked pixels crisp, same as the atlas.
+            img.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::nearest());
+            img
+        };
+        let handle = images.add(baked_img);
+        commands.entity(entity).insert((
+            Sprite {
+                image: handle,
+                custom_size: custom.map(|c| c.0),
+                ..default()
+            },
+            TileObjectBaked(key),
+        ));
+    }
+}
+
 #[derive(Default)]
 pub struct TilemapPlugin;
 
 impl Plugin for TilemapPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] TilemapPlugin");
-        app.register_type::<TilemapLayer>().register_type::<TilemapTile>();
+        app.register_type::<TilemapLayer>()
+            .register_type::<TilemapTile>()
+            .register_type::<TileObject>()
+            .register_type::<TileObjectCell>();
         app.add_systems(
             Update,
             (sync_tilesets, force_nearest_tileset_sampler).chain(),
         );
+        // Bake picked-cell objects into single sprites (editor + shipped game).
+        app.add_systems(Update, build_tile_object_sprites);
     }
 }
 
