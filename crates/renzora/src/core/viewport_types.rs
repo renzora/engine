@@ -704,6 +704,12 @@ pub struct ViewportSettings {
     /// minor-line opacity; major lines auto-bump the alpha by ~2× for
     /// the typical Photoshop-style minor/major hierarchy.
     pub grid_color_2d: [u8; 4],
+    /// The 2D view's editor gizmo overlays — the always-visible light markers
+    /// and the selected light/occluder outlines. On by default; the 2D
+    /// counterpart of the 3D "Scene Icons" toggle (which is unreachable in 2D,
+    /// since the whole Display dropdown is 3D-only). Toolbar switch, in the 2D
+    /// Overlays dropdown (2D view only).
+    pub show_gizmos_2d: bool,
     pub show_axis_gizmo: bool,
     /// Toggle for in-viewport scene icons (light bulb / sun / camera glyphs).
     pub show_scene_icons: bool,
@@ -761,6 +767,7 @@ impl Default for ViewportSettings {
             // Faint by design — the 2D grid sits behind the sprites, so it
             // only needs to whisper. Major lines double this automatically.
             grid_color_2d: [255, 255, 255, 20],
+            show_gizmos_2d: true,
             show_axis_gizmo: true,
             show_scene_icons: true,
             show_labels: false,
@@ -821,6 +828,10 @@ pub struct PersistedViewportSettings {
     /// drawer.
     #[serde(default = "default_grid_color_2d")]
     pub grid_color_2d: [u8; 4],
+    /// 2D-view gizmo-overlay toggle. Defaults on — the markers pre-date the
+    /// switch, so older projects keep showing them.
+    #[serde(default = "default_true")]
+    pub show_gizmos_2d: bool,
     pub show_axis_gizmo: bool,
     #[serde(default = "default_true")]
     pub show_scene_icons: bool,
@@ -888,6 +899,7 @@ impl PersistedViewportSettings {
             show_rulers_2d: s.show_rulers_2d,
             show_cursor_coords_2d: s.show_cursor_coords_2d,
             grid_color_2d: s.grid_color_2d,
+            show_gizmos_2d: s.show_gizmos_2d,
             show_axis_gizmo: s.show_axis_gizmo,
             show_scene_icons: s.show_scene_icons,
             show_labels: s.show_labels,
@@ -949,6 +961,7 @@ impl PersistedViewportSettings {
         s.show_rulers_2d = self.show_rulers_2d;
         s.show_cursor_coords_2d = self.show_cursor_coords_2d;
         s.grid_color_2d = self.grid_color_2d;
+        s.show_gizmos_2d = self.show_gizmos_2d;
         s.show_axis_gizmo = self.show_axis_gizmo;
         s.show_scene_icons = self.show_scene_icons;
         s.show_labels = self.show_labels;
@@ -1072,6 +1085,7 @@ mod tests {
             show_rulers_2d: false,
             show_cursor_coords_2d: false,
             grid_color_2d: [128, 200, 255, 60],
+            show_gizmos_2d: false,
             show_axis_gizmo: false,
             show_scene_icons: false,
             show_labels: true,
@@ -1134,6 +1148,7 @@ mod tests {
         assert_eq!(original.grid_size_2d, restored.grid_size_2d);
         assert_eq!(original.show_rulers_2d, restored.show_rulers_2d);
         assert_eq!(original.show_cursor_coords_2d, restored.show_cursor_coords_2d);
+        assert_eq!(original.show_gizmos_2d, restored.show_gizmos_2d);
         assert_eq!(original.show_axis_gizmo, restored.show_axis_gizmo);
         assert_eq!(original.show_scene_icons, restored.show_scene_icons);
         assert_eq!(original.show_labels, restored.show_labels);

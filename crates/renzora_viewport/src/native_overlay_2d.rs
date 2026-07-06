@@ -26,7 +26,7 @@ use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::{
     ViewportBoxSelect2d, ViewportSettings, ViewportView, Viewports, VIEWPORT_COUNT,
 };
-use renzora::core::{Node2d, PlayModeState, ViewportCamera2d};
+use renzora::core::{EditorCamera2d, Node2d, PlayModeState, ViewportCamera2d};
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
 
@@ -55,6 +55,56 @@ fn cursor_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegmen
         format!("{:.0}, {:.0}", pos.x, pos.y),
         MUTED,
     )]
+}
+
+/// The focused 2D camera's orthographic scale, published for the status bar's
+/// zoom readout. `None` outside 2D edit mode (item hidden). Lives in a resource
+/// for the same reason as [`Cursor2dReadout`]: reading the camera's `Projection`
+/// needs a query the status item's `render(&World)` snapshot fn can't run.
+#[derive(Resource, Default)]
+struct Zoom2dReadout(Option<f32>);
+
+/// Status-bar segment: `🔍 100%`, sitting just to the right of the cursor
+/// coordinate readout (order -19 vs -20). Shown whenever the 2D view is active
+/// (the zoom label moved here from the viewport toolbar); empty otherwise. Scale
+/// 1.0 reads as 100%; zooming in (smaller scale) grows the percentage.
+fn zoom_status_segments(world: &World) -> Vec<renzora::core::ShellStatusSegment> {
+    const MUTED: [u8; 3] = [150, 150, 164];
+    let Some(scale) = world.get_resource::<Zoom2dReadout>().and_then(|r| r.0) else {
+        return Vec::new();
+    };
+    if scale <= 0.0 {
+        return Vec::new();
+    }
+    let pct = (100.0 / scale).round() as i32;
+    vec![renzora::core::ShellStatusSegment::new(
+        "magnifying-glass",
+        format!("{pct}%"),
+        MUTED,
+    )]
+}
+
+/// Publish the focused 2D camera's zoom for [`zoom_status_segments`]. `None`
+/// outside 2D edit mode so the segment disappears there.
+fn publish_zoom_2d(
+    mut readout: ResMut<Zoom2dReadout>,
+    settings: Option<Res<ViewportSettings>>,
+    play: Option<Res<PlayModeState>>,
+    camera: Query<&Projection, With<EditorCamera2d>>,
+) {
+    let in_2d = settings.is_some_and(|s| s.viewport_view == ViewportView::Two);
+    let editing = !play.is_some_and(|p| p.is_in_play_mode());
+    let want = if in_2d && editing {
+        match camera.single() {
+            Ok(Projection::Orthographic(o)) => Some(o.scale),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    if readout.0 != want {
+        readout.0 = want;
+    }
 }
 
 /// Thickness of the ruler bars, in window pixels.
@@ -95,9 +145,11 @@ pub(crate) fn register(app: &mut App) {
     // last frame's rulers/handles linger in the 3D/UI/play views). It draws only
     // while actually in 2D edit mode — see the guard inside.
     app.init_resource::<Cursor2dReadout>();
+    app.init_resource::<Zoom2dReadout>();
     app.add_systems(
         Update,
-        render_overlay_2d.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        (render_overlay_2d, publish_zoom_2d)
+            .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
     // Cursor world coordinates live in the status bar's left side (next to
     // "Ready"), not floating beside the pointer — a label glued to the cursor
@@ -107,6 +159,14 @@ pub(crate) fn register(app: &mut App) {
         align: renzora::core::ShellStatusAlign::Left,
         order: -20,
         render: cursor_status_segments,
+    });
+    // The 2D zoom percentage, immediately to the right of the cursor readout
+    // (order -19 > -20). Moved here from the viewport toolbar.
+    app.register_shell_status_item(renzora::core::ShellStatusItem {
+        id: "zoom-2d",
+        align: renzora::core::ShellStatusAlign::Left,
+        order: -19,
+        render: zoom_status_segments,
     });
 }
 

@@ -15,10 +15,17 @@
 //! - **selection gizmos** outlining the selected light's range / occluder's
 //!   shape while editing.
 
+use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
+use bevy::mesh::{Mesh, PrimitiveTopology};
 use bevy::prelude::*;
+use bevy::sprite_render::{AlphaMode2d, ColorMaterial};
 use bevy_firefly::occluders::Occluder2dShape;
 use bevy_firefly::prelude::*;
-use renzora::core::{DefaultCamera, EditorCamera2d, Node2d, PlayModeState, ViewportCamera2d};
+use renzora::core::viewport_types::{
+    ViewportSettings, ViewportView, Viewports, VIEWPORT_2D_GRID_LAYER_BASE, VIEWPORT_COUNT,
+};
+use renzora::core::{DefaultCamera, Node2d, PlayModeState, ViewportCamera2d};
 use renzora::{
     AppEditorExt, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
@@ -31,7 +38,7 @@ pub(super) fn register(app: &mut App) {
     register_presets(app);
     app.add_systems(
         Update,
-        (sync_editor_camera_lighting, draw_selection_gizmos, draw_light_markers),
+        (sync_editor_camera_lighting, draw_selection_gizmos, update_light_markers_2d),
     );
 }
 
@@ -161,15 +168,20 @@ fn sync_editor_camera_lighting(
 /// shape. Selection-only (unlike firefly's own `FireflyGizmosPlugin`, which
 /// draws every entity, every frame) and suppressed in play mode — the editor
 /// 2D camera is the presenting camera there, so gizmos would leak into the
-/// game view.
+/// game view. Also gated on the 2D **Gizmos** overlay toggle
+/// (`ViewportSettings.show_gizmos_2d`), so it hides with the light markers.
 fn draw_selection_gizmos(
     mut gizmos: Gizmos,
+    settings: Option<Res<ViewportSettings>>,
     selection: Option<Res<EditorSelection>>,
     play_mode: Option<Res<PlayModeState>>,
     lights: Query<(&GlobalTransform, &PointLight2d)>,
     occluders: Query<(&GlobalTransform, &Occluder2d)>,
 ) {
     let Some(selection) = selection else { return };
+    if !settings.is_some_and(|s| s.show_gizmos_2d) {
+        return;
+    }
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         return;
     }
@@ -248,54 +260,210 @@ fn draw_selection_gizmos(
     }
 }
 
-/// Always-visible bulb markers for EVERY 2D light — selected or not — so
-/// lights are findable in the viewport (an unselected `PointLight2d` renders
-/// nothing of its own; without a marker it's an invisible entity you can only
-/// reach through the hierarchy). Sun-glyph style: a core dot, a ring, and
-/// four rays, in the light's own colour, plus a very faint range circle.
-/// Sized in world units from the editor camera's ortho scale so the glyph
-/// stays a constant ~pixel size at any zoom. 2D view + edit mode only, and
-/// respects the viewport's "scene icons" display toggle (same switch that
-/// gates the 3D light-bulb icons).
-fn draw_light_markers(
-    mut gizmos: Gizmos,
-    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
+/// Marker for a per-slot 2D light-marker mesh entity (editor-owned;
+/// `HideInHierarchy` keeps it out of the hierarchy panel, scene saves, and
+/// scene clears). The index is the viewport slot it belongs to.
+///
+/// Like the 2D grid (`renzora_gizmo::grid_2d`), the mesh sits on that slot's
+/// grid render layer (`VIEWPORT_2D_GRID_LAYER_BASE + slot`), so only that slot's
+/// 2D camera draws it. This is why marker sizing is per-viewport: each slot's
+/// glyphs are built from ITS OWN camera zoom and rendered only into ITS OWN
+/// view — zooming one viewport rebuilds only that viewport's markers instead of
+/// one shared world-space gizmo (sized from the single focused camera) that
+/// every other viewport re-rendered at its own zoom, so it appeared to zoom too.
+#[derive(Component)]
+struct LightMarkers2dMesh(usize);
+
+/// Depth for the marker meshes: well in front of scene sprites (which sit near
+/// z=0), but inside the 2D camera's default ortho far plane (+1000). The old
+/// gizmo markers drew on top of everything (2D gizmos sort at z=+∞); a real mesh
+/// can't do that, so it's parked high enough to read as an always-on-top icon.
+const MARKER_Z: f32 = 900.0;
+
+/// Always-visible bulb markers for EVERY 2D light — selected or not — so lights
+/// are findable in the viewport (an unselected `PointLight2d` renders nothing of
+/// its own; without a marker it's an invisible entity you can only reach through
+/// the hierarchy). Sun-glyph style: a core dot, a ring, and four rays, in the
+/// light's own colour, plus a very faint range circle.
+///
+/// Drawn as a per-slot `Mesh2d` on each viewport's private grid render layer
+/// (not shared gizmos), so the glyph is sized from THAT slot's camera zoom and
+/// only that slot's camera draws it — a constant ~pixel size in every open 2D
+/// viewport independently, instead of one shared world-space glyph that changed
+/// under every view when any one zoomed. 2D view + edit mode only, and respects
+/// the 2D **Gizmos** overlay toggle (`ViewportSettings.show_gizmos_2d`, in the
+/// toolbar's 2D Overlays dropdown) — the 2D counterpart of the 3D "scene icons"
+/// switch. Markers are few, so the meshes are rebuilt each frame (cheap — a few
+/// dozen line segments per light) rather than change-cached.
+#[allow(clippy::too_many_arguments)]
+fn update_light_markers_2d(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    settings: Option<Res<ViewportSettings>>,
     play_mode: Option<Res<PlayModeState>>,
+    viewports: Option<Res<Viewports>>,
     lights: Query<(&GlobalTransform, &PointLight2d)>,
-    editor_cam: Query<&Projection, With<EditorCamera2d>>,
+    cameras_2d: Query<(&ViewportCamera2d, &Projection)>,
+    mut markers: Query<(&LightMarkers2dMesh, &Mesh2d, &mut Visibility)>,
 ) {
-    use renzora::core::viewport_types::ViewportView;
+    let hide_all = |markers: &mut Query<(&LightMarkers2dMesh, &Mesh2d, &mut Visibility)>| {
+        for (_, _, mut vis) in markers.iter_mut() {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
+        }
+    };
 
     let Some(settings) = settings else { return };
-    if settings.viewport_view != ViewportView::Two || !settings.show_scene_icons {
+    let showing = settings.viewport_view == ViewportView::Two
+        && settings.show_gizmos_2d
+        && !play_mode.is_some_and(|pm| pm.is_in_play_mode());
+    if !showing {
+        hide_all(&mut markers);
         return;
     }
-    if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
+    let Some(viewports) = viewports else {
+        hide_all(&mut markers);
         return;
-    }
-    // World units per render-image pixel at the current zoom.
-    let scale = match editor_cam.single() {
-        Ok(Projection::Orthographic(o)) => o.scale,
-        _ => return,
     };
-    let px = |n: f32| n * scale;
 
-    for (transform, light) in &lights {
+    // Build the wanted marker mesh for each docked slot from ITS OWN camera's
+    // ortho zoom, so every viewport's glyphs are its own constant pixel size.
+    // `None` where nothing should draw (slot undocked / no camera / no lights).
+    let mut desired: [Option<Mesh>; VIEWPORT_COUNT] = [const { None }; VIEWPORT_COUNT];
+    for (vc, projection) in cameras_2d.iter() {
+        if vc.0 >= VIEWPORT_COUNT || !viewports.slots.get(vc.0).is_some_and(|s| s.docked) {
+            continue;
+        }
+        let Projection::Orthographic(o) = projection else { continue };
+        desired[vc.0] = build_light_markers_mesh(&lights, o.scale);
+    }
+
+    // Reconcile existing per-slot meshes: show + rebuild the ones that want a
+    // mesh this frame, hide the rest.
+    let mut have = [false; VIEWPORT_COUNT];
+    for (marker, mesh2d, mut vis) in markers.iter_mut() {
+        if marker.0 >= VIEWPORT_COUNT {
+            continue;
+        }
+        have[marker.0] = true;
+        match desired[marker.0].take() {
+            Some(mesh) => {
+                if *vis != Visibility::Visible {
+                    *vis = Visibility::Visible;
+                }
+                // Insert-by-handle: the entity holds a strong handle, so the
+                // only failure (dead generation) can't happen here.
+                let _ = meshes.insert(&mesh2d.0, mesh);
+            }
+            None => {
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
+        }
+    }
+
+    // Spawn a mesh for any slot that wants markers but doesn't have one yet, on
+    // that slot's private grid render layer so only its camera draws it.
+    for i in 0..VIEWPORT_COUNT {
+        let Some(mesh) = desired[i].take() else { continue };
+        if have[i] {
+            continue;
+        }
+        commands.spawn((
+            LightMarkers2dMesh(i),
+            Mesh2d(meshes.add(mesh)),
+            // Own material, NOT `Handle::<ColorMaterial>::default()` — Bevy
+            // initializes the default 2D material magenta. White + Blend lets
+            // the per-vertex colours (and the faint range ring's alpha) read
+            // through.
+            MeshMaterial2d(materials.add(ColorMaterial {
+                color: Color::WHITE,
+                alpha_mode: AlphaMode2d::Blend,
+                ..default()
+            })),
+            Transform::from_xyz(0.0, 0.0, MARKER_Z),
+            Visibility::Visible,
+            RenderLayers::layer(VIEWPORT_2D_GRID_LAYER_BASE + i),
+            Name::new(format!("2D Light Markers {i}")),
+            // Editor chrome: out of the hierarchy panel, scene saves, and
+            // scene-clear despawns.
+            renzora::HideInHierarchy,
+        ));
+    }
+}
+
+/// Build one viewport's light-marker line mesh at the given ortho `scale` (world
+/// units per render-image pixel), or `None` when there are no lights. Positions
+/// are world-space (the entity sits at the origin, offset only in z), matching
+/// how the grid mesh is built.
+fn build_light_markers_mesh(
+    lights: &Query<(&GlobalTransform, &PointLight2d)>,
+    scale: f32,
+) -> Option<Mesh> {
+    if lights.is_empty() {
+        return None;
+    }
+    let px = |n: f32| n * scale;
+    let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut colors: Vec<[f32; 4]> = Vec::new();
+
+    for (transform, light) in lights.iter() {
         let center = transform.translation().truncate() + light.offset.truncate();
-        let color = light.color.with_alpha(1.0);
-        let isometry = Isometry2d::from_translation(center);
-        gizmos.circle_2d(isometry, px(3.0), color);
-        gizmos.circle_2d(isometry, px(7.0), color);
+        let color = light.color.with_alpha(1.0).to_linear().to_f32_array();
+        push_circle(&mut positions, &mut colors, center, px(3.0), color);
+        push_circle(&mut positions, &mut colors, center, px(7.0), color);
         for i in 0..4 {
             let dir = Rot2::degrees(45.0 + 90.0 * i as f32) * Vec2::X;
-            gizmos.line_2d(center + dir * px(9.0), center + dir * px(13.0), color);
+            push_line(&mut positions, &mut colors, center + dir * px(9.0), center + dir * px(13.0), color);
         }
         // Whisper-faint range ring so light coverage is readable at a glance
-        // without selecting; the selection gizmos draw the bright version.
+        // without selecting; the selection gizmos draw the bright version. Kept
+        // in world units (not pixels) so it maps the light's actual reach.
         if light.radius > 0.0 {
-            gizmos.circle_2d(isometry, light.radius, color.with_alpha(0.08));
+            let faint = light.color.with_alpha(0.08).to_linear().to_f32_array();
+            push_circle(&mut positions, &mut colors, center, light.radius, faint);
         }
     }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::LineList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+    Some(mesh)
+}
+
+/// Append a closed circle as line-list segments (world XY, z=0).
+fn push_circle(
+    positions: &mut Vec<[f32; 3]>,
+    colors: &mut Vec<[f32; 4]>,
+    center: Vec2,
+    radius: f32,
+    color: [f32; 4],
+) {
+    const SEGMENTS: usize = 32;
+    let mut prev = center + Vec2::new(radius, 0.0);
+    for i in 1..=SEGMENTS {
+        let a = (i as f32 / SEGMENTS as f32) * std::f32::consts::TAU;
+        let p = center + Vec2::new(radius * a.cos(), radius * a.sin());
+        push_line(positions, colors, prev, p, color);
+        prev = p;
+    }
+}
+
+/// Append one line segment (world XY, z=0).
+fn push_line(
+    positions: &mut Vec<[f32; 3]>,
+    colors: &mut Vec<[f32; 4]>,
+    a: Vec2,
+    b: Vec2,
+    color: [f32; 4],
+) {
+    positions.push([a.x, a.y, 0.0]);
+    positions.push([b.x, b.y, 0.0]);
+    colors.push(color);
+    colors.push(color);
 }
 
 // ============================================================================

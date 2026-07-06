@@ -159,55 +159,13 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
     let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
 
-    // 2D-only zoom readout (orthographic scale → percentage), updated by
-    // `update_zoom_readout`. Hidden in 3D/UI via `TwoDOnly`.
-    let zoom_readout = commands
-        .spawn((
-            Text::new("100%"),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                align_self: AlignSelf::Center,
-                margin: UiRect::horizontal(Val::Px(4.0)),
-                ..default()
-            },
-            TwoDOnly,
-            ZoomReadout,
-            Name::new("vp-2d-zoom"),
-        ))
-        .id();
-
-    // 2D-only switches — the faint behind-sprites grid mesh
-    // (`ViewportSettings.show_grid_2d`, off by default; separate from the
-    // Display dropdown's 3D "Grid" toggle, which drives the 3D floor grid and
-    // is hidden in 2D along with the rest of the dropdown) and the ruler bars
-    // (`show_rulers_2d`, on by default).
-    let grid_gap = gap(commands, 6.0);
-    let grid_switch = switch_2d(
-        commands,
-        fonts,
-        "viewport.grid",
-        "vp-2d-grid-switch",
-        |s| s.show_grid_2d,
-        |s, v| s.show_grid_2d = v,
-    );
-    // Grid cell size, in world units — its own setting, deliberately NOT the
-    // translate-snap step (tying them together made the snap pill silently
-    // restyle the grid). Shown only while the grid switch is on (its own
-    // visibility system, not `TwoDOnly` — one writer of `Node.display`).
-    let grid_size = grid_size_input(commands, fonts);
-    let ruler_gap = gap(commands, 6.0);
-    let ruler_switch = switch_2d(
-        commands,
-        fonts,
-        "viewport.rulers",
-        "vp-2d-ruler-switch",
-        |s| s.show_rulers_2d,
-        |s, v| s.show_rulers_2d = v,
-    );
-    for e in [grid_gap, grid_switch, ruler_gap, ruler_switch] {
-        commands.entity(e).insert(TwoDOnly);
-    }
+    // 2D-only Overlays dropdown — Grid (`show_grid_2d`, off by default; separate
+    // from the 3D Display dropdown's "Grid", which drives the 3D floor grid),
+    // Rulers (`show_rulers_2d`, on), and Gizmos (`show_gizmos_2d`, on: the light
+    // markers + selection outlines). The 2D counterpart of the 3D Display
+    // dropdown, which is itself 3D-only. Hidden in 3D/UI via `TwoDOnly`.
+    let overlay_2d_dd = build_overlay_2d_dropdown(commands, fonts);
+    commands.entity(overlay_2d_dd).insert(TwoDOnly);
 
     // Inline snapping: translate doubles as the 2D grid snap; rotate / scale and
     // the camera-speed widget are 3D-only (hidden in 2D — `ThreeDOnly`).
@@ -269,26 +227,42 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
         undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd, space_gap, space_btn,
-        center_gap, view_dd, mode_dd, zoom_readout, grid_gap, grid_switch, grid_size, ruler_gap,
-        ruler_switch, gap5, translate, rotate, scale, gap6, cam_speed, gap3, display_dd, snap_dd,
-        camera_dd, gap4, maximize,
+        center_gap, view_dd, mode_dd, gap5, translate, rotate, scale, gap6, cam_speed, gap3,
+        display_dd, snap_dd, camera_dd, overlay_2d_dd, gap4, maximize,
     ]);
     row
 }
 
-/// Marker on the 2D grid-size pill (visible only in 2D view with the grid on).
-#[derive(Component)]
-struct GridSize2dInput;
+/// The Grid row of the 2D Overlays dropdown: label, the cell-size input, then
+/// the on/off switch. Unlike the other rows (plain `toggle_row!`), the grid
+/// carries its size setting inline — a boxed ember [`drag_value`] editing
+/// `ViewportSettings.grid_size_2d` in whole world units — sitting to the LEFT of
+/// the switch. Its own setting, deliberately NOT the translate-snap step (tying
+/// them together made the snap pill silently restyle the grid).
+fn grid_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    // On/off switch → `show_grid_2d`.
+    let sw = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        sw,
+        |w: &World| {
+            w.get_resource::<ViewportSettings>()
+                .map(|s| s.show_grid_2d)
+                .unwrap_or(false)
+        },
+        |w: &mut World, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                s.show_grid_2d = *v;
+            }
+        },
+    );
 
-/// A scrubbable whole-unit input for `ViewportSettings.grid_size_2d`, in a
-/// pill next to the Grid switch.
-fn grid_size_input(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), 1.0, 0.2);
+    // Cell-size input — a boxed ember numeric field (click to type, drag to
+    // scrub). Whole world units: a fractional grid size is never what a tile
+    // artist wants, and int snapping keeps the readout stable.
+    let dv = drag_value(commands, &fonts.ui, "", value_text(), 16.0, 0.2);
     commands.entity(dv).insert((
         DragRange { min: 1.0, max: 1024.0 },
-        // Whole world units — a fractional grid size is never what a tile
-        // artist wants, and int snapping keeps the readout stable (see the
-        // DragSnap docs for the read-back rule).
         renzora_ember::widgets::DragSnap(1.0),
     ));
     bind_2way(
@@ -308,87 +282,32 @@ fn grid_size_input(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
-    let row = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: UiRect::horizontal(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(hover_bg())),
-            GridSize2dInput,
-            Name::new("vp-2d-grid-size"),
-        ))
-        .id();
-    commands.entity(row).add_child(dv);
-    row
-}
 
-/// Show the grid-size pill only while the 2D grid is actually drawn (2D view
-/// AND the Grid switch on). Not `TwoDOnly` — that system would fight this one
-/// over `Node.display`.
-fn update_grid_size_input(
-    settings: Option<Res<ViewportSettings>>,
-    mut q: Query<&mut Node, With<GridSize2dInput>>,
-) {
-    let Some(settings) = settings else { return };
-    let show = settings.viewport_view == ViewportView::Two && settings.show_grid_2d;
-    for mut n in &mut q {
-        let want = if show { Display::Flex } else { Display::None };
-        if n.display != want {
-            n.display = want;
-        }
-    }
-}
-
-/// 2D-only label + ember switch, two-way bound to a `ViewportSettings` bool
-/// (the grid / ruler toggles). Lives inline in the toolbar (not a dropdown)
-/// so flipping chrome while tile-aligning is one click.
-fn switch_2d(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    label_key: &str,
-    name: &'static str,
-    get: impl Fn(&ViewportSettings) -> bool + Copy + Send + Sync + 'static,
-    set: impl Fn(&mut ViewportSettings, bool) + Send + Sync + 'static,
-) -> Entity {
-    let sw = toggle_switch(commands, false);
-    bind_2way(
-        commands,
-        sw,
-        move |w| {
-            w.get_resource::<ViewportSettings>()
-                .map(get)
-                .unwrap_or(false)
-        },
-        move |w, v: &bool| {
-            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                set(&mut s, *v);
-            }
-        },
-    );
     let lbl = commands
         .spawn((
-            Text::new(renzora::lang::t(label_key)),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_muted())),
+            Text::new(renzora::lang::t("viewport.grid")),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(value_text())),
         ))
+        .id();
+    let spacer = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            ..default()
+        })
         .id();
     let row = commands
         .spawn((
             Node {
+                width: Val::Percent(100.0),
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                height: Val::Percent(100.0),
-                margin: UiRect::horizontal(Val::Px(2.0)),
+                column_gap: Val::Px(6.0),
                 ..default()
             },
-            Name::new(name),
+            Name::new("vp-2d-grid-row"),
         ))
         .id();
-    commands.entity(row).add_children(&[lbl, sw]);
+    commands.entity(row).add_children(&[lbl, spacer, dv, sw]);
     row
 }
 
@@ -541,8 +460,6 @@ pub(crate) fn register(app: &mut App) {
                 panel_toggle_dismiss,
                 sanitize_mode_for_view,
                 update_two_d_only,
-                update_grid_size_input,
-                update_zoom_readout,
             ),
         )
             .run_if(in_state(SplashState::Editor)),
@@ -1196,6 +1113,33 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
     wrap
 }
 
+/// The 2D **Overlays** dropdown — the 2D counterpart of the 3D Display
+/// dropdown. Three switches bound to the 2D `ViewportSettings` flags: the
+/// behind-sprites Grid, the ruler bars, and the editor Gizmos (the light
+/// markers + selected-light/occluder outlines). The icon trigger reuses
+/// `DisplayTrigger` so it themes identically to the other icon dropdowns and
+/// needs no extra visuals system; the caller adds `TwoDOnly` so it shows only
+/// in 2D view (the 3D Display dropdown is the mirror-image `ThreeDOnly`).
+fn build_overlay_2d_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let kids = vec![
+        section_label(commands, fonts, &renzora::lang::t("viewport.display.overlays")),
+        grid_row(commands, fonts),
+        toggle_row!(commands, fonts, &renzora::lang::t("viewport.rulers"), show_rulers_2d),
+        toggle_row!(
+            commands,
+            fonts,
+            &renzora::lang::t_or("viewport.gizmos", "Gizmos"),
+            show_gizmos_2d
+        ),
+    ];
+    let panel = dropdown_panel(commands, &kids);
+    let trigger = icon_trigger_node(commands, fonts, "eye");
+    commands
+        .entity(trigger)
+        .insert((PanelToggle { panel, open: false }, DisplayTrigger));
+    dropdown_wrap(commands, trigger, panel)
+}
+
 fn section_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
     commands
         .spawn((
@@ -1394,13 +1338,9 @@ struct SnapPillOf(SnapToggle);
 #[derive(Component)]
 struct ThreeDOnly;
 
-/// Tags header widgets shown ONLY in 2D view (the zoom readout).
+/// Tags header widgets shown ONLY in 2D view (the 2D Overlays dropdown).
 #[derive(Component)]
 struct TwoDOnly;
-
-/// Marker on the 2D zoom-percentage text.
-#[derive(Component)]
-struct ZoomReadout;
 
 /// The header bar background (driven from `theme.surfaces.panel`).
 #[derive(Component)]
@@ -1644,27 +1584,6 @@ fn update_two_d_only(
         let want = if show { Display::Flex } else { Display::None };
         if n.display != want {
             n.display = want;
-        }
-    }
-}
-
-/// Update the 2D zoom readout from the editor 2D camera's orthographic scale.
-/// Scale 1.0 reads as 100%; zooming in (smaller scale) grows the percentage.
-fn update_zoom_readout(
-    cameras_2d: Query<&Projection, With<renzora::core::EditorCamera2d>>,
-    mut texts: Query<&mut Text, With<ZoomReadout>>,
-) {
-    let Ok(Projection::Orthographic(o)) = cameras_2d.single() else {
-        return;
-    };
-    if o.scale <= 0.0 {
-        return;
-    }
-    let pct = (100.0 / o.scale).round() as i32;
-    for mut t in &mut texts {
-        let s = format!("{pct}%");
-        if t.0 != s {
-            t.0 = s;
         }
     }
 }
