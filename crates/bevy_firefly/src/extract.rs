@@ -17,7 +17,8 @@ use bevy::{
 };
 
 use crate::{
-    LightmapPhase,
+    CombinedLightMapTextures, LightMapTexture, LightmapPhase, NormalMapTexture,
+    SpriteStencilTexture,
     change::Changes,
     data::{
         CombineLightmapTo, CombinedLightmaps, ExtractedCombineLightmapTo,
@@ -26,7 +27,9 @@ use crate::{
     lights::{ExtractedPointLight, LightHeight, PointLight2d},
     occluders::ExtractedOccluder,
     phases::SpritePhase,
+    pipelines::SpecializedApplicationPipeline,
     prelude::Occluder2d,
+    prepare::BufferedFireflyConfig,
     sprites::{
         ExtractedSlices, ExtractedSprite, ExtractedSpriteKind, ExtractedSprites, NormalMap,
         SpriteAssetEvents, SpriteHeight,
@@ -48,6 +51,7 @@ impl Plugin for ExtractPlugin {
             ExtractSchedule,
             (
                 extract_camera_phases,
+                cleanup_configless_cameras,
                 extract_sprites.in_set(SpriteSystems::ExtractSprites),
                 extract_sprite_events,
                 extract_world_data,
@@ -95,6 +99,45 @@ fn extract_camera_phases(
     // Clear out all dead views.
     sprite_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
     lightmap_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
+}
+
+/// Tear down firefly's per-view render state for any 2D camera that no longer
+/// carries a [`FireflyConfig`].
+///
+/// `ExtractComponentPlugin::<FireflyConfig>` and every firefly `prepare_*`
+/// system only ever *insert* into Bevy's retained render world — nothing removes
+/// what they wrote. So when a config is removed from a `Camera2d` in the main
+/// world at runtime (e.g. the editor's "2D Lighting" toggle flipped off), the
+/// render-world view keeps a stale `FireflyConfig`, its `BufferedFireflyConfig`,
+/// the lightmap / stencil / normal textures, and the specialized apply pipeline.
+/// `apply_lightmap` still matches that view every frame and keeps multiplying it
+/// by the last lightmap — a near-black frame when there are no lights — so the
+/// viewport stays dark with no way to recover. Upstream firefly never hits this
+/// because configs are set once at spawn and never removed; the editor toggles
+/// them at runtime, so it does.
+///
+/// Stripping the whole derived set makes the `sprite` / `create_lightmap` /
+/// `apply_lightmap` view queries stop matching the camera, which is exactly what
+/// "lighting off" should mean.
+fn cleanup_configless_cameras(
+    mut commands: Commands,
+    cameras: Extract<Query<(&RenderEntity, Has<FireflyConfig>), With<Camera2d>>>,
+) {
+    for (render_entity, has_config) in &cameras {
+        if has_config {
+            continue;
+        }
+        commands.entity(render_entity.id()).remove::<(
+            FireflyConfig,
+            ExtractedWorldData,
+            BufferedFireflyConfig,
+            SpecializedApplicationPipeline,
+            LightMapTexture,
+            SpriteStencilTexture,
+            NormalMapTexture,
+            CombinedLightMapTextures,
+        )>();
+    }
 }
 
 fn extract_sprite_events(
