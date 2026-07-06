@@ -50,6 +50,14 @@ fn fragment(vo: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     }
 
     let scene_frag = textureSample(screen_texture, texture_sampler, vo.uv);
-    
-    return scene_frag * light_frag;
+
+    // Modulate only colour by the lightmap; keep the scene's own alpha. The
+    // ambient term is `vec4(ambient_color, 0)` and unlit lightmap texels are
+    // alpha 0, so `scene_frag * light_frag` zeroes the alpha everywhere there's
+    // no light. On a game's opaque swapchain that's harmless, but the editor
+    // renders each 2D viewport to an offscreen texture that is alpha-composited
+    // into the UI — zeroed alpha turns the whole viewport transparent, reading
+    // as solid black. Preserving scene alpha lights the colour without punching
+    // holes in the image.
+    return vec4f(scene_frag.rgb * light_frag.rgb, scene_frag.a);
 }

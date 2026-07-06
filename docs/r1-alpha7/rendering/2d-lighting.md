@@ -10,10 +10,13 @@ scene file like any other component.
 ## Quick start
 
 1. **Turn lighting on.** Select your scene's 2D camera — every 2D camera has a
-   built-in **2D Lighting** section in the inspector. Flip its toggle on. This
-   is the master switch: `Ambient Brightness` is how lit the scene is with no
-   lights around (0 = pitch black outside light radii). Toggled off, the
-   section costs nothing — no lightmap passes run at all.
+   built-in **2D Lighting** section in the inspector. Flip its toggle on. It
+   starts **half-lit** (`Ambient Brightness` 0.5) so a scene with no lights yet
+   stays clearly visible, just dimmed — turning lighting on reads as "now lit",
+   not "my scene vanished". `Ambient Brightness` is how lit the scene is with no
+   lights around (0 = pitch black outside light radii); dial it down as you add
+   lights. Toggled off, the section costs nothing — no lightmap passes run at
+   all, and the viewport returns to its normal unlit look.
 2. **Add lights.** Add Entity → 2D Nodes → **Point Light 2D**, or add the
    *Point Light 2D* component to any existing entity. Position it with the
    normal move gizmo; tune `Radius`, `Intensity`, `Color`, and the light core in

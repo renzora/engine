@@ -323,11 +323,13 @@ fn firefly_config_entry() -> InspectorEntry {
         set_enabled_fn: Some(|world, entity, val| {
             if val {
                 if world.get::<FireflyConfig>(entity).is_none() {
-                    // Default ambient is 0 (pitch black without lights) — start
-                    // with a dim ambient instead so flipping lighting on doesn't
-                    // read as "my scene disappeared".
+                    // Firefly's own default ambient is 0 — pitch black until a
+                    // light is placed. Start half-lit instead: with no lights yet
+                    // the scene stays clearly visible (just dimmed), so flipping
+                    // lighting on reads as "now lit" rather than "my scene
+                    // vanished". Users dial this down as they add lights.
                     world.entity_mut(entity).insert(FireflyConfig {
-                        ambient_brightness: 0.1,
+                        ambient_brightness: 0.5,
                         ..Default::default()
                     });
                 }
