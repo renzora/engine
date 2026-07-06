@@ -414,44 +414,78 @@ fn sprite_image_entry() -> InspectorEntry {
         }),
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![FieldDef {
-            name: "Image",
-            field_type: FieldType::Asset {
-                extensions: vec![
-                    "png".into(),
-                    "jpg".into(),
-                    "jpeg".into(),
-                    "webp".into(),
-                    "ktx2".into(),
-                    "rmip".into(),
-                ],
+        fields: vec![
+            FieldDef {
+                name: "Image",
+                field_type: FieldType::Asset {
+                    extensions: vec![
+                        "png".into(),
+                        "jpg".into(),
+                        "jpeg".into(),
+                        "webp".into(),
+                        "ktx2".into(),
+                        "rmip".into(),
+                    ],
+                },
+                get_fn: |world, entity| {
+                    let path = world
+                        .get::<renzora::core::SpriteImagePath>(entity)
+                        .map(|p| {
+                            if p.0.is_empty() {
+                                None
+                            } else {
+                                Some(p.0.clone())
+                            }
+                        })
+                        .unwrap_or(None);
+                    Some(FieldValue::Asset(path))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Asset(path) = val {
+                        let path_str = path.unwrap_or_default();
+                        // Always `insert` (replace) so the lifecycle observer
+                        // fires; in-place `Mut<>` mutation doesn't trigger
+                        // observers, which is the path that's actually wired
+                        // up to bind the texture handle.
+                        world
+                            .entity_mut(entity)
+                            .insert(renzora::core::SpriteImagePath(path_str));
+                    }
+                },
             },
-            get_fn: |world, entity| {
-                let path = world
-                    .get::<renzora::core::SpriteImagePath>(entity)
-                    .map(|p| {
-                        if p.0.is_empty() {
-                            None
-                        } else {
-                            Some(p.0.clone())
-                        }
-                    })
-                    .unwrap_or(None);
-                Some(FieldValue::Asset(path))
+            // Mirror the sprite about its axes. These are Bevy's own
+            // `Sprite::flip_x` / `flip_y` — a pure render-side flip, so unlike a
+            // negative Transform scale they don't mirror children, colliders, or
+            // gizmos. Written in place: flipping toggles no lifecycle observers.
+            FieldDef {
+                name: "Flip X",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world.get::<Sprite>(entity).map(|s| FieldValue::Bool(s.flip_x))
+                },
+                set_fn: |world, entity, val| {
+                    if let (FieldValue::Bool(b), Some(mut s)) =
+                        (val, world.get_mut::<Sprite>(entity))
+                    {
+                        s.flip_x = b;
+                    }
+                },
             },
-            set_fn: |world, entity, val| {
-                if let FieldValue::Asset(path) = val {
-                    let path_str = path.unwrap_or_default();
-                    // Always `insert` (replace) so the lifecycle observer
-                    // fires; in-place `Mut<>` mutation doesn't trigger
-                    // observers, which is the path that's actually wired
-                    // up to bind the texture handle.
-                    world
-                        .entity_mut(entity)
-                        .insert(renzora::core::SpriteImagePath(path_str));
-                }
+            FieldDef {
+                name: "Flip Y",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    world.get::<Sprite>(entity).map(|s| FieldValue::Bool(s.flip_y))
+                },
+                set_fn: |world, entity, val| {
+                    if let (FieldValue::Bool(b), Some(mut s)) =
+                        (val, world.get_mut::<Sprite>(entity))
+                    {
+                        s.flip_y = b;
+                    }
+                },
             },
-        }],
+        ],
     }
 }
 
