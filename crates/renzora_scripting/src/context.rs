@@ -147,6 +147,16 @@ pub struct ScriptContext {
     /// active or hasn't read back a value yet.
     pub camera_ev: f32,
 
+    // Project. The configured game resolution (`ProjectConfig.viewport`), in
+    // world units — the size of the window-area rect a 2D camera at the origin
+    // renders (our Godot-style top-left convention). Scripts need this to, e.g.,
+    // centre a follow camera on a sprite: with `viewport_origin = (0, 1)` the
+    // camera's translation maps to the view's top-left, so centring means
+    // offsetting by half the project extent. Falls back to 1920×1080 when no
+    // project is loaded (e.g. a bare test world).
+    pub project_width: f32,
+    pub project_height: f32,
+
     // Network status (mirror of `renzora::NetworkBridge`). Lets scripts gate
     // server-authoritative logic with `net_is_server()` etc. All false/0 when
     // networking isn't active.
@@ -260,6 +270,8 @@ impl ScriptContext {
             mouse_buttons_just_pressed: [false; 5],
             mouse_scroll: 0.0,
             camera_ev: 0.0,
+            project_width: 1920.0,
+            project_height: 1080.0,
             net_is_server: false,
             net_is_connected: false,
             net_player_count: 0,

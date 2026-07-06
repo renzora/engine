@@ -32,6 +32,12 @@ bevy_hui = { path = "../bevy_hui", optional = true }
 # which only works if no other lean-closure crate forces the defaults back on.
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
 
+# System clipboard for the code editor's cut/copy/paste. Native-only: arboard
+# has no wasm backend (the browser clipboard is async + gesture-gated), so the
+# editor's clipboard path no-ops on wasm.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+arboard = "3"
+
 [dev-dependencies]
 tempfile = "3"
 # Same version as bevy_hui's — the template-parse test destructures

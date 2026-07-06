@@ -2355,6 +2355,12 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
         |w, &v| w.resource_mut::<EditorSettings>().code_show_whitespace = v,
     );
     settings_row(commands, fonts, body, 3, &tr("settings.row.whitespace_markers"), t);
+    let t = ctl_toggle(
+        commands, false,
+        |w| w.resource::<EditorSettings>().code_word_wrap,
+        |w, &v| w.resource_mut::<EditorSettings>().code_word_wrap = v,
+    );
+    settings_row(commands, fonts, body, 4, &renzora::lang::t_or("settings.row.word_wrap", "Word Wrap"), t);
 }
 
 // ── Assets ───────────────────────────────────────────────────────────────────

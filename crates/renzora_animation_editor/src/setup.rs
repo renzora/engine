@@ -541,62 +541,82 @@ fn create_anim_click(
         else {
             return;
         };
-        let Some(project_root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone())
-        else {
-            set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
-            return;
-        };
-
+        // Empty-state action: name the entity's first clip after the entity.
         let raw_name = world
             .get::<Name>(entity)
             .map(|n| n.as_str().to_string())
             .unwrap_or_else(|| "entity".into());
-        let safe: String = raw_name
-            .chars()
-            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-            .collect();
-        let clip_name = if safe.is_empty() { "animation".into() } else { safe };
-        let rel_path = format!("animations/{}.anim", clip_name);
-        let abs_path = project_root.join(&rel_path);
-
-        if !abs_path.exists() {
-            let clip = AnimClip {
-                name: clip_name.clone(),
-                duration: 2.0,
-                tracks: Vec::new(),
-                property_tracks: Vec::new(),
-                markers: Vec::new(),
-            };
-            if let Err(e) = renzora::core::write_anim_file(&clip, &abs_path) {
-                set_feedback(world, entity, format!("Write failed: {e}"), true);
-                return;
-            }
-        }
-
-        // Attach/extend the animator with the new clip and make it default.
-        if let Some(mut animator) = world.get_mut::<AnimatorComponent>(entity) {
-            if animator.get_slot(&clip_name).is_none() {
-                animator.add_clip(AnimClipSlot::new(clip_name.clone(), rel_path.clone()));
-            }
-            if animator.default_clip.is_none() {
-                animator.default_clip = Some(clip_name.clone());
-            }
-        } else {
-            let mut animator = AnimatorComponent::new();
-            animator.add_clip(AnimClipSlot::new(clip_name.clone(), rel_path.clone()));
-            animator.default_clip = Some(clip_name.clone());
-            world.entity_mut(entity).insert(animator);
-        }
-        // Rebuild the runtime state so the new clip loads.
-        world.entity_mut(entity).remove::<AnimatorState>();
-        if let Some(mut state) = world.get_resource_mut::<AnimationEditorState>() {
-            state.selected_clip = Some(clip_name.clone());
-            state.clip_duration = None;
-            state.auto_fit_clip = None;
-            state.scrub_time = 0.0;
-        }
-        set_feedback(world, entity, format!("Created {}", rel_path), false);
+        let clip_name = sanitize_clip_name(&raw_name);
+        create_clip_on_entity(world, entity, &clip_name);
     });
+}
+
+/// Sanitize an arbitrary string into a filesystem/slot-safe clip name
+/// (alphanumerics, `_`, `-`; everything else → `_`). Empty input falls back to
+/// a generic name so we never build an `animations/.anim` path with no stem.
+pub fn sanitize_clip_name(raw: &str) -> String {
+    let safe: String = raw
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+    if safe.is_empty() { "animation".into() } else { safe }
+}
+
+/// Create (or adopt) a clip named `clip_name` on `entity`'s animator and select
+/// it. Writes an empty `animations/<clip_name>.anim` if none exists yet, adds a
+/// slot for it (making it the default when the animator had none), and resets
+/// the timeline onto it.
+///
+/// Shared by the empty-state "Create Animation" button and the timeline's inline
+/// "new clip" field, so one entity can hold several clips — e.g. one per facing
+/// direction for a sprite — rather than the single clip the empty-state button
+/// alone allowed.
+pub fn create_clip_on_entity(world: &mut World, entity: Entity, clip_name: &str) {
+    let Some(project_root) = world.get_resource::<CurrentProject>().map(|p| p.path.clone())
+    else {
+        set_feedback(world, entity, renzora::lang::t("animation.no_project_open"), true);
+        return;
+    };
+    let rel_path = format!("animations/{}.anim", clip_name);
+    let abs_path = project_root.join(&rel_path);
+
+    if !abs_path.exists() {
+        let clip = AnimClip {
+            name: clip_name.to_string(),
+            duration: 2.0,
+            tracks: Vec::new(),
+            property_tracks: Vec::new(),
+            markers: Vec::new(),
+        };
+        if let Err(e) = renzora::core::write_anim_file(&clip, &abs_path) {
+            set_feedback(world, entity, format!("Write failed: {e}"), true);
+            return;
+        }
+    }
+
+    // Attach/extend the animator with the clip and make it default when first.
+    if let Some(mut animator) = world.get_mut::<AnimatorComponent>(entity) {
+        if animator.get_slot(clip_name).is_none() {
+            animator.add_clip(AnimClipSlot::new(clip_name.to_string(), rel_path.clone()));
+        }
+        if animator.default_clip.is_none() {
+            animator.default_clip = Some(clip_name.to_string());
+        }
+    } else {
+        let mut animator = AnimatorComponent::new();
+        animator.add_clip(AnimClipSlot::new(clip_name.to_string(), rel_path.clone()));
+        animator.default_clip = Some(clip_name.to_string());
+        world.entity_mut(entity).insert(animator);
+    }
+    // Rebuild the runtime state so the clip loads.
+    world.entity_mut(entity).remove::<AnimatorState>();
+    if let Some(mut state) = world.get_resource_mut::<AnimationEditorState>() {
+        state.selected_clip = Some(clip_name.to_string());
+        state.clip_duration = None;
+        state.auto_fit_clip = None;
+        state.scrub_time = 0.0;
+    }
+    set_feedback(world, entity, format!("Created {}", rel_path), false);
 }
 
 fn set_feedback(world: &mut World, entity: Entity, message: String, is_error: bool) {

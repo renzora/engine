@@ -186,6 +186,37 @@ fn binding_spec() -> CodeBindingSpec {
         font_size: Some(Box::new(|w: &World| {
             w.get_resource::<CodeEditorState>().map(|s| s.font_size).unwrap_or(14.0)
         })),
+        // View preferences live on EditorSettings (written by the toolbar +
+        // settings panel); read them straight through so the widget reacts live.
+        word_wrap: Some(Box::new(|w: &World| {
+            w.get_resource::<renzora_editor_framework::EditorSettings>().is_some_and(|s| s.code_word_wrap)
+        })),
+        show_whitespace: Some(Box::new(|w: &World| {
+            w.get_resource::<renzora_editor_framework::EditorSettings>().is_some_and(|s| s.code_show_whitespace)
+        })),
+        auto_close: Some(Box::new(|w: &World| {
+            w.get_resource::<renzora_editor_framework::EditorSettings>().is_none_or(|s| s.code_auto_close_pairs)
+        })),
+        // The active file's language decides the Ctrl+/ comment token.
+        line_comment: Some(Box::new(|w: &World| {
+            let lang = w
+                .get_resource::<CodeEditorState>()
+                .and_then(active_file)
+                .map(|f| Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()))
+                .unwrap_or(Language::PlainText);
+            line_comment_for(lang).map(str::to_string)
+        })),
+    }
+}
+
+/// The line-comment token for `lang`, or `None` for formats without one (JSON,
+/// HTML — block comments only).
+fn line_comment_for(lang: Language) -> Option<&'static str> {
+    match lang {
+        Language::Lua | Language::Sql => Some("--"),
+        Language::Rhai | Language::Rust | Language::Wgsl | Language::Bsn => Some("//"),
+        Language::Python | Language::Shell | Language::Toml => Some("#"),
+        Language::Json | Language::Html | Language::PlainText => None,
     }
 }
 

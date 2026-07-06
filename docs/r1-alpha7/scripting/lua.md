@@ -84,6 +84,7 @@ These globals are set fresh before each hook. They are inputs — read them, don
 | `mouse_left_just_pressed`, `mouse_right_just_pressed` | bool | Button pressed this frame |
 | `camera_yaw` | number | Active camera yaw (radians) |
 | `camera_ev` | number | Live scene EV-100 from auto-exposure (0 if inactive) |
+| `project_width`, `project_height` | number | Configured game resolution, world units (1920×1080 if no project) |
 | `gamepad_left_x` / `_y`, `gamepad_right_x` / `_y` | number | Stick axes |
 | `gamepad_left_trigger`, `gamepad_right_trigger` | number | Triggers (0..1) |
 | `gamepad_south` / `east` / `west` / `north` | bool | Face buttons |

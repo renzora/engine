@@ -418,6 +418,12 @@ pub fn run_scripts(world: &mut World) {
                 .get_resource::<renzora::core::CameraExposureState>()
                 .map(|s| s.ev100)
                 .unwrap_or(0.0);
+            // Project resolution (world units) — keeps the ctx defaults
+            // (1920×1080) when no project is loaded.
+            if let Some(project) = world.get_resource::<renzora::core::CurrentProject>() {
+                ctx.project_width = project.config.viewport.width.max(1) as f32;
+                ctx.project_height = project.config.viewport.height.max(1) as f32;
+            }
             if let Some(net) = world.get_resource::<renzora::NetworkBridge>() {
                 ctx.net_is_server = net.is_server;
                 ctx.net_is_connected = net.is_connected;

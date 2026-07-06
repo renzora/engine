@@ -267,6 +267,8 @@ pub struct EditorSettings {
     pub code_show_minimap: bool,
     /// Show whitespace markers in the code editor.
     pub code_show_whitespace: bool,
+    /// Soft-wrap long lines in the code editor instead of scrolling horizontally.
+    pub code_word_wrap: bool,
     /// "Open in Code Editor" behaviour: `false` adds a Code Editor panel to the
     /// current dock layout; `true` switches to the dedicated "Scripting" layout.
     pub code_open_switch_layout: bool,
@@ -307,6 +309,7 @@ impl Default for EditorSettings {
             code_trim_trailing_whitespace_on_save: true,
             code_show_minimap: true,
             code_show_whitespace: false,
+            code_word_wrap: false,
             code_open_switch_layout: false,
         }
     }

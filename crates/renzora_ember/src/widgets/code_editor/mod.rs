@@ -1,4 +1,8 @@
-//! Code editor — a monospace, syntax-highlighted, editable text view.
+//! Code editor — a monospace, syntax-highlighted, editable text view with the
+//! editing features you expect from a real editor (VSCode-style): undo/redo,
+//! multi-line indent, auto-close pairs, auto-indent, line move/duplicate,
+//! comment toggle, word-wise motion, clipboard, **code folding**, and **word
+//! wrap**.
 //!
 //! Monospace makes caret/scroll math trivial: column → pixel is `col * char_w`.
 //! Every metric (line height, gutter width, caret height, char advance) is
@@ -15,12 +19,17 @@
 //! multi-token text. Ligature mono fonts still work — a ligature keeps the
 //! combined cell advance, so per-character column math stays exact.
 //!
-//! The doc is a `Vec<String>`; [`systems::code_input`] edits it,
-//! [`systems::code_render`] rebuilds the visible lines (gutter + colored token
-//! spans), and [`systems::code_caret`] positions the blinking cursor. Click to
-//! place the cursor, wheel to scroll.
+//! The doc is a `Vec<String>`; folding/wrapping don't touch it — instead a
+//! **visual-row model** ([`layout`]) maps the buffer to the flat list of rows
+//! actually drawn (fold bodies removed, long lines split). Caret, selection,
+//! scrolling and hit-testing are all expressed in visual rows, so folding and
+//! wrapping compose for free. [`systems::code_input`] edits the buffer,
+//! [`systems::code_render`] rebuilds the visible rows (gutter + colored token
+//! spans + overlays), and [`systems::code_caret`] positions the blinking cursor.
 //!
-//! Submodules: [`highlight`] (tokenizer), [`edit`] (document ops), [`systems`].
+//! Submodules: [`layout`] (visual rows), [`folding`] (fold detection),
+//! [`history`] (undo/redo), [`highlight`] (fallback tokenizer), [`edit`]
+//! (document ops), [`systems`].
 
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
@@ -30,10 +39,15 @@ use crate::theme::*;
 
 mod binding;
 mod edit;
+mod folding;
+mod history;
 pub(crate) mod highlight;
+mod layout;
 mod systems;
 
 pub use binding::{bind_code, CodeBindingSpec};
+
+use history::History;
 
 /// Default code-font size (logical px) until the host pushes one via the
 /// binding's `font_size` closure.
@@ -51,9 +65,20 @@ const DEFAULT_ADVANCE: f32 = 0.6;
 const PAD: f32 = 8.0;
 /// Left+right breathing room added to the gutter around the digits (logical px).
 const GUTTER_PAD: f32 = 14.0;
+/// Extra gutter width reserved for the fold chevron column (logical px).
+const FOLD_COL_W: f32 = 14.0;
 /// Columns per indent level — matches the Tab key's 4-space insert (see
-/// [`edit`]). Used for indent guides.
+/// [`edit`]). Used for indent guides, block indent, and fold detection.
 pub(crate) const TAB_WIDTH: usize = 4;
+
+/// An active fold over buffer lines `start..=end`. The header (`start`) stays
+/// visible; the body (`start+1..=end`) is hidden. Display-only — the buffer text
+/// is never mutated by folding, so a fold can't corrupt what gets saved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Fold {
+    pub start: usize,
+    pub end: usize,
+}
 
 /// Per-editor derived metrics, all logical px (except `font_size` which is the
 /// source). Recomputed from [`CodeEditor::font_size`] / `advance_ratio` /
@@ -85,6 +110,9 @@ impl Plugin for CodeEditorPlugin {
                 systems::code_metrics,
                 systems::code_probe,
                 systems::code_measure,
+                // Fold-chevron clicks before the text click handler so a chevron
+                // press doesn't also move the caret.
+                systems::code_fold_click,
                 systems::code_pointer,
                 systems::code_input,
                 systems::code_scroll,
@@ -119,6 +147,11 @@ pub(crate) struct CodeEditor {
     cursor_col: usize,
     anchor_line: usize,
     anchor_col: usize,
+    /// Sticky target column for vertical movement (Up/Down keep the visual x
+    /// even across shorter lines), VSCode-style. Reset on horizontal edits.
+    goal_col: Option<usize>,
+    /// Scroll position as a **visual-row** offset (not a buffer line), so it
+    /// stays correct with folds and wrap.
     scroll: usize,
     /// Live code-font size (logical px); driven by the host zoom / settings.
     font_size: f32,
@@ -129,12 +162,28 @@ pub(crate) struct CodeEditor {
     char_w: f32,
     /// Derived line height.
     line_h: f32,
-    /// Derived gutter width (grows with the digit count).
+    /// Derived gutter width (grows with the digit count; includes the fold col).
     gutter_w: f32,
     /// Viewport width (logical px), tracked by `code_measure`; used to size
-    /// full-width overlays like the current-line highlight.
+    /// full-width overlays and to compute the wrap column count.
     view_w: f32,
+    /// Number of visual rows that fit in the viewport height.
     visible: usize,
+    /// Active folds. Display-only; kept anchored across edits by [`folding`].
+    folds: Vec<Fold>,
+    /// Word wrap on/off (host-driven via the binding).
+    wrap: bool,
+    /// Derived wrap width in columns (0 = no wrap); set by `code_measure`.
+    wrap_cols: usize,
+    /// Draw whitespace markers (host-driven).
+    show_whitespace: bool,
+    /// Insert the closing half of `()[]{}""''` when typing the opener.
+    auto_close: bool,
+    /// Line-comment token for the active language (`"//"`, `"--"`, `"#"`, …),
+    /// used by the toggle-comment command. `None` disables it.
+    line_comment: Option<String>,
+    /// Undo/redo history.
+    history: History,
     focused: bool,
     dirty: bool,
     /// Set whenever the document text is mutated (not on caret moves). Watched
@@ -145,6 +194,9 @@ pub(crate) struct CodeEditor {
     /// Host-injected per-line highlighter; falls back to the built-in Rust-ish
     /// tokenizer when `None`.
     highlighter: Option<Highlighter>,
+    /// Multi-click tracking (double = word, triple = line select). `(time,
+    /// line, col, count)`.
+    last_click: Option<(f32, usize, usize, u8)>,
     body: Entity,
     caret: Entity,
 }
@@ -157,7 +209,7 @@ impl CodeEditor {
         let char_w = self.font_size * self.advance_ratio;
         let line_h = (self.font_size * LINE_H_RATIO).round().max(self.font_size + 2.0);
         let digits = self.text.len().max(1).to_string().len().max(2);
-        let gutter_w = (digits as f32 * char_w + GUTTER_PAD).round();
+        let gutter_w = (digits as f32 * char_w + GUTTER_PAD + FOLD_COL_W).round();
         let changed = char_w != self.char_w || line_h != self.line_h || gutter_w != self.gutter_w;
         self.char_w = char_w;
         self.line_h = line_h;
@@ -176,11 +228,59 @@ impl CodeEditor {
             pad: PAD,
         }
     }
+
+    /// The current visual-row list (fold bodies removed, long lines wrapped).
+    fn rows(&self) -> Vec<layout::VisualRow> {
+        layout::build_rows(&self.text, &self.folds, self.wrap_cols)
+    }
+
+    /// Reset per-document transient state on a document switch: fold anchors
+    /// (they index the old buffer), undo history, and click tracking.
+    fn reset_view_state(&mut self) {
+        self.folds.clear();
+        self.history.clear();
+        self.last_click = None;
+        self.wrap_cols = 0;
+    }
+
+    /// A snapshot of the current buffer/cursor for the undo history.
+    fn snapshot(&self) -> history::Snapshot {
+        history::Snapshot {
+            text: self.text.clone(),
+            cursor_line: self.cursor_line,
+            cursor_col: self.cursor_col,
+            anchor_line: self.anchor_line,
+            anchor_col: self.anchor_col,
+        }
+    }
+
+    /// Restore a history snapshot (used by undo/redo).
+    fn restore(&mut self, s: history::Snapshot) {
+        self.text = s.text;
+        self.cursor_line = s.cursor_line.min(self.text.len().saturating_sub(1));
+        self.cursor_col = s.cursor_col.min(layout::char_len(&self.text, self.cursor_line));
+        self.anchor_line = s.anchor_line.min(self.text.len().saturating_sub(1));
+        self.anchor_col = s.anchor_col.min(layout::char_len(&self.text, self.anchor_line));
+        // Folds anchored to lines that no longer exist would be invalid; the
+        // simplest correct move on an undo is to drop out-of-range folds.
+        let n = self.text.len();
+        self.folds.retain(|f| f.end < n);
+        self.content_dirty = true;
+        self.dirty = true;
+    }
 }
 
 #[derive(Component)]
 pub(crate) struct CodeViewport {
     editor: Entity,
+}
+
+/// A clickable gutter fold chevron. Toggles the fold headed by `line` on the
+/// editor it points at.
+#[derive(Component)]
+pub(crate) struct CodeFoldToggle {
+    pub editor: Entity,
+    pub line: usize,
 }
 
 /// A hidden, laid-out probe used to measure the active mono font's real advance
@@ -291,6 +391,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
         cursor_col: 0,
         anchor_line: 0,
         anchor_col: 0,
+        goal_col: None,
         scroll: 0,
         font_size: DEFAULT_FONT_SIZE,
         advance_ratio: DEFAULT_ADVANCE,
@@ -299,11 +400,19 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
         gutter_w: 0.0,
         view_w: 0.0,
         visible: 1,
+        folds: Vec::new(),
+        wrap: false,
+        wrap_cols: 0,
+        show_whitespace: false,
+        auto_close: true,
+        line_comment: None,
+        history: History::default(),
         focused: false,
         dirty: true,
         content_dirty: false,
         last_key: None,
         highlighter: None,
+        last_click: None,
         body,
         caret,
     };
@@ -316,3 +425,48 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
 /// every glyph the same width, so the digit choice is arbitrary.
 const PROBE_TEXT: &str = "0000000000";
 const PROBE_LEN: f32 = 10.0;
+
+/// Build a bare [`CodeEditor`] for unit tests (no ECS entities). The editing
+/// logic in [`edit`]/[`layout`]/[`folding`] is pure, so tests drive it directly
+/// without spinning up an `App`.
+#[cfg(test)]
+pub(crate) fn code_editor_for_test(text: &str) -> CodeEditor {
+    let lines: Vec<String> = if text.is_empty() {
+        vec![String::new()]
+    } else {
+        text.lines().map(|l| l.to_string()).collect()
+    };
+    let mut ed = CodeEditor {
+        text: lines,
+        cursor_line: 0,
+        cursor_col: 0,
+        anchor_line: 0,
+        anchor_col: 0,
+        goal_col: None,
+        scroll: 0,
+        font_size: DEFAULT_FONT_SIZE,
+        advance_ratio: DEFAULT_ADVANCE,
+        char_w: DEFAULT_FONT_SIZE * DEFAULT_ADVANCE,
+        line_h: (DEFAULT_FONT_SIZE * LINE_H_RATIO).round(),
+        gutter_w: 0.0,
+        view_w: 400.0,
+        visible: 50,
+        folds: Vec::new(),
+        wrap: false,
+        wrap_cols: 0,
+        show_whitespace: false,
+        auto_close: true,
+        line_comment: None,
+        history: History::default(),
+        focused: true,
+        dirty: true,
+        content_dirty: false,
+        last_key: None,
+        highlighter: None,
+        last_click: None,
+        body: Entity::PLACEHOLDER,
+        caret: Entity::PLACEHOLDER,
+    };
+    ed.recompute_metrics();
+    ed
+}

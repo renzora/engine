@@ -8122,6 +8122,7 @@ dependencies = [
 name = "renzora_ember"
 version = "0.1.0"
 dependencies = [
+ "arboard",
  "bevy",
  "bevy_hui",
  "nom",

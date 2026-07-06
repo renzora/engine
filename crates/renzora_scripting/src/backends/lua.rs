@@ -1817,6 +1817,11 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     // Camera state — live scene EV-100 from auto-exposure readback.
     let _ = g.set("camera_ev", ctx.camera_ev as f64);
 
+    // Project — configured game resolution (world units). Handy for 2D:
+    // centre a follow camera by offsetting half of these (top-left origin).
+    let _ = g.set("project_width", ctx.project_width as f64);
+    let _ = g.set("project_height", ctx.project_height as f64);
+
     // Gamepad
     let _ = g.set("gamepad_left_x", ctx.gamepad_left_stick.x as f64);
     let _ = g.set("gamepad_left_y", ctx.gamepad_left_stick.y as f64);

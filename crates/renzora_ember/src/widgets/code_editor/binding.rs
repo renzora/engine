@@ -27,6 +27,15 @@ pub struct CodeBindingSpec {
     /// Optional live code-font size (logical px), e.g. the host's zoom level. Read
     /// every sync and pushed onto the editor; `None` keeps the widget default.
     pub font_size: Option<Box<dyn Fn(&World) -> f32 + Send + Sync>>,
+    /// Live word-wrap toggle (host setting). `None` leaves wrap off.
+    pub word_wrap: Option<Box<dyn Fn(&World) -> bool + Send + Sync>>,
+    /// Live whitespace-marker toggle (host setting).
+    pub show_whitespace: Option<Box<dyn Fn(&World) -> bool + Send + Sync>>,
+    /// Live auto-close-pairs toggle (host setting). `None` keeps the default on.
+    pub auto_close: Option<Box<dyn Fn(&World) -> bool + Send + Sync>>,
+    /// The active document's line-comment token (`"//"`, `"--"`, `"#"`, …) for
+    /// the Ctrl+/ toggle. `None` disables comment toggling.
+    pub line_comment: Option<Box<dyn Fn(&World) -> Option<String> + Send + Sync>>,
 }
 
 #[derive(Component)]
@@ -71,10 +80,14 @@ pub(crate) fn code_sync(world: &mut World) {
                 ed.anchor_line = 0;
                 ed.anchor_col = 0;
                 ed.scroll = 0;
+                ed.goal_col = None;
                 ed.last_key = Some(key);
                 ed.content_dirty = false;
                 ed.dirty = true;
                 ed.highlighter = Some(hl);
+                // A different document starts with a clean history and no folds
+                // (fold anchors are line indices into the previous buffer).
+                ed.reset_view_state();
             }
         } else if world.get::<CodeEditor>(e).is_some_and(|c| c.content_dirty) {
             // Same document, edited since last sync: push the buffer back.
@@ -93,6 +106,32 @@ pub(crate) fn code_sync(world: &mut World) {
                 if (ed.font_size - size).abs() > f32::EPSILON {
                     ed.font_size = size;
                 }
+            }
+        }
+
+        // Push the live view preferences (each read is a cheap resource lookup).
+        let wrap = spec.word_wrap.as_ref().map(|f| f(world));
+        let ws = spec.show_whitespace.as_ref().map(|f| f(world));
+        let ac = spec.auto_close.as_ref().map(|f| f(world));
+        let comment = spec.line_comment.as_ref().map(|f| f(world));
+        if let Some(mut ed) = world.get_mut::<CodeEditor>(e) {
+            if let Some(w) = wrap {
+                if ed.wrap != w {
+                    ed.wrap = w;
+                    ed.dirty = true;
+                }
+            }
+            if let Some(w) = ws {
+                if ed.show_whitespace != w {
+                    ed.show_whitespace = w;
+                    ed.dirty = true;
+                }
+            }
+            if let Some(a) = ac {
+                ed.auto_close = a;
+            }
+            if let Some(c) = comment {
+                ed.line_comment = c;
             }
         }
 

@@ -139,7 +139,7 @@ Property tracks live in the same `.anim` clip as skeletal tracks and play back i
 ### Authoring workflow
 
 1. **Select the entity** in the viewport or hierarchy. (A viewport click selects the whole model as a unit.)
-2. If it has no clip yet, the Timeline/Animation panel shows **Create Animation** — click it to write an empty `animations/<Entity>.anim` and attach an `AnimatorComponent`.
+2. If it has no clip yet, the Timeline/Animation panel shows **Create Animation** — click it to write an empty `animations/<Entity>.anim` and attach an `AnimatorComponent`. To add **more** clips to the same entity, use the **new-clip field** in the Timeline toolbar (next to the clip selector): type a name and click **＋**. It writes `animations/<name>.anim`, adds it as a slot, and selects it — so one entity can hold several clips (e.g. `idle_s`, `idle_n`, `idle_sw`, … one per facing direction). The clip **selector** dropdown switches between them.
 3. **Add a track:** the **+ Add Track** button (Tracks header) or the toolbar **Add Property** button adds an empty track. Its row has a **dropdown** — pick the property to bind (e.g. `Transform · Rotation`). The picker hides properties already used, so you can't make duplicate tracks.
 4. **Key it.** Two reliable ways:
    - Move the playhead, **pose the object** (rotate/scale it in the viewport — it stays put), then press **Add Key** (toolbar diamond, keys all tracks) or the **◆** button on a single track row.
@@ -176,6 +176,10 @@ Property tracks live in the same `.anim` clip as skeletal tracks and play back i
 - For hand-timed frames (holds, anticipation), drop a **Stepped** key per frame.
 
 The sampled value rounds to the nearest whole frame on write, and the same clip plays back identically in the exported game.
+
+> **Directional sheets (8-way characters).** When each **row** of the sheet is a facing direction (row-major: `Frame = row * H Frames + column`), don't try to put every direction on one timeline — they'd all fight over the single `SpriteSheet · Frame` field, and only one value can show. Direction is a *runtime state*, not a track. Two ways to handle it:
+> - **A clip per direction** — make one clip per facing with the new-clip field (`idle_s`, `idle_n`, …), each sweeping only its row's cells, and switch clips from a script or a state machine based on where the character faces. Because only one clip plays at a time, there's no conflict.
+> - **Drive the frame from script** — skip the timeline for locomotion and compute `Frame = direction_row * H Frames + phase` each update, where `phase` cycles the columns on a timer. One small block covers every direction; see the scripting docs.
 
 ### Event markers
 

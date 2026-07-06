@@ -110,6 +110,7 @@ Each frame the backend pushes the entity's state and input into the script scope
 | `mouse_scroll` | float | Scroll delta |
 | `camera_yaw` | float | Camera yaw (radians) |
 | `camera_ev` | float | Scene EV-100 (auto-exposure readback) |
+| `project_width` / `project_height` | float | Configured game resolution, world units (1920×1080 if no project) |
 | `gamepad_left_x` / `gamepad_left_y` / `gamepad_right_x` / `gamepad_right_y` | float | Stick axes |
 | `gamepad_left_trigger` / `gamepad_right_trigger` | float | Trigger pressure |
 | `gamepad_south` / `east` / `west` / `north` / `l1` / `r1` / `l2` / `r2` / `l3` / `r3` / `select` / `start` | bool | Face/shoulder buttons |

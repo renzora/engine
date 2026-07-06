@@ -921,6 +921,11 @@ fn setup_scope(scope: &mut Scope, ctx: &ScriptContext, vars: &ScriptVariables) {
     // Camera state — live scene EV-100 from auto-exposure readback.
     scope.push("camera_ev", ctx.camera_ev as f64);
 
+    // Project — configured game resolution (world units). Handy for 2D:
+    // centre a follow camera by offsetting half of these (top-left origin).
+    scope.push("project_width", ctx.project_width as f64);
+    scope.push("project_height", ctx.project_height as f64);
+
     // Entity
     scope.push("self_entity_id", ctx.self_entity_id as i64);
     scope.push("self_entity_name", ctx.self_entity_name.clone());

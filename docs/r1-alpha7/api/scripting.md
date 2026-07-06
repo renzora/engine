@@ -93,6 +93,7 @@ Written fresh before each hook. Read them — do not assign.
 | `mouse_left_just_pressed`, `mouse_right_just_pressed` | bool | Button pressed this frame |
 | `camera_yaw` | number | Active camera yaw, radians |
 | `camera_ev` | number | Live scene EV-100 from auto-exposure (0 if inactive) |
+| `project_width`, `project_height` | number | Configured game resolution in world units (falls back to 1920×1080 with no project loaded) |
 
 ### Gamepad
 
@@ -118,7 +119,7 @@ The flat `gamepad_*` globals mirror the **first connected pad**. Every pad is ad
 
 Rhai also receives a `gamepads` array in scope (one map per pad with `id`, the axis fields, and `buttons` / `just_pressed` maps) which can be indexed or iterated directly. See [Input Handling — Multiple gamepads](/docs/r1-alpha6/scripting/input#multiple-gamepads).
 
-> All of the globals above are available in **both** backends except the mouse-button set, which is only mirrored into Lua. Rhai receives the time, transform, mouse-position, `camera_yaw`/`camera_ev`, gamepad, collision, timer, health, and parent globals via its scope; use Lua for the action-map and mouse-button helpers below.
+> All of the globals above are available in **both** backends except the mouse-button set, which is only mirrored into Lua. Rhai receives the time, transform, mouse-position, `camera_yaw`/`camera_ev`, `project_width`/`project_height`, gamepad, collision, timer, health, and parent globals via its scope; use Lua for the action-map and mouse-button helpers below.
 
 ## Transform
 

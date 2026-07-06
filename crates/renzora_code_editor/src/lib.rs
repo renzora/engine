@@ -252,9 +252,27 @@ pub(crate) fn build_code_editor_toolbar(
         },
     );
 
+    // Word wrap → soft-wrap long lines instead of horizontal scroll.
+    let wrap_label = label(commands, &renzora::lang::t_or("code.word_wrap", "Word Wrap"));
+    let wrap = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        wrap,
+        |w| {
+            w.get_resource::<EditorSettings>()
+                .map(|s| s.code_word_wrap)
+                .unwrap_or(false)
+        },
+        |w, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<EditorSettings>() {
+                s.code_word_wrap = *v;
+            }
+        },
+    );
+
     commands
         .entity(row)
-        .add_children(&[size_label, size, mini_label, mini, ws_label, ws]);
+        .add_children(&[size_label, size, mini_label, mini, ws_label, ws, wrap_label, wrap]);
     row
 }
 
@@ -274,7 +292,7 @@ impl Plugin for CodeEditorPlugin {
                 consume_open_code_editor_file,
                 reload_saved_ui_templates,
                 sync_asset_filter_for_scripting,
-                sync_code_editor_prefs_to_settings,
+                sync_settings_to_code_editor_prefs,
             )
                 .run_if(in_state(SplashState::Editor)),
         );
@@ -288,30 +306,35 @@ impl Plugin for CodeEditorPlugin {
     }
 }
 
-/// Push the editor's view-preferences back into `EditorSettings` so the
-/// settings overlay reflects toolbar toggles (and the values persist when
-/// it's eventually serialised).
-fn sync_code_editor_prefs_to_settings(
-    editor_state: Res<CodeEditorState>,
-    mut settings: ResMut<renzora_editor_framework::EditorSettings>,
+/// Mirror the code-editor view preferences from `EditorSettings` (the source
+/// the Settings panel and the editor toolbar actually write) into
+/// `CodeEditorState`, which the save path reads for trim / auto-close.
+///
+/// The direction matters: nothing writes these fields on `CodeEditorState`, so
+/// the old State→Settings copy reverted every toolbar/settings toggle back to
+/// the State default on the very next frame (minimap, whitespace and auto-close
+/// appeared to do nothing). Settings is authoritative; State mirrors it.
+fn sync_settings_to_code_editor_prefs(
+    settings: Res<renzora_editor_framework::EditorSettings>,
+    mut editor_state: ResMut<CodeEditorState>,
 ) {
-    if settings.code_show_minimap != editor_state.show_minimap {
-        settings.code_show_minimap = editor_state.show_minimap;
+    if editor_state.show_minimap != settings.code_show_minimap {
+        editor_state.show_minimap = settings.code_show_minimap;
     }
-    if settings.code_show_whitespace != editor_state.show_whitespace {
-        settings.code_show_whitespace = editor_state.show_whitespace;
+    if editor_state.show_whitespace != settings.code_show_whitespace {
+        editor_state.show_whitespace = settings.code_show_whitespace;
     }
-    if settings.code_auto_close_pairs != editor_state.auto_close_pairs {
-        settings.code_auto_close_pairs = editor_state.auto_close_pairs;
+    if editor_state.auto_close_pairs != settings.code_auto_close_pairs {
+        editor_state.auto_close_pairs = settings.code_auto_close_pairs;
     }
-    if settings.code_trim_trailing_whitespace_on_save
-        != editor_state.trim_trailing_whitespace_on_save
+    if editor_state.trim_trailing_whitespace_on_save
+        != settings.code_trim_trailing_whitespace_on_save
     {
-        settings.code_trim_trailing_whitespace_on_save =
-            editor_state.trim_trailing_whitespace_on_save;
+        editor_state.trim_trailing_whitespace_on_save =
+            settings.code_trim_trailing_whitespace_on_save;
     }
-    if settings.mono_font != editor_state.mono_font {
-        settings.mono_font = editor_state.mono_font.clone();
+    if editor_state.mono_font != settings.mono_font {
+        editor_state.mono_font = settings.mono_font.clone();
     }
 }
 

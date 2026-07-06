@@ -19,7 +19,7 @@ use renzora::reflection::list_animatable_fields;
 use renzora::{AnimMarker, PropertyKey, PropertyTrack, TrackValue};
 use renzora_animation::property_playback::{apply_property_tracks, read_track_value};
 use renzora_animation::{AnimClip, AnimatorComponent};
-use renzora_editor_framework::SplashState;
+use renzora_editor_framework::{EditorCommands, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
@@ -62,6 +62,7 @@ impl Plugin for NativeAnimTimeline {
                 key_context_menu,
                 save_clip_click,
                 add_marker_click,
+                new_clip_click,
                 auto_save_clip,
                 timeline_wheel_zoom,
                 timeline_shortcuts,
@@ -281,6 +282,16 @@ struct MarkerNameField;
 struct SpeedBtn(f32);
 #[derive(Component)]
 struct ClipCombo;
+/// The "+" beside the clip selector: creates a new clip named from
+/// [`NewClipNameField`] on the selected entity's animator. This is the only way
+/// to author a *second* clip on an entity — the empty-state "Create Animation"
+/// button hides itself once one clip exists — which directional sprites need
+/// (one clip per facing).
+#[derive(Component)]
+struct NewClipBtn;
+/// Text field holding the name for the next clip created via [`NewClipBtn`].
+#[derive(Component)]
+struct NewClipNameField;
 #[derive(Component)]
 struct AnimPlayIcon;
 #[derive(Component)]
@@ -489,6 +500,26 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(combo).add_children(&[combo_v, combo_c]);
     let _ = clip_ic;
 
+    // Inline "new clip" authoring: a name field + "+" that creates another clip
+    // on this entity's animator. The empty-state Create-Animation button is gone
+    // once a first clip exists, so this is the path to multiple clips per entity
+    // (e.g. one per facing direction). Mirrors the event-marker field below.
+    let new_clip_field = text_input(commands, &fonts.ui, "new clip", "");
+    commands.entity(new_clip_field).insert((
+        NewClipNameField,
+        Node {
+            min_width: Val::Px(64.0),
+            width: Val::Px(84.0),
+            padding: UiRect::axes(Val::Px(6.0), Val::Px(1.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            flex_shrink: 0.0,
+            ..default()
+        },
+    ));
+    let new_clip_b = icon_btn(commands, fonts, "plus", accent(), NewClipBtn).0;
+
     let sep3 = vsep(commands);
 
     // Speed presets.
@@ -579,7 +610,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, zoom_lbl, |w| format!("{:.0}px/s", state(w).map(|s| s.timeline_zoom).unwrap_or(0.0)));
     let zoom_in = icon_btn(commands, fonts, "magnifying-glass-plus", text_muted(), AnimBtn::ZoomIn).0;
 
-    let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, record_b, sep1, loop_b, sep2, combo, sep3, speed_lbl];
+    let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, record_b, sep1, loop_b, sep2, combo, new_clip_field, new_clip_b, sep3, speed_lbl];
     kids.extend(speed_btns);
     kids.extend([sep4, add_prop_b, add_key_b, marker_field, add_marker_b, snap_b, save_b, keyinfo, gap, len_lbl, len_dv, time, zoom_out, zoom_lbl, zoom_in]);
     commands.entity(bar).add_children(&kids);
@@ -1644,6 +1675,37 @@ fn add_marker_click(
     }
 }
 
+/// "+" beside the clip selector → create a new clip named from the field on the
+/// selected entity's animator, then select it. Empty field falls back to a
+/// generic `clip` name. Defers the world mutation through [`EditorCommands`],
+/// like the other setup actions, and reuses `setup::create_clip_on_entity` so
+/// this and the empty-state button build clips identically.
+fn new_clip_click(
+    q: Query<&Interaction, (With<NewClipBtn>, Changed<Interaction>)>,
+    field: Query<&EmberTextInput, With<NewClipNameField>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let raw = field
+        .iter()
+        .next()
+        .map(|f| f.value.trim().to_string())
+        .unwrap_or_default();
+    let name = crate::setup::sanitize_clip_name(if raw.is_empty() { "clip" } else { raw.as_str() });
+    cmds.push(move |world: &mut World| {
+        let Some(entity) = world
+            .get_resource::<AnimationEditorState>()
+            .and_then(|s| s.selected_entity)
+        else {
+            return;
+        };
+        crate::setup::create_clip_on_entity(world, entity, &name);
+    });
+}
+
 /// Save button → flush the edit buffer back to the `.anim` file on disk.
 fn save_clip_click(
     q: Query<&Interaction, (With<SaveClipBtn>, Changed<Interaction>)>,
@@ -1672,6 +1734,12 @@ fn save_clip_click(
 /// (so they don't clash with global editor shortcuts):
 /// Space = play/pause · Home = start · End = end · ←/→ = step frame ·
 /// K = add keyframe (all tracks) · N = new track.
+///
+/// Held off entirely while a UI text field has keyboard focus (`ui_wants_keyboard`)
+/// — otherwise typing a clip/marker name into a toolbar field would leak into
+/// these actions: `n` spawns a track, `k` adds a key, `,`/`.` scrub, Backspace
+/// deletes a keyframe. The resulting track-list churn also stole focus from the
+/// field mid-type. Same guard the global keybindings and DAW timeline use.
 #[allow(clippy::too_many_arguments)]
 fn timeline_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
@@ -1680,8 +1748,12 @@ fn timeline_shortcuts(
     cache: Option<Res<NativeAnimClip>>,
     bridge: Option<Res<AnimEditorBridge>>,
     selected: Res<SelectedKey>,
+    focus: Option<Res<renzora::InputFocusState>>,
     mut ops: ResMut<TimelineOps>,
 ) {
+    if focus.is_some_and(|f| f.ui_wants_keyboard) {
+        return;
+    }
     if !root.iter().any(|r| r.cursor_over) {
         return;
     }
