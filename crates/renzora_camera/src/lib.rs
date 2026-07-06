@@ -200,7 +200,7 @@ impl Plugin for CameraPlugin {
             // its structural changes before Update).
             .add_systems(
                 PreUpdate,
-                relocate_editor_camera_marker
+                (relocate_editor_camera_marker, relocate_editor_2d_marker)
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .add_systems(
@@ -1260,6 +1260,32 @@ fn relocate_editor_camera_marker(
             commands.entity(entity).insert(EditorCamera);
         } else if !want && has_marker {
             commands.entity(entity).remove::<EditorCamera>();
+        }
+    }
+}
+
+/// Move the `EditorCamera2d` marker onto the focused viewport's 2D camera (and
+/// off the others) so every `With<EditorCamera2d>` system — the 2D picker, grid,
+/// rulers, tile/sprite tools — targets the focused view. The 2D sibling of
+/// [`relocate_editor_camera_marker`]; runs in the same `PreUpdate` step so the
+/// structural change is flushed before the `Update` 2D controller/tool systems
+/// read it. Each slot's 2D camera keeps rendering its own image regardless of
+/// the marker (that's `is_active` + `RenderTarget`, not this) — the marker only
+/// decides which one the single-camera tool stack drives.
+fn relocate_editor_2d_marker(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    cameras: Query<(Entity, &renzora::core::ViewportCamera2d, Has<renzora::core::EditorCamera2d>)>,
+    mut commands: Commands,
+) {
+    let focused = viewports.focused;
+    for (entity, vc, has_marker) in cameras.iter() {
+        let want = vc.0 == focused;
+        if want && !has_marker {
+            commands.entity(entity).insert(renzora::core::EditorCamera2d);
+        } else if !want && has_marker {
+            commands
+                .entity(entity)
+                .remove::<renzora::core::EditorCamera2d>();
         }
     }
 }

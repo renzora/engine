@@ -21,7 +21,7 @@ pub use renzora::{
     EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive,
     PendingSceneLoad, Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig,
     EnvironmentBakeCamera, PrimaryViewportCamera, RenderingMode, ResolvedRenderingMode, SceneCamera,
-    ShapeEntry, ShapeRegistry, ViewportCamera, ViewportRenderTarget, WindowConfig,
+    ShapeEntry, ShapeRegistry, ViewportCamera, ViewportCamera2d, ViewportRenderTarget, WindowConfig,
 };
 pub use vfs::Vfs;
 

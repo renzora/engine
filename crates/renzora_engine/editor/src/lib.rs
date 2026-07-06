@@ -51,13 +51,21 @@ impl Plugin for EngineEditorPlugin {
             .add_systems(
                 Update,
                 (
-                    camera::sync_camera_render_target,
+                    camera::sync_2d_camera_targets,
                     camera::sync_viewport_camera_targets,
                     camera::share_sky_to_secondary_viewports,
                     camera::share_ibl_to_secondary_viewports,
                     camera::update_editor_camera_matrix,
-                    camera::editor_2d_camera_controller,
-                    camera::frame_2d_default,
+                    // The controller edits the focused 2D camera live; the
+                    // per-slot mirror must run after it (and after the one-shot
+                    // framing) so it persists the latest framing and drives the
+                    // other slots' cameras from their own stored pan/zoom.
+                    (
+                        camera::editor_2d_camera_controller,
+                        camera::frame_2d_default,
+                        camera::sync_2d_viewport_cameras,
+                    )
+                        .chain(),
                     auto_switch_view_on_2d_selection,
                 ),
             );

@@ -62,8 +62,17 @@ pub struct ViewportBoxSelect2d(pub Option<(Vec2, Vec2)>);
 
 /// Number of editor viewport slots (the maximum number of camera views you can
 /// dock at once). Slot 0 is the primary viewport (full 3D/2D/UI + toolbar);
-/// slots 1.. are additional 3D-only camera views of the same scene.
+/// slots 1.. are additional camera views of the same scene.
 pub const VIEWPORT_COUNT: usize = 4;
+
+/// Base bevy `RenderLayers` index for the per-slot 2D editor grid meshes.
+///
+/// Each viewport's 2D camera renders layer 0 (the scene) plus its own grid
+/// layer `VIEWPORT_2D_GRID_LAYER_BASE + slot`, and that slot's grid mesh sits on
+/// the same layer — so every viewport gets an independent grid framed to its own
+/// zoom, and no camera ever draws another slot's grid. Kept well clear of the
+/// low layers (0/1) the scene and 3D cameras use.
+pub const VIEWPORT_2D_GRID_LAYER_BASE: usize = 20;
 
 /// Per-slot state for one editor viewport: its render-target image, panel rect,
 /// and its own orbit camera (focus / distance / yaw / pitch).
@@ -78,6 +87,18 @@ pub struct ViewportSlot {
     pub image: Option<Handle<Image>>,
     /// The 3D editor camera entity bound to this slot.
     pub camera_entity: Option<Entity>,
+    /// The 2D editor camera entity bound to this slot (its orthographic sibling,
+    /// active only in 2D view). Renders into the same [`Self::image`].
+    pub camera_2d_entity: Option<Entity>,
+    /// Stored 2D pan for this slot: the camera's world translation on the XY
+    /// plane. Persisted here so each viewport keeps an independent 2D framing
+    /// even while another slot is the focused (live-controlled) one.
+    pub pan_2d: Vec2,
+    /// Stored 2D zoom for this slot: the orthographic `scale` (world units per
+    /// render-image pixel). `0.0` is the "not yet framed" sentinel — a slot at
+    /// zero inherits the focused view's framing the first time it's shown, then
+    /// diverges independently.
+    pub zoom_2d: f32,
     /// Current render-target resolution (pixels).
     pub current_size: UVec2,
     /// Screen-space top-left of the panel rect.
@@ -103,6 +124,9 @@ impl ViewportSlot {
         Self {
             image: None,
             camera_entity: None,
+            camera_2d_entity: None,
+            pan_2d: Vec2::ZERO,
+            zoom_2d: 0.0,
             current_size: UVec2::new(DEFAULT_WIDTH, DEFAULT_HEIGHT),
             screen_position: Vec2::ZERO,
             screen_size: Vec2::new(DEFAULT_WIDTH as f32, DEFAULT_HEIGHT as f32),

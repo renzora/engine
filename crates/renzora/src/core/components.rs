@@ -50,6 +50,18 @@ pub struct EditorCamera2d;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct ViewportCamera(pub usize);
 
+/// Identifies which multi-viewport slot a *2D* editor camera belongs to.
+///
+/// The 2D sibling of [`ViewportCamera`]: there is one orthographic `Camera2d`
+/// per viewport slot, each rendering the same 2D scene into its own slot image
+/// with its own independent pan/zoom. Only active while the global
+/// [`viewport_types::ViewportView`] is `Two`. The *focused* slot's 2D camera
+/// additionally carries the [`EditorCamera2d`] marker so the 2D picker / grid /
+/// overlays all operate on whichever viewport the user is interacting with —
+/// the same focused-mirror trick [`ViewportCamera`] uses for 3D.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct ViewportCamera2d(pub usize);
+
 /// Marker for viewport slot 0's camera specifically. Unlike [`EditorCamera`]
 /// (which follows focus), this never moves off slot 0 — used as the stable
 /// "default focus" view.

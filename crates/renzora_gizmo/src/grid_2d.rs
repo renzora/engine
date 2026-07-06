@@ -19,21 +19,29 @@
 //! the 2D view is active, grid on or off. Both are edit-mode only.
 
 use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
 use bevy::mesh::{Mesh, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::sprite_render::{AlphaMode2d, ColorMaterial};
 
-use renzora::core::viewport_types::{ViewportSettings, ViewportView};
-use renzora::core::PlayModeState;
+use renzora::core::viewport_types::{
+    ViewportSettings, ViewportView, Viewports, VIEWPORT_2D_GRID_LAYER_BASE, VIEWPORT_COUNT,
+};
+use renzora::core::{PlayModeState, ViewportCamera2d};
 
 /// Grid depth: far behind the z=0 plane sprites spawn on, but inside the 2D
 /// camera's default clip range (orthographic near is -1000).
 const GRID_Z: f32 = -900.0;
 
-/// Marker for the singleton grid mesh entity (editor-owned; `HideInHierarchy`
+/// Marker for a per-slot 2D grid mesh entity (editor-owned; `HideInHierarchy`
 /// keeps it out of the hierarchy panel, scene saves, and scene clears).
+///
+/// The index is the viewport slot this grid belongs to. The mesh sits on that
+/// slot's grid render layer (`VIEWPORT_2D_GRID_LAYER_BASE + slot`), so only that
+/// slot's 2D camera draws it — giving each viewport an independent grid framed
+/// to its own zoom, instead of one shared grid that changes when any view zooms.
 #[derive(Component)]
-pub struct Grid2dMesh;
+pub struct Grid2dMesh(pub usize);
 
 /// One resolved grid pass: line spacing, the first line's world position
 /// (an exact multiple of the spacing), cell counts, alpha. The full frame
@@ -56,11 +64,17 @@ pub(crate) struct GridKey {
     color: [u8; 3],
 }
 
-/// Bevy system: maintain the 2D editor grid mesh + draw the camera boundary.
+/// Bevy system: maintain a 2D editor grid mesh *per viewport* + draw the camera
+/// boundary.
+///
+/// Each open 2D viewport gets its own grid mesh, framed to that viewport's own
+/// pan/zoom and rendered only into its slot (via a per-slot render layer). So
+/// zooming one viewport rebuilds only that viewport's grid — the others are
+/// untouched — instead of one shared grid that changed under every view.
 ///
 /// Registered WITHOUT an `in_two_view` run condition on purpose: it must keep
 /// running after the user leaves the 2D view (or enters play mode) to hide the
-/// grid entity — a gated system would simply stop and leave the mesh visible.
+/// grid meshes — a gated system would simply stop and leave them visible.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn update_grid_2d(
     mut commands: Commands,
@@ -70,26 +84,30 @@ pub(crate) fn update_grid_2d(
     settings: Option<Res<ViewportSettings>>,
     play_mode: Option<Res<PlayModeState>>,
     project: Option<Res<renzora::core::CurrentProject>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
-    mut grid: Query<(&Mesh2d, &mut Visibility), With<Grid2dMesh>>,
-    mut cache: Local<Option<GridKey>>,
+    viewports: Option<Res<Viewports>>,
+    cameras_2d: Query<(&ViewportCamera2d, &Camera, &GlobalTransform)>,
+    mut grid: Query<(&Grid2dMesh, &Mesh2d, &mut Visibility)>,
+    mut cache: Local<[Option<GridKey>; VIEWPORT_COUNT]>,
 ) {
-    let hide = |grid: &mut Query<(&Mesh2d, &mut Visibility), With<Grid2dMesh>>| {
-        if let Ok((_, mut vis)) = grid.single_mut() {
-            *vis = Visibility::Hidden;
+    let hide_all = |grid: &mut Query<(&Grid2dMesh, &Mesh2d, &mut Visibility)>| {
+        for (_, _, mut vis) in grid.iter_mut() {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
+            }
         }
     };
 
     let Some(settings) = settings else { return };
     let in_play = play_mode.is_some_and(|pm| pm.is_in_play_mode());
     if settings.viewport_view != ViewportView::Two || in_play {
-        hide(&mut grid);
+        hide_all(&mut grid);
         return;
     }
 
     // Camera / project boundary — the game window area at world (0,0)..(W,-H)
-    // (Godot top-left convention), drawn as a bright amber gizmo frame so the
-    // user can see the game screen edges. Independent of the grid switch.
+    // (Godot top-left convention), drawn once as a bright amber gizmo frame. It's
+    // world-space on the shared gizmo layer, so it shows in every 2D viewport.
+    // Independent of the grid switch.
     if let Some(project) = project {
         let w = project.config.viewport.width.max(1) as f32;
         let h = project.config.viewport.height.max(1) as f32;
@@ -100,35 +118,109 @@ pub(crate) fn update_grid_2d(
         );
     }
 
+    let Some(viewports) = viewports else {
+        hide_all(&mut grid);
+        return;
+    };
+
     // The grid's OWN size setting (toolbar input next to the Grid switch) —
     // deliberately not the snap step: tying them together made the snap pill
     // silently restyle the grid, and the default 1-unit snap never lined up
     // with 16-unit tiles.
-    let tile = settings.grid_size_2d;
-    if !settings.show_grid_2d || tile <= 0.0 {
-        hide(&mut grid);
-        return;
+    let grid_on = settings.show_grid_2d && settings.grid_size_2d > 0.0;
+
+    // Resolve the wanted grid key for each docked slot from its OWN camera.
+    let mut desired: [Option<GridKey>; VIEWPORT_COUNT] = [None; VIEWPORT_COUNT];
+    if grid_on {
+        for (vc, camera, cam_gt) in cameras_2d.iter() {
+            if vc.0 >= VIEWPORT_COUNT {
+                continue;
+            }
+            if !viewports.slots.get(vc.0).is_some_and(|s| s.docked) {
+                continue;
+            }
+            desired[vc.0] = compute_grid_key(camera, cam_gt, &settings);
+        }
     }
 
-    let Ok((camera, cam_gt)) = cameras_2d.single() else {
-        hide(&mut grid);
-        return;
-    };
+    // Reconcile the existing per-slot meshes: show + rebuild the ones that want
+    // a grid this frame, hide the rest.
+    let mut have = [false; VIEWPORT_COUNT];
+    for (marker, mesh2d, mut vis) in grid.iter_mut() {
+        if marker.0 >= VIEWPORT_COUNT {
+            continue;
+        }
+        have[marker.0] = true;
+        match desired[marker.0] {
+            Some(key) => {
+                if *vis != Visibility::Visible {
+                    *vis = Visibility::Visible;
+                }
+                if cache[marker.0] != Some(key) {
+                    // Insert-by-handle only fails if the handle's generation
+                    // died — it can't here (the entity holds a strong handle).
+                    let _ = meshes.insert(&mesh2d.0, build_grid_mesh(&key));
+                    cache[marker.0] = Some(key);
+                }
+            }
+            None => {
+                if *vis != Visibility::Hidden {
+                    *vis = Visibility::Hidden;
+                }
+            }
+        }
+    }
 
-    // Cover the VISIBLE world rect, centred on the view. The camera's
-    // translation is the *top-left corner* of the view (viewport_origin is
-    // top-left), so centring the grid there would push three quarters of it
-    // off-screen. Derive the visible rect from the camera's own projection.
-    let Some(size) = camera.logical_target_size() else {
-        hide(&mut grid);
-        return;
-    };
+    // Spawn a mesh for any slot that wants a grid but doesn't have one yet, on
+    // that slot's private grid render layer so only its camera draws it.
+    for i in 0..VIEWPORT_COUNT {
+        let Some(key) = desired[i] else { continue };
+        if have[i] {
+            continue;
+        }
+        let mesh = meshes.add(build_grid_mesh(&key));
+        cache[i] = Some(key);
+        commands.spawn((
+            Grid2dMesh(i),
+            Mesh2d(mesh),
+            // Own material, NOT `Handle::<ColorMaterial>::default()` — Bevy
+            // initializes the default 2D material magenta. White + Blend lets
+            // the per-vertex colors (and their faint alpha) read through.
+            MeshMaterial2d(materials.add(ColorMaterial {
+                color: Color::WHITE,
+                alpha_mode: AlphaMode2d::Blend,
+                ..Default::default()
+            })),
+            Transform::from_xyz(0.0, 0.0, GRID_Z),
+            RenderLayers::layer(VIEWPORT_2D_GRID_LAYER_BASE + i),
+            Name::new(format!("2D Editor Grid {i}")),
+            // Editor chrome: out of the hierarchy panel, scene saves, and
+            // scene-clear despawns.
+            renzora::HideInHierarchy,
+        ));
+    }
+}
+
+/// Resolve one viewport's grid mesh key from its camera's framing, or `None`
+/// when nothing should be drawn (camera not ready, or the whole grid faded out
+/// at this zoom). The adaptive spacing / fade is computed from THIS camera, so
+/// each viewport's grid matches its own zoom.
+fn compute_grid_key(
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+    settings: &ViewportSettings,
+) -> Option<GridKey> {
+    let tile = settings.grid_size_2d;
+
+    // Cover the VISIBLE world rect. The camera's translation is the *top-left
+    // corner* of the view (viewport_origin is top-left), so derive the visible
+    // rect from the camera's own projection rather than its position.
+    let size = camera.logical_target_size()?;
     let (Ok(a), Ok(b)) = (
         camera.viewport_to_world_2d(cam_gt, Vec2::ZERO),
         camera.viewport_to_world_2d(cam_gt, size),
     ) else {
-        hide(&mut grid);
-        return;
+        return None;
     };
     let view_min = a.min(b);
     let view_max = a.max(b);
@@ -146,8 +238,7 @@ pub(crate) fn update_grid_2d(
     const MIN_CELL_PX: f32 = 12.0;
     let base_px = tile * px_per_world;
     if !base_px.is_finite() || base_px <= 0.0 {
-        hide(&mut grid);
-        return;
+        return None;
     }
     let level = if base_px >= MIN_CELL_PX {
         0
@@ -209,40 +300,9 @@ pub(crate) fn update_grid_2d(
     };
 
     if key.minor.alpha == 0 && key.major.alpha == 0 {
-        hide(&mut grid);
-        return;
+        return None;
     }
-
-    if let Ok((mesh2d, mut vis)) = grid.single_mut() {
-        *vis = Visibility::Visible;
-        if *cache != Some(key) {
-            // Insert-by-handle only fails if the handle's generation died —
-            // it can't here (the entity holds a strong handle). If it ever
-            // does, the grid just keeps last frame's lines.
-            let _ = meshes.insert(&mesh2d.0, build_grid_mesh(&key));
-            *cache = Some(key);
-        }
-    } else {
-        let mesh = meshes.add(build_grid_mesh(&key));
-        *cache = Some(key);
-        commands.spawn((
-            Grid2dMesh,
-            Mesh2d(mesh),
-            // Own material, NOT `Handle::<ColorMaterial>::default()` — Bevy
-            // initializes the default 2D material magenta. White + Blend lets
-            // the per-vertex colors (and their faint alpha) read through.
-            MeshMaterial2d(materials.add(ColorMaterial {
-                color: Color::WHITE,
-                alpha_mode: AlphaMode2d::Blend,
-                ..Default::default()
-            })),
-            Transform::from_xyz(0.0, 0.0, GRID_Z),
-            Name::new("2D Editor Grid"),
-            // Editor chrome: out of the hierarchy panel, scene saves, and
-            // scene-clear despawns.
-            renzora::HideInHierarchy,
-        ));
-    }
+    Some(key)
 }
 
 /// Build the grid line-list: both passes in one mesh, per-vertex colors

@@ -665,14 +665,13 @@ fn sync_viewport_camera_activation(
     mut cameras_3d: Query<
         (&mut Camera, &renzora::core::ViewportCamera),
         (
-            Without<renzora::core::EditorCamera2d>,
+            Without<renzora::core::ViewportCamera2d>,
             Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
         ),
     >,
     mut cameras_2d: Query<
-        &mut Camera,
+        (&mut Camera, &renzora::core::ViewportCamera2d),
         (
-            With<renzora::core::EditorCamera2d>,
             Without<renzora::core::ViewportCamera>,
             Without<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
         ),
@@ -682,7 +681,7 @@ fn sync_viewport_camera_activation(
         (
             With<renzora_ember_editor::game_ui::canvas_render::UiEditorRenderCamera>,
             Without<renzora::core::ViewportCamera>,
-            Without<renzora::core::EditorCamera2d>,
+            Without<renzora::core::ViewportCamera2d>,
         ),
     >,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
@@ -704,7 +703,12 @@ fn sync_viewport_camera_activation(
                 camera.is_active = false;
             }
         }
-        for mut camera in cameras_2d.iter_mut().chain(cameras_ui.iter_mut()) {
+        for (mut camera, _) in cameras_2d.iter_mut() {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+        }
+        for mut camera in cameras_ui.iter_mut() {
             if camera.is_active {
                 camera.is_active = false;
             }
@@ -714,6 +718,19 @@ fn sync_viewport_camera_activation(
 
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
     let primary_docked = viewports.slots.first().is_some_and(|s| s.docked);
+
+    // 2D view owns the slot images — and so does in-panel play of a 2D game
+    // (whatever view was selected when Play was pressed): `drive_editor_camera_in_play`
+    // steers the focused 2D camera onto the game camera's framing, so the 2D
+    // cameras must be the ones rendering the panels.
+    let playing_2d_game = play_mode
+        .as_ref()
+        .is_some_and(|pm| pm.is_in_play_mode())
+        && play_mode
+            .as_ref()
+            .and_then(|pm| pm.active_game_camera)
+            .is_some_and(|e| kind_2d.get(e).is_ok());
+    let two_d_active = view == ViewportView::Two || playing_2d_game;
 
     for (mut camera, vc) in cameras_3d.iter_mut() {
         let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
@@ -725,36 +742,34 @@ fn sync_viewport_camera_activation(
             // rendering (the external-runtime case already returned above), the
             // primary stays active as the atmosphere/IBL source — it renders to
             // its own offscreen image regardless of whether its panel is
-            // docked or the 2D view is selected. While undocked that image is
-            // shrunk to `UNDOCKED_TARGET_SIZE` (see `resolve_viewport_slots`),
-            // so the always-on pass costs almost nothing per-pixel.
+            // docked or the 2D view is selected. While undocked (or parked in
+            // 2D view) that image is shrunk to `UNDOCKED_TARGET_SIZE`, so the
+            // always-on pass costs almost nothing per-pixel.
             true
         } else {
-            docked
+            // Secondary 3D views render only when their panel is docked AND we're
+            // not in 2D view — in 2D the slot's own `Camera2d` sibling takes over
+            // the image, so keeping the 3D camera live would just burn GPU on a
+            // render the 2D camera immediately clears over.
+            docked && !two_d_active
         };
         if camera.is_active != want {
             camera.is_active = want;
         }
     }
 
-    // The 2D editor camera owns the primary image in 2D view — and also during
-    // in-panel play of a 2D game (whatever view was selected when Play was
-    // pressed): `drive_editor_camera_in_play` steers it onto the game camera's
-    // framing, so it must be the camera rendering the panel.
-    let playing_2d_game = play_mode
-        .as_ref()
-        .is_some_and(|pm| pm.is_in_play_mode())
-        && play_mode
-            .as_ref()
-            .and_then(|pm| pm.active_game_camera)
-            .is_some_and(|e| kind_2d.get(e).is_ok());
-    let want_2d = primary_docked && (view == ViewportView::Two || playing_2d_game);
-    let want_ui = primary_docked && view == ViewportView::Ui && !playing_2d_game;
-    for mut camera in cameras_2d.iter_mut() {
-        if camera.is_active != want_2d {
-            camera.is_active = want_2d;
+    // Each slot's 2D camera activates when its panel is docked and 2D owns the
+    // image — so viewports 2/3/4 render the 2D scene from their own framing,
+    // just as their 3D cameras render it from their own angle.
+    for (mut camera, vc) in cameras_2d.iter_mut() {
+        let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
+        let want = docked && two_d_active;
+        if camera.is_active != want {
+            camera.is_active = want;
         }
     }
+
+    let want_ui = primary_docked && view == ViewportView::Ui && !playing_2d_game;
     for mut camera in cameras_ui.iter_mut() {
         if camera.is_active != want_ui {
             camera.is_active = want_ui;

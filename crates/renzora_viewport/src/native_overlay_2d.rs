@@ -11,10 +11,12 @@
 //! and gizmos render at z=0 *beneath* sprites, whereas selection handles must
 //! sit on top of whatever they're framing.
 //!
-//! Geometry comes from the editor 2D camera (`EditorCamera2d`) projected through
-//! `ViewportState`'s panel rect, so the overlay tracks pan/zoom exactly. The
-//! whole thing is rebuilt every frame (cheap — a few dozen nodes) and gated on
-//! 2D view + edit mode, so it never bleeds into 3D or the runtime view.
+//! Geometry comes from each viewport's own 2D camera (`ViewportCamera2d`)
+//! projected through that slot's panel rect, so the rulers are drawn for every
+//! open 2D viewport and each tracks its own pan/zoom. Selection chrome stays on
+//! the focused slot (where the picker hit-tests). The whole thing is rebuilt
+//! every frame (cheap — a few dozen nodes per viewport) and gated on 2D view +
+//! edit mode, so it never bleeds into 3D or the runtime view.
 
 use bevy::prelude::*;
 use bevy::sprite::Sprite;
@@ -22,9 +24,9 @@ use bevy::text::FontSource;
 use bevy::window::PrimaryWindow;
 
 use renzora::core::viewport_types::{
-    ViewportBoxSelect2d, ViewportSettings, ViewportState, ViewportView,
+    ViewportBoxSelect2d, ViewportSettings, ViewportView, Viewports, VIEWPORT_COUNT,
 };
-use renzora::core::{EditorCamera2d, Node2d, PlayModeState};
+use renzora::core::{Node2d, PlayModeState, ViewportCamera2d};
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
 
@@ -108,41 +110,51 @@ pub(crate) fn register(app: &mut App) {
     });
 }
 
+/// One viewport panel's screen rect + render-image size — the projection
+/// context for the ruler/overlay maths. Built per slot from [`Viewports`] so the
+/// overlay can be drawn for every open 2D viewport, not just the focused one.
+#[derive(Clone, Copy)]
+struct Panel2d {
+    screen_position: Vec2,
+    screen_size: Vec2,
+    current_size: UVec2,
+}
+
 /// Project a world-space point to window pixels through the 2D camera + panel
 /// rect. Returns `None` if the point is off-screen or the panel has no size.
 fn world_to_window(
     camera: &Camera,
     cam_gt: &GlobalTransform,
-    vs: &ViewportState,
+    panel: &Panel2d,
     world: Vec2,
 ) -> Option<Vec2> {
     let img = camera.world_to_viewport(cam_gt, world.extend(0.0)).ok()?;
-    let image_size = vs.current_size.as_vec2();
+    let image_size = panel.current_size.as_vec2();
     if image_size.x <= 0.0 || image_size.y <= 0.0 {
         return None;
     }
-    let panel = Vec2::new(
-        img.x * vs.screen_size.x / image_size.x,
-        img.y * vs.screen_size.y / image_size.y,
+    let p = Vec2::new(
+        img.x * panel.screen_size.x / image_size.x,
+        img.y * panel.screen_size.y / image_size.y,
     );
-    Some(panel + vs.screen_position)
+    Some(p + panel.screen_position)
 }
 
 /// Inverse of [`world_to_window`]: window pixels → 2D world space.
 fn window_to_world(
     camera: &Camera,
     cam_gt: &GlobalTransform,
-    vs: &ViewportState,
+    panel: &Panel2d,
     win: Vec2,
 ) -> Option<Vec2> {
-    let image_size = vs.current_size.as_vec2();
-    if vs.screen_size.x <= 0.0 || vs.screen_size.y <= 0.0 {
+    let image_size = panel.current_size.as_vec2();
+    if panel.screen_size.x <= 0.0 || panel.screen_size.y <= 0.0 {
         return None;
     }
-    let in_rect = win - vs.screen_position;
+    let in_rect = win - panel.screen_position;
     let scaled = Vec2::new(
-        in_rect.x * image_size.x / vs.screen_size.x,
-        in_rect.y * image_size.y / vs.screen_size.y,
+        in_rect.x * image_size.x / panel.screen_size.x,
+        in_rect.y * image_size.y / panel.screen_size.y,
     );
     camera.viewport_to_world_2d(cam_gt, scaled).ok()
 }
@@ -214,7 +226,7 @@ fn render_overlay_2d(
     mut commands: Commands,
     mut readout: ResMut<Cursor2dReadout>,
     existing: Query<Entity, With<Overlay2dPart>>,
-    viewport: Option<Res<ViewportState>>,
+    viewports: Option<Res<Viewports>>,
     settings: Option<Res<ViewportSettings>>,
     play: Option<Res<PlayModeState>>,
     fonts: Option<Res<EmberFonts>>,
@@ -222,7 +234,7 @@ fn render_overlay_2d(
     box_select: Option<Res<ViewportBoxSelect2d>>,
     images: Res<Assets<Image>>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    cameras_2d: Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
+    cameras_2d: Query<(&ViewportCamera2d, &Camera, &GlobalTransform)>,
     sprites: Query<(&GlobalTransform, &Sprite)>,
     node2ds: Query<&GlobalTransform, With<Node2d>>,
 ) {
@@ -254,110 +266,55 @@ fn render_overlay_2d(
         return;
     }
 
-    let Some(vs) = viewport else { return };
-    // A workspace without a viewport panel leaves `screen_position`/`screen_size`
-    // frozen at their last-docked values (the panel's resize requests stop), so
-    // the rect alone can't tell us the panel is gone — `docked` can.
-    if !vs.docked || vs.screen_size.x <= 1.0 || vs.screen_size.y <= 1.0 {
-        return;
-    }
-    let Ok((camera, cam_gt)) = cameras_2d.single() else {
-        return;
-    };
+    let Some(viewports) = viewports else { return };
 
-    let origin = vs.screen_position;
-    let size = vs.screen_size;
-
-    // ── Ruler bars (background) ──────────────────────────────────────────────
-    // Toolbar-toggleable (`show_rulers_2d`, on by default). The cursor
-    // coordinate readout below is NOT part of the toggle — it's useful chrome
-    // even in a ruler-free view.
-    let bar = Color::srgba(0.10, 0.11, 0.13, 0.92);
-    let tick_col = Color::srgba(1.0, 1.0, 1.0, 0.35);
-    if show_rulers {
-        // Top ruler.
-        commands.spawn((
-            overlay_node(origin.x, origin.y, size.x, RULER),
-            BackgroundColor(bar),
-            GlobalZIndex(Z_RULER_BAR),
-            bevy::ui::FocusPolicy::Pass,
-            bevy::picking::Pickable::IGNORE,
-            Overlay2dPart,
-            Name::new("ruler-top"),
-        ));
-        // Left ruler.
-        commands.spawn((
-            overlay_node(origin.x, origin.y, RULER, size.y),
-            BackgroundColor(bar),
-            GlobalZIndex(Z_RULER_BAR),
-            bevy::ui::FocusPolicy::Pass,
-            bevy::picking::Pickable::IGNORE,
-            Overlay2dPart,
-            Name::new("ruler-left"),
-        ));
-    }
-
-    // Visible world bounds from the two panel corners.
-    let tl = window_to_world(camera, cam_gt, &vs, origin);
-    let br = window_to_world(camera, cam_gt, &vs, origin + size);
-    if let (true, Some(tl), Some(br)) = (show_rulers, tl, br) {
-        let world_left = tl.x.min(br.x);
-        let world_right = tl.x.max(br.x);
-        let world_top = tl.y.max(br.y);
-        let world_bottom = tl.y.min(br.y);
-
-        let span_x = (world_right - world_left).max(1e-6);
-        let span_y = (world_top - world_bottom).max(1e-6);
-        let ppw_x = size.x / span_x;
-        let ppw_y = size.y / span_y;
-        let step_x = ruler_step(TICK_TARGET_PX / ppw_x, ruler_grid);
-        let step_y = ruler_step(TICK_TARGET_PX / ppw_y, ruler_grid);
-
-        let font = fonts.as_ref().map(|f| f.ui.clone());
-
-        // Vertical ticks along the top ruler.
-        let mut x = (world_left / step_x).ceil() * step_x;
-        let mut guard = 0;
-        while x <= world_right && guard < 512 {
-            guard += 1;
-            if let Some(win) = world_to_window(camera, cam_gt, &vs, Vec2::new(x, world_top)) {
-                if win.x >= origin.x + RULER {
-                    spawn_tick(&mut commands, win.x - 0.5, origin.y, 1.0, RULER, tick_col);
-                    if let Some(ref f) = font {
-                        spawn_label(
-                            &mut commands,
-                            f,
-                            &fmt_coord(x, step_x),
-                            win.x + 2.0,
-                            origin.y + 2.0,
-                        );
-                    }
-                }
-            }
-            x += step_x;
-        }
-
-        // Horizontal ticks along the left ruler.
-        let mut y = (world_bottom / step_y).ceil() * step_y;
-        guard = 0;
-        while y <= world_top && guard < 512 {
-            guard += 1;
-            if let Some(win) = world_to_window(camera, cam_gt, &vs, Vec2::new(world_left, y)) {
-                if win.y >= origin.y + RULER {
-                    spawn_tick(&mut commands, origin.x, win.y - 0.5, RULER, 1.0, tick_col);
-                    if let Some(ref f) = font {
-                        spawn_label(&mut commands, f, &fmt_coord(y, step_y), origin.x + 2.0, win.y);
-                    }
-                }
-            }
-            y += step_y;
+    // Map each slot to its 2D camera so the overlay can be drawn for EVERY open
+    // viewport, not just the focused one.
+    let mut cams: [Option<(&Camera, &GlobalTransform)>; VIEWPORT_COUNT] = [None; VIEWPORT_COUNT];
+    for (vc, camera, cam_gt) in cameras_2d.iter() {
+        if vc.0 < VIEWPORT_COUNT {
+            cams[vc.0] = Some((camera, cam_gt));
         }
     }
 
-    // ── Cursor marker + coordinate readout ───────────────────────────────────
-    if vs.hovered {
-        if let Ok(window) = windows.single() {
-            if let Some(cursor) = window.cursor_position() {
+    let font = fonts.as_ref().map(|f| f.ui.clone());
+    let cursor_win = windows.single().ok().and_then(|w| w.cursor_position());
+
+    // ── Rulers + cursor marker: every docked 2D viewport, each off its own
+    // camera + panel rect (so a zoomed-out view rules to its own scale) ──────
+    for i in 0..VIEWPORT_COUNT {
+        let Some(slot) = viewports.slots.get(i) else { continue };
+        // A workspace without this panel leaves its `screen_*` frozen at the
+        // last-docked values (its resize requests stop), so the rect alone can't
+        // tell us it's gone — `docked` can.
+        if !slot.docked || slot.screen_size.x <= 1.0 || slot.screen_size.y <= 1.0 {
+            continue;
+        }
+        let Some((camera, cam_gt)) = cams[i] else { continue };
+        let panel = Panel2d {
+            screen_position: slot.screen_position,
+            screen_size: slot.screen_size,
+            current_size: slot.current_size,
+        };
+        let origin = slot.screen_position;
+        let size = slot.screen_size;
+
+        if show_rulers {
+            draw_rulers(
+                &mut commands,
+                camera,
+                cam_gt,
+                &panel,
+                origin,
+                size,
+                ruler_grid,
+                font.as_ref(),
+            );
+        }
+
+        // Cursor marker + coordinate readout for the hovered viewport only.
+        if slot.hovered {
+            if let Some(cursor) = cursor_win {
                 let inside = cursor.x >= origin.x
                     && cursor.y >= origin.y
                     && cursor.x <= origin.x + size.x
@@ -373,12 +330,29 @@ fn render_overlay_2d(
                     // floating label chasing the pointer. Settings-toggleable
                     // (Settings → Viewport → 2D Cursor Coordinates).
                     if show_coords {
-                        readout.0 = window_to_world(camera, cam_gt, &vs, cursor);
+                        readout.0 = window_to_world(camera, cam_gt, &panel, cursor);
                     }
                 }
             }
         }
     }
+
+    // ── Selection chrome on the FOCUSED viewport only ───────────────────────
+    // The picker hit-tests handles against the focused view, so the interactive
+    // outline/handles live there; the rulers above already cover all viewports.
+    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
+    let Some(slot) = viewports.slots.get(focused) else { return };
+    if !slot.docked || slot.screen_size.x <= 1.0 || slot.screen_size.y <= 1.0 {
+        return;
+    }
+    let Some((camera, cam_gt)) = cams[focused] else { return };
+    let panel = Panel2d {
+        screen_position: slot.screen_position,
+        screen_size: slot.screen_size,
+        current_size: slot.current_size,
+    };
+    let origin = slot.screen_position;
+    let size = slot.screen_size;
 
     // ── Selection chrome + box-select band, clipped to the panel ────────────
     // All selection visuals live under ONE absolute container matching the
@@ -464,16 +438,16 @@ fn render_overlay_2d(
         // `UiTransform` — bevy_ui rotates a node about its own centre, which
         // is exactly the frame pivot.
         let rot = Rot2::radians(angle);
-        let Some(center_win) = world_to_window(camera, cam_gt, &vs, center) else {
+        let Some(center_win) = world_to_window(camera, cam_gt, &panel, center) else {
             continue;
         };
         let Some(x_edge) =
-            world_to_window(camera, cam_gt, &vs, center + rot * Vec2::new(half.x, 0.0))
+            world_to_window(camera, cam_gt, &panel, center + rot * Vec2::new(half.x, 0.0))
         else {
             continue;
         };
         let Some(y_edge) =
-            world_to_window(camera, cam_gt, &vs, center + rot * Vec2::new(0.0, half.y))
+            world_to_window(camera, cam_gt, &panel, center + rot * Vec2::new(0.0, half.y))
         else {
             continue;
         };
@@ -528,7 +502,7 @@ fn render_overlay_2d(
             Vec2::new(half.x, -half.y),
         ];
         for offset in local_offsets {
-            let Some(pos) = world_to_window(camera, cam_gt, &vs, center + rot * offset) else {
+            let Some(pos) = world_to_window(camera, cam_gt, &panel, center + rot * offset) else {
                 continue;
             };
             let pos = pos - origin;
@@ -556,7 +530,7 @@ fn render_overlay_2d(
         // the box's local up, at a constant on-screen offset. The picker
         // hit-tests the same spot (`picker_2d::ROTATE_HANDLE_OFFSET_PX`).
         if let Some(top_center) =
-            world_to_window(camera, cam_gt, &vs, center + rot * Vec2::new(0.0, half.y))
+            world_to_window(camera, cam_gt, &panel, center + rot * Vec2::new(0.0, half.y))
         {
             let dir = (top_center - center_win).normalize_or_zero();
             if dir != Vec2::ZERO {
@@ -606,6 +580,96 @@ fn render_overlay_2d(
                 ));
             }
         }
+    }
+}
+
+/// Draw one viewport's ruler bars + labelled ticks. The bars frame the panel's
+/// top and left edges; the ticks are projected through THIS panel's camera, so
+/// each open viewport rules to its own pan/zoom rather than sharing one.
+#[allow(clippy::too_many_arguments)]
+fn draw_rulers(
+    commands: &mut Commands,
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+    panel: &Panel2d,
+    origin: Vec2,
+    size: Vec2,
+    ruler_grid: Option<f32>,
+    font: Option<&FontSource>,
+) {
+    let bar = Color::srgba(0.10, 0.11, 0.13, 0.92);
+    let tick_col = Color::srgba(1.0, 1.0, 1.0, 0.35);
+
+    // Top ruler bar.
+    commands.spawn((
+        overlay_node(origin.x, origin.y, size.x, RULER),
+        BackgroundColor(bar),
+        GlobalZIndex(Z_RULER_BAR),
+        bevy::ui::FocusPolicy::Pass,
+        bevy::picking::Pickable::IGNORE,
+        Overlay2dPart,
+        Name::new("ruler-top"),
+    ));
+    // Left ruler bar.
+    commands.spawn((
+        overlay_node(origin.x, origin.y, RULER, size.y),
+        BackgroundColor(bar),
+        GlobalZIndex(Z_RULER_BAR),
+        bevy::ui::FocusPolicy::Pass,
+        bevy::picking::Pickable::IGNORE,
+        Overlay2dPart,
+        Name::new("ruler-left"),
+    ));
+
+    // Visible world bounds from the two panel corners.
+    let (Some(tl), Some(br)) = (
+        window_to_world(camera, cam_gt, panel, origin),
+        window_to_world(camera, cam_gt, panel, origin + size),
+    ) else {
+        return;
+    };
+    let world_left = tl.x.min(br.x);
+    let world_right = tl.x.max(br.x);
+    let world_top = tl.y.max(br.y);
+    let world_bottom = tl.y.min(br.y);
+
+    let span_x = (world_right - world_left).max(1e-6);
+    let span_y = (world_top - world_bottom).max(1e-6);
+    let ppw_x = size.x / span_x;
+    let ppw_y = size.y / span_y;
+    let step_x = ruler_step(TICK_TARGET_PX / ppw_x, ruler_grid);
+    let step_y = ruler_step(TICK_TARGET_PX / ppw_y, ruler_grid);
+
+    // Vertical ticks along the top ruler.
+    let mut x = (world_left / step_x).ceil() * step_x;
+    let mut guard = 0;
+    while x <= world_right && guard < 512 {
+        guard += 1;
+        if let Some(win) = world_to_window(camera, cam_gt, panel, Vec2::new(x, world_top)) {
+            if win.x >= origin.x + RULER {
+                spawn_tick(commands, win.x - 0.5, origin.y, 1.0, RULER, tick_col);
+                if let Some(f) = font {
+                    spawn_label(commands, f, &fmt_coord(x, step_x), win.x + 2.0, origin.y + 2.0);
+                }
+            }
+        }
+        x += step_x;
+    }
+
+    // Horizontal ticks along the left ruler.
+    let mut y = (world_bottom / step_y).ceil() * step_y;
+    guard = 0;
+    while y <= world_top && guard < 512 {
+        guard += 1;
+        if let Some(win) = world_to_window(camera, cam_gt, panel, Vec2::new(world_left, y)) {
+            if win.y >= origin.y + RULER {
+                spawn_tick(commands, origin.x, win.y - 0.5, RULER, 1.0, tick_col);
+                if let Some(f) = font {
+                    spawn_label(commands, f, &fmt_coord(y, step_y), origin.x + 2.0, win.y);
+                }
+            }
+        }
+        y += step_y;
     }
 }
 

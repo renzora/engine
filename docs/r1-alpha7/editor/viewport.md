@@ -162,6 +162,8 @@ You can open **up to four viewports at once** to set up a classic layout — per
 
 The **active** viewport is whichever one your cursor is over, so the gizmo and camera controls always act on the view you're working in. Switching to perspective or flat view applies to all of them at once; each viewport keeps its own angle.
 
+This works in **2D** too: switch to the 2D view and every open viewport shows the 2D scene, each with its own independent **pan and zoom** — so you can keep one viewport framed on the whole level while another stays zoomed in on a character. A newly opened 2D viewport starts on the same framing as the one you're working in, then pans and zooms independently from there. Interaction (select, paint, the tools) always follows the active viewport, exactly as in 3D.
+
 ## Previewing a camera shot
 
 The **Camera Preview** panel shows the scene from one of your *game* cameras, so you can frame an in-game shot while you keep editing from a different angle. It previews, in order: a selected object that has a camera, your default camera, or the first camera it finds in the scene. The preview matches your scene's sky and lighting so it looks like the final result.

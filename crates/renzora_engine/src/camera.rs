@@ -2,7 +2,7 @@
 
 use crate::{
     EditorCamera, EditorCamera2d, EditorLocked, HideInHierarchy, PrimaryViewportCamera,
-    ViewportCamera, ViewportRenderTarget,
+    ViewportCamera, ViewportCamera2d,
 };
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{Camera, ClearColorConfig, RenderTarget};
@@ -279,49 +279,84 @@ pub fn orbit_transform(focus: Vec3, distance: f32, yaw: f32, pitch: f32) -> Tran
     Transform::from_translation(pos).looking_at(focus, Vec3::Y)
 }
 
-/// Spawns the editor's 2D scene-navigation camera.
+/// Spawns the editor's 2D scene-navigation cameras — one orthographic
+/// [`Camera2d`] per viewport slot, the 2D sibling of [`spawn_editor_camera`].
 ///
-/// Sibling of [`spawn_editor_camera`] — orthographic camera that renders
-/// to the same viewport offscreen image. Starts inactive; the
-/// `sync_viewport_camera_activation` system in `renzora_viewport` toggles
-/// it active when `ViewportSettings.viewport_view == ViewportView::Two`.
+/// Each renders the 2D scene into its own slot's offscreen image with its own
+/// independent pan/zoom, so viewports 2/3/4 show the 2D scene just as they show
+/// the 3D scene (from a different framing) — not an empty panel. They start
+/// inactive; `sync_viewport_camera_activation` in `renzora_viewport` activates
+/// the docked slots' 2D cameras when `ViewportView::Two` is selected (and
+/// deactivates those slots' 3D cameras, whose image the 2D camera takes over).
 ///
-/// Only one of the two editor cameras is ever active at a time, so they
-/// can safely share the render target.
-pub fn spawn_editor_2d_camera(mut commands: Commands, render_target: Res<ViewportRenderTarget>) {
-    let mut entity = commands.spawn((
-        Camera2d,
-        Camera {
-            // Render AFTER the primary 3D camera (order -1). The primary is
-            // always active (it owns the atmosphere/IBL probe, which panics if
-            // deactivated) and targets this same offscreen image, so in 2D view
-            // both cameras draw into it. A higher order makes the 2D camera run
-            // last; Camera2d clears the target first, so its output (grid +
-            // sprites + tilemaps) replaces the 3D pass instead of fighting a
-            // non-deterministic tie at the same order.
-            order: 0,
-            // Explicit clear — NOT `ClearColorConfig::Default`. Default only
-            // clears for the *first* camera on a target; as the second camera
-            // (after the always-on primary 3D camera) the 2D camera would
-            // otherwise composite on top of the 3D render, so the 3D scene + its
-            // infinite grid would show through and appear to "fight" the 2D grid
-            // while panning. A `Custom` clear wipes the 3D pass every frame, so
-            // 2D view shows only the 2D scene.
-            clear_color: ClearColorConfig::Custom(Color::srgb(0.11, 0.11, 0.13)),
-            // Inactive until the user picks the 2D viewport view; otherwise
-            // both editor cameras would race for the offscreen target.
-            is_active: false,
-            ..default()
-        },
-        Transform::default(),
-        EditorCamera2d,
-        HideInHierarchy,
-        EditorLocked,
-        Name::new("Editor Camera 2D"),
-    ));
+/// Only the *focused* slot's 2D camera carries the [`EditorCamera2d`] marker
+/// (slot 0 to begin with; `relocate_editor_2d_marker` moves it with focus), so
+/// the single-camera 2D picker / grid / overlay stack operates on the focused
+/// view — the same focused-mirror trick the 3D cameras use.
+pub fn spawn_editor_2d_camera(
+    mut commands: Commands,
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
 
-    if let Some(ref image) = render_target.image {
-        entity.insert(RenderTarget::Image(image.clone().into()));
+    for i in 0..VIEWPORT_COUNT {
+        let slot_image = viewports.slots[i].image.clone();
+        let mut entity = commands.spawn((
+            Camera2d,
+            Camera {
+                // Render AFTER the slot's 3D camera (order -1). In 2D view the
+                // primary slot's 3D camera stays active (it owns the
+                // atmosphere/IBL probe, which panics if deactivated) and targets
+                // this same image, so a higher order makes the 2D camera run
+                // last; Camera2d clears the target first, so its output (grid +
+                // sprites + tilemaps) replaces the 3D pass instead of fighting a
+                // non-deterministic tie at the same order. (Secondary slots'
+                // 3D cameras are deactivated in 2D view, so there the 2D camera
+                // is the only one drawing anyway.)
+                order: 0,
+                // Explicit clear — NOT `ClearColorConfig::Default`. Default only
+                // clears for the *first* camera on a target; layered after the
+                // always-on primary 3D camera the 2D camera would otherwise
+                // composite on top of the 3D render, so the 3D scene + its
+                // infinite grid would show through and "fight" the 2D grid while
+                // panning. A `Custom` clear wipes the 3D pass every frame.
+                clear_color: ClearColorConfig::Custom(Color::srgb(0.11, 0.11, 0.13)),
+                // Inactive until the user picks 2D view; otherwise the 2D and 3D
+                // cameras would race for the shared slot image.
+                is_active: false,
+                ..default()
+            },
+            Transform::default(),
+            ViewportCamera2d(i),
+            // Layer 0 (the 2D scene — sprites, tilemaps, lights) plus this slot's
+            // own grid layer, so each viewport renders only its own independent
+            // grid mesh (built in `renzora_gizmo::grid_2d` framed to this slot's
+            // zoom). A default `Camera2d` sees only layer 0, so adding this keeps
+            // everything it saw before and adds the private grid layer.
+            RenderLayers::from_layers(&[
+                0,
+                renzora::core::viewport_types::VIEWPORT_2D_GRID_LAYER_BASE + i,
+            ]),
+            HideInHierarchy,
+            EditorLocked,
+            Name::new(format!("Editor Camera 2D {i}")),
+        ));
+
+        // Slot 0 begins as the focused view, so it carries the `EditorCamera2d`
+        // marker from spawn (keeps the many `With<EditorCamera2d>` singleton
+        // queries valid before `relocate_editor_2d_marker` first runs).
+        if i == 0 {
+            entity.insert(EditorCamera2d);
+        }
+
+        // Slot images are created in `setup_viewport` (PostStartup), which runs
+        // before this (`OnEnter(Editor)`), so they exist now. `sync_2d_camera_targets`
+        // re-binds as a fallback if any weren't ready.
+        if let Some(ref image) = slot_image {
+            entity.insert(RenderTarget::Image(image.clone().into()));
+        }
+
+        viewports.slots[i].camera_2d_entity = Some(entity.id());
     }
 }
 
@@ -563,27 +598,95 @@ pub fn on_projection_inserted_for_2d(
     }
 }
 
-/// Watches for changes to `ViewportRenderTarget` and points the editor 2D
-/// camera at the primary viewport's offscreen image.
+/// Bind each 2D viewport camera to its own slot's offscreen image, mirroring
+/// [`sync_viewport_camera_targets`] for the orthographic siblings.
 ///
-/// The 3D viewport cameras are handled per-slot by
-/// [`sync_viewport_camera_targets`]; the 2D camera shares the primary slot's
-/// image (it's a mode of the primary viewport, mutually exclusive with the
-/// primary 3D camera).
-pub fn sync_camera_render_target(
-    render_target: Res<ViewportRenderTarget>,
-    cameras_2d: Query<Entity, With<EditorCamera2d>>,
+/// The slot images are created once (in `setup_viewport`) and only resized in
+/// place, so we bind exactly once — when every 2D camera and every image exist —
+/// then idle. Resizing keeps the handle, so it needs no rebind. (`spawn_editor_2d_camera`
+/// already binds at spawn when the images are ready; this is the fallback for
+/// any that weren't.)
+pub fn sync_2d_camera_targets(
+    viewports: Res<renzora::core::viewport_types::Viewports>,
+    cameras: Query<(Entity, &ViewportCamera2d)>,
+    mut bound: Local<bool>,
     mut commands: Commands,
 ) {
-    if !render_target.is_changed() {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    if *bound {
         return;
     }
+    let mut all_ready = true;
+    for (entity, vc) in cameras.iter() {
+        match viewports.slots.get(vc.0).and_then(|s| s.image.as_ref()) {
+            Some(image) => {
+                commands
+                    .entity(entity)
+                    .insert(RenderTarget::Image(image.clone().into()));
+            }
+            None => all_ready = false,
+        }
+    }
+    if all_ready && cameras.iter().count() == VIEWPORT_COUNT {
+        *bound = true;
+    }
+}
 
-    if let Some(ref image) = render_target.image {
-        for entity in cameras_2d.iter() {
-            commands
-                .entity(entity)
-                .insert(RenderTarget::Image(image.clone().into()));
+/// Keep each 2D viewport camera on its own independent pan/zoom.
+///
+/// The focused slot's 2D camera carries [`EditorCamera2d`] and is driven live by
+/// [`editor_2d_camera_controller`] / [`frame_2d_default`]; this system persists
+/// that framing into its slot, then drives every *other* slot's 2D camera from
+/// its own stored framing so the views can't converge. A slot that's never been
+/// framed (`zoom_2d == 0`) inherits the focused view's framing the first time
+/// it's shown, then diverges — so opening viewport 2 lands on the same view as
+/// viewport 1 rather than an empty corner, and pans away from there.
+///
+/// The write-back slot is keyed off the marked camera's **own** [`ViewportCamera2d`]
+/// index, NOT `Viewports.focused` — this is the 2D twin of the 3D
+/// `OrbitMirror` focus-race fix. `relocate_editor_2d_marker` runs in PreUpdate
+/// while `resolve_viewport_slots` updates `focused` in Update, so on a frame
+/// where the cursor drifts to another viewport (common mid-zoom) the marker
+/// still sits on the previous slot's camera while `focused` already points at
+/// the new one. Reading the marker's index instead keeps the mirror
+/// self-consistent — it can never copy one view's framing into another slot.
+///
+/// Runs after the 2D controller so it mirrors the latest focused edits, and the
+/// two camera-sets are disjoint (`With` vs `Without<EditorCamera2d>`), so no
+/// camera is both read live and overwritten in the same frame.
+pub fn sync_2d_viewport_cameras(
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    focused_cam: Query<(&ViewportCamera2d, &Transform, &Projection), With<EditorCamera2d>>,
+    mut other_cams: Query<
+        (&ViewportCamera2d, &mut Transform, &mut Projection),
+        Without<EditorCamera2d>,
+    >,
+) {
+    // Mirror the marked camera's live framing into ITS OWN slot, and snapshot
+    // that framing to seed any viewport that's never been framed yet.
+    let mut seed = None;
+    if let Ok((vc, transform, Projection::Orthographic(ortho))) = focused_cam.single() {
+        if let Some(slot) = viewports.slots.get_mut(vc.0) {
+            slot.pan_2d = transform.translation.truncate();
+            slot.zoom_2d = ortho.scale;
+            seed = Some((slot.pan_2d, slot.zoom_2d));
+        }
+    }
+
+    // Drive every non-focused 2D camera from its own stored framing.
+    for (vc, mut transform, mut projection) in other_cams.iter_mut() {
+        let Some(slot) = viewports.slots.get_mut(vc.0) else {
+            continue;
+        };
+        if slot.zoom_2d <= 0.0 {
+            let Some((pan, zoom)) = seed else { continue };
+            slot.pan_2d = pan;
+            slot.zoom_2d = zoom;
+        }
+        transform.translation.x = slot.pan_2d.x;
+        transform.translation.y = slot.pan_2d.y;
+        if let Projection::Orthographic(ortho) = projection.as_mut() {
+            ortho.scale = slot.zoom_2d;
         }
     }
 }

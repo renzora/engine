@@ -11,14 +11,14 @@
 //!   nodes category — `Node2d`-tagged so selecting them auto-switches the
 //!   viewport to 2D view;
 //! - the **editor-camera lightmap preview** — mirrors the scene camera's
-//!   `FireflyConfig` onto `EditorCamera2d`;
+//!   `FireflyConfig` onto every 2D viewport camera (`ViewportCamera2d`);
 //! - **selection gizmos** outlining the selected light's range / occluder's
 //!   shape while editing.
 
 use bevy::prelude::*;
 use bevy_firefly::occluders::Occluder2dShape;
 use bevy_firefly::prelude::*;
-use renzora::core::{DefaultCamera, EditorCamera2d, Node2d, PlayModeState};
+use renzora::core::{DefaultCamera, EditorCamera2d, Node2d, PlayModeState, ViewportCamera2d};
 use renzora::{
     AppEditorExt, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
@@ -80,12 +80,13 @@ fn register_presets(app: &mut App) {
 // Editor-camera lightmap preview
 // ============================================================================
 
-/// Mirror the scene's 2D-camera lighting onto the editor 2D camera.
+/// Mirror the scene's 2D-camera lighting onto every editor 2D viewport camera.
 ///
-/// The editor viewport (and in-editor play, which renders the game through
-/// `EditorCamera2d`) never uses the scene's own camera entity — so a
-/// `FireflyConfig` authored on the game camera would light the exported game
-/// but not the editor. Preference order:
+/// The editor viewports (and in-editor play, which renders the game through the
+/// focused `EditorCamera2d`) never use the scene's own camera entity — so a
+/// `FireflyConfig` authored on the game camera would light the exported game but
+/// not the editor. Applied to *all* [`ViewportCamera2d`] slots so every open 2D
+/// viewport is lit identically, not just the focused one. Preference order:
 ///
 /// 1. the config the game would use (`DefaultCamera` first, else the first
 ///    configured scene `Camera2d`) — WYSIWYG;
@@ -93,20 +94,25 @@ fn register_presets(app: &mut App) {
 ///    preview config (full white ambient) so a freshly placed light shows up
 ///    immediately instead of doing nothing;
 /// 3. neither → no config, zero lighting overhead in the viewport.
+///
+/// `scene_cams` excludes every editor viewport 2D camera (`Without<ViewportCamera2d>`),
+/// not just the focused one — otherwise a previously-focused editor camera that
+/// still carries the mirrored config would be picked up here as a "scene" camera
+/// and feed back into itself.
 fn sync_editor_camera_lighting(
     mut commands: Commands,
-    editor_cams: Query<(Entity, Has<FireflyConfig>), With<EditorCamera2d>>,
+    editor_cams: Query<(Entity, Has<FireflyConfig>), With<ViewportCamera2d>>,
     scene_cams: Query<
         (Ref<FireflyConfig>, Has<DefaultCamera>),
-        (With<Camera2d>, Without<EditorCamera2d>),
+        (With<Camera2d>, Without<ViewportCamera2d>),
     >,
     mut removed_configs: RemovedComponents<FireflyConfig>,
     lights: Query<(), With<PointLight2d>>,
     mut applied: Local<Option<&'static str>>,
 ) {
-    let Ok((editor_cam, has_config)) = editor_cams.single() else {
+    if editor_cams.is_empty() {
         return;
-    };
+    }
 
     let source = scene_cams.iter().max_by_key(|(_, is_default)| *is_default);
     let (want, kind): (Option<FireflyConfig>, Option<&'static str>) = match source {
@@ -121,27 +127,30 @@ fn sync_editor_camera_lighting(
         None => (None, None),
     };
 
-    // Only touch the camera when something actually moved — re-inserting every
+    // Only touch a camera when something actually moved — re-inserting every
     // frame would spam change detection. `removed_configs` covers the case
     // where the preferred source camera loses its config while another keeps
-    // one (`is_changed` alone wouldn't fire there).
+    // one (`is_changed` alone wouldn't fire there). This global-dirty gate is
+    // combined per-camera with a presence mismatch so a newly-spawned viewport
+    // camera still gets the current config even on a quiet frame.
     let scene_changed = scene_cams.iter().any(|(config, _)| config.is_changed());
     let removed_any = removed_configs.read().next().is_some();
-    let dirty = *applied != kind
-        || want.is_some() != has_config
-        || (kind == Some("scene") && (scene_changed || removed_any));
-    if !dirty {
-        return;
+    let global_dirty =
+        *applied != kind || (kind == Some("scene") && (scene_changed || removed_any));
+    for (editor_cam, has_config) in editor_cams.iter() {
+        if !global_dirty && want.is_some() == has_config {
+            continue;
+        }
+        match &want {
+            Some(config) => {
+                commands.entity(editor_cam).insert(config.clone());
+            }
+            None => {
+                commands.entity(editor_cam).remove::<FireflyConfig>();
+            }
+        }
     }
     *applied = kind;
-    match want {
-        Some(config) => {
-            commands.entity(editor_cam).insert(config);
-        }
-        None => {
-            commands.entity(editor_cam).remove::<FireflyConfig>();
-        }
-    }
 }
 
 // ============================================================================
