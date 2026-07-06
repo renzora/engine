@@ -50,6 +50,15 @@ const HANDLE_HIT_RADIUS: f32 = 8.0;
 /// in panel pixels. Matches the overlay drawing in `native_overlay_2d`.
 pub const ROTATE_HANDLE_OFFSET_PX: f32 = 22.0;
 
+/// Half-extent (world units) of the clickable / draggable box for a spriteless
+/// 2D node — Point Light 2D, Occluder 2D, an empty `Node2d` group. These carry
+/// no renderable geometry, so the sprite hit-test finds nothing and they'd be
+/// selectable only from the Hierarchy and never draggable. Picking them against
+/// this fixed box makes them behave like any other 2D entity, and the value
+/// matches the selection frame the overlay draws for bare `Node2d`
+/// (`native_overlay_2d`), so the hit area equals what's on screen.
+const NODE_MARKER_HALF: f32 = 20.0;
+
 /// Which resize handle the user grabbed. Named by which corner / edge
 /// of the entity's LOCAL box the handle sits at (N = local +Y).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -302,7 +311,7 @@ fn entity_half_size(world: &World, entity: Entity) -> Option<Vec2> {
         }
         Some(size * 0.5)
     } else if world.get::<Node2d>(entity).is_some() {
-        Some(Vec2::splat(20.0))
+        Some(Vec2::splat(NODE_MARKER_HALF))
     } else {
         None
     }
@@ -495,6 +504,7 @@ pub fn pick_2d_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
+    nodes_2d: Query<(Entity, &GlobalTransform), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
@@ -596,6 +606,24 @@ pub fn pick_2d_system(
         match best {
             None => best = Some((entity, pos.z, pos.truncate())),
             Some((_, z, _)) if pos.z > z => best = Some((entity, pos.z, pos.truncate())),
+            _ => {}
+        }
+    }
+
+    // Spriteless 2D nodes (Point Light 2D, Occluder 2D, empty groups) have no
+    // silhouette to alpha-test, so they're picked against the fixed marker box.
+    // They win ties (`>=`) against a sprite at the same z: the marker is drawn
+    // as an on-top gizmo, and it's tiny, so a user clicking it means to grab it
+    // rather than the tile beneath.
+    for (entity, gt) in &nodes_2d {
+        let pos = gt.translation();
+        let local = Rot2::radians(-rotation_z(gt.rotation())) * (cursor_world - pos.truncate());
+        if local.x.abs() > NODE_MARKER_HALF || local.y.abs() > NODE_MARKER_HALF {
+            continue;
+        }
+        match best {
+            None => best = Some((entity, pos.z, pos.truncate())),
+            Some((_, z, _)) if pos.z >= z => best = Some((entity, pos.z, pos.truncate())),
             _ => {}
         }
     }
@@ -809,6 +837,7 @@ pub fn box_select_2d_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
+    nodes_2d: Query<(Entity, &GlobalTransform), (With<Node2d>, Without<Sprite>)>,
 ) {
     let DragMode::BoxSelect {
         start_win,
@@ -872,7 +901,7 @@ pub fn box_select_2d_system(
     // Every sprite whose (unrotated) AABB touches the band. Rotation is
     // ignored on purpose: for a marquee, the axis-aligned box is what users
     // expect to be judged against, and it keeps the test cheap.
-    let hits: Vec<Entity> = sprites
+    let mut hits: Vec<Entity> = sprites
         .iter()
         .filter_map(|(e, sprite, gt)| {
             let size = sprite_size_from_query(sprite, &images)?;
@@ -885,6 +914,14 @@ pub fn box_select_2d_system(
             (!rect.intersect(sprite_rect).is_empty()).then_some(e)
         })
         .collect();
+
+    // Spriteless nodes (lights, occluders, empty groups) join the marquee via
+    // their fixed marker box, so a rubber band grabs them alongside sprites.
+    hits.extend(nodes_2d.iter().filter_map(|(e, gt)| {
+        let node_rect =
+            Rect::from_center_half_size(gt.translation().truncate(), Vec2::splat(NODE_MARKER_HALF));
+        (!rect.intersect(node_rect).is_empty()).then_some(e)
+    }));
 
     if toggle {
         for e in hits {
@@ -987,6 +1024,7 @@ pub fn update_cursor_2d(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(&Sprite, &GlobalTransform)>,
+    nodes_2d: Query<(), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
 ) {
     let mut cursor_icon: Option<SystemCursorIcon> = None;
@@ -1076,14 +1114,19 @@ pub fn update_cursor_2d(
             let Ok(tr) = transforms.get(entity) else {
                 continue;
             };
-            let Some(size) = sprites
+            // Sprite body uses its render size; a spriteless node falls back to
+            // the marker box so lights / occluders preview a Move cursor too.
+            let half = if let Some(size) = sprites
                 .get(entity)
                 .ok()
                 .and_then(|(s, _)| sprite_size_from_query(s, &images))
-            else {
+            {
+                size * 0.5
+            } else if nodes_2d.get(entity).is_ok() {
+                Vec2::splat(NODE_MARKER_HALF)
+            } else {
                 continue;
             };
-            let half = size * 0.5;
             let angle = rotation_z(tr.rotation);
             let local = Rot2::radians(-angle) * (cursor_world - tr.translation.truncate());
             if local.x.abs() <= half.x && local.y.abs() <= half.y {
