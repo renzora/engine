@@ -47,6 +47,14 @@ pub(crate) struct HierAssetBadge {
 #[derive(Component)]
 pub(crate) struct HierCaretToggle(pub Entity);
 
+/// A sticky "parent stack" header row (the ancestor that pins to the top while
+/// you scroll a deep tree). Clicking it collapses that branch, keeps it selected,
+/// and scrolls the tree back to its real row. See [`super::pin`].
+#[derive(Component)]
+pub(crate) struct HierPinClick {
+    pub entity: Entity,
+}
+
 /// A drop-indicator line at a row's top (`after = false`) or bottom
 /// (`after = true`) edge, shown during a drag when this row is the
 /// Before/After target. Hidden otherwise.

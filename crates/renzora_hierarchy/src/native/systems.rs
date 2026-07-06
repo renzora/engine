@@ -15,7 +15,8 @@ use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
 
 use super::components::{
-    BadgeKind, HierAssetBadge, HierCaretToggle, HierLockToggle, HierRowClick, HierVisToggle,
+    BadgeKind, HierAssetBadge, HierCaretToggle, HierLockToggle, HierPinClick, HierRowClick,
+    HierVisToggle,
 };
 use super::row::ROW_H;
 use super::{HierExpanded, HierRevealPending, HierScrollContent};
@@ -79,6 +80,15 @@ pub(crate) fn hierarchy_reveal_selection(
         return;
     }
     *last_sel = current;
+
+    // A cleared selection has nothing to reveal. Bail *without* touching
+    // `pending` — otherwise this would stomp a reveal another system armed in the
+    // same frame (the sticky-header click deselects the branch it collapses, then
+    // arms a scroll back to that branch's row; clobbering it to `None` here would
+    // cancel that scroll).
+    if current.is_none() {
+        return;
+    }
 
     // Arm the reveal for the new primary selection. The work (expand ancestors,
     // centre the row) happens in `hierarchy_scroll_to_selection`. This is driven
@@ -189,10 +199,12 @@ pub(crate) fn hierarchy_scroll_to_selection(
 /// the range from the current anchor; a plain click replaces the selection.
 pub(crate) fn hierarchy_row_click(
     rows: Query<(&Interaction, &HierRowClick), Changed<Interaction>>,
+    carets: Query<(&Interaction, &HierCaretToggle)>,
+    pins: Query<&Interaction, With<HierPinClick>>,
     selection: Option<Res<EditorSelection>>,
     keys: Res<ButtonInput<KeyCode>>,
     cache: Res<HierarchyTreeCache>,
-    expanded: Res<HierExpanded>,
+    mut expanded: ResMut<HierExpanded>,
     time: Res<Time>,
     mut rename: ResMut<super::rename::HierRename>,
     mut last_click: Local<Option<(Entity, f64)>>,
@@ -200,6 +212,14 @@ pub(crate) fn hierarchy_row_click(
     let Some(selection) = selection else {
         return;
     };
+    // A click on a sticky parent-stack header also lands on whatever row sits
+    // behind it — overlapping UI nodes both register the press here (the same
+    // reason the caret guard above exists). When a pin was pressed this frame,
+    // let `hierarchy_pin_click` own the click entirely and ignore the row behind
+    // it, so the sticky header doesn't select/deselect a random hidden row.
+    if pins.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
     let ctrl = keys.any_pressed([
         KeyCode::ControlLeft,
         KeyCode::ControlRight,
@@ -209,6 +229,16 @@ pub(crate) fn hierarchy_row_click(
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     for (interaction, row) in &rows {
         if *interaction != Interaction::Pressed {
+            continue;
+        }
+        // The caret sits over the row's click layer, so the same physical click
+        // fires both. When it landed on the caret, let the caret own it (toggle
+        // the subtree) and leave the selection alone — clicking a selected row's
+        // arrow must expand/collapse it, not deselect it.
+        if carets
+            .iter()
+            .any(|(i, c)| c.0 == row.entity && *i == Interaction::Pressed)
+        {
             continue;
         }
         // Double-click (no modifiers) → inline rename.
@@ -231,8 +261,18 @@ pub(crate) fn hierarchy_row_click(
                 }
                 None => selection.set(Some(row.entity)),
             }
+        } else if selection.is_selected(row.entity) && !selection.has_multi_selection() {
+            // Clicking the row that's already the sole selection deselects it and
+            // collapses its subtree — one gesture to both drop the selection and
+            // tidy the tree back up.
+            selection.set(None);
+            expanded.0.remove(&row.entity);
         } else {
+            // Selecting a row also opens its subtree, so the thing you just
+            // picked reveals its children (the mirror of the deselect-collapse
+            // above).
             selection.set(Some(row.entity));
+            expanded.0.insert(row.entity);
         }
     }
 }
@@ -240,8 +280,14 @@ pub(crate) fn hierarchy_row_click(
 /// Caret click → toggle the row's expansion.
 pub(crate) fn hierarchy_caret_click(
     q: Query<(&Interaction, &HierCaretToggle), Changed<Interaction>>,
+    pins: Query<&Interaction, With<HierPinClick>>,
     mut expanded: ResMut<HierExpanded>,
 ) {
+    // A pin click overlaps the row (and its caret) behind the sticky header;
+    // let `hierarchy_pin_click` own it so a hidden row's caret doesn't toggle.
+    if pins.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
     for (interaction, caret) in &q {
         if *interaction != Interaction::Pressed {
             continue;

@@ -160,6 +160,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             systems::hierarchy_reveal_selection,
             systems::hierarchy_scroll_to_selection,
             pin::hierarchy_parent_stack,
+            pin::hierarchy_pin_click,
             systems::hierarchy_caret_click,
             systems::hierarchy_vis_toggle,
             systems::hierarchy_lock_toggle,

@@ -4,26 +4,31 @@
 //! `EditorSettings.hierarchy_parent_stacking` (Settings → Viewport → Hierarchy).
 //!
 //! The pinned rows live in an absolutely-positioned overlay over the top of the
-//! scroll viewport (so they don't scroll). Clicking a pinned header selects that
-//! ancestor (it carries the same [`HierRowClick`] the real rows use).
+//! scroll viewport (so they don't scroll). A pinned header reflects the current
+//! selection (accent tint + white label, like a real row) and, because a pinned
+//! ancestor always has children, clicking it toggles that ancestor's subtree
+//! (it carries [`HierCaretToggle`], driven by the shared caret-click system) —
+//! so you can collapse/expand the branch straight from the sticky header without
+//! it stealing or dropping the selection.
 
 use bevy::picking::Pickable;
 use bevy::prelude::*;
 use bevy::ui::ScrollPosition;
 use bevy::window::SystemCursorIcon;
 
-use renzora_editor_framework::EditorSettings;
+use renzora_editor_framework::{EditorSelection, EditorSettings};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
-use renzora_ember::theme::{border, header_bg, rgb, text_primary};
+use renzora_ember::reactive::{bind_bg, bind_text_color};
+use renzora_ember::theme::{accent, border, header_bg, rgb, text_primary};
 
 use crate::cache::HierarchyTreeCache;
 use crate::state::EntityNode;
 
-use super::components::HierRowClick;
+use super::components::HierPinClick;
 use super::row::{BASE_X, INDENT, ROW_H};
 use super::tree::HierFlatCache;
-use super::HierScrollContent;
+use super::{HierExpanded, HierRevealPending, HierScrollContent};
 
 /// The overlay container + the currently-pinned chain (for change-diffing).
 #[derive(Resource)]
@@ -229,6 +234,34 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
         ))
         .id();
 
+    // Selection tint over the opaque background — value-diffed, so it only
+    // repaints when this ancestor's selected-ness changes.
+    let sel_tint = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Pickable::IGNORE,
+        ))
+        .id();
+    let ent = p.entity;
+    bind_bg(commands, sel_tint, move |world: &World| {
+        if world
+            .get_resource::<EditorSelection>()
+            .is_some_and(|sel| sel.is_selected(ent))
+        {
+            rgb(accent()).with_alpha(0.63)
+        } else {
+            Color::NONE
+        }
+    });
+
     let spacer = commands
         .spawn((
             Node {
@@ -271,9 +304,19 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
             Pickable::IGNORE,
         ))
         .id();
+    bind_text_color(commands, label, move |world: &World| {
+        if world
+            .get_resource::<EditorSelection>()
+            .is_some_and(|sel| sel.is_selected(ent))
+        {
+            Color::WHITE
+        } else {
+            label_color
+        }
+    });
 
-    // Transparent click layer on top → selecting the ancestor (reuses the row
-    // click handler, which fires the reveal/scroll back to this row).
+    // Transparent click layer on top → collapses this ancestor's branch, keeps it
+    // selected, and scrolls back to its real row (see `hierarchy_pin_click`).
     let click = commands
         .spawn((
             Node {
@@ -286,13 +329,62 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
             },
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
-            HierRowClick { entity: p.entity },
+            HierPinClick { entity: p.entity },
             Name::new("hier-pin-hit"),
         ))
         .id();
 
     commands
         .entity(row)
-        .add_children(&[bg, spacer, icon, label, click]);
+        .add_children(&[bg, sel_tint, spacer, icon, label, click]);
     row
+}
+
+/// Click a sticky parent-stack header → collapse that branch, deselect anything
+/// inside it, and scroll the tree back to its real row.
+///
+/// A pinned ancestor is only ever shown because it's expanded, so the toggle
+/// closes it. Collapsing hides the whole branch, so if the current selection is
+/// that header *or one of its descendants* it's no longer visible — we clear it,
+/// which is what makes both "the header itself was selected" and "a child was
+/// selected" end up deselected. A selection elsewhere in the tree is left alone.
+///
+/// We arm the reveal directly rather than relying on the selection change: after
+/// a deselect there's nothing for `hierarchy_reveal_selection` to reveal (and it
+/// deliberately won't stomp this), so `hierarchy_scroll_to_selection` brings the
+/// collapsed branch root back into view — which also scrolls it out from under
+/// the pinned overlay (un-pinning it).
+pub(crate) fn hierarchy_pin_click(
+    q: Query<(&Interaction, &HierPinClick), Changed<Interaction>>,
+    selection: Option<Res<EditorSelection>>,
+    cache: Res<HierarchyTreeCache>,
+    mut expanded: ResMut<HierExpanded>,
+    mut pending: ResMut<HierRevealPending>,
+) {
+    let Some(selection) = selection else {
+        return;
+    };
+    for (interaction, pin) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        expanded.0.remove(&pin.entity);
+
+        // Deselect if the selection lives inside the branch we just hid.
+        if let Some(sel) = selection.get() {
+            let in_branch = sel == pin.entity || {
+                let mut chain = Vec::new();
+                ancestor_chain(&cache.nodes, sel, &mut chain);
+                chain.iter().any(|n| n.entity == pin.entity)
+            };
+            if in_branch {
+                selection.set(None);
+            }
+        }
+
+        pending.entity = Some(pin.entity);
+        pending.frames = 0;
+        pending.decided = false;
+        pending.scroll = false;
+    }
 }
