@@ -79,14 +79,82 @@ impl EmberScroll {
     }
 }
 
-/// The draggable scrollbar thumb; points back at its viewport + track.
+/// The draggable scrollbar thumb; points back at its viewport.
 #[derive(Component)]
 pub struct ScrollThumb {
     viewport: Entity,
-    track: Entity,
     /// `true` for the horizontal thumb of a both-axis view — drags map to the
-    /// track's X (and drive `EmberScroll.target_x` / `ScrollPosition.x`).
+    /// X axis (and drive `EmberScroll.target_x` / `ScrollPosition.x`).
     horizontal: bool,
+}
+
+/// The scrollbar thumb currently being dragged, latched on press so the grip
+/// holds even when the cursor moves off the thumb, off the track, out of the
+/// panel, or out of the window entirely — like a real scrollbar.
+///
+/// The old drag rode `Interaction::Pressed` on the thumb plus the track's
+/// `RelativeCursorPosition`; both drop the moment the cursor leaves the node, so
+/// a quick flick or a drag that strayed out of the panel would let go of the
+/// thumb. Latching here and driving the offset from a [`GlobalCursor`] delta —
+/// the same physical-space capture the dock's divider drag uses — keeps the
+/// grip until the mouse button is released.
+#[derive(Resource, Default)]
+pub struct DraggedThumb(Option<ThumbDrag>);
+
+struct ThumbDrag {
+    /// The thumb entity being dragged (its [`ScrollThumb`] resolves the viewport,
+    /// track, and axis).
+    thumb: Entity,
+    /// Cursor position in physical **screen** space at grab time (from
+    /// [`GlobalCursor`]); the drag is a pure delta from here, so the cursor can
+    /// wander anywhere and the thumb still tracks it 1:1.
+    start_cursor: Vec2,
+    /// Scroll offset (logical px, along the dragged axis) at grab time.
+    start_offset: f32,
+}
+
+/// Marks a scrollbar track (vertical or horizontal). Its rect covers the thumb
+/// too, so a press anywhere on it is a scroll interaction — [`scrollbar_busy`]
+/// uses this to tell panels "the pointer is on the scrollbar, not your content".
+#[derive(Component)]
+pub struct ScrollTrack;
+
+/// True while the pointer is actively working a scrollbar — pressing on a visible
+/// track (thumb or the bare track band) or mid-drag on a thumb.
+///
+/// The scrollbar sits *inside* each panel's content area, so without this a press
+/// on the scrollbar (to scroll) also reads as a press on "empty content" and
+/// starts a marquee selection / deselect / drag in the panel beneath. Panels
+/// consult this flag on left-press and skip their press action when it's set, so
+/// grabbing the scrollbar never triggers a selection or drag. Set in `PreUpdate`
+/// (after `UiSystems::Focus`, so cursor state is fresh) and read by panel systems
+/// in `Update`.
+#[derive(Resource, Default)]
+pub struct ScrollbarBusy(pub bool);
+
+impl ScrollbarBusy {
+    /// Whether the pointer is currently engaging a scrollbar.
+    pub fn active(&self) -> bool {
+        self.0
+    }
+}
+
+/// Refresh [`ScrollbarBusy`]: busy when a thumb is mid-drag, or when the left
+/// button is held with the cursor over any *visible* scroll track.
+pub(crate) fn scrollbar_busy(
+    dragged: Res<DraggedThumb>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    tracks: Query<(&RelativeCursorPosition, &Node), With<ScrollTrack>>,
+    mut busy: ResMut<ScrollbarBusy>,
+) {
+    let over_track = mouse.pressed(MouseButton::Left)
+        && tracks
+            .iter()
+            .any(|(rcp, n)| n.display != Display::None && rcp.cursor_over);
+    let next = dragged.0.is_some() || over_track;
+    if busy.0 != next {
+        busy.0 = next;
+    }
 }
 
 /// Last scroll offset (logical px from the top) of each *keyed* scroll area,
@@ -164,6 +232,7 @@ fn build_scroll(
             },
             BackgroundColor(rgb(border()).with_alpha(0.5)),
             RelativeCursorPosition::default(),
+            ScrollTrack,
             // Local ZIndex (not Global) so the bar sits above the content but
             // stays within its modal/panel stacking context — a GlobalZIndex
             // would render it *behind* a higher-z modal (e.g. the settings
@@ -187,7 +256,6 @@ fn build_scroll(
             Interaction::default(),
             ScrollThumb {
                 viewport,
-                track,
                 horizontal: false,
             },
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -215,6 +283,7 @@ fn build_scroll(
                 },
                 BackgroundColor(rgb(border()).with_alpha(0.5)),
                 RelativeCursorPosition::default(),
+                ScrollTrack,
                 ZIndex(50),
                 Name::new("scroll-track-h"),
             ))
@@ -234,7 +303,6 @@ fn build_scroll(
                 Interaction::default(),
                 ScrollThumb {
                     viewport,
-                    track: h_track,
                     horizontal: true,
                 },
                 crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
@@ -486,6 +554,7 @@ fn under_overlay(
 /// toward it, and size/place (or hide) the scrollbar thumb.
 pub(crate) fn scroll_update(
     time: Res<Time>,
+    dragged: Res<DraggedThumb>,
     mut viewports: Query<(
         &mut EmberScroll,
         &mut ScrollPosition,
@@ -494,7 +563,6 @@ pub(crate) fn scroll_update(
         &RelativeCursorPosition,
     )>,
     computed: Query<&ComputedNode>,
-    interactions: Query<&Interaction>,
     mut nodes: Query<&mut Node>,
 ) {
     let lerp = 1.0 - (-time.delta_secs() * EASE).exp();
@@ -524,9 +592,7 @@ pub(crate) fn scroll_update(
 
         // Scrollbar — overlay style: show only while the cursor is over the
         // panel (or the thumb is being dragged), and only if content overflows.
-        let dragging = interactions
-            .get(s.thumb)
-            .is_ok_and(|i| *i == Interaction::Pressed);
+        let dragging = dragged.0.as_ref().is_some_and(|d| d.thumb == s.thumb);
         let show = max > 0.5 && (rcp.cursor_over || dragging || s.always_bar);
         if let Ok(mut track) = nodes.get_mut(s.track) {
             let d = if show { Display::Flex } else { Display::None };
@@ -565,9 +631,7 @@ pub(crate) fn scroll_update(
             if (sp.x - next_x).abs() > 0.01 {
                 sp.x = next_x;
             }
-            let h_dragging = interactions
-                .get(h_thumb)
-                .is_ok_and(|i| *i == Interaction::Pressed);
+            let h_dragging = dragged.0.as_ref().is_some_and(|d| d.thumb == h_thumb);
             let show_h = max_x > 0.5 && (rcp.cursor_over || h_dragging || s.always_bar);
             if let Ok(mut track) = nodes.get_mut(h_track) {
                 let d = if show_h { Display::Flex } else { Display::None };
@@ -594,50 +658,84 @@ pub(crate) fn scroll_update(
     }
 }
 
-/// Drag the thumb to scroll; hover tint.
+/// Drag the thumb to scroll; hover tint. The drag latches on press into
+/// [`DraggedThumb`] and runs off [`GlobalCursor`] deltas, so the grip survives
+/// the cursor leaving the thumb / track / panel / window until mouse-up.
 pub(crate) fn scroll_thumb_drag(
-    thumbs: Query<(&Interaction, &ScrollThumb)>,
-    tracks: Query<&RelativeCursorPosition>,
+    mut dragged: ResMut<DraggedThumb>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    cursor: Res<crate::dock::GlobalCursor>,
+    thumbs: Query<(Entity, &Interaction, &ScrollThumb)>,
     mut viewports: Query<(&mut EmberScroll, &mut ScrollPosition, &ComputedNode, &Children)>,
     computed: Query<&ComputedNode>,
-    mut tints: Query<(&Interaction, &mut BackgroundColor), With<ScrollThumb>>,
+    mut tints: Query<(Entity, &Interaction, &mut BackgroundColor), With<ScrollThumb>>,
 ) {
-    for (interaction, thumb) in &thumbs {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let Ok(rcp) = tracks.get(thumb.track) else {
-            continue;
-        };
-        let Some(n) = rcp.normalized else {
-            continue;
-        };
-        if let Ok((mut s, mut sp, vcn, kids)) = viewports.get_mut(thumb.viewport) {
-            let inv = vcn.inverse_scale_factor();
-            if thumb.horizontal {
-                let frac = (n.x + 0.5).clamp(0.0, 1.0);
-                let vw = vcn.size().x * inv;
-                let cw = content_w(kids, &computed, inv);
-                let pos = frac * (cw - vw).max(0.0);
-                s.target_x = pos;
-                // Snap directly (no easing) so the drag tracks the cursor 1:1.
-                sp.x = pos;
-            } else {
-                let frac = (n.y + 0.5).clamp(0.0, 1.0);
-                let vh = vcn.size().y * inv;
-                let ch = content_h(kids, &computed, inv);
-                let pos = frac * (ch - vh).max(0.0);
-                s.target = pos;
-                s.stick = false;
-                sp.y = pos;
+    if mouse.just_released(MouseButton::Left) {
+        dragged.0 = None;
+    }
+
+    // Latch a thumb on fresh press. Record the physical cursor and the scroll
+    // offset now, so from here the drag is a pure delta — the cursor can move off
+    // the thumb, off the panel, even out of the window, and the thumb follows.
+    if dragged.0.is_none() && mouse.just_pressed(MouseButton::Left) {
+        if let Some(pos) = cursor.pos {
+            for (entity, interaction, thumb) in &thumbs {
+                if *interaction != Interaction::Pressed {
+                    continue;
+                }
+                if let Ok((s, _, _, _)) = viewports.get(thumb.viewport) {
+                    let start_offset = if thumb.horizontal { s.target_x } else { s.target };
+                    dragged.0 = Some(ThumbDrag { thumb: entity, start_cursor: pos, start_offset });
+                }
+                break;
             }
         }
     }
-    for (interaction, mut bg) in &mut tints {
-        let target = match interaction {
-            Interaction::Hovered | Interaction::Pressed => rgb(text_primary()),
-            Interaction::None => rgb(text_muted()),
-        };
+
+    // Apply the active drag: map the physical cursor delta into a scroll offset
+    // via the thumb's travel (view minus thumb length), snapping the position so
+    // the thumb tracks the cursor 1:1 without easing.
+    if let Some(drag) = dragged.0.as_ref() {
+        if let (Ok((_, _, thumb)), Some(cur)) = (thumbs.get(drag.thumb), cursor.pos) {
+            if let Ok((mut s, mut sp, vcn, kids)) = viewports.get_mut(thumb.viewport) {
+                let inv = vcn.inverse_scale_factor();
+                if thumb.horizontal {
+                    let vw = vcn.size().x * inv;
+                    let cw = content_w(kids, &computed, inv);
+                    let max = (cw - vw).max(0.0);
+                    let ratio = (vw / cw).clamp(0.0, 1.0);
+                    let thumb_w = (vw * ratio).max(MIN_THUMB).min(vw);
+                    let travel = (vw - thumb_w).max(1.0);
+                    let moved = (cur.x - drag.start_cursor.x) * inv;
+                    let pos = (drag.start_offset + moved * (max / travel)).clamp(0.0, max);
+                    s.target_x = pos;
+                    sp.x = pos;
+                } else {
+                    let vh = vcn.size().y * inv;
+                    let ch = content_h(kids, &computed, inv);
+                    let max = (ch - vh).max(0.0);
+                    let ratio = (vh / ch).clamp(0.0, 1.0);
+                    let thumb_h = (vh * ratio).max(MIN_THUMB).min(vh);
+                    let travel = (vh - thumb_h).max(1.0);
+                    let moved = (cur.y - drag.start_cursor.y) * inv;
+                    let pos = (drag.start_offset + moved * (max / travel)).clamp(0.0, max);
+                    s.target = pos;
+                    s.stick = false;
+                    sp.y = pos;
+                }
+            }
+        } else {
+            // Thumb despawned mid-drag (e.g. panel rebuilt) — drop the latch.
+            dragged.0 = None;
+        }
+    }
+
+    // Keep the dragged thumb lit even once the cursor leaves it, since its
+    // `Interaction` falls back to `None` off-node while the grip still holds.
+    for (entity, interaction, mut bg) in &mut tints {
+        let active = matches!(interaction, Interaction::Hovered | Interaction::Pressed)
+            || dragged.0.as_ref().is_some_and(|d| d.thumb == entity);
+        let target = if active { rgb(text_primary()) } else { rgb(text_muted()) };
         if bg.0 != target {
             bg.0 = target;
         }

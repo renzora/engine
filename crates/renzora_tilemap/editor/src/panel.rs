@@ -34,6 +34,7 @@ use renzora_ember::reactive::{bind_2way, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
 use renzora_ember::widgets::{
     dropdown, icon_button, label, scroll_view_xy, toggle_switch, EmberScroll, ScrollThumb,
+    ScrollbarBusy,
 };
 use renzora_tilemap::{TilemapLayer, TilesetHandle};
 
@@ -849,6 +850,7 @@ fn select_tiles_from_atlas(
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
     thumbs: Query<&Interaction, With<ScrollThumb>>,
     handles: Query<&Interaction, With<SelectionHandle>>,
+    scrollbar: Res<ScrollbarBusy>,
     mut brush: ResMut<TilemapBrush>,
     mut settings: Option<ResMut<ViewportSettings>>,
     mut start: Local<Option<(u32, u32)>>,
@@ -876,9 +878,10 @@ fn select_tiles_from_atlas(
     // On press, decide whether this drag belongs to a scrollbar or the resize
     // handle — if so, don't select for the rest of the hold.
     if mouse.just_pressed(MouseButton::Left) {
-        let on_bar = thumbs
-            .iter()
-            .any(|i| matches!(i, Interaction::Pressed | Interaction::Hovered));
+        let on_bar = scrollbar.active()
+            || thumbs
+                .iter()
+                .any(|i| matches!(i, Interaction::Pressed | Interaction::Hovered));
         let on_handle = handles.iter().any(|i| *i == Interaction::Pressed);
         *blocked = on_bar || on_handle;
     }

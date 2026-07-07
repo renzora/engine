@@ -17,7 +17,7 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition, ScrollPosition, UiGlobalTra
 
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::theme::{accent, rgb};
-use renzora_ember::widgets::EmberScroll;
+use renzora_ember::widgets::{EmberScroll, ScrollbarBusy};
 
 use super::components::HierRowClick;
 use super::drag::HierDrag;
@@ -71,6 +71,7 @@ pub(crate) fn hier_marquee(
     content: Query<Entity, With<HierScrollContent>>,
     parents: Query<&ChildOf>,
     viewports: Query<&RelativeCursorPosition>,
+    scrollbar: Res<ScrollbarBusy>,
     mut marquee: ResMut<HierMarquee>,
 ) {
     if mouse.just_released(MouseButton::Left) {
@@ -93,6 +94,7 @@ pub(crate) fn hier_marquee(
         && marquee.start.is_none()
         && rename.0.is_none()
         && !drag.active
+        && !scrollbar.active()
     {
         let over_tree = content
             .iter()

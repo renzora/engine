@@ -224,6 +224,15 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::DragValueConfig>();
         app.init_resource::<drag_value::AnyDragValueEditing>();
         app.init_resource::<scroll_area::ScrollMemory>();
+        app.init_resource::<scroll_area::DraggedThumb>();
+        app.init_resource::<scroll_area::ScrollbarBusy>();
+        // Compute the "pointer is on a scrollbar" flag before any panel's Update
+        // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
+        // fresh this frame.
+        app.add_systems(
+            bevy::app::PreUpdate,
+            scroll_area::scrollbar_busy.after(bevy::ui::UiSystems::Focus),
+        );
         app.add_systems(
             Update,
             (

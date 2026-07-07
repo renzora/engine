@@ -27,7 +27,7 @@ use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_pri
 use renzora_ember::widgets::{
     icon_label_button, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
     screen_menu_flip, scroll_view, slider,
-    text_input, EmberScroll, EmberTextInput,
+    text_input, EmberScroll, EmberTextInput, ScrollbarBusy,
 };
 
 use crate::thumbnails::{
@@ -715,6 +715,7 @@ fn asset_drag(
     tree: Query<(&Interaction, &TreeNav)>,
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
+    scrollbar: Res<ScrollbarBusy>,
     mut state: ResMut<NativeAssets>,
     payload: Option<Res<renzora_editor_framework::AssetDragPayload>>,
     mut commands: Commands,
@@ -749,7 +750,7 @@ fn asset_drag(
         return;
     }
     let cursor = windows.iter().find_map(|w| w.cursor_position());
-    if mouse.just_pressed(MouseButton::Left) {
+    if mouse.just_pressed(MouseButton::Left) && !scrollbar.active() {
         if let Some(c) = cursor {
             // A pressed grid/list tile (file or folder)…
             if let Some((_, tile)) = tiles.iter().find(|(i, _)| matches!(i, Interaction::Pressed)) {
@@ -1281,6 +1282,7 @@ fn marquee_select(
     windows: Query<&Window>,
     grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
     tiles: Query<(&AssetTile, &Interaction, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
+    scrollbar: Res<ScrollbarBusy>,
     mut state: ResMut<NativeAssets>,
 ) {
     if mouse.just_released(MouseButton::Left) {
@@ -1294,8 +1296,14 @@ fn marquee_select(
     };
 
     // Begin on a press over the grid that didn't land on a tile. Suppressed while
-    // an inline rename is active so clicking into its field doesn't start a sweep.
-    if mouse.just_pressed(MouseButton::Left) && state.marquee_start.is_none() && state.renaming.is_none() {
+    // an inline rename is active so clicking into its field doesn't start a sweep,
+    // and while the press is on the scrollbar (grabbing it to scroll must not
+    // start a marquee in the content beneath).
+    if mouse.just_pressed(MouseButton::Left)
+        && state.marquee_start.is_none()
+        && state.renaming.is_none()
+        && !scrollbar.active()
+    {
         let over_grid = grid.iter().any(|r| r.cursor_over);
         let on_tile = tiles.iter().any(|(_, i, _, _)| *i == Interaction::Pressed);
         if over_grid && !on_tile {
