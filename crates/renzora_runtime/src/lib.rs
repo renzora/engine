@@ -732,6 +732,7 @@ fn resolve_script_font(
 /// generic action helper:
 /// - `action("set_ui_font", {name="Inter"})` — swap the global UI font.
 /// - `action("set_font", {name="Inter"})` — set the script's own entity's font.
+///
 /// `name` resolves through [`resolve_script_font`] (registry / asset path /
 /// system family). Runs in the editor and shipped games.
 fn handle_font_script_actions(

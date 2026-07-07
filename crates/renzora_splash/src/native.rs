@@ -155,7 +155,7 @@ pub(crate) fn register(app: &mut App) {
 
 /// Cheap deterministic 0..1 hash for the hover glitch (no rng).
 fn glitch_rand(x: f32) -> f32 {
-    let v = (x * 12.9898).sin() * 43758.5453;
+    let v = (x * 12.9898).sin() * 43758.547;
     v - v.floor()
 }
 

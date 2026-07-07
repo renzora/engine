@@ -155,7 +155,7 @@ impl ExtractComponent for LumenLighting {
 /// GPU ray-tracing capability flag, decided ONCE by the host at startup.
 ///
 /// Bevy's `bevy_solari` needs ray-tracing wgpu features (`EXPERIMENTAL_RAY_QUERY`
-/// + acceleration structures) enabled on the `RenderDevice` *at creation time* —
+/// plus acceleration structures) enabled on the `RenderDevice` *at creation time* —
 /// which is frozen before any dlopen plugin's `build()` runs. So the host
 /// (`renzora_runtime`) probes the GPU adapter at boot, requests those features
 /// when supported, and records the verdict here. The `renzora_solari` plugin

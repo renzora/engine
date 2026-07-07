@@ -370,9 +370,9 @@ pub fn highlight_line(
             let word = &line[i..j];
             let kind = if keywords.contains(&word) {
                 TokenKind::Keyword
-            } else if types.contains(&word) {
-                TokenKind::Type
-            } else if caps_are_types && word.as_bytes()[0].is_ascii_uppercase() {
+            } else if types.contains(&word)
+                || (caps_are_types && word.as_bytes()[0].is_ascii_uppercase())
+            {
                 TokenKind::Type
             } else if j < len && bytes[j] == b'(' {
                 TokenKind::Function

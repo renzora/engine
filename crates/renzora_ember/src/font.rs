@@ -248,7 +248,7 @@ pub(crate) fn scan_project_fonts(
 ) {
     *tick = tick.wrapping_add(1);
     // First population runs immediately; afterwards poll ~twice a second.
-    if !registry.entries.is_empty() && *tick % 30 != 0 {
+    if !registry.entries.is_empty() && !(*tick).is_multiple_of(30) {
         return;
     }
     let Some(ember) = ember else {

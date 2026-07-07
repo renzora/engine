@@ -3,8 +3,8 @@
 //! The splash background (sky shader + terrain render) is rendered to an offscreen
 //! image by a dedicated `Camera2d` (mirroring `renzora_game_ui_editor`'s
 //! `canvas_render`). A fullscreen [`PostView`] node on the main camera then samples
-//! that image through `post.wgsl`, which does genuine bloom + chromatic aberration
-//! + scanlines + vignette — effects a UI overlay can't do because it can't read
+//! that image through `post.wgsl`, which does genuine bloom, chromatic aberration,
+//! scanlines, and vignette — effects a UI overlay can't do because it can't read
 //! what's behind it. The interactive launcher UI stays on the main camera, on top
 //! of the post result, so it remains crisp and clickable.
 //!

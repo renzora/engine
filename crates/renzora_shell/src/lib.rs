@@ -1804,7 +1804,7 @@ fn ribbon_interact(
             let mut shown: Option<(Entity, bool)> = None;
             for (it, rcp) in &items {
                 if rcp.cursor_over {
-                    let before = rcp.normalized.map_or(true, |n| n.x < 0.0);
+                    let before = rcp.normalized.is_none_or(|n| n.x < 0.0);
                     state.target = if before { it.index } else { it.index + 1 };
                     shown = Some((it.marker, !before));
                     break;

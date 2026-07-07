@@ -229,7 +229,7 @@ fn ruler_step(raw: f32, grid_size: Option<f32>) -> f32 {
     let Some(grid) = grid_size.filter(|g| *g > 0.0) else {
         return nice_step(raw);
     };
-    if !(raw > 0.0) {
+    if raw <= 0.0 || raw.is_nan() {
         return grid;
     }
     let level = (raw / grid).log2().ceil().clamp(-6.0, 32.0);
@@ -239,7 +239,7 @@ fn ruler_step(raw: f32, grid_size: Option<f32>) -> f32 {
 /// Round a raw spacing to the nearest 1-2-5×10ⁿ value so ruler ticks land on
 /// human-readable world coordinates regardless of zoom.
 fn nice_step(raw: f32) -> f32 {
-    if !(raw > 0.0) {
+    if raw <= 0.0 || raw.is_nan() {
         return 1.0;
     }
     let pow = 10f32.powf(raw.log10().floor());
@@ -342,7 +342,7 @@ fn render_overlay_2d(
 
     // ── Rulers + cursor marker: every docked 2D viewport, each off its own
     // camera + panel rect (so a zoomed-out view rules to its own scale) ──────
-    for i in 0..VIEWPORT_COUNT {
+    for (i, cam) in cams.iter().enumerate() {
         let Some(slot) = viewports.slots.get(i) else { continue };
         // A workspace without this panel leaves its `screen_*` frozen at the
         // last-docked values (its resize requests stop), so the rect alone can't
@@ -350,7 +350,7 @@ fn render_overlay_2d(
         if !slot.docked || slot.screen_size.x <= 1.0 || slot.screen_size.y <= 1.0 {
             continue;
         }
-        let Some((camera, cam_gt)) = cams[i] else { continue };
+        let Some((camera, cam_gt)) = *cam else { continue };
         let panel = Panel2d {
             screen_position: slot.screen_position,
             screen_size: slot.screen_size,

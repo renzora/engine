@@ -293,7 +293,7 @@ fn build_stats_refresh_section(
 fn read_flag(world: &World, pick: fn(&renzora::StatsRefreshSettings) -> bool) -> bool {
     world
         .get_resource::<renzora::StatsRefreshSettings>()
-        .map(|s| pick(s))
+        .map(pick)
         .unwrap_or(true)
 }
 

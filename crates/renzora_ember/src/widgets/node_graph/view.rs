@@ -689,10 +689,10 @@ fn ngv_preview(
         let endpoint = graphs.get(pv.viewport).ok().and_then(|g| {
             if let Some((nid, pin, is_out, _)) = g.pending_connect.clone() {
                 cur.map(|c| (nid, pin, is_out, c))
-            } else if let Some(f) = g.frozen_cable.as_ref() {
-                Some((f.node, f.pin.clone(), f.is_output, f.screen))
             } else {
-                None
+                g.frozen_cable
+                    .as_ref()
+                    .map(|f| (f.node, f.pin.clone(), f.is_output, f.screen))
             }
         });
         let Some((nid, pin, is_out, c)) = endpoint else {

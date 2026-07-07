@@ -151,7 +151,7 @@ pub fn register_pack(pack: LocalePack) {
         let entry = s
             .langs
             .entry(pack.meta.code.clone())
-            .or_insert_with(LocalePack::default);
+            .or_default();
         // First non-empty meta wins for display fields, so a later strings-only
         // contribution (e.g. a plugin adding its keys) can't blank the name.
         if entry.meta.code.is_empty() {
@@ -235,7 +235,7 @@ pub fn has_language(code: &str) -> bool {
 pub fn available() -> Vec<LocaleMeta> {
     let s = store().read().unwrap();
     let mut v: Vec<LocaleMeta> = s.langs.values().map(|p| p.meta.clone()).collect();
-    v.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    v.sort_by_key(|a| a.name.to_lowercase());
     v
 }
 

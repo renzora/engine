@@ -74,13 +74,13 @@ jobs:
         run: |
           cargo clippy --workspace --no-deps \
             --exclude bevy_firefly \
-            --exclude bevy_gauge \
             --exclude bevy_hanabi \
             --exclude bevy_hui \
             --exclude bevy_mod_outline \
             --exclude bevy_silk \
             --exclude glam_matrix_extras \
             --exclude vleue_navigator \
+            --exclude polyanya \
             --exclude bevy_mod_openxr \
             --exclude bevy_mod_xr \
             --exclude bevy_xr_utils \

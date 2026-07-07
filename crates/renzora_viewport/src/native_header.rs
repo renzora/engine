@@ -425,7 +425,7 @@ pub(crate) fn register(app: &mut App) {
     // selector. Built once by the shell's toolbar host.
     app.register_panel_toolbar_multi(
         &["viewport", "viewport-2", "viewport-3", "viewport-4"],
-        |commands, fonts| build_header(commands, fonts),
+        build_header,
     );
 
     app.add_systems(

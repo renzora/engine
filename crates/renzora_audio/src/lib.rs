@@ -67,8 +67,8 @@ impl Plugin for KiraPlugin {
                 timeline_scheduler,
             };
 
-            _app.insert_non_send_resource(KiraAudioManager::new())
-                .insert_non_send_resource(timeline_scheduler::ActiveClips::default())
+            _app.insert_non_send(KiraAudioManager::new())
+                .insert_non_send(timeline_scheduler::ActiveClips::default())
                 .insert_resource(AudioPreviewState::default())
                 .insert_resource(mixer::MixerState::default())
                 .insert_resource(AudioCommandQueue::default())

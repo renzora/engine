@@ -138,7 +138,7 @@ fn sync_selection_sources(
     // one of them, except unsaved ones (kept so edits aren't lost).
     state
         .open_files
-        .retain(|f| f.is_modified || resolved.iter().any(|p| *p == f.path));
+        .retain(|f| f.is_modified || resolved.contains(&f.path));
     for p in &resolved {
         // open_file is idempotent — already-open sources just keep their tab.
         state.open_file(p.clone());

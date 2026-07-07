@@ -995,7 +995,7 @@ fn prune_leaked_ui(scene: &mut DynamicScene) -> usize {
     let before = scene.entities.len();
     scene
         .entities
-        .retain(|e| !(scene_entity_is_ui(e) && !under_canvas(e.entity)));
+        .retain(|e| !scene_entity_is_ui(e) || under_canvas(e.entity));
     before - scene.entities.len()
 }
 
@@ -2157,12 +2157,12 @@ fn load_sprite_image(
         renzora::core::TextureFilter::Nearest => ImageSamplerDescriptor::nearest(),
         renzora::core::TextureFilter::Linear => ImageSamplerDescriptor::linear(),
     };
-    asset_server.load_with_settings::<Image, ImageLoaderSettings>(
-        path.to_owned(),
-        move |settings: &mut ImageLoaderSettings| {
+    asset_server
+        .load_builder()
+        .with_settings(move |settings: &mut ImageLoaderSettings| {
             settings.sampler = ImageSampler::Descriptor(descriptor.clone());
-        },
-    )
+        })
+        .load::<Image>(path.to_owned())
 }
 
 /// Insert a `Sprite` from scratch when one's missing. Used by the

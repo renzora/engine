@@ -104,8 +104,8 @@ impl NetworkServer {
             let Some(packet) = decode(&buf[..n]) else { continue };
             match packet {
                 Packet::ConnectRequest { client_id } => {
-                    if !self.peers.contains_key(&addr) {
-                        self.peers.insert(addr, Peer::new(addr, client_id));
+                    if let std::collections::hash_map::Entry::Vacant(e) = self.peers.entry(addr) {
+                        e.insert(Peer::new(addr, client_id));
                         out.joined.push(client_id);
                         info!("[network] Client connected: id={} addr={}", client_id, addr);
                     }

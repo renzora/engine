@@ -150,7 +150,7 @@ impl ResizeHandle {
         let world = (self.local_dir().to_angle() + angle).to_degrees();
         // Fold to 0..180 (a resize axis is direction-less) and bucket.
         let folded = world.rem_euclid(180.0);
-        if folded < 22.5 || folded >= 157.5 {
+        if !(22.5..157.5).contains(&folded) {
             SystemCursorIcon::EwResize
         } else if folded < 67.5 {
             // Up-right axis on screen (world y-up) = bottom-left↔top-right.

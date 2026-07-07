@@ -274,23 +274,22 @@ fn resolve_registration<'r>(
     }
     // Short-name fallback (handles moves). Skipped for ambiguous short names
     // because bevy returns `None` for them — we never guess.
-    if let Some(short) = short_name_of(type_path) {
-        if let Some(reg) = registry.get_with_short_type_path(short) {
-            return Some(reg);
-        }
+    if let Some(short) = short_name_of(type_path)
+        && let Some(reg) = registry.get_with_short_type_path(short)
+    {
+        return Some(reg);
     }
     // Alias map (handles renames). Keyed by the full path or its short name.
     if let Ok(map) = component_aliases().read() {
         let target = map
             .get(type_path)
             .or_else(|| short_name_of(type_path).and_then(|s| map.get(s)));
-        if let Some(target) = target {
-            if let Some(reg) = registry
+        if let Some(target) = target
+            && let Some(reg) = registry
                 .get_with_type_path(target)
                 .or_else(|| registry.get_with_short_type_path(target))
-            {
-                return Some(reg);
-            }
+        {
+            return Some(reg);
         }
     }
     None

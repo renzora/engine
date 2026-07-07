@@ -27,7 +27,7 @@ fn compile_blueprint_source(path: &Path, source: String) -> String {
     match serde_json::from_str::<renzora_blueprint::graph::BlueprintGraph>(&source) {
         Ok(graph) => renzora_blueprint::compiler::compile_to_lua(&graph),
         Err(e) => {
-            let msg = e.to_string().replace('\'', " ").replace('\n', " ");
+            let msg = e.to_string().replace(['\'', '\n'], " ");
             log::warn!("[Scripting] Blueprint '{}' failed to parse: {}", path.display(), msg);
             format!("error('blueprint parse failed: {msg}')")
         }

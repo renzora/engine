@@ -19,20 +19,15 @@ use renzora::{
 // ---------------------------------------------------------------------------
 
 /// Insert this resource to enable/disable the rendering debug logger.
-#[derive(Resource)]
+///
+/// `enabled` is OFF by default: this is a developer diff-logger for camera /
+/// post-process state. When on, `debug_log_post_processing` rescans the whole
+/// type registry and reflects over every camera each frame — measured at ~4.6 ms
+/// per frame (a quarter of the frame budget). Flip it on only while debugging the
+/// render/effect plumbing.
+#[derive(Resource, Default)]
 pub struct RenderingDebugLog {
     pub enabled: bool,
-}
-
-impl Default for RenderingDebugLog {
-    fn default() -> Self {
-        // OFF by default: this is a developer diff-logger for camera / post-process
-        // state. When on, `debug_log_post_processing` rescans the whole type
-        // registry and reflects over every camera each frame — measured at ~4.6 ms
-        // per frame (a quarter of the frame budget). Flip it on only while
-        // debugging the render/effect plumbing.
-        Self { enabled: false }
-    }
 }
 
 fn is_enabled(debug: &Option<Res<RenderingDebugLog>>) -> bool {
