@@ -146,7 +146,7 @@ Property tracks live in the same `.anim` clip as skeletal tracks and play back i
    - **Select a keyframe** (click it — the playhead jumps to it), then pose the object; the selected key updates live.
    - **Right-click** an empty spot on a track → **Add keyframe here**.
    - Or right-click a key → **Set to current pose**.
-   - **From the inspector:** while a clip is open, every inspector field that already has a track shows an amber **◆ keyframe button** next to its reset button (e.g. the Transform component's **Rotation** row). Click it to key that one property's current value at the playhead — the same as the track row's **◆**, without leaving the inspector. The button only appears for properties the open clip actually animates, so it doubles as an at-a-glance "this field is animated" marker.
+   - **From the inspector:** while a clip is open on the selected entity, every animatable inspector field shows an amber **◆ keyframe button** next to its reset button (e.g. the Transform component's **Rotation** row, a light's **Illuminance**, any reflected float/Vec3/color/bool). Click it to key that property's current value at the playhead without leaving the inspector — and if the field isn't animated yet, this **creates its track first** (bound to `self`), so you can start animating a property straight from the inspector instead of adding the track in the Timeline.
 5. **Record mode** (the red ● toggle) auto-keys any pose change at the playhead.
 6. **Scrub** the playhead (or press **Play**) to preview. Save with the floppy button — edits also **auto-save** (so Play mode, which reads the file from disk, sees them).
 

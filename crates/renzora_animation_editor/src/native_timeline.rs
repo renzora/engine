@@ -2109,43 +2109,27 @@ fn apply_timeline_ops(world: &mut World) {
     }
 }
 
-/// Mirror the open clip's state into the shared [`renzora::ActiveTimeline`] so
-/// the inspector can show per-property keyframe buttons without linking this
-/// crate. Uses `cache.key` (not `selected_entity`) so the published entity stays
-/// consistent with the loaded track buffer during the one frame they differ on a
-/// selection change. Cheap — clones only the bound tracks' identifier strings.
+/// Mirror which entity the open clip animates into the shared
+/// [`renzora::ActiveTimeline`] so the inspector can show per-property keyframe
+/// buttons without linking this crate. Uses `cache.key` (not `selected_entity`)
+/// so the published entity stays consistent with the loaded track buffer during
+/// the one frame they differ on a selection change. Writes only on change, to
+/// avoid needless change-detection churn.
 fn publish_active_timeline(
     clip: Res<NativeAnimClip>,
-    state: Res<AnimationEditorState>,
     mut active: ResMut<renzora::ActiveTimeline>,
 ) {
-    match clip.clip.as_ref() {
-        Some(c) => {
-            active.entity = clip.key.as_ref().map(|(e, _)| *e);
-            active.scrub_time = state.scrub_time;
-            active.tracks = c
-                .property_tracks
-                .iter()
-                .filter(|t| !t.component.is_empty() && !t.field.is_empty())
-                .map(|t| (t.component.clone(), t.field.clone()))
-                .collect();
-        }
-        // No clip open → the timeline isn't active. Clear (only touch the
-        // resource when it actually needs clearing, to avoid change spam).
-        None if active.entity.is_some() || !active.tracks.is_empty() => {
-            active.entity = None;
-            active.tracks.clear();
-        }
-        None => {}
+    // A clip must be loaded for the timeline to count as "active".
+    let entity = clip.clip.as_ref().and(clip.key.as_ref()).map(|(e, _)| *e);
+    if active.entity != entity {
+        active.entity = entity;
     }
 }
 
-/// Drain inspector-posted keyframe requests: for each, find the matching bound
-/// track on the open clip and key the entity's current live value at the
-/// playhead. Exclusive because reading a live property value goes through
-/// reflection (`read_track_value`, inside `add_key_at`). `add_key_at` keys from
-/// the *track's own* canonical `(component, field)`, so the inspector's guessed
-/// request strings only need to locate the track, not drive reflection.
+/// Drain inspector-posted keyframe requests: for each, find (or create) the
+/// track for `(component, field)` on the open clip and key the entity's current
+/// live value at the playhead. Exclusive because reading a live property value
+/// goes through reflection (`read_track_value`, inside `add_key_at`).
 fn apply_keyframe_requests(world: &mut World) {
     let reqs = match world.get_resource_mut::<renzora::KeyframeRequests>() {
         Some(mut r) if !r.is_empty() => r.drain(),
@@ -2160,23 +2144,56 @@ fn apply_keyframe_requests(world: &mut World) {
         .map(|s| s.scrub_time)
         .unwrap_or(0.0);
     for req in reqs {
-        let track = world
-            .get_resource::<NativeAnimClip>()
-            .and_then(|c| c.clip.as_ref())
-            .and_then(|c| {
-                c.property_tracks.iter().position(|t| {
-                    renzora::norm(&t.component) == renzora::norm(&req.component)
-                        && renzora::norm(&t.field) == renzora::norm(&req.field)
-                })
-            });
-        match track {
-            Some(idx) => add_key_at(world, entity, idx, scrub),
-            None => warn!(
-                "[prop-anim] Inspector keyframe: no bound track for {}.{}",
-                req.component, req.field
-            ),
-        }
+        add_key_for_field(world, entity, &req.component, &req.field, scrub);
     }
+}
+
+/// Key `(component, field)` at `time` from `entity`'s live value, creating the
+/// track first if the clip doesn't have one yet — the inspector "keyframe this
+/// field" action. An existing track is matched loosely (the inspector guesses
+/// paths from its own identifiers), then keyed via its own canonical strings. A
+/// *new* track is bound to the canonical `(component, field)` resolved from
+/// reflection ([`list_animatable_fields`]) so the sampler can actually read it —
+/// the inspector's guess only has to name the field, not drive reflection.
+fn add_key_for_field(world: &mut World, entity: Option<Entity>, component: &str, field: &str, time: f32) {
+    let Some(entity) = entity else { return };
+    // Existing track? Key it (add_key_at reads via the track's own path).
+    let existing = world
+        .get_resource::<NativeAnimClip>()
+        .and_then(|c| c.clip.as_ref())
+        .and_then(|c| {
+            c.property_tracks.iter().position(|t| {
+                renzora::norm(&t.component) == renzora::norm(component)
+                    && renzora::norm(&t.field) == renzora::norm(field)
+            })
+        });
+    if let Some(idx) = existing {
+        add_key_at(world, Some(entity), idx, time);
+        return;
+    }
+    // No track yet — resolve the canonical animatable field and create one.
+    let canon = list_animatable_fields(world, entity).into_iter().find(|f| {
+        renzora::norm(&f.component) == renzora::norm(component)
+            && renzora::norm(&f.field) == renzora::norm(field)
+    });
+    let Some(canon) = canon else {
+        warn!("[prop-anim] Inspector keyframe: {}.{} is not animatable", component, field);
+        return;
+    };
+    let idx = {
+        let Some(mut cache) = world.get_resource_mut::<NativeAnimClip>() else { return };
+        let Some(clip) = cache.clip.as_mut() else { return };
+        clip.property_tracks.push(PropertyTrack {
+            target: "self".into(),
+            component: canon.component,
+            field: canon.field,
+            keys: Vec::new(),
+        });
+        let idx = clip.property_tracks.len() - 1;
+        cache.dirty = true;
+        idx
+    };
+    add_key_at(world, Some(entity), idx, time);
 }
 
 /// Read the live value of every property track and key it at `time`.

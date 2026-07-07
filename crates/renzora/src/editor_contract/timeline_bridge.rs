@@ -15,20 +15,16 @@
 
 use bevy::prelude::*;
 
-/// Snapshot of the timeline editor's open clip, published every frame so panels
-/// that can't link the animation editor (the inspector) can react to it. Reset
-/// to its default (`entity: None`) whenever no clip is open.
+/// Which entity, if any, the timeline editor currently has an open clip for.
+/// Published every frame so panels that can't link the animation editor (the
+/// inspector) can gate on it — the inspector shows its per-field keyframe buttons
+/// only while the selected entity is the one being animated. Reset to its default
+/// (`entity: None`) whenever no clip is open.
 #[derive(Resource, Default)]
 pub struct ActiveTimeline {
-    /// The entity the open clip animates — its tracks resolve relative to this.
-    /// `None` when no clip is loaded, i.e. the timeline isn't "active".
+    /// The entity the open clip animates. `None` when no clip is loaded, i.e.
+    /// the timeline isn't "active".
     pub entity: Option<Entity>,
-    /// Playhead position in seconds — the time a newly-added keyframe lands at.
-    pub scrub_time: f32,
-    /// `(component, field)` reflection paths of the clip's bound property tracks
-    /// (unbound "Select property…" tracks are omitted). These are exactly the
-    /// tracks the inspector shows a keyframe button beside.
-    pub tracks: Vec<(String, String)>,
 }
 
 impl ActiveTimeline {
@@ -37,18 +33,11 @@ impl ActiveTimeline {
         self.entity.is_some()
     }
 
-    /// Whether `entity` is the animated entity AND it has a bound track for
-    /// `(component, field)`. Matching is separator/case-insensitive because the
-    /// inspector guesses paths from its own identifiers (snake_case `type_id`,
-    /// title-cased field labels) while the track strings come from reflection
-    /// (which may be PascalCase) — e.g. an inspector `transform`/`rotation` must
-    /// match a track stored as `Transform`/`rotation`.
-    pub fn has_track(&self, entity: Entity, component: &str, field: &str) -> bool {
+    /// Whether `entity` is the entity the open clip animates — the gate for
+    /// showing the inspector's per-field keyframe buttons. (A clip is only open,
+    /// so `entity` only `Some`, while the timeline is active.)
+    pub fn animates(&self, entity: Entity) -> bool {
         self.entity == Some(entity)
-            && self
-                .tracks
-                .iter()
-                .any(|(c, f)| norm(c) == norm(component) && norm(f) == norm(field))
     }
 }
 

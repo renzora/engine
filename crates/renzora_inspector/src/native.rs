@@ -1433,11 +1433,12 @@ fn field_anim_path(type_id: &str, field_name: &str, kind: FieldKind) -> Option<(
 }
 
 /// A small per-field "add keyframe" button (a keyframe diamond, matching the
-/// timeline's add-key glyph). Hidden by default and shown reactively only while
-/// the timeline has a clip open with a bound track for this `(component, field)`
-/// — see [`renzora::ActiveTimeline::has_track`]. Pressing it queues a
+/// timeline's add-key glyph). Hidden by default and shown reactively while the
+/// timeline has a clip open on the inspected entity — see
+/// [`renzora::ActiveTimeline::animates`]. Pressing it queues a
 /// [`renzora::KeyframeRequests`] entry that the timeline editor keys at the
-/// playhead from the entity's live value.
+/// playhead from the entity's live value, creating the track first if this field
+/// isn't animated yet.
 fn build_add_keyframe_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -1455,20 +1456,21 @@ fn build_add_keyframe_button(
                 justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 // Start hidden; `bind_display` reveals it on the next reaction
-                // frame if a matching track is live (avoids a one-frame flash).
+                // frame if the timeline is animating this entity (avoids a
+                // one-frame flash on rows built while no clip is open).
                 display: Display::None,
                 ..default()
             },
             Interaction::default(),
             FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            AddKeyframeBtn { entity, component: component.clone(), field: field.clone() },
+            AddKeyframeBtn { entity, component, field },
             Name::new("field-add-keyframe"),
         ))
         .id();
     bind_display(commands, btn, move |w| {
         w.get_resource::<renzora::ActiveTimeline>()
-            .is_some_and(|t| t.has_track(entity, &component, &field))
+            .is_some_and(|t| t.animates(entity))
     });
     // Amber diamond — the timeline's keyframe color, so the affordance reads as
     // "add a keyframe" rather than another neutral inspector control.

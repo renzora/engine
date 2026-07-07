@@ -62,6 +62,8 @@ Different settings get different controls, picked automatically to match the val
 
 > Every editable field has a small **reset** button (the circular ↺ arrow) just to its right. Click it to snap that field back to its default value — `0` for numbers, off for toggles, empty for text, white for colors, and so on. Action buttons and read-only fields don't show one, since there's nothing to reset.
 
+> **Keyframe button.** When an animation clip is open in the Timeline for the selected entity, every animatable field gains an amber **◆** button just left of its reset button. Clicking it keys that field's current value at the playhead — and if the field isn't animated yet, it creates the track first, so you can start animating a property straight from the inspector. See [Animation → Authoring workflow](animation.md#authoring-workflow).
+
 ## Adding and removing components
 
 - **Add** — click **Add Component** (top or bottom of the panel) to open a list of everything you can add, grouped by category. Type to filter.
