@@ -19,6 +19,7 @@ mod inspector_registry;
 mod selection;
 mod shortcut_registry;
 mod spawn_registry;
+mod timeline_bridge;
 mod toolbar_registry;
 mod types;
 
@@ -31,5 +32,6 @@ pub use inspector_registry::*;
 pub use selection::*;
 pub use shortcut_registry::*;
 pub use spawn_registry::*;
+pub use timeline_bridge::*;
 pub use toolbar_registry::*;
 pub use types::*;

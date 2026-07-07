@@ -7528,6 +7528,7 @@ dependencies = [
  "renzora_ember",
  "renzora_inspector",
  "renzora_theme",
+ "renzora_undo",
  "ron 0.8.1",
 ]
 
@@ -7722,6 +7723,7 @@ dependencies = [
  "renzora_editor_framework",
  "renzora_ember",
  "renzora_scripting",
+ "renzora_undo",
  "serde_json",
 ]
 
@@ -8547,6 +8549,7 @@ dependencies = [
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
+ "renzora_undo",
 ]
 
 [[package]]
@@ -8731,6 +8734,7 @@ dependencies = [
  "renzora_ember",
  "renzora_shader",
  "renzora_splash",
+ "renzora_undo",
  "rfd",
  "serde",
  "serde_json",
@@ -8958,6 +8962,7 @@ dependencies = [
  "renzora_ember",
  "renzora_hanabi",
  "renzora_inspector",
+ "renzora_undo",
  "rfd",
  "ron 0.8.1",
 ]
@@ -9221,6 +9226,7 @@ dependencies = [
  "renzora_shader",
  "renzora_splash",
  "renzora_ui",
+ "renzora_undo",
  "renzora_viewport",
  "rfd",
 ]
@@ -9536,6 +9542,7 @@ dependencies = [
  "renzora_ember",
  "renzora_spline",
  "renzora_terrain",
+ "renzora_undo",
  "rfd",
  "serde_json",
 ]
@@ -9611,6 +9618,7 @@ dependencies = [
  "renzora_ember",
  "renzora_tilemap",
  "renzora_ui",
+ "renzora_undo",
 ]
 
 [[package]]
@@ -9711,6 +9719,8 @@ dependencies = [
  "log",
  "renzora",
  "renzora_editor_framework",
+ "renzora_ember",
+ "renzora_engine",
  "renzora_ui",
 ]
 

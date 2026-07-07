@@ -90,15 +90,103 @@ impl Plugin for NativeMaterialGraph {
         // the egui panel only running its sync inside `ui()`) AND visible.
         // `mat_graph_load` builds the tab set from the selection; the dropdown is
         // rebuilt from it before the view's edits are drained.
+        app.init_resource::<MatUndoShadow>();
         app.add_systems(
             Update,
-            (mat_graph_load, rebuild_material_dropdown, mat_graph_sync)
+            (mat_graph_load, rebuild_material_dropdown, mat_graph_sync, material_undo_observer)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
                 .run_if(any_with_component::<MatGraph>)
                 .run_if(renzora_ember::dock::panel_active("material_graph")),
         );
     }
+}
+
+// ── Undo integration ─────────────────────────────────────────────────────────
+
+/// Shadow copy of the graph the undo observer last saw, plus a cheap identity of
+/// the document it belongs to. When the identity changes (a different material /
+/// mesh / tab loaded), the observer reseeds instead of recording — loading a
+/// document is not an edit.
+#[derive(Resource, Default)]
+struct MatUndoShadow {
+    doc_id: String,
+    graph: Option<renzora_shader::material::graph::MaterialGraph>,
+}
+
+/// Cheap identity of the material currently in the editor buffer.
+fn mat_doc_id(st: &MaterialEditorState) -> String {
+    let path = st
+        .active_tab
+        .and_then(|i| st.tabs.get(i))
+        .and_then(|t| t.path.clone());
+    format!("{:?}|{:?}|{:?}", st.editing_entity, st.active_tab, path)
+}
+
+/// Restore a snapshotted graph — the `restore` fn for the material `SnapshotCmd`.
+/// Mirrors what `mat_graph_sync` does after a structural edit (recompile so the
+/// preview refreshes) and keeps the observer's shadow in sync so the restore is
+/// not itself re-recorded as a new edit.
+fn restore_material_graph(
+    world: &mut World,
+    g: &renzora_shader::material::graph::MaterialGraph,
+) {
+    {
+        let mut st = world.resource_mut::<MaterialEditorState>();
+        st.graph = g.clone();
+        st.is_dirty = true;
+    }
+    let result = renzora_shader::material::codegen::compile(g);
+    {
+        let mut st = world.resource_mut::<MaterialEditorState>();
+        st.compiled_wgsl = Some(result.fragment_shader);
+        st.compile_errors = result.errors;
+    }
+    if let Some(mut sh) = world.get_resource_mut::<MatUndoShadow>() {
+        sh.graph = Some(g.clone());
+    }
+}
+
+/// Watch `MaterialEditorState.graph` and record a coarse snapshot whenever it
+/// changes, so every edit path (node moves via the widget sync, palette adds,
+/// pin scrubs in the inspector, texture drops, …) is undoable from one place.
+/// Per-frame scrub spam collapses via the snapshot merge key; the global gesture
+/// seal splits separate gestures.
+fn material_undo_observer(world: &mut World) {
+    let (cur, doc_id) = {
+        let Some(st) = world.get_resource::<MaterialEditorState>() else {
+            return;
+        };
+        (st.graph.clone(), mat_doc_id(st))
+    };
+    let (prev_id, prev_graph) = {
+        let sh = world.resource::<MatUndoShadow>();
+        (sh.doc_id.clone(), sh.graph.clone())
+    };
+    // Document (re)loaded → reseed, don't record.
+    if prev_id != doc_id || prev_graph.is_none() {
+        let mut sh = world.resource_mut::<MatUndoShadow>();
+        sh.doc_id = doc_id;
+        sh.graph = Some(cur);
+        return;
+    }
+    let before = prev_graph.unwrap();
+    if before == cur {
+        return;
+    }
+    let ctx = renzora_undo::active_context(world);
+    renzora_undo::record(
+        world,
+        ctx,
+        Box::new(renzora_undo::SnapshotCmd {
+            label: "Material".to_string(),
+            before,
+            after: cur.clone(),
+            restore: restore_material_graph,
+            merge_key: Some("material-graph".to_string()),
+        }),
+    );
+    world.resource_mut::<MatUndoShadow>().graph = Some(cur);
 }
 
 /// Marker on the graph viewport; carries the pan/zoom canvas entity so the

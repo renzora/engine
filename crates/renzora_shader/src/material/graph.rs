@@ -128,7 +128,7 @@ where
     })
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[derive(Default)]
 pub enum PinValue {
     Float(#[serde(deserialize_with = "de_lenient_f32")] f32),
@@ -254,7 +254,7 @@ impl MaterialDomain {
 
 // ── Connection ──────────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Connection {
     pub from_node: NodeId,
     pub from_pin: String,
@@ -264,7 +264,7 @@ pub struct Connection {
 
 // ── Material node ───────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MaterialNode {
     pub id: NodeId,
     pub node_type: String,
@@ -307,7 +307,7 @@ pub enum AlphaMode {
 }
 
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MaterialGraph {
     pub name: String,
     pub domain: MaterialDomain,

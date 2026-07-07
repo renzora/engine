@@ -40,9 +40,114 @@ type Pred = fn(&World, Entity) -> bool;
 type Mutate = fn(&mut World, Entity);
 type SetEnabled = fn(&mut World, Entity, bool);
 
+/// Apply a field edit through the undo system instead of calling `set_fn`
+/// directly, so every inspector edit is undoable. Captures the pre-edit value
+/// via `get_fn` (state still holds it at this instant) and records a
+/// [`renzora_undo::FieldChangeCmd`] on whatever stack is currently active
+/// ([`renzora_undo::active_context`]) — the focused document's, usually `Scene`.
+///
+/// Consecutive edits of the *same* field merge into one step (see
+/// `FieldChangeCmd::merge`), so a drag-scrub that fires this every frame is a
+/// single undo entry; `renzora_undo`'s gesture seal splits separate gestures.
+fn record_field_change(
+    w: &mut World,
+    entity: Entity,
+    name: &'static str,
+    get_fn: GetFn,
+    set_fn: SetFn,
+    new: FieldValue,
+) {
+    let old = get_fn(w, entity).unwrap_or_else(|| new.clone());
+    let ctx = renzora_undo::active_context(w);
+    renzora_undo::execute(
+        w,
+        ctx,
+        Box::new(renzora_undo::FieldChangeCmd {
+            entity,
+            field_name: name,
+            old,
+            new,
+            set_fn,
+        }),
+    );
+}
+
 
 fn c(rgb: (u8, u8, u8)) -> Color {
     Color::srgb_u8(rgb.0, rgb.1, rgb.2)
+}
+
+// ── Component add / remove / enable undo commands ─────────────────────────────
+
+/// Undo for enabling/disabling a component from its section header toggle.
+struct EnableToggleCmd {
+    entity: Entity,
+    set_enabled: SetEnabled,
+    target: bool,
+}
+
+impl renzora_undo::UndoCommand for EnableToggleCmd {
+    fn label(&self) -> &str {
+        "Toggle component"
+    }
+    fn execute(&mut self, world: &mut World) {
+        (self.set_enabled)(world, self.entity, self.target);
+    }
+    fn undo(&mut self, world: &mut World) {
+        (self.set_enabled)(world, self.entity, !self.target);
+    }
+}
+
+/// Undo for adding a component: `undo` removes it again (redo re-adds a default,
+/// same as the original add).
+struct AddComponentCmd {
+    entity: Entity,
+    add_fn: Mutate,
+    remove_fn: Option<Mutate>,
+}
+
+impl renzora_undo::UndoCommand for AddComponentCmd {
+    fn label(&self) -> &str {
+        "Add component"
+    }
+    fn execute(&mut self, world: &mut World) {
+        (self.add_fn)(world, self.entity);
+    }
+    fn undo(&mut self, world: &mut World) {
+        if let Some(remove_fn) = self.remove_fn {
+            remove_fn(world, self.entity);
+        }
+    }
+}
+
+/// Undo for removing a component: captures the component's reflected value before
+/// removing, so `undo` restores it *with its edited fields* (not a default). Redo
+/// (`execute`) re-captures the current value and removes again.
+struct RemoveComponentCmd {
+    entity: Entity,
+    type_id: &'static str,
+    remove_fn: Mutate,
+    captured: Option<Box<dyn bevy::reflect::Reflect>>,
+}
+
+impl renzora_undo::UndoCommand for RemoveComponentCmd {
+    fn label(&self) -> &str {
+        "Remove component"
+    }
+    fn execute(&mut self, world: &mut World) {
+        self.captured = renzora::core::reflection::capture_component(world, self.entity, self.type_id);
+        (self.remove_fn)(world, self.entity);
+    }
+    fn undo(&mut self, world: &mut World) {
+        if let Some(value) = &self.captured {
+            renzora::core::reflection::insert_component_reflected(
+                world,
+                self.entity,
+                self.type_id,
+                value.as_ref(),
+            );
+        }
+    }
 }
 
 #[derive(Component)]
@@ -108,6 +213,11 @@ fn filter_style(world: &World) -> InspectorComponentFilterStyle {
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<NativeInspectorState>();
+    // Bridge to the timeline editor's per-property keyframe buttons.
+    // `init_resource` is idempotent — the timeline editor inits these too, so
+    // they exist whichever crate loads first (and stay default when it's absent).
+    app.init_resource::<renzora::ActiveTimeline>();
+    app.init_resource::<renzora::KeyframeRequests>();
     // `scroll: false` — we manage scrolling ourselves so the top bar (filter
     // input + expand-all) and the Add Component row beneath it stay *fixed* while
     // only the component list scrolls.
@@ -171,6 +281,7 @@ pub fn register_native_inspector(app: &mut App) {
             add_button_click,
             field_button_click,
             reset_click,
+            add_keyframe_click,
             lock_click,
             enum_option_click,
             asset_drop,
@@ -1052,6 +1163,9 @@ fn format_value(v: Option<&FieldValue>) -> String {
 struct RemoveBtn {
     remove_fn: Mutate,
     entity: Entity,
+    /// Component type id (short name), so undo can reflect-restore the removed
+    /// component's captured value.
+    type_id: &'static str,
 }
 
 #[derive(Component)]
@@ -1072,6 +1186,17 @@ struct ResetBtn {
     get_fn: GetFn,
     set_fn: SetFn,
     entity: Entity,
+    field_name: &'static str,
+}
+
+/// Marks a per-field "add keyframe" button. Carries the reflection path the
+/// timeline editor matches against the open clip's tracks (see
+/// [`add_keyframe_click`]).
+#[derive(Component)]
+struct AddKeyframeBtn {
+    entity: Entity,
+    component: String,
+    field: String,
 }
 
 fn build_section(
@@ -1116,7 +1241,7 @@ fn build_section(
         commands.entity(body).add_child(note);
     } else {
         for (i, field) in sec.fields.iter().enumerate() {
-            let r = build_field_row(commands, fonts, field, entity);
+            let r = build_field_row(commands, fonts, field, entity, sec.type_id);
             commands
                 .entity(r)
                 .insert(BackgroundColor(renzora_ember::inspector::inspector_stripe(i)));
@@ -1154,15 +1279,29 @@ fn build_section(
             commands,
             sw,
             move |w| g(w, entity),
-            move |w, v: &bool| set_enabled(w, entity, *v),
+            move |w, v: &bool| {
+                let target = *v;
+                let ctx = renzora_undo::active_context(w);
+                renzora_undo::execute(
+                    w,
+                    ctx,
+                    Box::new(EnableToggleCmd { entity, set_enabled, target }),
+                );
+            },
         );
         extra.push(sw);
     }
     if let Some(remove_fn) = sec.remove_fn {
         let trash = phosphor_glyph(commands, fonts, "trash", renzora_ember::theme::text_muted(), 13.0);
-        commands
-            .entity(trash)
-            .insert((Interaction::default(), FocusPolicy::Block, RemoveBtn { remove_fn, entity }));
+        commands.entity(trash).insert((
+            Interaction::default(),
+            FocusPolicy::Block,
+            RemoveBtn {
+                remove_fn,
+                entity,
+                type_id: sec.type_id,
+            },
+        ));
         extra.push(trash);
     }
     commands.entity(header).add_children(&extra);
@@ -1175,6 +1314,7 @@ fn build_field_row(
     fonts: &EmberFonts,
     field: &FieldSpec,
     entity: Entity,
+    type_id: &'static str,
 ) -> Entity {
     // The field's control(s) sit in a value container, then the shared
     // `inspector_row` adds a left-aligned label column — so declarative fields
@@ -1193,11 +1333,18 @@ fn build_field_row(
         ))
         .id();
     build_field_value(commands, fonts, field, entity, value);
+    // A per-field "add keyframe" affordance, left of the reset button. Reactively
+    // hidden unless the timeline has a clip open with a bound track for this
+    // property (see `build_add_keyframe_button`); pressing it keys the live value.
+    if let Some((component, field_path)) = field_anim_path(type_id, field.name, field.kind) {
+        let kf = build_add_keyframe_button(commands, fonts, entity, component, field_path);
+        commands.entity(value).add_child(kf);
+    }
     // A per-field "reset to default" affordance, right of the editable widget(s).
     // Skipped for kinds that have no value to reset (action buttons, read-only
     // text) — resetting those would be meaningless.
     if field_is_resettable(field.kind) {
-        let reset = build_reset_button(commands, fonts, field.get_fn, field.set_fn, entity);
+        let reset = build_reset_button(commands, fonts, field.name, field.get_fn, field.set_fn, entity);
         commands.entity(value).add_child(reset);
     }
     let label = field_label_loc(field.name);
@@ -1217,6 +1364,7 @@ fn field_is_resettable(kind: FieldKind) -> bool {
 fn build_reset_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
+    field_name: &'static str,
     get_fn: GetFn,
     set_fn: SetFn,
     entity: Entity,
@@ -1235,7 +1383,7 @@ fn build_reset_button(
             Interaction::default(),
             FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            ResetBtn { get_fn, set_fn, entity },
+            ResetBtn { get_fn, set_fn, entity, field_name },
             Name::new("field-reset"),
         ))
         .id();
@@ -1246,6 +1394,85 @@ fn build_reset_button(
         renzora_ember::theme::text_muted(),
         11.0,
     );
+    commands.entity(btn).add_child(glyph);
+    btn
+}
+
+/// Guess the `(component, field)` reflection path an inspector row animates, for
+/// matching against the open clip's property tracks. `type_id` is already the
+/// reflected component short-name; the field path is the display name reversed to
+/// snake_case (the `Inspectable` derive title-cases the field ident, so
+/// lowercasing + underscoring recovers it) — except Transform, whose hand-written
+/// labels ("Position") differ from the animated channels ("translation"). Returns
+/// `None` for non-animatable kinds (text/asset/enum/button/read-only). Wrong
+/// guesses are harmless: they just never match a track, so no button shows.
+fn field_anim_path(type_id: &str, field_name: &str, kind: FieldKind) -> Option<(String, String)> {
+    if !matches!(
+        kind,
+        FieldKind::Float { .. }
+            | FieldKind::Int { .. }
+            | FieldKind::Vec3 { .. }
+            | FieldKind::Bool
+            | FieldKind::Color
+            | FieldKind::ColorRgba
+    ) {
+        return None;
+    }
+    let field = if type_id == "transform" {
+        match field_name {
+            "Position" => "translation",
+            "Rotation" => "rotation",
+            "Scale" => "scale",
+            _ => return None,
+        }
+        .to_string()
+    } else {
+        field_name.trim().to_lowercase().replace(' ', "_")
+    };
+    Some((type_id.to_string(), field))
+}
+
+/// A small per-field "add keyframe" button (a keyframe diamond, matching the
+/// timeline's add-key glyph). Hidden by default and shown reactively only while
+/// the timeline has a clip open with a bound track for this `(component, field)`
+/// — see [`renzora::ActiveTimeline::has_track`]. Pressing it queues a
+/// [`renzora::KeyframeRequests`] entry that the timeline editor keys at the
+/// playhead from the entity's live value.
+fn build_add_keyframe_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    component: String,
+    field: String,
+) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                flex_shrink: 0.0,
+                width: Val::Px(18.0),
+                height: Val::Px(18.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                // Start hidden; `bind_display` reveals it on the next reaction
+                // frame if a matching track is live (avoids a one-frame flash).
+                display: Display::None,
+                ..default()
+            },
+            Interaction::default(),
+            FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            AddKeyframeBtn { entity, component: component.clone(), field: field.clone() },
+            Name::new("field-add-keyframe"),
+        ))
+        .id();
+    bind_display(commands, btn, move |w| {
+        w.get_resource::<renzora::ActiveTimeline>()
+            .is_some_and(|t| t.has_track(entity, &component, &field))
+    });
+    // Amber diamond — the timeline's keyframe color, so the affordance reads as
+    // "add a keyframe" rather than another neutral inspector control.
+    let glyph = phosphor_glyph(commands, fonts, "diamond", (230, 170, 90), 11.0);
     commands.entity(btn).add_child(glyph);
     btn
 }
@@ -1264,7 +1491,7 @@ fn build_field_value(
             if max > min {
                 commands.entity(dv).insert(DragRange { min, max });
             }
-            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
             bind_2way(
                 commands,
                 dv,
@@ -1272,7 +1499,7 @@ fn build_field_value(
                     Some(FieldValue::Float(v)) => v,
                     _ => 0.0,
                 },
-                move |w, v: &f32| set_fn(w, entity, FieldValue::Float(*v)),
+                move |w, v: &f32| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*v)),
             );
             commands.entity(value_parent).add_child(dv);
         }
@@ -1286,7 +1513,7 @@ fn build_field_value(
             if max > min {
                 commands.entity(dv).insert(DragRange { min, max });
             }
-            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
             bind_2way(
                 commands,
                 dv,
@@ -1294,7 +1521,7 @@ fn build_field_value(
                     Some(FieldValue::Float(v)) => v,
                     _ => 0.0,
                 },
-                move |w, v: &f32| set_fn(w, entity, FieldValue::Float(*v)),
+                move |w, v: &f32| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*v)),
             );
             commands.entity(value_parent).add_child(dv);
         }
@@ -1311,7 +1538,7 @@ fn build_field_value(
             ];
             for (i, (axis, color)) in AXES.iter().enumerate() {
                 let dv = drag_value(commands, &fonts.ui, axis, *color, init[i], speed.max(0.001));
-                let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+                let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
                 bind_2way(
                     commands,
                     dv,
@@ -1322,7 +1549,7 @@ fn build_field_value(
                     move |w, v: &f32| {
                         if let Some(FieldValue::Vec3(mut a)) = get_fn(w, entity) {
                             a[i] = *v;
-                            set_fn(w, entity, FieldValue::Vec3(a));
+                            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Vec3(a));
                         }
                     },
                 );
@@ -1332,36 +1559,36 @@ fn build_field_value(
         FieldKind::Bool => {
             let init = matches!(field.init, FieldInit::Bool(true));
             let sw = toggle_switch(commands, init);
-            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
             bind_2way(
                 commands,
                 sw,
                 move |w| matches!(get_fn(w, entity), Some(FieldValue::Bool(true))),
-                move |w, v: &bool| set_fn(w, entity, FieldValue::Bool(*v)),
+                move |w, v: &bool| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Bool(*v)),
             );
             commands.entity(value_parent).add_child(sw);
         }
         FieldKind::Color => {
-            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
             let editor = renzora_ember::inspector::color_field(
                 commands,
                 move |w| match get_fn(w, entity) {
                     Some(FieldValue::Color(c)) => c,
                     _ => [0.0; 3],
                 },
-                move |w, rgb: [f32; 3]| set_fn(w, entity, FieldValue::Color(rgb)),
+                move |w, rgb: [f32; 3]| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Color(rgb)),
             );
             commands.entity(value_parent).add_child(editor);
         }
         FieldKind::ColorRgba => {
-            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
             let editor = renzora_ember::inspector::color_field_rgba(
                 commands,
                 move |w| match get_fn(w, entity) {
                     Some(FieldValue::ColorRgba(c)) => c,
                     _ => [0.0; 4],
                 },
-                move |w, rgba: [f32; 4]| set_fn(w, entity, FieldValue::ColorRgba(rgba)),
+                move |w, rgba: [f32; 4]| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::ColorRgba(rgba)),
             );
             commands.entity(value_parent).add_child(editor);
         }
@@ -1372,7 +1599,7 @@ fn build_field_value(
                 String::new()
             };
             let ti = text_input(commands, &fonts.ui, "—", &init);
-            let (get_fn, set_fn) = (field.get_fn, field.set_fn);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
             bind_text_input(
                 commands,
                 ti,
@@ -1380,7 +1607,7 @@ fn build_field_value(
                     Some(FieldValue::String(s)) => s,
                     _ => String::new(),
                 },
-                move |w, v: String| set_fn(w, entity, FieldValue::String(v)),
+                move |w, v: String| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::String(v)),
             );
             commands.entity(value_parent).add_child(ti);
         }
@@ -1390,7 +1617,7 @@ fn build_field_value(
             } else {
                 String::new()
             };
-            let dd = build_enum_dropdown(commands, fonts, entity, field.get_fn, field.set_fn, options, &cur);
+            let dd = build_enum_dropdown(commands, fonts, entity, field.name, field.get_fn, field.set_fn, options, &cur);
             commands.entity(value_parent).add_child(dd);
         }
         FieldKind::Asset => {
@@ -1398,6 +1625,7 @@ fn build_field_value(
                 commands,
                 fonts,
                 entity,
+                field.name,
                 field.get_fn,
                 field.set_fn,
                 field.extensions.clone(),
@@ -1449,16 +1677,21 @@ fn build_field_value(
 
 #[derive(Component)]
 struct EnumOption {
+    get_fn: GetFn,
     set_fn: SetFn,
     entity: Entity,
+    /// The field name, so the recorded undo step is labelled + merges correctly.
+    field_name: &'static str,
     label: &'static str,
     panel: Entity,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_enum_dropdown(
     commands: &mut Commands,
     fonts: &EmberFonts,
     entity: Entity,
+    field_name: &'static str,
     get_fn: GetFn,
     set_fn: SetFn,
     options: &'static [&'static str],
@@ -1508,8 +1741,10 @@ fn build_enum_dropdown(
                 BackgroundColor(Color::NONE),
                 Interaction::default(),
                 EnumOption {
+                    get_fn,
                     set_fn,
                     entity,
+                    field_name,
                     label: opt,
                     panel,
                 },
@@ -1590,14 +1825,18 @@ fn build_enum_dropdown(
 #[derive(Component)]
 struct AssetDropZone {
     extensions: Vec<String>,
+    get_fn: GetFn,
     set_fn: SetFn,
     entity: Entity,
+    field_name: &'static str,
 }
 
 #[derive(Component)]
 struct AssetClearBtn {
+    get_fn: GetFn,
     set_fn: SetFn,
     entity: Entity,
+    field_name: &'static str,
 }
 
 /// `(display text, has-value)` for an asset field value (filename or prompt).
@@ -1627,13 +1866,14 @@ pub fn asset_drop_field(
     set_fn: fn(&mut World, Entity, FieldValue),
     extensions: Vec<String>,
 ) -> Entity {
-    build_asset_field(commands, fonts, entity, get_fn, set_fn, extensions)
+    build_asset_field(commands, fonts, entity, "asset", get_fn, set_fn, extensions)
 }
 
 fn build_asset_field(
     commands: &mut Commands,
     fonts: &EmberFonts,
     entity: Entity,
+    field_name: &'static str,
     get_fn: GetFn,
     set_fn: SetFn,
     extensions: Vec<String>,
@@ -1679,8 +1919,10 @@ fn build_asset_field(
             bevy::ui::RelativeCursorPosition::default(),
             AssetDropZone {
                 extensions,
+                get_fn,
                 set_fn,
                 entity,
+                field_name,
             },
             Name::new("asset-drop"),
         ))
@@ -1697,7 +1939,12 @@ fn build_asset_field(
                 ..default()
             },
             Interaction::default(),
-            AssetClearBtn { set_fn, entity },
+            AssetClearBtn {
+                get_fn,
+                set_fn,
+                entity,
+                field_name,
+            },
             Name::new("asset-clear"),
         ))
         .id();
@@ -1749,9 +1996,9 @@ fn asset_drop(
             .as_ref()
             .map(|p| p.make_asset_relative(&payload.path))
             .unwrap_or_else(|| payload.path.to_string_lossy().to_string());
-        let (set_fn, entity) = (zone.set_fn, zone.entity);
+        let (get_fn, set_fn, entity, name) = (zone.get_fn, zone.set_fn, zone.entity, zone.field_name);
         cmds.push(move |w: &mut World| {
-            set_fn(w, entity, FieldValue::Asset(Some(path_str.clone())))
+            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Asset(Some(path_str.clone())))
         });
         break;
     }
@@ -1766,8 +2013,10 @@ fn asset_clear_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (set_fn, entity) = (btn.set_fn, btn.entity);
-        cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Asset(None)));
+        let (get_fn, set_fn, entity, name) = (btn.get_fn, btn.set_fn, btn.entity, btn.field_name);
+        cmds.push(move |w: &mut World| {
+            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Asset(None))
+        });
     }
 }
 
@@ -1859,8 +2108,20 @@ fn remove_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (remove_fn, entity) = (btn.remove_fn, btn.entity);
-        cmds.push(move |w: &mut World| remove_fn(w, entity));
+        let (remove_fn, entity, type_id) = (btn.remove_fn, btn.entity, btn.type_id);
+        cmds.push(move |w: &mut World| {
+            let ctx = renzora_undo::active_context(w);
+            renzora_undo::execute(
+                w,
+                ctx,
+                Box::new(RemoveComponentCmd {
+                    entity,
+                    type_id,
+                    remove_fn,
+                    captured: None,
+                }),
+            );
+        });
     }
 }
 
@@ -1962,12 +2223,28 @@ fn reset_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (get_fn, set_fn, entity) = (btn.get_fn, btn.set_fn, btn.entity);
+        let (get_fn, set_fn, entity, name) = (btn.get_fn, btn.set_fn, btn.entity, btn.field_name);
         cmds.push(move |w: &mut World| {
             if let Some(cur) = get_fn(w, entity) {
-                set_fn(w, entity, cur.type_default());
+                record_field_change(w, entity, name, get_fn, set_fn, cur.type_default());
             }
         });
+    }
+}
+
+/// Queue a keyframe-add when a field's keyframe button is pressed. The timeline
+/// editor drains [`renzora::KeyframeRequests`] and keys the entity's live value
+/// at the playhead onto the matching track (the undo is recorded there).
+fn add_keyframe_click(
+    q: Query<(&Interaction, &AddKeyframeBtn), Changed<Interaction>>,
+    reqs: Option<ResMut<renzora::KeyframeRequests>>,
+) {
+    let Some(mut reqs) = reqs else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        reqs.push(btn.entity, btn.component.clone(), btn.field.clone());
     }
 }
 
@@ -1990,6 +2267,7 @@ fn open_add_component(world: &mut World) {
         &'static str,
         fn(&World, Entity) -> bool,
         fn(&mut World, Entity),
+        Option<fn(&mut World, Entity)>,
     );
     let specs: Vec<Spec> = world
         .get_resource::<renzora_editor_framework::InspectorRegistry>()
@@ -1997,7 +2275,7 @@ fn open_add_component(world: &mut World) {
             reg.iter()
                 .filter_map(|e| {
                     e.add_fn
-                        .map(|af| (e.display_name, e.icon, e.category, e.has_fn, af))
+                        .map(|af| (e.display_name, e.icon, e.category, e.has_fn, af, e.remove_fn))
                 })
                 .collect()
         })
@@ -2011,7 +2289,7 @@ fn open_add_component(world: &mut World) {
     let is_camera = world.get::<Camera3d>(entity).is_some();
 
     let mut entries: Vec<renzora_ember::widgets::SearchEntry> = Vec::new();
-    for (label, icon, category, has_fn, add_fn) in specs {
+    for (label, icon, category, has_fn, add_fn, remove_fn) in specs {
         if has_fn(world, entity) {
             continue; // already present
         }
@@ -2022,7 +2300,18 @@ fn open_add_component(world: &mut World) {
             icon,
             label,
             category,
-            move |w: &mut World| add_fn(w, entity),
+            move |w: &mut World| {
+                let ctx = renzora_undo::active_context(w);
+                renzora_undo::execute(
+                    w,
+                    ctx,
+                    Box::new(AddComponentCmd {
+                        entity,
+                        add_fn,
+                        remove_fn,
+                    }),
+                );
+            },
         ));
     }
 
@@ -2050,8 +2339,11 @@ fn enum_option_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (set_fn, entity, label) = (opt.set_fn, opt.entity, opt.label.to_string());
-        cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Enum(label.clone())));
+        let (get_fn, set_fn, entity, name, label) =
+            (opt.get_fn, opt.set_fn, opt.entity, opt.field_name, opt.label.to_string());
+        cmds.push(move |w: &mut World| {
+            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Enum(label.clone()))
+        });
         // Close the popup whose panel this option belongs to.
         for mut p in &mut popups {
             if p.panel == opt.panel {

@@ -115,13 +115,14 @@ impl Plugin for TerrainEditorPlugin {
                     .run_if(active_tool_is(ActiveTool::TerrainPaint))
                     .run_if(renzora::core::not_in_play_mode),
             )
-            // Undo/redo — active when any terrain tool is on
+            // Undo capture — active when any terrain tool is on. Undo/redo
+            // *replay* is handled by the central `renzora_undo` shortcut router
+            // (Ctrl+Z/Ctrl+Y); strokes record onto the Scene stack here.
             .add_systems(
                 Update,
                 (
                     systems::terrain_stroke_begin_system,
                     systems::terrain_stroke_end_system,
-                    systems::terrain_undo_redo_system,
                 )
                     .run_if(|tool: Option<Res<ActiveTool>>| tool.is_some_and(|t| t.is_terrain()))
                     .run_if(renzora::core::not_in_play_mode),

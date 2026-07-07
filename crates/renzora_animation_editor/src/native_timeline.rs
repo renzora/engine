@@ -46,11 +46,17 @@ impl Plugin for NativeAnimTimeline {
         app.init_resource::<SelectedKey>();
         app.init_resource::<PreviewApplied>();
         app.init_resource::<AutoSaveTimer>();
+        // Bridge to the inspector's per-property keyframe buttons. `init_resource`
+        // is idempotent — the inspector inits these too, so they exist whichever
+        // crate loads first.
+        app.init_resource::<renzora::ActiveTimeline>();
+        app.init_resource::<renzora::KeyframeRequests>();
         app.register_panel_content("timeline", false, build);
         app.add_systems(
             Update,
             (
                 cache_native_clip,
+                publish_active_timeline,
                 anim_btn_click,
                 speed_btn_click,
                 clip_combo_open,
@@ -69,6 +75,7 @@ impl Plugin for NativeAnimTimeline {
                 timeline_delete_guard,
                 prop_header_click,
                 apply_timeline_ops,
+                apply_keyframe_requests,
             )
                 .chain()
                 .run_if(in_state(SplashState::Editor)),
@@ -84,7 +91,96 @@ impl Plugin for NativeAnimTimeline {
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora::not_in_play_mode),
         );
+
+        app.init_resource::<AnimUndoShadow>();
+        app.add_systems(
+            Update,
+            anim_undo_observer
+                .after(apply_timeline_ops)
+                .after(apply_keyframe_requests)
+                .run_if(in_state(SplashState::Editor))
+                .run_if(|c: Option<Res<NativeAnimClip>>| c.is_some_and(|c| c.clip.is_some())),
+        );
     }
+}
+
+// ── Undo integration ─────────────────────────────────────────────────────────
+//
+// Keyframe edits mutate the in-memory clip buffer (`NativeAnimClip.clip`). A
+// change-observer records a coarse snapshot of that buffer whenever it changes,
+// covering drags, deletes, interp changes, live-record capture and marker edits
+// from one place. Full RON serialization is the change signal so no field is
+// missed. The clip is scene-attached content, so edits land on the active
+// (Scene) stack; per-frame drag spam collapses via the merge key, and the
+// global gesture seal splits gestures.
+
+/// Shadow of the clip the observer last saw, its serialized form (the diff key),
+/// and the `(entity, clip)` selection it belongs to. Changing selection reseeds.
+#[derive(Resource, Default)]
+struct AnimUndoShadow {
+    key: Option<(Entity, String)>,
+    serialized: Option<String>,
+    clip: Option<AnimClip>,
+}
+
+/// Restore a snapshotted clip — the `restore` fn for the animation `SnapshotCmd`.
+/// Writes the buffer and marks it dirty; the timeline + dopesheet rebuild
+/// reactively from the buffer, and Save flushes it to disk.
+fn restore_anim_clip(world: &mut World, clip: &AnimClip) {
+    if let Some(mut c) = world.get_resource_mut::<NativeAnimClip>() {
+        c.clip = Some(clip.clone());
+        c.dirty = true;
+    }
+    if let Some(mut sh) = world.get_resource_mut::<AnimUndoShadow>() {
+        sh.serialized = ron::to_string(clip).ok();
+        sh.clip = Some(clip.clone());
+    }
+}
+
+fn anim_undo_observer(world: &mut World) {
+    let (cur, key) = {
+        let Some(c) = world.get_resource::<NativeAnimClip>() else {
+            return;
+        };
+        let Some(clip) = c.clip.clone() else {
+            return;
+        };
+        (clip, c.key.clone())
+    };
+    let serialized = match ron::to_string(&cur) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let (prev_key, prev_serialized, prev_clip) = {
+        let sh = world.resource::<AnimUndoShadow>();
+        (sh.key.clone(), sh.serialized.clone(), sh.clip.clone())
+    };
+    if prev_key != key || prev_clip.is_none() {
+        let mut sh = world.resource_mut::<AnimUndoShadow>();
+        sh.key = key;
+        sh.serialized = Some(serialized);
+        sh.clip = Some(cur);
+        return;
+    }
+    if prev_serialized.as_deref() == Some(serialized.as_str()) {
+        return;
+    }
+    let before = prev_clip.unwrap();
+    let ctx = renzora_undo::active_context(world);
+    renzora_undo::record(
+        world,
+        ctx,
+        Box::new(renzora_undo::SnapshotCmd {
+            label: "Animation".to_string(),
+            before,
+            after: cur.clone(),
+            restore: restore_anim_clip,
+            merge_key: Some("anim-clip".to_string()),
+        }),
+    );
+    let mut sh = world.resource_mut::<AnimUndoShadow>();
+    sh.serialized = Some(serialized);
+    sh.clip = Some(cur);
 }
 
 /// Disk-loaded copy of the currently selected clip, reloaded when the
@@ -2009,6 +2105,76 @@ fn apply_timeline_ops(world: &mut World) {
     if let Some((track, pos)) = open_menu {
         if let Some(entity) = clip_entity(world) {
             open_property_menu_for_track(world, entity, track, pos);
+        }
+    }
+}
+
+/// Mirror the open clip's state into the shared [`renzora::ActiveTimeline`] so
+/// the inspector can show per-property keyframe buttons without linking this
+/// crate. Uses `cache.key` (not `selected_entity`) so the published entity stays
+/// consistent with the loaded track buffer during the one frame they differ on a
+/// selection change. Cheap — clones only the bound tracks' identifier strings.
+fn publish_active_timeline(
+    clip: Res<NativeAnimClip>,
+    state: Res<AnimationEditorState>,
+    mut active: ResMut<renzora::ActiveTimeline>,
+) {
+    match clip.clip.as_ref() {
+        Some(c) => {
+            active.entity = clip.key.as_ref().map(|(e, _)| *e);
+            active.scrub_time = state.scrub_time;
+            active.tracks = c
+                .property_tracks
+                .iter()
+                .filter(|t| !t.component.is_empty() && !t.field.is_empty())
+                .map(|t| (t.component.clone(), t.field.clone()))
+                .collect();
+        }
+        // No clip open → the timeline isn't active. Clear (only touch the
+        // resource when it actually needs clearing, to avoid change spam).
+        None if active.entity.is_some() || !active.tracks.is_empty() => {
+            active.entity = None;
+            active.tracks.clear();
+        }
+        None => {}
+    }
+}
+
+/// Drain inspector-posted keyframe requests: for each, find the matching bound
+/// track on the open clip and key the entity's current live value at the
+/// playhead. Exclusive because reading a live property value goes through
+/// reflection (`read_track_value`, inside `add_key_at`). `add_key_at` keys from
+/// the *track's own* canonical `(component, field)`, so the inspector's guessed
+/// request strings only need to locate the track, not drive reflection.
+fn apply_keyframe_requests(world: &mut World) {
+    let reqs = match world.get_resource_mut::<renzora::KeyframeRequests>() {
+        Some(mut r) if !r.is_empty() => r.drain(),
+        _ => return,
+    };
+    if cur_clip(world).is_none() {
+        return;
+    }
+    let entity = clip_entity(world);
+    let scrub = world
+        .get_resource::<AnimationEditorState>()
+        .map(|s| s.scrub_time)
+        .unwrap_or(0.0);
+    for req in reqs {
+        let track = world
+            .get_resource::<NativeAnimClip>()
+            .and_then(|c| c.clip.as_ref())
+            .and_then(|c| {
+                c.property_tracks.iter().position(|t| {
+                    renzora::norm(&t.component) == renzora::norm(&req.component)
+                        && renzora::norm(&t.field) == renzora::norm(&req.field)
+                })
+            });
+        match track {
+            Some(idx) => add_key_at(world, entity, idx, scrub),
+            None => warn!(
+                "[prop-anim] Inspector keyframe: no bound track for {}.{}",
+                req.component, req.field
+            ),
         }
     }
 }

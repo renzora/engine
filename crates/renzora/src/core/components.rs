@@ -95,7 +95,7 @@ pub struct Node2d;
 /// a rehydration system can re-load the image and assign the handle on
 /// scene load (or whenever the path changes via the inspector / a
 /// drag-drop).
-#[derive(Component, Reflect, Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Component, Reflect, Default, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteImagePath(pub String);
 
@@ -108,7 +108,7 @@ pub struct SpriteImagePath(pub String);
 /// system keeps it in sync with `Sprite.custom_size` (present only while a
 /// custom size is set), and the load path applies it back so a resized
 /// sprite reopens at the size it was saved with.
-#[derive(Component, Reflect, Default, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Component, Reflect, Default, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteCustomSize(pub Vec2);
 
@@ -129,7 +129,7 @@ pub struct SpriteCustomSize(pub Vec2);
 /// not in a separate component — so the animation panel's reflection picker
 /// offers `SpriteSheet.frame` as an animatable field on any sprite that has
 /// the component.
-#[derive(Component, Reflect, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Component, Reflect, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteSheet {
     /// Number of columns the texture is sliced into (min 1).

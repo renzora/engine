@@ -8,6 +8,7 @@ description = "Editor-only half of renzora_tilemap: the Tilemap palette panel (c
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_tilemap = { path = ".." }
+renzora_undo = { path = "../../renzora_undo" }
 renzora_ember = { path = "../../renzora_ember" }
 renzora_ui = { path = "../../renzora_ui" }
 

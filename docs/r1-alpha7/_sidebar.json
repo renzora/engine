@@ -31,6 +31,7 @@
             { "slug": "editor/particles", "title": "Particles & VFX" },
             { "slug": "editor/audio", "title": "Audio" },
             { "slug": "editor/terminal", "title": "Terminal" },
+            { "slug": "editor/undo-redo", "title": "Undo & Redo" },
             { "slug": "editor/shortcuts", "title": "Keyboard Shortcuts" }
           ]
         },
@@ -121,6 +122,7 @@
             { "slug": "editor-dev/widgets", "title": "Custom Widgets" },
             { "slug": "editor-dev/theming", "title": "Theming System" },
             { "slug": "editor-dev/inspector-fields", "title": "Custom Inspector Fields" },
+            { "slug": "editor-dev/undo", "title": "Making Edits Undoable" },
             { "slug": "editor-dev/profiling", "title": "Profiling with Tracy" }
           ]
         },

@@ -31,7 +31,6 @@ impl Plugin for TerrainPlugin {
             .init_resource::<data::StampBrushData>()
             .init_resource::<paint::SurfacePaintSettings>()
             .init_resource::<paint::SurfacePaintState>()
-            .init_resource::<undo::TerrainUndoStack>()
             .init_resource::<undo::TerrainStrokeSnapshot>()
             .init_resource::<splatmap_systems::TerrainLayerTextures>()
             .init_resource::<height_layers::HeightLayerStack>()

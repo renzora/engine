@@ -255,6 +255,58 @@ pub fn set_reflected_field(
     }
 }
 
+/// Reflect-clone a whole component off `entity` by its (short, case-insensitive)
+/// type name — a value snapshot for undo. Returns `None` if the type isn't
+/// registered/reflectable or the component isn't present. Pair with
+/// [`insert_component_reflected`] to restore it.
+pub fn capture_component(
+    world: &World,
+    entity: Entity,
+    component_type: &str,
+) -> Option<Box<dyn bevy::reflect::Reflect>> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+    let query = component_type.to_lowercase();
+    let registration = registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        let short = path.rsplit("::").next().unwrap_or(path);
+        short.to_lowercase() == query
+    })?;
+    let reflect_component = registration.data::<ReflectComponent>()?;
+    let entity_ref = world.entity(entity);
+    let reflected = reflect_component.reflect(entity_ref)?;
+    reflected.reflect_clone().ok()
+}
+
+/// Insert a previously [`capture_component`]-ed value back onto `entity`,
+/// recreating the component (used to undo a component removal). Returns whether
+/// it succeeded.
+pub fn insert_component_reflected(
+    world: &mut World,
+    entity: Entity,
+    component_type: &str,
+    value: &dyn bevy::reflect::Reflect,
+) -> bool {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+    let registry = type_registry.read();
+    let query = component_type.to_lowercase();
+    let Some(registration) = registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        let short = path.rsplit("::").next().unwrap_or(path);
+        short.to_lowercase() == query
+    }) else {
+        return false;
+    };
+    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
+        return false;
+    };
+    let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
+        return false;
+    };
+    reflect_component.insert(&mut entity_mut, value.as_partial_reflect(), &registry);
+    true
+}
+
 /// Recursively navigate a reflected struct or tuple-struct by field path and set
 /// the final value. Numeric path parts (e.g. "0") index into tuple structs.
 pub fn set_field_by_path(

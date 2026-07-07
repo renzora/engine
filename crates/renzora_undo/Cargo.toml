@@ -8,6 +8,8 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ui = { path = "../renzora_ui" }
+renzora_ember = { path = "../renzora_ember" }
+renzora_engine = { path = "../renzora_engine" }
 log = "0.4"
 
 [lints]

@@ -103,7 +103,7 @@ pub struct TilesetHandle {
 /// transparent. This component is the saved, image-independent description
 /// (mirroring how [`TilemapTile`]/`SpriteSheet` persist while `Sprite` doesn't),
 /// so the texture is regenerated on load and in the exported game.
-#[derive(Component, Reflect, Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Component, Reflect, Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
 pub struct TileObject {
     /// Asset-relative path of the source tileset atlas.
@@ -122,7 +122,7 @@ pub struct TileObject {
 /// and where it sits in the object's grid (`dx` right, `dy` down from the
 /// bounding-box top-left). Plain `u32` fields so the reflection scene
 /// serializer round-trips it cleanly.
-#[derive(Reflect, Default, Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Reflect, Default, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TileObjectCell {
     pub dx: u32,
     pub dy: u32,

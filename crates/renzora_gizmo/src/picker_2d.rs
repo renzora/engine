@@ -214,6 +214,11 @@ pub struct Drag2dState {
     /// cursor_world` offset captured at drag start. Contains just the primary
     /// for a single selection; the whole selection for a group move.
     pub move_set: Vec<(Entity, Vec2)>,
+    /// Pre-drag `(Transform, Sprite.custom_size)` of every entity this gesture
+    /// touches, captured when the drag mode is set. Diffed against the live
+    /// state on release to record one undo step per gesture (see
+    /// [`drag_move_2d_system`]). Empty when no drag is in progress.
+    pub starts: Vec<(Entity, Transform, Option<Vec2>)>,
 }
 
 impl Drag2dState {
@@ -221,7 +226,108 @@ impl Drag2dState {
         self.mode = DragMode::None;
         self.entity = None;
         self.move_set.clear();
+        self.starts.clear();
     }
+}
+
+/// Undo command for a 2D transform gesture. Restores both `Transform` and, for a
+/// resize, the sprite's `custom_size` — the 3D `TransformCmd` doesn't cover
+/// `custom_size`, and 2D resize changes it.
+pub struct Sprite2dTransformCmd {
+    pub entity: Entity,
+    pub old_transform: Transform,
+    pub new_transform: Transform,
+    pub old_size: Option<Vec2>,
+    pub new_size: Option<Vec2>,
+}
+
+impl renzora_undo::UndoCommand for Sprite2dTransformCmd {
+    fn label(&self) -> &str {
+        "Transform"
+    }
+    fn execute(&mut self, world: &mut World) {
+        apply_2d_transform(world, self.entity, self.new_transform, self.new_size);
+    }
+    fn undo(&mut self, world: &mut World) {
+        apply_2d_transform(world, self.entity, self.old_transform, self.old_size);
+    }
+}
+
+fn apply_2d_transform(world: &mut World, entity: Entity, tf: Transform, size: Option<Vec2>) {
+    if let Some(mut t) = world.get_mut::<Transform>(entity) {
+        *t = tf;
+    }
+    // Only touch `custom_size` when the gesture actually captured one (a resize);
+    // for move/rotate it's `None` on both sides and left alone.
+    if let Some(sz) = size {
+        if let Some(mut s) = world.get_mut::<Sprite>(entity) {
+            s.custom_size = Some(sz);
+        }
+    }
+}
+
+/// Capture the pre-gesture `(Transform, custom_size)` for each entity so a drag
+/// can be recorded as one undo step on release.
+fn capture_2d_starts(
+    entities: impl IntoIterator<Item = Entity>,
+    transforms: &Query<&mut Transform>,
+    sprites: &Query<&mut Sprite>,
+) -> Vec<(Entity, Transform, Option<Vec2>)> {
+    entities
+        .into_iter()
+        .filter_map(|e| {
+            let tr = *transforms.get(e).ok()?;
+            let size = sprites.get(e).ok().and_then(|s| s.custom_size);
+            Some((e, tr, size))
+        })
+        .collect()
+}
+
+/// Diff the captured pre-drag state against the live state and, if anything
+/// changed, queue one undo step (a `CompoundCmd` for a group move) onto the
+/// active stack. No-op when nothing was captured or nothing moved.
+fn record_2d_drag(
+    drag: &Drag2dState,
+    transforms: &Query<&mut Transform>,
+    sprites: &Query<&mut Sprite>,
+    commands: &mut Commands,
+) {
+    if drag.starts.is_empty() {
+        return;
+    }
+    let mut cmds: Vec<Box<dyn renzora_undo::UndoCommand>> = Vec::new();
+    for (e, old_t, old_size) in &drag.starts {
+        let Ok(new_t) = transforms.get(*e) else {
+            continue;
+        };
+        let new_size = sprites.get(*e).ok().and_then(|s| s.custom_size);
+        if *old_t == *new_t && *old_size == new_size {
+            continue;
+        }
+        cmds.push(Box::new(Sprite2dTransformCmd {
+            entity: *e,
+            old_transform: *old_t,
+            new_transform: *new_t,
+            old_size: *old_size,
+            new_size,
+        }));
+    }
+    if cmds.is_empty() {
+        return;
+    }
+    let cmd: Box<dyn renzora_undo::UndoCommand> = if cmds.len() == 1 {
+        cmds.pop().unwrap()
+    } else {
+        Box::new(renzora_undo::CompoundCmd {
+            label: "Transform".to_string(),
+            cmds,
+        })
+    };
+    commands.queue(move |world: &mut World| {
+        let ctx = renzora_undo::active_context(world);
+        renzora_undo::record(world, ctx.clone(), cmd);
+        renzora_undo::seal(world, &ctx);
+    });
 }
 
 /// The entity's z rotation in radians. 2D scenes only rotate about z, so the
@@ -712,6 +818,7 @@ pub fn drag_move_2d_system(
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     mut transforms: Query<&mut Transform>,
     mut sprites: Query<&mut Sprite>,
+    mut commands: Commands,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         drag.cancel();
@@ -723,10 +830,13 @@ pub fn drag_move_2d_system(
         return;
     }
     if !mouse.pressed(MouseButton::Left) {
+        // Gesture ended — record one undo step for whatever actually moved.
+        record_2d_drag(&drag, &transforms, &sprites, &mut commands);
         drag.cancel();
         return;
     }
     let Some(viewport) = viewport else {
+        record_2d_drag(&drag, &transforms, &sprites, &mut commands);
         drag.cancel();
         return;
     };
@@ -745,6 +855,19 @@ pub fn drag_move_2d_system(
         return;
     };
     let shift = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+
+    // On the first frame of a real drag, snapshot the pre-drag transforms (before
+    // the match below writes them) so the release can record one undo step.
+    if drag.starts.is_empty() && !matches!(drag.mode, DragMode::None | DragMode::BoxSelect { .. })
+    {
+        let mut ents: Vec<Entity> = drag.move_set.iter().map(|(e, _)| *e).collect();
+        if let Some(e) = drag.entity {
+            if !ents.contains(&e) {
+                ents.push(e);
+            }
+        }
+        drag.starts = capture_2d_starts(ents, &transforms, &sprites);
+    }
 
     match drag.mode {
         DragMode::None | DragMode::BoxSelect { .. } => {}
@@ -1151,6 +1274,7 @@ pub fn keyboard_nudge_2d(
     viewport: Option<Res<ViewportState>>,
     play_mode: Option<Res<PlayModeState>>,
     mut transforms: Query<&mut Transform>,
+    mut commands: Commands,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
         return;
@@ -1187,12 +1311,40 @@ pub fn keyboard_nudge_2d(
     };
     delta *= multiplier;
 
-    // Nudge the whole selection so multi-selects move as a group.
+    // Nudge the whole selection so multi-selects move as a group, capturing
+    // old/new for one undo step per keypress.
+    let mut records: Vec<(Entity, Transform, Transform)> = Vec::new();
     for entity in selected {
         let Ok(mut tr) = transforms.get_mut(entity) else {
             continue;
         };
+        let old = *tr;
         tr.translation.x += delta.x;
         tr.translation.y += delta.y;
+        records.push((entity, old, *tr));
     }
+    if records.is_empty() {
+        return;
+    }
+    commands.queue(move |world: &mut World| {
+        let ctx = renzora_undo::active_context(world);
+        let cmds: Vec<Box<dyn renzora_undo::UndoCommand>> = records
+            .into_iter()
+            .map(|(entity, old, new)| {
+                Box::new(renzora_undo::TransformCmd { entity, old, new })
+                    as Box<dyn renzora_undo::UndoCommand>
+            })
+            .collect();
+        let cmd: Box<dyn renzora_undo::UndoCommand> = if cmds.len() == 1 {
+            // one entity — unwrap the single command
+            cmds.into_iter().next().unwrap()
+        } else {
+            Box::new(renzora_undo::CompoundCmd {
+                label: "Nudge".to_string(),
+                cmds,
+            })
+        };
+        renzora_undo::record(world, ctx.clone(), cmd);
+        renzora_undo::seal(world, &ctx);
+    });
 }

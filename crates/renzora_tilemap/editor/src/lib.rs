@@ -237,7 +237,8 @@ impl Plugin for TilemapEditorPlugin {
             .init_resource::<ArmedTilesetDrop>()
             .init_resource::<PaintRectDrag>()
             .init_resource::<ViewportBrushActive>()
-            .init_resource::<RandomizeState>();
+            .init_resource::<RandomizeState>()
+            .init_resource::<TileStrokeSnapshot>();
 
         panel::register(app);
 
@@ -269,7 +270,9 @@ impl Plugin for TilemapEditorPlugin {
                 right_click_to_select,
                 sync_paint_mode,
                 sync_brush_active,
+                tilemap_stroke_begin,
                 paint_tiles,
+                tilemap_stroke_end,
                 preview::update_brush_preview,
                 arm_tileset_drop,
                 commit_tileset_drop,
@@ -281,6 +284,187 @@ impl Plugin for TilemapEditorPlugin {
 }
 
 renzora::add!(TilemapEditorPlugin, Editor);
+
+// ── Undo integration ─────────────────────────────────────────────────────────
+//
+// Painted tiles are child sprite entities, so undo can't be a component field
+// diff — instead a stroke snapshots the active layer's tile children (their
+// *saved* components; `Sprite` is rebuilt by the same observers that hydrate a
+// scene load) at press, again at release, and records one `SnapshotCmd`.
+// `restore` despawns the layer's current tiles and respawns them from the blob,
+// exactly as a scene load does.
+
+/// One painted tile's persistent state (everything that survives scene save;
+/// `Sprite` is intentionally omitted — it's rebuilt from these on respawn).
+#[derive(Clone, PartialEq)]
+struct TileSnap {
+    tile: TilemapTile,
+    transform: Transform,
+    name: String,
+    image_path: Option<SpriteImagePath>,
+    custom_size: Option<SpriteCustomSize>,
+    sheet: Option<SpriteSheet>,
+    atlas_region: Option<SpriteAtlasRegion>,
+    object: Option<TileObject>,
+}
+
+/// A snapshot of one tilemap layer's painted children, keyed by the (stable)
+/// layer entity. The `SnapshotCmd` payload for tilemap undo.
+#[derive(Clone)]
+struct TilemapLayerSnapshot {
+    layer: Entity,
+    tiles: Vec<TileSnap>,
+}
+
+/// Holds the pre-stroke snapshot while a paint gesture is in progress.
+#[derive(Resource, Default)]
+struct TileStrokeSnapshot {
+    before: Option<Vec<TileSnap>>,
+    layer: Option<Entity>,
+}
+
+/// Collect the saved state of every painted child of `layer`.
+fn capture_layer_tiles(world: &mut World, layer: Entity) -> Vec<TileSnap> {
+    let mut out = Vec::new();
+    let mut q = world.query::<(
+        &ChildOf,
+        &TilemapTile,
+        &Transform,
+        Option<&Name>,
+        Option<&SpriteImagePath>,
+        Option<&SpriteCustomSize>,
+        Option<&SpriteSheet>,
+        Option<&SpriteAtlasRegion>,
+        Option<&TileObject>,
+    )>();
+    for (parent, tile, tf, name, img, size, sheet, region, obj) in q.iter(world) {
+        if parent.parent() != layer {
+            continue;
+        }
+        out.push(TileSnap {
+            tile: *tile,
+            transform: *tf,
+            name: name.map(|n| n.as_str().to_string()).unwrap_or_default(),
+            image_path: img.cloned(),
+            custom_size: size.cloned(),
+            sheet: sheet.cloned(),
+            atlas_region: region.cloned(),
+            object: obj.cloned(),
+        });
+    }
+    out
+}
+
+/// Restore a tilemap layer to a snapshot — the `restore` fn for the tilemap
+/// `SnapshotCmd`. Despawns the layer's current tiles and respawns the snapshot's;
+/// the sprite-hydration observers rebuild each `Sprite` from the saved
+/// components (image path / atlas region / baked object), just like a scene load.
+fn restore_tilemap(world: &mut World, snap: &TilemapLayerSnapshot) {
+    // Despawn current painted children of the layer.
+    let mut to_despawn = Vec::new();
+    {
+        let mut q = world.query::<(Entity, &ChildOf, &TilemapTile)>();
+        for (e, parent, _) in q.iter(world) {
+            if parent.parent() == snap.layer {
+                to_despawn.push(e);
+            }
+        }
+    }
+    for e in to_despawn {
+        if let Ok(ent) = world.get_entity_mut(e) {
+            ent.despawn();
+        }
+    }
+    // Respawn from the blob. The layer entity itself is untouched (it's not a
+    // painted child), so it stays valid across undo.
+    for t in &snap.tiles {
+        let mut e = world.spawn((
+            Name::new(t.name.clone()),
+            Node2d,
+            t.tile,
+            t.transform,
+            Visibility::default(),
+            ChildOf(snap.layer),
+        ));
+        if let Some(v) = &t.image_path {
+            e.insert(v.clone());
+        }
+        if let Some(v) = &t.custom_size {
+            e.insert(*v);
+        }
+        if let Some(v) = &t.sheet {
+            e.insert(*v);
+        }
+        if let Some(v) = &t.atlas_region {
+            e.insert(*v);
+        }
+        if let Some(v) = &t.object {
+            e.insert(v.clone());
+        }
+    }
+}
+
+/// Snapshot the active layer's tiles when a paint gesture starts (runs before
+/// `paint_tiles` so the "before" excludes this frame's first stamp).
+fn tilemap_stroke_begin(world: &mut World) {
+    if !world
+        .resource::<ButtonInput<MouseButton>>()
+        .just_pressed(MouseButton::Left)
+    {
+        return;
+    }
+    let painting = world
+        .get_resource::<TilemapPaintMode>()
+        .is_some_and(|p| p.active);
+    let hovered = world
+        .get_resource::<ViewportState>()
+        .is_some_and(|v| v.hovered);
+    let Some(layer) = world.get_resource::<ActiveTilemap>().and_then(|a| a.0) else {
+        return;
+    };
+    if !painting || !hovered {
+        return;
+    }
+    let before = capture_layer_tiles(world, layer);
+    let mut snap = world.resource_mut::<TileStrokeSnapshot>();
+    snap.before = Some(before);
+    snap.layer = Some(layer);
+}
+
+/// Record the completed stroke on release (runs after `paint_tiles` so the
+/// "after" includes any rect-fill committed on the release frame).
+fn tilemap_stroke_end(world: &mut World) {
+    if !world
+        .resource::<ButtonInput<MouseButton>>()
+        .just_released(MouseButton::Left)
+    {
+        return;
+    }
+    let (before, layer) = {
+        let mut snap = world.resource_mut::<TileStrokeSnapshot>();
+        (snap.before.take(), snap.layer.take())
+    };
+    let (Some(before), Some(layer)) = (before, layer) else {
+        return;
+    };
+    let after = capture_layer_tiles(world, layer);
+    if before == after {
+        return; // click that painted nothing new — no undo step
+    }
+    let ctx = renzora_undo::active_context(world);
+    renzora_undo::record(
+        world,
+        ctx.clone(),
+        Box::new(renzora_undo::SnapshotCmd {
+            label: "Paint tiles".to_string(),
+            before: TilemapLayerSnapshot { layer, tiles: before },
+            after: TilemapLayerSnapshot { layer, tiles: after },
+            restore: restore_tilemap,
+            merge_key: None,
+        }),
+    );
+    renzora_undo::seal(world, &ctx);
+}
 
 /// Whether the 2D view is the active viewport view (the Randomise button only
 /// makes sense there).
@@ -385,8 +569,33 @@ fn tile_set_key(entities: &[Entity]) -> u64 {
 /// `TilemapTile`, `Transform` and the entity `Name` all move to the new cell so
 /// the data stays truthful (erase/repaint by cell keep working). Only real
 /// painted tiles are touched; anything else in a mixed selection is left as-is.
-/// Runs as a deferred `&mut World` tool activator.
+/// Runs as a deferred `&mut World` tool activator. Wraps the scatter in an undo
+/// snapshot of the active layer so the whole reshuffle is one Ctrl+Z step.
 fn randomize_selection(world: &mut World) {
+    let layer = world.get_resource::<ActiveTilemap>().and_then(|a| a.0);
+    let before = layer.map(|l| capture_layer_tiles(world, l));
+    randomize_selection_inner(world);
+    if let (Some(layer), Some(before)) = (layer, before) {
+        let after = capture_layer_tiles(world, layer);
+        if before != after {
+            let ctx = renzora_undo::active_context(world);
+            renzora_undo::record(
+                world,
+                ctx.clone(),
+                Box::new(renzora_undo::SnapshotCmd {
+                    label: "Randomise tiles".to_string(),
+                    before: TilemapLayerSnapshot { layer, tiles: before },
+                    after: TilemapLayerSnapshot { layer, tiles: after },
+                    restore: restore_tilemap,
+                    merge_key: None,
+                }),
+            );
+            renzora_undo::seal(world, &ctx);
+        }
+    }
+}
+
+fn randomize_selection_inner(world: &mut World) {
     let Some(selected) = world.get_resource::<EditorSelection>().map(|s| s.get_all()) else {
         return;
     };

@@ -1378,41 +1378,10 @@ fn handle_selection_shortcuts(
         let entities = selection.get_all();
         if !entities.is_empty() {
             selection.clear();
+            // Faithful subtree-snapshot delete (works for lights, cameras, GLB
+            // imports, 2D nodes, groups) — not just default-mesh primitives.
             commands.queue(move |world: &mut World| {
-                let mut items = Vec::new();
-                let mut other = Vec::new();
-                for entity in &entities {
-                    let shape = world.get_entity(*entity).ok().and_then(|e| {
-                        let shape_id = e.get::<renzora::core::MeshPrimitive>()?.0.clone();
-                        let name = e.get::<Name>()?.as_str().to_string();
-                        let transform = *e.get::<Transform>()?;
-                        let color = e.get::<renzora::core::MeshColor>()?.0;
-                        Some(renzora_undo::DeletedShape {
-                            entity: *entity,
-                            shape_id,
-                            name,
-                            transform,
-                            color,
-                        })
-                    });
-                    match shape {
-                        Some(item) => items.push(item),
-                        None => other.push(*entity),
-                    }
-                }
-                for e in other {
-                    if let Ok(em) = world.get_entity_mut(e) {
-                        em.despawn();
-                    }
-                }
-                if items.is_empty() {
-                    return;
-                }
-                renzora_undo::execute(
-                    world,
-                    renzora_undo::UndoContext::Scene,
-                    Box::new(renzora_undo::DeleteShapesCmd { items }),
-                );
+                renzora_undo::delete_entities_with_undo(world, &entities);
             });
         }
     }

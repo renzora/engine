@@ -14,7 +14,7 @@ use renzora_terrain::paint::{self, PaintableSurfaceData, SurfacePaintSettings, S
 use renzora_terrain::sculpt;
 use renzora_terrain::splatmap_material::TerrainSplatmapMaterial;
 use renzora_terrain::splatmap_systems::{self, SplatmapActive};
-use renzora_terrain::undo::{TerrainUndoEntry, TerrainUndoStack};
+use renzora_terrain::undo::TerrainUndoEntry;
 
 // ── Height sampling ──────────────────────────────────────────────────────────
 
@@ -988,136 +988,108 @@ pub fn terrain_stroke_begin_system(
     }
 }
 
-/// Push undo entry when a sculpt/paint stroke ends.
-pub fn terrain_stroke_end_system(
-    sculpt_state: Res<TerrainSculptState>,
-    paint_state: Res<SurfacePaintState>,
-    mut snapshot: ResMut<TerrainStrokeSnapshot>,
-    mut undo_stack: ResMut<TerrainUndoStack>,
-    chunk_query: Query<&TerrainChunkData>,
-) {
-    let sculpting = sculpt_state.is_sculpting;
-    let painting = paint_state.is_painting;
+/// Record a terrain stroke onto the central undo stack when a sculpt/paint
+/// stroke ends. Exclusive (`&mut World`) so it can call `renzora_undo::record`.
+/// Terrain is scene content, so the entry lands on the `Scene` stack and shows
+/// in the History panel alongside every other scene edit — replacing the old
+/// private `TerrainUndoStack` + hard-coded Ctrl+Z handler.
+pub fn terrain_stroke_end_system(world: &mut World) {
+    let sculpting = world.resource::<TerrainSculptState>().is_sculpting;
+    let painting = world.resource::<SurfacePaintState>().is_painting;
+    let active = world.resource::<TerrainStrokeSnapshot>().active;
+    if sculpting || painting || !active {
+        return;
+    }
 
-    if !sculpting && !painting && snapshot.active {
-        // Check if anything actually changed
-        let mut changed = false;
-        for chunk in chunk_query.iter() {
-            if let Some(snap) = snapshot
+    // Snapshot the post-stroke ("after") state.
+    let mut after = TerrainUndoEntry {
+        chunk_snapshots: Vec::new(),
+        layer_mask_snapshots: Vec::new(),
+    };
+    {
+        let mut cq = world.query::<&TerrainChunkData>();
+        for chunk in cq.iter(world) {
+            after
+                .chunk_snapshots
+                .push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
+        }
+        let mut sq = world.query::<(Entity, &PaintableSurfaceData)>();
+        for (entity, surface) in sq.iter(world) {
+            let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
+            after.layer_mask_snapshots.push((entity, masks));
+        }
+    }
+
+    // Take the "before" snapshot captured at stroke begin and end the stroke.
+    let before = {
+        let mut snapshot = world.resource_mut::<TerrainStrokeSnapshot>();
+        snapshot.active = false;
+        TerrainUndoEntry {
+            chunk_snapshots: std::mem::take(&mut snapshot.chunk_snapshots),
+            layer_mask_snapshots: std::mem::take(&mut snapshot.layer_mask_snapshots),
+        }
+    };
+
+    // Only record if the stroke actually changed heights or paint masks — a
+    // click that painted nothing shouldn't create an empty undo step. (The old
+    // code always pushed for paint; here we compare masks properly.)
+    let heights_changed = after.chunk_snapshots.iter().any(|(cx, cz, h)| {
+        before
+            .chunk_snapshots
+            .iter()
+            .find(|(bx, bz, _)| bx == cx && bz == cz)
+            .map(|(_, _, bh)| bh != h)
+            .unwrap_or(true)
+    });
+    let masks_changed = after.layer_mask_snapshots.iter().any(|(e, m)| {
+        before
+            .layer_mask_snapshots
+            .iter()
+            .find(|(be, _)| be == e)
+            .map(|(_, bm)| bm != m)
+            .unwrap_or(true)
+    });
+    if !heights_changed && !masks_changed {
+        return;
+    }
+
+    renzora_undo::record(
+        world,
+        renzora_undo::UndoContext::Scene,
+        Box::new(renzora_undo::SnapshotCmd {
+            label: "Terrain".to_string(),
+            before,
+            after,
+            restore: restore_terrain,
+            // Each stroke is already one entry (sealed below); no cross-stroke merge.
+            merge_key: None,
+        }),
+    );
+    // Seal so the next stroke is a separate undo step (mouse release also seals
+    // via renzora_undo's gesture seal, but be explicit).
+    renzora_undo::seal(world, &renzora_undo::UndoContext::Scene);
+}
+
+/// Restore a captured terrain snapshot into the world — the `restore` fn for the
+/// terrain `SnapshotCmd`. Writes chunk heightmaps and paint-layer masks back and
+/// flags them dirty so the meshes/splatmaps rebuild. Undo passes the "before"
+/// blob, redo passes "after".
+fn restore_terrain(world: &mut World, entry: &TerrainUndoEntry) {
+    {
+        let mut cq = world.query::<&mut TerrainChunkData>();
+        for mut chunk in cq.iter_mut(world) {
+            if let Some((_, _, heights)) = entry
                 .chunk_snapshots
                 .iter()
                 .find(|(cx, cz, _)| *cx == chunk.chunk_x && *cz == chunk.chunk_z)
             {
-                if snap.2 != chunk.base_heights {
-                    changed = true;
-                    break;
-                }
-            }
-        }
-        // Also check splatmaps (rough check — if sculpt didn't change, paint might have)
-        if !changed {
-            changed = true; // conservatively push if painting was active
-        }
-
-        if changed {
-            let entry = TerrainUndoEntry {
-                chunk_snapshots: std::mem::take(&mut snapshot.chunk_snapshots),
-                layer_mask_snapshots: std::mem::take(&mut snapshot.layer_mask_snapshots),
-            };
-            undo_stack.push_undo(entry);
-        }
-
-        snapshot.active = false;
-        snapshot.chunk_snapshots.clear();
-        snapshot.layer_mask_snapshots.clear();
-    }
-}
-
-/// Ctrl+Z / Ctrl+Y: undo/redo terrain edits.
-pub fn terrain_undo_redo_system(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    input_focus: Option<Res<renzora::core::InputFocusState>>,
-    mut undo_stack: ResMut<TerrainUndoStack>,
-    mut chunk_query: Query<&mut TerrainChunkData>,
-    mut surface_query: Query<(Entity, &mut PaintableSurfaceData)>,
-) {
-    // Don't undo/redo terrain while the user is typing in a UI field.
-    if input_focus.is_some_and(|f| f.ui_wants_keyboard) {
-        return;
-    }
-    let ctrl = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
-    if !ctrl {
-        return;
-    }
-
-    let undo = keyboard.just_pressed(KeyCode::KeyZ) && !keyboard.pressed(KeyCode::ShiftLeft);
-    let redo = keyboard.just_pressed(KeyCode::KeyY)
-        || (keyboard.just_pressed(KeyCode::KeyZ) && keyboard.pressed(KeyCode::ShiftLeft));
-
-    if undo {
-        if let Some(entry) = undo_stack.undo.pop() {
-            // Capture current state as redo entry
-            let mut redo_entry = TerrainUndoEntry {
-                chunk_snapshots: Vec::new(),
-                layer_mask_snapshots: Vec::new(),
-            };
-            for chunk in chunk_query.iter_mut() {
-                redo_entry.chunk_snapshots.push((
-                    chunk.chunk_x,
-                    chunk.chunk_z,
-                    chunk.base_heights.clone(),
-                ));
-            }
-            for (entity, surface) in surface_query.iter() {
-                let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
-                redo_entry.layer_mask_snapshots.push((entity, masks));
-            }
-            undo_stack.redo.push(redo_entry);
-
-            // Restore from undo entry
-            apply_undo_entry(&entry, &mut chunk_query, &mut surface_query);
-        }
-    } else if redo {
-        if let Some(entry) = undo_stack.redo.pop() {
-            // Capture current state as undo entry
-            let mut undo_entry = TerrainUndoEntry {
-                chunk_snapshots: Vec::new(),
-                layer_mask_snapshots: Vec::new(),
-            };
-            for chunk in chunk_query.iter_mut() {
-                undo_entry.chunk_snapshots.push((
-                    chunk.chunk_x,
-                    chunk.chunk_z,
-                    chunk.base_heights.clone(),
-                ));
-            }
-            for (entity, surface) in surface_query.iter() {
-                let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
-                undo_entry.layer_mask_snapshots.push((entity, masks));
-            }
-            undo_stack.undo.push(undo_entry);
-
-            // Restore from redo entry
-            apply_undo_entry(&entry, &mut chunk_query, &mut surface_query);
-        }
-    }
-}
-
-fn apply_undo_entry(
-    entry: &TerrainUndoEntry,
-    chunk_query: &mut Query<&mut TerrainChunkData>,
-    surface_query: &mut Query<(Entity, &mut PaintableSurfaceData)>,
-) {
-    for (cx, cz, heights) in &entry.chunk_snapshots {
-        for mut chunk in chunk_query.iter_mut() {
-            if chunk.chunk_x == *cx && chunk.chunk_z == *cz {
                 chunk.base_heights = heights.clone();
                 chunk.dirty = true;
             }
         }
     }
     for (entity, masks) in &entry.layer_mask_snapshots {
-        if let Ok((_, mut surface)) = surface_query.get_mut(*entity) {
+        if let Some(mut surface) = world.get_mut::<PaintableSurfaceData>(*entity) {
             for (i, mask) in masks.iter().enumerate() {
                 if let Some(layer) = surface.layers.get_mut(i) {
                     layer.mask = mask.clone();

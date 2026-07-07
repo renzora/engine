@@ -614,6 +614,7 @@ impl Plugin for DockPlugin {
             .init_resource::<FloatDrag>()
             .init_resource::<GlobalCursor>()
             .init_resource::<FocusPanelRequest>()
+            .init_resource::<FocusedPanel>()
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
             .init_resource::<BottomSnapRequest>()
@@ -656,6 +657,7 @@ impl Plugin for DockPlugin {
                 Update,
                 (
                     add_panel_click,
+                    track_focused_panel,
                     tab_strip_wheel,
                     apply_dock_style,
                     float_window_controls,
@@ -856,6 +858,15 @@ pub struct GlobalCursor {
 /// recolor and the right pane shows). Consumed (reset to `None`) each frame.
 #[derive(Resource, Default)]
 pub struct FocusPanelRequest(pub Option<String>);
+
+/// Id of the dock panel the user last interacted with (clicked into, switched
+/// to, or programmatically focused). Distinct from "visible" — several leaves
+/// are visible at once, but only one has focus. Consumers use this to route
+/// focus-sensitive behaviour (e.g. undo/redo picking the active document's
+/// stack). `None` until the first interaction, letting consumers fall back to
+/// another signal (like the active document tab).
+#[derive(Resource, Default)]
+pub struct FocusedPanel(pub Option<String>);
 
 // ── Components ───────────────────────────────────────────────────────────────
 
@@ -3038,6 +3049,31 @@ fn rebuild_area(
     }
 }
 
+/// Track which panel the user last clicked into as [`FocusedPanel`]. A left
+/// press over a leaf makes that leaf's visible panel the focused one. Panel
+/// content nodes block picking (`FocusPolicy::Block`), so leaf `Interaction`
+/// is unreliable here — we test the leaf's own `RelativeCursorPosition`, which
+/// is true whenever the cursor is anywhere inside that leaf. Tab switches and
+/// programmatic focus update [`FocusedPanel`] separately (see
+/// [`apply_tab_switch`] / [`apply_focus_request`]).
+fn track_focused_panel(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut focused: ResMut<FocusedPanel>,
+    leaves: Query<(&DockLeaf, &bevy::ui::RelativeCursorPosition)>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) {
+        return;
+    }
+    for (leaf, rcp) in &leaves {
+        if rcp.cursor_over {
+            if focused.0.as_deref() != Some(leaf.active.as_str()) {
+                focused.0 = Some(leaf.active.clone());
+            }
+            return;
+        }
+    }
+}
+
 /// Turn a [`FocusPanelRequest`] into a pending tab switch: locate the leaf that
 /// holds the requested panel and, if it isn't already the active tab, queue the
 /// same in-place switch a click would. Runs just before [`apply_tab_switch`] so
@@ -3045,6 +3081,7 @@ fn rebuild_area(
 fn apply_focus_request(
     mut req: ResMut<FocusPanelRequest>,
     mut pending: ResMut<PendingSwitch>,
+    mut focused: ResMut<FocusedPanel>,
     leaves: Query<(Entity, &DockLeaf)>,
 ) {
     let Some(id) = req.0.take() else {
@@ -3053,8 +3090,11 @@ fn apply_focus_request(
     for (entity, leaf) in &leaves {
         if leaf.tabs.iter().any(|t| t == &id) {
             if leaf.active != id {
-                pending.0 = Some((entity, id));
+                pending.0 = Some((entity, id.clone()));
             }
+            // Programmatic focus counts as focusing the panel even when it's
+            // already the active tab (no switch queued).
+            focused.0 = Some(id);
             return;
         }
     }
@@ -3066,6 +3106,7 @@ fn apply_tab_switch(
     mut pending: ResMut<PendingSwitch>,
     mut dock: ResMut<Dock>,
     mut wins: ResMut<DockWindows>,
+    mut focused: ResMut<FocusedPanel>,
     tabs: Query<(Entity, &DockTab)>,
     mut leaves: Query<&mut DockLeaf>,
     mut colors: Query<&mut TextColor>,
@@ -3073,6 +3114,8 @@ fn apply_tab_switch(
     let Some((leaf, id)) = pending.0.take() else {
         return;
     };
+    // Switching to a tab focuses it.
+    focused.0 = Some(id.clone());
     if let Ok(ld) = leaves.get(leaf) {
         area_tree_mut(ld.area, &mut dock, &mut wins).set_active_tab(&id);
     }

@@ -16,7 +16,7 @@ pub use renzora::{
 
 /// Visual scripting graph stored on an entity.
 /// Serializes into scene RON as a regular component.
-#[derive(Component, Clone, Debug, Serialize, Deserialize, Reflect)]
+#[derive(Component, Clone, Debug, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component, Default)]
 pub struct BlueprintGraph {
     pub nodes: Vec<BlueprintNode>,

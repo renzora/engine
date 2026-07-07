@@ -1417,7 +1417,7 @@ pub struct BlueprintNodeDef {
 }
 
 /// A connection between two pins in a graph.
-#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct BlueprintConnection {
     pub from_node: NodeId,
     pub from_pin: String,
@@ -1426,7 +1426,7 @@ pub struct BlueprintConnection {
 }
 
 /// A node instance in a graph.
-#[derive(Clone, Debug, Serialize, Deserialize, Reflect)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct BlueprintNode {
     pub id: NodeId,
     pub node_type: String,

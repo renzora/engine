@@ -54,6 +54,11 @@ pub struct UndoStacks {
 struct ContextStack {
     undo: VecDeque<Box<dyn UndoCommand>>,
     redo: VecDeque<Box<dyn UndoCommand>>,
+    /// When set, the next `record` will NOT merge into the back entry — it
+    /// starts a fresh one instead. This is how a gesture boundary (a mouse
+    /// release, a text-field commit) stops a *later* edit of the same field from
+    /// folding into the earlier one. Reset to `false` on every push.
+    sealed_back: bool,
 }
 
 const MAX_DEPTH: usize = 500;
@@ -110,13 +115,17 @@ pub fn record(world: &mut World, context: UndoContext, cmd: Box<dyn UndoCommand>
     let is_scene = matches!(context, UndoContext::Scene);
     world.resource_scope(|_w, mut stacks: Mut<UndoStacks>| {
         let stack = stacks.stacks.entry(context).or_default();
-        if let Some(back) = stack.undo.back_mut() {
-            if back.merge(cmd.as_ref()) {
-                stack.redo.clear();
-                return;
+        // A sealed back entry is a committed gesture — never merge into it.
+        if !stack.sealed_back {
+            if let Some(back) = stack.undo.back_mut() {
+                if back.merge(cmd.as_ref()) {
+                    stack.redo.clear();
+                    return;
+                }
             }
         }
         stack.undo.push_back(cmd);
+        stack.sealed_back = false;
         stack.redo.clear();
         while stack.undo.len() > MAX_DEPTH {
             stack.undo.pop_front();
@@ -125,6 +134,30 @@ pub fn record(world: &mut World, context: UndoContext, cmd: Box<dyn UndoCommand>
     if is_scene {
         mark_active_scene_tab_modified(world);
     }
+}
+
+/// Seal the back entry of `context` so the next `record` starts a fresh undo
+/// step instead of merging. Call this at a gesture boundary — mouse release,
+/// text-field commit — so two separate edits of the same field (e.g. scrub a
+/// value, release, scrub it again) become two undo steps rather than one.
+/// A no-op if the stack is empty or already sealed.
+pub fn seal(world: &mut World, context: &UndoContext) {
+    if let Some(mut stacks) = world.get_resource_mut::<UndoStacks>() {
+        if let Some(stack) = stacks.stacks.get_mut(context) {
+            stack.sealed_back = true;
+        }
+    }
+}
+
+/// The context Ctrl+Z currently targets. Panels that record edits for "the
+/// thing the user is looking at" (the inspector, most tools) should push into
+/// this rather than hard-coding `Scene`, so their edits land on the focused
+/// document's stack. `route_undo_context` keeps it in sync with the UI.
+pub fn active_context(world: &World) -> UndoContext {
+    world
+        .get_resource::<UndoStacks>()
+        .map(|s| s.active.clone())
+        .unwrap_or_default()
 }
 
 /// Flip the active document tab's `is_modified` flag so the Save button
@@ -166,7 +199,11 @@ impl Plugin for UndoPlugin {
             // RenzoraEditorPlugin also initialises it, but we can't rely on
             // that running first.
             .init_resource::<renzora_editor_framework::EditorActionHooks>()
-            .add_systems(Update, (shortcut_input, handle_undo, handle_redo).chain());
+            .add_systems(Update, route_undo_context)
+            .add_systems(Update, (shortcut_input, handle_undo, handle_redo).chain())
+            // Seal after all recording systems (which run in Update) so the
+            // gesture that just ended can't merge with the next one.
+            .add_systems(PostUpdate, seal_gesture);
 
         // Register undo/redo as late-bound hooks so the editor framework's
         // title bar / menu handlers can invoke them without taking a
@@ -193,6 +230,64 @@ fn can_redo_active(world: &World) -> bool {
         .get_resource::<UndoStacks>()
         .map(|s| s.can_redo(&s.active))
         .unwrap_or(false)
+}
+
+/// Seal the active undo stack at gesture boundaries so consecutive edits become
+/// distinct undo steps. A left-mouse release ends a scrub/slider/paint gesture;
+/// Enter/Escape commits or cancels a text or numeric field edit. Recording
+/// systems run in `Update`, so this runs in `PostUpdate` — after the frame's
+/// final edit is recorded — and seals whatever stack that edit landed on. This
+/// is why scrubbing a value, releasing, then scrubbing it again yields two undo
+/// steps instead of one merged step. Harmless when there's nothing to seal.
+fn seal_gesture(world: &mut World) {
+    let ended = world
+        .get_resource::<ButtonInput<MouseButton>>()
+        .is_some_and(|m| m.just_released(MouseButton::Left))
+        || world.get_resource::<ButtonInput<KeyCode>>().is_some_and(|k| {
+            k.just_pressed(KeyCode::Enter)
+                || k.just_pressed(KeyCode::NumpadEnter)
+                || k.just_pressed(KeyCode::Escape)
+        });
+    if !ended {
+        return;
+    }
+    let ctx = world.resource::<UndoStacks>().active.clone();
+    seal(world, &ctx);
+}
+
+/// Keep `UndoStacks::active` pointed at the focused document's stack so Ctrl+Z
+/// (and any panel recording into [`active_context`]) targets the right history.
+///
+/// The active document tab ([`EditorContext`]) is the authoritative source: an
+/// asset tab (material, blueprint, …) edits its own file and gets its own
+/// per-path stack; a scene tab shares the single `Scene` stack. [`FocusedPanel`]
+/// refines this — a focused viewport is unambiguously scene editing, so it pins
+/// `Scene` even if an asset tab is technically active. Because the routing keys
+/// off `EditorContext`, a stale focus id can never send edits to the wrong
+/// stack.
+fn route_undo_context(
+    editor_ctx: Option<Res<renzora_ui::EditorContext>>,
+    focused: Option<Res<renzora_ember::dock::FocusedPanel>>,
+    mut stacks: ResMut<UndoStacks>,
+) {
+    use renzora_ui::{DocTabKind, EditorContext};
+    let from_ctx = match editor_ctx.as_deref() {
+        Some(EditorContext::Asset { path, kind }) => match kind {
+            DocTabKind::Material => UndoContext::MaterialGraph(path.clone()),
+            DocTabKind::Blueprint => UndoContext::Blueprint(path.clone()),
+            // Particle/script/shader asset tabs still get an isolated stack so
+            // their edits never mix into the scene history.
+            _ => UndoContext::Other(path.clone()),
+        },
+        _ => UndoContext::Scene,
+    };
+    let desired = match focused.as_ref().and_then(|f| f.0.as_deref()) {
+        Some(p) if p.starts_with("viewport") => UndoContext::Scene,
+        _ => from_ctx,
+    };
+    if stacks.active != desired {
+        stacks.active = desired;
+    }
 }
 
 fn shortcut_input(
@@ -641,6 +736,54 @@ impl UndoCommand for CompoundCmd {
     }
 }
 
+/// Snapshot-based undo for editors where expressing an edit as a fine-grained
+/// command is impractical — heightmap sculpting, tilemap painting, particle or
+/// animation asset edits. Capture a `before` blob when the gesture starts and
+/// an `after` blob when it ends, then `record` this (the mutation already
+/// happened live during the gesture). `restore` writes a blob back into the
+/// world; `undo` restores `before`, redo (`execute`) restores `after`.
+///
+/// `S` is whatever cheaply-cloned payload the editor needs (e.g. a `Vec` of
+/// per-chunk heightmaps). Keep it as small as the edit requires.
+pub struct SnapshotCmd<S: Clone + Send + Sync + 'static> {
+    pub label: String,
+    pub before: S,
+    pub after: S,
+    pub restore: fn(&mut World, &S),
+    /// When two consecutive snapshots share a `Some` key — and no seal separates
+    /// them — they coalesce into one undo step: the earlier `before` is kept and
+    /// the later `after` replaces this one's. This is how a change-observer that
+    /// snapshots every frame during a scrub collapses into a single step (the
+    /// gesture seal then splits separate scrubs). `None` never merges.
+    pub merge_key: Option<String>,
+}
+
+impl<S: Clone + Send + Sync + 'static> UndoCommand for SnapshotCmd<S> {
+    fn label(&self) -> &str {
+        &self.label
+    }
+    fn execute(&mut self, world: &mut World) {
+        (self.restore)(world, &self.after);
+    }
+    fn undo(&mut self, world: &mut World) {
+        (self.restore)(world, &self.before);
+    }
+    fn merge(&mut self, other: &dyn UndoCommand) -> bool {
+        let Some(key) = self.merge_key.as_deref() else {
+            return false;
+        };
+        let any: &dyn Any = other;
+        let Some(o) = any.downcast_ref::<SnapshotCmd<S>>() else {
+            return false;
+        };
+        if o.merge_key.as_deref() != Some(key) {
+            return false;
+        }
+        self.after = o.after.clone();
+        true
+    }
+}
+
 pub struct GroupAsChildrenCmd {
     pub parent: Entity,
     pub group_name: String,
@@ -690,6 +833,88 @@ impl UndoCommand for GroupAsChildrenCmd {
                 sel.clear();
             }
         }
+    }
+}
+
+/// Faithful "delete these entities" with undo. Snapshots each entity's whole
+/// subtree (all components + children) to a BSN string before despawning, so
+/// Ctrl+Z restores lights, cameras, imported models, 2D nodes and
+/// parents-with-children — not just the default-mesh primitives the older
+/// [`DeleteShapesCmd`] handled. Prefer this over a bare `despawn` anywhere the
+/// editor deletes scene entities. Falls back to a plain despawn (no undo entry)
+/// only if the snapshot can't be built.
+pub fn delete_entities_with_undo(world: &mut World, entities: &[Entity]) {
+    let entities: Vec<Entity> = entities
+        .iter()
+        .copied()
+        .filter(|e| world.get_entity(*e).is_ok())
+        .collect();
+    if entities.is_empty() {
+        return;
+    }
+    let Some(snapshot) = renzora_engine::scene_io::snapshot_entity_subtrees(world, &entities) else {
+        for e in &entities {
+            if let Ok(ent) = world.get_entity_mut(*e) {
+                ent.despawn();
+            }
+        }
+        return;
+    };
+    let ctx = active_context(world);
+    execute(
+        world,
+        ctx.clone(),
+        Box::new(DeleteEntitiesCmd {
+            snapshot,
+            orig_roots: entities.clone(),
+            live_roots: entities,
+        }),
+    );
+    seal(world, &ctx);
+}
+
+/// Undo command for [`delete_entities_with_undo`]. `execute` (initial + redo)
+/// despawns the live roots; `undo` respawns them from the snapshot and tracks the
+/// new ids for the next redo (write-to-world assigns fresh ids each restore).
+pub struct DeleteEntitiesCmd {
+    snapshot: String,
+    /// Serialized (pre-delete) root ids — constant; they key the restore map.
+    orig_roots: Vec<Entity>,
+    /// Current live roots to despawn on execute (refreshed on each restore).
+    live_roots: Vec<Entity>,
+}
+
+impl UndoCommand for DeleteEntitiesCmd {
+    fn label(&self) -> &str {
+        "Delete"
+    }
+    fn execute(&mut self, world: &mut World) {
+        for e in &self.live_roots {
+            if let Ok(ent) = world.get_entity_mut(*e) {
+                ent.despawn();
+            }
+        }
+        // Drop any now-dead entries from the selection.
+        if let Some(sel) = world.get_resource::<EditorSelection>() {
+            let live: Vec<Entity> = sel
+                .get_all()
+                .into_iter()
+                .filter(|e| world.get_entity(*e).is_ok())
+                .collect();
+            sel.set_multiple(live);
+        }
+    }
+    fn undo(&mut self, world: &mut World) {
+        let map = renzora_engine::scene_io::spawn_entities_from_snapshot(world, &self.snapshot);
+        let new_roots: Vec<Entity> = self
+            .orig_roots
+            .iter()
+            .filter_map(|r| map.get(r).copied())
+            .collect();
+        if let Some(sel) = world.get_resource::<EditorSelection>() {
+            sel.set_multiple(new_roots.clone());
+        }
+        self.live_roots = new_roots;
     }
 }
 
@@ -1077,6 +1302,86 @@ mod tests {
         // first (delta 5) rather than stacking as two separate entries.
         undo_once(&mut w);
         assert_eq!(counter(&w), -5);
+    }
+
+    #[test]
+    fn seal_prevents_merge_of_next_edit() {
+        let mut w = world();
+        // Two mergeable pushes normally collapse (see above). A seal between
+        // them marks a gesture boundary, so the second must NOT merge.
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 1));
+        seal(&mut w, &ctx());
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 4));
+
+        let (undo, _redo) = w.resource::<UndoStacks>().labels(&ctx());
+        assert_eq!(undo, vec!["drag", "drag"], "seal splits the two gestures");
+    }
+
+    #[test]
+    fn push_after_seal_resets_the_seal() {
+        let mut w = world();
+        // A seal only blocks the *next* push; the one after should merge again.
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 1));
+        seal(&mut w, &ctx());
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 4)); // new entry (sealed)
+        record(&mut w, ctx(), CounterCmd::mergeable("drag", 8)); // merges into it
+        let (undo, _redo) = w.resource::<UndoStacks>().labels(&ctx());
+        assert_eq!(undo, vec!["drag", "drag"], "seal is consumed by one push");
+    }
+
+    #[test]
+    fn snapshot_cmd_restores_before_then_after() {
+        let mut w = world();
+        fn restore(w: &mut World, v: &i32) {
+            w.resource_mut::<Log>().counter = *v;
+        }
+        // Simulate a gesture that already mutated state to 99; record before/after.
+        w.resource_mut::<Log>().counter = 99;
+        record(
+            &mut w,
+            ctx(),
+            Box::new(SnapshotCmd {
+                label: "snap".to_string(),
+                before: 10_i32,
+                after: 99_i32,
+                restore,
+                merge_key: None,
+            }),
+        );
+        w.resource_mut::<UndoStacks>().active = ctx();
+
+        undo_once(&mut w);
+        assert_eq!(counter(&w), 10, "undo restores the before blob");
+        redo_once(&mut w);
+        assert_eq!(counter(&w), 99, "redo restores the after blob");
+    }
+
+    #[test]
+    fn snapshot_cmd_merges_by_key_keeping_first_before() {
+        let mut w = world();
+        fn restore(w: &mut World, v: &i32) {
+            w.resource_mut::<Log>().counter = *v;
+        }
+        let mk = |before: i32, after: i32| -> Box<dyn UndoCommand> {
+            Box::new(SnapshotCmd {
+                label: "graph".to_string(),
+                before,
+                after,
+                restore,
+                merge_key: Some("graph".to_string()),
+            })
+        };
+        // Simulate a scrub: three per-frame snapshots with the same key collapse
+        // into one entry spanning the first `before` (0) to the last `after` (3).
+        record(&mut w, ctx(), mk(0, 1));
+        record(&mut w, ctx(), mk(1, 2));
+        record(&mut w, ctx(), mk(2, 3));
+        let (undo, _redo) = w.resource::<UndoStacks>().labels(&ctx());
+        assert_eq!(undo, vec!["graph"], "three keyed snapshots merge into one");
+        w.resource_mut::<UndoStacks>().active = ctx();
+        w.resource_mut::<Log>().counter = 3; // state is at the scrub's end
+        undo_once(&mut w);
+        assert_eq!(counter(&w), 0, "undo of the merged entry returns to first before");
     }
 
     #[test]

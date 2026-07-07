@@ -13,6 +13,7 @@ renzora_hanabi = { path = "../renzora_hanabi" }
 # For the relocated HanabiEffect inspector entry (moved here from
 # renzora_hanabi's editor feature when it went lean): asset_drop_field.
 renzora_inspector = { path = "../renzora_inspector" }
+renzora_undo = { path = "../renzora_undo" }
 ron = "0.8"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

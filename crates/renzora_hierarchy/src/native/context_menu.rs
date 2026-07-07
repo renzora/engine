@@ -10,7 +10,7 @@ use renzora_editor_framework::{EditorSelection, EntityLabelColor};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
 use renzora_ember::widgets::{menu_item, menu_item_styled, menu_sep, screen_menu, MenuAction};
-use renzora_undo::{execute, DeleteShapesCmd, DeletedShape, GroupAsChildrenCmd, UndoContext};
+use renzora_undo::{execute, GroupAsChildrenCmd, UndoContext};
 
 use crate::LABEL_COLORS;
 
@@ -299,35 +299,9 @@ fn instance_scene(world: &mut World, parent: Entity) {
     }
 }
 
-/// Delete entities — shapes go through an undoable `DeleteShapesCmd`, everything
-/// else is despawned directly (mirrors the egui delete).
+/// Delete entities with faithful undo — snapshots each entity's whole subtree
+/// (any components + children) so Ctrl+Z restores lights, cameras, imported
+/// models, 2D nodes and groups, not just default-mesh primitives.
 fn delete_entities(world: &mut World, entities: &[Entity]) {
-    let mut items = Vec::new();
-    let mut other = Vec::new();
-    for entity in entities {
-        let shape = world.get_entity(*entity).ok().and_then(|e| {
-            Some(DeletedShape {
-                entity: *entity,
-                shape_id: e.get::<renzora::core::MeshPrimitive>()?.0.clone(),
-                name: e.get::<Name>()?.as_str().to_string(),
-                transform: *e.get::<Transform>()?,
-                color: e.get::<renzora::core::MeshColor>()?.0,
-            })
-        });
-        match shape {
-            Some(item) => items.push(item),
-            None => other.push(*entity),
-        }
-    }
-    for e in other {
-        if let Ok(em) = world.get_entity_mut(e) {
-            em.despawn();
-        }
-    }
-    if let Some(sel) = world.get_resource::<EditorSelection>() {
-        sel.clear();
-    }
-    if !items.is_empty() {
-        execute(world, UndoContext::Scene, Box::new(DeleteShapesCmd { items }));
-    }
+    renzora_undo::delete_entities_with_undo(world, entities);
 }

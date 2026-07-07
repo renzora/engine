@@ -585,6 +585,124 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
     }
 }
 
+// ============================================================================
+// Entity-subtree snapshot + faithful delete undo
+// ============================================================================
+
+/// Serialize the given root entities **and their descendants** to a BSN string —
+/// a faithful, all-components, with-hierarchy snapshot used to undo a delete.
+/// Unlike [`save_prefab_source`] this keeps the roots themselves and their
+/// `ChildOf` links (so restore puts each entity back under its original parent),
+/// and stops descending into `MeshInstanceData` subtrees (their runtime gltf
+/// children are rebuilt by `rehydrate_mesh_instances` on restore). Returns `None`
+/// if nothing serializable was captured.
+pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<String> {
+    let type_registry = world.resource::<AppTypeRegistry>().clone();
+
+    let mut all: Vec<Entity> = Vec::new();
+    let mut seen: BTreeSet<Entity> = BTreeSet::new();
+    let mut queue: Vec<Entity> = roots.to_vec();
+    while let Some(e) = queue.pop() {
+        if !seen.insert(e) {
+            continue;
+        }
+        if world.get_entity(e).is_err() {
+            continue;
+        }
+        all.push(e);
+        // Don't descend into gltf-owned runtime subtrees (rehydrated on restore).
+        if world.get::<MeshInstanceData>(e).is_some() {
+            continue;
+        }
+        if let Some(kids) = world.get::<Children>(e) {
+            queue.extend(kids.iter());
+        }
+    }
+    if all.is_empty() {
+        return None;
+    }
+
+    let mut scene = DynamicSceneBuilder::from_world(world)
+        .deny_all_resources()
+        .deny_render_3d_materials()
+        .deny_terrain_material()
+        .deny_component::<bevy::ui::UiTargetCamera>()
+        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+        .deny_component::<ViewVisibility>()
+        // Children are rebuilt from the ChildOf links we DO keep.
+        .deny_component::<Children>()
+        .deny_component::<GlobalTransform>()
+        .deny_component::<bevy::transform::components::TransformTreeChanged>()
+        .deny_component::<bevy::camera::primitives::Aabb>()
+        .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
+        .deny_animation_state()
+        .deny_physics_components()
+        .extract_entities(all.into_iter())
+        .build();
+
+    // Drop editor-only / non-serializable components (mirror save_prefab_source),
+    // but KEEP ChildOf so the entity restores under its original parent.
+    for entity in &mut scene.entities {
+        entity.components.retain(|component| {
+            let type_name = component.reflect_type_path();
+            if type_name.starts_with("bevy_mod_outline::") {
+                return false;
+            }
+            if type_name.starts_with("avian3d::") {
+                return false;
+            }
+            let registry = type_registry.read();
+            let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
+                component.as_partial_reflect(),
+                &registry,
+            );
+            ron::ser::to_string(&serializer).is_ok()
+        });
+    }
+
+    let registry = type_registry.read();
+    BsnSerializer.serialize(&scene, &registry).ok()
+}
+
+/// Respawn entities from a [`snapshot_entity_subtrees`] string, returning the
+/// old→new entity id map (so a delete-undo command can find the restored roots).
+pub fn spawn_entities_from_snapshot(
+    world: &mut World,
+    ron: &str,
+) -> bevy::ecs::entity::EntityHashMap<Entity> {
+    let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
+    if ron.trim().is_empty() {
+        return entity_map;
+    }
+    let (scene, _skipped) = match deserialize_scene_lossy(world, ron) {
+        Ok(pair) => pair,
+        Err(e) => {
+            error!("[undo] failed to deserialize entity snapshot: {}", e);
+            return entity_map;
+        }
+    };
+    if let Err(e) = scene.write_to_world(world, &mut entity_map) {
+        error!("[undo] failed to restore entity snapshot: {}", e);
+        return entity_map;
+    }
+    // Re-insert ChildOf so hierarchy hooks fire (same as load_scene_from_string).
+    let children_with_parents: Vec<(Entity, Entity)> = entity_map
+        .values()
+        .filter_map(|&entity| {
+            world
+                .get_entity(entity)
+                .ok()?
+                .get::<ChildOf>()
+                .map(|c| (entity, c.parent()))
+        })
+        .collect();
+    for (child, parent) in children_with_parents {
+        world.entity_mut(child).remove::<ChildOf>();
+        world.entity_mut(child).insert(ChildOf(parent));
+    }
+    entity_map
+}
+
 /// Save the current project's main scene.
 pub fn save_current_scene(world: &mut World) {
     let Some(project) = world.get_resource::<CurrentProject>() else {

@@ -43,15 +43,89 @@ impl Plugin for NativeBlueprintGraph {
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora_ember::dock::panel_active("blueprint_graph")),
         );
+        app.init_resource::<BpUndoShadow>();
         app.add_systems(
             Update,
-            (bp_graph_load, bp_graph_sync)
+            (bp_graph_load, bp_graph_sync, blueprint_undo_observer)
                 .chain()
                 .run_if(in_state(SplashState::Editor))
                 .run_if(any_with_component::<BpGraph>)
                 .run_if(renzora_ember::dock::panel_active("blueprint_graph")),
         );
     }
+}
+
+// ── Undo integration ─────────────────────────────────────────────────────────
+
+/// Shadow of the graph the undo observer last saw, plus the identity of the
+/// document it belongs to. Switching entity/file reseeds instead of recording.
+#[derive(Resource, Default)]
+struct BpUndoShadow {
+    doc_id: String,
+    graph: Option<BlueprintGraph>,
+}
+
+/// Cheap identity of the blueprint currently in the editor (scene entity or file).
+fn bp_doc_id(world: &World) -> String {
+    let s = world.get_resource::<BlueprintEditorState>();
+    let (entity, path) = s
+        .map(|s| (s.editing_entity, s.editing_file_path.clone()))
+        .unwrap_or((None, None));
+    format!("{:?}|{:?}|{}", entity, path, is_asset(world))
+}
+
+/// Restore a snapshotted graph — the `restore` fn for the blueprint `SnapshotCmd`.
+/// Writes through the same dual-mode path as live edits (`bp_apply_graph`, which
+/// persists in asset mode) and keeps the observer's shadow in sync.
+fn restore_blueprint_graph(world: &mut World, g: &BlueprintGraph) {
+    let cloned = g.clone();
+    bp_apply_graph(world, move |dst| *dst = cloned);
+    if let Some(mut sh) = world.get_resource_mut::<BpUndoShadow>() {
+        sh.graph = Some(g.clone());
+    }
+}
+
+/// Watch the active blueprint graph and record a coarse snapshot whenever it
+/// changes, covering every edit path (widget sync, node adds, auto-layout, pin
+/// edits) from one place. Per-frame scrub spam collapses via the merge key; the
+/// global gesture seal splits separate gestures.
+fn blueprint_undo_observer(world: &mut World) {
+    let Some(cur) = with_active_graph(world, |g| g.clone()) else {
+        // No graph active (nothing selected) — drop the shadow so re-entering a
+        // graph reseeds rather than diffing against a stale one.
+        if let Some(mut sh) = world.get_resource_mut::<BpUndoShadow>() {
+            sh.graph = None;
+        }
+        return;
+    };
+    let doc_id = bp_doc_id(world);
+    let (prev_id, prev_graph) = {
+        let sh = world.resource::<BpUndoShadow>();
+        (sh.doc_id.clone(), sh.graph.clone())
+    };
+    if prev_id != doc_id || prev_graph.is_none() {
+        let mut sh = world.resource_mut::<BpUndoShadow>();
+        sh.doc_id = doc_id;
+        sh.graph = Some(cur);
+        return;
+    }
+    let before = prev_graph.unwrap();
+    if before == cur {
+        return;
+    }
+    let ctx = renzora_undo::active_context(world);
+    renzora_undo::record(
+        world,
+        ctx,
+        Box::new(renzora_undo::SnapshotCmd {
+            label: "Blueprint".to_string(),
+            before,
+            after: cur.clone(),
+            restore: restore_blueprint_graph,
+            merge_key: Some("blueprint-graph".to_string()),
+        }),
+    );
+    world.resource_mut::<BpUndoShadow>().graph = Some(cur);
 }
 
 #[derive(Component)]

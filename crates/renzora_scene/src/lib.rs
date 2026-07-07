@@ -66,6 +66,14 @@ pub(crate) fn despawn_scene_entities(world: &mut World) -> Vec<Entity> {
             world.despawn(entity);
         }
     }
+    // A wholesale scene teardown invalidates every entity id stored in the
+    // Scene undo history (new/switch/load/simulate-restore all funnel through
+    // here), so drop that stack — undo must not reach across a scene swap into
+    // dangling entities. Asset-context stacks (material/blueprint) are untouched;
+    // the project-switch teardown clears those explicitly.
+    if let Some(mut undo) = world.get_resource_mut::<renzora_undo::UndoStacks>() {
+        undo.clear(&renzora_undo::UndoContext::Scene);
+    }
     to_despawn
 }
 
@@ -141,6 +149,12 @@ fn on_restore_simulate_snapshot(
 /// case it's a no-op since nothing's spawned yet).
 fn teardown_for_project_switch(world: &mut World) {
     let count = despawn_scene_entities(world).len();
+    // Switching projects closes every document, so wipe ALL undo stacks
+    // (material/blueprint/particle contexts too) — not just Scene, which
+    // `despawn_scene_entities` already cleared.
+    if let Some(mut undo) = world.get_resource_mut::<renzora_undo::UndoStacks>() {
+        undo.clear_all();
+    }
     if let Some(mut buffers) = world.get_resource_mut::<SceneTabBuffers>() {
         buffers.buffers.clear();
     }
