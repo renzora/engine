@@ -36,10 +36,13 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
   timeline, sprite resize/rotate handles, pixel-perfect nearest filtering
 - ⬜ **9-slice sprites** (corner-preserving stretch — needed for panels,
   speech bubbles, platforms)
-- ⬜ Named sprite animations: define "run"/"idle"/"jump" clips (frame ranges +
-  fps + loop) on the sprite, `play_animation("run")` from scripts, with
-  events on frames (footstep sounds)
-- ⬜ Animated-sprite preview panel (play clips without entering play mode)
+- ✅ Named sprite animations: built on the property timeline — the **Sprite Anim**
+  panel is a frame picker that writes `.anim` clips (`SpriteSheet.frame` track +
+  a `SpriteImages.active` track for multi-sheet characters) onto the entity's
+  `AnimatorComponent`, so each movement is a first-class timeline clip.
+  `play_animation("run")` drives them (unified with skeletal); `SpriteImages`
+  allows several sheets per character. See `docs/r1-alpha7/editor/sprite-animation.md`
+- ✅ Animated-sprite preview — via the timeline scrub / play (clips are timeline clips)
 - ⬜ Aseprite import (`.ase`/`.aseprite` → sheet + tagged clips)
 - ⬜ 2D skeletal animation (bones + mesh deform), or at minimum cutout
   animation with pivots — plus Spine/spritesheet-rig import
@@ -111,7 +114,7 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
 
 - ⬜ Tilemap API: `get_tile(x,y)`, `set_tile(x,y,id)`, `erase_tile`,
   `tile_data(x,y)` (custom data), `world_to_cell`/`cell_to_world`
-- ⬜ Sprite API: `play_animation`, `set_frame`, `flip`, `tint`
+- 🟡 Sprite API: `play_animation` ✅, `set_sprite_frame` ✅; `flip`, `tint` ⬜
 - ⬜ Physics 2D API: `move_and_slide`, `is_on_floor`, `raycast_2d`
 - ⬜ Camera 2D API: `shake`, `follow`, `set_limits`, `zoom_to`
 - ⬜ Input helpers: virtual axes/actions with buffering (jump buffering,
@@ -140,5 +143,5 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
    genres; everything above it is decoration until movement feels right.
 2. **Autotiling + tile collision authoring** — turns the tile painter from a
    sprite stamper into a level editor.
-3. **Named sprite animations + events** — the moment characters can play
-   clips with frame events, the runtime loop of a real 2D game closes.
+3. ~~**Named sprite animations + events**~~ ✅ Done — `AnimatedSprite` + the
+   Sprite Anim panel; `play_animation` and frame events close the runtime loop.

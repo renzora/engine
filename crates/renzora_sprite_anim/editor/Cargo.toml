@@ -1,0 +1,16 @@
+[package]
+name = "renzora_sprite_anim_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only half of renzora_sprite_anim: the Sprite Anim panel — a frame picker that bridges into the property timeline. Drop sheets onto a 2D sprite, pick cells, and Create Clip writes an .anim (SpriteSheet.frame + SpriteImages.active tracks) onto the entity's AnimatorComponent, so the clip is a first-class timeline clip. Registered via renzora::add!(.., Editor)."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_animation = { path = "../../renzora_animation", default-features = false }
+renzora_animation_editor = { path = "../../renzora_animation_editor" }
+renzora_ember = { path = "../../renzora_ember" }
+renzora_ui = { path = "../../renzora_ui" }
+
+[lints]
+workspace = true

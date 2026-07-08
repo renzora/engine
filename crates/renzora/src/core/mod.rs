@@ -9,9 +9,11 @@ pub mod viewport_types;
 pub mod animation; // .anim clip format + property keyframes
 pub mod components; // shared ECS components + entity-tag markers
 pub mod project_config; // project.toml model + editor preferences
+pub mod sprite_anim; // multi-sheet sprites (SpriteImages) for 2D animation
 pub use animation::*;
 pub use project_config::*;
 pub use components::*;
+pub use sprite_anim::*;
 
 use bevy::input::gamepad::{GamepadAxis, GamepadButton};
 use bevy::prelude::*;

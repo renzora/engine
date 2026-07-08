@@ -21,6 +21,7 @@ default = [
     "navmesh", "terrain", "spline", "water", "audio", "particles",
     "animation", "blueprint", "game_ui", "postfx", "sky", "solari",
     "rhai", "script_http", "physics", "render_3d", "render_2d", "tilemap",
+    "sprite_anim",
 ]
 # The 3D rendering pipeline (bevy_pbr + renzora_shader). Off = a 2D-only export
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
@@ -63,6 +64,10 @@ particles = ["dep:renzora_hanabi"]
 # 2D tilemap runtime (chunked quad-mesh renderer). Content is 2D, so a pure-3D
 # game strips it; a 2D game keeps it. Editor always builds it.
 tilemap = ["dep:renzora_tilemap"]
+# 2D named-sprite animation (AnimatedSprite clips: idle/walk/run). Runtime
+# playback + the sprite scripting API; content is 2D, so a pure-3D game strips
+# it. Editor always builds it. Backends forwarded via `lua`/`rhai` above.
+sprite_anim = ["dep:renzora_sprite_anim"]
 # `renzora_navmesh?/terrain`: enable navmesh's terrain-obstacle support only when
 # navmesh is ALSO kept (the `?` won't pull navmesh in just for terrain).
 terrain = ["dep:renzora_terrain", "renzora_engine/terrain", "renzora_navmesh?/terrain"]
@@ -138,6 +143,7 @@ renzora_audio = { path = "../renzora_audio", optional = true }
 renzora_shader = { path = "../renzora_shader", optional = true }
 renzora_navmesh = { path = "../renzora_navmesh", optional = true }
 renzora_tilemap = { path = "../renzora_tilemap", optional = true }
+renzora_sprite_anim = { path = "../renzora_sprite_anim", optional = true }
 
 # Postprocess framework + vital effects
 renzora_postprocess = { path = "../renzora_postprocess" }

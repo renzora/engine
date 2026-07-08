@@ -390,8 +390,9 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     // provides the inspector entry (same `type_id: "volumetric_fog"`)
     // backed by a Settings wrapper that routes from the
     // WorldEnvironment entity to all active cameras via EffectRouting.
+    // The sheet grid (H/V Frames, Frame) is merged into the Sprite Image
+    // section — there is no separate Sprite Sheet section.
     registry.register(sprite_image_entry());
-    registry.register(sprite_sheet_entry());
 }
 
 fn sprite_image_entry() -> InspectorEntry {
@@ -415,41 +416,167 @@ fn sprite_image_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
+            // The image control is a **dropdown** of the sheet names — never a
+            // drop slot. (Two asset drop areas on one component fight over the
+            // drop, which is why images went blank before.) Options are the
+            // `SpriteImages` list, or the lone `SpriteImagePath` for a
+            // single-image sprite. Value = selected index; as a dynamic dropdown
+            // it's animatable, so it gets a keyframe button (`field_anim_path`
+            // maps "Image" → `SpriteImages.index`).
             FieldDef {
                 name: "Image",
+                field_type: FieldType::DynamicEnum {
+                    options: |world, entity| {
+                        if let Some(imgs) = world.get::<renzora::core::SpriteImages>(entity) {
+                            imgs.images
+                                .iter()
+                                .map(|p| p.rsplit(['/', '\\']).next().unwrap_or(p).to_string())
+                                .collect()
+                        } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity) {
+                            if p.0.is_empty() {
+                                Vec::new()
+                            } else {
+                                vec![p.0.rsplit(['/', '\\']).next().unwrap_or(&p.0).to_string()]
+                            }
+                        } else {
+                            Vec::new()
+                        }
+                    },
+                },
+                get_fn: |world, entity| {
+                    if let Some(imgs) = world.get::<renzora::core::SpriteImages>(entity) {
+                        (!imgs.images.is_empty()).then(|| FieldValue::Float(imgs.index as f32))
+                    } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity) {
+                        (!p.0.is_empty()).then_some(FieldValue::Float(0.0))
+                    } else {
+                        None
+                    }
+                },
+                set_fn: |world, entity, val| {
+                    // Switching only applies to a multi-sheet list; a single
+                    // image has one option and nothing to switch.
+                    if let (FieldValue::Float(v), Some(mut s)) =
+                        (val, world.get_mut::<renzora::core::SpriteImages>(entity))
+                    {
+                        s.index = v.round().max(0.0) as u32;
+                    }
+                },
+            },
+            // The one drop area: drop a sheet here to append it to the image
+            // list (populating the Image dropdown). The first drop migrates a
+            // single `SpriteImagePath` into a `SpriteImages` list.
+            FieldDef {
+                name: "Add Sheet",
                 field_type: FieldType::Asset {
                     extensions: vec![
-                        "png".into(),
-                        "jpg".into(),
-                        "jpeg".into(),
-                        "webp".into(),
-                        "ktx2".into(),
+                        "png".into(), "jpg".into(), "jpeg".into(), "webp".into(), "ktx2".into(),
                         "rmip".into(),
                     ],
                 },
-                get_fn: |world, entity| {
-                    let path = world
-                        .get::<renzora::core::SpriteImagePath>(entity)
-                        .map(|p| {
-                            if p.0.is_empty() {
-                                None
-                            } else {
-                                Some(p.0.clone())
-                            }
-                        })
-                        .unwrap_or(None);
-                    Some(FieldValue::Asset(path))
-                },
+                // Empty prompt — write-only ("drag to add").
+                get_fn: |_world, _entity| Some(FieldValue::Asset(None)),
                 set_fn: |world, entity, val| {
-                    if let FieldValue::Asset(path) = val {
-                        let path_str = path.unwrap_or_default();
-                        // Always `insert` (replace) so the lifecycle observer
-                        // fires; in-place `Mut<>` mutation doesn't trigger
-                        // observers, which is the path that's actually wired
-                        // up to bind the texture handle.
+                    let FieldValue::Asset(Some(path)) = val else { return };
+                    if path.is_empty() {
+                        return;
+                    }
+                    if let Some(mut imgs) = world.get_mut::<renzora::core::SpriteImages>(entity) {
+                        if !imgs.images.contains(&path) {
+                            imgs.images.push(path.clone());
+                        }
+                        imgs.index = imgs.images.len().saturating_sub(1) as u32;
+                    } else {
+                        // Migrate the single SpriteImagePath into a list + append.
+                        let mut images: Vec<String> = world
+                            .get::<renzora::core::SpriteImagePath>(entity)
+                            .map(|p| p.0.clone())
+                            .filter(|s| !s.is_empty())
+                            .into_iter()
+                            .collect();
+                        if !images.contains(&path) {
+                            images.push(path);
+                        }
+                        let index = images.len().saturating_sub(1) as u32;
                         world
                             .entity_mut(entity)
-                            .insert(renzora::core::SpriteImagePath(path_str));
+                            .insert(renzora::core::SpriteImages { images, index });
+                    }
+                },
+            },
+            // Sheet grid — merged in from the old separate "Sprite Sheet"
+            // section (Godot's Sprite2D carries these too). Backed by the
+            // `SpriteSheet` component, which stays the data + the thing the
+            // renderer/timeline/tilemap use; setting any of these creates it on
+            // demand. `field_anim_path` maps their keyframes onto `SpriteSheet`.
+            FieldDef {
+                name: "H Frames",
+                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
+                get_fn: |world, entity| {
+                    Some(FieldValue::Float(
+                        world.get::<renzora::core::SpriteSheet>(entity).map(|s| s.hframes).unwrap_or(1)
+                            as f32,
+                    ))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        let h = (v.round().max(1.0)) as u32;
+                        if let Some(mut s) = world.get_mut::<renzora::core::SpriteSheet>(entity) {
+                            s.hframes = h;
+                        } else {
+                            world.entity_mut(entity).insert(renzora::core::SpriteSheet {
+                                hframes: h,
+                                vframes: 1,
+                                frame: 0,
+                            });
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "V Frames",
+                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
+                get_fn: |world, entity| {
+                    Some(FieldValue::Float(
+                        world.get::<renzora::core::SpriteSheet>(entity).map(|s| s.vframes).unwrap_or(1)
+                            as f32,
+                    ))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        let vf = (v.round().max(1.0)) as u32;
+                        if let Some(mut s) = world.get_mut::<renzora::core::SpriteSheet>(entity) {
+                            s.vframes = vf;
+                        } else {
+                            world.entity_mut(entity).insert(renzora::core::SpriteSheet {
+                                hframes: 1,
+                                vframes: vf,
+                                frame: 0,
+                            });
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Frame",
+                field_type: FieldType::Int { min: 0.0, max: 1_048_576.0 },
+                get_fn: |world, entity| {
+                    Some(FieldValue::Float(
+                        world.get::<renzora::core::SpriteSheet>(entity).map(|s| s.frame).unwrap_or(0)
+                            as f32,
+                    ))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        let f = (v.round().max(0.0)) as u32;
+                        if let Some(mut s) = world.get_mut::<renzora::core::SpriteSheet>(entity) {
+                            s.frame = f;
+                        } else {
+                            world.entity_mut(entity).insert(renzora::core::SpriteSheet {
+                                hframes: 1,
+                                vframes: 1,
+                                frame: f,
+                            });
+                        }
                     }
                 },
             },
@@ -493,87 +620,6 @@ fn sprite_image_entry() -> InspectorEntry {
 /// texture into an hframes × vframes grid and show one cell. Added via the
 /// Add Component overlay; the `frame` field is the one users animate from the
 /// animation panel (it shows up in the Add Property picker via reflection).
-fn sprite_sheet_entry() -> InspectorEntry {
-    // `FieldType::Int` — the widget's model snaps to whole numbers, matching
-    // the rounding set_fns, so drags don't fight the u32 read-back.
-    fn get_sheet(world: &World, entity: Entity) -> Option<renzora::core::SpriteSheet> {
-        world.get::<renzora::core::SpriteSheet>(entity).copied()
-    }
-    InspectorEntry {
-        type_id: "sprite_sheet",
-        display_name: "Sprite Sheet",
-        icon: "grid-four",
-        category: "rendering",
-        has_fn: |world, entity| world.get::<renzora::core::SpriteSheet>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .insert(renzora::core::SpriteSheet::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            // The engine-side removal observer clears the derived
-            // `Sprite.rect`, restoring the full image.
-            world
-                .entity_mut(entity)
-                .remove::<renzora::core::SpriteSheet>();
-        }),
-        is_enabled_fn: None,
-        set_enabled_fn: None,
-        fields: vec![
-            FieldDef {
-                name: "H Frames",
-                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
-                get_fn: |world, entity| {
-                    get_sheet(world, entity).map(|s| FieldValue::Float(s.hframes as f32))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut sheet) =
-                            world.get_mut::<renzora::core::SpriteSheet>(entity)
-                        {
-                            sheet.hframes = (v.round().max(1.0)) as u32;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "V Frames",
-                field_type: FieldType::Int { min: 1.0, max: 1024.0 },
-                get_fn: |world, entity| {
-                    get_sheet(world, entity).map(|s| FieldValue::Float(s.vframes as f32))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut sheet) =
-                            world.get_mut::<renzora::core::SpriteSheet>(entity)
-                        {
-                            sheet.vframes = (v.round().max(1.0)) as u32;
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Frame",
-                field_type: FieldType::Int { min: 0.0, max: 1_048_576.0 },
-                get_fn: |world, entity| {
-                    get_sheet(world, entity).map(|s| FieldValue::Float(s.frame as f32))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::Float(v) = val {
-                        if let Some(mut sheet) =
-                            world.get_mut::<renzora::core::SpriteSheet>(entity)
-                        {
-                            // Wrapping happens at render time (frame % cells);
-                            // store what the user typed so scrubbing past the
-                            // end loops instead of pinning to the last cell.
-                            sheet.frame = (v.round().max(0.0)) as u32;
-                        }
-                    }
-                },
-            },
-        ],
-    }
-}
 
 fn name_entry() -> InspectorEntry {
     InspectorEntry {

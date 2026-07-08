@@ -82,6 +82,13 @@ pub enum FieldType {
     Enum {
         options: &'static [&'static str],
     },
+    /// Like [`Enum`](FieldType::Enum) but the option labels are computed from
+    /// the world at draw time (e.g. an entity's sprite-image list). The value is
+    /// the selected **index** — `get_fn`/`set_fn` speak `FieldValue::Float(idx)`
+    /// — so it's keyframeable like an `Int`.
+    DynamicEnum {
+        options: fn(&World, Entity) -> Vec<std::string::String>,
+    },
     /// A full-width action button. The `FieldDef::name` is the button label and
     /// `icon` is a leading Phosphor glyph. There's no value to read — `get_fn`
     /// should return `None`; clicking invokes `set_fn` with

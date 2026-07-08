@@ -1,0 +1,12 @@
+[package]
+name = "renzora_sprite_anim"
+version = "0.1.0"
+edition = "2021"
+description = "2D sprite animation runtime: binds Sprite.image from the multi-sheet SpriteImages component (the keyframeable sheet-switch). Clip playback is the ordinary renzora_animation property path."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+
+[lints]
+workspace = true

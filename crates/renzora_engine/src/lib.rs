@@ -281,6 +281,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::SpriteCustomSize>()
             .register_type::<renzora::core::SpriteSheet>()
             .register_type::<renzora::core::SpriteAtlasRegion>()
+            .register_type::<renzora::core::SpriteImages>()
             .register_type::<renzora::core::ReflectionProbeSource>()
             .register_type::<renzora::WorldEnvironment>()
             .register_type::<Sun>();

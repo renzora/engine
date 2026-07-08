@@ -8085,6 +8085,7 @@ dependencies = [
  "renzora_skybox",
  "renzora_skybox_editor",
  "renzora_splash",
+ "renzora_sprite_anim_editor",
  "renzora_ssao",
  "renzora_ssao_editor",
  "renzora_ssr",
@@ -9188,6 +9189,7 @@ dependencies = [
  "renzora_shader",
  "renzora_skybox",
  "renzora_spline",
+ "renzora_sprite_anim",
  "renzora_ssao",
  "renzora_ssr",
  "renzora_terrain",
@@ -9456,6 +9458,26 @@ dependencies = [
  "renzora",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "renzora_sprite_anim"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+]
+
+[[package]]
+name = "renzora_sprite_anim_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_animation",
+ "renzora_animation_editor",
+ "renzora_ember",
+ "renzora_ui",
 ]
 
 [[package]]

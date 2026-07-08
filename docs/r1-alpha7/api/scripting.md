@@ -248,6 +248,8 @@ end
 | `trigger_anim(name)` | Fire a one-shot trigger parameter |
 | `set_layer_weight(layer, weight)` | Set an animation layer's blend weight |
 
+**2D sprite animations too.** [Sprite-sheet clips](../editor/sprite-animation.md) are ordinary property clips (a `SpriteSheet.frame` track), so the same calls drive them: `play_animation("run")` works whether "run" is a bone clip or a sprite clip — the entity has one animator either way.
+
 **Lua-only hook:** `on_animation_event(name, entity)` fires when playback crosses a named clip marker (see [Animation → Event markers](../editor/animation.md#event-markers)).
 
 > Rhai takes only `play_animation(name)`. When `renzora_animation` is active its [extension](#extension-functions) re-registers `set_anim_param`/`set_anim_bool` (routing through `ScriptAction`) and adds `set_anim_trigger` + `get_animation_length`.

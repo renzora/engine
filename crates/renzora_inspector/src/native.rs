@@ -29,8 +29,8 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, dropdown_with_icons, scroll_view, set_section_open, text_input,
-    toggle_switch, DragRange, EmberTextInput, Popup, Section,
+    bind_text_input, drag_value, dropdown, dropdown_with_icons, scroll_view, set_section_open,
+    text_input, toggle_switch, DragRange, EmberTextInput, Popup, Section,
 };
 use renzora_theme::ThemeManager;
 
@@ -319,6 +319,9 @@ enum FieldKind {
     Text,
     Asset,
     Enum { options: &'static [&'static str] },
+    /// Dynamic dropdown; options + selected index live in [`FieldInit::DynEnum`]
+    /// (so this stays `Copy`). Value is the selected index (`FieldValue::Float`).
+    DynamicEnum,
     Button { icon: &'static str },
     ReadOnly,
 }
@@ -328,6 +331,8 @@ enum FieldInit {
     Vec3([f32; 3]),
     Bool(bool),
     Text(String),
+    /// Dynamic-dropdown options (computed from the world) + the selected index.
+    DynEnum(Vec<String>, usize),
 }
 
 struct FieldSpec {
@@ -897,6 +902,19 @@ fn inspector_signature(
                         if let Some(is_enabled) = entry.is_enabled_fn {
                             is_enabled(world, e).hash(&mut h);
                         }
+                        // A `DynamicEnum` field's options are computed from the
+                        // world at build time, so a *mutation* that grows/shrinks
+                        // the list (e.g. appending a sprite sheet) wouldn't
+                        // otherwise change the signature — leaving a stale option
+                        // list and an out-of-range selection (blank dropdown).
+                        // Fold the options in so the list rebuilds when it changes.
+                        for field in &entry.fields {
+                            if let FieldType::DynamicEnum { options } = field.field_type {
+                                for opt in options(world, e) {
+                                    opt.hash(&mut h);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1040,6 +1058,12 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 (FieldType::Enum { options }, Some(FieldValue::Enum(s))) => {
                     (FieldKind::Enum { options }, FieldInit::Text(s.clone()))
                 }
+                // Options are computed from the world here (mapping has `world`);
+                // stored in the init so `FieldKind` stays `Copy`.
+                (FieldType::DynamicEnum { options }, Some(FieldValue::Float(v))) => (
+                    FieldKind::DynamicEnum,
+                    FieldInit::DynEnum(options(world, entity), v.round().max(0.0) as usize),
+                ),
                 (FieldType::Asset { .. }, Some(FieldValue::Asset(_))) => {
                     (FieldKind::Asset, FieldInit::Text(String::new()))
                 }
@@ -1415,8 +1439,23 @@ fn field_anim_path(type_id: &str, field_name: &str, kind: FieldKind) -> Option<(
             | FieldKind::Bool
             | FieldKind::Color
             | FieldKind::ColorRgba
+            | FieldKind::DynamicEnum
     ) {
         return None;
+    }
+    // The "Sprite Image" section aggregates fields that animate *different*
+    // components than its `type_id`: the `Image` dropdown → `SpriteImages.index`
+    // (switchable sheet), and the merged-in grid → `SpriteSheet.{h,v}frames` /
+    // `frame`. Map them explicitly (as with Transform). The single-image asset
+    // slot is `Asset` kind and already bailed above as non-animatable.
+    if type_id == "sprite_image" {
+        match field_name {
+            "Image" => return Some(("SpriteImages".to_string(), "index".to_string())),
+            "H Frames" => return Some(("SpriteSheet".to_string(), "hframes".to_string())),
+            "V Frames" => return Some(("SpriteSheet".to_string(), "vframes".to_string())),
+            "Frame" => return Some(("SpriteSheet".to_string(), "frame".to_string())),
+            _ => {}
+        }
     }
     let field = if type_id == "transform" {
         match field_name {
@@ -1620,6 +1659,31 @@ fn build_field_value(
                 String::new()
             };
             let dd = build_enum_dropdown(commands, fonts, entity, field.name, field.get_fn, field.set_fn, options, &cur);
+            commands.entity(value_parent).add_child(dd);
+        }
+        FieldKind::DynamicEnum => {
+            let (options, selected) = if let FieldInit::DynEnum(ref o, s) = field.init {
+                (o.clone(), s)
+            } else {
+                (Vec::new(), 0)
+            };
+            let refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
+            let sel = selected.min(refs.len().saturating_sub(1));
+            let dd = dropdown(commands, fonts, &refs, sel);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            // The value is the selected index; two-way bind so a keyframed /
+            // externally-changed index updates the shown option and vice versa.
+            bind_2way(
+                commands,
+                dd,
+                move |w| match get_fn(w, entity) {
+                    Some(FieldValue::Float(v)) => v.round().max(0.0) as usize,
+                    _ => 0,
+                },
+                move |w, i: &usize| {
+                    record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*i as f32));
+                },
+            );
             commands.entity(value_parent).add_child(dd);
         }
         FieldKind::Asset => {
