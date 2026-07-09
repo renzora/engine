@@ -8,9 +8,93 @@
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use renzora::viewport_types::ViewportState;
+use renzora_editor_framework::EditorSelection;
 use renzora_terrain::data::{TerrainChunkOf, TerrainData};
-use renzora_terrain::paint::{PaintBrushType, SurfacePaintSettings, SurfacePaintState};
-use renzora_terrain::painter::{PaintLayer, Painter};
+use renzora_terrain::paint::{
+    PaintBrushType, SurfacePaintCommand, SurfacePaintSettings, SurfacePaintState, MAX_LAYERS,
+};
+use renzora_terrain::painter::{
+    painter_grid_size, push_layer, remove_layer, PaintLayer, Painter, PainterLayerMesh,
+};
+
+/// Drain the panel's pending layer commands into the target terrain's
+/// `Painter`, and keep `Painter.active_layer` following the panel's row
+/// selection (`SurfacePaintSettings.active_layer`).
+///
+/// Target resolution matches the toolbar buttons: the selected terrain if it
+/// is paintable, else the first painter in the scene. Runs regardless of the
+/// active tool so Add Layer works straight from the panel.
+pub fn painter_command_system(
+    mut commands: Commands,
+    selection: Res<EditorSelection>,
+    mut paint_state: ResMut<SurfacePaintState>,
+    mut paint_settings: ResMut<SurfacePaintSettings>,
+    mut painter_query: Query<(Entity, &TerrainData, &mut Painter)>,
+    mesh_query: Query<(Entity, &PainterLayerMesh)>,
+) {
+    let target = selection
+        .get()
+        .filter(|e| painter_query.contains(*e))
+        .or_else(|| painter_query.iter().next().map(|(e, _, _)| e));
+    let Some(target) = target else {
+        // No paintable terrain: drop queued commands instead of letting them
+        // fire on whatever terrain appears next.
+        if !paint_state.pending_commands.is_empty() {
+            paint_state.pending_commands.clear();
+        }
+        return;
+    };
+    let Ok((painter_entity, terrain, mut painter)) = painter_query.get_mut(target) else {
+        return;
+    };
+
+    // Guarded drain: `drain` DerefMuts the resource, which would flag it
+    // changed every frame even with nothing queued.
+    let pending: Vec<SurfacePaintCommand> = if paint_state.pending_commands.is_empty() {
+        Vec::new()
+    } else {
+        paint_state.pending_commands.drain(..).collect()
+    };
+    for cmd in pending {
+        match cmd {
+            SurfacePaintCommand::AddLayer => {
+                if painter.layers.len() < MAX_LAYERS {
+                    let name = format!("Layer {}", painter.layers.len() + 1);
+                    push_layer(&mut painter, name, painter_grid_size(terrain));
+                    paint_settings.active_layer = painter.layers.len() - 1;
+                }
+            }
+            SurfacePaintCommand::RemoveLayer(idx) => {
+                remove_layer(&mut commands, painter_entity, &mut painter, &mesh_query, idx);
+                paint_settings.active_layer = painter.active_layer.unwrap_or(0);
+            }
+            SurfacePaintCommand::AssignMaterial { layer, path } => {
+                if let Some(layer) = painter.layers.get_mut(layer) {
+                    layer.material_path = Some(path);
+                    layer.material_dirty = true;
+                }
+            }
+            SurfacePaintCommand::ClearMaterial(idx) => {
+                if let Some(layer) = painter.layers.get_mut(idx) {
+                    layer.material_path = None;
+                    layer.material_dirty = true;
+                }
+            }
+        }
+    }
+
+    // Row clicks land in `SurfacePaintSettings.active_layer`; mirror onto the
+    // component the paint writer reads. Deref-compare first so an in-sync
+    // painter isn't flagged Changed every frame.
+    let want = if painter.layers.is_empty() {
+        None
+    } else {
+        Some(paint_settings.active_layer.min(painter.layers.len() - 1))
+    };
+    if painter.active_layer != want {
+        painter.active_layer = want;
+    }
+}
 
 pub fn brush_layer_paint_system(
     paint_state: Res<SurfacePaintState>,
@@ -50,6 +134,11 @@ pub fn brush_layer_paint_system(
     let Ok((mut painter, terrain, terrain_gt)) = painter_query.get_mut(of.0) else {
         return;
     };
+    if painter.layers.is_empty() {
+        // First stroke on a fresh terrain: create the first layer instead of
+        // silently painting into nothing.
+        push_layer(&mut painter, "Layer 1", painter_grid_size(terrain));
+    }
     let Some(active_idx) = painter.active_layer else {
         return;
     };

@@ -1,15 +1,22 @@
-//! Terrain undo/redo — snapshot-based heightmap and layer-mask undo stack.
+//! Terrain undo/redo — snapshot-based heightmap and paint-layer undo payloads.
 
 use bevy::prelude::*;
 
-/// A single terrain-edit snapshot: chunk heightmaps and paint-layer masks. Used
-/// as the `before`/`after` payload of the terrain `renzora_undo::SnapshotCmd`.
+use crate::painter::PaintLayer;
+
+/// A single terrain-edit snapshot: chunk heightmaps and the full painter layer
+/// stack. Used as the `before`/`after` payload of the terrain
+/// `renzora_undo::SnapshotCmd`.
+///
+/// Layers are cloned whole (not just their masks) so undoing a stroke that
+/// *created* a layer removes it, and redo can bring it back with its name and
+/// material intact.
 #[derive(Clone)]
 pub struct TerrainUndoEntry {
     /// (chunk_x, chunk_z, base_heights) snapshots
     pub chunk_snapshots: Vec<(u32, u32, Vec<f32>)>,
-    /// Per-entity snapshot of every layer's coverage mask.
-    pub layer_mask_snapshots: Vec<(Entity, Vec<Vec<f32>>)>,
+    /// Per-painter-entity snapshot of the complete layer stack.
+    pub layer_snapshots: Vec<(Entity, Vec<PaintLayer>)>,
 }
 
 /// Resource: holds the "before" snapshot while a stroke is in progress.
@@ -17,5 +24,5 @@ pub struct TerrainUndoEntry {
 pub struct TerrainStrokeSnapshot {
     pub active: bool,
     pub chunk_snapshots: Vec<(u32, u32, Vec<f32>)>,
-    pub layer_mask_snapshots: Vec<(Entity, Vec<Vec<f32>>)>,
+    pub layer_snapshots: Vec<(Entity, Vec<PaintLayer>)>,
 }

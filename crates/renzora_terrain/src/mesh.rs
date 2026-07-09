@@ -312,6 +312,9 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
             Transform::IDENTITY,
             Visibility::default(),
             terrain_data,
+            // Paintable from frame one (`ensure_painter_system` covers
+            // scene-loaded terrains, but only on the next Update).
+            crate::painter::Painter::default(),
             renzora::SelectionStop,
         ))
         .id();

@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 
@@ -21,7 +22,7 @@ use crate::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 ///
 /// The mask is row-major at the painter target's native resolution (for
 /// terrain, the whole-terrain vertex grid). Paint tool stamps into it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
 pub struct PaintLayer {
     pub name: String,
     pub material_path: Option<String>,
@@ -30,8 +31,15 @@ pub struct PaintLayer {
     pub height_offset: f32,
     pub enabled: bool,
     /// Flipped when `mask`, `height_offset`, or `coverage_threshold` changes.
+    /// Not serialized: a scene-loaded layer has no child mesh yet, and the
+    /// rebuild system regenerates any layer-mesh without a `Mesh3d` regardless
+    /// of this flag — so `false` after load is correct.
+    #[serde(skip)]
+    #[reflect(ignore)]
     pub mesh_dirty: bool,
-    /// Flipped when `material_path` changes.
+    /// Flipped when `material_path` changes. Same load story as `mesh_dirty`.
+    #[serde(skip)]
+    #[reflect(ignore)]
     pub material_dirty: bool,
 }
 
@@ -56,7 +64,13 @@ impl PaintLayer {
 }
 
 /// A stack of painted layers on an entity.
-#[derive(Component, Clone, Debug, Default)]
+///
+/// Reflect-serialized so painted masks survive scene save/load (the per-layer
+/// child mesh entities are marked `HideInHierarchy` and deliberately excluded
+/// from the scene — they're derived data, respawned by the sync system when
+/// the deserialized `Painter` shows up `Added`).
+#[derive(Component, Clone, Debug, Default, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
 pub struct Painter {
     pub layers: Vec<PaintLayer>,
     /// Index of the currently-active layer for painting. `None` before any
@@ -83,7 +97,69 @@ pub struct PainterLayerMesh {
     pub layer_index: usize,
 }
 
+/// Mask resolution for a painter sitting on `terrain`: one cell per terrain
+/// vertex along the larger axis. Masks are square (`grid_size²` cells) even
+/// on non-square terrains so `PaintLayer::grid_size`'s sqrt stays exact; the
+/// extra cells past the short axis simply never match a triangle.
+pub fn painter_grid_size(terrain: &TerrainData) -> u32 {
+    terrain.chunks_x.max(terrain.chunks_z) * (terrain.chunk_resolution - 1) + 1
+}
+
 // ── Systems ──────────────────────────────────────────────────────────────────
+
+/// Every terrain is paintable: attach an empty `Painter` to any terrain that
+/// lacks one. Covers fresh spawns AND scenes saved before painting existed —
+/// which is why this is a system rather than only a `spawn_terrain` insert.
+pub fn ensure_painter_system(
+    mut commands: Commands,
+    terrains: Query<Entity, (With<TerrainData>, Without<Painter>)>,
+) {
+    for entity in terrains.iter() {
+        commands.entity(entity).insert(Painter::default());
+    }
+}
+
+/// Re-fit layer masks when the terrain grid changes (Add Neighbor, resolution
+/// edits). Nearest-neighbour resample keeps painted coverage roughly in place;
+/// `mesh_dirty` makes the rebuild system pick the change up.
+pub fn resize_painter_masks_system(
+    mut painters: Query<(&TerrainData, &mut Painter), Changed<TerrainData>>,
+) {
+    for (terrain, mut painter) in painters.iter_mut() {
+        let expected = painter_grid_size(terrain);
+        // Deref-read first so an unchanged painter isn't flagged Changed.
+        if painter.layers.iter().all(|l| l.grid_size() == expected) {
+            continue;
+        }
+        for layer in painter.layers.iter_mut() {
+            let old = layer.grid_size();
+            if old == expected {
+                continue;
+            }
+            layer.mask = resample_mask(&layer.mask, old, expected);
+            layer.mesh_dirty = true;
+        }
+    }
+}
+
+fn resample_mask(old: &[f32], old_size: u32, new_size: u32) -> Vec<f32> {
+    let count = (new_size * new_size) as usize;
+    if old_size == 0 || old.is_empty() {
+        return vec![0.0; count];
+    }
+    let mut out = Vec::with_capacity(count);
+    let scale = |v: u32| -> u32 {
+        ((v as f32 / (new_size - 1).max(1) as f32) * (old_size - 1) as f32).round() as u32
+    };
+    for gz in 0..new_size {
+        let sz = scale(gz);
+        for gx in 0..new_size {
+            let sx = scale(gx);
+            out.push(old[(sz * old_size + sx) as usize]);
+        }
+    }
+    out
+}
 
 /// Ensure each `Painter` has exactly one child mesh entity per layer, in the
 /// same order as `layers`. Spawns new ones as needed, despawns extras,
@@ -92,7 +168,7 @@ pub struct PainterLayerMesh {
 pub fn sync_painter_layer_meshes_system(
     mut commands: Commands,
     painter_query: Query<(Entity, &Painter), Changed<Painter>>,
-    mut mesh_query: Query<(Entity, &mut PainterLayerMesh)>,
+    mesh_query: Query<(Entity, &PainterLayerMesh)>,
 ) {
     for (painter_entity, painter) in painter_query.iter() {
         // Gather existing mesh entities for this painter.
@@ -126,6 +202,11 @@ pub fn sync_painter_layer_meshes_system(
                         Name::new(name),
                         Transform::default(),
                         Visibility::default(),
+                        // Derived data: the mask lives on the serialized
+                        // `Painter`; these meshes must not be saved into the
+                        // scene (they'd load back as zombie children with no
+                        // marker) nor clutter the hierarchy panel.
+                        renzora::core::HideInHierarchy,
                         PainterLayerMesh {
                             painter: painter_entity,
                             layer_index: i,
@@ -135,19 +216,8 @@ pub fn sync_painter_layer_meshes_system(
                 commands.entity(layer_mesh).insert(ChildOf(painter_entity));
             }
         }
-
-        // Re-map indices on existing entities (no-op if already correct).
-        for (entity, _) in &existing {
-            if let Ok((_, marker)) = mesh_query.get_mut(*entity) {
-                // We only know this painter's entities, so no conflict with
-                // other painters. Re-read current layer_index from the
-                // existing list; the intent is to leave them as-is unless
-                // the caller explicitly reordered layer indices via the
-                // Painter data. Layer reordering must reassign indices on
-                // the child entities directly — see `reorder_layers`.
-                let _ = marker;
-            }
-        }
+        // Existing entities keep their indices — reordering reassigns them
+        // directly on the child entities; see `reorder_layers`.
     }
 }
 
@@ -165,10 +235,14 @@ pub fn rebuild_painter_layer_meshes_system(
         let Ok(mut painter) = painter_query.get_mut(marker.painter) else {
             continue;
         };
-        let Some(layer) = painter.layers.get_mut(marker.layer_index) else {
-            continue;
-        };
-        if !layer.mesh_dirty && existing_mesh.is_some() {
+        // Read the dirty flag through Deref — taking `&mut` here would flag
+        // the Painter changed every frame and keep the `Changed<Painter>`
+        // sync system permanently hot.
+        let needs_rebuild = painter
+            .layers
+            .get(marker.layer_index)
+            .is_some_and(|l| l.mesh_dirty || existing_mesh.is_none());
+        if !needs_rebuild {
             continue;
         }
 
@@ -185,6 +259,9 @@ pub fn rebuild_painter_layer_meshes_system(
             continue;
         }
 
+        let Some(layer) = painter.layers.get_mut(marker.layer_index) else {
+            continue;
+        };
         let mesh = build_layer_mesh_from_terrain(terrain, layer, &chunks);
         if let Some(h) = existing_mesh {
             if let Some(mut m) = meshes.get_mut(&h.0) {
@@ -314,12 +391,17 @@ pub fn apply_painter_layer_materials_system(
         let Ok(mut painter) = painter_query.get_mut(marker.painter) else {
             continue;
         };
+        // Deref-read first — see the matching note in the rebuild system.
+        let needs_rebuild = painter
+            .layers
+            .get(marker.layer_index)
+            .is_some_and(|l| l.material_dirty || existing_mat.is_none());
+        if !needs_rebuild {
+            continue;
+        }
         let Some(layer) = painter.layers.get_mut(marker.layer_index) else {
             continue;
         };
-        if !layer.material_dirty && existing_mat.is_some() {
-            continue;
-        }
         let mat = build_material(&layer.material_path, &asset_server, &vfs);
         let handle = materials.add(mat);
         commands.entity(mesh_entity).insert(MeshMaterial3d(handle));

@@ -21,7 +21,7 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use std::hash::{Hash, Hasher};
 
 use renzora::core::CurrentProject;
-use renzora_editor_framework::{AssetDragPayload, SplashState};
+use renzora_editor_framework::{ActiveTool, AssetDragPayload, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{
@@ -34,12 +34,14 @@ use renzora_ember::widgets::{
 use renzora_ember::cursor_icon::HoverCursor;
 
 use renzora_terrain::data::{
-    BrushFalloffType, BrushShape, FlattenMode, NoiseMode, TerrainBrushType, TerrainSettings,
-    TerrainTab, TerrainToolState,
+    BrushFalloffType, BrushShape, FlattenMode, NoiseMode, TerrainBrushType, TerrainData,
+    TerrainSettings, TerrainTab, TerrainToolState,
 };
 use renzora_terrain::paint::{
     PaintBrushType, SurfacePaintCommand, SurfacePaintSettings, SurfacePaintState, MAX_LAYERS,
 };
+
+use crate::terrain_inspector::TerrainInspectorTab;
 
 const LABEL_W: f32 = 100.0;
 const MATERIAL_EXTS: &[&str] = &["material"];
@@ -54,6 +56,7 @@ impl Plugin for NativeTerrain {
             (
                 enable_toggle_click,
                 tab_click,
+                follow_active_tool,
                 sculpt_tool_click,
                 paint_tool_click,
                 shape_btn_click,
@@ -707,14 +710,14 @@ fn paint_content(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (foliage_sec, foliage_body) = collapsible(commands, fonts, None, "Foliage", false);
     let f1 = commands
         .spawn((
-            Text::new("Auto-scatter foliage based on layer weights."),
+            Text::new("Paint foliage with the Foliage tool (tree icon) in the viewport toolbar."),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
         ))
         .id();
     let f2 = commands
         .spawn((
-            Text::new("Configure foliage per-layer via TerrainFoliageConfig component."),
+            Text::new("Density, brush, and grass settings live in the Foliage panel."),
             ui_font(&fonts.ui, 10.0),
             TextColor(rgb(text_muted())),
             Node { margin: UiRect::top(Val::Px(4.0)), ..default() },
@@ -835,18 +838,32 @@ fn layers_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
         .id();
     keyed_list(commands, list, layers_snapshot);
 
+    // Empty state: fresh terrains have no layers until Add Layer (or the
+    // first paint stroke, which auto-creates one).
+    let hint = commands
+        .spawn((
+            Text::new("No layers yet — click Add Layer, then paint."),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            Node { margin: UiRect::bottom(Val::Px(2.0)), ..default() },
+        ))
+        .id();
+    bind_display(commands, hint, |w| layer_count(w) == 0);
+
     let add = wide_button(commands, fonts, Some("plus"), "Add Layer", text_muted());
     commands.entity(add).insert(AddLayerBtn);
     // Match egui: hide Add Layer once MAX_LAYERS is reached.
     bind_display(commands, add, |w| layer_count(w) < MAX_LAYERS);
 
-    commands.entity(body).add_children(&[list, add]);
+    commands.entity(body).add_children(&[list, hint, add]);
 }
 
 fn layer_count(w: &World) -> usize {
+    // Real count only — no phantom placeholder rows. An empty painter shows
+    // the "no layers" hint plus the Add Layer button.
     w.get_resource::<SurfacePaintState>()
-        .map(|s| s.layer_count.max(2))
-        .unwrap_or(2)
+        .map(|s| s.layer_count)
+        .unwrap_or(0)
 }
 
 fn active_layer(w: &World) -> usize {
@@ -861,13 +878,7 @@ fn layer_name(w: &World, i: usize) -> String {
             return p.name.clone();
         }
     }
-    match i {
-        0 => "Grass".to_string(),
-        1 => "Dirt".to_string(),
-        2 => "Water".to_string(),
-        3 => "Rock".to_string(),
-        _ => format!("Layer {}", i + 1),
-    }
+    format!("Layer {}", i + 1)
 }
 
 fn layer_material_source(w: &World, i: usize) -> Option<String> {
@@ -1382,21 +1393,105 @@ where
 fn enable_toggle_click(
     q: Query<&Interaction, (With<EnableToggle>, Changed<Interaction>)>,
     mut tool: Option<ResMut<TerrainToolState>>,
+    settings: Option<Res<TerrainSettings>>,
+    mut inspector_tab: Option<ResMut<TerrainInspectorTab>>,
+    selection: Option<Res<EditorSelection>>,
+    terrains: Query<Entity, With<TerrainData>>,
 ) {
     let Some(tool) = tool.as_mut() else { return };
-    if q.iter().any(|i| *i == Interaction::Pressed) {
-        tool.active = !tool.active;
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    tool.active = !tool.active;
+
+    // The toggle is not just cosmetic: turning it on arms the current tab's
+    // tool (via the inspector-tab resource `sync_active_tool_system` reads),
+    // turning it off drops back to Select.
+    let Some(tab) = inspector_tab.as_mut() else { return };
+    if tool.active {
+        **tab = match settings.map(|s| s.tab).unwrap_or_default() {
+            TerrainTab::Sculpt => TerrainInspectorTab::Sculpt,
+            TerrainTab::Paint => TerrainInspectorTab::Paint,
+        };
+        select_first_terrain_if_needed(selection.as_deref(), &terrains);
+    } else {
+        **tab = TerrainInspectorTab::Size;
     }
 }
 
 fn tab_click(
     q: Query<(&Interaction, &TabBtn), Changed<Interaction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
+    mut inspector_tab: Option<ResMut<TerrainInspectorTab>>,
+    selection: Option<Res<EditorSelection>>,
+    terrains: Query<Entity, With<TerrainData>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
             settings.tab = btn.tab;
+            // Switching the panel tab also switches the active tool — the
+            // panel and the viewport toolbar drive the same state.
+            if let Some(tab) = inspector_tab.as_mut() {
+                **tab = match btn.tab {
+                    TerrainTab::Sculpt => TerrainInspectorTab::Sculpt,
+                    TerrainTab::Paint => TerrainInspectorTab::Paint,
+                };
+            }
+            select_first_terrain_if_needed(selection.as_deref(), &terrains);
+        }
+    }
+}
+
+/// `sync_active_tool_system` only arms terrain tools while a terrain is
+/// selected — so panel interactions select the first terrain when the current
+/// selection isn't one (same behaviour as the viewport toolbar buttons).
+fn select_first_terrain_if_needed(
+    selection: Option<&EditorSelection>,
+    terrains: &Query<Entity, With<TerrainData>>,
+) {
+    let Some(selection) = selection else { return };
+    let selected_is_terrain = selection.get().is_some_and(|e| terrains.contains(e));
+    if !selected_is_terrain {
+        if let Some(first) = terrains.iter().next() {
+            selection.set(Some(first));
+        }
+    }
+}
+
+/// Keep the panel following the viewport toolbar: when a terrain tool
+/// activates (toolbar click, inspector tab), reveal the panel body and switch
+/// its Sculpt/Paint tab to match, so the two never show contradictory state.
+fn follow_active_tool(
+    active: Option<Res<ActiveTool>>,
+    mut last: Local<Option<ActiveTool>>,
+    mut tool: Option<ResMut<TerrainToolState>>,
+    mut settings: Option<ResMut<TerrainSettings>>,
+) {
+    let Some(active) = active.map(|a| *a) else { return };
+    if *last == Some(active) {
+        return;
+    }
+    *last = Some(active);
+    if !matches!(
+        active,
+        ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
+    ) {
+        return;
+    }
+    if let Some(tool) = tool.as_mut() {
+        if !tool.active {
+            tool.active = true;
+        }
+    }
+    let want = match active {
+        ActiveTool::TerrainSculpt => Some(TerrainTab::Sculpt),
+        ActiveTool::TerrainPaint => Some(TerrainTab::Paint),
+        _ => None,
+    };
+    if let (Some(settings), Some(want)) = (settings.as_mut(), want) {
+        if settings.tab != want {
+            settings.tab = want;
         }
     }
 }

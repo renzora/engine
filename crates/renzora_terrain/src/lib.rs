@@ -25,6 +25,8 @@ impl Plugin for TerrainPlugin {
             .register_type::<data::TerrainData>()
             .register_type::<data::TerrainChunkData>()
             .register_type::<paint::PaintableSurfaceData>()
+            .register_type::<painter::Painter>()
+            .register_type::<painter::PaintLayer>()
             .register_type::<foliage::scatter::TerrainFoliageConfig>()
             .init_resource::<data::TerrainSettings>()
             .init_resource::<data::TerrainSculptState>()
@@ -57,9 +59,12 @@ impl Plugin for TerrainPlugin {
                         .after(mesh::terrain_chunk_mesh_update_system),
                     brush_layer::apply_brush_layer_material_system,
                     brush_layer::sync_brush_layer_registry_system,
+                    painter::ensure_painter_system,
+                    painter::resize_painter_masks_system,
                     painter::sync_painter_layer_meshes_system,
                     painter::rebuild_painter_layer_meshes_system
                         .after(painter::sync_painter_layer_meshes_system)
+                        .after(painter::resize_painter_masks_system)
                         .after(mesh::terrain_chunk_mesh_update_system),
                     painter::apply_painter_layer_materials_system
                         .after(painter::sync_painter_layer_meshes_system),

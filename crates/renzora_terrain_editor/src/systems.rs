@@ -10,10 +10,10 @@ use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::ViewportState;
 use renzora::core::EditorCamera;
 use renzora_terrain::data::*;
-use renzora_terrain::paint::{self, PaintableSurfaceData, SurfacePaintSettings, SurfacePaintState};
+use renzora_editor_framework::EditorSelection;
+use renzora_terrain::paint::{self, SurfacePaintState};
+use renzora_terrain::painter::{PaintLayer, Painter};
 use renzora_terrain::sculpt;
-use renzora_terrain::splatmap_material::TerrainSplatmapMaterial;
-use renzora_terrain::splatmap_systems::{self, SplatmapActive};
 use renzora_terrain::undo::TerrainUndoEntry;
 
 // ── Height sampling ──────────────────────────────────────────────────────────
@@ -674,257 +674,34 @@ pub fn terrain_paint_hover_system(
     }
 }
 
-/// Apply paint brush and draw paint brush gizmo.
-pub fn terrain_paint_system(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut splatmap_materials: ResMut<Assets<TerrainSplatmapMaterial>>,
-    paint_state: Res<SurfacePaintState>,
-    paint_settings: Res<SurfacePaintSettings>,
-    time: Res<Time>,
-    _terrain_query: Query<(&TerrainData, &GlobalTransform)>,
-    mut chunk_query: Query<(
-        &mut PaintableSurfaceData,
-        &TerrainChunkOf,
-        Option<&SplatmapActive>,
-    )>,
-    mut gizmos: Gizmos,
-    layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
-) {
-    // Draw paint brush gizmo
-    if paint_state.brush_visible {
-        if let Some(hover_pos) = paint_state.hover_position {
-            let radius = paint_settings.brush_radius;
-            let color = paint_brush_color(&paint_settings);
-            let segments = 48;
-            for i in 0..segments {
-                let a0 = (i as f32 / segments as f32) * std::f32::consts::TAU;
-                let a1 = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
-                // Paint brush radius is in UV space, convert to approximate world units
-                // For now use a fixed world-scale multiplier
-                let scale = 64.0; // approximate chunk size for visualization
-                let p0 = Vec3::new(
-                    hover_pos.x + a0.cos() * radius * scale,
-                    hover_pos.y + 0.15,
-                    hover_pos.z + a0.sin() * radius * scale,
-                );
-                let p1 = Vec3::new(
-                    hover_pos.x + a1.cos() * radius * scale,
-                    hover_pos.y + 0.15,
-                    hover_pos.z + a1.sin() * radius * scale,
-                );
-                gizmos.line(p0, p1, color);
-            }
-        }
-    }
-
-    // Apply painting
-    if !paint_state.is_painting {
-        return;
-    }
-    let Some(uv) = paint_state.hover_uv else {
-        return;
-    };
-    let Some(chunk_entity) = paint_state.active_entity else {
-        return;
-    };
-    let dt = time.delta_secs();
-
-    // Get the chunk's surface data
-    let Ok((mut surface, _chunk_of, splatmap_active)) = chunk_query.get_mut(chunk_entity) else {
-        return;
-    };
-
-    // Ensure splatmap material is active on this chunk
-    if splatmap_active.is_none() {
-        splatmap_systems::activate_splatmap_on_chunk(
-            &mut commands,
-            chunk_entity,
-            &surface,
-            &mut images,
-            &mut splatmap_materials,
-            &layer_tex,
-        );
-    }
-
-    // Apply the paint brush
-    paint::apply_paint_brush(&mut surface, &paint_settings, uv, dt);
-}
-
-/// Activate splatmap on all terrain chunks when entering paint mode.
-pub fn terrain_paint_activate_system(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut splatmap_materials: ResMut<Assets<TerrainSplatmapMaterial>>,
-    _settings: Res<TerrainSettings>,
-    chunk_query: Query<(Entity, &TerrainChunkData, &TerrainChunkOf), Without<SplatmapActive>>,
-    surface_query: Query<&PaintableSurfaceData>,
-    layer_tex: Res<splatmap_systems::TerrainLayerTextures>,
-) {
-    for (chunk_entity, _chunk_data, _chunk_of) in chunk_query.iter() {
-        // Check if parent terrain has PaintableSurfaceData, or add one
-        // For simplicity, add PaintableSurfaceData to each chunk that lacks it
-        if let Ok(surface) = surface_query.get(chunk_entity) {
-            splatmap_systems::activate_splatmap_on_chunk(
-                &mut commands,
-                chunk_entity,
-                surface,
-                &mut images,
-                &mut splatmap_materials,
-                &layer_tex,
-            );
-        } else {
-            // Add default PaintableSurfaceData then activate
-            let surface = PaintableSurfaceData::default();
-            splatmap_systems::activate_splatmap_on_chunk(
-                &mut commands,
-                chunk_entity,
-                &surface,
-                &mut images,
-                &mut splatmap_materials,
-                &layer_tex,
-            );
-            commands.entity(chunk_entity).insert(surface);
-        }
-    }
-}
-
-/// Scroll wheel resizes paint brush.
-pub fn terrain_paint_scroll_system(
-    viewport: Res<ViewportState>,
-    mut settings: ResMut<SurfacePaintSettings>,
-    mut scroll_events: MessageReader<MouseWheel>,
-) {
-    if !viewport.hovered {
-        return;
-    }
-
-    for ev in scroll_events.read() {
-        let factor = if ev.y > 0.0 { 1.1 } else { 0.9 };
-        settings.brush_radius = (settings.brush_radius * factor).clamp(0.01, 0.5);
-    }
-}
-
-/// Process pending commands from the paint UI (add/remove layers, assign materials).
-pub fn terrain_paint_command_system(
-    mut paint_state: ResMut<SurfacePaintState>,
-    mut surface_query: Query<&mut PaintableSurfaceData>,
-    vfs: Res<renzora::core::VirtualFileReader>,
-    asset_server: Res<AssetServer>,
-    mut layer_tex: ResMut<splatmap_systems::TerrainLayerTextures>,
-) {
-    let commands: Vec<_> = paint_state.pending_commands.drain(..).collect();
-    if commands.is_empty() {
-        return;
-    }
-
-    for mut surface in surface_query.iter_mut() {
-        for cmd in &commands {
-            match cmd {
-                paint::SurfacePaintCommand::AddLayer => {
-                    if surface.layers.len() < paint::MAX_LAYERS {
-                        let n = surface.layers.len() + 1;
-                        surface.layers.push(paint::MaterialLayer {
-                            name: format!("Layer {}", n),
-                            ..Default::default()
-                        });
-                        surface.dirty = true;
-                    }
-                }
-                paint::SurfacePaintCommand::RemoveLayer(idx) => {
-                    if *idx < surface.layers.len() && surface.layers.len() > 1 {
-                        surface.layers.remove(*idx);
-                        // Clear texture handles for this layer
-                        if *idx < 8 {
-                            layer_tex.layer_albedo[*idx] = None;
-                            layer_tex.layer_normal[*idx] = None;
-                            layer_tex.layer_arm[*idx] = None;
-                            layer_tex.dirty = true;
-                        }
-                        surface.dirty = true;
-                    }
-                }
-                paint::SurfacePaintCommand::AssignMaterial { layer, path } => {
-                    if *layer < surface.layers.len() {
-                        // Read and parse the .material file
-                        if let Some(json) = vfs.read_string(path) {
-                            if let Ok(textures) = extract_layer_textures_from_json(&json) {
-                                surface.layers[*layer].material_path = Some(path.clone());
-                                surface.layers[*layer].albedo_path = textures.0.clone();
-                                surface.layers[*layer].normal_path = textures.1.clone();
-                                surface.layers[*layer].arm_path = textures.2.clone();
-
-                                // Load textures via asset server
-                                if let Some(ref albedo) = textures.0 {
-                                    layer_tex.layer_albedo[*layer] =
-                                        Some(asset_server.load(albedo.clone()));
-                                }
-                                if let Some(ref normal) = textures.1 {
-                                    layer_tex.layer_normal[*layer] =
-                                        Some(asset_server.load(normal.clone()));
-                                }
-                                if let Some(ref arm) = textures.2 {
-                                    layer_tex.layer_arm[*layer] =
-                                        Some(asset_server.load(arm.clone()));
-                                }
-
-                                layer_tex.dirty = true;
-                                surface.dirty = true;
-                            }
-                        }
-                    }
-                }
-                paint::SurfacePaintCommand::ClearMaterial(idx) => {
-                    if *idx < surface.layers.len() {
-                        surface.layers[*idx].material_path = None;
-                        surface.layers[*idx].albedo_path = None;
-                        surface.layers[*idx].normal_path = None;
-                        surface.layers[*idx].arm_path = None;
-
-                        if *idx < 8 {
-                            layer_tex.layer_albedo[*idx] = None;
-                            layer_tex.layer_normal[*idx] = None;
-                            layer_tex.layer_arm[*idx] = None;
-                            layer_tex.dirty = true;
-                        }
-                        surface.dirty = true;
-                    }
-                }
-            }
-        }
-
-        // Update preview cache
-        paint_state.layers_preview = surface
-            .layers
-            .iter()
-            .map(|l| paint::LayerPreview {
-                name: l.name.clone(),
-                material_source: l.material_path.clone(),
-                carve_depth: l.carve_depth,
-                enabled: l.enabled,
-            })
-            .collect();
-        paint_state.layer_count = surface.layers.len();
-    }
-}
-
-/// Keep `SurfacePaintState.layers_preview` in sync with any chunk's
-/// `PaintableSurfaceData` every frame, so the inspector shows live values
-/// even when no paint commands have run this frame.
+/// Keep `SurfacePaintState.layers_preview` mirroring the target `Painter`'s
+/// layers every frame, so the panel's layer list shows live values even when
+/// no paint commands ran this frame. Prefers the selected terrain's painter,
+/// falling back to the first one (same targeting as `painter_command_system`).
 pub fn sync_layer_preview_system(
     mut paint_state: ResMut<paint::SurfacePaintState>,
-    surfaces: Query<&paint::PaintableSurfaceData>,
+    selection: Res<EditorSelection>,
+    painters: Query<&Painter>,
 ) {
-    let Some(surface) = surfaces.iter().next() else {
+    let painter = selection
+        .get()
+        .and_then(|e| painters.get(e).ok())
+        .or_else(|| painters.iter().next());
+    let Some(painter) = painter else {
+        // Last terrain gone: empty the list rather than showing stale rows.
+        if paint_state.layer_count != 0 || !paint_state.layers_preview.is_empty() {
+            paint_state.layers_preview.clear();
+            paint_state.layer_count = 0;
+        }
         return;
     };
-    let new_preview: Vec<paint::LayerPreview> = surface
+    let new_preview: Vec<paint::LayerPreview> = painter
         .layers
         .iter()
         .map(|l| paint::LayerPreview {
             name: l.name.clone(),
             material_source: l.material_path.clone(),
-            carve_depth: l.carve_depth,
+            carve_depth: 0.0,
             enabled: l.enabled,
         })
         .collect();
@@ -935,21 +712,11 @@ pub fn sync_layer_preview_system(
             .any(|(a, b)| {
                 a.name != b.name
                     || a.material_source != b.material_source
-                    || (a.carve_depth - b.carve_depth).abs() > 1e-5
                     || a.enabled != b.enabled
             })
     {
         paint_state.layers_preview = new_preview;
-        paint_state.layer_count = surface.layers.len();
-    }
-}
-
-fn paint_brush_color(settings: &SurfacePaintSettings) -> Color {
-    match settings.brush_type {
-        paint::PaintBrushType::Paint => Color::srgba(0.2, 0.7, 0.9, 0.9),
-        paint::PaintBrushType::Erase => Color::srgba(0.9, 0.3, 0.2, 0.9),
-        paint::PaintBrushType::Smooth => Color::srgba(0.3, 0.6, 0.9, 0.9),
-        paint::PaintBrushType::Fill => Color::srgba(0.9, 0.8, 0.2, 0.9),
+        paint_state.layer_count = painter.layers.len();
     }
 }
 
@@ -957,13 +724,14 @@ fn paint_brush_color(settings: &SurfacePaintSettings) -> Color {
 
 use renzora_terrain::undo::TerrainStrokeSnapshot;
 
-/// Snapshot chunk heightmaps when a sculpt/paint stroke begins.
+/// Snapshot chunk heightmaps + painter layer masks when a sculpt/paint stroke
+/// begins.
 pub fn terrain_stroke_begin_system(
     sculpt_state: Res<TerrainSculptState>,
     paint_state: Res<SurfacePaintState>,
     mut snapshot: ResMut<TerrainStrokeSnapshot>,
     chunk_query: Query<(Entity, &TerrainChunkData)>,
-    surface_query: Query<(Entity, &PaintableSurfaceData)>,
+    painter_query: Query<(Entity, &Painter)>,
 ) {
     let sculpting = sculpt_state.is_sculpting;
     let painting = paint_state.is_painting;
@@ -972,7 +740,7 @@ pub fn terrain_stroke_begin_system(
         // Capture before-state
         snapshot.active = true;
         snapshot.chunk_snapshots.clear();
-        snapshot.layer_mask_snapshots.clear();
+        snapshot.layer_snapshots.clear();
 
         for (_, chunk) in chunk_query.iter() {
             snapshot.chunk_snapshots.push((
@@ -981,9 +749,8 @@ pub fn terrain_stroke_begin_system(
                 chunk.base_heights.clone(),
             ));
         }
-        for (entity, surface) in surface_query.iter() {
-            let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
-            snapshot.layer_mask_snapshots.push((entity, masks));
+        for (entity, painter) in painter_query.iter() {
+            snapshot.layer_snapshots.push((entity, painter.layers.clone()));
         }
     }
 }
@@ -1004,7 +771,7 @@ pub fn terrain_stroke_end_system(world: &mut World) {
     // Snapshot the post-stroke ("after") state.
     let mut after = TerrainUndoEntry {
         chunk_snapshots: Vec::new(),
-        layer_mask_snapshots: Vec::new(),
+        layer_snapshots: Vec::new(),
     };
     {
         let mut cq = world.query::<&TerrainChunkData>();
@@ -1013,10 +780,9 @@ pub fn terrain_stroke_end_system(world: &mut World) {
                 .chunk_snapshots
                 .push((chunk.chunk_x, chunk.chunk_z, chunk.base_heights.clone()));
         }
-        let mut sq = world.query::<(Entity, &PaintableSurfaceData)>();
-        for (entity, surface) in sq.iter(world) {
-            let masks: Vec<Vec<f32>> = surface.layers.iter().map(|l| l.mask.clone()).collect();
-            after.layer_mask_snapshots.push((entity, masks));
+        let mut sq = world.query::<(Entity, &Painter)>();
+        for (entity, painter) in sq.iter(world) {
+            after.layer_snapshots.push((entity, painter.layers.clone()));
         }
     }
 
@@ -1026,7 +792,7 @@ pub fn terrain_stroke_end_system(world: &mut World) {
         snapshot.active = false;
         TerrainUndoEntry {
             chunk_snapshots: std::mem::take(&mut snapshot.chunk_snapshots),
-            layer_mask_snapshots: std::mem::take(&mut snapshot.layer_mask_snapshots),
+            layer_snapshots: std::mem::take(&mut snapshot.layer_snapshots),
         }
     };
 
@@ -1041,15 +807,15 @@ pub fn terrain_stroke_end_system(world: &mut World) {
             .map(|(_, _, bh)| bh != h)
             .unwrap_or(true)
     });
-    let masks_changed = after.layer_mask_snapshots.iter().any(|(e, m)| {
+    let layers_changed = after.layer_snapshots.iter().any(|(e, layers)| {
         before
-            .layer_mask_snapshots
+            .layer_snapshots
             .iter()
             .find(|(be, _)| be == e)
-            .map(|(_, bm)| bm != m)
+            .map(|(_, bl)| !painter_layers_equal(bl, layers))
             .unwrap_or(true)
     });
-    if !heights_changed && !masks_changed {
+    if !heights_changed && !layers_changed {
         return;
     }
 
@@ -1071,9 +837,9 @@ pub fn terrain_stroke_end_system(world: &mut World) {
 }
 
 /// Restore a captured terrain snapshot into the world — the `restore` fn for the
-/// terrain `SnapshotCmd`. Writes chunk heightmaps and paint-layer masks back and
-/// flags them dirty so the meshes/splatmaps rebuild. Undo passes the "before"
-/// blob, redo passes "after".
+/// terrain `SnapshotCmd`. Writes chunk heightmaps and painter layer masks back
+/// and flags them dirty so the chunk + layer meshes rebuild. Undo passes the
+/// "before" blob, redo passes "after".
 fn restore_terrain(world: &mut World, entry: &TerrainUndoEntry) {
     {
         let mut cq = world.query::<&mut TerrainChunkData>();
@@ -1088,183 +854,35 @@ fn restore_terrain(world: &mut World, entry: &TerrainUndoEntry) {
             }
         }
     }
-    for (entity, masks) in &entry.layer_mask_snapshots {
-        if let Some(mut surface) = world.get_mut::<PaintableSurfaceData>(*entity) {
-            for (i, mask) in masks.iter().enumerate() {
-                if let Some(layer) = surface.layers.get_mut(i) {
-                    layer.mask = mask.clone();
-                }
-            }
-            surface.dirty = true;
-        }
-    }
-}
-
-// ── Foliage scatter system ────────────────────────────────────────────────
-
-use renzora_terrain::foliage::{generate_foliage_instances, FoliageBatch, TerrainFoliageConfig};
-
-/// Regenerate foliage instances when splatmap or foliage config changes.
-pub fn terrain_foliage_scatter_system(
-    mut commands: Commands,
-    terrain_query: Query<(Entity, &TerrainData)>,
-    chunk_query: Query<(
-        Entity,
-        &TerrainChunkData,
-        &TerrainChunkOf,
-        &GlobalTransform,
-        &PaintableSurfaceData,
-    )>,
-    foliage_query: Query<(Entity, &TerrainFoliageConfig)>,
-    existing_batches: Query<(Entity, &FoliageBatch)>,
-    asset_server: Res<AssetServer>,
-    _meshes: ResMut<Assets<Mesh>>,
-) {
-    // Only process if there are foliage configs
-    if foliage_query.is_empty() {
-        return;
-    }
-
-    for (config_entity, config) in foliage_query.iter() {
-        if !config.enabled || config.mesh_path.is_empty() {
-            // Remove existing batches for this config
-            for (batch_entity, batch) in existing_batches.iter() {
-                if batch.config_entity == config_entity {
-                    commands.entity(batch_entity).despawn();
-                }
-            }
-            continue;
-        }
-
-        let mesh_handle: Handle<Mesh> = asset_server.load(&config.mesh_path);
-
-        for (_chunk_entity, chunk_data, chunk_of, chunk_transform, surface) in chunk_query.iter() {
-            let Ok((_, terrain_data)) = terrain_query.get(chunk_of.0) else {
-                continue;
-            };
-
-            // Check if this chunk's splatmap is dirty or batch doesn't exist
-            let batch_exists = existing_batches.iter().any(|(_, b)| {
-                b.config_entity == config_entity
-                    && b.chunk_x == chunk_data.chunk_x
-                    && b.chunk_z == chunk_data.chunk_z
-            });
-
-            if batch_exists && !surface.dirty {
-                continue;
-            }
-
-            // Remove old batch for this chunk+config
-            for (batch_entity, batch) in existing_batches.iter() {
-                if batch.config_entity == config_entity
-                    && batch.chunk_x == chunk_data.chunk_x
-                    && batch.chunk_z == chunk_data.chunk_z
-                {
-                    commands.entity(batch_entity).despawn();
-                }
-            }
-
-            let instances = generate_foliage_instances(
-                config,
-                &surface.splatmap_weights,
-                surface.splatmap_resolution,
-                &chunk_data.heights,
-                terrain_data.chunk_resolution,
-                terrain_data.chunk_size,
-                terrain_data.min_height,
-                terrain_data.height_range(),
-                chunk_data.chunk_x * 1000 + chunk_data.chunk_z,
-            );
-
-            // Spawn instances as child entities
-            let chunk_pos = chunk_transform.translation();
-            for instance_transform in &instances {
-                let world_transform = Transform {
-                    translation: chunk_pos + instance_transform.translation,
-                    rotation: instance_transform.rotation,
-                    scale: instance_transform.scale,
-                };
-                commands.spawn((
-                    Mesh3d(mesh_handle.clone()),
-                    world_transform,
-                    Visibility::default(),
-                    FoliageBatch {
-                        config_entity,
-                        chunk_x: chunk_data.chunk_x,
-                        chunk_z: chunk_data.chunk_z,
-                    },
-                ));
+    for (entity, layers) in &entry.layer_snapshots {
+        if let Some(mut painter) = world.get_mut::<Painter>(*entity) {
+            // Replace the whole stack: a stroke can have CREATED a layer
+            // (first-paint auto-create), so undo must be able to remove it and
+            // redo to bring it back. The `Changed<Painter>` sync system
+            // despawns/spawns the child mesh entities to match.
+            painter.layers = layers.clone();
+            painter.active_layer = painter
+                .active_layer
+                .filter(|_| !layers.is_empty())
+                .map(|a| a.min(layers.len().saturating_sub(1)));
+            for layer in painter.layers.iter_mut() {
+                layer.mesh_dirty = true;
+                layer.material_dirty = true;
             }
         }
     }
 }
 
-/// Extract albedo, normal, and ARM texture paths from a material graph JSON
-/// without depending on the renzora_shader crate.
-///
-/// Returns `(albedo, normal, arm)` as `Option<String>`.
-fn extract_layer_textures_from_json(
-    json: &str,
-) -> Result<(Option<String>, Option<String>, Option<String>), serde_json::Error> {
-    let v: serde_json::Value = serde_json::from_str(json)?;
-    let nodes = v["nodes"].as_array();
-    let connections = v["connections"].as_array();
-
-    let (Some(nodes), Some(connections)) = (nodes, connections) else {
-        return Ok((None, None, None));
-    };
-
-    // Find the output node
-    let output_node = nodes.iter().find(|n| {
-        n["node_type"]
-            .as_str()
-            .is_some_and(|t| t.starts_with("output/"))
-    });
-    let Some(output_node) = output_node else {
-        return Ok((None, None, None));
-    };
-    let output_id = output_node["id"].as_u64().unwrap_or(0);
-
-    let trace_texture = |pin_name: &str| -> Option<String> {
-        // Find connection to output_node's pin
-        let conn = connections.iter().find(|c| {
-            c["to_node"].as_u64() == Some(output_id) && c["to_pin"].as_str() == Some(pin_name)
-        })?;
-        let from_node_id = conn["from_node"].as_u64()?;
-        // Find source node
-        let source = nodes
-            .iter()
-            .find(|n| n["id"].as_u64() == Some(from_node_id))?;
-        // Check if it's a texture sample node
-        let node_type = source["node_type"].as_str()?;
-        if !node_type.contains("texture") {
-            return None;
-        }
-        // Extract texture path from input_values
-        let input_vals = source.get("input_values")?.as_object()?;
-        for (_key, val) in input_vals {
-            if let Some(s) = val.as_str() {
-                if !s.is_empty() {
-                    return Some(s.to_string());
-                }
-            }
-            // Also handle {"Texture": "path"} format
-            if let Some(obj) = val.as_object() {
-                if let Some(tex) = obj.get("Texture").and_then(|v| v.as_str()) {
-                    if !tex.is_empty() {
-                        return Some(tex.to_string());
-                    }
-                }
-            }
-        }
-        None
-    };
-
-    let albedo = trace_texture("base_color");
-    let normal = trace_texture("normal");
-    let arm = trace_texture("metallic")
-        .or_else(|| trace_texture("roughness"))
-        .or_else(|| trace_texture("ao"));
-
-    Ok((albedo, normal, arm))
+/// Field-wise layer-stack comparison that ignores the transient dirty flags
+/// (they'd otherwise flag every rebuilt-but-unchanged stroke as an edit).
+fn painter_layers_equal(a: &[PaintLayer], b: &[PaintLayer]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b.iter()).all(|(x, y)| {
+            x.name == y.name
+                && x.material_path == y.material_path
+                && x.mask == y.mask
+                && x.coverage_threshold == y.coverage_threshold
+                && x.height_offset == y.height_offset
+                && x.enabled == y.enabled
+        })
 }

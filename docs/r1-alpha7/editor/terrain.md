@@ -23,7 +23,13 @@ A fresh terrain is a **single 64 m × 64 m tile** at `chunk_resolution = 129` (1
 
 ## The Terrain Tools panel
 
-Selecting a terrain and activating a terrain tool opens the **Terrain Tools** panel (panel id `terrain_tools`). It has a single full-width **Enable Terrain Mode** toggle at the top, then two tabs: **Sculpt** and **Paint**.
+The **Terrain Tools** panel (panel id `terrain_tools`, category "Terrain" in the dock's panel picker) has a full-width **Enable Terrain Mode** toggle at the top, then two tabs: **Sculpt** and **Paint**.
+
+The panel and the viewport toolbar drive the same state, from either direction:
+
+- Toggling **Enable Terrain Mode** on selects the first terrain and arms the current tab's tool; toggling it off returns to **Select**.
+- Clicking the panel's **Sculpt**/**Paint** tab switches the active tool with it.
+- Activating a terrain tool from the viewport toolbar reveals the panel body and switches its tab to match.
 
 Three toolbar buttons appear in the viewport toolbar whenever a terrain exists in the scene (section "Terrain"):
 
@@ -78,7 +84,7 @@ The gizmo draws an outer ring plus an inner falloff ring (and a vertex-density g
 
 ### Undo / redo
 
-Sculpt and paint strokes are snapshotted on mouse-down and pushed to a dedicated terrain undo stack on mouse-up. **Ctrl+Z** undoes, **Ctrl+Y** (or **Ctrl+Shift+Z**) redoes — while any terrain tool is active.
+Sculpt and paint strokes are snapshotted on mouse-down and recorded onto the editor's central **Scene undo stack** on mouse-up, so they appear in the History panel alongside every other scene edit. **Ctrl+Z** undoes, **Ctrl+Y** (or **Ctrl+Shift+Z**) redoes.
 
 ## Heightmap import / export
 
@@ -89,7 +95,7 @@ The Sculpt tab's **Heightmap Import** section has **Import Heightmap…** and **
 
 ## Painting layers
 
-The **Paint** tab paints per-texel material weights into a splatmap. Pick a paint mode from the 4-tool grid:
+The **Paint** tab paints coverage masks into the terrain's **`Painter`** component — a stack of paint layers on the terrain root entity. Pick a paint mode from the 4-tool grid:
 
 | Tool | Effect |
 |------|--------|
@@ -100,38 +106,26 @@ The **Paint** tab paints per-texel material weights into a splatmap. Pick a pain
 
 ### Layers
 
-A paintable surface holds **up to 8 material layers** (`MAX_LAYERS = 8`); **layer 0 is the terrain base**. New surfaces start with four defaults — **Grass**, **Dirt**, **Water**, **Rock**.
+A `Painter` holds **up to 8 layers** (`MAX_LAYERS = 8`). A fresh terrain starts with **no layers** — click **Add Layer**, or just start painting: the first stroke auto-creates **Layer 1**.
 
-Painting is **non-destructive**: each layer keeps its own coverage **mask**, and the GPU splatmap is composed **top-down** — each upper layer claims `min(mask, remaining coverage)` of a texel and layer 0 absorbs whatever is left. Disabling or deleting a layer just hides its mask; the authored data survives.
+Each layer is pure data: a coverage **mask** (one cell per terrain vertex), an optional **`.material`** path, a **height offset**, and an enabled flag. Painting is **non-destructive** — each layer keeps its own mask, and erasing or disabling a layer never touches the others.
 
-In the **Layers** section: click a row to select the active layer, use **Add Layer** (hidden once 8 layers exist), and drop a **`.material`** asset onto the active layer's drop zone to drive its appearance (albedo / normal / ARM texture paths are extracted from the material graph). The ✕ clears the assignment. Each `MaterialLayer` also carries a `carve_depth` — a normalized height delta applied where its mask is full, composed into the chunk heights so carving a path doesn't fight the base sculpt.
+Layers render as **overlay meshes**: where a layer's mask exceeds its coverage threshold, matching terrain triangles are emitted slightly above the surface (`height_offset`, default `0.02`), following the sculpted heights as you edit. The overlay meshes are derived data — hidden from the hierarchy panel and never saved; the masks on the `Painter` are what persists.
+
+In the **Layers** section: click a row to select the active layer, use **Add Layer** (hidden once 8 layers exist), and drop a **`.material`** asset onto the active layer's drop zone to drive its appearance (albedo / normal / ARM texture paths are extracted from the material graph). The ✕ clears the assignment, reverting the layer to a neutral grey.
+
+Paint strokes, including a stroke that auto-created a layer, undo/redo as single steps alongside sculpt strokes.
 
 ### Paint Brush Settings
 
-- **Size** (`0.01`–`0.5`) — brush radius in **UV fraction** of a chunk (the scroll wheel resizes within that range).
+- **Size** (`0.01`–`0.5`) — brush radius as a **fraction of a chunk side** (the scroll wheel resizes within that range).
 - **Strength** (`0.01`–`1.0`), **Falloff** (`0`–`1`), and **Shape** (Circle / Square / Diamond).
-
-> The splatmap resolution defaults to **256 × 256** per chunk and is independent of the heightmap resolution.
 
 ## Foliage
 
-Foliage is the separate **Paint Foliage** tool (`renzora_foliage_editor`, panel id `foliage_painting`) — not part of the Terrain Tools panel, which only links to it. Foliage scatters instanced meshes onto the surface, weighted by a paint layer.
+Foliage is the separate **Paint Foliage** tool (`renzora_foliage_editor`, panel id `foliage_painting`) — not part of the Terrain Tools panel, which only links to it. You paint a per-chunk **density map** (`FoliageDensityMap`), and the runtime bakes animated grass blades into the painted areas, re-baking as you sculpt underneath. The density map serializes with the scene.
 
-Configure scattering with a `TerrainFoliageConfig` component:
-
-| Field | Meaning |
-|-------|---------|
-| `layer_index` | Which paint layer drives placement |
-| `density` | Instances per square unit |
-| `min_weight` | Minimum splatmap weight to place at all |
-| `mesh_path` | Foliage mesh asset path |
-| `material_path` | Foliage material asset path |
-| `height_range` / `width_range` | Random min/max blade height and width |
-| `random_rotation` | Random Y-axis rotation |
-| `align_to_normal` | Orient instances to the surface normal |
-| `enabled` | Turn the config on/off |
-
-Instances are auto-scattered from the chunk's splatmap weights and respawned when the splatmap or config changes.
+> A `TerrainFoliageConfig` component (splatmap-weighted auto-scatter of arbitrary meshes) still exists as a registered type, but no system currently consumes it — hand-painted density is the supported foliage path.
 
 ## Components & scene format
 
@@ -155,11 +149,11 @@ TerrainChunkData(
     base_heights: [ /* chunk_resolution² floats */ ],
 ),
 
-// Optional, per chunk: the paint splatmap
-PaintableSurfaceData(
-    layers: [ /* up to 8 MaterialLayer */ ],
-    splatmap_resolution: 256,
+// On the root terrain entity: the paint layer stack
+Painter(
+    layers: [ /* up to 8 PaintLayer: name, material_path, mask, height_offset, … */ ],
+    active_layer: Some(0),
 ),
 ```
 
-The composed `heights` buffer, the derived `splatmap_weights`, and the trimesh collider are all runtime-only — they're rebuilt on load, so they aren't written to the scene.
+The composed `heights` buffer, the per-layer overlay meshes, and the trimesh collider are all runtime-only — they're rebuilt on load, so they aren't written to the scene.

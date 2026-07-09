@@ -100,11 +100,9 @@ impl Plugin for TerrainEditorPlugin {
                     .run_if(active_tool_is(ActiveTool::TerrainSculpt))
                     .run_if(renzora::core::not_in_play_mode),
             )
-            // Paint mode: hover raycast + brush-layer paint write. Old
-            // splatmap paint systems (terrain_paint_system, _activate,
-            // _command) are no longer registered — the new `Painter`
-            // component is the single source of truth. Their source is
-            // still present and will get cleaned up in Phase C.
+            // Paint mode: hover raycast + brush-layer paint write. The
+            // `Painter` component is the single source of truth; the legacy
+            // splatmap paint systems were deleted when it landed.
             .add_systems(
                 Update,
                 (
@@ -113,6 +111,14 @@ impl Plugin for TerrainEditorPlugin {
                     brush_layer_paint::brush_layer_scroll_system,
                 )
                     .run_if(active_tool_is(ActiveTool::TerrainPaint))
+                    .run_if(renzora::core::not_in_play_mode),
+            )
+            // Layer commands from the panel (Add Layer, material drop/clear)
+            // apply even while another tool is active, so the panel is never
+            // a dead UI.
+            .add_systems(
+                Update,
+                brush_layer_paint::painter_command_system
                     .run_if(renzora::core::not_in_play_mode),
             )
             // Undo capture — active when any terrain tool is on. Undo/redo
@@ -213,6 +219,10 @@ fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: Acti
         .unwrap_or_default();
     if cur == tool {
         world.insert_resource(ActiveTool::Select);
+        // Park the tab too: `sync_active_tool_system` re-arms the tab's tool
+        // every frame while a terrain is selected, so leaving the tab on
+        // Sculpt/Paint would undo this toggle-off on the next frame.
+        world.insert_resource(TerrainInspectorTab::Size);
         return;
     }
 
