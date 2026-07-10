@@ -137,10 +137,6 @@ pub(crate) struct NativeAssets {
     /// Set by edits (create / rename / delete / move) to force a rescan next
     /// frame without waiting for the throttle.
     listing_dirty: bool,
-    /// Whether the collapsible FAVORITES / RECENT tree sections are expanded
-    /// (both collapsed by default).
-    fav_open: bool,
-    recent_open: bool,
     /// True while a tile is being dragged out (drives the cursor ghost).
     dragging: bool,
     /// Entry sort order + direction.
@@ -152,6 +148,10 @@ pub(crate) struct NativeAssets {
     /// a tree-only file browser (grid + splitter hidden, tree shows files). Set
     /// by `responsive_layout` from the panel's measured width.
     narrow: bool,
+    /// Which list the narrow browser shows (Folders | Recent tabs).
+    tree_tab: TreeTab,
+    /// Narrow-mode filename filter (the tree pane's own search box).
+    tree_search: String,
     /// Multi-selection (marquee + ctrl/shift click). `selected` stays the
     /// primary/anchor (rename + context-menu target).
     selection: HashSet<PathBuf>,
@@ -193,13 +193,13 @@ impl Default for NativeAssets {
             listing_sig: 0,
             listing_timer: 0.0,
             listing_dirty: false,
-            fav_open: false,
-            recent_open: false,
             dragging: false,
             sort: SortMode::Name,
             sort_desc: false,
             list_view: false,
             narrow: false,
+            tree_tab: TreeTab::Folders,
+            tree_search: String::new(),
             selection: HashSet::new(),
             selection_anchor: None,
             marquee_start: None,
@@ -315,15 +315,25 @@ struct AssetNameLabel(PathBuf);
 struct AssetBack;
 #[derive(Component)]
 struct AssetSearch;
-/// A collapsible tree section header (FAVORITES / RECENT).
-#[derive(Clone, Copy, PartialEq)]
-enum Section {
-    Favorites,
+
+/// Which list the tree pane shows. Folders / Recent / Favorites are tabs (in
+/// both the wide sidebar and the narrow tree-only browser) so each list gets
+/// the full pane height, replacing the old collapsible FAVORITES / RECENT
+/// sections stacked above the folder tree.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum TreeTab {
+    Folders,
     Recent,
+    Favorites,
 }
 
 #[derive(Component)]
-struct SectionToggle(Section);
+struct TreeTabBtn(TreeTab);
+/// The narrow-mode search field. Separate marker (and state field) from the
+/// toolbar's [`AssetSearch`]: both inputs coexist as entities, and a shared
+/// field would make the hidden one fight the visible one every frame.
+#[derive(Component)]
+struct TreeSearch;
 
 #[derive(Component)]
 struct TreeToggle(PathBuf);
@@ -490,7 +500,8 @@ pub fn register_native_asset_browser(app: &mut App) {
             request_thumbnails,
             tree_toggle_click,
             tree_nav_click,
-            section_toggle_click,
+            tree_tab_click,
+            tree_search_sync,
             create_asset_click,
             import_click,
             crumb_click,
@@ -2009,7 +2020,149 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(panel_bg())),
         ))
         .id();
-    commands.entity(tree_pane).add_child(tree_scroll);
+    // ── Tree-pane header ──
+    // When the panel collapses to the tree-only file browser the main toolbar
+    // (which carries Add / Import / New Folder and the search box) is hidden with
+    // the grid, so the browser lost its actions entirely. Rebuild them here, atop
+    // the tree: the same action buttons (same marker components, so the existing
+    // click systems drive both instances) and a search box of its own — both
+    // display-gated on `narrow`. The Folders | Recent | Favs tabs below them stay
+    // visible in BOTH layouts, replacing the old collapsible FAVORITES / RECENT
+    // sections so each list gets the full pane height.
+    let narrow_actions = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            row_gap: Val::Px(4.0),
+            padding: UiRect::all(Val::Px(6.0)),
+            flex_shrink: 0.0,
+            ..default()
+        })
+        .id();
+    let n_add = icon_label_button(commands, fonts, "plus", &renzora::lang::t("common.add"));
+    commands
+        .entity(n_add)
+        .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
+    let n_import = icon_label_button(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
+    commands.entity(n_import).insert(ImportBtn);
+    let n_new_folder =
+        icon_label_button(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
+    commands.entity(n_new_folder).insert(NewAssetBtn(NewAsset::Folder));
+    commands.entity(narrow_actions).add_children(&[n_add, n_import, n_new_folder]);
+
+    // Search box — full width (stretched by the column parent), own marker +
+    // state field so it can't fight the hidden toolbar search (see `TreeSearch`).
+    let tree_search_input = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
+    commands.entity(tree_search_input).insert((
+        TreeSearch,
+        Node {
+            min_width: Val::Px(0.0),
+            margin: UiRect::new(Val::Px(6.0), Val::Px(6.0), Val::Px(0.0), Val::Px(6.0)),
+            padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+            align_items: AlignItems::Center,
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+    ));
+
+    // Folders | Recent | Favs tabs (accent underline marks the active one).
+    let tree_tabs = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::header_bg())),
+            Name::new("assets-tree-tabs"),
+        ))
+        .id();
+    for (tab, label) in [
+        (TreeTab::Folders, "Folders"),
+        (TreeTab::Recent, "Recent"),
+        (TreeTab::Favorites, "Favs"),
+    ] {
+        let btn = commands
+            .spawn((
+                Node {
+                    flex_grow: 1.0,
+                    flex_basis: Val::Px(0.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)),
+                    border: UiRect::bottom(Val::Px(2.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                BorderColor::all(Color::NONE),
+                Interaction::default(),
+                HoverCursor(SystemCursorIcon::Pointer),
+                TreeTabBtn(tab),
+                Name::new("assets-tree-tab"),
+            ))
+            .id();
+        bind_bg(commands, btn, move |w| {
+            if matches!(
+                w.get::<Interaction>(btn),
+                Some(Interaction::Hovered) | Some(Interaction::Pressed)
+            ) {
+                return rgb(renzora_ember::theme::hover_bg());
+            }
+            Color::NONE
+        });
+        bind_with(
+            commands,
+            btn,
+            move |w| w.get_resource::<NativeAssets>().is_some_and(|s| s.tree_tab == tab),
+            |w, e, active: &bool| {
+                let c = if *active { rgb(accent()) } else { Color::NONE };
+                if let Some(mut b) = w.get_mut::<BorderColor>(e) {
+                    *b = BorderColor::all(c);
+                }
+            },
+        );
+        let text = commands
+            .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted())), Pickable::IGNORE))
+            .id();
+        bind_with(
+            commands,
+            text,
+            move |w| w.get_resource::<NativeAssets>().is_some_and(|s| s.tree_tab == tab),
+            |w, e, active: &bool| {
+                let c = rgb(if *active { text_primary() } else { text_muted() });
+                if let Some(mut t) = w.get_mut::<TextColor>(e) {
+                    t.0 = c;
+                }
+            },
+        );
+        commands.entity(btn).add_child(text);
+        commands.entity(tree_tabs).add_child(btn);
+    }
+
+    let narrow_header = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: Val::Percent(100.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::header_bg())),
+            Name::new("assets-narrow-header"),
+        ))
+        .id();
+    commands
+        .entity(narrow_header)
+        .add_children(&[narrow_actions, tree_search_input]);
+    bind_display(commands, narrow_header, |w| {
+        w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow)
+    });
+
+    commands.entity(tree_pane).add_children(&[narrow_header, tree_tabs, tree_scroll]);
     bind_with(
         commands,
         tree_pane,
@@ -3127,15 +3280,55 @@ fn flatten_dirs(
     }
 }
 
-/// A row in the tree: a section header, a favorites/recent shortcut, or a folder.
+/// Recursive filename search for the narrow browser's search box: every
+/// file/folder under `dir` whose lowercase name contains `query`, as flat
+/// (depth-0) rows so matches from any nesting level read as one result list.
+/// Capped (results + directories visited) so typing one letter in a huge
+/// project can't stall the frame — the tree snapshot runs on the UI thread.
+fn search_tree(dir: &Path, query: &str, visited: &mut usize, out: &mut Vec<TreeRow>) {
+    const MAX_RESULTS: usize = 200;
+    const MAX_DIRS: usize = 1000;
+    *visited += 1;
+    if out.len() >= MAX_RESULTS || *visited > MAX_DIRS {
+        return;
+    }
+    let mut entries: Vec<(PathBuf, String, bool)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            entries.push((e.path(), name, is_dir));
+        }
+    }
+    entries.sort_by_key(|e| e.1.to_lowercase());
+    for (path, name, is_dir) in entries {
+        if name.to_lowercase().contains(query) && out.len() < MAX_RESULTS {
+            out.push(TreeRow {
+                path: path.clone(),
+                name,
+                depth: 0,
+                expanded: false,
+                has_children: false,
+                is_last: true,
+                parent_lines: Vec::new(),
+                is_file: !is_dir,
+            });
+        }
+        if is_dir {
+            search_tree(&path, query, visited, out);
+        }
+    }
+}
+
+/// A row in the tree: an empty-state label, a recent/favorites shortcut, or a
+/// folder-tree row.
 enum TreeItem {
-    /// A section header. `section` is `Some` for collapsible groups
-    /// (FAVORITES / RECENT); `None` for the always-open FOLDERS header.
-    Header {
-        label: &'static str,
-        section: Option<Section>,
-        open: bool,
-    },
+    /// A plain muted label ("NO RECENT FILES" and friends) shown when the active
+    /// tab has nothing to list.
+    Header { label: &'static str },
     Shortcut { name: String, path: PathBuf, is_dir: bool },
     Folder(TreeRow),
 }
@@ -3171,9 +3364,9 @@ fn tree_token(world: &World) -> u64 {
         hash_path_set(st.expanded.iter()).hash(&mut h);
         hash_path_set(st.favorites.iter()).hash(&mut h);
         hash_path_set(st.recent.iter()).hash(&mut h);
-        st.fav_open.hash(&mut h);
-        st.recent_open.hash(&mut h);
         st.narrow.hash(&mut h);
+        st.tree_tab.hash(&mut h);
+        st.tree_search.hash(&mut h);
     }
     if let Some(root) = project_root(world) {
         root.hash(&mut h);
@@ -3195,70 +3388,82 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
     let expanded = st.map(|s| s.expanded.clone()).unwrap_or_default();
     let favorites = st.map(|s| s.favorites.clone()).unwrap_or_default();
     let recent = st.map(|s| s.recent.clone()).unwrap_or_default();
-    let fav_open = st.map(|s| s.fav_open).unwrap_or(false);
-    let recent_open = st.map(|s| s.recent_open).unwrap_or(false);
-    let show_files = st.map(|s| s.narrow).unwrap_or(false);
+    let narrow = st.map(|s| s.narrow).unwrap_or(false);
+    let tree_tab = st.map(|s| s.tree_tab).unwrap_or(TreeTab::Folders);
+    // The search box only exists in the narrow layout — ignore its (possibly
+    // stale) value in the wide sidebar so it can't invisibly filter the tree.
+    let query = if narrow {
+        st.map(|s| s.tree_search.trim().to_lowercase()).unwrap_or_default()
+    } else {
+        String::new()
+    };
 
     let mut items: Vec<TreeItem> = Vec::new();
-    if !favorites.is_empty() {
-        items.push(TreeItem::Header {
-            label: "FAVORITES",
-            section: Some(Section::Favorites),
-            open: fav_open,
-        });
-        if fav_open {
-            for p in &favorites {
-                items.push(TreeItem::Shortcut {
-                    name: file_name_of(p),
-                    path: p.clone(),
-                    is_dir: p.is_dir(),
-                });
-            }
-        }
-    }
-    if !recent.is_empty() {
-        items.push(TreeItem::Header {
-            label: "RECENT",
-            section: Some(Section::Recent),
-            open: recent_open,
-        });
-        if recent_open {
+    match tree_tab {
+        TreeTab::Recent => {
             for p in recent.iter().take(20) {
-                items.push(TreeItem::Shortcut {
-                    name: file_name_of(p),
-                    path: p.clone(),
-                    is_dir: false,
-                });
+                let name = file_name_of(p);
+                if query.is_empty() || name.to_lowercase().contains(&query) {
+                    items.push(TreeItem::Shortcut { name, path: p.clone(), is_dir: false });
+                }
+            }
+            if items.is_empty() {
+                items.push(TreeItem::Header { label: "NO RECENT FILES" });
+            }
+        }
+        TreeTab::Favorites => {
+            for p in &favorites {
+                let name = file_name_of(p);
+                if query.is_empty() || name.to_lowercase().contains(&query) {
+                    items.push(TreeItem::Shortcut { name, path: p.clone(), is_dir: p.is_dir() });
+                }
+            }
+            if items.is_empty() {
+                items.push(TreeItem::Header { label: "NO FAVORITES" });
+            }
+        }
+        TreeTab::Folders => {
+            if query.is_empty() {
+                // Files appear in the tree only in the narrow layout, where the
+                // tree IS the browser; the wide sidebar stays folders-only.
+                let mut rows = Vec::new();
+                flatten_dirs(&root, 0, &expanded, narrow, &mut Vec::new(), &mut rows);
+                items.extend(rows.into_iter().map(TreeItem::Folder));
+            } else {
+                // Searching: a flat list of every matching file/folder under
+                // the project root, regardless of tree expansion.
+                let mut rows = Vec::new();
+                search_tree(&root, &query, &mut 0, &mut rows);
+                if rows.is_empty() {
+                    items.push(TreeItem::Header { label: "NO MATCHES" });
+                }
+                items.extend(rows.into_iter().map(TreeItem::Folder));
             }
         }
     }
-    items.push(TreeItem::Header {
-        label: "FOLDERS",
-        section: None,
-        open: true,
-    });
-    let mut rows = Vec::new();
-    flatten_dirs(&root, 0, &expanded, show_files, &mut Vec::new(), &mut rows);
-    items.extend(rows.into_iter().map(TreeItem::Folder));
 
     let keyed: Vec<(u64, u64)> = items
         .iter()
-        .map(|it| {
+        .enumerate()
+        .map(|(idx, it)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             let mut h = std::collections::hash_map::DefaultHasher::new();
             match it {
-                TreeItem::Header { label, open, .. } => {
+                TreeItem::Header { label } => {
                     (0u8, label).hash(&mut k);
-                    (label, open).hash(&mut h);
+                    label.hash(&mut h);
                 }
                 TreeItem::Shortcut { name, path, is_dir } => {
                     (1u8, path).hash(&mut k);
-                    (name, is_dir).hash(&mut h);
+                    // The stripe is baked in at build time from the row index, so
+                    // a row whose position shifts must rebuild even when its own
+                    // content didn't change — fold the index into the hash.
+                    (name, is_dir, idx).hash(&mut h);
                 }
                 TreeItem::Folder(r) => {
                     (2u8, &r.path).hash(&mut k);
                     (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
-                    (r.is_last, &r.parent_lines, r.is_file).hash(&mut h);
+                    (r.is_last, &r.parent_lines, r.is_file, idx).hash(&mut h);
                 }
             }
             (k.finish(), h.finish())
@@ -3267,60 +3472,27 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
     KeyedSnapshot {
         items: keyed,
         build: Box::new(move |c, f, i| match &items[i] {
-            TreeItem::Header { label, section, open } => tree_header(c, f, label, *section, *open),
-            TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir),
+            TreeItem::Header { label } => tree_header(c, f, label),
+            TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir, i),
             TreeItem::Folder(r) => tree_row(c, f, r, i),
         }),
     }
 }
 
-/// A section header. Collapsible groups (FAVORITES / RECENT) get a caret and a
-/// click target; the FOLDERS header is a plain label.
-fn tree_header(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    text: &str,
-    section: Option<Section>,
-    open: bool,
-) -> Entity {
-    // Collapsible sections (FAVORITES / RECENT) sit in a subtle inset box; the
-    // plain FOLDERS header is borderless.
-    let boxed = section.is_some();
+/// A muted empty-state label row ("NO RECENT FILES" and friends).
+fn tree_header(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
     let row = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 width: Val::Percent(100.0),
-                column_gap: Val::Px(3.0),
-                margin: if boxed {
-                    UiRect::new(Val::Px(4.0), Val::Px(4.0), Val::Px(4.0), Val::Px(0.0))
-                } else {
-                    UiRect::ZERO
-                },
-                padding: if boxed {
-                    UiRect::axes(Val::Px(6.0), Val::Px(4.0))
-                } else {
-                    UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(6.0), Val::Px(2.0))
-                },
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                padding: UiRect::new(Val::Px(6.0), Val::Px(0.0), Val::Px(6.0), Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(if boxed { rgb(renzora_ember::theme::popup_bg()) } else { Color::NONE }),
             Name::new("tree-header"),
         ))
         .id();
-    let mut kids = Vec::new();
-    if section.is_some() {
-        let caret = icon_text(
-            commands,
-            &fonts.phosphor,
-            if open { "caret-down" } else { "caret-right" },
-            text_muted(),
-            9.0,
-        );
-        kids.push(caret);
-    }
     let label = commands
         .spawn((
             Text::new(text),
@@ -3328,30 +3500,34 @@ fn tree_header(
             TextColor(rgb(text_muted())),
         ))
         .id();
-    kids.push(label);
-    commands.entity(row).add_children(&kids);
-    if let Some(sec) = section {
-        commands
-            .entity(row)
-            .insert((Interaction::default(), SectionToggle(sec)));
-    }
+    commands.entity(row).add_child(label);
     row
 }
 
-fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &Path, is_dir: bool) -> Entity {
+/// A Recent/Favorites row: zebra-striped like the folder tree, icon carrying the
+/// asset type's accent color (folders keep their name-derived tint).
+fn shortcut_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    name: &str,
+    path: &Path,
+    is_dir: bool,
+    row_index: usize,
+) -> Entity {
+    let stripe = inspector_stripe(row_index);
     let row = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 width: Val::Percent(100.0),
-                height: Val::Px(20.0),
+                height: Val::Px(TREE_ROW_H),
                 padding: UiRect::left(Val::Px(8.0)),
                 column_gap: Val::Px(4.0),
                 overflow: Overflow::clip(),
                 ..default()
             },
-            BackgroundColor(Color::NONE),
+            BackgroundColor(stripe),
             Interaction::default(),
             ShortcutClick {
                 path: path.to_path_buf(),
@@ -3361,13 +3537,13 @@ fn shortcut_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, path: &
         ))
         .id();
     bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
-        _ => Color::NONE,
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::border()),
+        _ => stripe,
     });
     let (icon_name, icon_color) = if is_dir {
         ("folder", folder_color(name))
     } else {
-        (icon_for(path, false), text_muted())
+        (icon_for(path, false), asset_type_info(path).0)
     };
     let ic = icon_text(commands, &fonts.phosphor, icon_name, icon_color, 12.0);
     let label = commands
@@ -3603,17 +3779,23 @@ fn tree_nav_click(
     }
 }
 
-fn section_toggle_click(
-    q: Query<(&Interaction, &SectionToggle), Changed<Interaction>>,
+fn tree_tab_click(
+    q: Query<(&Interaction, &TreeTabBtn), Changed<Interaction>>,
     mut state: ResMut<NativeAssets>,
 ) {
-    for (interaction, toggle) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
+    for (interaction, btn) in &q {
+        if *interaction == Interaction::Pressed && state.tree_tab != btn.0 {
+            state.tree_tab = btn.0;
         }
-        match toggle.0 {
-            Section::Favorites => state.fav_open = !state.fav_open,
-            Section::Recent => state.recent_open = !state.recent_open,
+    }
+}
+
+/// Mirror the narrow-mode search field into `tree_search` (same shape as
+/// `search_sync` for the toolbar box, kept separate — see [`TreeSearch`]).
+fn tree_search_sync(input: Query<&EmberTextInput, With<TreeSearch>>, mut state: ResMut<NativeAssets>) {
+    for inp in &input {
+        if state.tree_search != inp.value {
+            state.tree_search = inp.value.clone();
         }
     }
 }
