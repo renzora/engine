@@ -102,6 +102,7 @@ mod code_editor;
 mod collapsible;
 mod context_menu;
 mod hamburger;
+mod icon_menu;
 mod menu;
 mod multi_select;
 mod node_graph;
@@ -196,6 +197,7 @@ pub use collapsible::collapsible;
 pub use code_editor::*;
 pub use context_menu::*;
 pub use hamburger::*;
+pub use icon_menu::icon_menu_button;
 pub use multi_select::*;
 pub use node_graph::*;
 pub use markdown::*;
@@ -251,6 +253,10 @@ impl Plugin for WidgetsPlugin {
                     dropdown::dropdown_apply,
                     dropdown::dropdown_dismiss,
                     dropdown::dropdown_option_hover,
+                    // After dismiss so a press with a menu already open reaps
+                    // the old menu first, then spawns the fresh one.
+                    icon_menu::icon_menu_button_open
+                        .after(popup::screen_menu_dismiss),
                     text_input::text_input_focus,
                     text_input::text_input_type,
                 ),

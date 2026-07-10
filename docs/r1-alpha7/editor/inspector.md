@@ -25,7 +25,7 @@ In a section header you'll find:
 - A **caret** to fold the section open or closed.
 - An **icon** and the component's name.
 - An **on/off toggle** (on components that support it) so you can switch a feature off without deleting it.
-- A **trash** button to remove the component entirely.
+- A **trash** button to remove the component entirely. (**Scripts** and **Material** don't have one — they manage their own contents, with a per-script remove and the material binding controls instead.)
 
 Inside each section are the editable fields. The most-used components are always pinned to the top in a fixed order — **Name**, **Transform**, then **Scripts** and **Material** when present — so the things you reach for most are right where you expect them, no matter what else is on the object. Every other component follows below.
 
@@ -67,7 +67,7 @@ Different settings get different controls, picked automatically to match the val
 ## Adding and removing components
 
 - **Add** — click **Add Component** (top or bottom of the panel) to open a list of everything you can add, grouped by category. Type to filter.
-- **Remove** — click the **trash** button in a component's header.
+- **Remove** — click the **trash** button in a component's header. **Scripts** and **Material** intentionally have no header trash; remove individual scripts from their own section headers instead.
 - **Turn off** — flip the header toggle to disable a component without removing it.
 
 ## Text & fonts
@@ -89,7 +89,9 @@ the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha6/ex
 
 ## Script properties
 
-Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rhai` file from the Asset Browser onto the **Drop to add script** target, or click **Add Script** to pick one from your project. A **Script** section then appears.
+Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rhai` file from the Asset Browser onto the **Drop to add script** target, or click the **+** button on the target's right edge to pick one from a scrolling list of your project's scripts.
+
+Each attached script gets its own **collapsible section** — a header with a caret, the script's file name, an **enable toggle**, and a per-script **trash** button — so an entity carrying several scripts stays tidy. Click a header to fold that script's variables away; the fold state is remembered while you work.
 
 Any variable your script declares in its `props()` function shows up as an editable field — so you can tune gameplay values (speed, jump height, color, a team name) right in the Inspector, with no code changes.
 

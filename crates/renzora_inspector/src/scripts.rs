@@ -23,20 +23,24 @@ use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
 use renzora_ember::reactive::bind_2way;
-use renzora_ember::widgets::{bind_text_input, drag_value, text_input, toggle_switch, Popup};
-use renzora_ember::theme::{border, popup_bg, rgb, section_bg, text_muted, text_primary, value_text};
+use renzora_ember::widgets::{
+    bind_text_input, drag_value, icon_menu_button, section_with_header_open, text_input,
+    toggle_switch, HoverTooltip, Section,
+};
+use renzora_ember::theme::{accent, border, rgb, section_bg, text_muted};
 use renzora_scripting::{ScriptComponent, ScriptEngine, ScriptValue};
 
 pub fn register(app: &mut App) {
     use renzora_editor_framework::{AppEditorExt, SplashState};
     app.register_native_inspector_ui("script_component", script_component_native);
+    app.init_resource::<ScriptSectionsOpen>();
     app.add_systems(
         Update,
         (
             rebuild_scripts,
+            remember_script_sections,
             script_remove_click,
             add_script_drop,
-            add_script_option_click,
             add_script_drop_highlight,
         )
             .run_if(in_state(SplashState::Editor))
@@ -61,10 +65,28 @@ struct AddScriptDropZone {
     entity: Entity,
 }
 
+/// Identifies a per-script section header so its collapse state can be keyed.
 #[derive(Component)]
-struct AddScriptOption {
+struct ScriptSectionKey {
     entity: Entity,
-    path: PathBuf,
+    script_id: u32,
+}
+
+/// Collapse state per `(entity, script id)`, remembered across drawer rebuilds
+/// — the drawer despawns and rebuilds on every structural change (add/remove
+/// script, enable toggle), which would otherwise pop every section back open.
+#[derive(Resource, Default)]
+struct ScriptSectionsOpen(bevy::platform::collections::HashMap<(Entity, u32), bool>);
+
+/// Mirror header clicks (ember's `section_toggle` flips [`Section`]) into
+/// [`ScriptSectionsOpen`] so the next rebuild restores each section as-is.
+fn remember_script_sections(
+    sections: Query<(&Section, &ScriptSectionKey), Changed<Section>>,
+    mut open: ResMut<ScriptSectionsOpen>,
+) {
+    for (sec, key) in &sections {
+        open.0.insert((key.entity, key.script_id), sec.is_open());
+    }
 }
 
 fn script_component_native(world: &mut World, entity: Entity) -> Entity {
@@ -190,6 +212,16 @@ fn rebuild_scripts(world: &mut World) {
             .get::<Children>(root)
             .map(|c| c.iter().collect())
             .unwrap_or_default();
+        // Restore each script section's collapse state (default open).
+        let open_states: Vec<bool> = specs
+            .iter()
+            .map(|s| {
+                world
+                    .get_resource::<ScriptSectionsOpen>()
+                    .and_then(|m| m.0.get(&(entity, s.id)).copied())
+                    .unwrap_or(true)
+            })
+            .collect();
 
         let mut queue = CommandQueue::default();
         {
@@ -197,13 +229,14 @@ fn rebuild_scripts(world: &mut World) {
             for ch in existing {
                 commands.entity(ch).despawn();
             }
-            for spec in &specs {
-                let section = build_script_section(&mut commands, &fonts, entity, spec);
+            // Always show the add/drop bar, above the scripts — it's also the
+            // empty state.
+            let bar = build_add_bar(&mut commands, &fonts, entity, &available);
+            commands.entity(root).add_child(bar);
+            for (spec, open) in specs.iter().zip(&open_states) {
+                let section = build_script_section(&mut commands, &fonts, entity, spec, *open);
                 commands.entity(root).add_child(section);
             }
-            // Always show the add/drop footer — it's also the empty state.
-            let footer = build_add_footer(&mut commands, &fonts, entity, &available);
-            commands.entity(root).add_child(footer);
         }
         queue.apply(world);
         if let Some(mut sr) = world.get_mut::<ScriptsRoot>(root) {
@@ -217,33 +250,66 @@ fn build_script_section(
     fonts: &EmberFonts,
     entity: Entity,
     spec: &ScriptSpec,
+    open: bool,
 ) -> Entity {
-    let root = commands
+    // Shared ember section: caret + icon + name header that collapses on click,
+    // so an entity carrying several scripts stays scannable.
+    let (root, header, body) = section_with_header_open(
+        commands,
+        fonts,
+        "file-code",
+        &spec.name,
+        accent(),
+        section_bg(),
+        open,
+    );
+    commands.entity(header).insert(ScriptSectionKey {
+        entity,
+        script_id: spec.id,
+    });
+    // Compact the shared section like the inspector's component cards: kill the
+    // widget's 8px bottom margin + header↔body gap and tighten the paddings so
+    // scripts stack flush. (Full `Node` overrides — mirror the widget's other
+    // layout fields when changing them.)
+    commands.entity(root).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        ..default()
+    });
+    commands.entity(header).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(6.0),
+        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+        border_radius: BorderRadius::all(Val::Px(4.0)),
+        ..default()
+    });
+    commands.entity(body).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::new(Val::Px(2.0), Val::Px(2.0), Val::Px(2.0), Val::Px(4.0)),
+        // Preserve the collapsed state `section_with_header_open` encoded in the
+        // body's `display`; a bare `Node` would default to `Flex` and desync a
+        // start-collapsed section from its `Section.open` flag.
+        display: if open { Display::Flex } else { Display::None },
+        ..default()
+    });
+
+    // Trailing header affordances: spacer pushes the enable toggle + per-script
+    // remove to the right. Both block the press from reaching the header behind
+    // them, so using them doesn't also collapse/expand the section.
+    let spacer = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                margin: UiRect::bottom(Val::Px(4.0)),
+                flex_grow: 1.0,
                 ..default()
             },
-            Name::new("script-section"),
+            bevy::ui::FocusPolicy::Pass,
         ))
-        .id();
-
-    let title = commands
-        .spawn((
-            Text::new(spec.name.clone()),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    let spacer = commands
-        .spawn(Node {
-            flex_grow: 1.0,
-            ..default()
-        })
         .id();
     let toggle = toggle_switch(commands, spec.enabled);
+    commands.entity(toggle).insert(bevy::ui::FocusPolicy::Block);
     let id = spec.id;
     bind_2way(
         commands,
@@ -254,40 +320,14 @@ fn build_script_section(
     let trash = icon_text(commands, &fonts.phosphor, "trash", (150, 150, 162), 13.0);
     commands.entity(trash).insert((
         Interaction::default(),
+        bevy::ui::FocusPolicy::Block,
         ScriptRemoveBtn {
             entity,
             script_id: spec.id,
         },
     ));
-    let header = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(section_bg())),
-            Name::new("script-header"),
-        ))
-        .id();
-    commands
-        .entity(header)
-        .add_children(&[title, spacer, toggle, trash]);
+    commands.entity(header).add_children(&[spacer, toggle, trash]);
 
-    let body = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
-            Name::new("script-vars"),
-        ))
-        .id();
     for (i, var) in spec.vars.iter().enumerate() {
         let row = build_var_row(commands, fonts, entity, spec.id, var);
         commands
@@ -296,7 +336,6 @@ fn build_script_section(
         commands.entity(body).add_child(row);
     }
 
-    commands.entity(root).add_children(&[header, body]);
     root
 }
 
@@ -468,131 +507,32 @@ fn script_remove_click(
     }
 }
 
-// ── Add-script footer (button + drop target) ─────────────────────────────────
+// ── Add-script bar (drop target + floating "+" menu) ─────────────────────────
 
-/// Always-shown footer mirroring the egui inspector: an "Add Script" button that
-/// opens a popup list of project scripts, plus a "Drop to add script" target.
-/// It doubles as the empty state when no scripts are attached.
-fn build_add_footer(
+/// Always-shown bar at the top of the drawer: the "Drop to add script" target
+/// with a compact "+" icon button floating over its right edge that opens a
+/// scrolling list of the project's scripts. It doubles as the empty state when
+/// no scripts are attached.
+fn build_add_bar(
     commands: &mut Commands,
     fonts: &EmberFonts,
     entity: Entity,
     available: &[(String, PathBuf)],
 ) -> Entity {
-    let col = commands
+    let root = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(4.0),
-                margin: UiRect::top(Val::Px(6.0)),
-                ..default()
-            },
-            Name::new("script-add-footer"),
-        ))
-        .id();
-
-    // Popup list of project scripts.
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                right: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(2.0)),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(2.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            GlobalZIndex(700),
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("script-add-panel"),
-        ))
-        .id();
-    let mut rows = Vec::new();
-    if available.is_empty() {
-        rows.push(muted_label(commands, fonts, &renzora::lang::t("comp.script.none_in_project")));
-    }
-    for (display, path) in available {
-        let txt = commands
-            .spawn((
-                Text::new(display.clone()),
-                ui_font(&fonts.ui, 11.0),
-                TextColor(rgb(value_text())),
-                bevy::ui::FocusPolicy::Pass,
-            ))
-            .id();
-        let row = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-                Interaction::default(),
-                AddScriptOption {
-                    entity,
-                    path: path.clone(),
-                },
-                Name::new("script-add-option"),
-            ))
-            .id();
-        commands.entity(row).add_child(txt);
-        rows.push(row);
-    }
-    commands.entity(panel).add_children(&rows);
-
-    // "Add Script" trigger button.
-    let plus = icon_text(commands, &fonts.phosphor, "plus", (220, 220, 230), 12.0);
-    commands.entity(plus).insert(bevy::ui::FocusPolicy::Pass);
-    let plus_label = commands
-        .spawn((
-            Text::new(renzora::lang::t("comp.script.add")),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-    let button = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(section_bg())),
-            Interaction::default(),
-            Popup::new(panel),
-            Name::new("script-add-btn"),
-        ))
-        .id();
-    commands.entity(button).add_children(&[plus, plus_label]);
-    let wrap = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
+                margin: UiRect::bottom(Val::Px(4.0)),
+                // Anchor for the absolutely-positioned "+" button.
                 position_type: PositionType::Relative,
                 ..default()
             },
-            Name::new("script-add-wrap"),
+            Name::new("script-add-bar"),
         ))
         .id();
-    commands.entity(wrap).add_children(&[button, panel]);
 
-    // Drop-to-add target.
+    // Drop-to-add target (full width; the floated button overlays its right edge).
     let drop_txt = commands
         .spawn((
             Text::new(renzora::lang::t("comp.script.drop")),
@@ -621,8 +561,47 @@ fn build_add_footer(
         .id();
     commands.entity(drop).add_child(drop_txt);
 
-    commands.entity(col).add_children(&[wrap, drop]);
-    col
+    // "+" icon button opening a floating menu of the project's scripts. An
+    // empty project shows one inert row — its index misses `paths` below, so
+    // picking it no-ops.
+    let none_msg = renzora::lang::t("comp.script.none_in_project");
+    let names: Vec<&str> = if available.is_empty() {
+        vec![none_msg.as_str()]
+    } else {
+        available.iter().map(|(d, _)| d.as_str()).collect()
+    };
+    let paths: Vec<PathBuf> = available.iter().map(|(_, p)| p.clone()).collect();
+    let dd = icon_menu_button(commands, fonts, "plus", "file-code", &names, move |w, i| {
+        let Some(abs) = paths.get(i) else { return };
+        let rel = w
+            .get_resource::<renzora::core::CurrentProject>()
+            .map(|p| make_rel(abs, p))
+            .unwrap_or_else(|| abs.clone());
+        if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+            sc.add_file_script(rel);
+        }
+    });
+    commands
+        .entity(dd)
+        .insert(HoverTooltip::new(renzora::lang::t("comp.script.add")));
+    // Float the button over the drop zone's right edge, vertically centered.
+    let float = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: Val::Px(4.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Name::new("script-add-float"),
+        ))
+        .id();
+    commands.entity(float).add_child(dd);
+
+    commands.entity(root).add_children(&[drop, float]);
+    root
 }
 
 /// Recursively scan the project for `.lua`/`.rhai` files, returning
@@ -711,32 +690,6 @@ fn add_script_drop(
     }
 }
 
-// Open/close handled by ember's `Popup`; this only applies the selection.
-// Adding a script changes the structural signature, so `rebuild_scripts`
-// despawns and rebuilds the drawer (closing the popup) on the next frame.
-fn add_script_option_click(
-    q: Query<(&Interaction, &AddScriptOption), Changed<Interaction>>,
-    project: Option<Res<renzora::core::CurrentProject>>,
-    cmds: Option<Res<EditorCommands>>,
-) {
-    let Some(cmds) = cmds else { return };
-    for (interaction, opt) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let rel = project
-            .as_ref()
-            .map(|p| make_rel(&opt.path, p))
-            .unwrap_or_else(|| opt.path.clone());
-        let entity = opt.entity;
-        cmds.push(move |w: &mut World| {
-            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
-                sc.add_file_script(rel.clone());
-            }
-        });
-    }
-}
-
 /// Highlight the drop target's border while a compatible script is dragged over.
 fn add_script_drop_highlight(
     payload: Option<Res<renzora_ui::AssetDragPayload>>,
@@ -822,18 +775,4 @@ fn set_script_enabled(w: &mut World, entity: Entity, id: u32, val: bool) {
             s.enabled = val;
         }
     }
-}
-
-fn muted_label(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
-    commands
-        .spawn((
-            Text::new(text),
-            ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(text_muted())),
-            Node {
-                margin: UiRect::all(Val::Px(6.0)),
-                ..default()
-            },
-        ))
-        .id()
 }

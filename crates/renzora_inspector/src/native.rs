@@ -1348,7 +1348,12 @@ fn build_section(
         );
         extra.push(sw);
     }
-    if let Some(remove_fn) = sec.remove_fn {
+    // Scripts and Material hide the header trash: both manage their own
+    // contents (per-script remove; the material drawer's own binding controls),
+    // so a whole-component delete here is a one-click data-loss hazard. Their
+    // registry `remove_fn` stays — it's also the undo half of Add Component.
+    let hide_trash = matches!(sec.type_id, "script_component" | "material_ref");
+    if let (Some(remove_fn), false) = (sec.remove_fn, hide_trash) {
         let trash = phosphor_glyph(commands, fonts, "trash", renzora_ember::theme::text_muted(), 13.0);
         commands.entity(trash).insert((
             Interaction::default(),
