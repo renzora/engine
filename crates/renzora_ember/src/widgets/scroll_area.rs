@@ -33,8 +33,6 @@ pub struct EmberScroll {
     /// scroll views are `false` and must never auto-stick, or they'd jump to the
     /// bottom (e.g. on the first frame before content height is measured).
     pinned: bool,
-    /// Keep the scrollbar visible whenever content overflows (not only on hover).
-    always_bar: bool,
     thumb: Entity,
     track: Entity,
     /// Horizontal smooth-scroll target (logical px). Only meaningful for both-axis
@@ -182,7 +180,6 @@ fn build_scroll(
     content: Entity,
     max_height: Option<f32>,
     stick: bool,
-    always_bar: bool,
     key: Option<String>,
     both: bool,
 ) -> Entity {
@@ -319,7 +316,6 @@ fn build_scroll(
         target: 0.0,
         stick,
         pinned: stick,
-        always_bar,
         thumb,
         track,
         target_x: 0.0,
@@ -360,7 +356,7 @@ fn build_scroll(
 /// Wraps `content` in a flex-filling scrollable viewport (grows to fill its
 /// parent; scrolls when content overflows).
 pub fn scroll_view(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, false, false, None, false)
+    build_scroll(commands, content, None, false, None, false)
 }
 
 /// Like [`scroll_view`] but scrolls **both** axes, with a horizontal scrollbar in
@@ -368,24 +364,25 @@ pub fn scroll_view(commands: &mut Commands, content: Entity) -> Entity {
 /// viewport (e.g. a large tileset atlas). The content should size itself to its
 /// natural extent (not `100%`), so both axes can overflow.
 pub fn scroll_view_xy(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, false, true, None, true)
+    build_scroll(commands, content, None, false, None, true)
 }
 
-/// Like [`scroll_view`] but the scrollbar stays visible whenever the content
-/// overflows (not only while hovered).
+/// Identical to [`scroll_view`] — every scrollbar now stays visible whenever the
+/// content overflows (hover used to gate visibility; it no longer does). Kept so
+/// existing callers don't churn.
 pub fn scroll_view_bar(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, false, true, None, false)
+    scroll_view(commands, content)
 }
 
 /// Like [`scroll_view`] but auto-follows the bottom as content grows (for logs /
 /// chat); releases when the user scrolls up, re-follows at the bottom.
 pub fn scroll_view_pinned(commands: &mut Commands, content: Entity) -> Entity {
-    build_scroll(commands, content, None, true, false, None, false)
+    build_scroll(commands, content, None, true, None, false)
 }
 
 /// Wraps `content` in a scrollable viewport capped at `max_height` px.
 pub fn scroll_area(commands: &mut Commands, content: Entity, max_height: f32) -> Entity {
-    build_scroll(commands, content, Some(max_height), false, false, None, false)
+    build_scroll(commands, content, Some(max_height), false, None, false)
 }
 
 /// Like [`scroll_view`] but its offset persists across despawn/rebuild, keyed by
@@ -398,18 +395,17 @@ pub fn scroll_view_keyed(
     content: Entity,
     key: impl Into<String>,
 ) -> Entity {
-    build_scroll(commands, content, None, false, false, Some(key.into()), false)
+    build_scroll(commands, content, None, false, Some(key.into()), false)
 }
 
-/// Like [`scroll_view_bar`] (always-visible bar) but its offset is remembered
-/// across rebuilds under `key` (via [`ScrollMemory`]) — so a panel that
-/// re-spawns its content doesn't snap the scroll back to the top.
+/// Identical to [`scroll_view_keyed`] — see [`scroll_view_bar`] for why the
+/// "always-visible bar" variant collapsed into the default.
 pub fn scroll_view_bar_keyed(
     commands: &mut Commands,
     content: Entity,
     key: impl Into<String>,
 ) -> Entity {
-    build_scroll(commands, content, None, false, true, Some(key.into()), false)
+    scroll_view_keyed(commands, content, key)
 }
 
 /// Like [`scroll_area`] (capped at `max_height`) but its offset persists across
@@ -420,7 +416,7 @@ pub fn scroll_area_keyed(
     max_height: f32,
     key: impl Into<String>,
 ) -> Entity {
-    build_scroll(commands, content, Some(max_height), false, false, Some(key.into()), false)
+    build_scroll(commands, content, Some(max_height), false, Some(key.into()), false)
 }
 
 /// Content height (logical px) of a viewport = its single content child's size.
@@ -554,19 +550,18 @@ fn under_overlay(
 /// toward it, and size/place (or hide) the scrollbar thumb.
 pub(crate) fn scroll_update(
     time: Res<Time>,
-    dragged: Res<DraggedThumb>,
     mut viewports: Query<(
+        Entity,
         &mut EmberScroll,
         &mut ScrollPosition,
         &ComputedNode,
         &Children,
-        &RelativeCursorPosition,
     )>,
     computed: Query<&ComputedNode>,
     mut nodes: Query<&mut Node>,
 ) {
     let lerp = 1.0 - (-time.delta_secs() * EASE).exp();
-    for (mut s, mut sp, vcn, kids, rcp) in &mut viewports {
+    for (viewport, mut s, mut sp, vcn, kids) in &mut viewports {
         let inv = vcn.inverse_scale_factor();
         let vh = vcn.size().y * inv;
         let ch = content_h(kids, &computed, inv);
@@ -590,14 +585,24 @@ pub(crate) fn scroll_update(
             sp.y = next;
         }
 
-        // Scrollbar — overlay style: show only while the cursor is over the
-        // panel (or the thumb is being dragged), and only if content overflows.
-        let dragging = dragged.0.as_ref().is_some_and(|d| d.thumb == s.thumb);
-        let show = max > 0.5 && (rcp.cursor_over || dragging || s.always_bar);
+        // Scrollbar — visible whenever the content overflows, hidden only when
+        // everything fits (hover used to gate this; a bar you can't see until
+        // you hover gives no "there's more below" cue).
+        let show = max > 0.5;
         if let Ok(mut track) = nodes.get_mut(s.track) {
             let d = if show { Display::Flex } else { Display::None };
             if track.display != d {
                 track.display = d;
+            }
+        }
+        // Reserve a right gutter on the viewport while the bar shows, so content
+        // ends before the bar instead of underlapping it. Padding only ever
+        // narrows the content (making it taller, never shorter), so this can't
+        // oscillate the overflow state it's keyed on.
+        let pad = if show { Val::Px(BAR_W + 4.0) } else { Val::Px(0.0) };
+        if let Ok(mut vnode) = nodes.get_mut(viewport) {
+            if vnode.padding.right != pad {
+                vnode.padding.right = pad;
             }
         }
         if show {
@@ -631,12 +636,18 @@ pub(crate) fn scroll_update(
             if (sp.x - next_x).abs() > 0.01 {
                 sp.x = next_x;
             }
-            let h_dragging = dragged.0.as_ref().is_some_and(|d| d.thumb == h_thumb);
-            let show_h = max_x > 0.5 && (rcp.cursor_over || h_dragging || s.always_bar);
+            let show_h = max_x > 0.5;
             if let Ok(mut track) = nodes.get_mut(h_track) {
                 let d = if show_h { Display::Flex } else { Display::None };
                 if track.display != d {
                     track.display = d;
+                }
+            }
+            // Bottom gutter for the horizontal bar, mirroring the right gutter.
+            let pad_b = if show_h { Val::Px(BAR_W + 4.0) } else { Val::Px(0.0) };
+            if let Ok(mut vnode) = nodes.get_mut(viewport) {
+                if vnode.padding.bottom != pad_b {
+                    vnode.padding.bottom = pad_b;
                 }
             }
             if show_h {
