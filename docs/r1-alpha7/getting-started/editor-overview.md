@@ -13,10 +13,10 @@ When you open a project, the editor fills the window with a few main areas.
 From the screenshot above:
 
 - **Top bar** — menus (`File`, `Edit`, `View`, `Help`) on the left, the **workspace ribbon** in the center, and Play, Settings, and window buttons on the right.
-- **Left** — your **Scene** tree (everything in the current level).
+- **Left** — your **Scene** tree (everything in the current level), with the **Assets** browser — a file explorer for your project — below it.
 - **Center** — the **3D viewport** where you see and move your world.
 - **Right** — the **Inspector**, which shows the settings of whatever you click.
-- **Bottom** — the **Assets** browser, a file explorer for your project.
+- **Bottom** — a collapsible strip under the viewport with the Console, Timeline, Mixer, Sequencer, and Shape Library (`Ctrl+Space` toggles it).
 
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 
@@ -33,6 +33,7 @@ The tabs in the center of the top bar are **workspaces**. Each one is a ready-ma
 - **Materials** — design how surfaces look with a node graph.
 - **Particles** — fire, smoke, sparkles, and other effects.
 - **Debug** — performance and diagnostics while you test.
+- **Hub** — the Marketplace, full screen: browse and install plugins, assets, and themes.
 
 Click a tab to switch. You can drag tabs to reorder them — a blue insertion line shows where the tab will land as you drag — right-click to rename or remove, and press `+` to add a new one. Your changes to each layout — split sizes, where panels sit, which tab is active, even workspaces you add or rename — are saved automatically and restored the next time you open the editor. (The layout is stored per-user in `~/.renzora/layout.json`; delete that file to reset every workspace to its default.)
 

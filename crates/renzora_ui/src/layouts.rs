@@ -59,6 +59,7 @@ impl Default for LayoutManager {
             WorkspaceLayout::scene("Materials", layout_materials()),
             WorkspaceLayout::scene("Particles", layout_particles()),
             WorkspaceLayout::scene("Debug", layout_debug()),
+            WorkspaceLayout::scene("Hub", layout_hub()),
             // ── Asset-mode layouts (hidden, auto-activated when an asset
             // doc tab is focused). Add new variants here as panels for
             // those kinds learn to render from `EditorContext`.
@@ -276,54 +277,58 @@ impl LayoutManager {
     }
 }
 
-/// Scene: Viewport+BottomTabs | (Hierarchy/Scenes/Shapes) over (Inspector/Gamepad/History)
+/// Scene: (Hierarchy/Scenes over Assets) | Viewport+BottomTabs | (Inspector/Gamepad/History)
 ///
-/// No left column — main area gets the full width minus the right
-/// column. Right column stacks hierarchy/scenes/shape_library tabs on
-/// top of inspector/gamepad/history tabs.
+/// Left column stacks hierarchy/scenes tabs over the asset browser, 50/50.
+/// The main area holds the viewport with the console strip tabbed below; the
+/// right column is the full-height inspector/gamepad/history stack.
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
-        // Main area: viewport on top, assets/console/etc tabbed below
+        // Left column: hierarchy/scenes tabs over the asset browser.
         DockTree::vertical(
             DockTree::Leaf {
-                tabs: vec![
-                    "viewport".into(),
-                    "code_editor".into(),
-                ],
+                tabs: vec!["hierarchy".into(), "scenes".into()],
                 active_tab: 0,
             },
-            DockTree::Leaf {
-                tabs: vec![
-                    "assets".into(),
-                    "hub_store".into(),
-                    "console".into(),
-                    "mixer".into(),
-                    "sequencer".into(),
-                    "timeline".into(),
-                    "record".into(),
-                ],
-                active_tab: 0,
-            },
-            0.72,
+            DockTree::leaf("assets"),
+            0.5,
         ),
-        // Right column: hierarchy/scenes/shapes tabs on top, inspector/gamepad/history below
-        DockTree::vertical(
-            DockTree::Leaf {
-                tabs: vec![
-                    "hierarchy".into(),
-                    "scenes".into(),
-                    "shape_library".into(),
-                ],
-                active_tab: 0,
-            },
+        DockTree::horizontal(
+            // Main area: viewport on top, console/timeline/etc tabbed below
+            DockTree::vertical(
+                DockTree::Leaf {
+                    tabs: vec![
+                        "viewport".into(),
+                        "code_editor".into(),
+                    ],
+                    active_tab: 0,
+                },
+                DockTree::Leaf {
+                    tabs: vec![
+                        "console".into(),
+                        "timeline".into(),
+                        "mixer".into(),
+                        "sequencer".into(),
+                        "shape_library".into(),
+                        "record".into(),
+                    ],
+                    active_tab: 0,
+                },
+                0.72,
+            ),
             DockTree::Leaf {
                 tabs: vec!["inspector".into(), "gamepad".into(), "history".into()],
                 active_tab: 0,
             },
-            0.4,
+            0.78,
         ),
-        0.82,
+        0.16,
     )
+}
+
+/// Hub: the Marketplace as one full panel.
+fn layout_hub() -> DockTree {
+    DockTree::leaf("hub_store")
 }
 
 /// Blueprints: Hierarchy+NodeProperties | BlueprintGraph+Console | Inspector

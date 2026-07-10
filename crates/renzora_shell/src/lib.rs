@@ -76,9 +76,10 @@ impl Plugin for ShellPlugin {
         // a leaf tabbing one of these below a vertical divider gets the
         // collapse chevron and the divider snap-closed gesture even when it
         // isn't the full-width root region (the shipped Scene default nests
-        // the strip under the viewport column).
+        // the strip under the viewport column). Only `console` — the asset
+        // browser now lives in the left column under the hierarchy, where a
+        // marker would wrongly give that pane a collapse chevron.
         app.insert_resource(renzora_ember::dock::BottomStripMarkers(vec![
-            "assets".into(),
             "console".into(),
         ]));
         // The dock starts on the active workspace (overrides DockPlugin's empty).
@@ -993,11 +994,13 @@ fn toggle_bottom_panel(
 /// Detach the active workspace's bottom panel into a stash, in preference order:
 ///
 /// 1. A full-width bottom region at the root ([`DockTree::detach_bottom`]) —
-///    content-agnostic, so any workspace's root strip (Scene's assets/console,
-///    Animation's timeline) collapses. No anchor: it reopens full-width.
-/// 2. A *nested* assets/console strip that isn't full width — sits under one
-///    column with a full-height panel beside it. Detached with an anchor
-///    ([`DockTree::detach_bottom_containing`]) so it reopens in the same place.
+///    content-agnostic, so any workspace's root strip (Animation's timeline)
+///    collapses. No anchor: it reopens full-width.
+/// 2. A *nested* console strip that isn't full width — sits under one column
+///    with a full-height panel beside it. Detached with an anchor
+///    ([`DockTree::detach_bottom_containing`]) so it reopens in the same
+///    place. Keyed on `console` only: the asset browser now docks in the left
+///    column, so an `assets` marker here would collapse that pane instead.
 /// 3. A legacy strip saved before the bottom region existed.
 fn close_bottom_panel(tree: &mut DockTree) -> Option<ClosedBottom> {
     if let Some((bottom, ratio)) = tree.detach_bottom() {
@@ -1007,14 +1010,12 @@ fn close_bottom_panel(tree: &mut DockTree) -> Option<ClosedBottom> {
             anchor: Vec::new(),
         });
     }
-    for marker in ["assets", "console"] {
-        if let Some((bottom, ratio, anchor)) = tree.detach_bottom_containing(marker) {
-            return Some(ClosedBottom {
-                tree: bottom,
-                ratio,
-                anchor,
-            });
-        }
+    if let Some((bottom, ratio, anchor)) = tree.detach_bottom_containing("console") {
+        return Some(ClosedBottom {
+            tree: bottom,
+            ratio,
+            anchor,
+        });
     }
     dock::take_legacy_bottom_strip(tree)
 }

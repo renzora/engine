@@ -47,18 +47,39 @@ pub fn has_bottom_strip(tree: &DockTree) -> bool {
     )
 }
 
-/// Startup stash: detach the classic assets/console strip wherever it sits so
-/// every launch begins with the bottom panel closed.
+/// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
+/// recognized by console being tabbed together with another strip panel —
+/// mixer/sequencer/timeline/shape_library in the shipped default, or
+/// assets/hub_store in layouts saved before those moved out of the strip.
+/// Requiring a companion keeps this from matching a standalone console leaf
+/// (Blueprints) or the console+problems pair (Scripting) — those stay open at
+/// launch, as before.
+fn is_strip_leaf(tree: &mut DockTree) -> bool {
+    const COMPANIONS: [&str; 7] = [
+        "mixer",
+        "sequencer",
+        "timeline",
+        "shape_library",
+        "record",
+        "assets",
+        "hub_store",
+    ];
+    matches!(
+        tree.find_leaf_mut("console"),
+        Some(DockTree::Leaf { tabs, .. }) if tabs.iter().any(|t| COMPANIONS.contains(&t.as_str()))
+    )
+}
+
+/// Startup stash: detach the classic console strip wherever it sits so every
+/// launch begins with the bottom panel closed.
 ///
 /// - A **root** full-width bottom region (layouts saved before the strip moved
 ///   under the viewport) detaches with no anchor — it reopens full-width, the
 ///   shape the user had.
 /// - The **nested** strip (the shipped Scene default: the leaf tabbing
-///   `assets` together with `console`, under one column) detaches with an
-///   anchor, so it reopens under that same column instead of full-width.
-///   Requiring both panels keeps this from grabbing a standalone assets or
-///   console leaf in other workspaces (Scripting docks each separately) —
-///   those stay open at launch, as before.
+///   `console` with the other strip panels, under one column — see
+///   [`is_strip_leaf`]) detaches with an anchor, so it reopens under that same
+///   column instead of full-width.
 /// - A strip not below any vertical divider at all (pre-bottom-region legacy
 ///   layouts) falls back to taking the leaf, reopening at the default ratio.
 pub fn take_bottom_strip(tree: &mut DockTree) -> Option<ClosedBottom> {
@@ -69,14 +90,10 @@ pub fn take_bottom_strip(tree: &mut DockTree) -> Option<ClosedBottom> {
             anchor: Vec::new(),
         });
     }
-    let strip = matches!(
-        tree.find_leaf_mut("assets"),
-        Some(DockTree::Leaf { tabs, .. }) if tabs.iter().any(|t| t == "console")
-    );
-    if !strip {
+    if !is_strip_leaf(tree) {
         return None;
     }
-    if let Some((bottom, ratio, anchor)) = tree.detach_bottom_containing("assets") {
+    if let Some((bottom, ratio, anchor)) = tree.detach_bottom_containing("console") {
         return Some(ClosedBottom {
             tree: bottom,
             ratio,
@@ -87,18 +104,13 @@ pub fn take_bottom_strip(tree: &mut DockTree) -> Option<ClosedBottom> {
 }
 
 /// Detach the classic strip from a layout saved before the strip became a root
-/// region (it sat nested under the viewport): the leaf tabbing `assets`
-/// together with `console`. Requiring both panels keeps this from grabbing a
-/// standalone assets or console leaf in other workspaces (Scripting docks each
-/// separately). Reopens at the default ratio — the nested split's ratio meant
+/// region (it sat nested under the viewport): the leaf tabbing `console` with
+/// another strip panel (see [`is_strip_leaf`] for why a companion is
+/// required). Reopens at the default ratio — the nested split's ratio meant
 /// something else.
 pub fn take_legacy_bottom_strip(tree: &mut DockTree) -> Option<ClosedBottom> {
-    let legacy = matches!(
-        tree.find_leaf_mut("assets"),
-        Some(DockTree::Leaf { tabs, .. }) if tabs.iter().any(|t| t == "console")
-    );
-    legacy
-        .then(|| tree.take_leaf_containing("assets"))
+    is_strip_leaf(tree)
+        .then(|| tree.take_leaf_containing("console"))
         .flatten()
         .map(|t| ClosedBottom {
             tree: t,
@@ -253,6 +265,7 @@ pub fn workspace_layouts() -> Vec<(String, DockTree)> {
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
         ("Debug".into(), layout_debug()),
+        ("Hub".into(), layout_hub()),
     ]
 }
 
@@ -403,34 +416,43 @@ fn layout_debug() -> DockTree {
     )
 }
 
-/// Scene workspace: a viewport column (viewport over the assets/console
-/// strip) beside a full-height right column (hierarchy/scenes/shapes over
-/// inspector/gamepad/history). The strip sits **under the viewport, not
-/// full-width at the root** — the right column keeps its full height. It is
-/// still the collapsible bottom panel: startup stashes it closed
-/// ([`take_bottom_strip`]), Ctrl+Space toggles it, and its tab bar keeps the
-/// collapse chevron wherever the strip is docked, because the shell registers
-/// its panels as `BottomStripMarkers` (see the shell's `toggle_bottom_panel`).
+/// Scene workspace: a full-height left column (hierarchy/scenes over the
+/// asset browser, split 50/50) | a viewport column (viewport over the console
+/// strip) | a full-height right column (inspector/gamepad/history). The strip
+/// sits **under the viewport, not full-width at the root** — both side
+/// columns keep their full height. It is still the collapsible bottom panel:
+/// startup stashes it closed ([`take_bottom_strip`]), Ctrl+Space toggles it,
+/// and its tab bar keeps the collapse chevron wherever the strip is docked,
+/// because the shell registers `console` as a `BottomStripMarkers` panel (see
+/// the shell's `toggle_bottom_panel`).
 pub fn scene_layout() -> DockTree {
     DockTree::horizontal(
+        // Left column: hierarchy/scenes tabs over the asset browser.
         DockTree::vertical(
-            DockTree::tabs(&["viewport", "code_editor"]),
-            DockTree::tabs(&[
-                "assets",
-                "hub_store",
-                "console",
-                "mixer",
-                "sequencer",
-                "timeline",
-            ]),
-            BOTTOM_PANEL_RATIO,
+            DockTree::tabs(&["hierarchy", "scenes"]),
+            DockTree::leaf("assets"),
+            0.5,
         ),
-        // Right column: hierarchy/scenes/shapes on top, inspector/gamepad/history below.
-        DockTree::vertical(
-            DockTree::tabs(&["hierarchy", "scenes", "shape_library"]),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::tabs(&["viewport", "code_editor"]),
+                DockTree::tabs(&[
+                    "console",
+                    "timeline",
+                    "mixer",
+                    "sequencer",
+                    "shape_library",
+                ]),
+                BOTTOM_PANEL_RATIO,
+            ),
             DockTree::tabs(&["inspector", "gamepad", "history"]),
-            0.4,
+            0.78,
         ),
-        0.82,
+        0.16,
     )
+}
+
+/// Hub workspace: the Marketplace as one full panel.
+fn layout_hub() -> DockTree {
+    DockTree::leaf("hub_store")
 }
