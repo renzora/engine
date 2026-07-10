@@ -297,6 +297,13 @@ fn render_overlay_2d(
     cameras_2d: Query<(&ViewportCamera2d, &Camera, &GlobalTransform)>,
     sprites: Query<(&GlobalTransform, &Sprite)>,
     node2ds: Query<&GlobalTransform, With<Node2d>>,
+    // Tupled: the system sits at bevy's 16-param cap, so the collider-edit and
+    // y-sort chrome inputs share one slot.
+    (collider_edit, shapes, ysorts): (
+        Option<Res<renzora_physics::ColliderEditMode>>,
+        Query<&renzora_physics::CollisionShapeData>,
+        Query<&renzora::core::YSort>,
+    ),
 ) {
     // Clear last frame's overlay first — unconditionally, so switching away from
     // 2D (or entering play) removes the rulers/handles instead of leaving them
@@ -358,6 +365,9 @@ fn render_overlay_2d(
         };
         let origin = slot.screen_position;
         let size = slot.screen_size;
+        // The primary slot carries the in-viewport toolbar strip flush on its
+        // top edge; the ruler chrome starts below it instead of under it.
+        let top_offset = if i == 0 { crate::VIEWPORT_TOOLBAR_H } else { 0.0 };
 
         if show_rulers {
             draw_rulers(
@@ -367,6 +377,7 @@ fn render_overlay_2d(
                 &panel,
                 origin,
                 size,
+                top_offset,
                 ruler_grid,
                 font.as_ref(),
             );
@@ -383,7 +394,14 @@ fn render_overlay_2d(
                     // Marker lines projected onto each ruler — meaningless
                     // without the ruler bars behind them, so they toggle too.
                     if show_rulers {
-                        spawn_tick(&mut commands, cursor.x - 0.5, origin.y, 1.0, RULER, ACCENT);
+                        spawn_tick(
+                            &mut commands,
+                            cursor.x - 0.5,
+                            origin.y + top_offset,
+                            1.0,
+                            RULER,
+                            ACCENT,
+                        );
                         spawn_tick(&mut commands, origin.x, cursor.y - 0.5, RULER, 1.0, ACCENT);
                     }
                     // Coordinates go to the status bar (left side), not a
@@ -491,6 +509,34 @@ fn render_overlay_2d(
         } else {
             continue;
         };
+
+        // Y-sort line: the world-space height this entity sorts from
+        // (`y + offset` — see `apply_y_sort`). Drawn for every selected
+        // y-sorted entity, in both normal and collider-edit chrome, so tuning
+        // Sort Offset in the inspector gives immediate on-canvas feedback:
+        // two entities swap draw order exactly when their cyan lines cross.
+        if let Ok(ysort) = ysorts.get(entity) {
+            draw_y_sort_line_2d(
+                &mut commands, chrome_root, camera, cam_gt, &panel, origin, center, half,
+                ysort.offset,
+            );
+        }
+
+        // Collider edit mode replaces the PRIMARY's selection chrome with the
+        // collider's own frame (green, so it can't be mistaken for the sprite
+        // resize frame). Interaction lives in `renzora_gizmo::collider_edit_2d`,
+        // which hit-tests the exact same geometry.
+        if primary == Some(entity)
+            && collider_edit.as_deref().is_some_and(|c| c.active)
+        {
+            if let Ok(shape) = shapes.get(entity) {
+                draw_collider_chrome_2d(
+                    &mut commands, chrome_root, camera, cam_gt, &panel, origin, center, angle,
+                    shape,
+                );
+                continue;
+            }
+        }
 
         // The selection frame follows the entity's rotation: project the
         // centre and the two (rotated) local half-axes into window space, then
@@ -643,6 +689,211 @@ fn render_overlay_2d(
     }
 }
 
+/// Green tint for the collider-edit frame — clearly not the orange sprite
+/// selection, matching the 3D collider handles' resize green.
+const COLLIDER: Color = Color::srgb(0.35, 0.9, 0.45);
+
+/// Cyan tint for the y-sort line — a third colour so sort (cyan), collision
+/// (green) and selection (orange) never read as each other.
+const YSORT: Color = Color::srgb(0.35, 0.8, 1.0);
+
+/// The y-sort gizmo: a horizontal line at the entity's sort height
+/// (`world_y + Sort Offset`) with a diamond at its centre. World-space
+/// horizontal on purpose — y-sorting compares world Y, so the line stays
+/// level even on a rotated sprite, and two props swap draw order exactly
+/// when their lines cross.
+#[allow(clippy::too_many_arguments)]
+fn draw_y_sort_line_2d(
+    commands: &mut Commands,
+    chrome_root: Entity,
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+    panel: &Panel2d,
+    origin: Vec2,
+    entity_center: Vec2,
+    half: Vec2,
+    sort_offset: f32,
+) {
+    let sort_y = entity_center.y + sort_offset;
+    // Overhang the sprite a little each side so the line reads as a level,
+    // not an edge of the selection box.
+    let reach = (half.x * 1.3).max(12.0);
+    let Some(a) = world_to_window(
+        camera,
+        cam_gt,
+        panel,
+        Vec2::new(entity_center.x - reach, sort_y),
+    ) else {
+        return;
+    };
+    let Some(b) = world_to_window(
+        camera,
+        cam_gt,
+        panel,
+        Vec2::new(entity_center.x + reach, sort_y),
+    ) else {
+        return;
+    };
+    let left = a.x.min(b.x) - origin.x;
+    let width = (b.x - a.x).abs().max(1.0);
+    let y = a.y - origin.y;
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(left),
+            top: Val::Px(y - 1.0),
+            width: Val::Px(width),
+            height: Val::Px(2.0),
+            ..default()
+        },
+        BackgroundColor(YSORT),
+        bevy::ui::FocusPolicy::Pass,
+        bevy::picking::Pickable::IGNORE,
+        ChildOf(chrome_root),
+        Name::new("y-sort-line-2d"),
+    ));
+    // Centre diamond — marks the sort point itself.
+    const D: f32 = 7.0;
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(left + width * 0.5 - D * 0.5),
+            top: Val::Px(y - D * 0.5),
+            width: Val::Px(D),
+            height: Val::Px(D),
+            border: UiRect::all(Val::Px(1.5)),
+            ..default()
+        },
+        bevy::ui::UiTransform::from_rotation(Rot2::radians(std::f32::consts::FRAC_PI_4)),
+        BackgroundColor(Color::WHITE),
+        BorderColor::all(YSORT),
+        bevy::ui::FocusPolicy::Pass,
+        bevy::picking::Pickable::IGNORE,
+        ChildOf(chrome_root),
+        Name::new("y-sort-marker-2d"),
+    ));
+}
+
+/// Draw the collider-edit chrome for the primary selection: the shape's
+/// outline (a border node — rounded fully for circles/capsules, square for
+/// boxes) plus the eight resize handles. Geometry mirrors
+/// `renzora_gizmo::collider_edit_2d` exactly (shape centre = entity position +
+/// rotated `offset`, half-extents per shape type), so what's drawn is what the
+/// picker hit-tests — the two crates don't link, hence the twin math.
+#[allow(clippy::too_many_arguments)]
+fn draw_collider_chrome_2d(
+    commands: &mut Commands,
+    chrome_root: Entity,
+    camera: &Camera,
+    cam_gt: &GlobalTransform,
+    panel: &Panel2d,
+    origin: Vec2,
+    entity_center: Vec2,
+    angle: f32,
+    shape: &renzora_physics::CollisionShapeData,
+) {
+    use renzora_physics::CollisionShapeType;
+    // Twin of `collider_edit_2d::collider_half`.
+    let half = match shape.shape_type {
+        CollisionShapeType::Box | CollisionShapeType::Mesh => shape.half_extents.truncate(),
+        CollisionShapeType::Sphere | CollisionShapeType::Cylinder => Vec2::splat(shape.radius),
+        CollisionShapeType::Capsule => {
+            Vec2::new(shape.radius, shape.half_height + shape.radius)
+        }
+    };
+    if half.x <= 0.0 || half.y <= 0.0 {
+        return;
+    }
+    let rot = Rot2::radians(angle);
+    let center = entity_center + rot * shape.offset.truncate();
+
+    // Same projected-axes construction as the selection frame above.
+    let Some(center_win) = world_to_window(camera, cam_gt, panel, center) else {
+        return;
+    };
+    let Some(x_edge) = world_to_window(camera, cam_gt, panel, center + rot * Vec2::new(half.x, 0.0))
+    else {
+        return;
+    };
+    let Some(y_edge) = world_to_window(camera, cam_gt, panel, center + rot * Vec2::new(0.0, half.y))
+    else {
+        return;
+    };
+    let ax = x_edge - center_win;
+    let ay = y_edge - center_win;
+    let rect = Vec2::new(ax.length() * 2.0, ay.length() * 2.0);
+    if rect.x <= 0.0 || rect.y <= 0.0 {
+        return;
+    }
+    let screen_rot = Rot2::radians(ax.to_angle());
+    let center_panel = center_win - origin;
+
+    // Circles and capsules read as their real silhouette by fully rounding the
+    // border on the radius axis (a circle's box is square, so 50% = a circle;
+    // a capsule's width is exactly 2·radius, so half the width = the caps).
+    let corner = match shape.shape_type {
+        CollisionShapeType::Box | CollisionShapeType::Mesh => Val::Px(0.0),
+        _ => Val::Px(rect.x * 0.5),
+    };
+
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(center_panel.x - rect.x * 0.5),
+            top: Val::Px(center_panel.y - rect.y * 0.5),
+            width: Val::Px(rect.x),
+            height: Val::Px(rect.y),
+            border: UiRect::all(Val::Px(1.5)),
+            border_radius: BorderRadius::all(corner),
+            ..default()
+        },
+        bevy::ui::UiTransform::from_rotation(screen_rot),
+        BackgroundColor(COLLIDER.with_alpha(0.08)),
+        BorderColor::all(COLLIDER),
+        bevy::ui::FocusPolicy::Pass,
+        bevy::picking::Pickable::IGNORE,
+        ChildOf(chrome_root),
+        Name::new("collider-outline-2d"),
+    ));
+
+    // Eight handles at the collider box's corners + edge midpoints — the same
+    // positions `collider_edit_2d` hit-tests (entity-local: offset ± half).
+    let local_offsets = [
+        Vec2::new(-half.x, half.y),
+        Vec2::new(0.0, half.y),
+        Vec2::new(half.x, half.y),
+        Vec2::new(-half.x, 0.0),
+        Vec2::new(half.x, 0.0),
+        Vec2::new(-half.x, -half.y),
+        Vec2::new(0.0, -half.y),
+        Vec2::new(half.x, -half.y),
+    ];
+    for offset in local_offsets {
+        let Some(pos) = world_to_window(camera, cam_gt, panel, center + rot * offset) else {
+            continue;
+        };
+        let pos = pos - origin;
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(pos.x - HANDLE_PX * 0.5),
+                top: Val::Px(pos.y - HANDLE_PX * 0.5),
+                width: Val::Px(HANDLE_PX),
+                height: Val::Px(HANDLE_PX),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            bevy::ui::UiTransform::from_rotation(screen_rot),
+            BackgroundColor(Color::WHITE),
+            BorderColor::all(COLLIDER),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::picking::Pickable::IGNORE,
+            ChildOf(chrome_root),
+            Name::new("collider-handle-2d"),
+        ));
+    }
+}
+
 /// Draw one viewport's ruler bars + labelled ticks. The bars frame the panel's
 /// top and left edges; the ticks are projected through THIS panel's camera, so
 /// each open viewport rules to its own pan/zoom rather than sharing one.
@@ -654,15 +905,20 @@ fn draw_rulers(
     panel: &Panel2d,
     origin: Vec2,
     size: Vec2,
+    // Extra distance (window px) the bars start below the panel's top edge —
+    // the in-viewport toolbar's height on the primary slot, 0 elsewhere. Only
+    // the chrome shifts; the world math keeps using the true panel rect.
+    top_offset: f32,
     ruler_grid: Option<f32>,
     font: Option<&FontSource>,
 ) {
     let bar = Color::srgba(0.10, 0.11, 0.13, 0.92);
     let tick_col = Color::srgba(1.0, 1.0, 1.0, 0.35);
+    let bar_top = origin.y + top_offset;
 
     // Top ruler bar.
     commands.spawn((
-        overlay_node(origin.x, origin.y, size.x, RULER),
+        overlay_node(origin.x, bar_top, size.x, RULER),
         BackgroundColor(bar),
         GlobalZIndex(Z_RULER_BAR),
         bevy::ui::FocusPolicy::Pass,
@@ -672,7 +928,7 @@ fn draw_rulers(
     ));
     // Left ruler bar.
     commands.spawn((
-        overlay_node(origin.x, origin.y, RULER, size.y),
+        overlay_node(origin.x, bar_top, RULER, size.y - top_offset),
         BackgroundColor(bar),
         GlobalZIndex(Z_RULER_BAR),
         bevy::ui::FocusPolicy::Pass,
@@ -707,9 +963,9 @@ fn draw_rulers(
         guard += 1;
         if let Some(win) = world_to_window(camera, cam_gt, panel, Vec2::new(x, world_top)) {
             if win.x >= origin.x + RULER {
-                spawn_tick(commands, win.x - 0.5, origin.y, 1.0, RULER, tick_col);
+                spawn_tick(commands, win.x - 0.5, bar_top, 1.0, RULER, tick_col);
                 if let Some(f) = font {
-                    spawn_label(commands, f, &fmt_coord(x, step_x), win.x + 2.0, origin.y + 2.0);
+                    spawn_label(commands, f, &fmt_coord(x, step_x), win.x + 2.0, bar_top + 2.0);
                 }
             }
         }
@@ -722,7 +978,7 @@ fn draw_rulers(
     while y <= world_top && guard < 512 {
         guard += 1;
         if let Some(win) = world_to_window(camera, cam_gt, panel, Vec2::new(world_left, y)) {
-            if win.y >= origin.y + RULER {
+            if win.y >= bar_top + RULER {
                 spawn_tick(commands, origin.x, win.y - 0.5, RULER, 1.0, tick_col);
                 if let Some(f) = font {
                     spawn_label(commands, f, &fmt_coord(y, step_y), origin.x + 2.0, win.y);
