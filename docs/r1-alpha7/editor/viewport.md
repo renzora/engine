@@ -36,7 +36,7 @@ The camera moves slowly when you're close to something and faster when you're fa
 
 There's also a small button cluster on the right edge of each viewport for **Pan** and **Zoom** (press and drag) plus **Grid** and scene-**Icons** toggles, and an **orientation gizmo** in the top-right corner that shows which way the camera is facing.
 
-On the **left edge of the viewport** sits a vertical toolbar with the session actions — **Undo**, **Redo**, and **Save** — followed by the tool buttons: **Select / Move / Rotate / Scale**, the terrain tools (sculpt, paint, foliage), and any tools plugins add (draw box, draw polyline, tilemap paint, …). It floats over the scene and hides during play mode. Prefer it along the top instead? The **Toolbar Orientation** dropdown on the Settings **Viewport** page switches it between the left-edge **Vertical** strip (default) and a full-width **Horizontal** strip on the viewport's top edge; the choice is saved with the project.
+Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain tools, and any tools plugins add: draw box, draw polyline, tilemap paint, …), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), and a **maximize** toggle at the far right. It floats over the scene and hides during play mode.
 
 ## Different views of your scene
 

@@ -3,18 +3,19 @@
 //!
 //! Mirrors `header.rs` (the egui version) but built from bevy_ui nodes so it
 //! runs in the native editor. The header strip keeps the view/mode dropdowns,
-//! the shapes menu, World/Local, inline snapping, and the Display/Camera/Snap
-//! dropdowns; the session actions (undo / redo / save) and the registry-driven
-//! tool buttons live in [`build_side_toolbar`], a vertical strip parented into
-//! the primary viewport's content node. Every driver system locates its
-//! widgets by component, so the two strips share one set of systems.
+//! the shapes menu, World/Local, camera speed, and the Display/Camera/Snap
+//! dropdowns; the session actions (undo / redo / save), the registry-driven
+//! tool buttons, the inline snap pills, and maximize live in
+//! [`build_side_toolbar`], a horizontal strip parented into the primary
+//! viewport's content node. Every driver system locates its widgets by
+//! component, so the two strips share one set of systems.
 
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use renzora::core::viewport_types::{
-    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ToolbarOrientation,
-    ViewAngleCommand, ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
+    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ViewAngleCommand,
+    ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
 };
 use renzora::core::ShapeRegistry;
 use renzora_undo::{execute, SpawnShapeCmd, UndoContext};
@@ -39,10 +40,10 @@ pub const HEADER_HEIGHT: f32 = 28.0;
 const BTN_W: f32 = 26.0;
 const BTN_H: f32 = 22.0;
 
-/// Side-toolbar buttons are larger than the header widgets — they float over
-/// the scene, so they can afford the room and want the bigger hit target.
-const SIDE_BTN: f32 = 32.0;
-const SIDE_ICON: f32 = 18.0;
+/// Side-toolbar buttons are slightly larger than the header widgets — they
+/// float over the scene, so they can afford the bigger hit target.
+const SIDE_BTN: f32 = 28.0;
+const SIDE_ICON: f32 = 15.0;
 
 /// One of the fixed "session action" buttons in the header's left strip.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
@@ -150,45 +151,9 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let overlay_2d_dd = build_overlay_2d_dropdown(commands, fonts);
     commands.entity(overlay_2d_dd).insert(TwoDOnly);
 
-    // Inline snapping: translate doubles as the 2D grid snap; rotate / scale and
-    // the camera-speed widget are 3D-only (hidden in 2D — `ThreeDOnly`).
+    // The inline snap pills (translate / rotate / scale) live in the viewport
+    // toolbar — see [`build_side_toolbar`]. The camera-speed widget is 3D-only.
     let gap5 = gap(commands, 6.0);
-    let translate = snap_pair(
-        commands,
-        fonts,
-        SnapToggle::Translate,
-        "arrows-out-cardinal",
-        0.01,
-        100.0,
-        0.02,
-        |w| snap_val(w, |s| s.translate_snap),
-        |w, v| set_snap(w, |s| &mut s.translate_snap, v),
-    );
-    let rotate = snap_pair(
-        commands,
-        fonts,
-        SnapToggle::Rotate,
-        "arrow-clockwise",
-        1.0,
-        90.0,
-        0.2,
-        |w| snap_val(w, |s| s.rotate_snap),
-        |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
-    );
-    let scale = snap_pair(
-        commands,
-        fonts,
-        SnapToggle::Scale,
-        "arrows-out",
-        0.01,
-        10.0,
-        0.01,
-        |w| snap_val(w, |s| s.scale_snap),
-        |w, v| set_snap(w, |s| &mut s.scale_snap, v),
-    );
-    commands.entity(rotate).insert(ThreeDOnly);
-    commands.entity(scale).insert(ThreeDOnly);
-    let gap6 = gap(commands, 6.0);
     let cam_speed = cam_speed_widget(commands, fonts);
     commands.entity(cam_speed).insert(ThreeDOnly);
 
@@ -202,55 +167,44 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     for e in [display_dd, snap_dd, camera_dd] {
         commands.entity(e).insert(ThreeDOnly);
     }
-    let gap4 = gap(commands, 3.0);
-    let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out", BTN_W, BTN_H, 14.0);
-
-    // One centered cluster: shapes + World/Local, then view/mode, inline
-    // snapping, camera speed, the Display / Snap / Camera dropdowns, and
-    // maximize — all grouped in the middle via the row's `justify-content`.
+    // One centered cluster: shapes + World/Local, then view/mode, camera speed,
+    // and the Display / Snap / Camera dropdowns — all grouped in the middle via
+    // the row's `justify-content`. (Maximize moved to the viewport toolbar.)
     commands.entity(row).add_children(&[
         shapes_dd, space_gap, space_btn,
-        center_gap, view_dd, mode_dd, gap5, translate, rotate, scale, gap6, cam_speed, gap3,
-        display_dd, snap_dd, camera_dd, overlay_2d_dd, gap4, maximize,
+        center_gap, view_dd, mode_dd, gap5, cam_speed, gap3,
+        display_dd, snap_dd, camera_dd, overlay_2d_dd,
     ]);
     row
 }
 
-/// Marks the tool strip's root cluster so [`update_side_toolbar_orientation`]
-/// can restyle it when the user flips Settings → Viewport → Toolbar.
-#[derive(Component)]
-struct SideToolbarRoot;
-
-/// Build the toolbar strip overlaid flush on one edge of the primary viewport —
-/// the session actions (undo / redo / save) plus the registry-driven
-/// tool buttons (Select/Translate/… + terrain + plugin tools, filled by
-/// [`populate_tools`]). These used to sit at the left of the header strip; the
-/// driver systems in [`register`] locate every button by component, so moving
-/// them into the viewport changes nothing about how they behave. The cluster is
-/// an [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
+/// Build the toolbar strip overlaid flush on the primary viewport's top edge —
+/// the session actions (undo / redo / save), the registry-driven tool buttons
+/// (Select/Translate/… + terrain + plugin tools, filled by [`populate_tools`]),
+/// the inline snap pills (translate / rotate / scale), and the maximize toggle
+/// pushed to the far right. These used to sit in the header strip; the driver
+/// systems in [`register`] locate every widget by component, so moving them
+/// into the viewport changes nothing about how they behave. The cluster is an
+/// [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
 /// tool never bleeds into picking / box-select underneath).
-///
-/// Built vertical (the [`ToolbarOrientation`] default);
-/// [`update_side_toolbar_orientation`] restyles it live from the setting.
 pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let cluster = commands
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
+                right: Val::Px(0.0),
                 top: Val::Px(0.0),
-                bottom: Val::Px(0.0),
-                flex_direction: FlexDirection::Column,
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::FlexStart,
-                row_gap: Val::Px(1.0),
-                padding: UiRect::axes(Val::Px(2.0), Val::Px(4.0)),
+                column_gap: Val::Px(1.0),
+                padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
                 ..default()
             },
             BackgroundColor(side_toolbar_bg()),
             bevy::ui::RelativeCursorPosition::default(),
             OverlaySurface,
-            SideToolbarRoot,
             Name::new("vp-side-toolbar"),
         ))
         .id();
@@ -268,9 +222,9 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) ->
     let tools = commands
         .spawn((
             Node {
-                flex_direction: FlexDirection::Column,
+                flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                row_gap: Val::Px(1.0),
+                column_gap: Val::Px(1.0),
                 ..default()
             },
             ToolContainer,
@@ -278,9 +232,62 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) ->
         ))
         .id();
 
-    commands
-        .entity(cluster)
-        .add_children(&[undo, redo, save, sep, tools]);
+    // Inline snapping: translate doubles as the 2D grid snap; rotate / scale
+    // are 3D-only (hidden in 2D via `ThreeDOnly`). The pills float on the
+    // right, just left of maximize (the spacer below pushes them over).
+    let translate = snap_pair(
+        commands,
+        fonts,
+        SnapToggle::Translate,
+        "arrows-out-cardinal",
+        1.0,
+        100.0,
+        1.0,
+        |w| snap_val(w, |s| s.translate_snap),
+        |w, v| set_snap(w, |s| &mut s.translate_snap, v),
+    );
+    let rotate = snap_pair(
+        commands,
+        fonts,
+        SnapToggle::Rotate,
+        "arrow-clockwise",
+        1.0,
+        90.0,
+        1.0,
+        |w| snap_val(w, |s| s.rotate_snap),
+        |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
+    );
+    let scale = snap_pair(
+        commands,
+        fonts,
+        SnapToggle::Scale,
+        "arrows-out",
+        1.0,
+        10.0,
+        1.0,
+        |w| snap_val(w, |s| s.scale_snap),
+        |w, v| set_snap(w, |s| &mut s.scale_snap, v),
+    );
+    commands.entity(rotate).insert(ThreeDOnly);
+    commands.entity(scale).insert(ThreeDOnly);
+    // The gaps between the pills hide with their 3D-only neighbours, so 2D view
+    // (translate only) doesn't carry stray spacing.
+    let pill_gap1 = gap(commands, 4.0);
+    let pill_gap2 = gap(commands, 4.0);
+    commands.entity(pill_gap1).insert(ThreeDOnly);
+    commands.entity(pill_gap2).insert(ThreeDOnly);
+
+    // Flex spacer pushes the snap pills + maximize to the strip's right edge.
+    let spacer = commands
+        .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-toolbar-spacer")))
+        .id();
+    let snap_gap = gap(commands, 4.0);
+    let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out", SIDE_BTN, SIDE_BTN, SIDE_ICON);
+
+    commands.entity(cluster).add_children(&[
+        undo, redo, save, sep, tools, spacer,
+        translate, pill_gap1, rotate, pill_gap2, scale, snap_gap, maximize,
+    ]);
 
     // Track the live theme (the static BackgroundColor above only covers the
     // first frame), and hide during play mode like the header strip does.
@@ -297,84 +304,6 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) ->
 /// strip reads as part of the editor chrome (same as the header strip).
 fn side_toolbar_bg() -> Color {
     rgb(panel_bg())
-}
-
-/// Re-axis the tool strip from Settings → Viewport → Toolbar: dock the root
-/// cluster to the left edge (column) or the top edge (row), flip the tool
-/// container's flow, and turn each separator rule sideways. Compare-and-set
-/// every frame rather than caching the last orientation, because the section
-/// separators spawn later (once [`populate_tools`] fires) and must pick up a
-/// non-default orientation when they do.
-fn update_side_toolbar_orientation(
-    settings: Option<Res<ViewportSettings>>,
-    mut roots: Query<
-        &mut Node,
-        (With<SideToolbarRoot>, Without<ToolContainer>, Without<ToolSepRule>),
-    >,
-    mut tools: Query<
-        &mut Node,
-        (With<ToolContainer>, Without<SideToolbarRoot>, Without<ToolSepRule>),
-    >,
-    mut seps: Query<
-        &mut Node,
-        (With<ToolSepRule>, Without<SideToolbarRoot>, Without<ToolContainer>),
-    >,
-) {
-    let Some(settings) = settings else { return };
-    let horizontal = settings.toolbar_orientation == ToolbarOrientation::Horizontal;
-
-    let (dir, main_gap, cross_gap) = if horizontal {
-        (FlexDirection::Row, Val::Px(1.0), Val::Px(0.0))
-    } else {
-        (FlexDirection::Column, Val::Px(0.0), Val::Px(1.0))
-    };
-    for mut n in &mut roots {
-        if n.flex_direction == dir {
-            continue;
-        }
-        n.flex_direction = dir;
-        if horizontal {
-            // Full-width strip flush on the top edge.
-            n.right = Val::Px(0.0);
-            n.bottom = Val::Auto;
-            n.column_gap = main_gap;
-            n.row_gap = cross_gap;
-            n.padding = UiRect::axes(Val::Px(4.0), Val::Px(2.0));
-        } else {
-            // Full-height strip flush on the left edge.
-            n.right = Val::Auto;
-            n.bottom = Val::Px(0.0);
-            n.row_gap = cross_gap;
-            n.column_gap = main_gap;
-            n.padding = UiRect::axes(Val::Px(2.0), Val::Px(4.0));
-        }
-    }
-    for mut n in &mut tools {
-        if n.flex_direction == dir {
-            continue;
-        }
-        n.flex_direction = dir;
-        if horizontal {
-            n.column_gap = main_gap;
-            n.row_gap = cross_gap;
-        } else {
-            n.row_gap = cross_gap;
-            n.column_gap = main_gap;
-        }
-    }
-    let (sep_w, sep_h, sep_margin) = if horizontal {
-        (Val::Px(1.0), Val::Px(20.0), UiRect::horizontal(Val::Px(4.0)))
-    } else {
-        (Val::Px(20.0), Val::Px(1.0), UiRect::vertical(Val::Px(4.0)))
-    };
-    for mut n in &mut seps {
-        if n.width == sep_w {
-            continue;
-        }
-        n.width = sep_w;
-        n.height = sep_h;
-        n.margin = sep_margin;
-    }
 }
 
 /// The Grid row of the 2D Overlays dropdown: label, the cell-size input, then
@@ -607,7 +536,6 @@ pub(crate) fn register(app: &mut App) {
                 panel_toggle_dismiss,
                 sanitize_mode_for_view,
                 update_two_d_only,
-                update_side_toolbar_orientation,
             ),
         )
             .run_if(in_state(SplashState::Editor)),
@@ -1566,8 +1494,34 @@ fn snap_pair(
         .id();
     commands.entity(toggle).add_child(glyph);
 
+    // Divider between the toggle and the number, so the two halves of the pill
+    // read as separate hit areas.
+    let divider = commands
+        .spawn((
+            Node {
+                width: Val::Px(1.0),
+                height: Val::Px(14.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(rgb(border())),
+            Name::new("vp-snap-divider"),
+        ))
+        .id();
+
     let dv = drag_value_flat(commands, &fonts.ui, "", value_text(), min, step);
-    commands.entity(dv).insert(DragRange { min, max });
+    commands.entity(dv).insert((
+        DragRange { min, max },
+        // Whole-number steps: the model quantizes to 1, so the readout never
+        // shows decimals and every scrub/wheel/typed value lands on an integer.
+        renzora_ember::widgets::DragSnap(1.0),
+    ));
+    // Narrower number cell than the widget's 44px default — these live in the
+    // viewport toolbar where width is precious and the values are 1–3 digits.
+    commands
+        .entity(dv)
+        .entry::<Node>()
+        .and_modify(|mut n| n.min_width = Val::Px(32.0));
     bind_2way(commands, dv, get, move |w, v: &f32| set(w, *v));
 
     let row = commands
@@ -1585,7 +1539,7 @@ fn snap_pair(
             Name::new("vp-snap-pair"),
         ))
         .id();
-    commands.entity(row).add_children(&[toggle, dv]);
+    commands.entity(row).add_children(&[toggle, divider, dv]);
     row
 }
 
@@ -2384,25 +2338,17 @@ fn populate_tools(world: &mut World) {
     queue.apply(world);
 }
 
-/// Marks every tool-strip separator rule so
-/// [`update_side_toolbar_orientation`] can flip its axis with the strip.
-#[derive(Component)]
-struct ToolSepRule;
-
-/// A rule between sections of the tool strip. Built for the vertical strip (a
-/// horizontal line); the orientation system re-axes it when the strip is
-/// horizontal.
+/// A vertical rule between sections of the horizontal tool strip.
 fn tool_separator(commands: &mut Commands) -> Entity {
     commands
         .spawn((
             Node {
-                width: Val::Px(20.0),
-                height: Val::Px(1.0),
-                margin: UiRect::vertical(Val::Px(4.0)),
+                width: Val::Px(1.0),
+                height: Val::Px(20.0),
+                margin: UiRect::horizontal(Val::Px(4.0)),
                 ..default()
             },
             BackgroundColor(rgb(border())),
-            ToolSepRule,
             Name::new("vp-tool-sep"),
         ))
         .id()

@@ -87,7 +87,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(AXIS_GIZMO_MARGIN),
-                top: Val::Px(AXIS_GIZMO_MARGIN),
+                // Dropped below the in-viewport toolbar strip on the top edge.
+                top: Val::Px(AXIS_GIZMO_MARGIN + crate::VIEWPORT_TOOLBAR_H),
                 width: Val::Px(AXIS_GIZMO_SIZE),
                 height: Val::Px(AXIS_GIZMO_SIZE),
                 ..default()

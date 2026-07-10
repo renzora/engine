@@ -670,35 +670,6 @@ pub struct ViewAngleCommand {
     pub pitch: f32,
 }
 
-/// Where the viewport's tool strip (undo / redo / save + the registry tool
-/// buttons) docks: a full-height column flush on the viewport's left edge, or
-/// a full-width row flush on its top edge. Settings → Viewport → Toolbar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ToolbarOrientation {
-    #[default]
-    Vertical,
-    Horizontal,
-}
-
-impl ToolbarOrientation {
-    pub const ALL: [ToolbarOrientation; 2] =
-        [ToolbarOrientation::Vertical, ToolbarOrientation::Horizontal];
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            ToolbarOrientation::Vertical => "Vertical",
-            ToolbarOrientation::Horizontal => "Horizontal",
-        }
-    }
-
-    /// Parse the persisted `format!("{:?}")` string; unknown → default.
-    pub fn from_debug(s: &str) -> Self {
-        match s {
-            "Horizontal" => ToolbarOrientation::Horizontal,
-            _ => ToolbarOrientation::Vertical,
-        }
-    }
-}
 
 /// Viewport overlay and rendering settings.
 ///
@@ -780,9 +751,6 @@ pub struct ViewportSettings {
     /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
     /// editor stays responsive on weak / high-DPI hardware out of the box.
     pub graphics_quality: GraphicsQuality,
-    /// Where the in-viewport tool strip docks (left edge column vs top edge
-    /// row). Settings → Viewport → Toolbar.
-    pub toolbar_orientation: ToolbarOrientation,
 }
 
 impl Default for ViewportSettings {
@@ -818,7 +786,6 @@ impl Default for ViewportSettings {
             vsync: true,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
             graphics_quality: GraphicsQuality::default(),
-            toolbar_orientation: ToolbarOrientation::default(),
         }
     }
 }
@@ -912,10 +879,6 @@ pub struct PersistedViewportSettings {
     /// (`"Medium"`), so upgrading projects pick up the lighter default.
     #[serde(default = "default_graphics_quality")]
     pub graphics_quality: String,
-    /// `"Vertical"` or `"Horizontal"` — where the in-viewport tool strip docks.
-    /// Missing (older configs) → empty string → `Vertical` via `from_debug`.
-    #[serde(default)]
-    pub toolbar_orientation: String,
 }
 
 impl PersistedViewportSettings {
@@ -973,7 +936,6 @@ impl PersistedViewportSettings {
             vsync: s.vsync,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
             graphics_quality: s.graphics_quality.label().to_string(),
-            toolbar_orientation: format!("{:?}", s.toolbar_orientation),
         }
     }
 
@@ -1048,7 +1010,6 @@ impl PersistedViewportSettings {
         s.vsync = self.vsync;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
         s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
-        s.toolbar_orientation = ToolbarOrientation::from_debug(&self.toolbar_orientation);
     }
 }
 
@@ -1166,8 +1127,6 @@ mod tests {
             gizmo_drag_opacity: 0.6,
             // Non-default tier (default is Medium) so the round-trip exercises it.
             graphics_quality: GraphicsQuality::High,
-            // Non-default (default is Vertical).
-            toolbar_orientation: ToolbarOrientation::Horizontal,
         }
     }
 
@@ -1211,7 +1170,6 @@ mod tests {
         assert_eq!(original.vsync, restored.vsync);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
         assert_eq!(original.graphics_quality, restored.graphics_quality);
-        assert_eq!(original.toolbar_orientation, restored.toolbar_orientation);
     }
 
     #[test]

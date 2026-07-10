@@ -63,7 +63,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(8.0),
-                top: Val::Px(AXIS_GIZMO_SIZE + AXIS_GIZMO_MARGIN + 24.0),
+                top: Val::Px(crate::VIEWPORT_TOOLBAR_H + AXIS_GIZMO_SIZE + AXIS_GIZMO_MARGIN + 24.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(1.0),
                 ..default()
