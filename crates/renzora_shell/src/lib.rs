@@ -145,7 +145,6 @@ impl Plugin for ShellPlugin {
                 about::about_credit_click,
                 about::about_credit_hover,
                 relocalize_on_language_change,
-                (sim_btn_click, update_simulate_button),
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
@@ -593,37 +592,48 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     btn
 }
 
-/// Click the top-bar Play button → request play (from Editing, with a scene
-/// camera) or stop (while playing, or while an external runtime is alive).
+/// Click the top-bar Play button → launch the mode picked in the play-target
+/// dropdown (full play, or Simulate when that's the selection) from Editing
+/// with a scene camera; or stop (while playing, simulating, or while an
+/// external runtime is alive).
 fn play_btn_click(
     btns: Query<&Interaction, (Changed<Interaction>, With<TopBarPlayBtn>)>,
     play_mode: Option<ResMut<renzora::core::PlayModeState>>,
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
     scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
 ) {
     let Some(mut pm) = play_mode else { return };
     let runtime_alive = runtime.is_some_and(|r| r.is_alive());
     let has_cam = !scene_cams.is_empty();
+    let simulate = settings.is_some_and(|s| s.play_launch_simulate);
     for interaction in &btns {
         if *interaction != Interaction::Pressed {
             continue;
         }
-        if runtime_alive || pm.is_in_play_mode() {
+        // `is_in_play_mode` deliberately EXCLUDES Simulating, so cover it too.
+        if runtime_alive || pm.is_in_play_mode() || pm.is_simulating() {
             pm.request_stop = true;
         } else if pm.is_editing() && has_cam {
-            pm.request_play = true;
+            if simulate {
+                pm.request_simulate = true;
+            } else {
+                pm.request_play = true;
+            }
         }
     }
 }
 
-/// Drive the Play button's glyph + label + color from play state: green "Play"
-/// when editing (muted if there's no scene camera to play), red "Stop" while
-/// playing (in-editor or an external runtime).
+/// Drive the Play button's glyph + label + color from play state and the
+/// selected launch mode: green "Play" (or blue flask "Simulate" when that mode
+/// is picked) when editing — muted if there's no scene camera — and red "Stop"
+/// while playing, simulating, or an external runtime is alive.
 fn update_play_button(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
     theme: Option<Res<renzora_theme::ThemeManager>>,
     scene_cams: Query<(), With<renzora::core::SceneCamera>>,
+    settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
     mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
 ) {
@@ -638,19 +648,27 @@ fn update_play_button(
     let muted = tc(t.text.muted);
 
     let active = runtime.is_some_and(|r| r.is_alive())
-        || play_mode.as_ref().is_some_and(|p| p.is_in_play_mode());
+        || play_mode
+            .as_ref()
+            .is_some_and(|p| p.is_in_play_mode() || p.is_simulating());
     let has_cam = !scene_cams.is_empty();
+    let simulate = settings.is_some_and(|s| s.play_launch_simulate);
 
     // `icon_name` is a phosphor glyph name (not localized); the label IS localized.
     let (icon_name, color, playing) = if active {
         ("stop", red, true)
-    } else if !has_cam {
-        ("play", muted, false)
     } else {
-        ("play", green, false)
+        let (idle_icon, idle_color) = if simulate {
+            ("flask", rgb(SIM_BLUE))
+        } else {
+            ("play", green)
+        };
+        (idle_icon, if has_cam { idle_color } else { muted }, false)
     };
     let label_text = if playing {
         renzora::lang::t("common.stop")
+    } else if simulate {
+        renzora::lang::t("common.simulate")
     } else {
         renzora::lang::t("common.play")
     };
@@ -678,18 +696,50 @@ fn update_play_button(
 /// The slim caret beside the Play pill that opens the play-target menu.
 #[derive(Component)]
 struct PlayTargetCaret;
-/// A row in the play-target menu. `runtime_window` = Play spawns the runtime
-/// in its own OS window (project window settings); otherwise Play runs in the
-/// editor viewport panel.
+
+/// What the Play button launches — the selection made in the play-target menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlayLaunchChoice {
+    /// Full play inside the editor viewport panel.
+    Viewport,
+    /// Full play in its own OS runtime window (project window settings).
+    Window,
+    /// Simulate: scripts + physics tick while the editor stays live.
+    Simulate,
+}
+
+impl PlayLaunchChoice {
+    /// The mode currently selected, resolved from [`EditorSettings`].
+    fn current(s: &renzora_editor_framework::EditorSettings) -> Self {
+        if s.play_launch_simulate {
+            Self::Simulate
+        } else if s.external_play_window {
+            Self::Window
+        } else {
+            Self::Viewport
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Viewport => "frame-corners",
+            Self::Window => "app-window",
+            Self::Simulate => "flask",
+        }
+    }
+}
+
+/// A row in the play-target menu; picking it makes the Play button launch that
+/// mode.
 #[derive(Component)]
 struct PlayTargetOption {
-    runtime_window: bool,
+    choice: PlayLaunchChoice,
 }
 /// The leading glyph of a play-target row — a check on the selected row, the
-/// option's own icon on the other (mirrors the theme menu's check-or-icon slot).
+/// option's own icon on the others (mirrors the theme menu's check-or-icon slot).
 #[derive(Component)]
 struct PlayTargetOptionIcon {
-    runtime_window: bool,
+    choice: PlayLaunchChoice,
 }
 
 /// Build the play-target dropdown: a caret beside the Play pill opening a menu
@@ -724,16 +774,21 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         .id();
 
     let mut rows = Vec::new();
-    for (runtime_window, icon_name, label) in [
+    for (choice, icon_name, label) in [
         (
-            false,
+            PlayLaunchChoice::Viewport,
             "frame-corners",
             renzora::lang::t_or("shell.play_target.viewport", "Viewport"),
         ),
         (
-            true,
+            PlayLaunchChoice::Window,
             "app-window",
             renzora::lang::t_or("shell.play_target.runtime_window", "Window"),
+        ),
+        (
+            PlayLaunchChoice::Simulate,
+            "flask",
+            renzora::lang::t_or("common.simulate", "Simulate"),
         ),
     ] {
         let row = commands
@@ -749,7 +804,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
                 },
                 BackgroundColor(Color::NONE),
                 Interaction::default(),
-                PlayTargetOption { runtime_window },
+                PlayTargetOption { choice },
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
                 Name::new("play-target-option"),
             ))
@@ -762,7 +817,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         });
         let ic = glyph(commands, icon_name, text_muted(), 12.0);
         commands.entity(ic).insert((
-            PlayTargetOptionIcon { runtime_window },
+            PlayTargetOptionIcon { choice },
             bevy::ui::FocusPolicy::Pass,
         ));
         let t = commands
@@ -810,7 +865,10 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
     trigger
 }
 
-/// Pick a play-target row → write the setting, persist it, close the menu.
+/// Pick a play-target row → write the launch mode, persist the viewport/window
+/// half of it, close the menu. Simulate is a session-only choice layered on
+/// top: it doesn't touch the persisted viewport-vs-window preference, so
+/// dropping back out of Simulate restores whichever of the two was saved.
 fn play_target_option_click(
     opts: Query<(&Interaction, &PlayTargetOption), Changed<Interaction>>,
     mut settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
@@ -822,23 +880,31 @@ fn play_target_option_click(
             continue;
         }
         if let Some(s) = settings.as_mut() {
-            s.external_play_window = opt.runtime_window;
+            match opt.choice {
+                PlayLaunchChoice::Simulate => s.play_launch_simulate = true,
+                PlayLaunchChoice::Viewport | PlayLaunchChoice::Window => {
+                    s.play_launch_simulate = false;
+                    let runtime_window = opt.choice == PlayLaunchChoice::Window;
+                    s.external_play_window = runtime_window;
+                    let _ = renzora::save_play_runtime_window(runtime_window);
+                }
+            }
         }
-        let _ = renzora::save_play_runtime_window(opt.runtime_window);
         for caret in &carets {
             renzora_ember::widgets::close_popup(&mut commands, caret);
         }
     }
 }
 
-/// Keep each play-target row's leading glyph in sync with the current target:
-/// the selected row shows a green check, the other shows its own icon.
+/// Keep each play-target row's leading glyph in sync with the current launch
+/// mode: the selected row shows a green check, the others show their own icons.
 fn update_play_target_menu(
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     theme: Option<Res<renzora_theme::ThemeManager>>,
     mut icons: Query<(&mut renzora_ember::icons::Icon, &PlayTargetOptionIcon)>,
 ) {
     let Some(settings) = settings else { return };
+    let current = PlayLaunchChoice::current(&settings);
     let green = theme
         .map(|t| {
             let [r, g, b, _] = t.active_theme.semantic.success.to_array();
@@ -846,13 +912,10 @@ fn update_play_target_menu(
         })
         .unwrap_or_else(|| rgb(play_green()));
     for (mut icon, opt) in &mut icons {
-        let selected = settings.external_play_window == opt.runtime_window;
-        let (name, color) = if selected {
+        let (name, color) = if opt.choice == current {
             ("check", green)
-        } else if opt.runtime_window {
-            ("app-window", rgb(text_muted()))
         } else {
-            ("frame-corners", rgb(text_muted()))
+            (opt.choice.icon(), rgb(text_muted()))
         };
         if icon.name != name {
             icon.name = name.to_string();
@@ -865,129 +928,9 @@ fn update_play_target_menu(
     }
 }
 
-/// Top-bar Simulate button: runs scripts + physics in-editor while the editor
-/// stays live (see `PlayState::Simulating`), sitting beside Play.
-#[derive(Component)]
-struct TopBarSimBtn;
-/// The Simulate button's phosphor glyph (swaps flask ↔ stop with state).
-#[derive(Component)]
-struct TopBarSimIcon;
-/// The Simulate button's "Simulate" / "Stop" text label.
-#[derive(Component)]
-struct TopBarSimLabel;
-
 /// Simulate's accent colour (blue) — distinct from Play's green so the two
-/// transport buttons read apart at a glance.
+/// launch modes read apart at a glance on the Play button.
 const SIM_BLUE: (u8, u8, u8) = (86, 169, 247);
-
-/// Build the top-bar Simulate button. Mirrors [`build_play_button`].
-fn build_simulate_button(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
-    let btn = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            TopBarSimBtn,
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            Name::new("top-bar-simulate"),
-        ))
-        .id();
-    let icon = glyph(commands, "flask", SIM_BLUE, 16.0);
-    commands
-        .entity(icon)
-        .insert((TopBarSimIcon, bevy::ui::FocusPolicy::Pass));
-    let label = commands
-        .spawn((
-            Text::new(renzora::lang::t("common.simulate")),
-            ui_font(font, 13.0),
-            TextColor(rgb(SIM_BLUE)),
-            TopBarSimLabel,
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-    commands.entity(btn).add_children(&[icon, label]);
-    btn
-}
-
-/// Click the Simulate button → request simulate (from Editing) or stop (while
-/// simulating). Inert during full Play/external runtime (use the Play button to
-/// stop those), so the two transports don't fight.
-fn sim_btn_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<TopBarSimBtn>)>,
-    play_mode: Option<ResMut<renzora::core::PlayModeState>>,
-    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
-) {
-    let Some(mut pm) = play_mode else { return };
-    let has_cam = !scene_cams.is_empty();
-    for interaction in &btns {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        if pm.is_simulating() {
-            pm.request_stop = true;
-        } else if pm.is_editing() && has_cam {
-            pm.request_simulate = true;
-        }
-    }
-}
-
-/// Drive the Simulate button's glyph/label/color: blue "Simulate" when editing,
-/// red "Stop" while simulating, muted when there's no scene camera to drive.
-fn update_simulate_button(
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    theme: Option<Res<renzora_theme::ThemeManager>>,
-    scene_cams: Query<(), With<renzora::core::SceneCamera>>,
-    mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarSimIcon>>,
-    mut labels: Query<(&mut Text, &mut TextColor), With<TopBarSimLabel>>,
-) {
-    let Some(theme) = theme else { return };
-    let [rr, rg, rb, _] = theme.active_theme.semantic.error.to_array();
-    let red = Color::srgb_u8(rr, rg, rb);
-    let [mr, mg, mb, _] = theme.active_theme.text.muted.to_array();
-    let muted = Color::srgb_u8(mr, mg, mb);
-
-    let simulating = play_mode.as_ref().is_some_and(|p| p.is_simulating());
-    let has_cam = !scene_cams.is_empty();
-
-    let (icon_name, color) = if simulating {
-        ("stop", red)
-    } else if !has_cam {
-        ("flask", muted)
-    } else {
-        ("flask", rgb(SIM_BLUE))
-    };
-    let label_text = if simulating {
-        renzora::lang::t("common.stop")
-    } else {
-        renzora::lang::t("common.simulate")
-    };
-
-    for mut icon in &mut icons {
-        if icon.name != icon_name {
-            icon.name = icon_name.to_string();
-            icon.resolved = false;
-        }
-        if icon.color != Some(color) {
-            icon.color = Some(color);
-            icon.resolved = false;
-        }
-    }
-    for (mut text, mut tcolor) in &mut labels {
-        if text.0 != label_text {
-            text.0 = label_text.clone();
-        }
-        if tcolor.0 != color {
-            tcolor.0 = color;
-        }
-    }
-}
 
 renzora::add!(ShellPlugin, Editor);
 
@@ -3126,7 +3069,6 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
         ))
         .id();
     commands.entity(play_group).add_children(&[play, play_caret]);
-    let simulate = build_simulate_button(commands, font);
     let settings = icon_item(commands, "gear", text_muted(), 16.0);
     commands.entity(settings).insert((
         Interaction::default(),
@@ -3215,7 +3157,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
     commands
         .entity(right)
-        .add_children(&[play_group, simulate, settings, window]);
+        .add_children(&[play_group, settings, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar

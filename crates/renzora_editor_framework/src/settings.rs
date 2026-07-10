@@ -232,6 +232,11 @@ pub struct EditorSettings {
     /// binary either way). Chosen from the Play button's target dropdown (or
     /// Settings → Scripting) and persisted per-user in `~/.renzora/editor.toml`.
     pub external_play_window: bool,
+    /// The Play button launches Simulate (scripts + physics with the editor
+    /// live) instead of full play. Chosen in the Play dropdown; session-only —
+    /// deliberately NOT persisted, so a fresh editor always Plays. When false,
+    /// `external_play_window` (which IS persisted) picks viewport vs window.
+    pub play_launch_simulate: bool,
     /// When entering play mode, maximize the viewport (collapse the rest of the
     /// dock to a single viewport leaf) for a clean game view; restored on Stop.
     pub maximize_viewport_on_play: bool,
@@ -293,6 +298,7 @@ impl Default for EditorSettings {
             // Seeded from the persisted per-user pref (the Play dropdown's
             // choice); defaults to in-viewport play.
             external_play_window: renzora::load_play_runtime_window(),
+            play_launch_simulate: false,
             maximize_viewport_on_play: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,

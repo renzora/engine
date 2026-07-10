@@ -202,11 +202,13 @@ A few things to know about the runtime window:
 
 ## Simulate mode
 
-Next to **Play** is **Simulate** (the blue flask). It runs the live simulation — scripts, physics, and animation all tick exactly as in Play — **but keeps the editor fully live**: your editor camera, gizmos, selection, and inspector stay active, and the camera does *not* switch to the game camera. It's the mode to reach for when you want to *watch and poke at* a running simulation rather than play it: triggering a ragdoll, watching physics settle, or testing a script's behaviour while still selecting and inspecting entities.
+The dropdown beside **Play** (the caret next to the Play button) picks what the Play button launches: **Viewport** (play in the editor), **Window** (play in a real runtime window), or **Simulate** (the blue flask) — pick it and the Play button turns into a blue **Simulate** button. Simulate runs the live simulation — scripts, physics, and animation all tick exactly as in Play — **but keeps the editor fully live**: your editor camera, gizmos, selection, and inspector stay active, and the camera does *not* switch to the game camera. It's the mode to reach for when you want to *watch and poke at* a running simulation rather than play it: triggering a ragdoll, watching physics settle, or testing a script's behaviour while still selecting and inspecting entities.
 
 - **The viewport border turns green** while simulating, so it's always clear the scene is live and not just being edited.
 - **Scripts take over the keyboard.** While simulating, editor keyboard shortcuts (and the editor-camera WASD) are suppressed so your scripts receive the keys — that's how a script's `is_key_pressed("KeyR")` sees input. You can still orbit the camera with the mouse to watch from any angle.
 - **Stop restores the scene.** Simulate snapshots the scene on entry and reverts it on Stop (or `Esc`), so anything the simulation changed — moved bodies, a collapsed ragdoll, spawned or despawned entities — is undone and you're back exactly where you started. (Full **Play** does not restore; Simulate is the non-destructive option.)
 - Like Play, Simulate needs a scene camera in the scene; the button is muted until one exists.
+- While simulating, the button reads **Stop** (red) — click it (or press `Esc`) to end the simulation.
+- The Simulate selection lasts for the editor session; the next launch starts back on Play (your Viewport-vs-Window choice is the part that's remembered).
 
 > Because physics only runs while a simulation is live, features like the [ragdoll plugin](/docs/r1-alpha7/scripting/ragdoll) do nothing in plain edit mode — use **Simulate** (or **Play**) to see them move.

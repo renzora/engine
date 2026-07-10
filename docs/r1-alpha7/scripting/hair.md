@@ -18,7 +18,7 @@ Add a `Hair` component to any entity that has a `Mesh3d` — a head, a scalp cap
 
 The generated geometry lives on a **hidden render entity** — it is not saved into your scene and does not clutter the outliner. Only the `Hair` component is serialized, so the groom rebuilds deterministically when the scene loads.
 
-> **The sway only runs in Play or Simulate mode.** While editing, the groom is held in its grown rest shape and rides the model rigidly. Use **[Simulate](/docs/r1-alpha7/editor/viewport#simulate-mode)** (the blue flask, beside Play) to watch it move while keeping the editor live.
+> **The sway only runs in Play or Simulate mode.** While editing, the groom is held in its grown rest shape and rides the model rigidly. Use **[Simulate](/docs/r1-alpha7/editor/viewport#simulate-mode)** (the blue flask, in the dropdown beside Play) to watch it move while keeping the editor live.
 
 ## Tuning
 

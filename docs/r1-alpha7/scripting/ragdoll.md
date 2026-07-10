@@ -16,7 +16,7 @@ Add a `Ragdoll` component to the **skeleton root** — typically the same entity
 
 Bones start `Kinematic`: the `AnimationPlayer` drives them exactly as if the plugin weren't present, while the colliders still participate in physics (so a ragdoll-capable character can still register hits before it ever ragdolls).
 
-> **Ragdoll only simulates in Play or Simulate mode.** It is a physics feature, and the editor pauses the simulation while editing. Toggling `Ragdoll.active` (or calling `enable_ragdoll()`) in edit mode just freezes the pose. Use **[Simulate](/docs/r1-alpha7/editor/viewport#simulate-mode)** (the blue flask, beside Play) to watch the skeleton fall while keeping the editor live — Stop restores the scene afterward.
+> **Ragdoll only simulates in Play or Simulate mode.** It is a physics feature, and the editor pauses the simulation while editing. Toggling `Ragdoll.active` (or calling `enable_ragdoll()`) in edit mode just freezes the pose. Use **[Simulate](/docs/r1-alpha7/editor/viewport#simulate-mode)** (the blue flask, in the dropdown beside Play) to watch the skeleton fall while keeping the editor live — Stop restores the scene afterward.
 
 ## Tuning
 
