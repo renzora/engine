@@ -178,9 +178,15 @@ struct ExpandAllButton;
 struct ExpandAllGlyph;
 
 /// Marks an inspector component-section header, so the expand/collapse-all
-/// button can drive just these sections (not other panels' sections).
+/// button can drive just these sections (not other panels' sections). Carries
+/// the section's list position and its category header colour so
+/// [`stripe_collapsed_headers`] can zebra-stripe collapsed headers and restore
+/// the category colour when open.
 #[derive(Component)]
-struct InspectorSectionHeader;
+struct InspectorSectionHeader {
+    index: usize,
+    header_bg: (u8, u8, u8),
+}
 
 /// Stable host for the vertical component menu down the left of the inspector.
 /// `rebuild_inspector` despawns this host's children and rebuilds one icon button
@@ -250,7 +256,10 @@ pub fn register_native_inspector(app: &mut App) {
                     width: Val::Percent(100.0),
                     flex_direction: FlexDirection::Column,
                     padding: UiRect::all(Val::Px(4.0)),
-                    row_gap: Val::Px(3.0),
+                    // No gap — component sections stack flush against each other
+                    // (each section root's own margin is also zeroed in
+                    // `build_section`); collapsed headers read as one tight list.
+                    row_gap: Val::Px(0.0),
                     ..default()
                 },
                 InspectorRoot,
@@ -291,6 +300,7 @@ pub fn register_native_inspector(app: &mut App) {
             component_menu_click,
             expand_all_click,
             sync_expand_glyph,
+            stripe_collapsed_headers,
         )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
@@ -843,8 +853,9 @@ fn rebuild_inspector(world: &mut World) {
                     commands.entity(container).add_child(l);
                 }
                 let locked_here = locked == Some(entity);
-                for sec in &sections {
-                    let (root, body) = build_section(&mut commands, &fonts, sec, entity, locked_here);
+                for (i, sec) in sections.iter().enumerate() {
+                    let (root, body) =
+                        build_section(&mut commands, &fonts, sec, entity, locked_here, i);
                     commands.entity(container).add_child(root);
                     if let Some(drawer) = sec.native_drawer {
                         native_pending.push((body, drawer, entity));
@@ -1229,6 +1240,7 @@ fn build_section(
     sec: &SectionSpec,
     entity: Entity,
     locked_here: bool,
+    index: usize,
 ) -> (Entity, Entity) {
     // Compose the shared ember section (caret · accent icon · title + colored
     // header + ember-owned collapse); override the body padding to the inspector's
@@ -1245,7 +1257,28 @@ fn build_section(
         sec.header_bg,
         sec.open,
     );
-    commands.entity(header).insert(InspectorSectionHeader);
+    commands.entity(header).insert(InspectorSectionHeader {
+        index,
+        header_bg: sec.header_bg,
+    });
+    // Compact the shared section for the inspector: kill the widget's 8px
+    // bottom margin + header↔body gap so component cards stack flush, and
+    // tighten the header's vertical padding. (Full `Node` overrides — mirror
+    // the widget's other layout fields when changing them.)
+    commands.entity(root).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Column,
+        ..default()
+    });
+    commands.entity(header).insert(Node {
+        width: Val::Percent(100.0),
+        flex_direction: FlexDirection::Row,
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(6.0),
+        padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
+        border_radius: BorderRadius::all(Val::Px(4.0)),
+        ..default()
+    });
     commands.entity(body).insert(Node {
         width: Val::Percent(100.0),
         flex_direction: FlexDirection::Column,
@@ -2223,6 +2256,26 @@ fn expand_all_click(
     for mut sec in &mut sections {
         if sec.is_open() != target_open {
             set_section_open(&mut sec, target_open, &mut nodes, &mut texts);
+        }
+    }
+}
+
+/// Zebra-stripe collapsed component headers: a closed section's header takes
+/// the odd/even row colour (by its position in the component list) so the
+/// flush-stacked collapsed cards read as distinct rows; an open header keeps
+/// its per-category colour. Runs off the live [`Section`] flag, so it tracks
+/// header clicks and the expand/collapse-all button without a rebuild.
+fn stripe_collapsed_headers(
+    mut headers: Query<(&Section, &InspectorSectionHeader, &mut BackgroundColor)>,
+) {
+    for (sec, hdr, mut bg) in &mut headers {
+        let want = if sec.is_open() {
+            renzora_ember::theme::rgb(hdr.header_bg)
+        } else {
+            renzora_ember::inspector::inspector_stripe(hdr.index)
+        };
+        if bg.0 != want {
+            bg.0 = want;
         }
     }
 }
