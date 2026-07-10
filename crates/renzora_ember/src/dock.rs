@@ -522,13 +522,18 @@ impl DockTree {
     /// An empty anchor, or one whose panels have all left the tree, falls back
     /// to a full-width root attach (identical to [`Self::attach_bottom`]) — so a
     /// stash saved before anchors existed still reopens sensibly.
-    pub fn attach_bottom_at(&mut self, bottom: DockTree, ratio: f32, anchor: &[String]) {
+    ///
+    /// Returns the **path** of the vertical split it created, in the divider
+    /// path convention (`false` = descended into the first child) — empty for
+    /// a root attach. The shell's drag-the-collapsed-strip-open gesture hands
+    /// this to [`GrabRootDivider`] so the live drag adopts the right divider.
+    pub fn attach_bottom_at(&mut self, bottom: DockTree, ratio: f32, anchor: &[String]) -> Vec<bool> {
         if bottom.is_empty() {
-            return;
+            return Vec::new();
         }
         if self.is_empty() {
             *self = bottom;
-            return;
+            return Vec::new();
         }
         let present: Vec<&str> = anchor
             .iter()
@@ -539,6 +544,7 @@ impl DockTree {
         // into the child that holds *all* of them; when neither does, this node
         // is that ancestor. Empty anchor → stay at the root (full width).
         let mut target: &mut DockTree = self;
+        let mut split_path = Vec::new();
         if !present.is_empty() {
             loop {
                 let descend = match &*target {
@@ -556,10 +562,13 @@ impl DockTree {
                 match descend {
                     Some(true) => {
                         let DockTree::Split { first, .. } = target else { unreachable!() };
+                        // Divider path convention: `false` = first child.
+                        split_path.push(false);
                         target = first.as_mut();
                     }
                     Some(false) => {
                         let DockTree::Split { second, .. } = target else { unreachable!() };
+                        split_path.push(true);
                         target = second.as_mut();
                     }
                     None => break,
@@ -568,6 +577,7 @@ impl DockTree {
         }
         let old = std::mem::replace(target, DockTree::Empty);
         *target = DockTree::vertical(old, bottom, ratio);
+        split_path
     }
 
     /// Remove and return the whole leaf containing `panel` — tab set and active
@@ -618,6 +628,7 @@ impl Plugin for DockPlugin {
             .init_resource::<PendingSwitch>()
             .init_resource::<DraggedDivider>()
             .init_resource::<BottomSnapRequest>()
+            .init_resource::<BottomStripMarkers>()
             .init_resource::<GrabRootDivider>()
             .init_resource::<TabDrag>()
             .init_resource::<DockDragWatch>()
@@ -1013,33 +1024,67 @@ struct Divider {
     /// [`BottomSnapRequest`] (the snap-closed gesture is a primary-dock
     /// bottom-panel affair).
     floating: bool,
+    /// `Some(panel)` when this is a vertical divider whose bottom pane is a
+    /// leaf holding one of the [`BottomStripMarkers`] panels — i.e. the
+    /// collapsible bottom strip even when it isn't the root region. Overshoot
+    /// this divider downward and the strip snap-closes, same as the root one;
+    /// the panel id tells the consumer which region to collapse.
+    strip: Option<String>,
 }
 
-/// Published when the user drags the PRIMARY area's root **vertical** divider
-/// hard down — past the ratio clamp, squeezing the bottom pane under
-/// [`BOTTOM_SNAP_PX`] — or clicks the bottom region's collapse chevron. The
-/// dock itself can't collapse anything (the bottom-panel stash is
-/// editor-shell state), so it hands the intent to the consumer via this
-/// seam; the payload is the pre-gesture ratio, so reopening can restore the
-/// height the panel had. Mirrors [`DockDragWatch`]'s outside-consumer
-/// pattern.
+/// Panel ids that identify the consumer's collapsible bottom strip by
+/// content (the editor shell registers `assets`/`console`). The dock is
+/// otherwise content-agnostic — the *root* bottom region always collapses —
+/// but a strip nested under one column (a full-height panel beside it) can
+/// only be recognized by what it holds. A leaf tabbing one of these as the
+/// bottom child of a vertical split gets the collapse chevron and the
+/// divider snap-closed gesture, wherever it sits in the tree.
 #[derive(Resource, Default)]
-pub struct BottomSnapRequest(pub Option<f32>);
+pub struct BottomStripMarkers(pub Vec<String>);
+
+/// Published when the user drags a collapsible bottom region's divider hard
+/// down — past the ratio clamp, squeezing the bottom pane under
+/// [`BOTTOM_SNAP_PX`] — or clicks the region's collapse chevron. The dock
+/// itself can't collapse anything (the bottom-panel stash is editor-shell
+/// state), so it hands the intent to the consumer via this seam. Mirrors
+/// [`DockDragWatch`]'s outside-consumer pattern.
+#[derive(Resource, Default)]
+pub struct BottomSnapRequest(pub Option<BottomSnap>);
+
+/// One collapse intent (see [`BottomSnapRequest`]).
+#[derive(Clone)]
+pub struct BottomSnap {
+    /// Ratio (top share) to record for reopening. Divider snaps pass the
+    /// **pre-drag** ratio — by the time the consumer detaches, the live tree
+    /// holds the squished mid-drag one. `None` (chevron clicks) means the
+    /// ratio in the tree is accurate; use whatever the detach returns.
+    pub restore: Option<f32>,
+    /// `Some(panel)`: collapse the vertical region containing this panel (a
+    /// nested strip, see [`BottomStripMarkers`]). `None`: the root bottom
+    /// region.
+    pub target: Option<String>,
+}
 
 /// Set by an outside consumer right after it re-attaches the bottom region
 /// while the mouse button is still held (the shell's "drag the collapsed
-/// strip open" gesture): once the rebuilt tree's primary root divider
-/// exists, [`divider_drag`] adopts it as the live drag, so the just-reopened
+/// strip open" gesture): once the rebuilt tree's vertical divider at this
+/// path exists (empty path = the primary root divider; a non-empty one is
+/// where a nested strip re-attached — [`DockTree::attach_bottom_at`] returns
+/// it), [`divider_drag`] adopts it as the live drag, so the just-reopened
 /// panel keeps sizing under the held cursor. Cleared on adoption or when the
 /// button is released.
 #[derive(Resource, Default)]
-pub struct GrabRootDivider(pub bool);
+pub struct GrabRootDivider(pub Option<Vec<bool>>);
 
-/// The collapse chevron at the right end of the bottom region's tab bar:
-/// clicking publishes [`BottomSnapRequest`] with the current root ratio so
-/// the consumer collapses the region (and reopening restores this height).
+/// The collapse chevron at the right end of a collapsible bottom region's
+/// tab bar: clicking publishes [`BottomSnapRequest`] so the consumer
+/// collapses the region (reopening restores its height).
 #[derive(Component)]
-struct BottomCollapseBtn;
+struct BottomCollapseBtn {
+    /// Mirrors [`BottomSnap::target`]: `None` for the root bottom region,
+    /// `Some(panel)` for a nested strip.
+    target: Option<String>,
+}
 
 /// The whole-leaf drag handle at the far left of a tab bar: dragging it
 /// moves the leaf's entire tab set as one unit — same drop zones as a
@@ -1284,32 +1329,35 @@ fn divider_drag(
 ) {
     if mouse.just_released(MouseButton::Left) {
         dragged.0 = None;
-        grab.0 = false;
+        grab.0 = None;
     }
     let Some(cursor) = cursor.pos else {
         return;
     };
 
     // Adopt a consumer-initiated grab (the shell's drag-the-collapsed-strip-
-    // open gesture): the mouse is already held, so take the primary root
-    // vertical divider as the live drag the moment the rebuilt tree provides
-    // it — no press on the handle needed.
-    if grab.0 && dragged.0.is_none() && mouse.pressed(MouseButton::Left) {
-        if let Some((entity, _, div)) = dividers
-            .iter()
-            .find(|(_, _, d)| !d.floating && !d.horizontal && d.path.is_empty())
-        {
-            let start_ratio = nodes
-                .get(div.first_wrap)
-                .ok()
-                .and_then(|n| as_ratio(n.height))
-                .unwrap_or(0.5);
-            dragged.0 = Some(DividerDrag {
-                handle: entity,
-                start_cursor: cursor,
-                start_ratio,
-            });
-            grab.0 = false;
+    // open gesture): the mouse is already held, so take the vertical divider
+    // at the grab's path — where the bottom region just re-attached — as the
+    // live drag the moment the rebuilt tree provides it, no press on the
+    // handle needed.
+    if dragged.0.is_none() && mouse.pressed(MouseButton::Left) {
+        if let Some(path) = grab.0.as_ref() {
+            if let Some((entity, _, div)) = dividers
+                .iter()
+                .find(|(_, _, d)| !d.floating && !d.horizontal && &d.path == path)
+            {
+                let start_ratio = nodes
+                    .get(div.first_wrap)
+                    .ok()
+                    .and_then(|n| as_ratio(n.height))
+                    .unwrap_or(0.5);
+                dragged.0 = Some(DividerDrag {
+                    handle: entity,
+                    start_cursor: cursor,
+                    start_ratio,
+                });
+                grab.0 = None;
+            }
         }
     }
 
@@ -1360,13 +1408,22 @@ fn divider_drag(
         cursor.y - drag.start_cursor.y
     };
     let raw = drag.start_ratio + moved / extent;
-    // Snap-closed gesture: overshooting the primary root vertical divider far
+    // Snap-closed gesture: overshooting a collapsible bottom region's divider
+    // (the primary root vertical one, or a nested strip's — `strip`) far
     // enough that the bottom pane would drop under the threshold ends the
     // drag and asks the consumer (the shell's bottom panel) to collapse the
     // region — the clamp below would otherwise just pin the pane at 10%.
-    if !div.horizontal && !div.floating && div.path.is_empty() && (1.0 - raw) * extent < BOTTOM_SNAP_PX
+    if !div.horizontal
+        && !div.floating
+        && (div.path.is_empty() || div.strip.is_some())
+        && (1.0 - raw) * extent < BOTTOM_SNAP_PX
     {
-        snap.0 = Some(drag.start_ratio);
+        snap.0 = Some(BottomSnap {
+            restore: Some(drag.start_ratio),
+            // The root region collapses content-agnostically; only a nested
+            // strip needs the panel id to be found again.
+            target: if div.path.is_empty() { None } else { div.strip.clone() },
+        });
         dragged.0 = None;
         return;
     }
@@ -2933,6 +2990,7 @@ fn rebuild_dock(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     dock: Res<Dock>,
+    markers: Res<BottomStripMarkers>,
     areas: Query<(Entity, Option<&Children>, Option<&FloatingDockArea>), With<DockArea>>,
     leaves: Query<&DockLeaf>,
 ) {
@@ -2941,7 +2999,10 @@ fn rebuild_dock(
     };
     if dirty.0 {
         if let Some((area_entity, children, _)) = areas.iter().find(|(.., f)| f.is_none()) {
-            rebuild_area(&mut commands, &fonts, &dock.tree, area_entity, children, &leaves, false);
+            rebuild_area(
+                &mut commands, &fonts, &markers.0, &dock.tree, area_entity, children, &leaves,
+                false,
+            );
             dirty.0 = false;
         }
     }
@@ -2949,7 +3010,9 @@ fn rebuild_dock(
         // The area may not exist yet the frame the window spawns (commands
         // apply at the end of the frame) — leave it dirty and retry next frame.
         if let Ok((area_entity, children, _)) = areas.get(st.area) {
-            rebuild_area(&mut commands, &fonts, &st.tree, area_entity, children, &leaves, true);
+            rebuild_area(
+                &mut commands, &fonts, &markers.0, &st.tree, area_entity, children, &leaves, true,
+            );
             st.dirty = false;
         }
     }
@@ -2962,6 +3025,7 @@ fn rebuild_dock(
 fn rebuild_area(
     commands: &mut Commands,
     fonts: &EmberFonts,
+    markers: &[String],
     tree: &DockTree,
     area_entity: Entity,
     children: Option<&Children>,
@@ -3006,6 +3070,7 @@ fn rebuild_area(
         commands,
         &fonts.ui,
         &fonts.phosphor,
+        markers,
         area_entity,
         floating,
         None,
@@ -3219,26 +3284,22 @@ fn tab_close_click(
     }
 }
 
-/// Click the bottom region's collapse chevron → publish [`BottomSnapRequest`]
-/// with the current root ratio, so the consumer (the shell's bottom panel)
-/// collapses the region and a reopen restores this exact height.
+/// Click a bottom region's collapse chevron → publish [`BottomSnapRequest`]
+/// so the consumer (the shell's bottom panel) collapses that region. No
+/// ratio in the payload: unlike a divider snap, a click leaves the tree's
+/// ratio accurate, so the consumer records whatever the detach returns.
 fn bottom_collapse_click(
-    q: Query<&Interaction, (With<BottomCollapseBtn>, Changed<Interaction>)>,
-    dock: Res<Dock>,
+    q: Query<(&Interaction, &BottomCollapseBtn), Changed<Interaction>>,
     mut snap: ResMut<BottomSnapRequest>,
 ) {
-    for interaction in &q {
+    for (interaction, btn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
         }
-        if let DockTree::Split {
-            direction: SplitDirection::Vertical,
-            ratio,
-            ..
-        } = &dock.tree
-        {
-            snap.0 = Some(*ratio);
-        }
+        snap.0 = Some(BottomSnap {
+            restore: None,
+            target: btn.target.clone(),
+        });
     }
 }
 
@@ -3249,6 +3310,7 @@ fn build_tree(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
+    markers: &[String],
     area: Entity,
     floating: bool,
     parent: Option<ParentSplit>,
@@ -3309,7 +3371,8 @@ fn build_tree(
                 path: path.clone(),
             };
             let child_a = build_tree(
-                commands, font, phosphor, area, floating, Some(info_a), path_a, first, preserved,
+                commands, font, phosphor, markers, area, floating, Some(info_a), path_a, first,
+                preserved,
             );
             commands.entity(wrap_a).add_child(child_a);
 
@@ -3367,6 +3430,20 @@ fn build_tree(
                 hit.left = Val::Px(0.0);
                 hit.width = Val::Percent(100.0);
             }
+            // A vertical split whose bottom pane is a leaf tabbing one of the
+            // bottom-strip marker panels is a collapsible region: tag its
+            // divider so overshooting it downward snap-closes the strip (the
+            // root divider does this content-agnostically via its empty path).
+            let strip = if !row && !floating {
+                match &**second {
+                    DockTree::Leaf { tabs, .. } => {
+                        tabs.iter().find(|t| markers.contains(*t)).cloned()
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
             let handle = commands
                 .spawn((
                     hit,
@@ -3379,6 +3456,7 @@ fn build_tree(
                         path: path.clone(),
                         area,
                         floating,
+                        strip,
                     },
                     Name::new("divider-handle"),
                 ))
@@ -3413,7 +3491,8 @@ fn build_tree(
                 path: path.clone(),
             };
             let child_b = build_tree(
-                commands, font, phosphor, area, floating, Some(info_b), path_b, second, preserved,
+                commands, font, phosphor, markers, area, floating, Some(info_b), path_b, second,
+                preserved,
             );
             commands.entity(wrap_b).add_child(child_b);
 
@@ -3423,7 +3502,8 @@ fn build_tree(
             container
         }
         DockTree::Leaf { tabs, active_tab } => build_leaf(
-            commands, font, phosphor, area, floating, parent, tabs, *active_tab, preserved,
+            commands, font, phosphor, markers, area, floating, parent, tabs, *active_tab,
+            preserved,
         ),
         DockTree::Empty => {
             let container = commands
@@ -3552,6 +3632,7 @@ fn build_leaf(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
+    markers: &[String],
     area: Entity,
     floating: bool,
     parent: Option<ParentSplit>,
@@ -3588,7 +3669,7 @@ fn build_leaf(
         ))
         .id();
     populate_leaf(
-        commands, font, phosphor, area, floating, parent, leaf, tabs, active, preserved,
+        commands, font, phosphor, markers, area, floating, parent, leaf, tabs, active, preserved,
     );
     leaf
 }
@@ -3770,6 +3851,7 @@ fn populate_leaf(
     commands: &mut Commands,
     font: &bevy::text::FontSource,
     phosphor: &Handle<Font>,
+    markers: &[String],
     area: Entity,
     floating: bool,
     parent: Option<ParentSplit>,
@@ -4012,13 +4094,25 @@ fn populate_leaf(
                 Name::new("tabbar-filler"),
             ))
             .id();
-        // Is this leaf the primary dock's whole bottom region (root vertical
-        // split, second child)? Those get a collapse chevron at the bar's
-        // right end — the click mirror of Ctrl+Space / the divider snap.
+        // Is this leaf a collapsible bottom region? Either the primary dock's
+        // whole bottom region (root vertical split, second child — content-
+        // agnostic), or a nested bottom strip: the bottom child of any
+        // vertical split whose tabs include a bottom-strip marker panel. Both
+        // get a collapse chevron at the bar's right end — the click mirror of
+        // Ctrl+Space / the divider snap — so the toggle survives the strip
+        // being docked under one column instead of full-width.
         let is_root_bottom = !floating
             && parent
                 .as_ref()
                 .is_some_and(|p| p.path.is_empty() && !p.horizontal && p.is_second);
+        let strip = if !floating
+            && !is_root_bottom
+            && parent.as_ref().is_some_and(|p| !p.horizontal && p.is_second)
+        {
+            tabs.iter().find(|t| markers.contains(*t)).cloned()
+        } else {
+            None
+        };
         if let Some(p) = parent.filter(|p| p.aligned()) {
             let cursor = crate::cursor_icon::parse_cursor(if p.horizontal {
                 "ew-resize"
@@ -4036,11 +4130,14 @@ fn populate_leaf(
                     path: p.path,
                     area,
                     floating,
+                    // The filler doubles as the parent split's resize handle,
+                    // so a strip leaf's filler snap-closes like its divider.
+                    strip: strip.clone(),
                 },
             ));
         }
         bar_kids.push(filler);
-        if is_root_bottom {
+        if is_root_bottom || strip.is_some() {
             let chev = icon_text(commands, phosphor, "caret-down", text_muted(), 13.0);
             let btn = commands
                 .spawn((
@@ -4055,7 +4152,11 @@ fn populate_leaf(
                     BackgroundColor(Color::NONE),
                     Interaction::default(),
                     crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-                    BottomCollapseBtn,
+                    BottomCollapseBtn {
+                        // Root region collapses content-agnostically; a nested
+                        // strip is found again by one of its panels.
+                        target: if is_root_bottom { None } else { strip },
+                    },
                     Name::new("bottom-collapse"),
                 ))
                 .id();
@@ -4194,7 +4295,10 @@ mod tests {
             DockTree::Split { direction: SplitDirection::Horizontal, .. }
         ));
 
-        tree.attach_bottom_at(bottom, ratio, &anchor);
+        let path = tree.attach_bottom_at(bottom, ratio, &anchor);
+        // The split re-appeared under the root's first child — the path the
+        // drag-open gesture needs to adopt the right divider.
+        assert_eq!(path, vec![false]);
         let DockTree::Split { direction: SplitDirection::Horizontal, first, .. } = &tree else {
             panic!("root should stay horizontal, not become a full-width vertical split");
         };

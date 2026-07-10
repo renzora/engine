@@ -58,28 +58,29 @@ impl Plugin for ShellPlugin {
         // without it — Ctrl+Space brings it back (`toggle_bottom_panel`). A
         // workspace already closed in a previous session keeps its persisted
         // stash; one whose bottom region isn't the strip (Animation's
-        // timeline) is left open. `take_legacy_bottom_strip` catches layouts
-        // saved back when the strip sat nested under the viewport.
+        // timeline) is left open. `take_bottom_strip` finds the strip whether
+        // it's a root full-width region (old saved layouts) or nested under
+        // the viewport column (the shipped default).
         for (name, tree) in layouts.iter_mut() {
             if closed_bottoms.contains_key(name.as_str()) {
                 continue;
             }
-            let stash = if dock::has_bottom_strip(tree) {
-                tree.detach_bottom().map(|(bottom, ratio)| ClosedBottom {
-                    tree: bottom,
-                    ratio,
-                    anchor: Vec::new(),
-                })
-            } else {
-                dock::take_legacy_bottom_strip(tree)
-            };
-            if let Some(stash) = stash {
+            if let Some(stash) = dock::take_bottom_strip(tree) {
                 closed_bottoms.insert(name.clone(), stash);
             }
         }
         app.insert_resource(BottomPanel {
             closed: closed_bottoms,
         });
+        // Tell ember's dock which panels mark the collapsible bottom strip:
+        // a leaf tabbing one of these below a vertical divider gets the
+        // collapse chevron and the divider snap-closed gesture even when it
+        // isn't the full-width root region (the shipped Scene default nests
+        // the strip under the viewport column).
+        app.insert_resource(renzora_ember::dock::BottomStripMarkers(vec![
+            "assets".into(),
+            "console".into(),
+        ]));
         // The dock starts on the active workspace (overrides DockPlugin's empty).
         app.insert_resource(Dock {
             tree: layouts[active].1.clone(),
@@ -1038,7 +1039,7 @@ fn toggle_bottom_panel(
     let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
         return;
     };
-    if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
+    if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty).is_some() {
         // reopened
     } else if let Some(stash) = close_bottom_panel(&mut dock.tree) {
         bottom.closed.insert(name, stash);
@@ -1075,8 +1076,10 @@ fn close_bottom_panel(tree: &mut DockTree) -> Option<ClosedBottom> {
     dock::take_legacy_bottom_strip(tree)
 }
 
-/// Re-attach `name`'s stashed bottom region to the dock tree. Returns `true`
-/// if a stash existed and was reopened.
+/// Re-attach `name`'s stashed bottom region to the dock tree. Returns the
+/// path of the vertical split it re-created (empty = full-width at the root)
+/// if a stash existed and was reopened, `None` otherwise — the drag-open
+/// gesture hands that path to ember so the live drag adopts the right divider.
 ///
 /// A stashed panel can re-appear while the bottom panel is closed (the tab
 /// bar's "+" menu, a focus request, a tear-off window). Re-attaching it
@@ -1088,10 +1091,8 @@ fn reopen_bottom_panel(
     bottom: &mut BottomPanel,
     dock: &mut Dock,
     dirty: &mut DockDirty,
-) -> bool {
-    let Some(mut stash) = bottom.closed.remove(name) else {
-        return false;
-    };
+) -> Option<Vec<bool>> {
+    let mut stash = bottom.closed.remove(name)?;
     let mut ids = Vec::new();
     stash.tree.collect_panels(&mut ids);
     for id in ids {
@@ -1099,17 +1100,22 @@ fn reopen_bottom_panel(
             stash.tree.remove_panel(&id);
         }
     }
-    dock.tree
+    let path = dock
+        .tree
         .attach_bottom_at(stash.tree, stash.ratio, &stash.anchor);
     dirty.0 = true;
-    true
+    Some(path)
 }
 
-/// Consume ember's [`BottomSnapRequest`]: a hard drag down on the primary
-/// root divider snaps the bottom panel closed (same stash as Ctrl+Space).
-/// The stash keeps the divider's **pre-drag** ratio, so reopening restores
-/// the height the panel had before the snap — not the squished mid-drag one
-/// the live tree holds by then.
+/// Consume ember's [`BottomSnapRequest`]: a hard drag down on a bottom
+/// region's divider, or a click on its collapse chevron, snaps that region
+/// closed (same stash as Ctrl+Space). A request naming a target panel came
+/// from a **nested** strip — detach the region containing that panel, with
+/// its anchor, so it reopens in place; no target means the root region.
+/// Divider snaps carry the **pre-drag** ratio, so reopening restores the
+/// height the panel had before the snap — not the squished mid-drag one the
+/// live tree holds by then; chevron clicks carry none and keep the detached
+/// ratio.
 fn bottom_snap_collapse(
     snap: Option<ResMut<renzora_ember::dock::BottomSnapRequest>>,
     layouts: Res<ShellLayouts>,
@@ -1118,22 +1124,31 @@ fn bottom_snap_collapse(
     mut dirty: ResMut<DockDirty>,
 ) {
     let Some(mut snap) = snap else { return };
-    let Some(restore) = snap.0.take() else { return };
+    let Some(req) = snap.0.take() else { return };
     let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
         return;
     };
     if bottom.closed.contains_key(&name) {
         return;
     }
-    if let Some((tree, _)) = dock.tree.detach_bottom() {
-        bottom.closed.insert(
-            name,
-            ClosedBottom {
-                tree,
-                ratio: restore,
-                anchor: Vec::new(),
-            },
-        );
+    let stash = match &req.target {
+        None => dock.tree.detach_bottom().map(|(tree, ratio)| ClosedBottom {
+            tree,
+            ratio: req.restore.unwrap_or(ratio),
+            anchor: Vec::new(),
+        }),
+        Some(panel) => {
+            dock.tree
+                .detach_bottom_containing(panel)
+                .map(|(tree, ratio, anchor)| ClosedBottom {
+                    tree,
+                    ratio: req.restore.unwrap_or(ratio),
+                    anchor,
+                })
+        }
+    };
+    if let Some(stash) = stash {
+        bottom.closed.insert(name, stash);
         dirty.0 = true;
     }
 }
@@ -1293,7 +1308,7 @@ fn collapsed_bottom_tab_click(
         let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
             return;
         };
-        if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
+        if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty).is_some() {
             dock.tree.set_active_tab(&tab.0);
         }
         return;
@@ -1323,7 +1338,7 @@ fn collapsed_bottom_open_click(
 }
 
 /// Drag the collapsed strip's empty background upward → reopen the bottom
-/// panel and hand the still-held cursor to ember's root divider
+/// panel and hand the still-held cursor to the divider it re-attached under
 /// ([`renzora_ember::dock::GrabRootDivider`]), so the panel sizes live from
 /// the closed position — the gesture continues as a normal divider drag.
 /// Tabs and the open chevron sit above the bar and capture their own
@@ -1368,9 +1383,12 @@ fn collapsed_bottom_bar_drag(
     let Some(name) = layouts.layouts.get(layouts.active).map(|(n, _)| n.clone()) else {
         return;
     };
-    if reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
+    if let Some(path) = reopen_bottom_panel(&name, &wins, &mut bottom, &mut dock, &mut dirty) {
         if let Some(mut grab) = grab {
-            grab.0 = true;
+            // The path of the split the strip re-attached under — ember
+            // adopts that divider (not necessarily the root one) as the
+            // live drag once the rebuilt tree provides it.
+            grab.0 = Some(path);
         }
     }
 }
