@@ -160,9 +160,15 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
         });
         commands.entity(content).add_child(editor);
-        // The viewport toolbar (header) lives in the shared toolbar strip below
-        // the document tabs (registered as the "viewport" panel's toolbar — see
-        // `native_header::register`), so slot 0 only carries its content.
+        // In-viewport tool strip — undo / redo / save plus the registry tool
+        // buttons (moved out of the header strip). Docks to the left or top
+        // edge per Settings → Viewport → Toolbar. Added last so it draws on
+        // top of the UI-editor canvas in every view.
+        let side_toolbar = crate::native_header::build_side_toolbar(commands, fonts);
+        commands.entity(content).add_child(side_toolbar);
+        // The rest of the viewport toolbar (header) lives in the shared toolbar
+        // strip below the document tabs (registered as the "viewport" panel's
+        // toolbar — see `native_header::register`).
         commands.entity(root).add_child(content);
     } else {
         commands.entity(root).add_child(content);

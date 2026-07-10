@@ -31,7 +31,8 @@ use renzora_input::{ActionKind, InputAction, InputBinding, InputMap};
 use renzora_keybindings::{EditorAction, KeyBinding, KeyBindings};
 use renzora_theme::{Theme, ThemeColor, ThemeManager};
 use renzora_viewport::settings::{
-    CollisionGizmoVisibility, EditorCameraSource, GraphicsQuality, LabelScope, ViewportSettings,
+    CollisionGizmoVisibility, EditorCameraSource, GraphicsQuality, LabelScope, ToolbarOrientation,
+    ViewportSettings,
 };
 
 const PANEL_W: f32 = 880.0;
@@ -1546,6 +1547,26 @@ fn tab_project(
         },
     );
     settings_row(commands, fonts, body, 3, &tr("settings.row.aspect_mode"), dd);
+    // Where the editor's in-viewport tool strip (undo/redo/save + tool buttons)
+    // docks. An editor preference (ViewportSettings → editor prefs), not game
+    // config like the rows above — it just lives on this page because the
+    // sidebar's "Viewport" entry is where people look for it.
+    let o_strs: Vec<String> =
+        ToolbarOrientation::ALL.iter().map(|s| loc_opt(s.label())).collect();
+    let o_labels: Vec<&str> = o_strs.iter().map(|s| s.as_str()).collect();
+    let dd = ctl_dropdown(
+        commands, fonts, &o_labels,
+        0, // reseeded from state by bind_2way on the first frame
+        |w| {
+            let cur = w.resource::<ViewportSettings>().toolbar_orientation;
+            ToolbarOrientation::ALL.iter().position(|s| *s == cur).unwrap_or(0)
+        },
+        |w, &i| {
+            let o = ToolbarOrientation::ALL.get(i).copied().unwrap_or_default();
+            w.resource_mut::<ViewportSettings>().toolbar_orientation = o;
+        },
+    );
+    settings_row(commands, fonts, body, 4, &tr("settings.row.toolbar_orientation"), dd);
 
     // Rendering 2D.
     let (sec, body) = section(commands, fonts, "image-square", &tr("settings.section.rendering_2d"), A_BLUE);

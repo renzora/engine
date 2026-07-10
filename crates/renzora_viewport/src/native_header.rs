@@ -1,18 +1,20 @@
-//! Bevy-native (ember) viewport header bar — the chrome above the 3D image.
+//! Bevy-native (ember) viewport header bar — the chrome above the 3D image —
+//! plus the floating vertical toolbar overlaid on the viewport itself.
 //!
 //! Mirrors `header.rs` (the egui version) but built from bevy_ui nodes so it
-//! runs in the native editor. Increment A1 covers the left "session actions"
-//! strip (undo / redo / save / play / scripts) and the maximize toggle; the
-//! view/mode dropdowns, Display/Camera/Snap dropdowns, inline snapping, and the
-//! registry-driven tool buttons land in later increments (see the
-//! `native-viewport-migration` plan).
+//! runs in the native editor. The header strip keeps the view/mode dropdowns,
+//! the shapes menu, World/Local, inline snapping, and the Display/Camera/Snap
+//! dropdowns; the session actions (undo / redo / save) and the registry-driven
+//! tool buttons live in [`build_side_toolbar`], a vertical strip parented into
+//! the primary viewport's content node. Every driver system locates its
+//! widgets by component, so the two strips share one set of systems.
 
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use renzora::core::viewport_types::{
-    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ViewAngleCommand,
-    ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
+    CameraSettingsState, CollisionGizmoVisibility, ProjectionMode, SnapSettings, ToolbarOrientation,
+    ViewAngleCommand, ViewportMode, ViewportSettings, ViewportView, VisualizationMode,
 };
 use renzora::core::ShapeRegistry;
 use renzora_undo::{execute, SpawnShapeCmd, UndoContext};
@@ -36,6 +38,11 @@ pub const HEADER_HEIGHT: f32 = 28.0;
 
 const BTN_W: f32 = 26.0;
 const BTN_H: f32 = 22.0;
+
+/// Side-toolbar buttons are larger than the header widgets — they float over
+/// the scene, so they can afford the room and want the bigger hit target.
+const SIDE_BTN: f32 = 32.0;
+const SIDE_ICON: f32 = 18.0;
 
 /// One of the fixed "session action" buttons in the header's left strip.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
@@ -116,39 +123,15 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left");
-    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right");
-    let gap1 = gap(commands, 6.0);
-    let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk");
-
-    // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
-    // Populated from ToolbarRegistry by a deferred system (predicates need World).
-    let tools_gap = gap(commands, 8.0);
-    let tools = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(1.0),
-                height: Val::Percent(100.0),
-                ..default()
-            },
-            ToolContainer,
-            Name::new("vp-tools"),
-        ))
-        .id();
+    // The session actions (undo / redo / save) and the registry-driven tool
+    // buttons live in the viewport's vertical side toolbar — see
+    // [`build_side_toolbar`].
 
     // "Add shape" menu — a dropdown listing every registered shape (the same
     // ShapeRegistry the shape-library panel reads), grouped by category.
-    let shapes_gap = gap(commands, 8.0);
+    // 3D-only: it spawns 3D primitives.
     let shapes_dd = build_shapes_dropdown(commands, fonts);
-    // The shape menu is 3D-only (it spawns 3D primitives). The tool CONTAINER
-    // stays visible in 2D — its 3D transform tools (translate/rotate/scale) hide
-    // themselves via a per-tool predicate, but 2D-relevant registry tools (e.g.
-    // the tilemap Paint tool) must still show.
-    for e in [shapes_gap, shapes_dd] {
-        commands.entity(e).insert(ThreeDOnly);
-    }
+    commands.entity(shapes_dd).insert(ThreeDOnly);
 
     // World/Local space toggle for the transform gizmo (3D only).
     let space_gap = gap(commands, 8.0);
@@ -220,17 +203,178 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands.entity(e).insert(ThreeDOnly);
     }
     let gap4 = gap(commands, 3.0);
-    let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out");
+    let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out", BTN_W, BTN_H, 14.0);
 
-    // One centered cluster: session actions (+ tools, shapes), then view/mode,
-    // inline snapping, camera speed, the Display / Snap / Camera dropdowns, and
+    // One centered cluster: shapes + World/Local, then view/mode, inline
+    // snapping, camera speed, the Display / Snap / Camera dropdowns, and
     // maximize — all grouped in the middle via the row's `justify-content`.
     commands.entity(row).add_children(&[
-        undo, redo, gap1, save, tools_gap, tools, shapes_gap, shapes_dd, space_gap, space_btn,
+        shapes_dd, space_gap, space_btn,
         center_gap, view_dd, mode_dd, gap5, translate, rotate, scale, gap6, cam_speed, gap3,
         display_dd, snap_dd, camera_dd, overlay_2d_dd, gap4, maximize,
     ]);
     row
+}
+
+/// Marks the tool strip's root cluster so [`update_side_toolbar_orientation`]
+/// can restyle it when the user flips Settings → Viewport → Toolbar.
+#[derive(Component)]
+struct SideToolbarRoot;
+
+/// Build the toolbar strip overlaid flush on one edge of the primary viewport —
+/// the session actions (undo / redo / save) plus the registry-driven
+/// tool buttons (Select/Translate/… + terrain + plugin tools, filled by
+/// [`populate_tools`]). These used to sit at the left of the header strip; the
+/// driver systems in [`register`] locate every button by component, so moving
+/// them into the viewport changes nothing about how they behave. The cluster is
+/// an [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
+/// tool never bleeds into picking / box-select underneath).
+///
+/// Built vertical (the [`ToolbarOrientation`] default);
+/// [`update_side_toolbar_orientation`] restyles it live from the setting.
+pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let cluster = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexStart,
+                row_gap: Val::Px(1.0),
+                padding: UiRect::axes(Val::Px(2.0), Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(side_toolbar_bg()),
+            bevy::ui::RelativeCursorPosition::default(),
+            OverlaySurface,
+            SideToolbarRoot,
+            Name::new("vp-side-toolbar"),
+        ))
+        .id();
+
+    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", SIDE_BTN, SIDE_BTN, SIDE_ICON);
+    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", SIDE_BTN, SIDE_BTN, SIDE_ICON);
+    let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk", SIDE_BTN, SIDE_BTN, SIDE_ICON);
+    let sep = tool_separator(commands);
+
+    // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
+    // Populated from ToolbarRegistry by a deferred system (predicates need
+    // World). The container stays visible in 2D — its 3D transform tools hide
+    // themselves via a per-tool predicate, but 2D-relevant registry tools
+    // (e.g. the tilemap Paint tool) must still show.
+    let tools = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(1.0),
+                ..default()
+            },
+            ToolContainer,
+            Name::new("vp-tools"),
+        ))
+        .id();
+
+    commands
+        .entity(cluster)
+        .add_children(&[undo, redo, save, sep, tools]);
+
+    // Track the live theme (the static BackgroundColor above only covers the
+    // first frame), and hide during play mode like the header strip does.
+    renzora_ember::reactive::bind_bg(commands, cluster, |_| side_toolbar_bg());
+    renzora_ember::reactive::bind_display(commands, cluster, |w| {
+        !w.get_resource::<renzora::core::PlayModeState>()
+            .map(|p| p.is_in_play_mode())
+            .unwrap_or(false)
+    });
+    cluster
+}
+
+/// The side toolbar's solid panel fill — the theme's panel colour, so the
+/// strip reads as part of the editor chrome (same as the header strip).
+fn side_toolbar_bg() -> Color {
+    rgb(panel_bg())
+}
+
+/// Re-axis the tool strip from Settings → Viewport → Toolbar: dock the root
+/// cluster to the left edge (column) or the top edge (row), flip the tool
+/// container's flow, and turn each separator rule sideways. Compare-and-set
+/// every frame rather than caching the last orientation, because the section
+/// separators spawn later (once [`populate_tools`] fires) and must pick up a
+/// non-default orientation when they do.
+fn update_side_toolbar_orientation(
+    settings: Option<Res<ViewportSettings>>,
+    mut roots: Query<
+        &mut Node,
+        (With<SideToolbarRoot>, Without<ToolContainer>, Without<ToolSepRule>),
+    >,
+    mut tools: Query<
+        &mut Node,
+        (With<ToolContainer>, Without<SideToolbarRoot>, Without<ToolSepRule>),
+    >,
+    mut seps: Query<
+        &mut Node,
+        (With<ToolSepRule>, Without<SideToolbarRoot>, Without<ToolContainer>),
+    >,
+) {
+    let Some(settings) = settings else { return };
+    let horizontal = settings.toolbar_orientation == ToolbarOrientation::Horizontal;
+
+    let (dir, main_gap, cross_gap) = if horizontal {
+        (FlexDirection::Row, Val::Px(1.0), Val::Px(0.0))
+    } else {
+        (FlexDirection::Column, Val::Px(0.0), Val::Px(1.0))
+    };
+    for mut n in &mut roots {
+        if n.flex_direction == dir {
+            continue;
+        }
+        n.flex_direction = dir;
+        if horizontal {
+            // Full-width strip flush on the top edge.
+            n.right = Val::Px(0.0);
+            n.bottom = Val::Auto;
+            n.column_gap = main_gap;
+            n.row_gap = cross_gap;
+            n.padding = UiRect::axes(Val::Px(4.0), Val::Px(2.0));
+        } else {
+            // Full-height strip flush on the left edge.
+            n.right = Val::Auto;
+            n.bottom = Val::Px(0.0);
+            n.row_gap = cross_gap;
+            n.column_gap = main_gap;
+            n.padding = UiRect::axes(Val::Px(2.0), Val::Px(4.0));
+        }
+    }
+    for mut n in &mut tools {
+        if n.flex_direction == dir {
+            continue;
+        }
+        n.flex_direction = dir;
+        if horizontal {
+            n.column_gap = main_gap;
+            n.row_gap = cross_gap;
+        } else {
+            n.row_gap = cross_gap;
+            n.column_gap = main_gap;
+        }
+    }
+    let (sep_w, sep_h, sep_margin) = if horizontal {
+        (Val::Px(1.0), Val::Px(20.0), UiRect::horizontal(Val::Px(4.0)))
+    } else {
+        (Val::Px(20.0), Val::Px(1.0), UiRect::vertical(Val::Px(4.0)))
+    };
+    for mut n in &mut seps {
+        if n.width == sep_w {
+            continue;
+        }
+        n.width = sep_w;
+        n.height = sep_h;
+        n.margin = sep_margin;
+    }
 }
 
 /// The Grid row of the 2D Overlays dropdown: label, the cell-size input, then
@@ -391,13 +535,16 @@ fn action_btn(
     fonts: &EmberFonts,
     action: HeaderAction,
     icon: &str,
+    w: f32,
+    h: f32,
+    icon_px: f32,
 ) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, text_primary(), 14.0);
+    let glyph = icon_text(commands, &fonts.phosphor, icon, text_primary(), icon_px);
     let btn = commands
         .spawn((
             Node {
-                width: Val::Px(BTN_W),
-                height: Val::Px(BTN_H),
+                width: Val::Px(w),
+                height: Val::Px(h),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(3.0)),
@@ -460,6 +607,7 @@ pub(crate) fn register(app: &mut App) {
                 panel_toggle_dismiss,
                 sanitize_mode_for_view,
                 update_two_d_only,
+                update_side_toolbar_orientation,
             ),
         )
             .run_if(in_state(SplashState::Editor)),
@@ -2138,6 +2286,17 @@ struct ToolContainer;
 #[derive(Component)]
 struct ToolsPopulated;
 
+/// A separator between tool sections. Tools hide per-mode via their `visible`
+/// predicates, and a whole section can vanish (e.g. the terrain tools outside
+/// Terrain mode) — which used to leave its separators stacked up as dangling
+/// lines at the strip's end. The separator shows only while at least one tool
+/// on EACH side of it is visible.
+#[derive(Component)]
+struct ToolSepVis {
+    before: Vec<Entity>,
+    after: Vec<Entity>,
+}
+
 /// A registry-backed tool button: carries the predicates/activator so the
 /// per-frame systems can highlight, show/hide, and fire it.
 #[derive(Component, Clone)]
@@ -2196,14 +2355,28 @@ fn populate_tools(world: &mut World) {
     let mut queue = CommandQueue::default();
     {
         let mut commands = Commands::new(&mut queue, world);
+        // Buttons first, per section, so each separator can be tagged with the
+        // buttons on either side of it (that's what drives its visibility).
+        let section_buttons: Vec<Vec<Entity>> = sections
+            .iter()
+            .map(|section| {
+                section
+                    .iter()
+                    .map(|entry| tool_button(&mut commands, &fonts, entry))
+                    .collect()
+            })
+            .collect();
         let mut children: Vec<Entity> = Vec::new();
-        for (si, section) in sections.iter().enumerate() {
+        for (si, btns) in section_buttons.iter().enumerate() {
             if si > 0 {
-                children.push(tool_separator(&mut commands));
+                let sep = tool_separator(&mut commands);
+                commands.entity(sep).insert(ToolSepVis {
+                    before: section_buttons[..si].concat(),
+                    after: section_buttons[si..].concat(),
+                });
+                children.push(sep);
             }
-            for entry in section {
-                children.push(tool_button(&mut commands, &fonts, entry));
-            }
+            children.extend(btns.iter().copied());
         }
         commands.entity(container).add_children(&children);
         commands.entity(container).insert(ToolsPopulated);
@@ -2211,16 +2384,25 @@ fn populate_tools(world: &mut World) {
     queue.apply(world);
 }
 
+/// Marks every tool-strip separator rule so
+/// [`update_side_toolbar_orientation`] can flip its axis with the strip.
+#[derive(Component)]
+struct ToolSepRule;
+
+/// A rule between sections of the tool strip. Built for the vertical strip (a
+/// horizontal line); the orientation system re-axes it when the strip is
+/// horizontal.
 fn tool_separator(commands: &mut Commands) -> Entity {
     commands
         .spawn((
             Node {
-                width: Val::Px(1.0),
-                height: Val::Px(16.0),
-                margin: UiRect::horizontal(Val::Px(4.0)),
+                width: Val::Px(20.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(4.0)),
                 ..default()
             },
             BackgroundColor(rgb(border())),
+            ToolSepRule,
             Name::new("vp-tool-sep"),
         ))
         .id()
@@ -2243,7 +2425,7 @@ fn tool_button(
             TextFont {
                 // 0.19 Parley: font -> FontSource, font_size -> FontSize.
                 font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
-                font_size: bevy::text::FontSize::Px(15.0),
+                font_size: bevy::text::FontSize::Px(SIDE_ICON),
                 ..default()
             },
             TextColor(rgb(text_primary())),
@@ -2252,8 +2434,8 @@ fn tool_button(
     let btn = commands
         .spawn((
             Node {
-                width: Val::Px(26.0),
-                height: Val::Px(BTN_H),
+                width: Val::Px(SIDE_BTN),
+                height: Val::Px(SIDE_BTN),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(3.0)),
@@ -2316,21 +2498,41 @@ fn update_tool_buttons(world: &mut World) {
             (*e, visible, bg, b.glyph, icol)
         })
         .collect();
-    for (e, visible, bg, glyph, icol) in results {
-        if let Some(mut node) = world.get_mut::<Node>(e) {
-            let want = if visible { Display::Flex } else { Display::None };
+    for (e, visible, bg, glyph, icol) in &results {
+        if let Some(mut node) = world.get_mut::<Node>(*e) {
+            let want = if *visible { Display::Flex } else { Display::None };
             if node.display != want {
                 node.display = want;
             }
         }
-        if let Some(mut bgc) = world.get_mut::<BackgroundColor>(e) {
-            if bgc.0 != bg {
-                bgc.0 = bg;
+        if let Some(mut bgc) = world.get_mut::<BackgroundColor>(*e) {
+            if bgc.0 != *bg {
+                bgc.0 = *bg;
             }
         }
-        if let Some(mut tc) = world.get_mut::<TextColor>(glyph) {
-            if tc.0 != icol {
-                tc.0 = icol;
+        if let Some(mut tc) = world.get_mut::<TextColor>(*glyph) {
+            if tc.0 != *icol {
+                tc.0 = *icol;
+            }
+        }
+    }
+
+    // Section separators: visible only while a tool on each side of them is
+    // visible, so hidden sections never leave dangling divider lines.
+    let vis: std::collections::HashMap<Entity, bool> =
+        results.iter().map(|(e, v, ..)| (*e, *v)).collect();
+    let any_visible =
+        |ents: &[Entity]| ents.iter().any(|e| vis.get(e).copied().unwrap_or(false));
+    let mut sq = world.query::<(Entity, &ToolSepVis)>();
+    let seps: Vec<(Entity, bool)> = sq
+        .iter(world)
+        .map(|(e, s)| (e, any_visible(&s.before) && any_visible(&s.after)))
+        .collect();
+    for (e, show) in seps {
+        if let Some(mut node) = world.get_mut::<Node>(e) {
+            let want = if show { Display::Flex } else { Display::None };
+            if node.display != want {
+                node.display = want;
             }
         }
     }
