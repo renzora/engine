@@ -2,6 +2,15 @@
 name = "avian3d"
 version = "0.7.0-dev"
 edition = "2024"
+# Vendored as a library (see the dev-dependencies note): the example/bench
+# sources remain on disk but are not cargo targets — their helper dev-deps
+# (examples_common_*, bevy_mod_debugdump) were trimmed at vendoring, so the
+# targets cannot compile, and cargo test builds example+bench targets of
+# workspace members. The workspace-root `exclude = ["crates/avian"]` does NOT
+# keep these crates out of the workspace (path-dep absorption wins), so the
+# targets must be disabled here at the manifest.
+autoexamples = false
+autobenches = false
 license = "MIT OR Apache-2.0"
 authors = ["Joona Aalto <jondolf.dev@gmail.com>"]
 description = "An ECS-driven physics engine for the Bevy game engine"
@@ -118,100 +127,3 @@ workspace = true
 # Enable features when building the docs on docs.rs
 features = ["diagnostic_ui"]
 
-[[example]]
-name = "bvh"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "dynamic_character_3d"
-required-features = ["3d", "default-collider", "bevy_scene"]
-
-[[example]]
-name = "kinematic_character_3d"
-required-features = ["3d", "default-collider", "bevy_scene"]
-
-[[example]]
-name = "cast_ray_predicate"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "chain_3d"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "collider_constructors"
-required-features = ["3d", "default-collider", "bevy_scene"]
-
-[[example]]
-name = "conveyor_belt"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "cubes"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "custom_broad_phase"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "custom_constraint"
-required-features = ["3d", "default-collider", "xpbd_joints"]
-
-[[example]]
-name = "distance_joint_3d"
-required-features = ["3d", "default-collider", "debug-plugin"]
-
-[[example]]
-name = "fixed_joint_3d"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "prismatic_joint_3d"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "revolute_joint_3d"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "joint_motors_3d"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "gyroscopic_motion"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "move_and_slide_3d"
-required-features = [
-    "3d",
-    "default-collider",
-    "collider-from-mesh",
-    "bevy_scene",
-]
-
-[[example]]
-name = "picking"
-required-features = ["3d", "default-collider", "bevy_picking"]
-
-[[example]]
-name = "trimesh_shapes_3d"
-required-features = ["3d", "default-collider", "bevy_scene"]
-
-[[example]]
-name = "voxels_3d"
-required-features = ["3d", "default-collider"]
-
-[[example]]
-name = "diagnostics"
-required-features = ["3d", "default-collider", "diagnostic_ui"]
-
-[[example]]
-name = "debugdump_3d"
-required-features = ["3d", "debug-plugin"]
-
-[[bench]]
-name = "velocity_projection"
-required-features = ["3d", "default-collider", "test"]
-harness = false

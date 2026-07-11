@@ -2,6 +2,15 @@
 name = "avian2d"
 version = "0.7.0-dev"
 edition = "2024"
+# Vendored as a library (see the dev-dependencies note): the example/bench
+# sources remain on disk but are not cargo targets — their helper dev-deps
+# (examples_common_*, bevy_mod_debugdump) were trimmed at vendoring, so the
+# targets cannot compile, and cargo test builds example+bench targets of
+# workspace members. The workspace-root `exclude = ["crates/avian"]` does NOT
+# keep these crates out of the workspace (path-dep absorption wins), so the
+# targets must be disabled here at the manifest.
+autoexamples = false
+autobenches = false
 license = "MIT OR Apache-2.0"
 authors = ["Joona Aalto <jondolf.dev@gmail.com>"]
 description = "An ECS-driven physics engine for the Bevy game engine"
@@ -115,94 +124,3 @@ workspace = true
 # Enable features when building the docs on docs.rs
 features = ["diagnostic_ui"]
 
-[[example]]
-name = "dynamic_character_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "kinematic_character_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "ccd"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "chain_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "collision_layers"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "custom_collider"
-required-features = ["2d"]
-
-[[example]]
-name = "determinism_2d"
-required-features = ["2d", "default-collider", "enhanced-determinism"]
-
-[[example]]
-name = "fixed_joint_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "interpolation"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "many_pyramids_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "many_shapes"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "move_and_slide_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "move_marbles"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "one_way_platform_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "picking_2d_in_perspective"
-required-features = ["2d", "debug-plugin", "bevy_picking"]
-
-[[example]]
-name = "prismatic_joint_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "pyramid_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "ray_caster"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "revolute_joint_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "joint_motors_2d"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "sensor"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "tumbler"
-required-features = ["2d", "default-collider"]
-
-[[example]]
-name = "debugdump_2d"
-required-features = ["2d", "debug-plugin"]
