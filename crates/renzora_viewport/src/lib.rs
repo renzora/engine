@@ -649,9 +649,9 @@ fn handle_play_shortcuts(
 
 pub(crate) const AXIS_GIZMO_SIZE: f32 = 100.0;
 pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
-/// Height of the in-viewport toolbar strip flush on the top edge (28px buttons
-/// + 2px vertical padding each side). Top-anchored overlays (axis gizmo, and
-/// the nav cluster positioned below it) offset by this so they clear the strip.
+/// Height of the in-viewport toolbar strip flush on the top edge (28px
+/// buttons plus 2px vertical padding each side). Top-anchored overlays (axis
+/// gizmo, and the nav cluster below it) offset by this to clear the strip.
 pub(crate) const VIEWPORT_TOOLBAR_H: f32 = 32.0;
 
 

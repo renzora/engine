@@ -1385,8 +1385,8 @@ impl SceneReferenceCache {
         self.entries.clear();
     }
 
-    /// Return the outgoing `SceneInstance.source` list for `path`, reading
-    /// + scanning from disk only if the cache is missing or stale.
+    /// Return the outgoing `SceneInstance.source` list for `path`, reading and
+    /// scanning from disk only if the cache is missing or stale.
     fn references_for(&mut self, path: &Path) -> Option<&[String]> {
         let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
         let fresh_mtime = std::fs::metadata(&canon).and_then(|m| m.modified()).ok();

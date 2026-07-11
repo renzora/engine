@@ -1,9 +1,9 @@
 //! The **Sprite Anim** panel layout — a cell picker for creating clips.
 //!
-//! Header (the target sprite), a zoomable **palette** of its current sheet (grid
-//! + cell selection — see [`crate::palette`]), and a **Create Clip** row (fps +
-//! name). No grid inputs (the grid is the entity's `SpriteSheet`) and no image
-//! switching (that's the Sprite Image inspector + the timeline).
+//! Header (the target sprite), a zoomable **palette** of its current sheet
+//! (grid and cell selection — see [`crate::palette`]), and a **Create Clip**
+//! row (fps + name). No grid inputs (the grid is the entity's `SpriteSheet`)
+//! and no image switching (that's the Sprite Image inspector + the timeline).
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
