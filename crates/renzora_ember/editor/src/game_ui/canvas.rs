@@ -9,10 +9,12 @@ use bevy::prelude::*;
 
 // ── Canvas backdrop toggle ───────────────────────────────────────────────────
 
-/// Whether the editor viewport's 3D render is shown behind the UI canvas.
+/// Whether the editor viewport's scene render is shown behind the UI canvas.
 /// Toggled by the canvas panel toolbar; the backdrop image comes from
-/// `ViewportRenderTarget` (same render the 3D viewport tab displays), so
-/// flipping this off just hides the blit — no camera spawn/despawn.
+/// `ViewportRenderTarget` (the shared slot-0 image — the 3D render, or the 2D
+/// render when UI view was entered from 2D; see `LastSceneView` in
+/// `renzora_viewport`), so flipping this off just hides the blit — no camera
+/// spawn/despawn.
 ///
 /// Default reset from `EditorSettings::ui_preview_by_default` whenever the
 /// UI workspace is entered.

@@ -77,8 +77,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
-    // Scene backdrop: the 3D editor-camera render (same image the 3D viewport
-    // shows) behind the UI, toggled by UiCanvasPreviewEnabled (default on).
+    // Scene backdrop: the editor-camera render (the same slot-0 image the
+    // viewport shows — 3D, or 2D when UI view was entered from the 2D view)
+    // behind the UI, toggled by UiCanvasPreviewEnabled (default on).
     let backdrop = commands
         .spawn((
             ImageNode::default(),

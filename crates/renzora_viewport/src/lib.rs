@@ -195,11 +195,18 @@ impl Plugin for ViewportPlugin {
         // Always-on panel-visibility gates — toggle is_active on the offscreen
         // cameras when their panels are / are not in the current dock tree so
         // layouts that don't show a given panel don't pay for its render pass.
+        app.init_resource::<LastSceneView>();
         app.add_systems(
             Update,
             (
-                sync_viewport_camera_activation,
-                park_primary_3d_target,
+                // Chained so the frame the view flips to UI, both camera
+                // systems already agree on which scene view it came from.
+                (
+                    track_last_scene_view,
+                    sync_viewport_camera_activation,
+                    park_primary_3d_target,
+                )
+                    .chain(),
                 gate_scene_visibility,
                 camera_preview::sync_camera_preview_activation,
             )
@@ -655,6 +662,35 @@ pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the res
 pub(crate) const VIEWPORT_TOOLBAR_H: f32 = 32.0;
 
 
+/// The scene view — 3D or 2D, never UI — the viewport most recently showed.
+/// While the viewport is in UI view this is the view the user came *from*,
+/// which decides what the UI canvas's scene-preview backdrop renders: the
+/// backdrop displays the shared slot-0 image, and selecting a UI entity while
+/// working in 2D auto-switches into UI view, so without this the backdrop
+/// always snapped back to the 3D render instead of the 2D scene the user was
+/// just editing.
+#[derive(Resource)]
+struct LastSceneView(renzora::core::viewport_types::ViewportView);
+
+impl Default for LastSceneView {
+    fn default() -> Self {
+        Self(renzora::core::viewport_types::ViewportView::Three)
+    }
+}
+
+/// Records the current viewport view into [`LastSceneView`] whenever it is a
+/// scene view (3D / 2D); UI view leaves the stored value untouched.
+fn track_last_scene_view(
+    settings: Option<Res<ViewportSettings>>,
+    mut last: ResMut<LastSceneView>,
+) {
+    use renzora::core::viewport_types::ViewportView;
+    let view = settings.map(|s| s.viewport_view).unwrap_or_default();
+    if view != ViewportView::Ui && last.0 != view {
+        last.0 = view;
+    }
+}
+
 /// Toggles each viewport camera's `is_active` based on whether its panel is
 /// docked. The primary (slot 0) camera additionally follows the shared 3D / 2D
 /// / UI mode — it backs UI authoring and steps aside for the 2D camera — while
@@ -691,6 +727,7 @@ fn sync_viewport_camera_activation(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     runtime: Option<Res<external_runtime::ExternalRuntime>>,
+    last_scene_view: Res<LastSceneView>,
 ) {
     use renzora::core::viewport_types::ViewportView;
 
@@ -723,10 +760,13 @@ fn sync_viewport_camera_activation(
     let view = settings.map(|s| s.viewport_view).unwrap_or_default();
     let primary_docked = viewports.slots.first().is_some_and(|s| s.docked);
 
-    // 2D view owns the slot images — and so does in-panel play of a 2D game
-    // (whatever view was selected when Play was pressed): `drive_editor_camera_in_play`
-    // steers the focused 2D camera onto the game camera's framing, so the 2D
-    // cameras must be the ones rendering the panels.
+    // 2D view owns the slot images — and so does UI view entered from 2D (the
+    // canvas's scene-preview backdrop shows the slot-0 image, and it must keep
+    // showing the 2D scene the user was just editing, not snap back to the 3D
+    // render), and so does in-panel play of a 2D game (whatever view was
+    // selected when Play was pressed): `drive_editor_camera_in_play` steers the
+    // focused 2D camera onto the game camera's framing, so the 2D cameras must
+    // be the ones rendering the panels.
     let playing_2d_game = play_mode
         .as_ref()
         .is_some_and(|pm| pm.is_in_play_mode())
@@ -734,7 +774,8 @@ fn sync_viewport_camera_activation(
             .as_ref()
             .and_then(|pm| pm.active_game_camera)
             .is_some_and(|e| kind_2d.get(e).is_ok());
-    let two_d_active = view == ViewportView::Two || playing_2d_game;
+    let ui_backdrop_2d = view == ViewportView::Ui && last_scene_view.0 == ViewportView::Two;
+    let two_d_active = view == ViewportView::Two || ui_backdrop_2d || playing_2d_game;
 
     for (mut camera, vc) in cameras_3d.iter_mut() {
         let docked = viewports.slots.get(vc.0).is_some_and(|s| s.docked);
@@ -805,6 +846,7 @@ fn park_primary_3d_target(
         &mut bevy::camera::RenderTarget,
         With<renzora::core::PrimaryViewportCamera>,
     >,
+    last_scene_view: Res<LastSceneView>,
 ) {
     use renzora::core::viewport_types::ViewportView;
 
@@ -817,7 +859,8 @@ fn park_primary_3d_target(
             .as_ref()
             .and_then(|pm| pm.active_game_camera)
             .is_some_and(|e| kind_2d.get(e).is_ok());
-    let two_d_owns_image = view == ViewportView::Two || playing_2d_game;
+    let ui_backdrop_2d = view == ViewportView::Ui && last_scene_view.0 == ViewportView::Two;
+    let two_d_owns_image = view == ViewportView::Two || ui_backdrop_2d || playing_2d_game;
 
     // `RenderTarget` only exists once `sync_viewport_camera_targets` has bound
     // the startup images, so this query is empty until then — fine, there is
