@@ -111,6 +111,23 @@ pub fn section_with_header_open(
     header_bg: (u8, u8, u8),
     open: bool,
 ) -> (Entity, Entity, Entity) {
+    let (root, header, body, _icon) =
+        section_with_header_icon_open(commands, fonts, icon, title, accent, header_bg, open);
+    (root, header, body)
+}
+
+/// Like [`section_with_header_open`] but also returns the header's leading icon
+/// entity, so a caller can turn the icon itself into an affordance (the script
+/// inspector makes it a click-to-open-in-code-editor button).
+pub fn section_with_header_icon_open(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    title: &str,
+    accent: (u8, u8, u8),
+    header_bg: (u8, u8, u8),
+    open: bool,
+) -> (Entity, Entity, Entity, Entity) {
     let body = commands
         .spawn((
             Node {
@@ -173,7 +190,7 @@ pub fn section_with_header_open(
         ))
         .id();
     commands.entity(root).add_children(&[header, body]);
-    (root, header, body)
+    (root, header, body, ico)
 }
 
 /// Click a section header → toggle its body + flip the caret.

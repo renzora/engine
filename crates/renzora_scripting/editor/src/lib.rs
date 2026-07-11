@@ -21,7 +21,7 @@ fn script_component_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "script_component",
         display_name: "Scripts",
-        icon: "code",
+        icon: "scroll",
         category: "scripting",
         has_fn: |world, entity| world.get::<ScriptComponent>(entity).is_some(),
         add_fn: Some(|world, entity| {

@@ -29,9 +29,16 @@ use crate::reactive::{bind_2way, bind_with};
 use crate::theme::*;
 use crate::widgets::{bind_hsv_picker, hsv_picker, slider, Popup};
 
-/// Width of the inspector label column. Labels are left-aligned and fixed-width
-/// so the value controls line up in a column directly to their right.
+/// Maximum width of the inspector label column. The column is proportional
+/// ([`INSPECTOR_LABEL_PCT`] of the row) capped at this, so on a wide panel the
+/// value controls line up at a familiar fixed offset, while a narrow panel
+/// gives the width back to the controls instead of squashing them.
 pub const INSPECTOR_LABEL_W: f32 = 112.0;
+
+/// The label column's share of the row before the [`INSPECTOR_LABEL_W`] cap
+/// kicks in (cap wins above ~320px-wide rows). Every row uses the same
+/// fraction, so labels and controls still line up in columns at any width.
+pub const INSPECTOR_LABEL_PCT: f32 = 35.0;
 
 /// Alternating row background for an inspector/list row at `row_index`. Insert
 /// as the row's `BackgroundColor` so panels stripe consistently.
@@ -65,7 +72,8 @@ pub fn inspector_row(
     let label_col = commands
         .spawn((
             Node {
-                width: Val::Px(INSPECTOR_LABEL_W),
+                width: Val::Percent(INSPECTOR_LABEL_PCT),
+                max_width: Val::Px(INSPECTOR_LABEL_W),
                 flex_shrink: 0.0,
                 align_items: AlignItems::Center,
                 overflow: Overflow::clip(),
@@ -90,6 +98,21 @@ pub fn inspector_row(
         .id();
     commands.entity(row).add_children(&[label_col, control]);
     row
+}
+
+/// Stretch an already-built control so it absorbs the row's free width. Widgets
+/// like `drag_value` / `text_input` / `dropdown` size to a fixed `min_width` by
+/// default (right for toolbars), which leaves a dead gap between the control and
+/// the row's trailing keyframe/reset buttons when the inspector panel is wide.
+/// `flex_basis: 0` (not just `flex_grow`) is what makes several siblings — e.g.
+/// a Vec3's X/Y/Z boxes — split the space *evenly* regardless of content width,
+/// and the zeroed `min_width` lets them shrink back down on narrow panels.
+pub fn fill_control(commands: &mut Commands, control: Entity) {
+    commands.entity(control).entry::<Node>().and_modify(|mut n| {
+        n.flex_grow = 1.0;
+        n.flex_basis = Val::Px(0.0);
+        n.min_width = Val::Px(0.0);
+    });
 }
 
 /// Run a drawer body builder with a fresh `Commands` (backed by a local

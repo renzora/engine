@@ -205,7 +205,8 @@ pub use rich_text::*;
 pub use overlay::*;
 pub use scroll_area::*;
 pub use section::{
-    section, section_with_header, section_with_header_open, set_section_open, Section,
+    section, section_with_header, section_with_header_icon_open, section_with_header_open,
+    set_section_open, Section,
 };
 pub use search::*;
 pub use sortable::*;

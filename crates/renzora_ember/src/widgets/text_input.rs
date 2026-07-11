@@ -118,6 +118,9 @@ fn build_input(
                 align_items: AlignItems::Center,
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
+                // Single-line input: clip overflowing text instead of letting it
+                // wrap the box taller (the caret math assumes one line).
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(rgb(popup_bg())),
@@ -136,6 +139,7 @@ fn build_input(
             Text::new(disp),
             ui_font(font, 12.0),
             TextColor(rgb(col)),
+            bevy::text::TextLayout::no_wrap(),
             // Selection highlight (drawn behind the glyphs when `select_all`).
             BackgroundColor(Color::NONE),
         ))

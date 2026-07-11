@@ -24,7 +24,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
 use renzora_ember::reactive::bind_2way;
 use renzora_ember::widgets::{
-    bind_text_input, drag_value, icon_menu_button, section_with_header_open, text_input,
+    bind_text_input, drag_value, icon_menu_button, section_with_header_icon_open, text_input,
     toggle_switch, HoverTooltip, Section,
 };
 use renzora_ember::theme::{accent, border, rgb, section_bg, text_muted};
@@ -40,6 +40,7 @@ pub fn register(app: &mut App) {
             rebuild_scripts,
             remember_script_sections,
             script_remove_click,
+            script_open_click,
             add_script_drop,
             add_script_drop_highlight,
         )
@@ -58,6 +59,14 @@ struct ScriptsRoot {
 struct ScriptRemoveBtn {
     entity: Entity,
     script_id: u32,
+}
+
+/// The script section header's leading file icon, made clickable — pressing it
+/// opens the script in the code editor. Carries the entry's (project-relative)
+/// path so the click handler doesn't have to re-find the script by id.
+#[derive(Component)]
+struct ScriptOpenBtn {
+    path: PathBuf,
 }
 
 #[derive(Component)]
@@ -115,6 +124,9 @@ struct VarSpec {
 struct ScriptSpec {
     id: u32,
     name: String,
+    /// Project-relative script file path, when the entry is file-backed —
+    /// drives the header icon's click-to-open-in-code-editor.
+    path: Option<PathBuf>,
     enabled: bool,
     vars: Vec<VarSpec>,
 }
@@ -169,6 +181,7 @@ fn collect_script_specs(world: &World, entity: Entity) -> Vec<ScriptSpec> {
         out.push(ScriptSpec {
             id: entry.id,
             name,
+            path: entry.script_path.clone(),
             enabled: entry.enabled,
             vars,
         });
@@ -182,6 +195,9 @@ fn scripts_sig(specs: &[ScriptSpec], root: Entity) -> u64 {
     for s in specs {
         s.id.hash(&mut h);
         s.name.hash(&mut h);
+        // The open-in-editor button bakes the path in, so a re-pointed entry
+        // must rebuild even when the filename (the displayed name) is the same.
+        s.path.hash(&mut h);
         s.enabled.hash(&mut h);
         for v in &s.vars {
             v.name.hash(&mut h);
@@ -254,7 +270,7 @@ fn build_script_section(
 ) -> Entity {
     // Shared ember section: caret + icon + name header that collapses on click,
     // so an entity carrying several scripts stays scannable.
-    let (root, header, body) = section_with_header_open(
+    let (root, header, body, icon) = section_with_header_icon_open(
         commands,
         fonts,
         "file-code",
@@ -267,6 +283,18 @@ fn build_script_section(
         entity,
         script_id: spec.id,
     });
+    // The header's script icon doubles as "open in code editor" for file-backed
+    // entries. FocusPolicy::Block keeps the press from also collapsing the
+    // section (same as the toggle/trash affordances below).
+    if let Some(path) = &spec.path {
+        commands.entity(icon).insert((
+            Interaction::default(),
+            bevy::ui::FocusPolicy::Block,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            HoverTooltip::new(renzora::lang::t("comp.script.open")),
+            ScriptOpenBtn { path: path.clone() },
+        ));
+    }
     // Compact the shared section like the inspector's component cards: kill the
     // widget's 8px bottom margin + header↔body gap and tighten the paddings so
     // scripts stack flush. (Full `Node` overrides — mirror the widget's other
@@ -360,6 +388,7 @@ fn build_var_row(
                 },
                 move |w, v: &f32| set_var(w, entity, id, &sn, ScriptValue::Float(*v)),
             );
+            renzora_ember::inspector::fill_control(commands, dv);
             dv
         }
         ScriptValue::Int(init) => {
@@ -374,6 +403,7 @@ fn build_var_row(
                 },
                 move |w, v: &f32| set_var(w, entity, id, &sn, ScriptValue::Int(*v as i32)),
             );
+            renzora_ember::inspector::fill_control(commands, dv);
             dv
         }
         ScriptValue::Bool(init) => {
@@ -407,6 +437,7 @@ fn build_var_row(
                     set_var(w, entity, id, &sn, val);
                 },
             );
+            renzora_ember::inspector::fill_control(commands, ti);
             ti
         }
         ScriptValue::Vec2(init) => {
@@ -481,6 +512,7 @@ fn vec_axes(
             move |w| read_vec_axis(w, entity, id, &gn, i),
             move |w, v: &f32| write_vec_axis(w, entity, id, &sn, i, *v),
         );
+        renzora_ember::inspector::fill_control(commands, dv);
         kids.push(dv);
     }
     commands.entity(row).add_children(&kids);
@@ -502,6 +534,47 @@ fn script_remove_click(
                 if let Some(idx) = sc.scripts.iter().position(|s| s.id == id) {
                     sc.remove_script(idx);
                 }
+            }
+        });
+    }
+}
+
+/// Header-icon click → open the script in the code editor. Mirrors the asset
+/// browser's routing: load the file straight into `CodeEditorState` via the
+/// contract `OpenCodeEditorFile` resource, then reveal the Code Editor panel in
+/// whichever dock backend is live.
+fn script_open_click(
+    q: Query<(&Interaction, &ScriptOpenBtn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let path = btn.path.clone();
+        cmds.push(move |w: &mut World| {
+            // Stored paths are project-relative (see `make_rel`); the code
+            // editor reads from disk, so resolve against the open project.
+            let abs = if path.is_absolute() {
+                path.clone()
+            } else {
+                match w.get_resource::<renzora::core::CurrentProject>() {
+                    Some(p) => p.path.join(&path),
+                    None => path.clone(),
+                }
+            };
+            w.insert_resource(renzora::core::OpenCodeEditorFile { path: abs });
+            if let Some(mut docking) =
+                w.get_resource_mut::<renzora_editor_framework::DockingState>()
+            {
+                docking.tree.focus_or_add_panel("code_editor");
+            }
+            if let Some(mut dock) = w.get_resource_mut::<renzora_ember::dock::Dock>() {
+                dock.tree.focus_or_add_panel("code_editor");
+            }
+            if let Some(mut dirty) = w.get_resource_mut::<renzora_ember::dock::DockDirty>() {
+                dirty.0 = true;
             }
         });
     }

@@ -1395,6 +1395,21 @@ fn build_field_row(
         ))
         .id();
     build_field_value(commands, fonts, field, entity, value);
+    // Growable controls (drag values, text inputs, dropdowns, asset slots) are
+    // stretched by `fill_control` inside `build_field_value`, which pushes the
+    // trailing keyframe/reset buttons to the row's right edge. Controls with an
+    // intrinsic size (toggle, color swatch, read-only text) can't stretch, so a
+    // spacer absorbs the free width instead — the buttons stay pinned right at
+    // a fixed size either way, however the panel is resized.
+    if matches!(
+        field.kind,
+        FieldKind::Bool | FieldKind::Color | FieldKind::ColorRgba | FieldKind::ReadOnly
+    ) {
+        let spacer = commands
+            .spawn((Node { flex_grow: 1.0, ..default() }, FocusPolicy::Pass))
+            .id();
+        commands.entity(value).add_child(spacer);
+    }
     // A per-field "add keyframe" affordance, left of the reset button. Reactively
     // hidden unless the timeline has a clip open with a bound track for this
     // property (see `build_add_keyframe_button`); pressing it keys the live value.
@@ -1580,6 +1595,7 @@ fn build_field_value(
                 },
                 move |w, v: &f32| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*v)),
             );
+            renzora_ember::inspector::fill_control(commands, dv);
             commands.entity(value_parent).add_child(dv);
         }
         FieldKind::Int { min, max } => {
@@ -1602,6 +1618,7 @@ fn build_field_value(
                 },
                 move |w, v: &f32| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*v)),
             );
+            renzora_ember::inspector::fill_control(commands, dv);
             commands.entity(value_parent).add_child(dv);
         }
         FieldKind::Vec3 { speed } => {
@@ -1632,6 +1649,7 @@ fn build_field_value(
                         }
                     },
                 );
+                renzora_ember::inspector::fill_control(commands, dv);
                 commands.entity(value_parent).add_child(dv);
             }
         }
@@ -1688,6 +1706,7 @@ fn build_field_value(
                 },
                 move |w, v: String| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::String(v)),
             );
+            renzora_ember::inspector::fill_control(commands, ti);
             commands.entity(value_parent).add_child(ti);
         }
         FieldKind::Enum { options } => {
@@ -1722,6 +1741,7 @@ fn build_field_value(
                     record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*i as f32));
                 },
             );
+            renzora_ember::inspector::fill_control(commands, dd);
             commands.entity(value_parent).add_child(dd);
         }
         FieldKind::Asset => {

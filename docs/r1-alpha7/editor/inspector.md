@@ -91,7 +91,9 @@ the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha6/ex
 
 Attaching a script is one of the most useful things you can do in the Inspector. Drag a `.lua` or `.rhai` file from the Asset Browser onto the **Drop to add script** target, or click the **+** button on the target's right edge to pick one from a scrolling list of your project's scripts.
 
-Each attached script gets its own **collapsible section** — a header with a caret, the script's file name, an **enable toggle**, and a per-script **trash** button — so an entity carrying several scripts stays tidy. Click a header to fold that script's variables away; the fold state is remembered while you work.
+Each attached script gets its own **collapsible section** — a header with a caret, a **file icon**, the script's file name, an **enable toggle**, and a per-script **trash** button — so an entity carrying several scripts stays tidy. Click a header to fold that script's variables away; the fold state is remembered while you work.
+
+The header's **file icon is a button**: click it to open that script straight in the **Code Editor** (the panel is added to your layout if it isn't already open), so you can jump from tuning a variable to editing the code behind it in one click.
 
 Any variable your script declares in its `props()` function shows up as an editable field — so you can tune gameplay values (speed, jump height, color, a team name) right in the Inspector, with no code changes.
 
