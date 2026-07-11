@@ -291,6 +291,13 @@ fn physics_body_entry() -> InspectorEntry {
         has_fn: |world, entity| world.get::<PhysicsBodyData>(entity).is_some(),
         add_fn: Some(|world, entity| {
             world.entity_mut(entity).insert(PhysicsBodyData::default());
+            // A body without any collider does nothing, so adding one from the
+            // inspector also drops in a default shape (auto-fit sizes it to the
+            // mesh AABB next frame). Skipped when the entity or a descendant
+            // already carries a shape — compound bodies keep shapes on children.
+            if !subtree_has_collision_shape(world, entity) {
+                world.entity_mut(entity).insert(CollisionShapeData::default());
+            }
         }),
         remove_fn: Some(|world, entity| {
             world.entity_mut(entity).remove::<PhysicsBodyData>();
@@ -299,6 +306,20 @@ fn physics_body_entry() -> InspectorEntry {
         set_enabled_fn: None,
         fields: vec![],
     }
+}
+
+/// True if `root` or any descendant carries a `CollisionShapeData`.
+fn subtree_has_collision_shape(world: &World, root: Entity) -> bool {
+    let mut stack = vec![root];
+    while let Some(e) = stack.pop() {
+        if world.get::<CollisionShapeData>(e).is_some() {
+            return true;
+        }
+        if let Some(kids) = world.get::<Children>(e) {
+            stack.extend(kids.iter());
+        }
+    }
+    false
 }
 
 /// Native (bevy_ui / ember) drawer for `PhysicsBodyData` — mirrors the inspector layout.

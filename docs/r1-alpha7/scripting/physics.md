@@ -69,8 +69,8 @@ An entity can have either or both. A `RuntimePhysics` marker is added once the b
 
 Select an entity, then in the **Inspector** use **Add Component**:
 
-1. Add a body — **Rigid Body**, **Static Body**, or **Kinematic Body** (inserts `PhysicsBodyData`).
-2. Add a **Collision Shape** (inserts `CollisionShapeData`) and pick the shape from its dropdown.
+1. Add a **Physics Body** (inserts `PhysicsBodyData`). This also drops in a default **Collision Shape** automatically — auto-fitted to the entity's mesh bounds — unless the entity (or one of its children) already has one, so compound bodies built from child shapes are left alone.
+2. Optionally adjust the **Collision Shape** (`CollisionShapeData`): pick a different shape from its dropdown, or add more shapes on child entities for a compound body.
 
 The collision-shape card has an **Edit** toggle (collider edit mode) that hides the transform gizmo so you can resize/move the collider directly. In the **2D viewport** the same toggle shows a green collider frame with eight drag handles: drag a handle to resize (boxes resize from the grabbed edge; circle and capsule radii resize about the centre), drag inside the shape to move its offset — e.g. shrink a tree object's collider down to its trunk base. Each gesture is one undo step. While the toggle is on, clicks edit the collider instead of selecting/moving sprites; toggle it off to get the normal picker back.
 
