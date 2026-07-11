@@ -8164,6 +8164,7 @@ name = "renzora_engine"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "avian2d",
  "avian3d",
  "bevy",
  "dirs 6.0.0",
@@ -8972,6 +8973,7 @@ dependencies = [
 name = "renzora_physics"
 version = "0.1.0"
 dependencies = [
+ "avian2d",
  "avian3d",
  "bevy",
  "mlua",
@@ -9628,6 +9630,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
+ "renzora_physics",
  "serde",
 ]
 
@@ -9638,6 +9641,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_ember",
+ "renzora_physics",
  "renzora_tilemap",
  "renzora_ui",
  "renzora_undo",
@@ -9775,6 +9779,7 @@ dependencies = [
  "renzora_hanabi",
  "renzora_import",
  "renzora_keybindings",
+ "renzora_physics",
  "renzora_shader",
  "renzora_terrain",
  "renzora_theme",

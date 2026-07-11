@@ -32,7 +32,12 @@ impl Plugin for FoliagePlugin {
             .add_systems(
                 Update,
                 (
-                    systems::foliage_follow_terrain_system,
+                    // Pinned into the `mesh_stale` hand-off window: composition
+                    // sets the flag, the mesh rebuild consumes it — running in
+                    // between is the only position guaranteed to observe it.
+                    systems::foliage_follow_terrain_system
+                        .after(crate::height_layers::compose_height_layers_system)
+                        .before(crate::mesh::terrain_chunk_mesh_update_system),
                     systems::foliage_mesh_rebuild_system,
                     systems::foliage_uniform_update_system,
                 ),

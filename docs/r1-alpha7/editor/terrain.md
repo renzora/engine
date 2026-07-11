@@ -19,7 +19,13 @@ Add a terrain from the editor's **Add** menu (it's registered as the `terrain` e
 
 A fresh terrain is a **single 64 m × 64 m tile** at `chunk_resolution = 129` (129 × 129 vertices), with a checkerboard placeholder material and a flat surface sitting on the editor grid plane. The default height range is `-10 m` to `40 m`.
 
-> Chunks each get a **trimesh collider** (`renzora_physics`'s `CollisionShapeData::mesh()`), rebuilt from the chunk mesh whenever you sculpt — so the avian physics collider always matches the visible surface. It is a triangle mesh, *not* a heightfield collider.
+> Chunks each get a **trimesh collider** (`renzora_physics`'s `CollisionShapeData::mesh()`). Rebuilding a full-chunk trimesh is expensive, so the collider is **debounced**: it rebuilds ~0.25 s after the last mesh change and never mid-stroke — sculpting stays responsive, and the collider catches up on release. It is a triangle mesh, *not* a heightfield collider.
+
+### The Terrain inspector component
+
+Selecting the terrain root shows a **Terrain** section in the inspector: **Chunks X/Z** (1–8), **Chunk Size** (8–512 m), **Resolution** (33/65/129/257 — fixed steps so neighbouring chunk edges share vertices), and **Min/Max Height** (clamped to keep ≥1 m of range). Grid or resolution changes respawn the chunks with bilinear-resampled heights; size and height-range edits rebuild the existing meshes in place.
+
+A **Layers** section sits below it, editing the *active* paint layer: a layer picker, **Name**, **Material** (`.material` drop), **Height Offset**, **Coverage Threshold**, an **Enabled** toggle (hides that layer's overlay), plus **Add Layer** / **Remove Layer** buttons. It's the same data the Terrain Tools panel's layer list edits.
 
 ## The Terrain Tools panel
 
@@ -64,7 +70,7 @@ On the **Sculpt** tab, pick a brush from the 16-tool grid, then paint in the vie
 | **Retop** | Wide 5×5 aggressive smooth | — |
 | **Cliff** | Amplify the local slope gradient (steepen) | Soften |
 
-> A **Stamp** brush exists in `TerrainBrushType` (stamping a grayscale image or a procedural preset — Dome, Cone, Bell, Mesa, Ridge, Crater, Noise — with Add / Subtract / Replace / Max / Min blending), but it is not currently surfaced in the native tool grid.
+The 17th tool is **Stamp** — click (don't drag) to stamp a heightmap shape once. Its Tool Settings offer a **Shape** preset (Dome, Cone, Bell, Mesa, Ridge, Crater, Noise), a **Load PNG…** button for a custom grayscale stamp, a **Blend** mode (Add / Subtract / Replace / Max / Min), **Rotation** (degrees), and **Height Scale**. Brush size sets the stamp footprint; picking Stamp with nothing loaded auto-selects the Dome preset.
 
 ### Tool Settings
 

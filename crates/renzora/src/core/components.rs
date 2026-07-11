@@ -112,6 +112,36 @@ pub struct SpriteImagePath(pub String);
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SpriteCustomSize(pub Vec2);
 
+/// Y-sort: derive this 2D entity's Z from its world Y every frame, so sprites
+/// lower on screen draw in front — the classic top-down "walk behind the tree"
+/// ordering.
+///
+/// Bevy's 2D transparent pass already sorts by Z, so no render-pipeline work is
+/// involved: a runtime system just overwrites `Transform.translation.z` with
+/// `z_base - (world_y + offset) * scale`. Z becomes a *derived* value for these
+/// entities — whatever gets saved in the scene is harmlessly recomputed on load.
+///
+/// `offset` moves the sort point away from the sprite's center: sprites pivot
+/// at their middle, but a tall tree should sort by its trunk base, so a tree
+/// sprite uses a negative offset of roughly half its height. `z_base` is the
+/// layer band the entity sorts within (±0.5 around it), letting y-sorted props
+/// sit above a ground tilemap at z 0 and below UI/overlay content.
+#[derive(Component, Reflect, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
+pub struct YSort {
+    /// Center of the Z band this entity sorts within.
+    pub z_base: f32,
+    /// World units added to the entity's Y before sorting (negative = sort
+    /// point below the sprite center, e.g. at a character's feet).
+    pub offset: f32,
+}
+
+impl Default for YSort {
+    fn default() -> Self {
+        Self { z_base: 1.0, offset: 0.0 }
+    }
+}
+
 /// Grid-based sprite-sheet cropping: slice a `Sprite`'s texture into
 /// `hframes` columns × `vframes` rows and show one cell at a time.
 ///

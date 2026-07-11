@@ -392,22 +392,39 @@ struct SpaceToggleBtn;
 #[derive(Component)]
 struct SpaceToggleText;
 
-/// A pill that flips the transform gizmo between World and Local space.
+/// Phosphor icons for the two gizmo spaces (globe = World, cube = Local).
+fn space_icon(space: GizmoSpace) -> &'static str {
+    match space {
+        GizmoSpace::World => "globe",
+        GizmoSpace::Local => "cube-focus",
+    }
+}
+
+fn space_label(space: GizmoSpace) -> String {
+    match space {
+        GizmoSpace::World => renzora::lang::t("viewport.gizmo.world"),
+        GizmoSpace::Local => renzora::lang::t("viewport.gizmo.local"),
+    }
+}
+
+/// An icon button that flips the transform gizmo between World and Local space
+/// (globe / cube glyph; the tooltip names the active space).
 fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let label = commands
-        .spawn((
-            Text::new(renzora::lang::t("viewport.gizmo.world")),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
-            SpaceToggleText,
-            bevy::picking::Pickable::IGNORE,
-        ))
-        .id();
+    let glyph = icon_text(
+        commands,
+        &fonts.phosphor,
+        space_icon(GizmoSpace::World),
+        text_primary(),
+        13.0,
+    );
+    commands
+        .entity(glyph)
+        .insert((SpaceToggleText, bevy::picking::Pickable::IGNORE));
     let btn = commands
         .spawn((
             Node {
+                width: Val::Px(BTN_W),
                 height: Val::Px(BTN_H),
-                padding: UiRect::horizontal(Val::Px(8.0)),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(3.0)),
@@ -416,11 +433,12 @@ fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
+            renzora_ember::widgets::HoverTooltip::new(space_label(GizmoSpace::World)),
             SpaceToggleBtn,
             Name::new("vp-space-toggle"),
         ))
         .id();
-    commands.entity(btn).add_child(label);
+    commands.entity(btn).add_child(glyph);
     btn
 }
 
@@ -439,17 +457,23 @@ fn space_toggle_click(
     }
 }
 
-/// Keep the pill's label in sync with the active space.
-fn update_space_toggle(space: Res<GizmoSpace>, mut texts: Query<&mut Text, With<SpaceToggleText>>) {
+/// Keep the button's glyph + tooltip in sync with the active space.
+fn update_space_toggle(
+    space: Res<GizmoSpace>,
+    mut texts: Query<&mut Text, With<SpaceToggleText>>,
+    mut tips: Query<&mut renzora_ember::widgets::HoverTooltip, With<SpaceToggleBtn>>,
+) {
     if !space.is_changed() {
         return;
     }
-    let label = match *space {
-        GizmoSpace::World => renzora::lang::t("viewport.gizmo.world"),
-        GizmoSpace::Local => renzora::lang::t("viewport.gizmo.local"),
-    };
-    for mut t in &mut texts {
-        t.0 = label.clone();
+    if let Some(g) = icon_glyph(space_icon(*space)) {
+        for mut t in &mut texts {
+            t.0 = g.to_string();
+        }
+    }
+    let label = space_label(*space);
+    for mut tip in &mut tips {
+        tip.0.clone_from(&label);
     }
 }
 

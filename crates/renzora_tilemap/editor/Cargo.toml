@@ -8,6 +8,9 @@ description = "Editor-only half of renzora_tilemap: the Tilemap palette panel (c
 bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_tilemap = { path = ".." }
+# Data types only (no avian): stamping an object inserts the palette-authored
+# CollisionShapeData on the spawned entity.
+renzora_physics = { path = "../../renzora_physics", default-features = false }
 renzora_undo = { path = "../../renzora_undo" }
 renzora_ember = { path = "../../renzora_ember" }
 renzora_ui = { path = "../../renzora_ui" }

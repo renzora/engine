@@ -43,7 +43,10 @@ use renzora::core::{
     SpriteImagePath, SpriteSheet, ViewportBrushActive,
 };
 use renzora::{AppEditorExt, EditorSelection, SplashState, ToolEntry, ToolSection};
-use renzora_tilemap::{TileObject, TileObjectCell, TilemapLayer, TilemapTile, TilesetHandle};
+use renzora_tilemap::{
+    TileObject, TileObjectCell, TileObjectCollider, TilemapLayer, TilemapPaintLayer, TilemapTile,
+    TilesetHandle,
+};
 use renzora_ui::AssetDragPayload;
 
 /// Shared read query over a layer's painted children: each carries its grid
@@ -78,6 +81,13 @@ pub(crate) fn is_tileset(path: &std::path::Path) -> bool {
 /// keeping the entity selected. [`sync_active_tilemap`] keeps it live.
 #[derive(Resource, Default)]
 pub struct ActiveTilemap(pub Option<Entity>);
+
+/// The **paint layer** strokes write into (a `TilemapPaintLayer` child of the
+/// active tilemap, driven by the panel's layer list). `None` = the tilemap
+/// root itself — the implicit base layer every pre-layer scene already has,
+/// so tilemaps without explicit layers keep painting exactly as before.
+#[derive(Resource, Default)]
+pub struct ActivePaintLayer(pub Option<Entity>);
 
 /// The current paint brush: the set of atlas cells picked in the palette.
 ///
@@ -234,6 +244,7 @@ impl Plugin for TilemapEditorPlugin {
         app.init_resource::<TilemapBrush>()
             .init_resource::<TilemapPaintMode>()
             .init_resource::<ActiveTilemap>()
+            .init_resource::<ActivePaintLayer>()
             .init_resource::<ArmedTilesetDrop>()
             .init_resource::<PaintRectDrag>()
             .init_resource::<ViewportBrushActive>()
@@ -960,7 +971,13 @@ fn paint_tiles(
     settings: Option<Res<ViewportSettings>>,
     viewport: Option<Res<ViewportState>>,
     play: Option<Res<PlayModeState>>,
-    active: Res<ActiveTilemap>,
+    // Tupled (the system rides the 16-param cap): the active tilemap, which
+    // paint layer strokes write into, and the query to validate/lock-check it.
+    (active, active_layer, paint_layers): (
+        Res<ActiveTilemap>,
+        Res<ActivePaintLayer>,
+        Query<(&TilemapPaintLayer, &ChildOf)>,
+    ),
     images: Res<Assets<Image>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<EditorCamera2d>>,
@@ -1006,6 +1023,19 @@ fn paint_tiles(
     if ts <= 0.0 {
         return;
     }
+    // Strokes write into the active PAINT LAYER when it belongs to this
+    // tilemap; otherwise the tilemap root (the implicit base layer). A locked
+    // layer swallows the stroke entirely — no fallback to another layer, that
+    // would paint somewhere the user isn't looking.
+    let paint_root = match active_layer.0.and_then(|e| paint_layers.get(e).ok().map(|p| (e, p))) {
+        Some((e, (pl, child_of))) if child_of.parent() == layer_entity => {
+            if pl.locked {
+                return;
+            }
+            e
+        }
+        _ => layer_entity,
+    };
     // The atlas grid — needed to size the tile's `SpriteSheet`. Wait for the
     // image so a half-loaded atlas doesn't bake a wrong hframes/vframes.
     let Some(img_size) = images.get(&tileset.image).map(|i| i.size_f32()) else {
@@ -1020,6 +1050,10 @@ fn paint_tiles(
     // the cheap atlas-crop object (`stamp_object`); a non-rectangular pick bakes
     // a texture (`stamp_tile_object`). One cell → ordinary per-cell tiling.
     let object_brush = brush.selected.len() > 1;
+    // The palette-authored collision box for this pick (if the user set one
+    // via the panel's wall button) — stamped objects carry it as an entity
+    // collider so they block 2D bodies out of the box.
+    let obj_collider = layer.collider_for(brush.col, brush.row, brush.w.max(1), brush.h.max(1));
 
     // Shared per-cell ops (`fn`s, not closures — both need `commands`/`sheets`
     // mutably and are called from several paths below).
@@ -1145,6 +1179,7 @@ fn paint_tiles(
         layer_entity: Entity,
         image: &Handle<Image>,
         path: &str,
+        collider: Option<TileObjectCollider>,
         tiles: &TileQuery,
         commands: &mut Commands,
     ) {
@@ -1167,12 +1202,20 @@ fn paint_tiles(
             (brush.col + w) as f32 * px - EDGE_INSET,
             (brush.row + h) as f32 * px - EDGE_INSET,
         );
-        commands.spawn((
+        let spawned = commands.spawn((
             Name::new(format!("Object ({}, {})", c.x, c.y)),
             Node2d,
             TilemapTile { x: c.x, y: c.y },
             Transform::from_xyz(center_x, center_y, 0.0),
             Visibility::default(),
+            // Objects y-sort out of the box, pivoting at their BOTTOM edge —
+            // a tree sorts by its base, so a character above it draws behind
+            // the canopy and one below draws in front. Toggleable per entity
+            // in the inspector's Sprite Image card.
+            renzora::core::YSort {
+                offset: -ch * 0.5,
+                ..Default::default()
+            },
             Sprite {
                 image: image.clone(),
                 custom_size: Some(Vec2::new(cw, ch)),
@@ -1189,7 +1232,14 @@ fn paint_tiles(
                 tile_px: tile_px.max(1),
             },
             ChildOf(layer_entity),
-        ));
+        ))
+        .id();
+        // Palette-authored collision box → real entity collider. The sprite
+        // routes the shape to the 2D physics backend; the non-default values
+        // opt it out of auto-fit (which fits factory-default shapes only).
+        if let Some(col) = collider {
+            commands.entity(spawned).insert(col.shape_data(ts));
+        }
     }
     /// Spawn one composite object for a **non-rectangular** pick (scattered
     /// cells, e.g. a canopy over a narrow trunk), anchored at top-left cell `c`.
@@ -1204,6 +1254,7 @@ fn paint_tiles(
         ts: f32,
         layer_entity: Entity,
         path: &str,
+        collider: Option<TileObjectCollider>,
         tiles: &TileQuery,
         commands: &mut Commands,
     ) {
@@ -1224,22 +1275,33 @@ fn paint_tiles(
         let ch = h as f32 * ts;
         let center_x = c.x as f32 * ts + cw * 0.5;
         let center_y = (c.y as f32 - h as f32 + 1.0) * ts + ch * 0.5;
-        commands.spawn((
-            Name::new(format!("Object ({}, {})", c.x, c.y)),
-            Node2d,
-            TilemapTile { x: c.x, y: c.y },
-            Transform::from_xyz(center_x, center_y, 0.0),
-            Visibility::default(),
-            SpriteCustomSize(Vec2::new(cw, ch)),
-            TileObject {
-                tileset_path: path.to_string(),
-                tile_px: tile_px.max(1),
-                w,
-                h,
-                cells,
-            },
-            ChildOf(layer_entity),
-        ));
+        let spawned = commands
+            .spawn((
+                Name::new(format!("Object ({}, {})", c.x, c.y)),
+                Node2d,
+                TilemapTile { x: c.x, y: c.y },
+                Transform::from_xyz(center_x, center_y, 0.0),
+                Visibility::default(),
+                // Bottom-edge y-sort, same as the atlas-crop object path.
+                renzora::core::YSort {
+                    offset: -ch * 0.5,
+                    ..Default::default()
+                },
+                SpriteCustomSize(Vec2::new(cw, ch)),
+                TileObject {
+                    tileset_path: path.to_string(),
+                    tile_px: tile_px.max(1),
+                    w,
+                    h,
+                    cells,
+                },
+                ChildOf(layer_entity),
+            ))
+            .id();
+        // Same palette-authored collider as the atlas-crop path above.
+        if let Some(col) = collider {
+            commands.entity(spawned).insert(col.shape_data(ts));
+        }
     }
     /// Stamp one object at top-left cell `c`, picking the cheap atlas-crop path
     /// for a solid-rectangle pick and the baked-texture path otherwise.
@@ -1252,13 +1314,18 @@ fn paint_tiles(
         layer_entity: Entity,
         image: &Handle<Image>,
         path: &str,
+        collider: Option<TileObjectCollider>,
         tiles: &TileQuery,
         commands: &mut Commands,
     ) {
         if brush.is_solid_rect() {
-            stamp_object(c, brush, tile_px, ts, layer_entity, image, path, tiles, commands);
+            stamp_object(
+                c, brush, tile_px, ts, layer_entity, image, path, collider, tiles, commands,
+            );
         } else {
-            stamp_tile_object(c, brush, tile_px, ts, layer_entity, path, tiles, commands);
+            stamp_tile_object(
+                c, brush, tile_px, ts, layer_entity, path, collider, tiles, commands,
+            );
         }
     }
 
@@ -1285,7 +1352,7 @@ fn paint_tiles(
             if erase {
                 for y in min.y..=max.y {
                     for x in min.x..=max.x {
-                        erase_cell(IVec2::new(x, y), layer_entity, &tiles, &mut commands);
+                        erase_cell(IVec2::new(x, y), paint_root, &tiles, &mut commands);
                     }
                 }
             } else if object_brush {
@@ -1297,8 +1364,9 @@ fn paint_tiles(
                     let mut x = min.x;
                     while x <= max.x {
                         stamp_auto(
-                            IVec2::new(x, y), &brush, tile_px, ts, layer_entity,
-                            &tileset.image, &layer.tileset_path, &tiles, &mut commands,
+                            IVec2::new(x, y), &brush, tile_px, ts, paint_root,
+                            &tileset.image, &layer.tileset_path, obj_collider, &tiles,
+                            &mut commands,
                         );
                         x += bw;
                     }
@@ -1313,7 +1381,7 @@ fn paint_tiles(
                         let dy = (max.y - y).rem_euclid(bh) as u32;
                         let idx = (brush.row + dy) * bcols + (brush.col + dx);
                         stamp_cell(
-                            IVec2::new(x, y), idx, cols, rows, ts, layer_entity, &tileset.image,
+                            IVec2::new(x, y), idx, cols, rows, ts, paint_root, &tileset.image,
                             &layer.tileset_path, &tiles, &mut sheets, &mut commands,
                         );
                     }
@@ -1375,7 +1443,7 @@ fn paint_tiles(
     *last_cell = Some(cell);
     if erasing {
         for c in line_cells(from, cell) {
-            erase_cell(c, layer_entity, &tiles, &mut commands);
+            erase_cell(c, paint_root, &tiles, &mut commands);
         }
     } else if object_brush {
         // Multi-tile object brush: stamp ONE object per position. Only stamp
@@ -1386,8 +1454,8 @@ fn paint_tiles(
         // stroke.
         if last_object.is_none_or(|a| !object_covers(a, brush.w, brush.h, cell)) {
             stamp_auto(
-                cell, &brush, tile_px, ts, layer_entity, &tileset.image,
-                &layer.tileset_path, &tiles, &mut commands,
+                cell, &brush, tile_px, ts, paint_root, &tileset.image,
+                &layer.tileset_path, obj_collider, &tiles, &mut commands,
             );
             *last_object = Some(cell);
         }
@@ -1400,7 +1468,7 @@ fn paint_tiles(
             for (dx, dy, idx) in brush.cells() {
                 let tc = IVec2::new(c.x + dx, c.y - dy);
                 stamp_cell(
-                    tc, idx, cols, rows, ts, layer_entity, &tileset.image,
+                    tc, idx, cols, rows, ts, paint_root, &tileset.image,
                     &layer.tileset_path, &tiles, &mut sheets, &mut commands,
                 );
             }

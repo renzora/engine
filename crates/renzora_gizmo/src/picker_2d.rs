@@ -45,7 +45,7 @@ const BOX_SELECT_MIN_PX: f32 = 4.0;
 
 /// Hit threshold for handle picking, in panel pixels. Generous so users
 /// don't have to be sub-pixel accurate on a small sprite.
-const HANDLE_HIT_RADIUS: f32 = 8.0;
+pub(crate) const HANDLE_HIT_RADIUS: f32 = 8.0;
 /// Distance of the rotate handle above the selection's top-center handle,
 /// in panel pixels. Matches the overlay drawing in `native_overlay_2d`.
 pub const ROTATE_HANDLE_OFFSET_PX: f32 = 22.0;
@@ -77,7 +77,7 @@ impl ResizeHandle {
     /// Per-frame resize in the sprite's LOCAL frame: given the cursor's local
     /// position and the local bounds captured at drag start, returns
     /// `(new_local_center, new_size)`. The opposite handle stays anchored.
-    fn resize(self, cursor: Vec2, init_min: Vec2, init_max: Vec2) -> (Vec2, Vec2) {
+    pub(crate) fn resize(self, cursor: Vec2, init_min: Vec2, init_max: Vec2) -> (Vec2, Vec2) {
         let (mut min_x, mut max_x, mut min_y, mut max_y) =
             (init_min.x, init_max.x, init_min.y, init_max.y);
         match self {
@@ -146,7 +146,7 @@ impl ResizeHandle {
     /// `angle`. World +Y is screen-up, so a pure-N handle at zero rotation is
     /// a NS resize; rotation shifts the direction through the four diagonal /
     /// axis cursor buckets (45° sectors).
-    fn cursor(self, angle: f32) -> SystemCursorIcon {
+    pub(crate) fn cursor(self, angle: f32) -> SystemCursorIcon {
         let world = (self.local_dir().to_angle() + angle).to_degrees();
         // Fold to 0..180 (a resize axis is direction-less) and bucket.
         let folded = world.rem_euclid(180.0);
@@ -332,7 +332,7 @@ fn record_2d_drag(
 
 /// The entity's z rotation in radians. 2D scenes only rotate about z, so the
 /// XYZ euler decomposition's z component is exact for editor-authored poses.
-fn rotation_z(q: Quat) -> f32 {
+pub(crate) fn rotation_z(q: Quat) -> f32 {
     q.to_euler(EulerRot::XYZ).2
 }
 
@@ -351,7 +351,7 @@ fn find_editor_camera_2d(world: &World) -> Option<(&Camera, &GlobalTransform)> {
 
 /// Convert a window-space cursor position into 2D world space via the
 /// active editor 2D camera, if the cursor is over the viewport panel.
-fn cursor_to_world(
+pub(crate) fn cursor_to_world(
     cursor_window: Vec2,
     viewport: &ViewportState,
     camera: &Camera,
@@ -378,7 +378,7 @@ fn cursor_to_world(
 
 /// Project a world-space point to panel-rect-relative pixel coords.
 /// Returns `None` if the point is behind the camera.
-fn world_to_panel(
+pub(crate) fn world_to_panel(
     world_pos: Vec3,
     viewport: &ViewportState,
     camera: &Camera,
@@ -612,8 +612,15 @@ pub fn pick_2d_system(
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
     nodes_2d: Query<(Entity, &GlobalTransform), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
+        return;
+    }
+    // Collider edit mode owns the left button: clicks move/resize the selected
+    // entity's collider (`collider_edit_2d`), the way the 3D transform gizmo
+    // hides while its collider handles are up.
+    if collider_edit.is_some_and(|c| c.active) {
         return;
     }
     if !mouse.just_pressed(MouseButton::Left) {
@@ -819,8 +826,16 @@ pub fn drag_move_2d_system(
     mut transforms: Query<&mut Transform>,
     mut sprites: Query<&mut Sprite>,
     mut commands: Commands,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
     if play_mode.is_some_and(|pm| pm.is_in_play_mode()) {
+        drag.cancel();
+        return;
+    }
+    // Collider edit mode owns the left button (see `pick_2d_system`) — cancel
+    // rather than bare-return so a drag armed the frame edit mode flipped on
+    // can't keep moving the sprite underneath the collider gesture.
+    if collider_edit.is_some_and(|c| c.active) {
         drag.cancel();
         return;
     }
@@ -961,7 +976,13 @@ pub fn box_select_2d_system(
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
     nodes_2d: Query<(Entity, &GlobalTransform), (With<Node2d>, Without<Sprite>)>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
+    // Collider edit mode owns the left button (see `pick_2d_system`).
+    if collider_edit.is_some_and(|c| c.active) {
+        band.0 = None;
+        return;
+    }
     let DragMode::BoxSelect {
         start_win,
         additive,
@@ -1149,7 +1170,14 @@ pub fn update_cursor_2d(
     sprites: Query<(&Sprite, &GlobalTransform)>,
     nodes_2d: Query<(), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
+    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
+    // Collider edit mode publishes its own cursor (`collider_edit_2d`); two
+    // writers would fight over the request, so this one stands down entirely —
+    // not even clearing — while edit mode is on.
+    if collider_edit.is_some_and(|c| c.active) {
+        return;
+    }
     let mut cursor_icon: Option<SystemCursorIcon> = None;
     // Deferred assignment (rather than early returns) so every bail-out path
     // still clears a stale request.

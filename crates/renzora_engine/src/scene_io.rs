@@ -74,6 +74,21 @@ impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
             .deny_component::<avian3d::prelude::AngularDamping>()
             .deny_component::<avian3d::prelude::LockedAxes>()
             .deny_component::<avian3d::prelude::Sensor>()
+            // The avian2d twins — a distinct crate, so distinct types. Same
+            // reason: regenerated on load from PhysicsBodyData/CollisionShapeData.
+            .deny_component::<avian2d::prelude::Collider>()
+            .deny_component::<avian2d::collision::collider::ColliderAabb>()
+            .deny_component::<avian2d::prelude::RigidBody>()
+            .deny_component::<avian2d::prelude::LinearVelocity>()
+            .deny_component::<avian2d::prelude::AngularVelocity>()
+            .deny_component::<avian2d::prelude::Mass>()
+            .deny_component::<avian2d::prelude::Friction>()
+            .deny_component::<avian2d::prelude::Restitution>()
+            .deny_component::<avian2d::prelude::GravityScale>()
+            .deny_component::<avian2d::prelude::LinearDamping>()
+            .deny_component::<avian2d::prelude::AngularDamping>()
+            .deny_component::<avian2d::prelude::LockedAxes>()
+            .deny_component::<avian2d::prelude::Sensor>()
     }
     #[cfg(not(feature = "physics"))]
     fn deny_physics_components(self) -> Self {
@@ -347,7 +362,7 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
                 // Never serialize avian runtime components — they're regenerated
                 // on load from PhysicsBodyData + CollisionShapeData. Persisting
                 // them causes duplicate-reflect-type errors on deserialize.
-                if type_name.starts_with("avian3d::") {
+                if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
                     return false;
                 }
                 // Transient render-world links + per-frame computed data that
@@ -496,7 +511,7 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
                 // regenerated on load from PhysicsBodyData + CollisionShapeData.
                 // Persisting them causes duplicate-reflect-type errors on
                 // deserialize — same filter as `save_scene`.
-                if type_name.starts_with("avian3d::") {
+                if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
                     return false;
                 }
                 let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
@@ -648,7 +663,7 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
             if type_name.starts_with("bevy_mod_outline::") {
                 return false;
             }
-            if type_name.starts_with("avian3d::") {
+            if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
                 return false;
             }
             let registry = type_registry.read();
@@ -1607,7 +1622,7 @@ pub fn save_prefab_source(
             if type_name.starts_with("bevy_mod_outline::") {
                 return false;
             }
-            if type_name.starts_with("avian3d::") {
+            if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
                 return false;
             }
             // Drop ChildOf components that reference the instance entity.
@@ -2055,6 +2070,34 @@ pub fn apply_sprite_atlas_region(
         ));
         if sprite.rect != desired {
             sprite.rect = desired;
+        }
+    }
+}
+
+/// Y-sort: overwrite `Transform.translation.z` from world Y for every
+/// [`renzora::core::YSort`] entity, so 2D entities lower on screen draw in
+/// front (Bevy's 2D transparent pass sorts by Z — no render work needed).
+///
+/// The world Y comes from `GlobalTransform`, i.e. last frame's propagated
+/// value — one frame of sort lag on a moving parent, which is invisible at
+/// game speeds and avoids re-propagating transforms twice a frame. The scale
+/// maps ±50k world units onto the ±0.5 band around `z_base`, so neighbouring
+/// integer bands never interleave; the clamp pins runaway positions to the
+/// band edge instead of letting them cross into another layer. Compare-first
+/// write so parked entities don't trip `Changed<Transform>` (and a re-save of
+/// an unchanged scene) every frame.
+#[cfg(feature = "render_2d")]
+pub fn apply_y_sort(
+    mut q: Query<(&renzora::core::YSort, &mut Transform, &GlobalTransform)>,
+) {
+    /// One world unit of Y = this much Z. f32 around a small `z_base` resolves
+    /// steps of ~1e-7, so 1e-5 still separates sub-pixel Y differences.
+    const Y_SORT_SCALE: f32 = 1e-5;
+    for (ysort, mut transform, global) in &mut q {
+        let sort = ((global.translation().y + ysort.offset) * Y_SORT_SCALE).clamp(-0.5, 0.5);
+        let z = ysort.z_base - sort;
+        if transform.translation.z != z {
+            transform.translation.z = z;
         }
     }
 }

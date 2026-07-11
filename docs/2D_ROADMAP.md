@@ -14,15 +14,20 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
 - ⬜ **Autotiling / terrain brushes** — paint "grass" and let bitmask rules
   pick edge/corner tiles automatically (the single biggest tilemap
   quality-of-life feature in any modern editor)
-- ⬜ **Tile collision authoring** — per-tile collision shapes in the tileset
-  editor, auto-merged into optimized colliders per layer (greedy rectangle
-  merge, not one collider per tile)
+- 🔶 **Tile collision authoring** — palette cells marked solid (wall button in
+  the Tilemap panel, red tint) grow merged static colliders per layer (greedy
+  rectangle merge, not one collider per tile); multi-cell object picks get a
+  drag-editable green collision box in the palette, auto-stamped onto painted
+  objects as a `CollisionShapeData`. Remaining: per-tile sub-cell *shapes*
+  (slopes, half-tiles) for single solid tiles
 - ⬜ Bucket fill (flood fill contiguous region), line tool, eyedropper
   (pick the tile/brush under the cursor from the map)
 - ⬜ Tile transforms while painting: rotate/flip the brush (e.g. X/Y/Z keys)
 - ⬜ Random/scatter brush — paint from a weighted set of tile variants
 - ⬜ Animated tiles (per-tile frame sequences defined in the tileset)
-- ⬜ Layer ordering UI + per-layer opacity/tint/lock/visibility toggles
+- 🔶 Layer ordering UI + per-layer lock/visibility toggles ✅ (paint-layer
+  list in the panel; `TilemapPaintLayer` children own their tiles). Remaining:
+  opacity/tint editing UI (the component field exists)
 - ⬜ Per-tile custom data (string/number tags readable from scripts —
   "is_water", "damage=2")
 - ⬜ Chunked mesh render path *as an optimization behind the entity API* for
@@ -46,8 +51,9 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
 - ⬜ Aseprite import (`.ase`/`.aseprite` → sheet + tagged clips)
 - ⬜ 2D skeletal animation (bones + mesh deform), or at minimum cutout
   animation with pivots — plus Spine/spritesheet-rig import
-- ⬜ Sprite z-sorting controls: sort by Y ("2.5D top-down"), explicit sorting
-  layers with names, per-layer parallax factors
+- 🔶 Sprite z-sorting controls: sort by Y ✅ (`YSort` component — offset +
+  z-base band, inspector section). Remaining: named sorting layers,
+  per-layer parallax factors
 - ⬜ Sprite flip_x/flip_y in the inspector + scripting
 - ⬜ Sprite modulate/tint + blend modes (additive, multiply) in the inspector
 - ⬜ Pixel-perfect camera mode (integer zoom + integer sprite snapping to
@@ -55,13 +61,15 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
 
 ## 2D physics (the missing pillar)
 
-- ⬜ **avian2d backend** — `physics_2d` feature: rigid bodies, colliders
-  (rect/circle/capsule/polygon), auto-init via `Node2d` (plan already in
-  the 2D pipeline notes)
+- ✅ **avian2d backend** — `avian2d` feature on `renzora_physics`: rigid
+  bodies + colliders (rect/circle/capsule) from the shared
+  `PhysicsBodyData`/`CollisionShapeData`, auto-routed via Sprite/`Node2d`
+  ancestry/`Physics2d` marker; forces/velocity script actions routed too
 - ⬜ **Character controller 2D** — the make-or-break for platformers:
   move-and-slide, floor/wall/ceiling detection, slope handling, coyote time
   helpers
-- ⬜ Collision shape editing gizmos in the 2D viewport
+- ✅ Collision shape editing gizmos in the 2D viewport — inspector Edit
+  toggle → green frame + 8 drag handles (resize/move offset), undoable
 - ⬜ Area/trigger zones with `on_body_entered` script hooks
 - ⬜ One-way platforms, moving platforms (kinematic bodies carrying riders)
 - ⬜ Raycast/shapecast 2D scripting API
@@ -100,7 +108,8 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
   already exists; needs stamp-to-place UX)
 - ⬜ 2D pathfinding: grid A* over tilemap collision + nav regions, and/or
   navmesh-2d, exposed to scripts (`find_path_2d`)
-- ⬜ Y-sorted "props" workflow for top-down games (sort origin/pivot editing)
+- 🔶 Y-sorted "props" workflow for top-down games — `YSort` with sort-offset
+  editing ✅; remaining: a visual pivot handle in the viewport
 
 ## UI & text (2D games lean on these hard)
 
@@ -139,9 +148,10 @@ each group. ✅ = shipped, 🔶 = partial, ⬜ = not started.
 
 ## Suggested next three
 
-1. **2D physics + character controller** — nothing else unlocks more game
-   genres; everything above it is decoration until movement feels right.
-2. **Autotiling + tile collision authoring** — turns the tile painter from a
-   sprite stamper into a level editor.
+1. **2D physics + character controller** — avian2d backend + tile collision
+   ✅; the character controller (move-and-slide 2D, floor detection) is the
+   remaining make-or-break piece.
+2. **Autotiling** — turns the tile painter from a sprite stamper into a level
+   editor (collision authoring half is done).
 3. ~~**Named sprite animations + events**~~ ✅ Done — `AnimatedSprite` + the
    Sprite Anim panel; `play_animation` and frame events close the runtime loop.

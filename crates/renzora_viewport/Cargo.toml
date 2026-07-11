@@ -11,6 +11,10 @@ renzora_ember = { path = "../renzora_ember" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# Data types only (no avian): the 2D overlay draws the collider-edit chrome
+# from `CollisionShapeData` + `ColliderEditMode` (the interaction half lives
+# in renzora_gizmo::collider_edit_2d — the two crates don't link).
+renzora_physics = { path = "../renzora_physics", default-features = false }
 renzora_console = { path = "../renzora_console" }
 renzora_ui = { path = "../renzora_ui" }
 renzora_keybindings = { path = "../renzora_keybindings" }

@@ -6,7 +6,7 @@
 //! supplies the layout, the dock area, and editor-specific behavior.
 
 use bevy::prelude::*;
-use bevy::ui::RelativeCursorPosition;
+use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
 
 use renzora::NativePanelIds;
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
@@ -151,6 +151,7 @@ impl Plugin for ShellPlugin {
                 (
                     bottom_snap_collapse,
                     sync_collapsed_bottom_bar,
+                    position_collapsed_bottom_bar,
                     collapsed_bottom_tab_click,
                     collapsed_bottom_open_click,
                     collapsed_bottom_bar_drag,
@@ -1233,6 +1234,90 @@ fn sync_collapsed_bottom_bar(
         .id();
     commands.entity(open_btn).add_child(chev);
     commands.entity(bar).add_children(&[strip_filler, open_btn]);
+}
+
+/// Align the collapsed strip with the region its stash is anchored to. The
+/// bar is chrome — a row between the dock area and the status bar — so left
+/// alone it spans the full window width. But a strip that was docked under
+/// one column (the shipped Scene default nests it under the viewport) should
+/// collapse *in place*: under that same column, leaving the side columns
+/// their full height. When the active stash carries an anchor, this pulls
+/// the bar out of the chrome flow (absolute, hugging the status bar's top
+/// edge) and sizes it to the on-screen span of the leaves still holding the
+/// anchor panels — the same panels [`reopen_bottom_panel`] re-attaches
+/// under, so the closed strip sits exactly where the panel will reopen.
+/// Falls back to the in-flow full-width row when the stash has no anchor or
+/// the anchor panels all left the main window (mirroring the reopen
+/// fallback in `attach_bottom_at`).
+fn position_collapsed_bottom_bar(
+    layouts: Res<ShellLayouts>,
+    bottom: Res<BottomPanel>,
+    areas: Query<Entity, (With<DockArea>, Without<renzora_ember::dock::FloatingDockArea>)>,
+    leaves: Query<(&DockLeaf, &ComputedNode, &UiGlobalTransform)>,
+    chrome: Query<(&ChromeBar, &ComputedNode)>,
+    mut bars: Query<&mut Node, With<CollapsedBottomBar>>,
+) {
+    let Ok(mut node) = bars.single_mut() else {
+        return;
+    };
+    let stash = layouts
+        .layouts
+        .get(layouts.active)
+        .and_then(|(n, _)| bottom.closed.get(n.as_str()));
+    // On-screen horizontal span of the anchor panels' leaves, main window
+    // only — an anchor panel that migrated to a floating window can't
+    // position the main chrome's bar.
+    let anchored = stash.filter(|s| !s.anchor.is_empty()).and_then(|s| {
+        let area = areas.single().ok()?;
+        let mut left = f32::INFINITY;
+        let mut right = f32::NEG_INFINITY;
+        for (leaf, cn, gt) in &leaves {
+            if leaf.area != area || !s.anchor.iter().any(|p| leaf.tabs.contains(p)) {
+                continue;
+            }
+            let inv = cn.inverse_scale_factor();
+            let half = cn.size().x * inv * 0.5;
+            left = left.min(gt.translation.x * inv - half);
+            right = right.max(gt.translation.x * inv + half);
+        }
+        (left < right).then_some((left, right - left))
+    });
+    let want = match anchored {
+        Some((left, width)) => {
+            // Sit flush on the status bar. Its height is theme-driven
+            // (`apply_chrome_style`), so read the live computed height
+            // instead of assuming one.
+            let status_h = chrome
+                .iter()
+                .find(|(kind, _)| matches!(kind, ChromeBar::Status))
+                .map(|(_, cn)| cn.size().y * cn.inverse_scale_factor())
+                .unwrap_or(0.0);
+            (
+                PositionType::Absolute,
+                Val::Px(left),
+                Val::Px(width),
+                Val::Px(status_h),
+            )
+        }
+        None => (
+            PositionType::Relative,
+            Val::Auto,
+            Val::Percent(100.0),
+            Val::Auto,
+        ),
+    };
+    // Reads go through `Deref` (no change flag); only assign on a real
+    // change, since any `Node` write triggers a relayout.
+    if node.position_type != want.0
+        || node.left != want.1
+        || node.width != want.2
+        || node.bottom != want.3
+    {
+        node.position_type = want.0;
+        node.left = want.1;
+        node.width = want.2;
+        node.bottom = want.3;
+    }
 }
 
 /// Click a collapsed-strip tab → reopen the bottom panel (same restore path
@@ -2486,7 +2571,9 @@ fn spawn_shell(
     // Collapsed bottom-panel strip: the closed bottom panel's header stays
     // visible in place (tabs included); [`sync_collapsed_bottom_bar`] shows it
     // and fills the tabs whenever the active workspace's bottom panel is
-    // closed. Sized/styled to match a dock leaf's tab bar.
+    // closed, and [`position_collapsed_bottom_bar`] aligns it under the column
+    // the stash is anchored to (full window width only for a full-width
+    // stash). Sized/styled to match a dock leaf's tab bar.
     let collapsed_bottom = commands
         .spawn((
             Node {
@@ -2507,6 +2594,12 @@ fn spawn_shell(
             // [`collapsed_bottom_bar_drag`]); the ns-resize cursor hints it.
             Interaction::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
+            // When anchored under one column the bar overlays the bottom edge
+            // of that column's panel (see [`position_collapsed_bottom_bar`]),
+            // so it must swallow pointer events like any floating surface —
+            // without this a click/scroll on the strip would bleed into the
+            // viewport behind it.
+            renzora_ember::widgets::OverlaySurface,
             CollapsedBottomBar,
             Name::new("collapsed-bottom-bar"),
         ))

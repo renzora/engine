@@ -8,6 +8,7 @@
 
 mod camera_gizmo;
 pub mod collider_gizmo;
+pub mod collider_edit_2d;
 pub mod collider_handles;
 mod entity_labels;
 mod grid_2d;
@@ -595,6 +596,20 @@ impl Plugin for GizmoPlugin {
             Update,
             picker_2d::update_cursor_2d
                 .after(picker_2d::drag_move_2d_system)
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
+        );
+
+        // 2D collider editing (inspector Edit toggle): moves/resizes the
+        // selected `CollisionShapeData` and publishes its own cursor. The
+        // picker systems above all stand down while it's active. Like the
+        // cursor system it is NOT gated on `in_two_view` — it must keep
+        // running to end an in-flight drag (recording its undo step) and
+        // clear its cursor request when the view leaves 2D.
+        app.init_resource::<collider_edit_2d::ColliderDrag2d>();
+        app.add_systems(
+            Update,
+            collider_edit_2d::collider_edit_2d_system
+                .after(picker_2d::update_cursor_2d)
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
 

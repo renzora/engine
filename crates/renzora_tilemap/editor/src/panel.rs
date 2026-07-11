@@ -33,12 +33,14 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, keyed_list, KeyedSnapshot};
 use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
 use renzora_ember::widgets::{
-    dropdown, icon_button, label, scroll_view_xy, toggle_switch, EmberScroll, ScrollThumb,
-    ScrollbarBusy,
+    dropdown, icon_button, label, scroll_view_xy, toggle_switch, EmberScroll, HoverTooltip,
+    ScrollThumb, ScrollbarBusy,
 };
-use renzora_tilemap::{TilemapLayer, TilesetHandle};
+use renzora_tilemap::{
+    TileObjectCollider, TilemapLayer, TilemapPaintLayer, TilesetHandle, PAINT_LAYER_Z_STEP,
+};
 
-use crate::{ActiveTilemap, TilemapBrush};
+use crate::{ActivePaintLayer, ActiveTilemap, TilemapBrush};
 
 /// Marker on the panel's content root — the full-panel tileset drop target.
 #[derive(Component)]
@@ -58,6 +60,46 @@ struct TilesetDropIndicator;
 /// run a fresh query, so [`mirror_tilemap_list`] maintains this instead.
 #[derive(Resource, Default)]
 struct TilemapList(Vec<(Entity, String)>);
+
+/// One row of the paint-layer list, mirrored per frame for the reactive list
+/// (same `&World`-snapshot limitation as [`TilemapList`]). `entity` is `None`
+/// for the implicit **Base** row — the tilemap root itself.
+#[derive(Clone, PartialEq)]
+struct PaintLayerRowData {
+    entity: Option<Entity>,
+    name: String,
+    order: i32,
+    visible: bool,
+    locked: bool,
+}
+
+/// The active tilemap's paint layers (+ the Base row), topmost first —
+/// mirroring Godot's list where the top row draws on top.
+#[derive(Resource, Default)]
+struct PaintLayerList(Vec<PaintLayerRowData>);
+
+/// Marker on a paint-layer row; carries which layer it selects (`None` = Base).
+#[derive(Component)]
+struct PaintLayerRow(Option<Entity>);
+
+/// Visibility (eye) toggle inside a paint-layer row.
+#[derive(Component)]
+struct PaintLayerEye(Entity);
+
+/// Lock toggle inside a paint-layer row.
+#[derive(Component)]
+struct PaintLayerLock(Entity);
+
+/// Reorder buttons inside a paint-layer row (`up` = draw later/on top).
+#[derive(Component)]
+struct PaintLayerReorder {
+    layer: Entity,
+    up: bool,
+}
+
+/// The "+ add layer" button at the end of the layer list.
+#[derive(Component)]
+struct AddPaintLayerBtn;
 
 /// Marker on the atlas `ImageNode` — the click-to-pick + zoom target.
 #[derive(Component)]
@@ -81,6 +123,42 @@ struct TileCellMark;
 #[derive(Component)]
 struct GridLine;
 
+/// Header button: toggle **collision** on the current palette pick. A single
+/// cell toggles membership in `TilemapLayer.solid_tiles` (merged tile
+/// colliders); a multi-cell object pick toggles an editable collision box
+/// (`TilemapLayer.object_colliders`) stamped onto painted objects.
+#[derive(Component)]
+struct MarkSolidBtn;
+
+/// Marker on a per-cell solid-collision tint (child of the atlas image) —
+/// shows which palette cells are marked solid, independent of the selection.
+#[derive(Component)]
+struct SolidCellMark;
+
+/// Marker on every node of the palette collision-box editor (the green rect +
+/// its handles), for wholesale despawn and for blocking tile selection while
+/// the cursor interacts with it.
+#[derive(Component)]
+struct PaletteColliderPart;
+
+/// The collision box node itself — dragging inside it moves the box.
+#[derive(Component)]
+struct PaletteColliderRect;
+
+/// One of the box's eight resize handles. Index in atlas (y-down) order:
+/// 0 NW, 1 N, 2 NE, 3 W, 4 E, 5 SW, 6 S, 7 SE.
+#[derive(Component)]
+struct PaletteColliderHandle(u8);
+
+/// Wrapper node around the collision-shape dropdown in the header — shown only
+/// while the current object pick has a collision box to give a shape to.
+#[derive(Component)]
+struct ShapePickWrap;
+
+/// Dropdown labels for [`ShapePickWrap`], index-matched to
+/// `CollisionShapeType::{Box, Sphere, Capsule}` (Sphere = a 2D circle).
+const SHAPE_LABELS: [&str; 3] = ["Box", "Circle", "Capsule"];
+
 /// Zoom step buttons.
 #[derive(Component)]
 struct ZoomInBtn;
@@ -89,6 +167,17 @@ struct ZoomOutBtn;
 
 /// Accent colour for the selection highlight + handle.
 const ACCENT: Color = Color::srgb(1.0, 0.6, 0.1);
+
+/// Tint for solid-marked (collision) palette cells — red, clearly distinct
+/// from the orange selection accent.
+const SOLID_TINT: Color = Color::srgb(1.0, 0.25, 0.25);
+
+/// The object collision box — green, matching the viewport's collider-edit
+/// frame so it reads as the same concept in both places.
+const COLLIDER_TINT: Color = Color::srgb(0.35, 0.9, 0.45);
+
+/// Square size of a collision-box resize handle, in panel pixels.
+const COLLIDER_HANDLE_PX: f32 = 10.0;
 
 /// Discrete zoom levels offered by the dropdown / snapped to by its readout.
 const ZOOM_PRESETS: [f32; 7] = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
@@ -127,12 +216,16 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<TilemapZoom>();
     app.init_resource::<GridOn>();
     app.init_resource::<TilemapList>();
+    app.init_resource::<PaintLayerList>();
     app.register_shell_panel("tilemap", "Tilemap", "grid-four", "2D");
     app.register_panel_content("tilemap", false, build);
     app.add_systems(
         Update,
         (
             mirror_tilemap_list,
+            mirror_paint_layer_list,
+            paint_layer_clicks,
+            add_paint_layer_click,
             tilemap_tab_clicks,
             tileset_drop_indicator,
             zoom_pan_atlas,
@@ -140,6 +233,11 @@ pub(crate) fn register(app: &mut App) {
             apply_atlas_zoom,
             update_tile_highlight,
             update_cell_marks,
+            update_solid_marks,
+            toggle_solid_cells,
+            sync_palette_collider_chrome,
+            sync_shape_pick_visibility,
+            palette_collider_drag,
             sync_grid_overlay,
             select_tiles_from_atlas,
             resize_selection,
@@ -217,6 +315,18 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     keyed_list(commands, tabs, tabs_snapshot);
 
+    // Paint-layer list (Godot-style, top row draws on top): eye / lock / name
+    // / reorder per row, plus the "+ add" row. Rebuilt reactively.
+    let layer_list = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(2.0),
+            ..default()
+        })
+        .id();
+    keyed_list(commands, layer_list, paint_layers_snapshot);
+
     // Header: Grid switch on the left, zoom controls on the right.
     let header = commands
         .spawn(Node {
@@ -241,6 +351,49 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
 
+    // Collision marking: single-cell picks toggle `solid_tiles`; object picks
+    // toggle an editable collision box.
+    let mark_solid = icon_button(commands, fonts, "wall");
+    commands.entity(mark_solid).insert((
+        MarkSolidBtn,
+        HoverTooltip::new("Toggle collision on the selected tiles / object"),
+    ));
+
+    // Shape of the object collision box (Box / Circle / Capsule). Wrapped so
+    // `sync_shape_pick_visibility` can hide it when the pick has no box.
+    let shape_wrap = commands
+        .spawn((
+            Node {
+                display: Display::None,
+                ..default()
+            },
+            ShapePickWrap,
+        ))
+        .id();
+    let shape_dd = dropdown(commands, fonts, &SHAPE_LABELS, 0);
+    bind_2way(
+        commands,
+        shape_dd,
+        |world: &World| -> usize {
+            current_pick_collider(world)
+                .map(|c| match c.shape {
+                    renzora_physics::CollisionShapeType::Sphere => 1,
+                    renzora_physics::CollisionShapeType::Capsule => 2,
+                    _ => 0,
+                })
+                .unwrap_or(0)
+        },
+        |world: &mut World, idx: &usize| {
+            let shape = match idx {
+                1 => renzora_physics::CollisionShapeType::Sphere,
+                2 => renzora_physics::CollisionShapeType::Capsule,
+                _ => renzora_physics::CollisionShapeType::Box,
+            };
+            set_current_pick_shape(world, shape);
+        },
+    );
+    commands.entity(shape_wrap).add_child(shape_dd);
+
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
 
     let zoom_out = icon_button(commands, fonts, "minus");
@@ -263,9 +416,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let zoom_in = icon_button(commands, fonts, "plus");
     commands.entity(zoom_in).insert(ZoomInBtn);
 
-    commands
-        .entity(header)
-        .add_children(&[grid_icon, grid_switch, spacer, zoom_out, zoom_dd, zoom_in]);
+    commands.entity(header).add_children(&[
+        grid_icon, grid_switch, mark_solid, shape_wrap, spacer, zoom_out, zoom_dd, zoom_in,
+    ]);
 
     // Atlas content — `align_self: Start` + `flex_shrink: 0` so it keeps its
     // native (zoomed) size and can overflow both axes of the scroll viewport.
@@ -327,7 +480,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     commands
         .entity(root)
-        .add_children(&[tabs, header, scroll_box, drop_overlay]);
+        .add_children(&[tabs, layer_list, header, scroll_box, drop_overlay]);
     root
 }
 
@@ -402,6 +555,280 @@ fn tabs_snapshot(world: &World) -> KeyedSnapshot {
             tab
         }),
     }
+}
+
+/// Keep [`PaintLayerList`] mirroring the ACTIVE tilemap's paint layers, topmost
+/// (highest `order`) first, with the implicit **Base** row (the tilemap root)
+/// last. Also drops [`ActivePaintLayer`] back to Base when its layer vanished
+/// or belongs to another tilemap, so strokes never land somewhere invisible.
+fn mirror_paint_layer_list(
+    active: Res<ActiveTilemap>,
+    mut active_layer: ResMut<ActivePaintLayer>,
+    layers: Query<(Entity, &TilemapPaintLayer, &ChildOf, Option<&Name>, &Visibility)>,
+    mut list: ResMut<PaintLayerList>,
+) {
+    let mut rows: Vec<PaintLayerRowData> = Vec::new();
+    if let Some(root) = active.0 {
+        for (e, pl, child_of, name, vis) in &layers {
+            if child_of.parent() != root {
+                continue;
+            }
+            rows.push(PaintLayerRowData {
+                entity: Some(e),
+                name: name
+                    .map(|n| n.as_str().to_string())
+                    .unwrap_or_else(|| "Layer".to_string()),
+                order: pl.order,
+                visible: *vis != Visibility::Hidden,
+                locked: pl.locked,
+            });
+        }
+        rows.sort_by_key(|r| std::cmp::Reverse(r.order));
+        rows.push(PaintLayerRowData {
+            entity: None,
+            name: "Base".to_string(),
+            order: i32::MIN,
+            visible: true,
+            locked: false,
+        });
+    }
+    if let Some(sel) = active_layer.0 {
+        if !rows.iter().any(|r| r.entity == Some(sel)) {
+            active_layer.0 = None;
+        }
+    }
+    if list.0 != rows {
+        list.0 = rows;
+    }
+}
+
+/// Rows of the paint-layer list + the "+ add" row. Keyed on each row's full
+/// state so a rename/toggle/reorder restyles only the affected rows.
+fn paint_layers_snapshot(world: &World) -> KeyedSnapshot {
+    let rows = world
+        .get_resource::<PaintLayerList>()
+        .map(|l| l.0.clone())
+        .unwrap_or_default();
+    let selected = world
+        .get_resource::<ActivePaintLayer>()
+        .and_then(|a| a.0);
+    let has_tilemap = !rows.is_empty();
+
+    let mut items = Vec::with_capacity(rows.len() + 1);
+    for r in &rows {
+        let mut hasher = DefaultHasher::new();
+        r.name.hash(&mut hasher);
+        r.order.hash(&mut hasher);
+        r.visible.hash(&mut hasher);
+        r.locked.hash(&mut hasher);
+        (selected == r.entity).hash(&mut hasher);
+        items.push((
+            r.entity.map(|e| e.to_bits()).unwrap_or(u64::MAX - 1),
+            hasher.finish(),
+        ));
+    }
+    if has_tilemap {
+        items.push((u64::MAX, 0));
+    }
+
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c: &mut Commands, fonts: &EmberFonts, i: usize| {
+            // Last item = the "+ add layer" row.
+            if i == rows.len() {
+                let btn = commands_add_layer_row(c, fonts);
+                return btn;
+            }
+            let r = rows[i].clone();
+            let is_active = selected == r.entity;
+            let row = c
+                .spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(if is_active { rgb(tab_active()) } else { Color::NONE }),
+                    Interaction::default(),
+                    PaintLayerRow(r.entity),
+                ))
+                .id();
+            // Base has no eye/lock/reorder — it's the always-there fallback.
+            if let Some(e) = r.entity {
+                let eye = icon_text(
+                    c,
+                    &fonts.phosphor,
+                    if r.visible { "eye" } else { "eye-slash" },
+                    if r.visible { text_primary() } else { text_muted() },
+                    13.0,
+                );
+                c.entity(eye).insert((Interaction::default(), PaintLayerEye(e)));
+                let lock = icon_text(
+                    c,
+                    &fonts.phosphor,
+                    if r.locked { "lock" } else { "lock-open" },
+                    if r.locked { text_primary() } else { text_muted() },
+                    13.0,
+                );
+                c.entity(lock).insert((Interaction::default(), PaintLayerLock(e)));
+                c.entity(row).add_children(&[eye, lock]);
+            } else {
+                let glyph = icon_text(c, &fonts.phosphor, "stack", text_muted(), 13.0);
+                c.entity(row).add_child(glyph);
+            }
+            let label = c
+                .spawn((
+                    Text::new(r.name.clone()),
+                    ui_font(&fonts.ui, 12.0),
+                    TextColor(if is_active {
+                        rgb(text_primary())
+                    } else {
+                        rgb(text_muted())
+                    }),
+                    bevy::picking::Pickable::IGNORE,
+                ))
+                .id();
+            let spacer = c.spawn(Node { flex_grow: 1.0, ..default() }).id();
+            c.entity(row).add_children(&[label, spacer]);
+            if let Some(e) = r.entity {
+                for up in [true, false] {
+                    let arrow = icon_text(
+                        c,
+                        &fonts.phosphor,
+                        if up { "caret-up" } else { "caret-down" },
+                        text_muted(),
+                        13.0,
+                    );
+                    c.entity(arrow)
+                        .insert((Interaction::default(), PaintLayerReorder { layer: e, up }));
+                    c.entity(row).add_child(arrow);
+                }
+            }
+            row
+        }),
+    }
+}
+
+/// The "+ add layer" row under the list.
+fn commands_add_layer_row(c: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let row = c
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
+                ..default()
+            },
+            Interaction::default(),
+            AddPaintLayerBtn,
+            HoverTooltip::new("Add a paint layer"),
+        ))
+        .id();
+    let plus = icon_text(c, &fonts.phosphor, "plus", text_muted(), 12.0);
+    let label = c
+        .spawn((
+            Text::new("Add Layer"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+            bevy::picking::Pickable::IGNORE,
+        ))
+        .id();
+    c.entity(row).add_children(&[plus, label]);
+    row
+}
+
+/// Row / eye / lock / reorder clicks in the paint-layer list.
+fn paint_layer_clicks(
+    rows: Query<(&Interaction, &PaintLayerRow), Changed<Interaction>>,
+    eyes: Query<(&Interaction, &PaintLayerEye), Changed<Interaction>>,
+    locks: Query<(&Interaction, &PaintLayerLock), Changed<Interaction>>,
+    reorders: Query<(&Interaction, &PaintLayerReorder), Changed<Interaction>>,
+    mut active_layer: ResMut<ActivePaintLayer>,
+    mut vis: Query<&mut Visibility, With<TilemapPaintLayer>>,
+    mut layers: Query<&mut TilemapPaintLayer>,
+) {
+    // Eye / lock / reorder first — they sit inside the row, and their press
+    // must not double as a row-select.
+    let mut consumed = false;
+    for (i, eye) in &eyes {
+        if *i == Interaction::Pressed {
+            if let Ok(mut v) = vis.get_mut(eye.0) {
+                *v = if *v == Visibility::Hidden {
+                    Visibility::Inherited
+                } else {
+                    Visibility::Hidden
+                };
+            }
+            consumed = true;
+        }
+    }
+    for (i, lock) in &locks {
+        if *i == Interaction::Pressed {
+            if let Ok(mut l) = layers.get_mut(lock.0) {
+                l.locked = !l.locked;
+            }
+            consumed = true;
+        }
+    }
+    for (i, re) in &reorders {
+        if *i == Interaction::Pressed {
+            if let Ok(mut l) = layers.get_mut(re.layer) {
+                // Draw order is plain integer nudging — collisions between two
+                // layers at the same order are harmless (stable z tie) and the
+                // next nudge separates them again. Simpler than swap logic.
+                l.order += if re.up { 1 } else { -1 };
+            }
+            consumed = true;
+        }
+    }
+    if consumed {
+        return;
+    }
+    for (i, row) in &rows {
+        if *i == Interaction::Pressed && active_layer.0 != row.0 {
+            active_layer.0 = row.0;
+        }
+    }
+}
+
+/// "+ add layer": spawn a `TilemapPaintLayer` child of the active tilemap, on
+/// top of the current stack, and make it the paint target.
+fn add_paint_layer_click(
+    buttons: Query<&Interaction, (With<AddPaintLayerBtn>, Changed<Interaction>)>,
+    active: Res<ActiveTilemap>,
+    mut active_layer: ResMut<ActivePaintLayer>,
+    existing: Query<(&TilemapPaintLayer, &ChildOf)>,
+    mut commands: Commands,
+) {
+    if !buttons.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let Some(root) = active.0 else { return };
+    let (top_order, count) = existing
+        .iter()
+        .filter(|(_, c)| c.parent() == root)
+        .fold((0, 0), |(top, n), (pl, _)| (top.max(pl.order), n + 1));
+    let order = if count == 0 { 1 } else { top_order + 1 };
+    let layer = commands
+        .spawn((
+            Name::new(format!("Layer {}", count + 1)),
+            renzora::core::Node2d,
+            TilemapPaintLayer {
+                order,
+                ..Default::default()
+            },
+            Transform::from_xyz(0.0, 0.0, order as f32 * PAINT_LAYER_Z_STEP),
+            Visibility::default(),
+            ChildOf(root),
+        ))
+        .id();
+    active_layer.0 = Some(layer);
 }
 
 /// Single-item snapshot: the active tilemap's atlas image + its selection
@@ -835,6 +1262,460 @@ fn update_cell_marks(
     }
 }
 
+/// The header's wall button — one collision toggle, two meanings by pick size:
+///
+/// - **Single cell:** toggle membership in `TilemapLayer.solid_tiles`. If every
+///   picked cell is already solid the click clears them; otherwise it marks
+///   them all. The runtime's `rebuild_tile_colliders` grows the merged tile
+///   colliders from this set.
+/// - **Multi-cell (object) pick:** toggle an editable **collision box** for
+///   this pick's atlas bounding box (`TilemapLayer.object_colliders`). It
+///   appears as a green rect over the selection — drag its handles/body to
+///   shape it ([`palette_collider_drag`]) — and every object stamped from this
+///   pick carries it as a `CollisionShapeData`.
+fn toggle_solid_cells(
+    buttons: Query<&Interaction, (With<MarkSolidBtn>, Changed<Interaction>)>,
+    brush: Res<TilemapBrush>,
+    active: Res<ActiveTilemap>,
+    images: Res<Assets<Image>>,
+    tilesets: Query<&TilesetHandle>,
+    mut layers: Query<&mut TilemapLayer>,
+) {
+    if !buttons.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let Some(e) = active.0 else { return };
+    let Ok(tileset) = tilesets.get(e) else { return };
+    let Ok(mut layer) = layers.get_mut(e) else { return };
+    let Some(img) = images.get(&tileset.image) else {
+        return;
+    };
+    let cols = layer.effective_columns(img.size_f32().x).max(1);
+
+    // Object pick → toggle its collision box (default: the full footprint,
+    // ready to be dragged down to a trunk).
+    if brush.selected.len() > 1 {
+        let (c, r, w, h) = (brush.col, brush.row, brush.w.max(1), brush.h.max(1));
+        if let Some(i) = layer
+            .object_colliders
+            .iter()
+            .position(|k| k.col == c && k.row == r && k.w == w && k.h == h)
+        {
+            layer.object_colliders.remove(i);
+        } else {
+            layer.object_colliders.push(TileObjectCollider {
+                col: c,
+                row: r,
+                w,
+                h,
+                rect_x: 0.0,
+                rect_y: 0.0,
+                rect_w: w as f32,
+                rect_h: h as f32,
+                shape: Default::default(),
+            });
+        }
+        return;
+    }
+
+    let indices: Vec<u32> = brush.selected.iter().map(|c| c.y * cols + c.x).collect();
+    if indices.is_empty() {
+        return;
+    }
+    if indices.iter().all(|i| layer.solid_tiles.contains(i)) {
+        layer.solid_tiles.retain(|i| !indices.contains(i));
+    } else {
+        for i in indices {
+            if !layer.solid_tiles.contains(&i) {
+                layer.solid_tiles.push(i);
+            }
+        }
+    }
+}
+
+/// The authored collision box for the CURRENT palette pick, if any — the
+/// `&World` form the reactive dropdown bindings need.
+fn current_pick_collider(world: &World) -> Option<TileObjectCollider> {
+    let active = world.get_resource::<ActiveTilemap>().and_then(|a| a.0)?;
+    let brush = world.get_resource::<TilemapBrush>()?;
+    if brush.selected.len() < 2 {
+        return None;
+    }
+    world
+        .get::<TilemapLayer>(active)?
+        .collider_for(brush.col, brush.row, brush.w.max(1), brush.h.max(1))
+}
+
+/// Write a new shape onto the current pick's collision box (dropdown setter).
+fn set_current_pick_shape(world: &mut World, shape: renzora_physics::CollisionShapeType) {
+    let Some(active) = world.get_resource::<ActiveTilemap>().and_then(|a| a.0) else {
+        return;
+    };
+    let Some((c, r, w, h)) = world
+        .get_resource::<TilemapBrush>()
+        .map(|b| (b.col, b.row, b.w.max(1), b.h.max(1)))
+    else {
+        return;
+    };
+    let Some(mut layer) = world.get_mut::<TilemapLayer>(active) else {
+        return;
+    };
+    if let Some(k) = layer
+        .object_colliders
+        .iter_mut()
+        .find(|k| k.col == c && k.row == r && k.w == w && k.h == h)
+    {
+        if k.shape != shape {
+            k.shape = shape;
+        }
+    }
+}
+
+/// Show the shape dropdown only while the current pick has a collision box.
+fn sync_shape_pick_visibility(
+    brush: Res<TilemapBrush>,
+    active: Res<ActiveTilemap>,
+    layers: Query<&TilemapLayer>,
+    mut wraps: Query<&mut Node, With<ShapePickWrap>>,
+) {
+    let want = active
+        .0
+        .and_then(|e| layers.get(e).ok())
+        .is_some_and(|layer| {
+            brush.selected.len() > 1
+                && layer
+                    .collider_for(brush.col, brush.row, brush.w.max(1), brush.h.max(1))
+                    .is_some()
+        });
+    let display = if want { Display::Flex } else { Display::None };
+    for mut node in &mut wraps {
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
+/// Show/update the green collision box over the current object pick, when one
+/// is authored ([`toggle_solid_cells`]). The rect is a child of the atlas
+/// image positioned in **percent**, so it rides zoom for free; its eight
+/// handles are children of the rect at percent corners (pixel-size squares via
+/// negative margins), so they ride the rect. Geometry is written in place each
+/// frame — the nodes must stay STABLE across frames or an in-flight handle
+/// drag would lose its `Interaction` mid-gesture.
+fn sync_palette_collider_chrome(
+    brush: Res<TilemapBrush>,
+    active: Res<ActiveTilemap>,
+    images: Res<Assets<Image>>,
+    layers: Query<(&TilemapLayer, &TilesetHandle)>,
+    atlas_node: Query<Entity, With<TilesetImageNode>>,
+    parts: Query<Entity, With<PaletteColliderPart>>,
+    mut rects: Query<&mut Node, With<PaletteColliderRect>>,
+    mut commands: Commands,
+) {
+    let data = active.0.and_then(|e| layers.get(e).ok()).and_then(|(layer, tileset)| {
+        if brush.selected.len() < 2 {
+            return None;
+        }
+        let s = images.get(&tileset.image)?.size_f32();
+        let cols = layer.effective_columns(s.x).max(1);
+        let rows = ((s.y / layer.atlas_tile_px.max(1) as f32).floor() as u32).max(1);
+        let collider =
+            layer.collider_for(brush.col, brush.row, brush.w.max(1), brush.h.max(1))?;
+        Some((collider, cols, rows))
+    });
+    let Some((collider, cols, rows)) = data else {
+        for p in &parts {
+            commands.entity(p).try_despawn();
+        }
+        return;
+    };
+
+    let left = Val::Percent((collider.col as f32 + collider.rect_x) / cols as f32 * 100.0);
+    let top = Val::Percent((collider.row as f32 + collider.rect_y) / rows as f32 * 100.0);
+    let width = Val::Percent(collider.rect_w / cols as f32 * 100.0);
+    let height = Val::Percent(collider.rect_h / rows as f32 * 100.0);
+    // Round the frame to the shape it stamps: percent border radius resolves
+    // against the node's shorter side, so 50% is a true circle on a square
+    // rect and proper end caps on a tall capsule — matching how `shape_data`
+    // derives the radius from the shorter dimension.
+    let corner = match collider.shape {
+        renzora_physics::CollisionShapeType::Sphere
+        | renzora_physics::CollisionShapeType::Capsule => Val::Percent(50.0),
+        _ => Val::Px(0.0),
+    };
+    let radius = BorderRadius::all(corner);
+
+    if let Ok(mut node) = rects.single_mut() {
+        if node.left != left {
+            node.left = left;
+        }
+        if node.top != top {
+            node.top = top;
+        }
+        if node.width != width {
+            node.width = width;
+        }
+        if node.height != height {
+            node.height = height;
+        }
+        if node.border_radius != radius {
+            node.border_radius = radius;
+        }
+        return;
+    }
+
+    // Nothing on screen yet (fresh toggle, or the atlas image was rebuilt and
+    // took the chrome with it) — spawn the rect + handles.
+    let Ok(atlas_e) = atlas_node.single() else {
+        return;
+    };
+    let rect = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left,
+                top,
+                width,
+                height,
+                border: UiRect::all(Val::Px(1.5)),
+                border_radius: radius,
+                ..default()
+            },
+            BackgroundColor(COLLIDER_TINT.with_alpha(0.15)),
+            BorderColor::all(COLLIDER_TINT),
+            Interaction::default(),
+            PaletteColliderPart,
+            PaletteColliderRect,
+            ChildOf(atlas_e),
+            Name::new("palette-collider-rect"),
+        ))
+        .id();
+    // Percent-of-rect corner/edge anchors, pulled back by half the handle size.
+    let anchors: [(f32, f32); 8] = [
+        (0.0, 0.0),
+        (50.0, 0.0),
+        (100.0, 0.0),
+        (0.0, 50.0),
+        (100.0, 50.0),
+        (0.0, 100.0),
+        (50.0, 100.0),
+        (100.0, 100.0),
+    ];
+    for (i, (px, py)) in anchors.into_iter().enumerate() {
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(px),
+                top: Val::Percent(py),
+                margin: UiRect {
+                    left: Val::Px(-COLLIDER_HANDLE_PX * 0.5),
+                    top: Val::Px(-COLLIDER_HANDLE_PX * 0.5),
+                    ..default()
+                },
+                width: Val::Px(COLLIDER_HANDLE_PX),
+                height: Val::Px(COLLIDER_HANDLE_PX),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(2.0)),
+                ..default()
+            },
+            BackgroundColor(Color::WHITE),
+            BorderColor::all(COLLIDER_TINT),
+            Interaction::default(),
+            PaletteColliderPart,
+            PaletteColliderHandle(i as u8),
+            ChildOf(rect),
+            Name::new("palette-collider-handle"),
+        ));
+    }
+}
+
+/// Drag the collision box's handles (resize) or body (move), writing straight
+/// into the layer's `object_colliders` entry — [`sync_palette_collider_chrome`]
+/// reflects it on screen the same frame, and the next stamped object picks up
+/// the new shape. Everything works in continuous CELL coordinates relative to
+/// the pick's bounding box (the unit `TileObjectCollider` stores), clamped to
+/// the footprint.
+fn palette_collider_drag(
+    mouse: Res<ButtonInput<MouseButton>>,
+    brush: Res<TilemapBrush>,
+    active: Res<ActiveTilemap>,
+    images: Res<Assets<Image>>,
+    atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
+    handles: Query<(&Interaction, &PaletteColliderHandle)>,
+    rect_node: Query<&Interaction, With<PaletteColliderRect>>,
+    mut layers: Query<(&mut TilemapLayer, &TilesetHandle)>,
+    // (grabbed handle — None = body move, collider at press, cursor at press)
+    mut drag: Local<Option<(Option<u8>, TileObjectCollider, Vec2)>>,
+) {
+    if !mouse.pressed(MouseButton::Left) {
+        *drag = None;
+        return;
+    }
+    let Some(e) = active.0 else {
+        *drag = None;
+        return;
+    };
+    let Ok((mut layer, tileset)) = layers.get_mut(e) else {
+        return;
+    };
+    let Some(img) = images.get(&tileset.image) else {
+        return;
+    };
+    let s = img.size_f32();
+    let cols = layer.effective_columns(s.x).max(1);
+    let rows = ((s.y / layer.atlas_tile_px.max(1) as f32).floor() as u32).max(1);
+    let Ok(rcp) = atlas.single() else { return };
+    let Some(n) = rcp.normalized else { return };
+    let (bc, br, bw, bh) = (brush.col, brush.row, brush.w.max(1), brush.h.max(1));
+    // Continuous cell position relative to the pick's bounding-box top-left.
+    let local = Vec2::new(
+        (n.x + 0.5) * cols as f32 - bc as f32,
+        (n.y + 0.5) * rows as f32 - br as f32,
+    );
+    let Some(idx) = layer
+        .object_colliders
+        .iter()
+        .position(|k| k.col == bc && k.row == br && k.w == bw && k.h == bh)
+    else {
+        return;
+    };
+
+    if mouse.just_pressed(MouseButton::Left) {
+        let start = layer.object_colliders[idx];
+        let grabbed_handle = handles
+            .iter()
+            .find(|(i, _)| **i == Interaction::Pressed)
+            .map(|(_, h)| h.0);
+        if let Some(h) = grabbed_handle {
+            *drag = Some((Some(h), start, local));
+        } else if rect_node.iter().any(|i| *i == Interaction::Pressed) {
+            *drag = Some((None, start, local));
+        }
+    }
+    let Some((handle, start, grab)) = *drag else {
+        return;
+    };
+    let (w, h) = (bw as f32, bh as f32);
+    let c = &mut layer.object_colliders[idx];
+    match handle {
+        // Body move: keep the grab point pinned, clamp inside the footprint.
+        None => {
+            let d = local - grab;
+            c.rect_x = (start.rect_x + d.x).clamp(0.0, (w - start.rect_w).max(0.0));
+            c.rect_y = (start.rect_y + d.y).clamp(0.0, (h - start.rect_h).max(0.0));
+        }
+        // Handle resize: the grabbed edge(s) follow the cursor, the box may
+        // flip past the opposite edge (min/max normalise), floored at 0.1 cell.
+        Some(hi) => {
+            let (mut x0, mut y0) = (start.rect_x, start.rect_y);
+            let (mut x1, mut y1) = (start.rect_x + start.rect_w, start.rect_y + start.rect_h);
+            let cx = local.x.clamp(0.0, w);
+            let cy = local.y.clamp(0.0, h);
+            match hi {
+                0 => {
+                    x0 = cx;
+                    y0 = cy;
+                }
+                1 => y0 = cy,
+                2 => {
+                    x1 = cx;
+                    y0 = cy;
+                }
+                3 => x0 = cx,
+                4 => x1 = cx,
+                5 => {
+                    x0 = cx;
+                    y1 = cy;
+                }
+                6 => y1 = cy,
+                7 => {
+                    x1 = cx;
+                    y1 = cy;
+                }
+                _ => {}
+            }
+            const MIN_CELLS: f32 = 0.1;
+            let (lo_x, hi_x) = if x0 <= x1 { (x0, x1) } else { (x1, x0) };
+            let (lo_y, hi_y) = if y0 <= y1 { (y0, y1) } else { (y1, y0) };
+            c.rect_x = lo_x;
+            c.rect_y = lo_y;
+            c.rect_w = (hi_x - lo_x).max(MIN_CELLS);
+            c.rect_h = (hi_y - lo_y).max(MIN_CELLS);
+        }
+    }
+}
+
+/// Tint every solid-marked (collision) palette cell red, independent of the
+/// selection overlays. Rebuilds only when the solid set, the atlas grid, or
+/// the atlas image node itself changes — the node entity is part of the key
+/// because switching tilemaps rebuilds the image (despawning these children
+/// with it), which must not be mistaken for "already built".
+fn update_solid_marks(
+    active: Res<ActiveTilemap>,
+    images: Res<Assets<Image>>,
+    layers: Query<(&TilemapLayer, &TilesetHandle)>,
+    atlas_node: Query<Entity, With<TilesetImageNode>>,
+    marks: Query<Entity, With<SolidCellMark>>,
+    mut commands: Commands,
+    mut built: Local<u64>,
+) {
+    let dims = active.0.and_then(|e| layers.get(e).ok()).and_then(|(layer, tileset)| {
+        let s = images.get(&tileset.image)?.size_f32();
+        let cols = layer.effective_columns(s.x).max(1);
+        let rows = ((s.y / layer.atlas_tile_px.max(1) as f32).floor() as u32).max(1);
+        Some((layer.solid_tiles.clone(), cols, rows))
+    });
+    let Some((solid, cols, rows)) = dims else {
+        if !marks.is_empty() {
+            for m in &marks {
+                commands.entity(m).try_despawn();
+            }
+            *built = 0;
+        }
+        return;
+    };
+    let Ok(atlas_e) = atlas_node.single() else {
+        return;
+    };
+
+    let mut hasher = DefaultHasher::new();
+    (atlas_e.to_bits(), cols, rows).hash(&mut hasher);
+    let mut sorted = solid.clone();
+    sorted.sort_unstable();
+    sorted.hash(&mut hasher);
+    let key = hasher.finish();
+    if *built == key {
+        return;
+    }
+    *built = key;
+
+    for m in &marks {
+        commands.entity(m).try_despawn();
+    }
+    for idx in &solid {
+        let (cx, cy) = (idx % cols, idx / cols);
+        if cy >= rows {
+            continue; // stale index from a different/smaller atlas
+        }
+        commands.spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Percent(cx as f32 / cols as f32 * 100.0),
+                top: Val::Percent(cy as f32 / rows as f32 * 100.0),
+                width: Val::Percent(100.0 / cols as f32),
+                height: Val::Percent(100.0 / rows as f32),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(SOLID_TINT.with_alpha(0.22)),
+            BorderColor::all(SOLID_TINT.with_alpha(0.8)),
+            SolidCellMark,
+            bevy::picking::Pickable::IGNORE,
+            ChildOf(atlas_e),
+        ));
+    }
+}
+
 /// Left-drag a rectangle across the atlas to select a block of tiles (a single
 /// click selects one) — selecting also **arms the paint brush**, so the block
 /// immediately rides the cursor in the 2D viewport. Skips scrollbar +
@@ -850,6 +1731,7 @@ fn select_tiles_from_atlas(
     atlas: Query<&RelativeCursorPosition, With<TilesetImageNode>>,
     thumbs: Query<&Interaction, With<ScrollThumb>>,
     handles: Query<&Interaction, With<SelectionHandle>>,
+    collider_parts: Query<&Interaction, With<PaletteColliderPart>>,
     scrollbar: Res<ScrollbarBusy>,
     mut brush: ResMut<TilemapBrush>,
     mut settings: Option<ResMut<ViewportSettings>>,
@@ -875,15 +1757,19 @@ fn select_tiles_from_atlas(
         *blocked = false;
         return;
     }
-    // On press, decide whether this drag belongs to a scrollbar or the resize
-    // handle — if so, don't select for the rest of the hold.
+    // On press, decide whether this drag belongs to a scrollbar, the resize
+    // handle, or the collision-box editor — if so, don't select for the rest
+    // of the hold. (A press on the collision box is a move/resize of it, not
+    // a tile pick — and re-picking would change the bounding box out from
+    // under the drag anyway.)
     if mouse.just_pressed(MouseButton::Left) {
         let on_bar = scrollbar.active()
             || thumbs
                 .iter()
                 .any(|i| matches!(i, Interaction::Pressed | Interaction::Hovered));
         let on_handle = handles.iter().any(|i| *i == Interaction::Pressed);
-        *blocked = on_bar || on_handle;
+        let on_collider = collider_parts.iter().any(|i| *i == Interaction::Pressed);
+        *blocked = on_bar || on_handle || on_collider;
     }
     if *blocked {
         return;

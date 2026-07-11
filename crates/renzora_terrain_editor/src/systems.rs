@@ -188,8 +188,15 @@ pub fn terrain_sculpt_hover_system(
         return;
     };
 
-    // Mesh raycast — hits actual sculpted geometry
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
+    // Mesh raycast — hits actual sculpted geometry. Filtered to terrain
+    // chunks only: the default settings early-exit on the nearest mesh, and
+    // paint-layer overlays / grass sit just above the surface, so an
+    // unfiltered ray dies on them and the brush goes dead over painted areas.
+    let settings = MeshRayCastSettings {
+        filter: &|entity| chunk_query.contains(entity),
+        ..default()
+    };
+    let hits = mesh_ray_cast.cast_ray(ray, &settings);
 
     // Find closest hit on a terrain chunk entity
     let mut closest_hit: Option<(Vec3, Entity, f32)> = None;
@@ -625,8 +632,14 @@ pub fn terrain_paint_hover_system(
         return;
     };
 
-    // Mesh raycast — hits actual sculpted geometry
-    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
+    // Mesh raycast — hits actual sculpted geometry. Chunks only, for the
+    // same reason as the sculpt hover: painted overlays would otherwise
+    // swallow the ray and block repainting already-painted areas.
+    let settings = MeshRayCastSettings {
+        filter: &|entity| chunk_query.contains(entity),
+        ..default()
+    };
+    let hits = mesh_ray_cast.cast_ray(ray, &settings);
 
     let mut closest: Option<(Vec3, Entity, Entity, Vec2, f32)> = None;
 

@@ -327,6 +327,16 @@ pub fn spawn_editor_2d_camera(
                 ..default()
             },
             Transform::default(),
+            // Bevy's default Camera2d carries `Msaa::Sample4`. Multisampling
+            // does nothing useful for axis-aligned sprite quads, and it lets
+            // edge pixels rasterize with EXTRAPOLATED UVs (sample inside the
+            // quad, pixel centre outside) that overshoot a sprite's atlas
+            // `rect` by well over the crop's anti-bleed inset — painting a
+            // 1px line of the NEIGHBOURING atlas cell along tile/object edges
+            // at fractional zoom. The runtime's offscreen cameras already
+            // force this off (see `viewport_stretch.rs`); the editor 2D
+            // cameras (which in-panel play renders through) need it too.
+            Msaa::Off,
             ViewportCamera2d(i),
             // Layer 0 (the 2D scene — sprites, tilemaps, lights) plus this slot's
             // own grid layer, so each viewport renders only its own independent

@@ -265,8 +265,18 @@ impl PhysicsInterpolationPlugin {
 
 impl Plugin for PhysicsInterpolationPlugin {
     fn build(&self, app: &mut App) {
+        // Renzora runs avian2d AND avian3d in one app. They are separate crates
+        // (distinct plugin types throughout), but both depend on the ONE
+        // `bevy_transform_interpolation` crate — so this non-generic plugin is
+        // the same type from both backends and the second `add_plugins` would
+        // panic. One instance serves both simulations (its easing systems are
+        // component-driven, not backend-specific), so just skip the re-add.
+        // The extrapolation/hermite plugins below are generic over crate-local
+        // velocity sources and therefore distinct per backend — no guard needed.
+        if !app.is_plugin_added::<TransformInterpolationPlugin>() {
+            app.add_plugins(TransformInterpolationPlugin::default());
+        }
         app.add_plugins((
-            TransformInterpolationPlugin::default(),
             TransformExtrapolationPlugin::<LinVelSource, AngVelSource>::default(),
             TransformHermiteEasingPlugin::<LinVelSource, AngVelSource>::default(),
         ));

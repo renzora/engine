@@ -411,15 +411,95 @@ pub fn rehydrate_terrain_chunks(
     }
 }
 
-/// System that regenerates meshes and colliders for dirty chunks.
+/// Recover terrains whose chunk children are missing entirely. Scenes saved
+/// while the grid-regrow path spawned nameless chunks lost every chunk on
+/// save (the scene saver only serializes named entities), so they load back
+/// as a bare `TerrainData` root that renders nothing and can't be sculpted.
+/// The heightmap data in those files is gone; spawning a fresh flat grid at
+/// the authored dimensions at least brings the terrain back to a usable
+/// state. Safe to run every frame: scene loads apply atomically (single
+/// `write_to_world`), and the regrow path despawns + respawns within one
+/// command batch, so a terrain is never legitimately chunkless.
+pub fn backfill_missing_chunks(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
+    terrains: Query<(Entity, &TerrainData)>,
+    chunks: Query<(Option<&TerrainChunkOf>, Option<&ChildOf>), With<TerrainChunkData>>,
+) {
+    if terrains.is_empty() {
+        return;
+    }
+
+    let mut parents = std::collections::HashSet::new();
+    for (chunk_of, child_of) in chunks.iter() {
+        if let Some(parent) = chunk_of.map(|c| c.0).or_else(|| child_of.map(|c| c.parent())) {
+            parents.insert(parent);
+        }
+    }
+
+    for (terrain_entity, terrain_data) in terrains.iter() {
+        if parents.contains(&terrain_entity) {
+            continue;
+        }
+        console_info(
+            "Terrain",
+            format!(
+                "Terrain {:?} has no chunks — regenerating a flat {}x{} grid",
+                terrain_entity, terrain_data.chunks_x, terrain_data.chunks_z
+            ),
+        );
+        let material = materials.add(TerrainCheckerboardMaterial::default());
+        for cz in 0..terrain_data.chunks_z {
+            for cx in 0..terrain_data.chunks_x {
+                let mut chunk_data =
+                    TerrainChunkData::new(cx, cz, terrain_data.chunk_resolution, 0.2);
+                let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
+                chunk_data.dirty = false;
+                let mesh_handle = meshes.add(mesh);
+                let origin = terrain_data.chunk_world_origin(cx, cz);
+                commands.entity(terrain_entity).with_child((
+                    Name::new(format!("Chunk ({},{})", cx, cz)),
+                    Mesh3d(mesh_handle),
+                    MeshMaterial3d(material.clone()),
+                    Transform::from_translation(origin),
+                    Visibility::default(),
+                    PhysicsBodyData::static_body(),
+                    CollisionShapeData::mesh(),
+                    chunk_data,
+                    TerrainChunkOf(terrain_entity),
+                ));
+            }
+        }
+    }
+}
+
+/// Marker: this chunk's mesh changed but its collider rebuild is pending.
+/// Trimesh construction over a full chunk (~33k triangles) is far too slow to
+/// run once per drag frame — in a debug build it stalls sculpting by seconds —
+/// so the rebuild is debounced by [`flush_stale_colliders_system`].
+#[derive(Component)]
+pub struct ColliderStale {
+    /// `Time::elapsed_secs()` of the most recent mesh change.
+    pub last_change: f32,
+}
+
+/// How long a chunk must sit unchanged before its collider rebuilds.
+const COLLIDER_DEBOUNCE_SECS: f32 = 0.25;
+
+/// System that regenerates meshes for dirty chunks. Colliders are only
+/// marked stale here; the debounced flush below rebuilds them.
 pub fn terrain_chunk_mesh_update_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
+    time: Res<Time>,
     terrain_query: Query<&TerrainData>,
     mut chunk_query: Query<(Entity, &mut TerrainChunkData, &TerrainChunkOf, &Mesh3d)>,
 ) {
     for (entity, mut chunk, chunk_of, mesh_handle) in chunk_query.iter_mut() {
-        if !chunk.dirty {
+        // Keyed on `mesh_stale` (set by composition), NOT `dirty` (set by
+        // writers) — see the flag docs on `TerrainChunkData`.
+        if !chunk.mesh_stale {
             continue;
         }
         let Ok(terrain) = terrain_query.get(chunk_of.0) else {
@@ -429,12 +509,36 @@ pub fn terrain_chunk_mesh_update_system(
         if let Some(mut mesh) = meshes.get_mut(&mesh_handle.0) {
             *mesh = new_mesh;
         }
-        // Re-inserting triggers Changed<CollisionShapeData>, which makes the
-        // physics layer rebuild the avian trimesh from the updated Mesh asset.
+        commands.entity(entity).try_insert(ColliderStale {
+            last_change: time.elapsed_secs(),
+        });
+        chunk.mesh_stale = false;
+    }
+}
+
+/// Rebuild the collider of any chunk whose mesh has been stable for
+/// [`COLLIDER_DEBOUNCE_SECS`] — and never mid-stroke, so a held brush costs
+/// only mesh regen per frame. Re-inserting triggers
+/// `Changed<CollisionShapeData>`, which makes the physics layer rebuild the
+/// avian trimesh from the updated Mesh asset.
+pub fn flush_stale_colliders_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    sculpt_state: Res<crate::data::TerrainSculptState>,
+    stale: Query<(Entity, &ColliderStale)>,
+) {
+    if sculpt_state.is_sculpting {
+        return;
+    }
+    let now = time.elapsed_secs();
+    for (entity, marker) in stale.iter() {
+        if now - marker.last_change < COLLIDER_DEBOUNCE_SECS {
+            continue;
+        }
         commands
             .entity(entity)
+            .remove::<ColliderStale>()
             .try_insert(CollisionShapeData::mesh());
-        chunk.dirty = false;
     }
 }
 
@@ -489,12 +593,52 @@ pub fn terrain_data_changed_system(
     mut terrain_materials: ResMut<Assets<TerrainCheckerboardMaterial>>,
     changed_terrain: Query<(Entity, &TerrainData), Changed<TerrainData>>,
     added: Query<Entity, Added<TerrainData>>,
-    chunk_query: Query<(Entity, &TerrainChunkOf, &TerrainChunkData)>,
+    mut chunk_query: Query<(Entity, &TerrainChunkOf, &mut TerrainChunkData)>,
 ) {
     for (terrain_entity, terrain_data) in changed_terrain.iter() {
         // Skip first insertion — chunks are spawned by the terrain creation command
         if added.contains(terrain_entity) {
             continue;
+        }
+
+        // Fast path: grid and resolution unchanged (e.g. a min/max height
+        // drag from the inspector). Re-flag the chunks dirty so their meshes
+        // rebuild in place — despawn/respawn of every chunk entity per drag
+        // tick would churn the hierarchy and the physics layer.
+        {
+            let expected =
+                (terrain_data.chunks_x * terrain_data.chunks_z) as usize;
+            let expected_len =
+                (terrain_data.chunk_resolution * terrain_data.chunk_resolution) as usize;
+            let mut matching = 0usize;
+            for (_, of, chunk) in chunk_query.iter() {
+                if of.0 != terrain_entity {
+                    continue;
+                }
+                if chunk.base_heights.len() != expected_len
+                    || chunk.chunk_x >= terrain_data.chunks_x
+                    || chunk.chunk_z >= terrain_data.chunks_z
+                {
+                    matching = usize::MAX;
+                    break;
+                }
+                matching += 1;
+            }
+            if matching == expected {
+                for (entity, of, mut chunk) in chunk_query.iter_mut() {
+                    if of.0 == terrain_entity {
+                        chunk.dirty = true;
+                        // A chunk_size edit moves the chunk origins as well
+                        // as the vertices; keep the child transforms honest.
+                        let origin =
+                            terrain_data.chunk_world_origin(chunk.chunk_x, chunk.chunk_z);
+                        commands
+                            .entity(entity)
+                            .try_insert(Transform::from_translation(origin));
+                    }
+                }
+                continue;
+            }
         }
 
         // Collect existing chunks for this terrain
@@ -548,6 +692,7 @@ pub fn terrain_data_changed_system(
                     heights: base_heights.clone(),
                     base_heights,
                     dirty: false,
+                    mesh_stale: false,
                 };
 
                 let mesh = generate_chunk_mesh(terrain_data, &chunk_data);
@@ -555,6 +700,10 @@ pub fn terrain_data_changed_system(
                 let origin = terrain_data.chunk_world_origin(cx, cz);
 
                 commands.entity(terrain_entity).with_child((
+                    // The scene saver only serializes named entities — a
+                    // nameless chunk silently vanishes from the save and the
+                    // terrain loads back as an empty root.
+                    Name::new(format!("Chunk ({},{})", cx, cz)),
                     Mesh3d(mesh_handle),
                     MeshMaterial3d(material.clone()),
                     Transform::from_translation(origin),

@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["avian", "lua"]
+default = ["avian", "avian2d", "lua"]
 avian = ["dep:avian3d"]
+avian2d = ["dep:avian2d"]
 lua = ["renzora_scripting/lua", "dep:mlua"]
 
 [dependencies]
@@ -20,9 +21,24 @@ optional = true
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
 
+# The 2D sibling backend. A separate crate (not a feature of avian3d), so both
+# simulations can coexist in one app — their `RigidBody`/`Collider`/`Physics`
+# types are distinct. Entities are routed to one backend or the other by
+# `auto_init_physics` (2D = sprite / `Node2d` ancestry / explicit `Physics2d`).
+[dependencies.avian2d]
+path = "../avian/crates/avian2d"
+optional = true
+default-features = false
+features = ["2d", "f32", "default-collider", "parry-f32"]
+
 # Lua types referenced in the PhysicsScriptExtension trait impl.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mlua = { version = "0.10", features = ["lua54"], optional = true }
+
+# Tests only: system/param names in ECS validation errors, so a failing
+# headless physics test says WHICH resource is missing.
+[dev-dependencies]
+bevy = { workspace = true, features = ["debug"] }
 
 [lints]
 workspace = true

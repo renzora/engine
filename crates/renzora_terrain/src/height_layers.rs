@@ -110,6 +110,12 @@ pub fn compose_height_layers_system(
             continue;
         }
         let chunk = chunk.as_mut();
+        // Consume `dirty` here (not in the mesh system) and hand off via
+        // `mesh_stale`: writers have no ordering guarantee against this
+        // system, and a single shared flag let a mid-frame write be cleared
+        // by the mesh rebuild while `heights` was still stale.
+        chunk.dirty = false;
+        chunk.mesh_stale = true;
         let base_len = chunk.base_heights.len();
         if chunk.heights.len() != base_len {
             chunk.heights.resize(base_len, 0.0);

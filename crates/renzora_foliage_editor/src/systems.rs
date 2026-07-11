@@ -72,8 +72,15 @@ pub fn foliage_paint_hover_system(
         return;
     };
 
-    // Find closest terrain chunk intersection
-    let hits = ray_cast.cast_ray(ray, &MeshRayCastSettings { ..default() });
+    // Find closest terrain chunk intersection. Chunks only: the default
+    // settings early-exit on the nearest mesh, and grass blades / paint-layer
+    // overlays float just above the surface — an unfiltered ray dies on them
+    // and the brush goes dead over already-painted areas.
+    let settings = MeshRayCastSettings {
+        filter: &|entity| chunk_query.contains(entity),
+        ..default()
+    };
+    let hits = ray_cast.cast_ray(ray, &settings);
     let mut best: Option<(Entity, f32, Vec3)> = None;
     for (entity, hit) in hits.iter() {
         if chunk_query.contains(*entity) {

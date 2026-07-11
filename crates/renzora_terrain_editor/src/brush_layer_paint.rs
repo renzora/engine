@@ -142,26 +142,30 @@ pub fn brush_layer_paint_system(
     let Some(active_idx) = painter.active_layer else {
         return;
     };
-    let spacing = terrain.vertex_spacing();
     let half_w = terrain.total_width() / 2.0;
     let half_d = terrain.total_depth() / 2.0;
+    let max_axis_w = terrain.chunks_x.max(terrain.chunks_z) as f32 * terrain.chunk_size;
     let world_radius = paint_settings.brush_radius * terrain.chunk_size;
     let strength = (paint_settings.brush_strength * time.delta_secs() * 4.0).clamp(0.0, 1.0);
-
     let local = hover_pos - terrain_gt.translation();
-    let grid_x = (local.x + half_w) / spacing;
-    let grid_z = (local.z + half_d) / spacing;
-    let grid_radius = (world_radius / spacing).max(0.5);
 
     let Some(layer) = painter.layers.get_mut(active_idx) else {
         return;
     };
+    // Cursor → mask-cell coordinates, using the LAYER's cell size (masks
+    // oversample the vertex grid — see `PAINTER_OVERSAMPLE`), not the sculpt
+    // vertex spacing.
+    let cell = max_axis_w / (layer.grid_size().saturating_sub(1)).max(1) as f32;
+    let grid_x = (local.x + half_w) / cell;
+    let grid_z = (local.z + half_d) / cell;
+    let grid_radius = (world_radius / cell).max(0.5);
     stamp_into_mask(
         layer,
         grid_x,
         grid_z,
         grid_radius,
         strength,
+        paint_settings.brush_strength,
         paint_settings.brush_type,
     );
 }
@@ -172,6 +176,7 @@ fn stamp_into_mask(
     grid_z: f32,
     grid_radius: f32,
     strength: f32,
+    opacity: f32,
     brush: PaintBrushType,
 ) {
     let grid_size = layer.grid_size();
@@ -201,9 +206,15 @@ fn stamp_into_mask(
             }
             let current = layer.mask[idx];
             layer.mask[idx] = match brush {
-                PaintBrushType::Paint => current.max(contribution),
+                // Solid stroke, not an airbrush: the mask jumps straight to
+                // the brush's cosine profile scaled by `opacity` (the panel's
+                // Strength slider), so dragging lays down full coverage with
+                // a feathered round rim. `max` keeps overlapping passes
+                // idempotent — no build-up, no spray-paint look.
+                PaintBrushType::Paint => current.max(falloff * opacity),
                 PaintBrushType::Erase => (current - contribution).max(0.0),
-                PaintBrushType::Fill => 1.0,
+                // Fill ignores opacity: full coverage with the feathered rim.
+                PaintBrushType::Fill => current.max(falloff),
                 PaintBrushType::Smooth => {
                     let mut sum = 0.0f32;
                     let mut count = 0.0f32;

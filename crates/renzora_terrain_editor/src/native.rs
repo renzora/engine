@@ -34,8 +34,8 @@ use renzora_ember::widgets::{
 use renzora_ember::cursor_icon::HoverCursor;
 
 use renzora_terrain::data::{
-    BrushFalloffType, BrushShape, FlattenMode, NoiseMode, TerrainBrushType, TerrainData,
-    TerrainSettings, TerrainTab, TerrainToolState,
+    BrushFalloffType, BrushShape, FlattenMode, NoiseMode, StampBlendMode, StampBrushData,
+    StampPreset, TerrainBrushType, TerrainData, TerrainSettings, TerrainTab, TerrainToolState,
 };
 use renzora_terrain::paint::{
     PaintBrushType, SurfacePaintCommand, SurfacePaintSettings, SurfacePaintState, MAX_LAYERS,
@@ -63,6 +63,9 @@ impl Plugin for NativeTerrain {
                 falloff_type_btn_click,
                 flatten_mode_combo_open,
                 noise_mode_combo_open,
+                stamp_preset_combo_open,
+                stamp_blend_combo_open,
+                stamp_load_click,
                 layer_row_click,
                 add_layer_click,
                 heightmap_import_click,
@@ -343,6 +346,7 @@ const SCULPT_TOOLS: &[(TerrainBrushType, &str, &str)] = &[
     (TerrainBrushType::Lower, "arrows-out-cardinal", "Lower"),
     (TerrainBrushType::SetHeight, "equals", "Set H"),
     (TerrainBrushType::Erase, "eraser", "Erase"),
+    (TerrainBrushType::Stamp, "stamp", "Stamp"),
 ];
 
 fn sculpt_content(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
@@ -498,6 +502,11 @@ fn tool_settings(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
         brush_type(w) == TerrainBrushType::Terrace
     });
     commands.entity(body).add_child(terrace);
+
+    // Stamp-specific (the heightmap-stamp brush: procedural preset or PNG).
+    let stamp = stamp_settings(commands, fonts);
+    bind_display(commands, stamp, |w| brush_type(w) == TerrainBrushType::Stamp);
+    commands.entity(body).add_child(stamp);
 }
 
 #[derive(Component)]
@@ -612,6 +621,84 @@ fn terrace_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     commands.entity(col).add_children(&[title, steps, sharp]);
     col
+}
+
+#[derive(Component)]
+struct StampPresetCombo;
+#[derive(Component)]
+struct StampBlendCombo;
+#[derive(Component)]
+struct StampLoadBtn;
+
+fn stamp_settings(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let col = section_col(commands);
+    let title = caption(commands, fonts, "Stamp", text_primary());
+
+    // Source: procedural preset combo (shows the loaded stamp's name, which
+    // is also the PNG filename after a Load) + a Load-PNG button.
+    let src_row = field_row(commands, fonts, "Shape");
+    let preset = enum_combo(commands, fonts, StampPresetCombo, |w| {
+        w.get_resource::<StampBrushData>()
+            .filter(|s| s.is_loaded())
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| "Choose...".to_string())
+    });
+    commands.entity(src_row).add_child(preset);
+
+    let load = wide_button(commands, fonts, Some("image"), "Load PNG...", text_muted());
+    commands.entity(load).insert(StampLoadBtn);
+
+    // Blend mode.
+    let blend_row = field_row(commands, fonts, "Blend");
+    let blend = enum_combo(commands, fonts, StampBlendCombo, |w| {
+        stamp_blend_label(
+            w.get_resource::<TerrainSettings>()
+                .map(|s| s.stamp_blend_mode)
+                .unwrap_or_default(),
+        )
+    });
+    commands.entity(blend_row).add_child(blend);
+
+    // Rotation is stored in radians (apply_stamp feeds it to cos/sin);
+    // the field speaks degrees.
+    let rotation = labelled_drag(
+        commands, fonts, "Rotation", 0.0, 360.0, 1.0,
+        |w| {
+            w.get_resource::<TerrainSettings>()
+                .map(|s| s.stamp_rotation.to_degrees())
+                .unwrap_or(0.0)
+        },
+        |w, v| set_settings(w, |s| s.stamp_rotation = v.to_radians()),
+    );
+    let height_scale = labelled_slider(
+        commands, fonts, "Height Scale", 0.0, 2.0,
+        |w| w.get_resource::<TerrainSettings>().map(|s| s.stamp_height_scale).unwrap_or(1.0),
+        |w, v| set_settings(w, |s| s.stamp_height_scale = *v),
+    );
+
+    let hint = commands
+        .spawn((
+            Text::new("Click to stamp once. Brush size sets the footprint."),
+            ui_font(&fonts.ui, 10.0),
+            TextColor(rgb(text_muted())),
+        ))
+        .id();
+
+    commands
+        .entity(col)
+        .add_children(&[title, src_row, load, blend_row, rotation, height_scale, hint]);
+    col
+}
+
+fn stamp_blend_label(m: StampBlendMode) -> String {
+    match m {
+        StampBlendMode::Add => "Add",
+        StampBlendMode::Subtract => "Subtract",
+        StampBlendMode::Replace => "Replace",
+        StampBlendMode::Max => "Max",
+        StampBlendMode::Min => "Min",
+    }
+    .to_string()
 }
 
 // ── Sculpt: Brush Settings ───────────────────────────────────────────────────
@@ -1499,11 +1586,21 @@ fn follow_active_tool(
 fn sculpt_tool_click(
     q: Query<(&Interaction, &SculptToolBtn), Changed<Interaction>>,
     mut settings: Option<ResMut<TerrainSettings>>,
+    mut stamp: Option<ResMut<StampBrushData>>,
 ) {
     let Some(settings) = settings.as_mut() else { return };
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
             settings.brush_type = btn.brush;
+            // Picking Stamp with nothing loaded gets a default shape so the
+            // brush works immediately instead of silently no-opping.
+            if btn.brush == TerrainBrushType::Stamp {
+                if let Some(stamp) = stamp.as_mut() {
+                    if !stamp.is_loaded() {
+                        **stamp = StampBrushData::generate(StampPreset::Dome, 256);
+                    }
+                }
+            }
         }
     }
 }
@@ -1615,6 +1712,128 @@ fn noise_mode_combo_open(
         })
         .collect();
     commands.entity(menu).add_children(&kids);
+}
+
+fn stamp_preset_combo_open(
+    q: Query<
+        (&Interaction, &RelativeCursorPosition, &ComputedNode),
+        (With<StampPresetCombo>, Changed<Interaction>),
+    >,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+        return;
+    };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+        return;
+    };
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    let presets = [
+        StampPreset::Dome,
+        StampPreset::Cone,
+        StampPreset::Bell,
+        StampPreset::Mesa,
+        StampPreset::Ridge,
+        StampPreset::Crater,
+        StampPreset::Noise,
+    ];
+    let kids: Vec<Entity> = presets
+        .iter()
+        .map(|&preset| {
+            menu_item(&mut commands, &fonts, "dot", preset.display_name(), move |w| {
+                if let Some(mut stamp) = w.get_resource_mut::<StampBrushData>() {
+                    *stamp = StampBrushData::generate(preset, 256);
+                }
+            })
+        })
+        .collect();
+    commands.entity(menu).add_children(&kids);
+}
+
+fn stamp_blend_combo_open(
+    q: Query<
+        (&Interaction, &RelativeCursorPosition, &ComputedNode),
+        (With<StampBlendCombo>, Changed<Interaction>),
+    >,
+    windows: Query<&Window>,
+    fonts: Option<Res<EmberFonts>>,
+    mut commands: Commands,
+) {
+    let Some(fonts) = fonts else { return };
+    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+        return;
+    };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+        return;
+    };
+    let size = cn.size() * cn.inverse_scale_factor();
+    let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
+    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    let modes = [
+        StampBlendMode::Add,
+        StampBlendMode::Subtract,
+        StampBlendMode::Replace,
+        StampBlendMode::Max,
+        StampBlendMode::Min,
+    ];
+    let kids: Vec<Entity> = modes
+        .iter()
+        .map(|&mode| {
+            menu_item(&mut commands, &fonts, "dot", &stamp_blend_label(mode), move |w| {
+                set_settings(w, |s| s.stamp_blend_mode = mode);
+            })
+        })
+        .collect();
+    commands.entity(menu).add_children(&kids);
+}
+
+fn stamp_load_click(
+    q: Query<&Interaction, (With<StampLoadBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(|world: &mut World| {
+            let _ = world.run_system_once(run_stamp_load);
+        });
+    }
+}
+
+fn run_stamp_load(world: &mut World) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Stamp image", &["png"])
+            .pick_file()
+        else {
+            return;
+        };
+        let Ok(bytes) = std::fs::read(&path) else {
+            bevy::log::error!("Failed to read stamp file {path:?}");
+            return;
+        };
+        match StampBrushData::load_from_png(&bytes) {
+            Ok((width, height, pixels)) => {
+                let name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "Stamp".to_string());
+                world.insert_resource(StampBrushData {
+                    pixels,
+                    width,
+                    height,
+                    name,
+                });
+            }
+            Err(e) => bevy::log::error!("Stamp PNG load failed: {e}"),
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = world;
 }
 
 fn layer_row_click(

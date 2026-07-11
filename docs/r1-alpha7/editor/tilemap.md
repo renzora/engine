@@ -25,6 +25,16 @@ A **tab strip** at the top of the panel lists every tilemap in the scene. Click 
 
 Each tilemap is an ordinary scene entity: rename it in the hierarchy, move its `Transform` to offset the whole map (tiles are its children and follow), toggle its `Visibility`, or delete it to remove the map. Per-tilemap settings (**Tile Size**, **Atlas Tile Px**, **Columns**) live on the `TilemapLayer` component in the inspector — defaults are 16 px atlas cells at 16 world units per tile, matching the sprite convention of 1 px = 1 world unit.
 
+## Paint layers
+
+Under the tab strip sits the **layer list** — Godot-style, top row draws on top. Every tilemap starts with just **Base** (the tilemap itself); click **Add Layer** to stack more:
+
+- **Click a row** to make it the paint target — strokes (paint, rectangle fill, erase) only touch the selected layer, so decoration on an upper layer never eats the ground under it.
+- The **eye** toggles a layer's visibility, and the **lock** protects it from painting and erasing entirely.
+- The **carets** nudge a layer's draw order up or down. An "Overhead" layer above the Base draws over everything on it — including y-sorted props, which sort only within their own layer.
+
+Layers are ordinary child entities of the tilemap (rename them in the hierarchy); they share the tilemap's tileset and settings, and each keeps its own tiles. Solid-tile collision works per layer — marking "wall" solid applies to walls on any layer. Scenes made before layers existed keep working: their tiles simply live on Base.
+
 ## Picking a brush
 
 The panel shows the active tilemap's atlas in a zoomable, pannable view:
@@ -76,6 +86,33 @@ The workflow is **select-then-randomise**, so it works on tiles you've already p
 Each selected tile is moved to a random cell **within the selection's own bounding box**. There are no knobs to fiddle: on the **first** press a solid block naturally opens up into an uneven scatter (roughly 60–65% coverage) with gaps and clusters — the "forest" look — while the trees never spill outside the area you selected.
 
 Randomise is **repeatable** — click it again for a completely different layout. Repeat presses reshuffle the *same* trees within the *same* area: they don't thin the field further or pull it inward, so you can keep clicking until you like the arrangement. (Changing the selection starts a fresh pass over the new bounds.) Only real painted tiles are touched, so anything else in a mixed selection is left alone. Because each tile keeps a real grid cell (its `TilemapTile` moves with it), erasing and re-painting those cells still work normally.
+
+## Tile collision
+
+Mark tiles as **solid** in the palette and every painted copy of them collides — walls, cliffs, water edges — without placing a single collider by hand:
+
+1. Select the solid tiles in the palette (a wall block, the cliff edges — any selection works, including Ctrl/Shift picks).
+2. Click the **wall** button in the panel header. The marked cells tint **red** in the palette. Clicking it again with the same cells selected unmarks them.
+
+That's the whole authoring step. Behind the scenes the engine watches the layer's painted tiles and grows **merged static 2D colliders** under it: contiguous solid tiles are greedy-merged into rectangles (a 20-tile wall is *one* collider, not twenty), so the physics world stays small and moving bodies never snag on seams between tiles. The colliders regenerate whenever you paint, erase, or change the solid set — and on every scene load and in the exported game, so nothing extra is saved in the scene file.
+
+The solid set lives on the `TilemapLayer` component (`solid_tiles`, a list of atlas cell indices), so it saves with the scene and applies to every tile of that layer, past and future — mark "wall" once, and every wall you ever paint is solid.
+
+Colliders use the **Avian 2D** physics backend (see [Physics](/docs/r1-alpha7/scripting/physics)); a character with a 2D body and collider will land on, slide along, and be blocked by the marked tiles once the game runs.
+
+### Object collision (trees, houses)
+
+Multi-tile **objects** are not covered by the solid set — they get a proper collision **box**, authored right in the palette:
+
+1. Pick the object in the palette (the multi-cell tree selection).
+2. Click the **wall** button. A **green collision box** appears over the selection, initially covering the whole footprint.
+3. **Drag its handles** to resize, or **drag inside it** to move — shrink it down to the trunk base. Green means collision, the same as the viewport's collider-edit frame.
+4. Pick the **shape** in the dropdown that appears next to the wall button — **Box**, **Circle**, or **Capsule**. The green frame rounds to match. A circle's radius comes from the drawn rect's shorter side; a capsule is vertical, its radius half the rect width with the caps inside the rect's ends.
+5. Paint. Every stamped object carries the shape as a real **Collision Shape** component, automatically.
+
+The box is remembered **per palette region** on the `TilemapLayer` (saved with the scene), so re-picking the same tree later recalls its collider, and every future stamp gets it too. Clicking the wall button again with the same pick removes the box. Objects painted *before* the box existed (or before an edit) keep the collider they were stamped with — reshape those individually with the inspector's collider **Edit** toggle in the viewport, or re-stamp them.
+
+Stamped objects also come with **[Y Sort](/docs/r1-alpha7/editor/viewport) already on**, pivoting at their bottom edge — so a character with Y Sort at their feet walks behind the canopy and in front of the trunk with no extra setup. Select an object to see its cyan sort line; the toggle and offset live on the Sprite Image card if you want to change or disable it.
 
 ## Selecting painted tiles
 

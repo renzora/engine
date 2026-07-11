@@ -1,15 +1,24 @@
 # Physics
 
-Add rigid bodies, colliders, and forces to your game with Avian 3D, wrapped by the `renzora_physics` crate.
+Add rigid bodies, colliders, and forces to your game with Avian, wrapped by the `renzora_physics` crate — **Avian 3D** for 3D scenes and **Avian 2D** for sprite scenes, behind one set of components.
 
-## Backend: Avian 3D
+## Backends: Avian 3D + Avian 2D
 
-Renzora's physics live in `renzora_physics`, which wraps **[Avian 3D](https://github.com/Jondolf/avian)** (`avian3d` 0.6.1). The crate exposes a backend-agnostic API and converts your scene components into Avian's components at runtime. `PhysicsPlugin` is part of the engine's foundation (installed by `add_engine_plugins`), so physics is always available — in the editor, in a shipped game, and on the headless server.
+Renzora's physics live in `renzora_physics`, which wraps **[Avian](https://github.com/Jondolf/avian)** — both the `avian3d` and `avian2d` crates (0.6.1 line). The crate exposes a backend-agnostic API and converts your scene components into Avian's components at runtime. `PhysicsPlugin` is part of the engine's foundation (installed by `add_engine_plugins`), so physics is always available — in the editor, in a shipped game, and on the headless server. The two simulations coexist in one app and never touch each other's bodies.
 
-- In the **editor**, the companion `renzora_physics_editor` pauses the simulation at startup so your scene sits still until you press play.
+- In the **editor**, the companion `renzora_physics_editor` pauses the simulation at startup so your scene sits still until you press play (both worlds pause and resume together).
 - In a **shipped game** the simulation runs immediately.
 
-> Avian is the engine's only physics backend. The default feature set is `["avian", "lua"]`; the data components below are backend-agnostic by design, but only the Avian backend is implemented.
+> Avian is the engine's only physics backend. The default feature set is `["avian", "avian2d", "lua"]`; the data components below are backend-agnostic by design.
+
+### Which backend does an entity get?
+
+You never pick a backend by hand — each entity is routed **once**, when its physics components are first wired up:
+
+- It's a **2D entity** (goes to Avian 2D) if it has a `Sprite`, sits anywhere under a `Node2d`, or carries the explicit `Physics2d` marker component. Painted tiles and 2D props all hit these rules naturally.
+- **Everything else** goes to Avian 3D, exactly as before.
+
+`Physics2d` is for the rare 2D physics entity with no visual of its own — an invisible trigger area, or the merged colliders a [tilemap layer generates](/docs/r1-alpha7/editor/tilemap). The 2D backend maps the shared shape data onto the plane: **Box** → rectangle (from `half_extents` X/Y), **Sphere** → circle, **Capsule** → 2D capsule, **Cylinder** → circle; a **Mesh** shape has no 2D source geometry and falls back to the fitted box. Of the axis locks, `lock_rotation_z` is the one that matters in 2D (it locks *the* rotation); use it on characters so collisions don't tip them over. Gravity, time scale and substeps from the [world physics settings](#world-physics-settings) mirror into the 2D world (2D gravity is the vector's X/Y).
 
 ## Physics components
 
@@ -63,7 +72,7 @@ Select an entity, then in the **Inspector** use **Add Component**:
 1. Add a body — **Rigid Body**, **Static Body**, or **Kinematic Body** (inserts `PhysicsBodyData`).
 2. Add a **Collision Shape** (inserts `CollisionShapeData`) and pick the shape from its dropdown.
 
-The collision-shape card has an **Edit** toggle (collider edit mode) that hides the transform gizmo so you can resize/move the collider directly.
+The collision-shape card has an **Edit** toggle (collider edit mode) that hides the transform gizmo so you can resize/move the collider directly. In the **2D viewport** the same toggle shows a green collider frame with eight drag handles: drag a handle to resize (boxes resize from the grabbed edge; circle and capsule radii resize about the centre), drag inside the shape to move its offset — e.g. shrink a tree object's collider down to its trunk base. Each gesture is one undo step. While the toggle is on, clicks edit the collider instead of selecting/moving sprites; toggle it off to get the normal picker back.
 
 ## World physics settings
 
@@ -114,6 +123,8 @@ fn on_update() {
 ```
 
 > `apply_force`, `apply_impulse`, and `set_velocity` are available in **both** Lua and Rhai. `move_controller`, `set_linear_velocity`, and `set_gravity_scale` are **Lua-only** (the physics crate registers extra functions only on the Lua backend).
+
+> **2D bodies:** `apply_force`, `apply_impulse`, and `set_velocity` route to the entity's own backend automatically — on an Avian 2D body they apply the X/Y of the vector and ignore Z, so the same script works on a sprite. `move_controller` is 3D-only for now; drive 2D characters with `set_velocity` (lock rotation on the body so collisions don't spin it).
 
 ### Kinematic character movement
 

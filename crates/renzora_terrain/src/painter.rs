@@ -97,12 +97,20 @@ pub struct PainterLayerMesh {
     pub layer_index: usize,
 }
 
-/// Mask resolution for a painter sitting on `terrain`: one cell per terrain
-/// vertex along the larger axis. Masks are square (`grid_size²` cells) even
-/// on non-square terrains so `PaintLayer::grid_size`'s sqrt stays exact; the
-/// extra cells past the short axis simply never match a triangle.
+/// Paint masks oversample the terrain vertex grid: this many mask cells per
+/// vertex step per axis. The brush outline quantizes to mask cells, so at 1×
+/// a large brush's edge visibly stair-steps at sculpt-vertex granularity
+/// (~0.5 m on a default tile); 2× halves the step and the alpha feather does
+/// the rest. Raising this quadruples mask memory and overlay vertex count.
+pub const PAINTER_OVERSAMPLE: u32 = 2;
+
+/// Mask resolution for a painter sitting on `terrain`, along the larger
+/// axis. Masks are square (`grid_size²` cells) even on non-square terrains
+/// so `PaintLayer::grid_size`'s sqrt stays exact; the extra cells past the
+/// short axis simply never match a triangle.
 pub fn painter_grid_size(terrain: &TerrainData) -> u32 {
-    terrain.chunks_x.max(terrain.chunks_z) * (terrain.chunk_resolution - 1) + 1
+    terrain.chunks_x.max(terrain.chunks_z) * (terrain.chunk_resolution - 1) * PAINTER_OVERSAMPLE
+        + 1
 }
 
 // ── Systems ──────────────────────────────────────────────────────────────────
@@ -161,6 +169,32 @@ fn resample_mask(old: &[f32], old_size: u32, new_size: u32) -> Vec<f32> {
     out
 }
 
+/// Sculpting moves the surface the overlays sit on; re-flag their meshes so
+/// they follow the new heights. Keyed on the chunks' `mesh_stale` hand-off
+/// flag and ordered inside the compose→mesh-rebuild window (same contract as
+/// `foliage_follow_terrain_system`).
+pub fn painter_follow_terrain_system(
+    chunk_query: Query<(&TerrainChunkData, &TerrainChunkOf)>,
+    mut painter_query: Query<&mut Painter>,
+) {
+    for (chunk, of) in chunk_query.iter() {
+        if !chunk.mesh_stale {
+            continue;
+        }
+        let Ok(mut painter) = painter_query.get_mut(of.0) else {
+            continue;
+        };
+        // Deref-read guard so an already-flagged painter isn't re-flagged
+        // (which would mark it Changed every frame of a stroke for nothing).
+        if painter.layers.iter().all(|l| l.mesh_dirty) {
+            continue;
+        }
+        for layer in painter.layers.iter_mut() {
+            layer.mesh_dirty = true;
+        }
+    }
+}
+
 /// Ensure each `Painter` has exactly one child mesh entity per layer, in the
 /// same order as `layers`. Spawns new ones as needed, despawns extras,
 /// and updates `PainterLayerMesh.layer_index` on existing ones so reorder
@@ -194,6 +228,13 @@ pub fn sync_painter_layer_meshes_system(
                 covered[*idx] = true;
             }
         }
+        let layer_visibility = |i: usize| {
+            if painter.layers.get(i).is_none_or(|l| l.enabled) {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            }
+        };
         for (i, is_covered) in covered.iter().enumerate() {
             if !is_covered {
                 let name = format!("Paint Layer Mesh {}", i);
@@ -201,7 +242,7 @@ pub fn sync_painter_layer_meshes_system(
                     .spawn((
                         Name::new(name),
                         Transform::default(),
-                        Visibility::default(),
+                        layer_visibility(i),
                         // Derived data: the mask lives on the serialized
                         // `Painter`; these meshes must not be saved into the
                         // scene (they'd load back as zombie children with no
@@ -217,7 +258,13 @@ pub fn sync_painter_layer_meshes_system(
             }
         }
         // Existing entities keep their indices — reordering reassigns them
-        // directly on the child entities; see `reorder_layers`.
+        // directly on the child entities (see `reorder_layers`) — but their
+        // visibility follows the layer's `enabled` flag.
+        for (entity, idx) in &existing {
+            if *idx < layer_count {
+                commands.entity(*entity).insert(layer_visibility(*idx));
+            }
+        }
     }
 }
 
@@ -262,7 +309,7 @@ pub fn rebuild_painter_layer_meshes_system(
         let Some(layer) = painter.layers.get_mut(marker.layer_index) else {
             continue;
         };
-        let mesh = build_layer_mesh_from_terrain(terrain, layer, &chunks);
+        let mesh = build_layer_mesh_from_terrain(terrain, layer, &chunks, marker.layer_index);
         if let Some(h) = existing_mesh {
             if let Some(mut m) = meshes.get_mut(&h.0) {
                 *m = mesh;
@@ -279,18 +326,35 @@ fn build_layer_mesh_from_terrain(
     terrain: &TerrainData,
     layer: &PaintLayer,
     chunks: &[&TerrainChunkData],
+    layer_index: usize,
 ) -> Mesh {
+    // Stacked alpha-blended layers at an identical offset z-fight; each layer
+    // index rides a hair higher so the newest paint reliably wins.
+    let index_lift = layer_index as f32 * 0.01;
     let chunk_res = terrain.chunk_resolution;
     let grid_size = layer.grid_size();
     let height_range = terrain.height_range();
     let spacing = terrain.vertex_spacing();
     let half_w = terrain.total_width() / 2.0;
     let half_d = terrain.total_depth() / 2.0;
+    // World size of one mask cell — derived from the layer's own grid so the
+    // builder stays correct for any oversample factor (and for old masks the
+    // resize system hasn't caught up with yet).
+    let max_axis_w = terrain.chunks_x.max(terrain.chunks_z) as f32 * terrain.chunk_size;
+    let cell = max_axis_w / (grid_size.saturating_sub(1)).max(1) as f32;
 
     let vertex_count = (grid_size * grid_size) as usize;
     let mut positions: Vec<[f32; 3]> = Vec::with_capacity(vertex_count);
     let mut normals: Vec<[f32; 3]> = Vec::with_capacity(vertex_count);
     let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(vertex_count);
+    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(vertex_count);
+
+    // Coverage feathers out through vertex alpha instead of a hard triangle
+    // cutoff — the band above the threshold fades 0→1 so brush edges read as
+    // soft falloff, not vertex-grid staircases.
+    let threshold = layer.coverage_threshold;
+    let feather = 0.25f32;
+    let vertex_alpha = |m: f32| ((m - threshold) / feather).clamp(0.0, 1.0);
 
     let sample_height = |gx: u32, gz: u32| -> f32 {
         let cx = (gx / (chunk_res - 1)).min(terrain.chunks_x.saturating_sub(1));
@@ -306,36 +370,58 @@ fn build_layer_mesh_from_terrain(
             })
             .unwrap_or(terrain.min_height)
     };
+    // Bilinear height at fractional terrain-vertex coordinates — mask cells
+    // sit between sculpt vertices when oversampled, so the overlay has to
+    // interpolate the surface exactly like the GPU rasterizes the chunk
+    // triangles, or it would dip below the terrain between vertices.
+    let sample_height_f = |vx_f: f32, vz_f: f32| -> f32 {
+        let x0 = vx_f.floor().max(0.0) as u32;
+        let z0 = vz_f.floor().max(0.0) as u32;
+        let tx = (vx_f - x0 as f32).clamp(0.0, 1.0);
+        let tz = (vz_f - z0 as f32).clamp(0.0, 1.0);
+        let h00 = sample_height(x0, z0);
+        let h10 = sample_height(x0 + 1, z0);
+        let h01 = sample_height(x0, z0 + 1);
+        let h11 = sample_height(x0 + 1, z0 + 1);
+        (h00 * (1.0 - tx) + h10 * tx) * (1.0 - tz) + (h01 * (1.0 - tx) + h11 * tx) * tz
+    };
+    // Mask cell → fractional terrain-vertex coordinate.
+    let vert_per_cell = cell / spacing.max(1e-6);
 
     for gz in 0..grid_size {
         for gx in 0..grid_size {
-            let wx = gx as f32 * spacing - half_w;
-            let wz = gz as f32 * spacing - half_d;
-            let wy = sample_height(gx, gz) + layer.height_offset;
+            let wx = gx as f32 * cell - half_w;
+            let wz = gz as f32 * cell - half_d;
+            let vx_f = gx as f32 * vert_per_cell;
+            let vz_f = gz as f32 * vert_per_cell;
+            let wy = sample_height_f(vx_f, vz_f) + layer.height_offset + index_lift;
             positions.push([wx, wy, wz]);
             uvs.push([
                 gx as f32 / (grid_size - 1).max(1) as f32,
                 gz as f32 / (grid_size - 1).max(1) as f32,
             ]);
             normals.push([0.0, 1.0, 0.0]);
+            let m = layer.mask[(gz * grid_size + gx) as usize];
+            colors.push([1.0, 1.0, 1.0, vertex_alpha(m)]);
         }
     }
 
     for gz in 0..grid_size {
         for gx in 0..grid_size {
-            let hl = sample_height(gx.saturating_sub(1), gz);
-            let hr = sample_height((gx + 1).min(grid_size - 1), gz);
-            let hd = sample_height(gx, gz.saturating_sub(1));
-            let hu = sample_height(gx, (gz + 1).min(grid_size - 1));
-            let dx = (hr - hl) / (2.0 * spacing.max(1e-4));
-            let dz = (hu - hd) / (2.0 * spacing.max(1e-4));
+            let vx_f = gx as f32 * vert_per_cell;
+            let vz_f = gz as f32 * vert_per_cell;
+            let hl = sample_height_f(vx_f - vert_per_cell, vz_f);
+            let hr = sample_height_f(vx_f + vert_per_cell, vz_f);
+            let hd = sample_height_f(vx_f, vz_f - vert_per_cell);
+            let hu = sample_height_f(vx_f, vz_f + vert_per_cell);
+            let dx = (hr - hl) / (2.0 * cell.max(1e-4));
+            let dz = (hu - hd) / (2.0 * cell.max(1e-4));
             let n = Vec3::new(-dx, 1.0, -dz).normalize_or_zero();
             normals[(gz * grid_size + gx) as usize] = [n.x, n.y, n.z];
         }
     }
 
     let mut indices: Vec<u32> = Vec::new();
-    let threshold = layer.coverage_threshold;
     for gz in 0..(grid_size - 1) {
         for gx in 0..(grid_size - 1) {
             let tl = gz * grid_size + gx;
@@ -348,12 +434,14 @@ fn build_layer_mesh_from_terrain(
             let m_bl = layer.mask[bl as usize];
             let m_br = layer.mask[br as usize];
 
-            if m_tl > threshold && m_bl > threshold && m_tr > threshold {
+            // ANY covered corner emits the triangle — the uncovered corners
+            // carry alpha 0, so the edge fades instead of stair-stepping.
+            if m_tl > threshold || m_bl > threshold || m_tr > threshold {
                 indices.push(tl);
                 indices.push(bl);
                 indices.push(tr);
             }
-            if m_tr > threshold && m_bl > threshold && m_br > threshold {
+            if m_tr > threshold || m_bl > threshold || m_br > threshold {
                 indices.push(tr);
                 indices.push(bl);
                 indices.push(br);
@@ -368,6 +456,7 @@ fn build_layer_mesh_from_terrain(
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
     mesh.insert_indices(Indices::U32(indices));
     mesh
 }
@@ -414,10 +503,18 @@ fn build_material(
     asset_server: &AssetServer,
     vfs: &renzora::core::VirtualFileReader,
 ) -> StandardMaterial {
+    // Alpha-blended: the layer mesh carries per-vertex alpha that feathers
+    // coverage edges (see `build_layer_mesh_from_terrain`); an opaque
+    // material would put the hard staircase right back.
+    //
+    // Layers start empty — the user drops a `.material` on the layer to give
+    // it its real look. Until then, every layer defaults to plain grass green
+    // so strokes are visible against the checkerboard.
     let Some(path) = material_path.as_deref() else {
         return StandardMaterial {
-            base_color: Color::srgb(0.7, 0.7, 0.7),
+            base_color: Color::srgb(0.36, 0.55, 0.30),
             perceptual_roughness: 0.85,
+            alpha_mode: AlphaMode::Blend,
             ..Default::default()
         };
     };
@@ -425,6 +522,7 @@ fn build_material(
         return StandardMaterial {
             base_color: Color::srgb(0.9, 0.3, 0.6),
             perceptual_roughness: 0.85,
+            alpha_mode: AlphaMode::Blend,
             ..Default::default()
         };
     };
@@ -434,6 +532,7 @@ fn build_material(
         base_color: Color::WHITE,
         perceptual_roughness: 0.85,
         metallic: 0.0,
+        alpha_mode: AlphaMode::Blend,
         ..Default::default()
     };
     if let Some(ref p) = albedo {

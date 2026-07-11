@@ -254,9 +254,20 @@ pub struct TerrainChunkData {
     #[serde(skip, default)]
     #[reflect(ignore)]
     pub heights: Vec<f32>,
+    /// Set by writers (sculpt, undo, import); CONSUMED by the composition
+    /// system, which turns it into `mesh_stale`. Two flags instead of one so
+    /// a writer running at any point in the frame can't lose its edit: with a
+    /// single flag, a write landing between composition and the mesh rebuild
+    /// got its flag cleared while `heights` stayed stale — sculpting silently
+    /// did nothing, depending on ambiguous system order.
     #[serde(skip)]
     #[reflect(ignore)]
     pub dirty: bool,
+    /// Set by composition after refreshing `heights`; consumed by the mesh
+    /// rebuild system (and read by foliage re-bake, which runs between them).
+    #[serde(skip)]
+    #[reflect(ignore)]
+    pub mesh_stale: bool,
 }
 
 impl TerrainChunkData {
@@ -268,6 +279,7 @@ impl TerrainChunkData {
             base_heights: vec![initial_height; count],
             heights: vec![initial_height; count],
             dirty: true,
+            mesh_stale: false,
         }
     }
 

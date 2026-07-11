@@ -41,7 +41,7 @@ impl Plugin for TerrainPlugin {
             .add_systems(
                 Update,
                 (
-                    mesh::rehydrate_terrain_chunks,
+                    (mesh::rehydrate_terrain_chunks, mesh::backfill_missing_chunks),
                     height_layers::ensure_composed_buffer_system,
                     paint::mark_new_surfaces_dirty_system,
                     paint::derive_splatmap_weights_system
@@ -51,6 +51,8 @@ impl Plugin for TerrainPlugin {
                         .after(paint::derive_splatmap_weights_system),
                     mesh::terrain_chunk_mesh_update_system
                         .after(height_layers::compose_height_layers_system),
+                    mesh::flush_stale_colliders_system
+                        .after(mesh::terrain_chunk_mesh_update_system),
                     mesh::terrain_data_changed_system,
                     splatmap_systems::splatmap_upload_system
                         .after(paint::derive_splatmap_weights_system),
@@ -60,6 +62,9 @@ impl Plugin for TerrainPlugin {
                     brush_layer::apply_brush_layer_material_system,
                     brush_layer::sync_brush_layer_registry_system,
                     painter::ensure_painter_system,
+                    painter::painter_follow_terrain_system
+                        .after(height_layers::compose_height_layers_system)
+                        .before(mesh::terrain_chunk_mesh_update_system),
                     painter::resize_painter_masks_system,
                     painter::sync_painter_layer_meshes_system,
                     painter::rebuild_painter_layer_meshes_system

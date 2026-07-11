@@ -9,8 +9,8 @@ mod terrain_layers_ui;
 
 use bevy::prelude::*;
 use renzora_editor_framework::{
-    ActiveTool, AppEditorExt, EditorSelection, EntityPreset, InspectorEntry, ToolEntry,
-    ToolSection,
+    ActiveTool, AppEditorExt, EditorSelection, EntityPreset, FieldDef, FieldType, FieldValue,
+    InspectorEntry, ToolEntry, ToolSection,
 };
 use renzora_spline::SplinePath;
 use renzora_terrain::data::TerrainData;
@@ -240,7 +240,15 @@ fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: Acti
     world.insert_resource(tool);
 }
 
+/// Resolutions the inspector offers — powers-of-two-plus-one so chunk edges
+/// share vertices cleanly. Free-typed values aren't allowed; an off-grid
+/// resolution breaks the shared-edge math between neighbouring chunks.
+const RESOLUTION_LABELS: [&str; 4] = ["33", "65", "129", "257"];
+
 fn terrain_data_entry() -> InspectorEntry {
+    // Every real `TerrainData` change triggers a chunk rebuild pass, so all
+    // set_fns compare through `Deref` first and only write when the value
+    // actually moved — a no-op drag tick must not flag the component.
     InspectorEntry {
         type_id: "terrain_data",
         display_name: "Terrain",
@@ -251,7 +259,119 @@ fn terrain_data_entry() -> InspectorEntry {
         remove_fn: None,
         is_enabled_fn: None,
         set_enabled_fn: None,
-        fields: vec![],
+        fields: vec![
+            FieldDef {
+                name: "Chunks X",
+                field_type: FieldType::Int { min: 1.0, max: 8.0 },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Float(t.chunks_x as f32))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(x) = v {
+                        let want = (x.round() as u32).clamp(1, 8);
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            if t.chunks_x != want {
+                                t.chunks_x = want;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Chunks Z",
+                field_type: FieldType::Int { min: 1.0, max: 8.0 },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Float(t.chunks_z as f32))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(z) = v {
+                        let want = (z.round() as u32).clamp(1, 8);
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            if t.chunks_z != want {
+                                t.chunks_z = want;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Chunk Size",
+                field_type: FieldType::Float { speed: 0.5, min: 8.0, max: 512.0 },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Float(t.chunk_size))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(s) = v {
+                        let want = s.clamp(8.0, 512.0);
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            if t.chunk_size != want {
+                                t.chunk_size = want;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Resolution",
+                field_type: FieldType::Enum { options: &RESOLUTION_LABELS },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Enum(t.chunk_resolution.to_string()))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Enum(label) = v {
+                        if let Ok(want) = label.parse::<u32>() {
+                            if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                                if t.chunk_resolution != want {
+                                    t.chunk_resolution = want;
+                                }
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Min Height",
+                field_type: FieldType::Float { speed: 0.25, min: -500.0, max: 500.0 },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Float(t.min_height))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(h) = v {
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            // Keep at least 1m of range so height_range()
+                            // never collapses to zero (NaN normals).
+                            let want = h.min(t.max_height - 1.0);
+                            if t.min_height != want {
+                                t.min_height = want;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Max Height",
+                field_type: FieldType::Float { speed: 0.25, min: -500.0, max: 500.0 },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Float(t.max_height))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(h) = v {
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            let want = h.max(t.min_height + 1.0);
+                            if t.max_height != want {
+                                t.max_height = want;
+                            }
+                        }
+                    }
+                },
+            },
+        ],
     }
 }
 

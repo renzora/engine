@@ -118,7 +118,10 @@ pub fn foliage_follow_terrain_system(
     >,
 ) {
     for (chunk, mut density_map) in query.iter_mut() {
-        if chunk.dirty {
+        // `mesh_stale` (composition → mesh-rebuild hand-off), not `dirty`:
+        // this system is ordered inside that window, so it reliably sees
+        // every height change regardless of where the writer ran.
+        if chunk.mesh_stale {
             density_map.dirty = true;
         }
     }

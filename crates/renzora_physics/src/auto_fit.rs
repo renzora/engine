@@ -14,12 +14,27 @@ use crate::{CollisionShapeData, CollisionShapeType};
 #[derive(Component)]
 pub struct PendingAutoFit;
 
+/// Opt-out: spawn this alongside a `CollisionShapeData` whose values are
+/// already exact (e.g. the tilemap's merged tile colliders). Without it the
+/// shape would be tagged `PendingAutoFit` and — having no render AABB to fit
+/// to — sit in the retry query forever.
+#[derive(Component, Default, Clone, Copy, Debug)]
+pub struct SkipAutoFit;
+
 /// Tag the entity with `PendingAutoFit` so the next frame tries to size it to mesh.
 pub fn mark_new_collision_shapes(
     mut commands: Commands,
-    new_shapes: Query<Entity, Added<CollisionShapeData>>,
+    new_shapes: Query<(Entity, &CollisionShapeData), (Added<CollisionShapeData>, Without<SkipAutoFit>)>,
 ) {
-    for entity in &new_shapes {
+    for (entity, shape) in &new_shapes {
+        // Only factory-default shapes auto-fit (a fresh inspector add). A
+        // shape arriving with authored values — a scene load, a tilemap object
+        // stamp, a terrain chunk — must keep them: `Added` fires for
+        // deserialized components too, and fitting would overwrite the very
+        // extents the user (or generator) set.
+        if *shape != CollisionShapeData::default() {
+            continue;
+        }
         commands.entity(entity).try_insert(PendingAutoFit);
     }
 }

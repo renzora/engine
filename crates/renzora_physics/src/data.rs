@@ -78,7 +78,7 @@ pub enum CollisionShapeType {
 }
 
 /// Serializable collision shape data — backend-agnostic.
-#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[derive(Component, Clone, Debug, PartialEq, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Default)]
 pub struct CollisionShapeData {
     pub shape_type: CollisionShapeType,
@@ -158,3 +158,20 @@ impl CollisionShapeData {
 /// Marker component to track entities that have runtime physics components spawned.
 #[derive(Component)]
 pub struct RuntimePhysics;
+
+/// Runtime marker: this entity's physics components were spawned by the
+/// **avian2d** backend. `sync_physics_data`, the script-action observer and the
+/// read-state updaters use it to keep talking to the right simulation — the
+/// ancestry walk that decided the dimension only happens once, at init.
+#[derive(Component)]
+pub struct RuntimePhysics2d;
+
+/// Serializable opt-in: force this entity onto the **2D** physics backend.
+///
+/// `auto_init_physics` already routes sprites and anything under a `Node2d` to
+/// avian2d automatically; this marker covers 2D physics entities with no visual
+/// of their own — e.g. the merged static colliders a tilemap layer generates,
+/// or an invisible trigger area in a 2D scene.
+#[derive(Component, Clone, Copy, Debug, Default, Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(Component, Default, Serialize, Deserialize)]
+pub struct Physics2d;

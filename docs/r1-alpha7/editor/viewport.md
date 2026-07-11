@@ -126,7 +126,7 @@ Rotating and scaling pivot around the object's **bounding-box center**, so objec
 
 ### World vs Local space
 
-The **World / Local** button in the toolbar (next to the shapes dropdown) sets which axes the gizmo follows:
+The **World / Local** icon button in the toolbar (next to the shapes dropdown — a **globe** in World space, a **cube** in Local; the tooltip names the active space) sets which axes the gizmo follows:
 
 - **World** — handles align to the world axes (X/Y/Z), regardless of how the object is rotated.
 - **Local** — handles align to the object's own orientation, so dragging moves it along *its* axes.

@@ -64,11 +64,15 @@ impl Plugin for PhysicsPlugin {
             .register_type::<PhysicsBodyType>()
             .register_type::<CollisionShapeData>()
             .register_type::<CollisionShapeType>()
+            .register_type::<Physics2d>()
             .register_type::<PhysicsReadState>()
             .register_type::<read_state::CollisionReadState>();
 
         #[cfg(feature = "avian")]
         app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
+
+        #[cfg(feature = "avian2d")]
+        app.add_plugins(backend::avian_2d::Avian2dBackendPlugin { start_paused });
 
         app.add_systems(Update, (auto_init_physics, sync_physics_data));
         app.add_systems(
@@ -86,6 +90,8 @@ impl Plugin for PhysicsPlugin {
 
         #[cfg(feature = "avian")]
         app.add_systems(PostUpdate, clear_avian_forces.run_if(not_editing));
+        #[cfg(feature = "avian2d")]
+        app.add_systems(PostUpdate, clear_avian_forces_2d.run_if(not_editing));
 
         app.init_resource::<PendingKinematicSlides>();
         #[cfg(feature = "avian")]
@@ -109,6 +115,10 @@ impl Plugin for PhysicsPlugin {
         app.add_systems(Update, read_state::update_physics_read_state);
         #[cfg(feature = "avian")]
         app.add_systems(Update, read_state::update_collision_read_state);
+        #[cfg(feature = "avian2d")]
+        app.add_systems(Update, read_state::update_physics_read_state_2d);
+        #[cfg(feature = "avian2d")]
+        app.add_systems(Update, read_state::update_collision_read_state_2d);
 
         // Register Lua/Rhai functions owned by the physics crate.
         {
@@ -219,12 +229,26 @@ fn clear_avian_forces(
     }
 }
 
+/// 2D twin of [`clear_avian_forces`] — avian2d's `ConstantForce` is its own type.
+#[cfg(feature = "avian2d")]
+fn clear_avian_forces_2d(
+    mut commands: Commands,
+    query: Query<Entity, With<avian2d::prelude::ConstantForce>>,
+) {
+    for entity in &query {
+        commands
+            .entity(entity)
+            .remove::<avian2d::prelude::ConstantForce>();
+    }
+}
+
 /// Observer: handle physics commands (apply_force, apply_impulse, set_velocity,
 /// kinematic_slide) from scripts and blueprints.
 fn handle_physics_script_actions(
     trigger: On<renzora::ScriptAction>,
     mut commands: Commands,
     mut pending_slides: Option<ResMut<PendingKinematicSlides>>,
+    bodies_2d: Query<(), With<RuntimePhysics2d>>,
 ) {
     let action = trigger.event();
     let name = action.name.as_str();
@@ -284,29 +308,52 @@ fn handle_physics_script_actions(
             action.entity
         };
 
+    // A body initialised by the 2D backend must receive avian2d components —
+    // the 3D types would just sit inert on it (separate simulations).
+    let is_2d = bodies_2d.contains(target);
+
     match name {
         "apply_force" => {
-            #[cfg(feature = "avian")]
-            commands
-                .entity(target)
-                .insert(avian3d::prelude::ConstantForce(vec));
+            if is_2d {
+                #[cfg(feature = "avian2d")]
+                commands
+                    .entity(target)
+                    .insert(avian2d::prelude::ConstantForce(vec.truncate()));
+            } else {
+                #[cfg(feature = "avian")]
+                commands
+                    .entity(target)
+                    .insert(avian3d::prelude::ConstantForce(vec));
+            }
         }
         "apply_impulse" => {
-            #[cfg(feature = "avian")]
-            {
-                // Avian 0.6.1 doesn't have a built-in one-shot impulse component in prelude.
-                // We'll apply it by inserting LinearVelocity which avian's solver will integrate.
-                // This is a simplified impulse. For a true additive impulse we'd need a solver hook.
+            // Avian 0.6.1 doesn't have a built-in one-shot impulse component in prelude.
+            // We'll apply it by inserting LinearVelocity which avian's solver will integrate.
+            // This is a simplified impulse. For a true additive impulse we'd need a solver hook.
+            if is_2d {
+                #[cfg(feature = "avian2d")]
+                commands
+                    .entity(target)
+                    .insert(avian2d::prelude::LinearVelocity(vec.truncate()));
+            } else {
+                #[cfg(feature = "avian")]
                 commands
                     .entity(target)
                     .insert(avian3d::prelude::LinearVelocity(vec));
             }
         }
         "set_velocity" => {
-            #[cfg(feature = "avian")]
-            commands
-                .entity(target)
-                .insert(avian3d::prelude::LinearVelocity(vec));
+            if is_2d {
+                #[cfg(feature = "avian2d")]
+                commands
+                    .entity(target)
+                    .insert(avian2d::prelude::LinearVelocity(vec.truncate()));
+            } else {
+                #[cfg(feature = "avian")]
+                commands
+                    .entity(target)
+                    .insert(avian3d::prelude::LinearVelocity(vec));
+            }
         }
         _ => {}
     }
@@ -330,10 +377,14 @@ pub fn spawn_collision_shape(
     backend::avian::spawn_collision_shape(commands, entity, shape_data);
 }
 
-/// Remove all physics components from an entity.
+/// Remove all physics components from an entity — both backends' component
+/// sets (removing absent components is a no-op, so it's safe to sweep both).
 pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
     #[cfg(feature = "avian")]
     backend::avian::despawn_physics_components(commands, entity);
+    #[cfg(feature = "avian2d")]
+    backend::avian_2d::despawn_physics_components(commands, entity);
+    commands.entity(entity).remove::<RuntimePhysics2d>();
 }
 
 /// Spawn all physics components for an entity that has PhysicsBodyData and/or CollisionShapeData.
@@ -360,8 +411,50 @@ pub fn spawn_entity_physics(
     }
 }
 
+/// True if this entity belongs to the **2D** physics world: it is a sprite,
+/// carries the explicit [`Physics2d`] marker, or any ancestor is a `Node2d` /
+/// sprite (painted tiles sit under their tilemap layer, props under a 2D
+/// group node). Everything else routes to the 3D backend, which keeps every
+/// existing 3D scene behaving exactly as before this walk existed.
+fn entity_is_2d(
+    entity: Entity,
+    markers_2d: &Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora::Node2d>)>>,
+    parents: &Query<&ChildOf>,
+) -> bool {
+    let mut e = entity;
+    loop {
+        if markers_2d.contains(e) {
+            return true;
+        }
+        match parents.get(e) {
+            Ok(child_of) => e = child_of.parent(),
+            Err(_) => return false,
+        }
+    }
+}
+
+/// True if any ANCESTOR of `entity` carries `PhysicsBodyData` — i.e. this
+/// entity's collider should attach to that body rather than get a body of
+/// its own.
+fn has_body_ancestor(
+    entity: Entity,
+    bodies: &Query<(), With<PhysicsBodyData>>,
+    parents: &Query<&ChildOf>,
+) -> bool {
+    let mut e = entity;
+    while let Ok(child_of) = parents.get(e) {
+        e = child_of.parent();
+        if bodies.contains(e) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Automatically initialize backend components for entities that have physics data
 /// components but haven't been wired up yet (no `RuntimePhysics` marker).
+/// Each entity is routed to the avian2d or avian3d backend once, here — the
+/// decision is remembered via the `RuntimePhysics2d` marker.
 fn auto_init_physics(
     mut commands: Commands,
     new_bodies: Query<
@@ -376,11 +469,16 @@ fn auto_init_physics(
             Or<(With<PhysicsBodyData>, With<CollisionShapeData>)>,
         ),
     >,
+    markers_2d: Query<(), Or<(With<Physics2d>, With<Sprite>, With<renzora::Node2d>)>>,
+    parents: Query<&ChildOf>,
+    bodies: Query<(), With<PhysicsBodyData>>,
 ) {
     for (entity, body, shape, name) in &new_bodies {
+        let is_2d = entity_is_2d(entity, &markers_2d, &parents);
         let label = name.map(|n| n.as_str()).unwrap_or("unnamed");
         info!(
-            "[Physics] Initialized physics on '{}' {:?} (body={}, shape={})",
+            "[Physics] Initialized {} physics on '{}' {:?} (body={}, shape={})",
+            if is_2d { "2D" } else { "3D" },
             label,
             entity,
             body.is_some(),
@@ -389,17 +487,47 @@ fn auto_init_physics(
         renzora::console_log::console_info(
             "Physics",
             format!(
-                "Initialized physics on '{}' (body={}, shape={})",
+                "Initialized {} physics on '{}' (body={}, shape={})",
+                if is_2d { "2D" } else { "3D" },
                 label,
                 body.is_some(),
                 shape.is_some()
             ),
         );
-        if let Some(b) = body {
-            spawn_physics_body(&mut commands, entity, b);
-        }
-        if let Some(s) = shape {
-            spawn_collision_shape(&mut commands, entity, s);
+        if is_2d {
+            // Without the 2D backend compiled in, a 2D entity gets no physics
+            // at all — deliberately not 3D components, which would drag sprite
+            // entities into the wrong simulation.
+            #[cfg(feature = "avian2d")]
+            {
+                if let Some(b) = body {
+                    backend::avian_2d::spawn_physics_body(&mut commands, entity, b);
+                } else if shape.is_some() && !has_body_ancestor(entity, &bodies, &parents) {
+                    // A collider with no body would land in avian2d's
+                    // "standalone" collider tree — which produces NO contacts
+                    // in the vendored 0.7-dev (see tests/avian2d_collision.rs:
+                    // raw_avian2d_standalone_wall_blocks). An explicit static
+                    // body is semantically identical for world geometry (tile
+                    // colliders, prop trunks) and uses the static tree, which
+                    // works. Skipped when a body sits on an ancestor so a
+                    // child collider still attaches to that body instead of
+                    // becoming its own.
+                    commands
+                        .entity(entity)
+                        .try_insert(avian2d::prelude::RigidBody::Static);
+                }
+                if let Some(s) = shape {
+                    backend::avian_2d::spawn_collision_shape(&mut commands, entity, s);
+                }
+                commands.entity(entity).try_insert(RuntimePhysics2d);
+            }
+        } else {
+            if let Some(b) = body {
+                spawn_physics_body(&mut commands, entity, b);
+            }
+            if let Some(s) = shape {
+                spawn_collision_shape(&mut commands, entity, s);
+            }
         }
         commands.entity(entity).try_insert(RuntimePhysics);
     }
@@ -409,19 +537,29 @@ fn auto_init_physics(
 fn sync_physics_data(
     mut commands: Commands,
     changed_bodies: Query<
-        (Entity, &PhysicsBodyData),
+        (Entity, &PhysicsBodyData, Has<RuntimePhysics2d>),
         (With<RuntimePhysics>, Changed<PhysicsBodyData>),
     >,
     changed_shapes: Query<
-        (Entity, &CollisionShapeData),
+        (Entity, &CollisionShapeData, Has<RuntimePhysics2d>),
         (With<RuntimePhysics>, Changed<CollisionShapeData>),
     >,
 ) {
-    for (entity, body_data) in &changed_bodies {
-        spawn_physics_body(&mut commands, entity, body_data);
+    for (entity, body_data, is_2d) in &changed_bodies {
+        if is_2d {
+            #[cfg(feature = "avian2d")]
+            backend::avian_2d::spawn_physics_body(&mut commands, entity, body_data);
+        } else {
+            spawn_physics_body(&mut commands, entity, body_data);
+        }
     }
-    for (entity, shape_data) in &changed_shapes {
-        spawn_collision_shape(&mut commands, entity, shape_data);
+    for (entity, shape_data, is_2d) in &changed_shapes {
+        if is_2d {
+            #[cfg(feature = "avian2d")]
+            backend::avian_2d::spawn_collision_shape(&mut commands, entity, shape_data);
+        } else {
+            spawn_collision_shape(&mut commands, entity, shape_data);
+        }
     }
 }
 
@@ -435,7 +573,8 @@ fn on_unpause_physics(_trigger: On<renzora::UnpausePhysics>, mut commands: Comma
     commands.queue(|world: &mut World| unpause(world));
 }
 
-/// Unpause the physics simulation.
+/// Unpause the physics simulation (both the 2D and 3D worlds — each backend
+/// has its own `Time<Physics>` clock, but pause/play is one editor concept).
 pub fn unpause(world: &mut World) {
     info!("[Physics] Unpausing physics simulation");
     renzora::console_log::console_info("Physics", "Physics simulation unpaused");
@@ -446,9 +585,16 @@ pub fn unpause(world: &mut World) {
             time.unpause();
         }
     }
+    #[cfg(feature = "avian2d")]
+    {
+        use avian2d::schedule::PhysicsTime;
+        if let Some(mut time) = world.get_resource_mut::<Time<avian2d::prelude::Physics>>() {
+            time.unpause();
+        }
+    }
 }
 
-/// Pause the physics simulation.
+/// Pause the physics simulation (both the 2D and 3D worlds).
 pub fn pause(world: &mut World) {
     info!("[Physics] Pausing physics simulation");
     renzora::console_log::console_info("Physics", "Physics simulation paused");
@@ -456,6 +602,13 @@ pub fn pause(world: &mut World) {
     {
         use avian3d::schedule::PhysicsTime;
         if let Some(mut time) = world.get_resource_mut::<Time<avian3d::prelude::Physics>>() {
+            time.pause();
+        }
+    }
+    #[cfg(feature = "avian2d")]
+    {
+        use avian2d::schedule::PhysicsTime;
+        if let Some(mut time) = world.get_resource_mut::<Time<avian2d::prelude::Physics>>() {
             time.pause();
         }
     }

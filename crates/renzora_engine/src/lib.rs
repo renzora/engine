@@ -277,6 +277,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::EntityTag>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
+            .register_type::<renzora::core::YSort>()
             .register_type::<renzora::core::SpriteImagePath>()
             .register_type::<renzora::core::SpriteCustomSize>()
             .register_type::<renzora::core::SpriteSheet>()
@@ -360,6 +361,10 @@ impl Plugin for RuntimePlugin {
             // single sprite from a multi-tile palette selection renders (and
             // reopens/ships) as one entity showing its atlas slice.
             app.add_systems(Update, scene_io::apply_sprite_atlas_region);
+            // Y-sort: derive Z from world Y for `YSort` entities so lower
+            // sprites draw in front (top-down "walk behind the tree" ordering).
+            // Both editor and runtime — the sort must look the same shipped.
+            app.add_systems(Update, scene_io::apply_y_sort);
         }
 
         app.add_plugins(debug_log::DebugLogPlugin);

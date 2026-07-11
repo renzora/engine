@@ -391,7 +391,8 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     // backed by a Settings wrapper that routes from the
     // WorldEnvironment entity to all active cameras via EffectRouting.
     // The sheet grid (H/V Frames, Frame) is merged into the Sprite Image
-    // section — there is no separate Sprite Sheet section.
+    // section — there is no separate Sprite Sheet section. Same for Y Sort:
+    // its toggle + fields live in the Sprite Image card.
     registry.register(sprite_image_entry());
 }
 
@@ -445,7 +446,7 @@ fn sprite_image_entry() -> InspectorEntry {
                 },
                 get_fn: |world, entity| {
                     if let Some(imgs) = world.get::<renzora::core::SpriteImages>(entity) {
-                        (!imgs.images.is_empty()).then(|| FieldValue::Float(imgs.index as f32))
+                        (!imgs.images.is_empty()).then_some(FieldValue::Float(imgs.index as f32))
                     } else if let Some(p) = world.get::<renzora::core::SpriteImagePath>(entity) {
                         (!p.0.is_empty()).then_some(FieldValue::Float(0.0))
                     } else {
@@ -612,14 +613,85 @@ fn sprite_image_entry() -> InspectorEntry {
                     }
                 },
             },
+            // Y-sort — merged in like the sheet grid (Godot's Sprite2D keeps
+            // its y-sort knob on the sprite too). The toggle adds/removes the
+            // `YSort` component; the two fields below appear once it's on
+            // (`get_fn` → None hides them). The engine's `apply_y_sort` system
+            // owns the actual Z writes.
+            FieldDef {
+                name: "Y Sort",
+                field_type: FieldType::Bool,
+                get_fn: |world, entity| {
+                    Some(FieldValue::Bool(
+                        world.get::<renzora::core::YSort>(entity).is_some(),
+                    ))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Bool(b) = val {
+                        if b {
+                            if world.get::<renzora::core::YSort>(entity).is_none() {
+                                world
+                                    .entity_mut(entity)
+                                    .insert(renzora::core::YSort::default());
+                            }
+                        } else {
+                            world.entity_mut(entity).remove::<renzora::core::YSort>();
+                        }
+                    }
+                },
+            },
+            // Where the sort point sits relative to the sprite center. A tall
+            // prop wants its trunk/feet, i.e. roughly -half_height.
+            FieldDef {
+                name: "Sort Offset",
+                field_type: FieldType::Float {
+                    speed: 1.0,
+                    min: -100_000.0,
+                    max: 100_000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<renzora::core::YSort>(entity)
+                        .map(|y| FieldValue::Float(y.offset))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut y) = world.get_mut::<renzora::core::YSort>(entity) {
+                            y.offset = v;
+                        }
+                    }
+                },
+            },
+            // The Z band the entity sorts within (±0.5 around it). Keeps
+            // y-sorted props above a ground tilemap at z 0.
+            FieldDef {
+                name: "Z Base",
+                field_type: FieldType::Float {
+                    speed: 0.1,
+                    min: -10_000.0,
+                    max: 10_000.0,
+                },
+                get_fn: |world, entity| {
+                    world
+                        .get::<renzora::core::YSort>(entity)
+                        .map(|y| FieldValue::Float(y.z_base))
+                },
+                set_fn: |world, entity, val| {
+                    if let FieldValue::Float(v) = val {
+                        if let Some(mut y) = world.get_mut::<renzora::core::YSort>(entity) {
+                            y.z_base = v;
+                        }
+                    }
+                },
+            },
         ],
     }
 }
 
-/// Sprite-sheet frame cropping (`renzora::core::SpriteSheet`): slice the bound
-/// texture into an hframes × vframes grid and show one cell. Added via the
-/// Add Component overlay; the `frame` field is the one users animate from the
-/// animation panel (it shows up in the Add Property picker via reflection).
+// Sprite-sheet frame cropping (`renzora::core::SpriteSheet`): slice the bound
+// texture into an hframes × vframes grid and show one cell. Merged into the
+// Sprite Image section above; the `frame` field is the one users animate from
+// the animation panel (it shows up in the Add Property picker via reflection).
 
 fn name_entry() -> InspectorEntry {
     InspectorEntry {

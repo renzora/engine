@@ -42,6 +42,7 @@ render_2d = ["renzora_engine/render_2d"]
 physics = [
     "dep:renzora_physics",
     "renzora_physics/avian",
+    "renzora_physics/avian2d",
     "renzora_engine/physics",
     "renzora_water?/physics",
     "renzora_navmesh?/physics",
