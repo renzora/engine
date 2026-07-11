@@ -826,11 +826,10 @@ pub struct MeshLod {
     #[reflect(default = "default_lod_distances")]
     pub distances: Vec<f32>,
     /// Width of the dithered crossfade between adjacent bands, in world
-    /// units. `0` (the default) switches levels abruptly — one atomic swap,
-    /// computed CPU-side, which can never mis-render. Non-zero enables Bevy's
-    /// screen-door dither blend; NOTE: on the deferred pipeline the dither
-    /// currently produces a visible flash when crossing a band (observed with
-    /// deferred + the editor AA stack), which is why abrupt is the default.
+    /// units. `0` switches levels abruptly — one atomic swap, computed
+    /// CPU-side. (A flash once blamed on this dither turned out to be the
+    /// texture tier streamer writing not-yet-loaded images into materials;
+    /// with those swaps load-gated, the crossfade default is back.)
     #[serde(default = "default_lod_crossfade")]
     #[reflect(default = "default_lod_crossfade")]
     pub crossfade: f32,
@@ -848,7 +847,7 @@ fn default_lod_distances() -> Vec<f32> {
     vec![40.0, 100.0, 220.0]
 }
 fn default_lod_crossfade() -> f32 {
-    0.0
+    5.0
 }
 
 impl Default for MeshLod {

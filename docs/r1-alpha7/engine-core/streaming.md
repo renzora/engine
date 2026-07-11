@@ -17,15 +17,15 @@ Editor scene opens and the initial boot load stay synchronous — they sit behin
 
 ## Mesh LODs
 
-Exports bake simplified variants beside every model: `models/chair_lod1.glb`, `_lod2`, … (each level halves the triangle ratio). The runtime now consumes them: when variants exist for a model — packed in the `.rpak`, or loose beside the `.glb` in your project — the engine spawns them as hidden siblings and tags every mesh with a `VisibilityRange` band, and Bevy switches detail levels by camera distance, per mesh.
+Exports bake simplified variants beside every model: `models/chair_lod1.glb`, `_lod2`, … (each level halves the triangle ratio). The runtime now consumes them: when variants exist for a model — packed in the `.rpak`, or loose beside the `.glb` in your project — the engine spawns them as hidden siblings and tags every mesh with a `VisibilityRange` band. Bevy then crossfades between detail levels by camera distance, per mesh, with dithering — no popping.
 
-Defaults: full detail to 40 m, LOD1 to 100 m, LOD2 to 220 m, abrupt switching, never culled. To tune a model, add the **Mesh LOD** component in the Inspector:
+Defaults: full detail to 40 m, LOD1 to 100 m, LOD2 to 220 m, 5 m crossfade, never culled. To tune a model, add the **Mesh LOD** component in the Inspector:
 
 | Field | Meaning |
 |---|---|
 | enabled (toggle) | Off = always render the base model at full detail |
 | LOD1/2/3 Distance | Outer edge of each detail band, in world units |
-| Crossfade | Width of the dithered blend between bands. `0` (default) = instant swap. Known issue: non-zero crossfade flashes on the deferred pipeline |
+| Crossfade | Width of the dithered blend between bands (`0` = instant swap) |
 | Cull Distance | Beyond this the model vanishes entirely (0 = never) |
 
 Notes:
