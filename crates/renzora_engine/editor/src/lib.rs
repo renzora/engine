@@ -122,9 +122,14 @@ fn on_save_current_scene(_trigger: On<renzora::SaveCurrentScene>, mut commands: 
 pub struct LastSelectionForView2dSwitch(pub Option<Entity>);
 
 /// When the selection changes to a 2D entity (Sprite, Camera2d or Node2d), flip
-/// the viewport to 2D view. When it changes to a non-2D entity *and* we're
-/// currently in 2D view, fall back to 3D. Other view transitions (3D ↔ UI) are
-/// left to the UI auto-switch system or the user.
+/// the viewport to 2D view. When it changes to an *affirmatively 3D* entity
+/// (mesh, 3D camera, light) while we're in 2D view, fall back to 3D. Ambiguous
+/// selections — a freshly dropped `SceneInstance` root, an empty group node, a
+/// still-loading UI canvas — carry no renderable markers either way and must
+/// leave the view alone: treating "not 2D" as "3D" used to yank a 2D project's
+/// viewport into 3D every time a scene or UI was dropped into the hierarchy.
+/// Other view transitions (3D ↔ UI) are left to the UI auto-switch system or
+/// the user.
 pub fn auto_switch_view_on_2d_selection(world: &mut World) {
     use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 
@@ -146,6 +151,11 @@ pub fn auto_switch_view_on_2d_selection(world: &mut World) {
     let is_2d = world.get::<bevy::sprite::Sprite>(entity).is_some()
         || world.get::<Camera2d>(entity).is_some()
         || world.get::<renzora::core::Node2d>(entity).is_some();
+    let is_3d = world.get::<Mesh3d>(entity).is_some()
+        || world.get::<Camera3d>(entity).is_some()
+        || world.get::<DirectionalLight>(entity).is_some()
+        || world.get::<PointLight>(entity).is_some()
+        || world.get::<SpotLight>(entity).is_some();
 
     let view = world
         .get_resource::<ViewportSettings>()
@@ -154,7 +164,7 @@ pub fn auto_switch_view_on_2d_selection(world: &mut World) {
     let target = match (is_2d, view) {
         (true, ViewportView::Two) => return,
         (true, _) => ViewportView::Two,
-        (false, ViewportView::Two) => ViewportView::Three,
+        (false, ViewportView::Two) if is_3d => ViewportView::Three,
         (false, _) => return,
     };
     if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {

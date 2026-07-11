@@ -566,9 +566,10 @@ pub fn register_game_ui_editor(app: &mut App) {
 
     // Editor's dedicated bevy_ui render target — what the UI
     // viewport mode displays for the *real* bevy_ui render
-    // (not an egui simulation). The 3D backdrop behind it is
-    // borrowed from `ViewportRenderTarget` (editor camera), so
-    // we don't spawn or maintain a second 3D preview camera.
+    // (not an egui simulation). The scene backdrop behind it is
+    // borrowed from `ViewportRenderTarget` (the slot-0 editor
+    // camera image — 3D, or 2D when UI view was entered from
+    // 2D), so we don't spawn or maintain a second preview camera.
     app.add_systems(Startup, canvas_render::setup_ui_canvas_render);
     app.add_systems(
         Update,
@@ -607,9 +608,13 @@ pub fn register_game_ui_editor(app: &mut App) {
 struct LastSelectionForViewSwitch(Option<Entity>);
 
 /// When the selection changes to a UI entity (`UiCanvas`/`UiWidget` or a
-/// descendant of one), flip the viewport into UI view. When it changes to
-/// a non-UI entity *and* we're currently in UI view, flip back to 3D.
-/// Other view transitions (3D ↔ 2D) are left to the user.
+/// descendant of one), flip the viewport into UI view. When it changes to an
+/// *affirmatively 3D* entity (3D camera, light) while we're in UI view, flip
+/// back to 3D. Ambiguous selections — a freshly dropped `SceneInstance` root,
+/// an empty group node — carry no markers either way and must leave the view
+/// alone (treating "not UI" as "3D" used to yank the viewport to 3D on
+/// hierarchy drops). 2D picks are left to the 2D auto-switch so the two
+/// systems can't fight over the same selection change.
 fn auto_switch_view_on_selection(world: &mut World) {
     use renzora::core::viewport_types::{ViewportSettings, ViewportView};
 
@@ -648,6 +653,13 @@ fn auto_switch_view_on_selection(world: &mut World) {
         }
     };
 
+    // `Mesh3d` picks already early-returned above (the hybrid guard), so the
+    // remaining affirmatively-3D markers are cameras and lights.
+    let is_3d = world.get::<bevy::prelude::Camera3d>(entity).is_some()
+        || world.get::<bevy::prelude::DirectionalLight>(entity).is_some()
+        || world.get::<bevy::prelude::PointLight>(entity).is_some()
+        || world.get::<bevy::prelude::SpotLight>(entity).is_some();
+
     let view = world
         .get_resource::<ViewportSettings>()
         .map(|s| s.viewport_view)
@@ -655,7 +667,7 @@ fn auto_switch_view_on_selection(world: &mut World) {
     let target = match (is_ui, view) {
         (true, ViewportView::Ui) => return,
         (true, _) => ViewportView::Ui,
-        (false, ViewportView::Ui) => ViewportView::Three,
+        (false, ViewportView::Ui) if is_3d => ViewportView::Three,
         (false, _) => return,
     };
     if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
