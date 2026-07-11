@@ -14,6 +14,7 @@
 use bevy::prelude::*;
 
 mod crash_overlay;
+mod streaming_panel;
 
 /// Editor-scope companion to `renzora_engine::RuntimePlugin`. Adds the editor
 /// camera lifecycle, the save-scene observer, the 2D selection auto-view-switch,
@@ -85,6 +86,23 @@ impl Plugin for EngineEditorPlugin {
             )
                 .run_if(in_state(renzora::SplashState::Editor)),
         );
+
+        // Streaming debug panel — snapshot refresh only while the panel is the
+        // active tab (hidden panel costs nothing), throttled to 4 Hz.
+        {
+            use renzora_ember::panel::RegisterPanelContent;
+            app.init_resource::<streaming_panel::StreamingDebugSnapshot>()
+                .register_panel_content("streaming_debug", true, streaming_panel::build)
+                .add_systems(
+                    Update,
+                    streaming_panel::update_streaming_debug_snapshot
+                        .run_if(in_state(renzora::SplashState::Editor))
+                        .run_if(renzora_ember::dock::panel_active("streaming_debug"))
+                        .run_if(bevy::time::common_conditions::on_timer(
+                            std::time::Duration::from_millis(250),
+                        )),
+                );
+        }
     }
 }
 

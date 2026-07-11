@@ -18,6 +18,11 @@ use crate::{RmipFormat, HEADER_LEN, MAGIC, VERSION};
 #[derive(Default, TypePath)]
 pub struct RmipAssetLoader;
 
+/// Largest base dimension of the `#low` streaming subasset. 256 keeps distant
+/// surfaces looking acceptable (they only ever sample small mips anyway) while
+/// cutting a 2048² BC7 from ~5.6 MB to ~87 KB of GPU memory.
+pub const LOW_RES_CAP: u32 = 256;
+
 #[derive(Debug, Error)]
 pub enum RmipLoadError {
     #[error("io: {0}")]
@@ -53,7 +58,7 @@ impl AssetLoader for RmipAssetLoader {
         &self,
         reader: &mut dyn Reader,
         _settings: &ImageLoaderSettings,
-        _load_context: &mut LoadContext<'_>,
+        load_context: &mut LoadContext<'_>,
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
@@ -103,6 +108,62 @@ impl AssetLoader for RmipAssetLoader {
             aligned_upload(rmip_format, width, height, mip_count);
 
         let pixels = bytes[HEADER_LEN..HEADER_LEN + used_bytes].to_vec();
+
+        // Texture-streaming low tier: a `#low` labeled subasset holding only
+        // the tail of the mip chain (base dimension capped at
+        // [`LOW_RES_CAP`]). The payload lays mips out largest→smallest, so the
+        // low tier is a contiguous byte slice — near-free to produce. The
+        // distance-driven streamer swaps material handles between the main
+        // asset and this subasset; when nothing holds the main handle any
+        // more, Bevy unloads the full-resolution texture entirely.
+        {
+            let mut skip = 0u32;
+            while skip + 1 < usable_mips
+                && (width >> skip).max(1).max((height >> skip).max(1)) > LOW_RES_CAP
+            {
+                skip += 1;
+            }
+            let offset: usize = (0..skip)
+                .map(|l| {
+                    rmip_format.level_byte_size((width >> l).max(1), (height >> l).max(1))
+                })
+                .sum();
+            let low_w = (width >> skip).max(1);
+            let low_h = (height >> skip).max(1);
+            // A mid-chain level's dims may not be block-aligned; as the *base*
+            // level of a new texture they must be. The stored block counts are
+            // identical (div_ceil), so only the descriptor changes — same
+            // reasoning as the legacy-file path above.
+            let (low_aw, low_ah, low_mips, low_bytes) =
+                aligned_upload(rmip_format, low_w, low_h, usable_mips - skip);
+            let low_pixels =
+                bytes[HEADER_LEN + offset..HEADER_LEN + offset + low_bytes].to_vec();
+            let low_image = Image {
+                data: Some(low_pixels),
+                data_order: TextureDataOrder::default(),
+                texture_descriptor: TextureDescriptor {
+                    label: None,
+                    size: Extent3d {
+                        width: low_aw,
+                        height: low_ah,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: low_mips,
+                    sample_count: 1,
+                    dimension: TextureDimension::D2,
+                    format,
+                    usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+                    view_formats: &[],
+                },
+                sampler: ImageSampler::Default,
+                texture_view_descriptor: None,
+                // Render-world only: nothing reads low-tier pixels on the CPU,
+                // so don't keep a main-world copy alive.
+                asset_usage: RenderAssetUsages::RENDER_WORLD,
+                copy_on_resize: false,
+            };
+            load_context.add_labeled_asset("low".to_string(), low_image);
+        }
 
         let image = Image {
             data: Some(pixels),

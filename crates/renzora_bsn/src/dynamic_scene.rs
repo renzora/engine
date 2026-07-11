@@ -52,6 +52,83 @@ impl DynamicScene {
             .build()
     }
 
+    /// Ensure every scene entity has a corresponding world entity in the map,
+    /// spawning empties for the unseen ones. Cheap even for large scenes (no
+    /// components are touched), so an incremental spawner can run it up front
+    /// in one frame — entity references in later component batches then always
+    /// remap to a live target regardless of spawn order.
+    pub fn allocate_entities(&self, world: &mut World, entity_map: &mut EntityHashMap<Entity>) {
+        for scene_entity in &self.entities {
+            entity_map
+                .entry(scene_entity.entity)
+                .or_insert_with(|| world.spawn_empty().id());
+        }
+    }
+
+    /// Apply the components of the single scene entity at `index` onto its
+    /// mapped world entity. [`allocate_entities`](Self::allocate_entities) must
+    /// have run first so every entity reference has a mapping. This is the unit
+    /// of work for incremental (streamed) scene spawning — callers spread the
+    /// per-entity reflection cost over multiple frames.
+    pub fn write_entity_to_world(
+        &self,
+        index: usize,
+        world: &mut World,
+        entity_map: &mut EntityHashMap<Entity>,
+        type_registry: &AppTypeRegistry,
+    ) -> Result<(), SceneSpawnError> {
+        let type_registry = type_registry.read();
+        let scene_entity = &self.entities[index];
+        let entity = *entity_map
+            .get(&scene_entity.entity)
+            .expect("allocate_entities should have spawned an empty entity");
+
+        for component in &scene_entity.components {
+            let type_info = component.get_represented_type_info().ok_or_else(|| {
+                SceneSpawnError::NoRepresentedType {
+                    type_path: component.reflect_type_path().to_string(),
+                }
+            })?;
+            let registration = type_registry.get(type_info.type_id()).ok_or_else(|| {
+                SceneSpawnError::UnregisteredButReflectedType {
+                    type_path: type_info.type_path().to_string(),
+                }
+            })?;
+            let reflect_component =
+                registration.data::<ReflectComponent>().ok_or_else(|| {
+                    SceneSpawnError::UnregisteredComponent {
+                        type_path: type_info.type_path().to_string(),
+                    }
+                })?;
+
+            {
+                let component_id = reflect_component.register_component(world);
+                // Registered immediately above, so the info exists.
+                let component_info = world
+                    .components()
+                    .get_info(component_id)
+                    .expect("component just registered");
+                if matches!(
+                    *component_info.clone_behavior(),
+                    ComponentCloneBehavior::Ignore
+                ) {
+                    continue;
+                }
+            }
+
+            SceneEntityMapper::world_scope(entity_map, world, |world, mapper| {
+                reflect_component.apply_or_insert_mapped(
+                    &mut world.entity_mut(entity),
+                    component.as_partial_reflect(),
+                    &type_registry,
+                    mapper,
+                    RelationshipHookMode::Skip,
+                );
+            });
+        }
+        Ok(())
+    }
+
     /// Write the resources, the dynamic entities, and their components into the
     /// given world, remapping entity references through `entity_map`.
     pub fn write_to_world_with(
@@ -60,64 +137,9 @@ impl DynamicScene {
         entity_map: &mut EntityHashMap<Entity>,
         type_registry: &AppTypeRegistry,
     ) -> Result<(), SceneSpawnError> {
-        let type_registry = type_registry.read();
-
-        // First ensure every scene entity has a corresponding world entity in
-        // the map (spawn empties for the unseen ones).
-        for scene_entity in &self.entities {
-            entity_map
-                .entry(scene_entity.entity)
-                .or_insert_with(|| world.spawn_empty().id());
-        }
-
-        for scene_entity in &self.entities {
-            let entity = *entity_map
-                .get(&scene_entity.entity)
-                .expect("should have previously spawned an empty entity");
-
-            for component in &scene_entity.components {
-                let type_info = component.get_represented_type_info().ok_or_else(|| {
-                    SceneSpawnError::NoRepresentedType {
-                        type_path: component.reflect_type_path().to_string(),
-                    }
-                })?;
-                let registration = type_registry.get(type_info.type_id()).ok_or_else(|| {
-                    SceneSpawnError::UnregisteredButReflectedType {
-                        type_path: type_info.type_path().to_string(),
-                    }
-                })?;
-                let reflect_component =
-                    registration.data::<ReflectComponent>().ok_or_else(|| {
-                        SceneSpawnError::UnregisteredComponent {
-                            type_path: type_info.type_path().to_string(),
-                        }
-                    })?;
-
-                {
-                    let component_id = reflect_component.register_component(world);
-                    // Registered immediately above, so the info exists.
-                    let component_info = world
-                        .components()
-                        .get_info(component_id)
-                        .expect("component just registered");
-                    if matches!(
-                        *component_info.clone_behavior(),
-                        ComponentCloneBehavior::Ignore
-                    ) {
-                        continue;
-                    }
-                }
-
-                SceneEntityMapper::world_scope(entity_map, world, |world, mapper| {
-                    reflect_component.apply_or_insert_mapped(
-                        &mut world.entity_mut(entity),
-                        component.as_partial_reflect(),
-                        &type_registry,
-                        mapper,
-                        RelationshipHookMode::Skip,
-                    );
-                });
-            }
+        self.allocate_entities(world, entity_map);
+        for index in 0..self.entities.len() {
+            self.write_entity_to_world(index, world, entity_map, type_registry)?;
         }
 
         // Resources are intentionally not written: the interim BSN format does

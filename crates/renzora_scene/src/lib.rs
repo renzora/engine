@@ -1296,6 +1296,88 @@ fn toast_skipped_scene_types(
 // Plugin
 // ============================================================================
 
+/// Inspector section for [`renzora::SceneInstance`] roots: shows the source
+/// scene (read-only — reference edits go through drag-drop / context menu, not
+/// free text) and the world-streaming controls. Streaming radii only matter
+/// when `Streamed` is on, but they stay visible either way — hiding fields on
+/// a toggle makes the section jump around while scrubbing.
+fn scene_instance_entry() -> renzora_editor_framework::InspectorEntry {
+    use renzora_editor_framework::{FieldDef, FieldType, FieldValue, InspectorEntry};
+    InspectorEntry {
+        type_id: "scene_instance",
+        display_name: "Scene Instance",
+        icon: "film-slate",
+        category: "component",
+        has_fn: |world, entity| world.get::<renzora::SceneInstance>(entity).is_some(),
+        add_fn: None,
+        remove_fn: None,
+        is_enabled_fn: None,
+        set_enabled_fn: None,
+        fields: vec![
+            FieldDef {
+                name: "Source",
+                field_type: FieldType::ReadOnly,
+                get_fn: |w, e| {
+                    w.get::<renzora::SceneInstance>(e)
+                        .map(|i| FieldValue::ReadOnly(i.source.clone()))
+                },
+                set_fn: |_, _, _| {},
+            },
+            FieldDef {
+                name: "Streamed",
+                field_type: FieldType::Bool,
+                get_fn: |w, e| {
+                    w.get::<renzora::SceneInstance>(e)
+                        .map(|i| FieldValue::Bool(i.streamed))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Bool(b) = v {
+                        if let Some(mut i) = w.get_mut::<renzora::SceneInstance>(e) {
+                            if i.streamed != b {
+                                i.streamed = b;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Load Radius",
+                field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 10000.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::SceneInstance>(e)
+                        .map(|i| FieldValue::Float(i.load_radius))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(r) = v {
+                        if let Some(mut i) = w.get_mut::<renzora::SceneInstance>(e) {
+                            if i.load_radius != r {
+                                i.load_radius = r;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Unload Radius",
+                field_type: FieldType::Float { speed: 1.0, min: 1.0, max: 10000.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::SceneInstance>(e)
+                        .map(|i| FieldValue::Float(i.unload_radius))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(r) = v {
+                        if let Some(mut i) = w.get_mut::<renzora::SceneInstance>(e) {
+                            if i.unload_radius != r {
+                                i.unload_radius = r;
+                            }
+                        }
+                    }
+                },
+            },
+        ],
+    }
+}
+
 #[derive(Default)]
 pub struct ScenePlugin;
 
@@ -1314,6 +1396,7 @@ impl Plugin for ScenePlugin {
             priority: 75,
             dynamic_icon_fn: None,
         });
+        app.register_inspector(scene_instance_entry());
         app.init_resource::<SceneTabBuffers>()
             .init_resource::<SceneLoadProgress>()
             .init_resource::<EditorLoadProgress>()

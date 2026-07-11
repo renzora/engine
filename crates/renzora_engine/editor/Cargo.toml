@@ -9,6 +9,9 @@ bevy = { workspace = true }
 renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
 renzora_engine = { path = ".." }
 renzora_ember = { path = "../../renzora_ember" }
+# The Streaming debug panel reports terrain chunk residency, which needs the
+# chunk marker types. Editor-scope crate — the lean runtime never links this.
+renzora_terrain = { path = "../../renzora_terrain" }
 # Clipboard for the crash-overlay "Copy to Clipboard" button. The editor bundle
 # is desktop-only, so an unconditional dep is fine (and avoids a cfg split
 # between the dep and the code that calls it).

@@ -1566,6 +1566,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("inspector", "Inspector", "sliders-horizontal", "Editing"),
     ("scenes", "Scenes", "film-slate", "Scene"),
     ("scene_diagnostics", "Scene Diagnostics", "first-aid", "Debug"),
+    ("streaming_debug", "Streaming", "broadcast", "Debug"),
     ("assets", "Assets", "folder-open", "Assets"),
     ("shape_library", "Shapes", "shapes", "Assets"),
     ("level_presets", "Level Presets", "globe", "Scene"),

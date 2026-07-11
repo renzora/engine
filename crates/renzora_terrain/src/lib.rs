@@ -10,6 +10,7 @@ pub mod painter;
 pub mod sculpt;
 pub mod splatmap_material;
 pub mod splatmap_systems;
+pub mod streaming;
 pub mod undo;
 
 use bevy::prelude::*;
@@ -41,7 +42,14 @@ impl Plugin for TerrainPlugin {
             .add_systems(
                 Update,
                 (
-                    (mesh::rehydrate_terrain_chunks, mesh::backfill_missing_chunks),
+                    // Residency decisions land before rehydrate so a chunk
+                    // streamed back in this frame rebuilds this frame.
+                    (
+                        streaming::stream_terrain_chunks,
+                        mesh::rehydrate_terrain_chunks,
+                        mesh::backfill_missing_chunks,
+                    )
+                        .chain(),
                     height_layers::ensure_composed_buffer_system,
                     paint::mark_new_surfaces_dirty_system,
                     paint::derive_splatmap_weights_system

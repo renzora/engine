@@ -188,6 +188,26 @@ pub struct TerrainData {
     pub chunk_resolution: u32,
     pub max_height: f32,
     pub min_height: f32,
+    /// When `true`, chunk *residency* streams by camera distance in a running
+    /// game (and editor play/simulate): chunks beyond `stream_radius` drop
+    /// their mesh + collider (the big memory — heightmap data stays on the
+    /// entity) and rebuild when the camera approaches. Editor edit mode keeps
+    /// every chunk resident for sculpting. `#[serde(default)]` /
+    /// `#[reflect(default)]` so terrains saved before these fields existed
+    /// still deserialize.
+    #[serde(default)]
+    #[reflect(default)]
+    pub stream_chunks: bool,
+    /// Camera distance (world units, measured to a chunk's center) within
+    /// which chunks are resident. Stream-*out* happens one `chunk_size`
+    /// farther (hysteresis), so a chunk on the boundary doesn't thrash.
+    #[serde(default = "default_stream_radius")]
+    #[reflect(default = "default_stream_radius")]
+    pub stream_radius: f32,
+}
+
+fn default_stream_radius() -> f32 {
+    256.0
 }
 
 impl Default for TerrainData {
@@ -203,6 +223,8 @@ impl Default for TerrainData {
             // editor grid plane.
             max_height: 40.0,
             min_height: -10.0,
+            stream_chunks: false,
+            stream_radius: default_stream_radius(),
         }
     }
 }
@@ -326,6 +348,15 @@ impl TerrainChunkData {
 /// Links a chunk entity back to its parent terrain entity.
 #[derive(Component)]
 pub struct TerrainChunkOf(pub Entity);
+
+/// Marker: this chunk is streamed out — its mesh and collider were dropped
+/// because the camera is beyond the terrain's `stream_radius`. Gates
+/// `rehydrate_terrain_chunks` (which would otherwise instantly rebuild any
+/// chunk `Without<Mesh3d>`); removing the marker *is* the stream-in signal.
+/// Deliberately not reflected: never saved, so every scene load starts fully
+/// resident and the streaming system re-evaluates from the current camera.
+#[derive(Component)]
+pub struct TerrainChunkStreamedOut;
 
 // ── Resources ───────────────────────────────────────────────────────────────
 
@@ -606,6 +637,7 @@ mod tests {
             chunk_resolution: 129,
             max_height: 40.0,
             min_height: -10.0,
+            ..TerrainData::default()
         };
         assert_eq!(t.total_width(), 192.0);
         assert_eq!(t.total_depth(), 128.0);
@@ -690,6 +722,7 @@ mod tests {
             base_heights: vec![0.4; 9],
             heights: Vec::new(),
             dirty: false,
+            mesh_stale: false,
         };
         chunk.ensure_composed_buffer();
         assert_eq!(chunk.heights, vec![0.4; 9]);

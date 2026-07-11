@@ -328,6 +328,44 @@ pub struct IsolatedCamera;
 pub struct SceneInstance {
     /// Asset-relative path to the source `.ron` scene file.
     pub source: String,
+    /// When `true`, the instance participates in world streaming: in a
+    /// running game (and editor play/simulate) its contents expand only while
+    /// the camera is within `load_radius` of the instance root, and collapse
+    /// again beyond `unload_radius`. In editor *edit* mode streamed instances
+    /// stay fully expanded so designers can see and edit them. All streaming
+    /// fields are `#[reflect(default)]`/`#[serde(default)]` so scenes saved
+    /// before they existed still deserialize.
+    #[serde(default)]
+    #[reflect(default)]
+    pub streamed: bool,
+    /// Camera distance (world units) at which a streamed instance loads.
+    #[serde(default = "default_instance_load_radius")]
+    #[reflect(default = "default_instance_load_radius")]
+    pub load_radius: f32,
+    /// Camera distance at which a streamed instance unloads. Kept above
+    /// `load_radius` at evaluation time (hysteresis) so an instance sitting
+    /// on the boundary doesn't thrash load/unload every frame.
+    #[serde(default = "default_instance_unload_radius")]
+    #[reflect(default = "default_instance_unload_radius")]
+    pub unload_radius: f32,
+}
+
+fn default_instance_load_radius() -> f32 {
+    150.0
+}
+fn default_instance_unload_radius() -> f32 {
+    200.0
+}
+
+impl Default for SceneInstance {
+    fn default() -> Self {
+        Self {
+            source: String::new(),
+            streamed: false,
+            load_radius: default_instance_load_radius(),
+            unload_radius: default_instance_unload_radius(),
+        }
+    }
 }
 
 /// Serializable marker for a scene camera entity.
@@ -761,5 +799,66 @@ impl AssetPathChanged {
 pub struct MeshInstanceData {
     /// Asset-relative path to the GLB/GLTF file (e.g. `models/chair.glb`).
     pub model_path: Option<String>,
+}
+
+/// Distance-LOD configuration for a [`MeshInstanceData`] model.
+///
+/// The exporter bakes simplified variants beside each model
+/// (`models/chair_lod1.glb`, `_lod2`, …). When variants exist for a model —
+/// packed in the rpak or loose on disk — the runtime spawns them as sibling
+/// subtrees and tags every mesh with a `VisibilityRange` band, so Bevy
+/// crossfades between detail levels by camera distance. This component tunes
+/// the bands; models without it use the defaults below. Every field is
+/// `#[reflect(default)]` so scenes saved before a field existed still load.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct MeshLod {
+    /// Master switch — `false` renders only the base model, full detail at any
+    /// distance, even when LOD files exist.
+    #[serde(default = "default_true")]
+    #[reflect(default = "default_true")]
+    pub enabled: bool,
+    /// Outer edge of each detail band in world units: the base mesh shows up
+    /// to `distances[0]`, LOD1 up to `distances[1]`, and so on. When more LOD
+    /// files exist than entries here, extra bands extend geometrically past
+    /// the last entry.
+    #[serde(default = "default_lod_distances")]
+    #[reflect(default = "default_lod_distances")]
+    pub distances: Vec<f32>,
+    /// Width of the dithered crossfade between adjacent bands, in world
+    /// units. `0` (the default) switches levels abruptly — one atomic swap,
+    /// computed CPU-side, which can never mis-render. Non-zero enables Bevy's
+    /// screen-door dither blend; NOTE: on the deferred pipeline the dither
+    /// currently produces a visible flash when crossing a band (observed with
+    /// deferred + the editor AA stack), which is why abrupt is the default.
+    #[serde(default = "default_lod_crossfade")]
+    #[reflect(default = "default_lod_crossfade")]
+    pub crossfade: f32,
+    /// Distance beyond which the model vanishes entirely. `0` = never cull —
+    /// the lowest LOD stays visible to the horizon.
+    #[serde(default)]
+    #[reflect(default)]
+    pub cull_distance: f32,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_lod_distances() -> Vec<f32> {
+    vec![40.0, 100.0, 220.0]
+}
+fn default_lod_crossfade() -> f32 {
+    0.0
+}
+
+impl Default for MeshLod {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            distances: default_lod_distances(),
+            crossfade: default_lod_crossfade(),
+            cull_distance: 0.0,
+        }
+    }
 }
 

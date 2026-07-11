@@ -112,7 +112,8 @@
             { "slug": "engine-core/components", "title": "Creating Components" },
             { "slug": "engine-core/systems", "title": "Writing Systems" },
             { "slug": "engine-core/resources", "title": "Resources & State" },
-            { "slug": "engine-core/asset-pipeline", "title": "Asset Pipeline" }
+            { "slug": "engine-core/asset-pipeline", "title": "Asset Pipeline" },
+            { "slug": "engine-core/streaming", "title": "Streaming" }
           ]
         },
         {

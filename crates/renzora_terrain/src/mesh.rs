@@ -365,7 +365,10 @@ pub fn rehydrate_terrain_chunks(
             Option<&ChildOf>,
             Option<&MaterialRef>,
         ),
-        Without<Mesh3d>,
+        // `TerrainChunkStreamedOut` chunks are meshless on purpose — the
+        // streaming system removed the marker's mesh and will hand the chunk
+        // back to this system by removing the marker (see `streaming.rs`).
+        (Without<Mesh3d>, Without<super::data::TerrainChunkStreamedOut>),
     >,
 ) {
     if chunk_query.is_empty() {

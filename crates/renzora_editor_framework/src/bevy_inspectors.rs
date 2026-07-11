@@ -394,6 +394,142 @@ pub fn register_bevy_inspectors(registry: &mut InspectorRegistry) {
     // section — there is no separate Sprite Sheet section. Same for Y Sort:
     // its toggle + fields live in the Sprite Image card.
     registry.register(sprite_image_entry());
+    registry.register(mesh_lod_entry());
+}
+
+/// Read the `i`-th LOD boundary, falling back to the same geometric extension
+/// the runtime band solver uses — the inspector must show the distance that
+/// will actually apply, not a blank.
+fn lod_distance(cfg: &renzora::MeshLod, i: usize) -> f32 {
+    if let Some(&d) = cfg.distances.get(i) {
+        return d;
+    }
+    let mut last = cfg.distances.last().copied().unwrap_or(40.0);
+    for _ in cfg.distances.len()..=i {
+        last *= 2.2;
+    }
+    last
+}
+
+/// Write the `i`-th LOD boundary, growing the vec through the same extension
+/// so intermediate levels keep their effective values instead of zeroing.
+fn set_lod_distance(cfg: &mut renzora::MeshLod, i: usize, value: f32) {
+    while cfg.distances.len() <= i {
+        let next = lod_distance(cfg, cfg.distances.len());
+        cfg.distances.push(next);
+    }
+    cfg.distances[i] = value.max(1.0);
+}
+
+/// Distance-LOD tuning for models ([`renzora::MeshLod`]). The runtime applies
+/// default bands to any model with baked `_lodN.glb` variants even without
+/// this component — adding it is only for overriding distances/culling, or
+/// for turning LODs off on one model. Three boundary fields cover the levels
+/// the exporter bakes (plus geometric extension beyond).
+fn mesh_lod_entry() -> InspectorEntry {
+    InspectorEntry {
+        type_id: "mesh_lod",
+        display_name: "Mesh LOD",
+        icon: "stack",
+        category: "rendering",
+        has_fn: |world, entity| world.get::<renzora::MeshLod>(entity).is_some(),
+        add_fn: Some(|world, entity| {
+            world
+                .entity_mut(entity)
+                .insert(renzora::MeshLod::default());
+        }),
+        remove_fn: Some(|world, entity| {
+            world.entity_mut(entity).remove::<renzora::MeshLod>();
+        }),
+        is_enabled_fn: Some(|world, entity| {
+            world
+                .get::<renzora::MeshLod>(entity)
+                .map(|l| l.enabled)
+                .unwrap_or(false)
+        }),
+        set_enabled_fn: Some(|world, entity, val| {
+            if let Some(mut l) = world.get_mut::<renzora::MeshLod>(entity) {
+                l.enabled = val;
+            }
+        }),
+        fields: vec![
+            FieldDef {
+                name: "LOD1 Distance",
+                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 10000.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::MeshLod>(e)
+                        .map(|l| FieldValue::Float(lod_distance(l, 0)))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(d) = v {
+                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                            set_lod_distance(&mut l, 0, d);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "LOD2 Distance",
+                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 10000.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::MeshLod>(e)
+                        .map(|l| FieldValue::Float(lod_distance(l, 1)))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(d) = v {
+                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                            set_lod_distance(&mut l, 1, d);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "LOD3 Distance",
+                field_type: FieldType::Float { speed: 0.5, min: 1.0, max: 10000.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::MeshLod>(e)
+                        .map(|l| FieldValue::Float(lod_distance(l, 2)))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(d) = v {
+                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                            set_lod_distance(&mut l, 2, d);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Crossfade",
+                field_type: FieldType::Float { speed: 0.1, min: 0.0, max: 100.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::MeshLod>(e)
+                        .map(|l| FieldValue::Float(l.crossfade))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(f) = v {
+                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                            l.crossfade = f.max(0.0);
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Cull Distance",
+                field_type: FieldType::Float { speed: 1.0, min: 0.0, max: 100000.0 },
+                get_fn: |w, e| {
+                    w.get::<renzora::MeshLod>(e)
+                        .map(|l| FieldValue::Float(l.cull_distance))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(d) = v {
+                        if let Some(mut l) = w.get_mut::<renzora::MeshLod>(e) {
+                            l.cull_distance = d.max(0.0);
+                        }
+                    }
+                },
+            },
+        ],
+    }
 }
 
 fn sprite_image_entry() -> InspectorEntry {

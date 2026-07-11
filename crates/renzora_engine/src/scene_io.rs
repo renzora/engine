@@ -906,7 +906,7 @@ fn scene_entity_parent(dyn_ent: &DynamicEntity) -> Option<Entity> {
 /// Cascades for free: a child of a pruned entity is pruned too, because its own
 /// chain still climbs to the same missing root. A well-formed scene has complete
 /// hierarchies, so nothing is dropped. Returns how many were pruned.
-fn prune_orphaned_entities(scene: &mut DynamicScene) -> usize {
+pub(crate) fn prune_orphaned_entities(scene: &mut DynamicScene) -> usize {
     use std::collections::{HashMap, HashSet};
     let ids: HashSet<Entity> = scene.entities.iter().map(|e| e.entity).collect();
     if ids.is_empty() {
@@ -971,7 +971,7 @@ fn scene_entity_is_canvas(dyn_ent: &DynamicEntity) -> bool {
 /// [`prune_orphaned_entities`] (which only catches nodes whose parent is missing)
 /// this also removes *connected* chrome trees that kept an intact root, so it
 /// self-heals scenes already polluted before the save-side guard existed.
-fn prune_leaked_ui(scene: &mut DynamicScene) -> usize {
+pub(crate) fn prune_leaked_ui(scene: &mut DynamicScene) -> usize {
     use std::collections::{HashMap, HashSet};
     let ids: HashSet<Entity> = scene.entities.iter().map(|e| e.entity).collect();
     if ids.is_empty() {
@@ -1267,10 +1267,20 @@ pub fn expand_scene_instances(world: &mut World) {
         .get_resource::<CurrentProject>()
         .map(|p| p.path.clone());
 
+    // While world streaming is in effect (shipped game / editor play), a
+    // `streamed` instance's expansion is owned by the distance driver
+    // (`scene_stream::drive_streamed_scene_instances`) — eagerly expanding it
+    // here would defeat the point of streaming. In editor edit mode streamed
+    // instances expand like ordinary ones so designers can author them.
+    let skip_streamed = renzora::world_streaming_active(world);
+
     let mut to_expand: Vec<(Entity, std::path::PathBuf)> = Vec::new();
     {
         let mut q = world.query::<(Entity, &renzora::SceneInstance)>();
         for (entity, inst) in q.iter(world) {
+            if skip_streamed && inst.streamed {
+                continue;
+            }
             // Skip entities that already have children (already expanded, or
             // user added children before save).
             if world
@@ -1501,7 +1511,10 @@ pub fn spawn_scene_instance(
 
     let mut e = world.spawn((
         Name::new(name),
-        renzora::SceneInstance { source: relative },
+        renzora::SceneInstance {
+            source: relative,
+            ..Default::default()
+        },
         transform,
         Visibility::default(),
     ));
@@ -2879,6 +2892,81 @@ mod tests {
     fn extract_type_returns_none_without_opening_backtick() {
         let msg = "no registration found for plainname";
         assert_eq!(extract_unregistered_type(msg), None);
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming-field backward compatibility
+    // ------------------------------------------------------------------
+
+    /// Scenes saved before `SceneInstance` grew its streaming fields carry
+    /// only `source:` — they MUST still deserialize (via `#[reflect(default)]`)
+    /// with streaming off, or every pre-existing nested-scene reference in
+    /// user projects silently drops its component on load.
+    #[test]
+    fn scene_instance_without_streaming_fields_gets_defaults() {
+        use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
+
+        let atr = bevy::ecs::reflect::AppTypeRegistry::default();
+        atr.write().register::<renzora::SceneInstance>();
+
+        // Serialize a current-format instance, then strip the streaming
+        // fields from the text — the exact shape of a scene saved before
+        // those fields existed.
+        let mut src = World::new();
+        src.insert_resource(atr.clone());
+        let e = src
+            .spawn(renzora::SceneInstance {
+                source: "scenes/a.bsn".into(),
+                ..Default::default()
+            })
+            .id();
+        let scene = DynamicSceneBuilder::from_world(&src)
+            .extract_entity(e)
+            .build();
+        let text = {
+            let reg = atr.read();
+            BsnSerializer.serialize(&scene, &reg).expect("serialize")
+        };
+        // Cut from the comma before `streamed` to the component's closing
+        // paren — format-agnostic (compact vs pretty RON both survive).
+        let start = text
+            .find(",streamed")
+            .or_else(|| text.find(", streamed"))
+            .expect("serialized SceneInstance should contain the streamed field");
+        let end = start
+            + text[start..]
+                .find(')')
+                .expect("component value should close with a paren");
+        let old_format = format!("{}{}", &text[..start], &text[end..]);
+        assert!(
+            !old_format.contains("streamed"),
+            "test setup failed to strip the new fields — serializer output \
+             changed shape?\n{text}"
+        );
+
+        let (scene, skipped) = {
+            let reg = atr.read();
+            BsnSerializer
+                .deserialize_lossy(&old_format, &reg)
+                .expect("old-format SceneInstance must deserialize")
+        };
+        assert!(
+            skipped.is_empty(),
+            "SceneInstance was skipped instead of defaulting: {skipped:?}"
+        );
+
+        let mut world = World::new();
+        world.insert_resource(atr.clone());
+        let mut map = bevy::ecs::entity::EntityHashMap::default();
+        scene.write_to_world(&mut world, &mut map).expect("write");
+        let entity = *map.values().next().expect("one entity");
+        let inst = world
+            .get::<renzora::SceneInstance>(entity)
+            .expect("SceneInstance present");
+        assert_eq!(inst.source, "scenes/a.bsn");
+        assert!(!inst.streamed, "missing `streamed` must default to false");
+        assert_eq!(inst.load_radius, 150.0);
+        assert_eq!(inst.unload_radius, 200.0);
     }
 
     // ------------------------------------------------------------------

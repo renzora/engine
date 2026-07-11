@@ -10,8 +10,13 @@ pub mod autoload;
 pub mod camera;
 pub mod crash;
 pub mod debug_log;
+#[cfg(feature = "render_3d")]
+pub mod mesh_lod;
 pub mod procedural_meshes;
 pub mod scene_io;
+pub mod scene_stream;
+#[cfg(feature = "render_3d")]
+pub mod texture_stream;
 pub mod vfs;
 
 pub use asset_progress::{AssetLoadProgress, LoadProgressState};
@@ -266,6 +271,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<MeshColor>()
             .register_type::<renzora::core::EditedMesh>()
             .register_type::<MeshInstanceData>()
+            .register_type::<renzora::MeshLod>()
             .register_type::<SceneCamera>()
             .register_type::<renzora::SceneInstance>()
             .register_type::<renzora::DefaultCamera>()
@@ -521,6 +527,52 @@ impl Plugin for RuntimePlugin {
                         scene_io::finish_mesh_instance_rehydrate,
                     )
                         .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+                );
+        }
+
+        // Distance LODs + texture tier streaming run in BOTH sessions — the
+        // editor registers its own mesh-instance rehydrate (renzora_scene),
+        // and these ride on its results, so they must NOT sit inside the
+        // `!is_editor` game-boot block above (they'd silently never exist in
+        // the editor — LOD probes wouldn't run and the texture settings
+        // resource would be missing, which the Streaming panel surfaces as
+        // "disabled").
+        #[cfg(feature = "render_3d")]
+        {
+            app.add_systems(
+                Update,
+                (
+                    // Distance LODs ride the mesh-instance rehydrate wave:
+                    // probe → spawn variants → tag meshes with VisibilityRange.
+                    mesh_lod::probe_mesh_lods,
+                    mesh_lod::finish_lod_spawn,
+                    mesh_lod::tag_new_lod_meshes,
+                    mesh_lod::reapply_lod_config,
+                )
+                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+            );
+            // Second tagger pass right before visibility is computed: glTF
+            // world-asset instantiation can land meshes after Update's pass,
+            // and an untagged LOD mesh renders fully visible for that frame —
+            // a one-frame double-draw flash on top of the other level. This
+            // instance's own change ticks see those late arrivals the same
+            // frame, so nothing reaches the renderer untagged.
+            app.add_systems(
+                PostUpdate,
+                mesh_lod::tag_new_lod_meshes
+                    .before(bevy::camera::visibility::VisibilitySystems::CheckVisibility)
+                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+            );
+            // Texture tier streaming: coarse timer — tier flips don't need
+            // frame-rate reactivity and each tick walks all material users.
+            app.init_resource::<texture_stream::TextureStreamingSettings>()
+                .add_systems(
+                    Update,
+                    texture_stream::stream_texture_tiers
+                        .run_if(not(resource_exists::<renzora::DedicatedServer>))
+                        .run_if(bevy::time::common_conditions::on_timer(
+                            std::time::Duration::from_millis(500),
+                        )),
                 );
         }
 
@@ -836,7 +888,20 @@ impl Plugin for RuntimePlugin {
         }
         app.init_resource::<renzora::EffectRouting>();
         app.init_resource::<renzora::PendingSceneLoad>();
-        app.add_systems(Update, process_pending_scene_loads);
+        app.init_resource::<scene_stream::SceneStreams>();
+        // The stream driver runs right after the request drain so a swap's
+        // parse task is polled the same frame it was queued; the instance
+        // driver decides load/unload before the driver polls, so a freshly
+        // requested expansion starts parsing the same frame.
+        app.add_systems(
+            Update,
+            (
+                process_pending_scene_loads,
+                scene_stream::drive_streamed_scene_instances,
+                scene_stream::drive_scene_streams,
+            )
+                .chain(),
+        );
 
         // In a game session, populate EffectRouting from scene cameras. The
         // editor wires effect routing through its own viewport cameras (the
@@ -936,6 +1001,10 @@ fn process_pending_scene_loads(world: &mut World) {
         format!("Loading scene '{}' → {}", scene_name, scene_path.display()),
     );
 
+    // 0. Cancel any half-streamed previous load — its pre-allocated empties
+    // have no Name yet, so the despawn pass below would miss them.
+    scene_stream::cancel_main_stream(world);
+
     // 1. Despawn all named non-editor entities (the current scene)
     let mut to_despawn = Vec::new();
     {
@@ -969,8 +1038,12 @@ fn process_pending_scene_loads(world: &mut World) {
         }
     }
 
-    // 2. Load the new scene
-    scene_io::load_scene(world, &scene_path);
+    // 2. Stream the new scene in — parse off-thread, spawn over frames — so a
+    // script's `load_scene()` doesn't hitch the running game for the whole
+    // deserialize+spawn cost. Editor/boot loads (behind loading screens that
+    // expect a fully-populated world on the next frame) keep the synchronous
+    // `scene_io::load_scene`.
+    scene_stream::start_scene_stream(world, &scene_path);
 }
 
 /// Whether any ancestor of `e` is marked [`HideInHierarchy`] (editor-internal —

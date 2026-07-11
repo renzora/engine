@@ -371,6 +371,41 @@ fn terrain_data_entry() -> InspectorEntry {
                     }
                 },
             },
+            FieldDef {
+                name: "Stream Chunks",
+                field_type: FieldType::Bool,
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Bool(t.stream_chunks))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Bool(b) = v {
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            if t.stream_chunks != b {
+                                t.stream_chunks = b;
+                            }
+                        }
+                    }
+                },
+            },
+            FieldDef {
+                name: "Stream Radius",
+                field_type: FieldType::Float { speed: 1.0, min: 32.0, max: 4096.0 },
+                get_fn: |w, e| {
+                    w.get::<TerrainData>(e)
+                        .map(|t| FieldValue::Float(t.stream_radius))
+                },
+                set_fn: |w, e, v| {
+                    if let FieldValue::Float(r) = v {
+                        let want = r.clamp(32.0, 4096.0);
+                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
+                            if t.stream_radius != want {
+                                t.stream_radius = want;
+                            }
+                        }
+                    }
+                },
+            },
         ],
     }
 }
