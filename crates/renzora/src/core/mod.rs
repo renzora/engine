@@ -1507,6 +1507,16 @@ mod tests {
             version: "0.2.1".into(),
             main_scene: "scenes/intro.ron".into(),
             editor_last_scene: Some("scenes/wip.ron".into()),
+            editor_open_tabs: vec![
+                EditorOpenTab {
+                    path: "scenes/wip.ron".into(),
+                    kind: "scene".into(),
+                },
+                EditorOpenTab {
+                    path: "materials/rock.material".into(),
+                    kind: "material".into(),
+                },
+            ],
             icon: Some("assets/icon.png".into()),
             ui_font: None,
             autoload: vec!["scenes/loader.ron".into()],
@@ -1537,6 +1547,7 @@ mod tests {
         let cfg = ProjectConfig::default();
         let serialized = toml::to_string_pretty(&cfg).expect("serialize");
         assert!(!serialized.contains("editor_last_scene"));
+        assert!(!serialized.contains("editor_open_tabs"));
         assert!(!serialized.contains("icon"));
         assert!(!serialized.contains("[network]"));
         assert!(!serialized.contains("[editor]"));

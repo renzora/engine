@@ -139,10 +139,13 @@ pub struct ProjectConfig {
     pub version: String,
     pub main_scene: String,            // e.g. "scenes/main.ron"
     pub editor_last_scene: Option<String>, // editor-only, ignored by exports
+    pub editor_open_tabs: Vec<EditorOpenTab>, // editor-only, ignored by exports
     pub autoload: Vec<String>,
     // window / viewport / rendering / network / editor sub-configs ...
 }
 ```
+
+`editor_open_tabs` records every document tab that was open when the project was last used (`{ path, kind }` entries, in display order, `kind` one of `scene`/`material`/`particle`/`blueprint`/`script`/`shader`/`other`). The editor rewrites it whenever a pathed tab is added, closed, or reordered and restores the whole tab set on project load; the *active* scene still comes from `editor_last_scene`, which also updates as you switch between scene tabs. Both fields are stripped from exported builds.
 
 `CurrentProject` provides `resolve_path("scenes/foo.ron")`, `main_scene_path()`, `make_relative(..)`, and `save_config()` (writes `project.toml` back).
 

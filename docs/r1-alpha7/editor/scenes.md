@@ -122,6 +122,12 @@ main_scene = "scenes/main.ron"
 autoload = ["scenes/loader.ron"]
 ```
 
+### Your tabs come back
+
+The document tabs across the top of the editor — scenes, plus any materials, scripts, shaders, particles, or blueprints you've opened — are remembered **per project**. Close the editor (or switch projects) and reopen, and the same tabs are restored in the same order, with the scene you were last looking at active. Only saved documents are remembered; a brand-new unsaved tab has no file to reopen, so it isn't restored. Restored scene tabs load lazily — clicking one loads its scene from disk the first time.
+
+This is stored in `project.toml` (`editor_last_scene` and `editor_open_tabs`), so it travels with the project, and it's stripped from exported games.
+
 > Good to know: only objects with a name are saved, and the editor leaves out runtime-only data (like rebuilt physics colliders and render handles) because the engine recreates it automatically when the scene loads. For the full technical breakdown, see [Project Structure](/docs/r1-alpha5/setup/project-structure) and [Components](/docs/r1-alpha5/engine-core/components).
 
 ## Reusing scenes inside scenes

@@ -66,6 +66,38 @@ impl DocTabKind {
         }
     }
 
+    /// Stable name used when persisting this kind into `project.toml`
+    /// (`editor_open_tabs`). Paired with [`Self::from_persist_name`] — keep
+    /// the two in sync when adding a kind.
+    pub fn persist_name(self) -> &'static str {
+        match self {
+            DocTabKind::Scene => "scene",
+            DocTabKind::Material => "material",
+            DocTabKind::Particle => "particle",
+            DocTabKind::Blueprint => "blueprint",
+            DocTabKind::Script => "script",
+            DocTabKind::Shader => "shader",
+            DocTabKind::Other => "other",
+        }
+    }
+
+    /// Inverse of [`Self::persist_name`]. Unknown names (a config written by
+    /// a newer editor with extra kinds, or hand-edited) fall back to `Other`,
+    /// which behaves as a plain scene-mode tab instead of guessing an asset
+    /// editor that may not fit the file.
+    pub fn from_persist_name(name: &str) -> Self {
+        match name {
+            // Empty covers configs where the `kind` key was omitted by hand.
+            "scene" | "" => DocTabKind::Scene,
+            "material" => DocTabKind::Material,
+            "particle" => DocTabKind::Particle,
+            "blueprint" => DocTabKind::Blueprint,
+            "script" => DocTabKind::Script,
+            "shader" => DocTabKind::Shader,
+            _ => DocTabKind::Other,
+        }
+    }
+
     /// Phosphor icon *name* (kebab-case) for this tab kind. A name-based
     /// renderer (e.g. `renzora_ember::font::icon_glyph`) resolves it to a glyph.
     pub fn icon(self) -> &'static str {

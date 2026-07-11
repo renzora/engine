@@ -897,6 +897,22 @@ impl ResolvedRenderingMode {
     }
 }
 
+/// One entry in [`ProjectConfig::editor_open_tabs`] — a document tab the
+/// editor had open when the project was last used. Lives in the contract
+/// crate only as a serialization record; the editor UI crate owns the
+/// `DocTabKind` enum and converts to/from the `kind` name.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct EditorOpenTab {
+    /// Project-relative path of the open document (e.g. `"scenes/main.bsn"`).
+    pub path: String,
+    /// Persisted tab-kind name (`"scene"`, `"material"`, `"particle"`,
+    /// `"blueprint"`, `"script"`, `"shader"`, `"other"`). Kept as a string so
+    /// a config written by a newer editor with extra kinds still parses here;
+    /// unknown names degrade to a plain tab instead of failing the load.
+    #[serde(default)]
+    pub kind: String,
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
@@ -909,6 +925,13 @@ pub struct ProjectConfig {
     /// editor-only and ignored by the runtime).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor_last_scene: Option<String>,
+    /// Every document tab the editor had open when the project was last used
+    /// (in display order). Restored on project load so open materials/scripts/
+    /// scenes survive a reload; the *active* scene still comes from
+    /// `editor_last_scene`. Editor-only — the runtime ignores it and export
+    /// strips it from shipped builds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub editor_open_tabs: Vec<EditorOpenTab>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     /// Scenes that load before `main_scene` and persist across every
@@ -959,6 +982,7 @@ impl Default for ProjectConfig {
             version: "0.1.0".to_string(),
             main_scene: "scenes/main.bsn".to_string(),
             editor_last_scene: None,
+            editor_open_tabs: Vec::new(),
             icon: None,
             autoload: Vec::new(),
             window: WindowConfig::default(),

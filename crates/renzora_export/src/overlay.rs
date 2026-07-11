@@ -845,6 +845,7 @@ fn export_worker(
     // Editor-only fields shouldn't ship in exported builds.
     export_config.editor = None;
     export_config.editor_last_scene = None;
+    export_config.editor_open_tabs = Vec::new();
 
     // If the user picked an icon, copy it into the rpak under `assets/icon.png`
     // and point project.toml at it. The runtime resolves icons through Vfs.

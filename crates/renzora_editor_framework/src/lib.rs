@@ -380,6 +380,15 @@ impl Plugin for RenzoraEditorPlugin {
             (mark_layout_dirty, flush_layout_save).run_if(in_state(SplashState::Editor)),
         );
 
+        // Mirror the open document tabs into project.toml so a project reload
+        // can restore them. Gated on the Editor state so the default seeded
+        // tab (pre-restore, during Splash/Loading) can never clobber the
+        // saved list before `load_scene_on_enter_loading` has read it.
+        app.add_systems(
+            Update,
+            persist_open_tabs.run_if(in_state(SplashState::Editor)),
+        );
+
         // Register inspector entries and icons for core Bevy components
         bevy_inspectors::register_bevy_inspectors(
             &mut app.world_mut().resource_mut::<InspectorRegistry>(),
@@ -808,6 +817,43 @@ fn wire_theme_project_path(
 ) {
     if let Some(project) = project {
         theme_manager.set_project_path(&project.path);
+    }
+}
+
+/// Write the open document tabs into `project.toml` (`editor_open_tabs`)
+/// whenever the tab set changes, so a project reload can restore them.
+/// Unsaved tabs (no path yet) have nothing to reopen and are skipped.
+///
+/// Change detection fires on *any* `DocumentTabState` mutation (activation,
+/// modified-flag churn, MRU touches), so the derived list is compared against
+/// what's already in the config first — the disk write only happens when a
+/// pathed tab is actually added, closed, retargeted, or reordered.
+fn persist_open_tabs(
+    tabs: Res<DocumentTabState>,
+    project: Option<ResMut<renzora::CurrentProject>>,
+) {
+    if !tabs.is_changed() {
+        return;
+    }
+    let Some(mut project) = project else {
+        return;
+    };
+    let open: Vec<renzora::core::EditorOpenTab> = tabs
+        .tabs
+        .iter()
+        .filter_map(|t| {
+            t.scene_path.as_ref().map(|p| renzora::core::EditorOpenTab {
+                path: p.clone(),
+                kind: t.kind.persist_name().to_string(),
+            })
+        })
+        .collect();
+    if project.config.editor_open_tabs == open {
+        return;
+    }
+    project.config.editor_open_tabs = open;
+    if let Err(e) = project.save_config() {
+        warn!("[tabs] failed to persist open tabs to project.toml: {e}");
     }
 }
 

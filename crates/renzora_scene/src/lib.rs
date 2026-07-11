@@ -189,6 +189,27 @@ fn teardown_for_project_switch(world: &mut World) {
     }
 }
 
+/// Record the scene tab `id` points at as `editor_last_scene` in
+/// project.toml, so a project reload activates the scene the user was
+/// actually looking at — not just the last one opened or saved. Writes only
+/// when the value changed; no-op for pathless (unsaved) tabs.
+fn remember_last_scene(world: &mut World, id: u64) {
+    let rel = world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.tabs.iter().find(|t| t.id == id))
+        .filter(|t| t.kind == DocTabKind::Scene)
+        .and_then(|t| t.scene_path.clone());
+    let Some(rel) = rel else {
+        return;
+    };
+    if let Some(mut project) = world.get_resource_mut::<CurrentProject>() {
+        if project.config.editor_last_scene.as_deref() != Some(rel.as_str()) {
+            project.config.editor_last_scene = Some(rel);
+            let _ = project.save_config();
+        }
+    }
+}
+
 /// The document-tab kind for a tab id, if the tab still exists.
 fn tab_kind(world: &World, id: u64) -> Option<DocTabKind> {
     world
@@ -228,6 +249,7 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
     // Switching to a scene tab that's already live (e.g. coming back from a
     // material tab) — the scene was never despawned, so there's nothing to do.
     if *live_scene == Some(new_id) {
+        remember_last_scene(world, new_id);
         return;
     }
 
@@ -296,7 +318,8 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
             orbit.pitch = snap.camera_pitch;
         }
     } else {
-        // New empty tab — reset camera to default
+        // Reset the camera either way; a disk load below re-extracts it from
+        // the scene's saved editor camera.
         if let Some(mut orbit) = world.get_resource_mut::<OrbitCameraState>() {
             let def = OrbitCameraState::default();
             orbit.focus = def.focus;
@@ -304,9 +327,26 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
             orbit.yaw = def.yaw;
             orbit.pitch = def.pitch;
         }
+        // No buffer but the tab has a path: a tab restored on project load
+        // (`editor_open_tabs`) whose scene hasn't been visited yet — load it
+        // from disk. A pathless tab is a genuinely new "+" tab: stays empty.
+        let disk_path = world
+            .get_resource::<DocumentTabState>()
+            .and_then(|ts| ts.tabs.iter().find(|t| t.id == new_id))
+            .and_then(|t| t.scene_path.clone())
+            .and_then(|rel| {
+                world
+                    .get_resource::<CurrentProject>()
+                    .map(|p| p.resolve_path(&rel))
+            });
+        if let Some(path) = disk_path {
+            scene_io::load_scene(world, &path);
+            extract_orbit_from_scene_camera(world);
+        }
     }
 
     *live_scene = Some(new_id);
+    remember_last_scene(world, new_id);
 
     renzora::core::console_log::console_info(
         "Scene",
@@ -598,50 +638,13 @@ fn open_scene_system(world: &mut World) {
 
         let Some(file_path) = file else { return };
 
-        // Pin every asset the current scene's entities reference before
-        // they despawn so the next File→Open of the same scene (or any
-        // scene that shares materials) doesn't re-decode textures from
-        // disk and doesn't lose them to GC. See `tab_asset_cache` doc.
-        let active_id = world
-            .get_resource::<renzora_ui::DocumentTabState>()
-            .and_then(|ts| ts.active_tab_id());
-        if let Some(id) = active_id {
-            tab_asset_cache::pin_live_tab_handles(world, id);
-        }
-
-        // Despawn current scene entities
-        despawn_scene_entities(world);
-
-        // Load the new scene
-        scene_io::load_scene(world, &file_path);
-        extract_orbit_from_scene_camera(world);
-
-        // Update main_scene to point to the opened file
-        let relative = {
-            let mut project = world.resource_mut::<CurrentProject>();
-            let rel = project.make_relative(&file_path);
-            if let Some(ref r) = rel {
-                project.config.main_scene = r.clone();
-                if let Err(e) = project.save_config() {
-                    warn!("Failed to save project.toml: {}", e);
-                }
-            }
-            rel
-        };
-
-        // Update active tab
-        if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
-            let active = tabs.active_tab;
-            if let Some(tab) = tabs.tabs.get_mut(active) {
-                tab.is_modified = false;
-                if let Some(ref rel) = relative {
-                    tab.scene_path = Some(rel.clone());
-                }
-                if let Some(name) = file_path.file_stem() {
-                    tab.name = name.to_string_lossy().to_string();
-                }
-            }
-        }
+        // Same path as the asset browser's "Open Scene": buffer the current
+        // tab's scene, then open (or re-activate) the picked scene in its own
+        // document tab and record it as `editor_last_scene`. The old in-place
+        // behaviour silently discarded the active tab's scene and rewrote
+        // `main_scene` — the *game's* boot scene — as a side effect of an
+        // editor navigation.
+        panel::open_scene(world, &file_path);
 
         renzora::core::console_log::console_success(
             "Scene",
@@ -810,12 +813,36 @@ fn load_scene_on_enter_loading(world: &mut World) {
         (rel, name)
     });
 
+    // Rebuild the document tab set from the project's persisted tab list
+    // (`editor_open_tabs`), discarding whatever the resource held before —
+    // the freshly seeded "Untitled Scene" tab on first open, or a previous
+    // project's tabs when reopening from inside the editor. The loaded
+    // scene's tab is guaranteed to exist and becomes the active tab; other
+    // scene tabs stay unloaded until clicked (see `handle_tab_switch`).
     if let Some((scene_path, scene_name)) = scene_info {
-        if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
-            if let Some(tab) = tabs.tabs.get_mut(0) {
-                tab.name = scene_name;
-                tab.scene_path = Some(scene_path);
+        let open_tabs = world
+            .get_resource::<CurrentProject>()
+            .map(|p| p.config.editor_open_tabs.clone())
+            .unwrap_or_default();
+        if let Some(mut tabs) = world.get_resource_mut::<DocumentTabState>() {
+            tabs.tabs.clear();
+            for entry in &open_tabs {
+                let kind = DocTabKind::from_persist_name(&entry.kind);
+                // Hand-edited configs may hold duplicates; the tab bar can't.
+                if tabs.find_by_path(&entry.path, kind).is_some() {
+                    continue;
+                }
+                let name = std::path::Path::new(&entry.path)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| entry.path.clone());
+                tabs.add_tab_of_kind(name, Some(entry.path.clone()), kind);
             }
+            let active = tabs
+                .find_by_path(&scene_path, DocTabKind::Scene)
+                .unwrap_or_else(|| tabs.add_tab(scene_name, Some(scene_path)));
+            tabs.active_tab = active;
+            tabs.touch_scene_mru(active);
         }
     }
 
