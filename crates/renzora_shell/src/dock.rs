@@ -453,19 +453,27 @@ pub fn scene_layout() -> DockTree {
 }
 
 /// Hub workspace: the community home. A left friends column | the main content
-/// tabs (marketplace, feed, messages, docs) | a right column with the asset
-/// library over the wallet. Notifications live in the top-bar bell dropdown,
-/// teams in the Friends panel's Teams tab, and profiles in a shared overlay, so
-/// none of them are panels here anymore; the forum was replaced by the feed.
+/// tabs (feed, messages, docs, marketplace, become a creator, publish) | a right
+/// column with the wallet over the asset library. Notifications live in the
+/// top-bar bell dropdown, teams in the Friends panel's Teams tab, and profiles in
+/// a shared overlay, so none of them are panels here anymore; the forum was
+/// replaced by the feed.
 fn layout_hub() -> DockTree {
     DockTree::horizontal(
         // Left: friends.
         DockTree::leaf("social_friends"),
         DockTree::horizontal(
-            // Center: the big content surfaces, now including messages.
-            DockTree::tabs(&["hub_store", "social_feed", "social_chat", "social_learn"]),
-            // Right: asset library over the wallet.
-            DockTree::tabs(&["hub_library", "social_wallet"]),
+            // Center: the big content surfaces, in reading order.
+            DockTree::tabs(&[
+                "social_feed",
+                "social_chat",
+                "social_learn",
+                "hub_store",
+                "social_onboarding",
+                "asset_uploader",
+            ]),
+            // Right: wallet over the asset library.
+            DockTree::tabs(&["social_wallet", "hub_library"]),
             0.62,
         ),
         0.18,

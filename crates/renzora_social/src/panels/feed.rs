@@ -120,6 +120,9 @@ pub(crate) struct FeedPanel {
     /// Comments for the currently expanded post.
     pub comments: HashMap<String, Vec<FeedComment>>,
     pub expanded: Option<String>,
+    /// Posts whose long body is expanded via "See more" (id set). Body clamping
+    /// is client-side, so this state — not anything from the API — decides it.
+    pub body_expanded: HashSet<String>,
     /// Uploaded image URLs waiting to be attached to the next post.
     pub pending_media: Vec<String>,
     /// Two-step delete: the post id whose trash chip was clicked once, plus
@@ -154,6 +157,7 @@ impl Default for FeedPanel {
             audience_loading: false,
             comments: HashMap::new(),
             expanded: None,
+            body_expanded: HashSet::new(),
             pending_media: Vec::new(),
             pending_delete: None,
             visibility: 0,
@@ -178,7 +182,9 @@ impl FeedPanel {
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<FeedPanel>();
     app.register_shell_panel(PANEL_ID, "Feed", "newspaper", "Community");
-    app.register_panel_content(PANEL_ID, true, build);
+    // scroll: false — the panel scrolls its columns itself so the channels rail
+    // stays fixed while only the center stream scrolls (like the marketplace).
+    app.register_panel_content(PANEL_ID, false, build);
     app.add_systems(
         Update,
         (
@@ -187,6 +193,7 @@ pub(crate) fn register(app: &mut App) {
             auto_follow_new_posts.run_if(panel_active(PANEL_ID)),
             composer_clicks,
             clicks,
+            see_more_clicks,
             filter_clicks,
             channel_clicks,
             consume_request,
@@ -474,6 +481,9 @@ struct PlayPauseBtn;
 struct LikeBtn(String);
 #[derive(Component)]
 struct CommentsBtn(String);
+/// "See more"/"See less" toggle on a long post body.
+#[derive(Component)]
+struct SeeMoreBtn(String);
 #[derive(Component)]
 struct CommentInput;
 #[derive(Component)]
@@ -760,6 +770,25 @@ fn clicks(
     }
 }
 
+/// "See more"/"See less" on a long post body: toggle that post's body
+/// expansion. Its own system because `clicks` is already at Bevy's 16-param
+/// tuple cap. Mirrors the bump into the profile, which renders the same cards.
+fn see_more_clicks(
+    mut panel: ResMut<FeedPanel>,
+    mut profile: ResMut<crate::panels::profile::ProfilePanel>,
+    toggles: Query<(&Interaction, &SeeMoreBtn), Changed<Interaction>>,
+) {
+    for (i, b) in &toggles {
+        if *i == Interaction::Pressed {
+            if !panel.body_expanded.remove(&b.0) {
+                panel.body_expanded.insert(b.0.clone());
+            }
+            panel.bump();
+            profile.bump();
+        }
+    }
+}
+
 /// Filter-bar interactions + opening stream items that live in other panels.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn filter_clicks(
@@ -863,6 +892,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let root = commands
         .spawn(Node {
             width: Val::Percent(100.0),
+            // Fill the panel so the inner columns can scroll independently.
+            flex_grow: 1.0,
+            min_height: Val::Px(0.0),
             flex_direction: FlexDirection::Column,
             row_gap: Val::Px(6.0),
             padding: UiRect::all(Val::Px(8.0)),
@@ -881,7 +913,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_display(commands, signed_out, |w| !util::signed_in(w));
 
     let body = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
         .id();
     bind_display(commands, body, util::signed_in);
 
@@ -890,6 +922,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let head = commands
         .spawn(Node {
             width: Val::Percent(100.0),
+            flex_shrink: 0.0,
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
             column_gap: Val::Px(8.0),
@@ -1107,14 +1140,21 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             .unwrap_or(false)
     });
 
-    // ── Two columns: channels rail (left) + the stream (right). ──
+    // ── Two columns: fixed channels rail (left) + the scrolling stream (right). ──
     let rail = build_channels_rail(commands, fonts);
-    let right = commands
-        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
+    // The center's natural-height content (composer → filters → posts), wrapped in
+    // its own scroll view so only this column scrolls — the rail stays put.
+    let center_content = commands
+        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
         .id();
-    commands.entity(right).add_children(&[composer, filter_bar, pill, error, list, more]);
+    commands.entity(center_content).add_children(&[composer, filter_bar, pill, error, list, more]);
+    let center_scroll = renzora_ember::widgets::scroll_view(commands, center_content);
+    let right = commands
+        .spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, ..default() })
+        .id();
+    commands.entity(right).add_child(center_scroll);
     let cols = commands
-        .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::FlexStart, column_gap: Val::Px(10.0), ..default() })
+        .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Stretch, column_gap: Val::Px(8.0), ..default() })
         .id();
     commands.entity(cols).add_children(&[rail, right]);
 
@@ -1126,11 +1166,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// The left rail: a "Channels" header, the channel list (All + each channel),
 /// and a "suggest a channel" toggle + input.
 fn build_channels_rail(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    // Narrower than before (was 150) so the center stream gets more width.
     let rail = commands
-        .spawn(Node { width: Val::Px(150.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
+        .spawn(Node { width: Val::Px(132.0), flex_shrink: 0.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
         .id();
     let header = commands
-        .spawn((Text::new("CHANNELS"), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted())), Node { margin: UiRect::bottom(Val::Px(2.0)), ..default() }))
+        .spawn((Text::new("CHANNELS"), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_muted())), Node { flex_shrink: 0.0, margin: UiRect::bottom(Val::Px(2.0)), ..default() }))
         .id();
     let list = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() })
@@ -1141,11 +1182,14 @@ fn build_channels_rail(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         |w| w.get_resource::<FeedPanel>().map(|p| p.version).unwrap_or(0),
         channels_snapshot,
     );
+    // The channel list scrolls within the rail if it's long; the rail itself
+    // (and the panel around it) stays fixed.
+    let list_scroll = renzora_ember::widgets::scroll_view(commands, list);
 
     // Suggest a channel: a toggle that reveals an inline name input + submit.
     let suggest_btn = commands
         .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(6.0)), margin: UiRect::top(Val::Px(4.0)), ..default() },
+            Node { width: Val::Percent(100.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(5.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(6.0)), margin: UiRect::top(Val::Px(4.0)), ..default() },
             BackgroundColor(Color::NONE),
             Interaction::default(),
             SuggestBtn,
@@ -1161,7 +1205,7 @@ fn build_channels_rail(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(suggest_btn).add_children(&[plus, plus_t]);
 
     let suggest_row = commands
-        .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), display: Display::None, ..default() },))
+        .spawn((Node { width: Val::Percent(100.0), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), display: Display::None, ..default() },))
         .id();
     bind_display(commands, suggest_row, |w| w.get_resource::<FeedPanel>().map(|p| p.suggesting).unwrap_or(false));
     let sinput = text_input(commands, &fonts.ui, "Channel name…", "");
@@ -1171,7 +1215,7 @@ fn build_channels_rail(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(suggest_row).insert(EmberForm { submit: ssend });
     commands.entity(suggest_row).add_children(&[sinput, ssend]);
 
-    commands.entity(rail).add_children(&[header, list, suggest_btn, suggest_row]);
+    commands.entity(rail).add_children(&[header, list_scroll, suggest_btn, suggest_row]);
     rail
 }
 
@@ -1194,34 +1238,82 @@ fn channels_snapshot(w: &World) -> KeyedSnapshot {
     }
     KeyedSnapshot {
         items,
-        build: Box::new(move |commands, fonts, i| channel_row(commands, fonts, &rows[i], &active)),
+        build: Box::new(move |commands, fonts, i| channel_row(commands, fonts, i, &rows[i])),
     }
 }
 
-fn channel_row(commands: &mut Commands, fonts: &EmberFonts, row: &Option<(String, String, String)>, active: &Option<String>) -> Entity {
+fn channel_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, row: &Option<(String, String, String)>) -> Entity {
     let (slug, label, icon) = match row {
         None => (None, "All".to_string(), "list-bullets".to_string()),
         Some((s, n, ic)) => (Some(s.clone()), n.clone(), clean_channel_icon(ic)),
     };
-    let is_active = *active == slug;
-    let base = if is_active { rgb(accent()).with_alpha(0.28) } else { Color::NONE };
+    // Fixed-height rows (like the marketplace category rail) so the list reads as
+    // an even, uniform table rather than padded pills of varying height.
     let row_e = commands
         .spawn((
-            Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(6.0)), ..default() },
-            BackgroundColor(base),
+            Node { width: Val::Percent(100.0), height: Val::Px(26.0), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(6.0), padding: UiRect::horizontal(Val::Px(8.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() },
+            BackgroundColor(Color::NONE),
             Interaction::default(),
-            renzora_ember::widgets::HoverTint::solid(base, rgb(hover_bg()), rgb(hover_bg())),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            ChannelBtn(slug),
+            ChannelBtn(slug.clone()),
         ))
         .id();
-    let ic = icon_text(commands, &fonts.phosphor, &icon, if is_active { accent() } else { text_muted() }, 12.0);
+    // Live background: active → accent tint, hovered → hover, else odd/even zebra
+    // by row index — mirrors the marketplace category rail. Reading the resource
+    // each frame keeps active/hover live without a rebuild.
+    {
+        let slug = slug.clone();
+        renzora_ember::reactive::bind_bg(commands, row_e, move |w| {
+            let is_active = w
+                .get_resource::<FeedPanel>()
+                .map(|p| p.active_channel == slug)
+                .unwrap_or(false);
+            if is_active {
+                rgb(accent()).with_alpha(0.28)
+            } else if matches!(w.get::<Interaction>(row_e), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
+                rgb(hover_bg())
+            } else if idx.is_multiple_of(2) {
+                rgb(row_even())
+            } else {
+                rgb(row_odd())
+            }
+        });
+    }
+    // Colored icon + light label, like the marketplace category rail: the icon
+    // carries a per-channel hue (accent for "All"), and the text stays light
+    // (primary) regardless of selection rather than dimming when inactive.
+    let icon_col = match &slug {
+        None => accent(),
+        Some(s) => channel_hue(s),
+    };
+    let ic = icon_text(commands, &fonts.phosphor, &icon, icon_col, 12.0);
     commands.entity(ic).insert(FocusPolicy::Pass);
     let t = commands
-        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(if is_active { text_primary() } else { text_muted() })), FocusPolicy::Pass, bevy::text::TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..default() }))
+        .spawn((Text::new(label), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_primary())), FocusPolicy::Pass, bevy::text::TextLayout::no_wrap(), Node { overflow: Overflow::clip(), ..default() }))
         .id();
     commands.entity(row_e).add_children(&[ic, t]);
     row_e
+}
+
+/// A stable, pleasant hue for a channel's icon — picked from a fixed palette by
+/// hashing the slug, so each channel keeps the same color. Mirrors the
+/// marketplace's colored category icons.
+fn channel_hue(slug: &str) -> (u8, u8, u8) {
+    const PALETTE: [(u8, u8, u8); 12] = [
+        (91, 156, 245),  // blue
+        (240, 140, 90),  // orange
+        (80, 200, 190),  // teal
+        (232, 182, 82),  // amber
+        (240, 120, 160), // pink
+        (120, 205, 120), // green
+        (167, 130, 245), // violet
+        (205, 130, 240), // magenta
+        (100, 185, 250), // sky
+        (130, 205, 165), // mint
+        (150, 160, 250), // periwinkle
+        (240, 165, 90),  // tangerine
+    ];
+    PALETTE[(hash64(&slug) % PALETTE.len() as u64) as usize]
 }
 
 /// Channel icons arrive as web classes (`ph-code`); the engine's glyph lookup
@@ -1243,12 +1335,13 @@ pub(crate) fn post_key(
     p: &FeedPost,
     expanded: Option<&str>,
     comments: &HashMap<String, Vec<FeedComment>>,
+    body_open: bool,
 ) -> u64 {
     let is_open = expanded == Some(p.id.as_str());
     let fetched = comments.contains_key(&p.id);
     let n_comments = comments.get(&p.id).map(|c| c.len()).unwrap_or(0);
     let rx: i64 = p.reactions.iter().map(|r| r.count + r.reacted as i64).sum();
-    hash64(&(&p.body, p.like_count, p.comment_count, p.is_liked, is_open, fetched, n_comments, rx))
+    hash64(&(&p.body, p.like_count, p.comment_count, p.is_liked, is_open, fetched, n_comments, rx, body_open))
 }
 
 /// One row of the unified stream, resolved by the snapshot's build closure.
@@ -1270,6 +1363,7 @@ fn snapshot(w: &World) -> KeyedSnapshot {
     let assets = panel.assets.clone();
     let expanded = panel.expanded.clone();
     let comments = panel.comments.clone();
+    let body_expanded = panel.body_expanded.clone();
     // Who's looking decides which posts show a delete chip (own posts, or all
     // of them for site moderators).
     let (me, moderator) = w
@@ -1332,7 +1426,8 @@ fn snapshot(w: &World) -> KeyedSnapshot {
     }
     for (_, _, row) in merged {
         if let StreamRow::Post(i) = row {
-            items.push((hash64(&posts[i].id), post_key(&posts[i], expanded.as_deref(), &comments)));
+            let body_open = body_expanded.contains(&posts[i].id);
+            items.push((hash64(&posts[i].id), post_key(&posts[i], expanded.as_deref(), &comments, body_open)));
             rows.push(StreamRow::Post(i));
         }
     }
@@ -1369,7 +1464,8 @@ fn snapshot(w: &World) -> KeyedSnapshot {
             StreamRow::Post(i) => {
                 let p = &posts[*i];
                 let is_open = expanded.as_deref() == Some(p.id.as_str());
-                post_card(commands, fonts, p, is_open, comments.get(&p.id), me.as_deref(), moderator)
+                let body_open = body_expanded.contains(&p.id);
+                post_card(commands, fonts, p, is_open, comments.get(&p.id), me.as_deref(), moderator, body_open)
             }
         }),
     }
@@ -1463,6 +1559,7 @@ pub(crate) fn post_card(
     comments: Option<&Vec<FeedComment>>,
     me: Option<&str>,
     moderator: bool,
+    body_open: bool,
 ) -> Entity {
     // One neutral card: header (avatar · name · time), body, media, actions.
     let card = commands
@@ -1532,7 +1629,7 @@ pub(crate) fn post_card(
         let hic = icon_text(commands, &fonts.phosphor, "hash", accent(), 9.0);
         commands.entity(hic).insert(FocusPolicy::Pass);
         let ht = commands
-            .spawn((Text::new(cn), ui_font(&fonts.ui, 9.0), TextColor(rgb(accent())), FocusPolicy::Pass))
+            .spawn((Text::new(cn), ui_font(&fonts.ui, 9.0), TextColor(rgb(text_primary())), FocusPolicy::Pass))
             .id();
         commands.entity(chip).add_children(&[hic, ht]);
         commands.entity(name_row).add_child(chip);
@@ -1561,10 +1658,44 @@ pub(crate) fn post_card(
         commands.entity(header).add_child(del);
     }
 
-    // ── Body ──
-    let body = commands
-        .spawn((Text::new(p.body.clone()), ui_font(&fonts.ui, 13.0), TextColor(rgb(value_text()))))
-        .id();
+    // ── Body — long posts clamp behind a "See more" toggle. Clamping is
+    // client-side (char count, on a char boundary so multi-byte text is safe);
+    // `body_open` from the panel decides whether it's currently expanded. ──
+    const BODY_CLAMP: usize = 500;
+    let body_long = p.body.chars().count() > BODY_CLAMP;
+    let body_col = if p.body.trim().is_empty() {
+        None
+    } else {
+        let shown = if body_long && !body_open {
+            let mut s: String = p.body.chars().take(BODY_CLAMP).collect();
+            s.truncate(s.trim_end().len());
+            format!("{s}…")
+        } else {
+            p.body.clone()
+        };
+        let col = commands
+            .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), ..default() })
+            .id();
+        let text = commands
+            .spawn((Text::new(shown), ui_font(&fonts.ui, 13.0), TextColor(rgb(value_text()))))
+            .id();
+        commands.entity(col).add_child(text);
+        if body_long {
+            let see = commands
+                .spawn((
+                    Text::new(if body_open { "See less" } else { "See more" }),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(accent())),
+                    Interaction::default(),
+                    SeeMoreBtn(p.id.clone()),
+                    renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+                    HoverTooltip::new(if body_open { "Collapse".to_string() } else { "Show the full post".to_string() }),
+                ))
+                .id();
+            commands.entity(col).add_child(see);
+        }
+        Some(col)
+    };
 
     // ── Media — sized by how many share the row: one image gets hero size. ──
     let media_row = if p.media_urls.is_empty() {
@@ -1671,11 +1802,29 @@ pub(crate) fn post_card(
         None
     };
 
+    // Content column — indented past the avatar so media, body, and actions line
+    // up under the username/timestamp (avatar 34 + header gap 9 = 43), rather than
+    // running the full card width under the avatar. `align_self: Stretch` (with no
+    // explicit width) makes it fill the card minus that left margin.
+    let content = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(8.0),
+            align_self: AlignSelf::Stretch,
+            margin: UiRect::left(Val::Px(43.0)),
+            ..default()
+        })
+        .id();
+    // Media leads the content (above the text), so images are the first thing
+    // seen after the author line; the body — and its "See more" — follows.
+    let mut content_kids: Vec<Entity> = Vec::new();
+    content_kids.extend(media_row);
+    content_kids.extend(body_col);
+    content_kids.push(actions);
+
     let mut kids = vec![header];
     kids.extend(hidden_banner);
-    kids.push(body);
-    kids.extend(media_row);
-    kids.push(actions);
+    kids.push(content);
 
     // ── Expanded comments — an inset panel with padded bubbles per comment. ──
     if expanded {
@@ -1776,9 +1925,10 @@ pub(crate) fn post_card(
         commands.entity(crow).insert(EmberForm { submit: csend });
         commands.entity(crow).add_children(&[cinput, csend]);
         commands.entity(section).add_child(crow);
-        kids.push(section);
+        content_kids.push(section);
     }
 
+    commands.entity(content).add_children(&content_kids);
     commands.entity(card).add_children(&kids);
     card
 }

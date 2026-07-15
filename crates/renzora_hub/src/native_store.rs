@@ -1022,10 +1022,10 @@ fn build_hero(commands: &mut Commands, fonts: &EmberFonts, a: &AssetSummary, ind
         let next = hero_arrow(commands, fonts, "caret-right", false, HeroNextBtn);
         commands.entity(hero).add_children(&[prev, next]);
 
-        // Dots centered along the bottom of the whole hero, in a subtle pill so
+        // Dots pinned to the top-right corner of the hero, in a subtle pill so
         // they stay legible over either the artwork or the info panel.
         let dots = commands
-            .spawn((Node { position_type: PositionType::Absolute, left: Val::Px(0.0), right: Val::Px(0.0), bottom: Val::Px(8.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, ..default() }, FocusPolicy::Pass))
+            .spawn((Node { position_type: PositionType::Absolute, top: Val::Px(8.0), right: Val::Px(8.0), flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() }, FocusPolicy::Pass))
             .id();
         let dots_pill = commands
             .spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(1.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(10.0)), ..default() }, BackgroundColor(rgba([0, 0, 0, 110])), FocusPolicy::Pass))

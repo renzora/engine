@@ -23,11 +23,12 @@ The feed is **one unified activity stream**: community posts, the forum's latest
 
 Sorting and filtering are client-side over the fetched pages — the site API has no query parameters for them (a server wishlist item). Marketplace assets carry no timestamps, so they appear as a compact **"New in the Marketplace" strip** at the top rather than pretending to have a place in the timeline; clicking a card opens the Marketplace panel. Forum threads are compact cards ("alice started a thread in General") that open the thread in the Forum panel.
 
-Each post is a card: author header (avatar, clickable username, role icon, time), the post body, attached images, and one action row.
+Each post is a card: author header (avatar, clickable username, role icon, time), then attached images, the post body, and one action row.
 
 - **Reactions & likes are one row.** The ❤ chip toggles a like; the chips after it are reactions (click to join/leave one), and the ☺ chip opens the reaction picker. Chips light up with your theme accent when you're in them, and hovering a chip tells you how many people reacted and whether you're among them.
 - **Comments** expand inline: click the 💬 chip to open the thread — each comment is a padded bubble with a clickable author name — and reply from the composer at the bottom (Enter sends).
-- **Images** attach from the composer's image chip; a single image renders near full width, multiples tile. **Click any image** to view it full-size in a dimmed lightbox overlay — click anywhere or press Esc to close.
+- **Images** attach from the composer's image chip and lead the card, **above the text** — a single image renders near full width, multiples tile. **Click any image** to view it full-size in a dimmed lightbox overlay — click anywhere or press Esc to close.
+- **Long posts collapse.** Bodies past ~500 characters are clamped with a **See more** link; click it to expand the full text in place (**See less** collapses it again).
 - **Deleting**: your own posts show a trash chip in the header (site moderators see it on every post). Click it twice within a few seconds to confirm — the first click arms it.
 
 ## Profiles

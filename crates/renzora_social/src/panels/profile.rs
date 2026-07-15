@@ -12,7 +12,7 @@ use bevy::ui::FocusPolicy;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use renzora::core::{SocialBridge, SocialPanelRequest};
 use renzora::SplashState;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use renzora_auth::account::{self, ProfileUpdate, SocialConnection, SOCIAL_PLATFORMS};
 use renzora_auth::feed::{FeedComment, FeedPost};
@@ -860,13 +860,13 @@ fn snapshot(w: &World) -> KeyedSnapshot {
     let editing = panel.editing;
     // Comment expansion/threads live in the FeedPanel (the shared post cards
     // are the feed's); fold their state into the key so interactions re-render.
-    let (expanded, comments) = w
+    let (expanded, comments, body_expanded) = w
         .get_resource::<crate::panels::feed::FeedPanel>()
-        .map(|f| (f.expanded.clone(), f.comments.clone()))
+        .map(|f| (f.expanded.clone(), f.comments.clone(), f.body_expanded.clone()))
         .unwrap_or_default();
     let posts_digest = posts
         .iter()
-        .map(|p| crate::panels::feed::post_key(p, expanded.as_deref(), &comments))
+        .map(|p| crate::panels::feed::post_key(p, expanded.as_deref(), &comments, body_expanded.contains(&p.id)))
         .fold(0u64, |a, b| a.rotate_left(1) ^ b);
     let key = hash64(&(
         &profile.username,
@@ -900,6 +900,7 @@ fn snapshot(w: &World) -> KeyedSnapshot {
                     moderator,
                     expanded: expanded.clone(),
                     comments: comments.clone(),
+                    body_expanded: body_expanded.clone(),
                 },
             )
         }),
@@ -912,6 +913,7 @@ struct PostCardCtx {
     moderator: bool,
     expanded: Option<String>,
     comments: HashMap<String, Vec<FeedComment>>,
+    body_expanded: HashSet<String>,
 }
 
 fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
@@ -1635,6 +1637,7 @@ fn activity_list(
                     ctx.comments.get(&post.id),
                     (!ctx.me.is_empty()).then_some(ctx.me.as_str()),
                     ctx.moderator,
+                    ctx.body_expanded.contains(&post.id),
                 );
                 commands.entity(list).add_child(card);
             }
