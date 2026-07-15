@@ -343,8 +343,17 @@ fn build_console(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         },))
         .id();
-    // Virtualized: console logs can run to thousands of rows.
-    renzora_ember::virtual_scroll::virtual_scroll(commands, log_list, 6, log_snapshot);
+    // Rendered directly (not virtualized): console rows are *variable height* —
+    // messages wrap to as many lines as the panel width allows. The virtual
+    // scroller windows rows by a single measured stride, which assumes uniform
+    // row heights; with wrapping rows that stride (and the spacer heights derived
+    // from it) recompute every frame, so during a live window resize the list
+    // flip-flops between windowed and "render all" and rebuilds its rows each
+    // frame — the visible scroll/"spam" glitch. `log_snapshot` already caps the
+    // list to MAX_ROWS, so a plain keyed_list is bounded; on a resize the row
+    // hashes are unchanged, so it hits its no-op fast path and only bevy's layout
+    // reflows the rows (scroll_update keeps the view pinned to the bottom).
+    keyed_list(commands, log_list, log_snapshot);
     let scroll = scroll_view_pinned(commands, log_list);
 
     let div2 = hsep(commands);
