@@ -87,6 +87,7 @@ impl Plugin for ShellPlugin {
             tree: layouts[active].1.clone(),
         });
         app.insert_resource(ShellLayouts { layouts, active });
+        app.add_systems(Update, notif_bell_click);
         // Reopen persisted floating dock windows. The spawn system queues the
         // requests until ember's fonts are ready, so pushing them this early is
         // safe. (Inserted after `EmberPlugin` above, so `DockPlugin`'s
@@ -1612,6 +1613,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     // Marketplace
     ("hub_store", "Marketplace", "storefront", "Marketplace"),
     ("hub_library", "Library", "books", "Marketplace"),
+    ("asset_uploader", "Publish", "upload-simple", "Marketplace"),
     // Network
     ("network_monitor", "Network", "broadcast", "Network"),
     ("network_entities", "Net Entities", "users-three", "Network"),
@@ -3088,6 +3090,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
         top_menu_item(commands, font, &renzora::lang::t("menu.view"), TopMenuKind::View),
         top_menu_item(commands, font, &renzora::lang::t("menu.help"), TopMenuKind::Help),
         account_menu_item(commands, font),
+        notification_bell_item(commands, font),
     ];
     commands.entity(left).add_children(&left_kids);
 
@@ -3920,6 +3923,93 @@ fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     });
     commands.entity(item).add_child(label);
     item
+}
+
+/// Marks the top-bar notification bell (right of the account item). Clicking
+/// it opens the Community Notifications panel via the social bridge.
+#[derive(Component)]
+struct NotifBellBtn;
+
+/// The top-bar notification bell: unread count from [`renzora::core::SocialBridge`],
+/// hidden when signed out or disabled in Settings → Social & Privacy.
+fn notification_bell_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let item = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(7.0), Val::Px(4.0)),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            NotifBellBtn,
+            Name::new("menu:notifications"),
+        ))
+        .id();
+    renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
+        _ => Color::NONE,
+    });
+    renzora_ember::reactive::bind_display(commands, item, |w| {
+        let enabled = w
+            .get_resource::<renzora::core::SocialBridge>()
+            .map(|b| b.notify_button_enabled)
+            .unwrap_or(false);
+        let signed_in = w
+            .get_resource::<renzora::core::AuthBridge>()
+            .and_then(|b| b.signed_in_username.clone())
+            .is_some();
+        enabled && signed_in
+    });
+    let bell = glyph(commands, "bell", text_muted(), 13.0);
+    let count = commands
+        .spawn((
+            Text::new(""),
+            ui_font(font, 11.0),
+            TextColor(renzora_ember::theme::rgba([235, 180, 80, 255])),
+            bevy::ui::FocusPolicy::Pass,
+        ))
+        .id();
+    renzora_ember::reactive::bind_text(commands, count, |w| {
+        let n = w
+            .get_resource::<renzora::core::SocialBridge>()
+            .map(|b| b.unread_notifications)
+            .unwrap_or(0);
+        if n > 0 { n.to_string() } else { String::new() }
+    });
+    // Hide the count entirely at zero so the button doesn't reserve gap space.
+    renzora_ember::reactive::bind_display(commands, count, |w| {
+        w.get_resource::<renzora::core::SocialBridge>()
+            .map(|b| b.unread_notifications > 0)
+            .unwrap_or(false)
+    });
+    commands.entity(item).add_children(&[bell, count]);
+    item
+}
+
+/// Bell click → toggle the notifications dropdown (consumed by `renzora_social`).
+/// Anchored below the button via [`anchor_below`], the same way the top menus
+/// position their popups.
+fn notif_bell_click(
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    bells: Query<
+        (&Interaction, &bevy::ui::RelativeCursorPosition, &ComputedNode),
+        (With<NotifBellBtn>, Changed<Interaction>),
+    >,
+    bridge: Option<ResMut<renzora::core::SocialBridge>>,
+) {
+    let Some(mut bridge) = bridge else { return };
+    for (i, rcp, cn) in &bells {
+        if *i == Interaction::Pressed {
+            if let Some(pos) = anchor_below(&windows, rcp, cn) {
+                bridge.notify_dropdown_request = Some((pos.x, pos.y));
+            }
+        }
+    }
 }
 
 /// Spawn a top-menu dropdown anchored at `pos` and return its root.

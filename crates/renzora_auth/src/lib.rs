@@ -3,10 +3,20 @@
 //! Provides sign-in, register, and forgot-password modals that communicate
 //! with the renzora.com API. Tokens are persisted to disk for auto-login.
 
+pub mod account;
 pub mod api;
+pub mod billing;
+pub mod client;
+pub mod docs;
+pub mod feed;
+pub mod forum;
 pub mod marketplace;
+pub mod messages;
+pub mod publish;
 mod native;
 pub mod session;
+pub mod social;
+pub mod teams;
 
 use bevy::prelude::*;
 

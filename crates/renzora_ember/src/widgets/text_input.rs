@@ -49,7 +49,36 @@ pub struct EmberTextInput {
     /// the text node's [`TextLayoutInfo`] — the same probe-style measurement the
     /// code editor uses to map clicks↔columns. `FALLBACK_ADVANCE` until measured.
     pub advance: f32,
+    /// Anchor (char index) of a drag selection: the selection spans from here to
+    /// `caret_index` (either direction). `None`, or anchor == caret, means no
+    /// selection. Set on press by the drag-select system; collapsed by caret
+    /// motion and consumed (deleted/replaced) by edits. Single-line fields only.
+    pub sel_anchor: Option<usize>,
 }
+
+impl EmberTextInput {
+    /// The normalized `(start, end)` char range of the drag selection, or
+    /// `None` when nothing is selected. `start < end` always.
+    pub fn selection_range(&self) -> Option<(usize, usize)> {
+        let a = self.sel_anchor?;
+        let b = self.caret_index;
+        if a == b {
+            return None;
+        }
+        Some((a.min(b), a.max(b)))
+    }
+}
+
+/// The chars of `s` in the char-index range `[a, b)`.
+fn char_slice(s: &str, a: usize, b: usize) -> String {
+    let (start, end) = (byte_offset(s, a), byte_offset(s, b));
+    s[start..end].to_string()
+}
+
+/// Marks the drag-selection highlight bar; points at the input box it belongs
+/// to (spawned behind the text so glyphs render over it).
+#[derive(Component)]
+pub(crate) struct SelectionHighlight(Entity);
 
 /// The text + color to display for an input's current value (masked for password
 /// fields; the muted placeholder when empty).
@@ -144,6 +173,25 @@ fn build_input(
             BackgroundColor(Color::NONE),
         ))
         .id();
+    // Drag-selection highlight, positioned/sized by `text_input_selection_pos`.
+    // Spawned before the text child so the glyphs draw over it.
+    let sel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(PAD_X),
+                top: Val::Px(CARET_TOP),
+                width: Val::Px(0.0),
+                height: Val::Px(CARET_H),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(accent()).with_alpha(0.45)),
+            bevy::ui::FocusPolicy::Pass,
+            SelectionHighlight(box_e),
+            Name::new("selection"),
+        ))
+        .id();
     // Absolute caret positioned by `text_input_caret_pos` at `PAD_X + idx*advance`
     // (out of flow, so it floats over the text without affecting its layout).
     let car = commands
@@ -172,8 +220,9 @@ fn build_input(
         select_all: false,
         caret_index: value.chars().count(),
         advance: FALLBACK_ADVANCE,
+        sel_anchor: None,
     });
-    commands.entity(box_e).add_children(&[text, car]);
+    commands.entity(box_e).add_children(&[sel, text, car]);
     box_e
 }
 
@@ -273,26 +322,26 @@ pub(crate) fn text_input_focus(
             };
         }
         if !focus {
+            if inp.sel_anchor.is_some() {
+                inp.sel_anchor = None;
+            }
             continue;
         }
         if double_click && !inp.value.is_empty() {
             // Double-click selects the whole value (next type/Backspace wipes it).
             inp.select_all = true;
+            inp.sel_anchor = None;
             continue;
         }
         // Single click → drop any selection and drop the caret where it landed.
         inp.select_all = false;
-        let len = inp.value.chars().count();
+        inp.sel_anchor = None;
         if let Some(nrm) = rcp.and_then(|r| r.normalized) {
             // Click x in the box's local logical space → char index via the
             // measured advance (the code editor's column hit-test, no gutter).
-            let width = cn.size().x * cn.inverse_scale_factor();
-            let local_x = (nrm.x + 0.5) * width;
-            let adv = inp.advance.max(0.1);
-            let idx = ((local_x - PAD_X) / adv).round().max(0.0) as usize;
-            inp.caret_index = idx.min(len);
+            inp.caret_index = index_at_cursor(&inp, cn, nrm);
         } else {
-            inp.caret_index = len;
+            inp.caret_index = inp.value.chars().count();
         }
     }
 }
@@ -302,11 +351,131 @@ fn byte_offset(s: &str, i: usize) -> usize {
     s.char_indices().nth(i).map(|(b, _)| b).unwrap_or(s.len())
 }
 
+/// Delete whatever is selected (select-all or a drag range) ahead of an edit
+/// key acting, leaving `idx` where the removed span began. No-op when nothing
+/// is selected. `range` is the pre-computed [`EmberTextInput::selection_range`].
+fn wipe_selection(inp: &mut EmberTextInput, range: Option<(usize, usize)>, idx: &mut usize) {
+    if inp.select_all {
+        inp.value.clear();
+        inp.select_all = false;
+        *idx = 0;
+    } else if let Some((a, b)) = range {
+        let (s, e) = (byte_offset(&inp.value, a), byte_offset(&inp.value, b));
+        inp.value.replace_range(s..e, "");
+        *idx = a;
+    }
+    inp.sel_anchor = None;
+}
+
+/// Char index under the cursor, from the box's [`RelativeCursorPosition`] and
+/// the measured advance — the same hit-test `text_input_focus` uses for clicks.
+/// Clamped to `0..=len`, including while the cursor is dragged outside the box
+/// (normalized keeps extrapolating, which is what lets a drag select to the
+/// ends).
+fn index_at_cursor(inp: &EmberTextInput, cn: &ComputedNode, nrm: Vec2) -> usize {
+    let width = cn.size().x * cn.inverse_scale_factor();
+    let local_x = (nrm.x + 0.5) * width;
+    let adv = inp.advance.max(0.1);
+    let idx = ((local_x - PAD_X) / adv).round().max(0.0) as usize;
+    idx.min(inp.value.chars().count())
+}
+
+/// Drag selection: press in an input anchors a selection at the caret, moving
+/// the mouse while held sweeps `caret_index` (so the selection spans anchor →
+/// cursor), release collapses an empty selection back to a plain caret.
+///
+/// Runs after [`text_input_focus`] so the press frame anchors at the caret
+/// that click just placed (focus also cleared any previous selection).
+#[allow(clippy::type_complexity)]
+pub(crate) fn text_input_drag_select(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut inputs: Query<
+        (
+            Entity,
+            &Interaction,
+            &mut EmberTextInput,
+            &ComputedNode,
+            &RelativeCursorPosition,
+        ),
+        With<SingleLineInput>,
+    >,
+    // The input a left-drag is currently selecting in, if any.
+    mut dragging: Local<Option<Entity>>,
+) {
+    if mouse.just_pressed(MouseButton::Left) {
+        *dragging = inputs
+            .iter()
+            // A double-click just select-all'd — don't fight it with a drag.
+            .find(|(_, i, inp, _, _)| {
+                matches!(i, Interaction::Pressed) && inp.focused && !inp.select_all
+            })
+            .map(|(e, _, _, _, _)| e);
+        if let Some(e) = *dragging {
+            if let Ok((_, _, mut inp, _, _)) = inputs.get_mut(e) {
+                let at = inp.caret_index;
+                inp.sel_anchor = Some(at);
+            }
+        }
+        return;
+    }
+    let Some(e) = *dragging else { return };
+    let Ok((_, _, mut inp, cn, rcp)) = inputs.get_mut(e) else {
+        *dragging = None;
+        return;
+    };
+    if !mouse.pressed(MouseButton::Left) {
+        // Release: a zero-width selection is just a caret.
+        if inp.selection_range().is_none() && inp.sel_anchor.is_some() {
+            inp.sel_anchor = None;
+        }
+        *dragging = None;
+        return;
+    }
+    if let Some(nrm) = rcp.normalized {
+        let idx = index_at_cursor(&inp, cn, nrm);
+        if idx != inp.caret_index {
+            inp.caret_index = idx;
+        }
+    }
+}
+
+/// Show/size the selection highlight bar over the selected span (focused
+/// single-line fields only); hidden otherwise.
+pub(crate) fn text_input_selection_pos(
+    inputs: Query<&EmberTextInput, With<SingleLineInput>>,
+    mut bars: Query<(&SelectionHighlight, &mut Node)>,
+) {
+    for (bar, mut n) in &mut bars {
+        let Ok(inp) = inputs.get(bar.0) else { continue };
+        match (inp.focused, inp.selection_range()) {
+            (true, Some((a, b))) => {
+                let left = Val::Px(PAD_X + a as f32 * inp.advance);
+                let width = Val::Px((b - a) as f32 * inp.advance);
+                if n.display != Display::Flex || n.left != left || n.width != width {
+                    n.display = Display::Flex;
+                    n.left = left;
+                    n.width = width;
+                }
+            }
+            _ => {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
+        }
+    }
+}
+
 pub(crate) fn text_input_type(
     mut events: MessageReader<KeyboardInput>,
+    keys: Res<ButtonInput<KeyCode>>,
     mut inputs: Query<(&mut EmberTextInput, Option<&SingleLineInput>)>,
     mut texts: Query<(&mut Text, &mut TextColor)>,
 ) {
+    let ctrl = keys.pressed(KeyCode::ControlLeft)
+        || keys.pressed(KeyCode::ControlRight)
+        || keys.pressed(KeyCode::SuperLeft)
+        || keys.pressed(KeyCode::SuperRight);
     for ev in events.read() {
         if ev.state != ButtonState::Pressed {
             continue;
@@ -315,37 +484,98 @@ pub(crate) fn text_input_type(
             if !inp.focused {
                 continue;
             }
+            // Clipboard shortcuts (Ctrl/Cmd + V/C/X/A). Handled up front so
+            // the plain character branch never types a literal "v".
+            if ctrl {
+                match ev.key_code {
+                    KeyCode::KeyV => {
+                        if let Some(pasted) = clipboard_get() {
+                            let pasted = pasted.replace('\r', "");
+                            if inp.select_all {
+                                inp.value.clear();
+                                inp.select_all = false;
+                                inp.caret_index = 0;
+                            } else if let Some((a, b)) = inp.selection_range() {
+                                // Paste over a drag selection: replace it.
+                                let (s, e) = (byte_offset(&inp.value, a), byte_offset(&inp.value, b));
+                                inp.value.replace_range(s..e, "");
+                                inp.caret_index = a;
+                            }
+                            inp.sel_anchor = None;
+                            if single.is_some() {
+                                // Single-line: newlines become spaces, insert at caret.
+                                let pasted = pasted.replace('\n', " ");
+                                let len = inp.value.chars().count();
+                                let idx = inp.caret_index.min(len);
+                                let b = byte_offset(&inp.value, idx);
+                                inp.value.insert_str(b, &pasted);
+                                inp.caret_index = idx + pasted.chars().count();
+                            } else {
+                                inp.value.push_str(&pasted);
+                            }
+                        }
+                    }
+                    KeyCode::KeyC => {
+                        // Copy the drag selection when there is one, else the whole value.
+                        match inp.selection_range() {
+                            Some((a, b)) => clipboard_set(&char_slice(&inp.value, a, b)),
+                            None => clipboard_set(&inp.value),
+                        }
+                    }
+                    KeyCode::KeyX => {
+                        if let Some((a, b)) = inp.selection_range() {
+                            clipboard_set(&char_slice(&inp.value, a, b));
+                            let (s, e) = (byte_offset(&inp.value, a), byte_offset(&inp.value, b));
+                            inp.value.replace_range(s..e, "");
+                            inp.caret_index = a;
+                            inp.sel_anchor = None;
+                        } else {
+                            clipboard_set(&inp.value);
+                            inp.value.clear();
+                            inp.caret_index = 0;
+                            inp.select_all = false;
+                        }
+                    }
+                    KeyCode::KeyA => {
+                        inp.select_all = true;
+                        inp.sel_anchor = None;
+                        continue;
+                    }
+                    _ => continue,
+                }
+                let (text_e, val, ph, pw) = (inp.text_entity, inp.value.clone(), inp.placeholder.clone(), inp.password);
+                if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
+                    let (disp, col) = display_for(&val, &ph, pw);
+                    *t = Text::new(disp);
+                    c.0 = rgb(col);
+                }
+                break;
+            }
             let selected = inp.select_all;
             if single.is_some() {
-                // Single-line: edits + caret moves act at `caret_index`.
+                // Single-line: edits + caret moves act at `caret_index`. A drag
+                // selection behaves like a partial select-all: typing/paste
+                // replaces it, Backspace/Delete removes it, caret motion
+                // collapses it.
                 let len = inp.value.chars().count();
                 let mut idx = inp.caret_index.min(len);
+                let range = inp.selection_range();
                 match &ev.logical_key {
                     Key::Character(s) => {
-                        if selected {
-                            inp.value.clear();
-                            inp.select_all = false;
-                            idx = 0;
-                        }
+                        wipe_selection(&mut inp, range, &mut idx);
                         let b = byte_offset(&inp.value, idx);
                         inp.value.insert_str(b, s);
                         idx += s.chars().count();
                     }
                     Key::Space => {
-                        if selected {
-                            inp.value.clear();
-                            inp.select_all = false;
-                            idx = 0;
-                        }
+                        wipe_selection(&mut inp, range, &mut idx);
                         let b = byte_offset(&inp.value, idx);
                         inp.value.insert(b, ' ');
                         idx += 1;
                     }
                     Key::Backspace => {
-                        if selected {
-                            inp.value.clear();
-                            inp.select_all = false;
-                            idx = 0;
+                        if selected || range.is_some() {
+                            wipe_selection(&mut inp, range, &mut idx);
                         } else if idx > 0 {
                             let (start, end) =
                                 (byte_offset(&inp.value, idx - 1), byte_offset(&inp.value, idx));
@@ -354,10 +584,8 @@ pub(crate) fn text_input_type(
                         }
                     }
                     Key::Delete => {
-                        if selected {
-                            inp.value.clear();
-                            inp.select_all = false;
-                            idx = 0;
+                        if selected || range.is_some() {
+                            wipe_selection(&mut inp, range, &mut idx);
                         } else if idx < len {
                             let (start, end) =
                                 (byte_offset(&inp.value, idx), byte_offset(&inp.value, idx + 1));
@@ -366,22 +594,27 @@ pub(crate) fn text_input_type(
                     }
                     Key::ArrowLeft => {
                         inp.select_all = false;
+                        inp.sel_anchor = None;
                         idx = idx.saturating_sub(1);
                     }
                     Key::ArrowRight => {
                         inp.select_all = false;
+                        inp.sel_anchor = None;
                         idx = (idx + 1).min(len);
                     }
                     Key::Home => {
                         inp.select_all = false;
+                        inp.sel_anchor = None;
                         idx = 0;
                     }
                     Key::End => {
                         inp.select_all = false;
+                        inp.sel_anchor = None;
                         idx = len;
                     }
-                    // Enter is a submit/commit gesture other systems own; never a
-                    // literal newline in a single-line field.
+                    // Enter is a submit/commit gesture other systems own (see
+                    // `form::form_enter_submit`); never a literal newline in a
+                    // single-line field.
                     _ => continue,
                 }
                 inp.caret_index = idx;
@@ -421,6 +654,48 @@ pub(crate) fn text_input_type(
                 c.0 = rgb(col);
             }
             break;
+        }
+    }
+}
+
+/// Reflect programmatic `value` changes into the displayed text.
+///
+/// Panels clear/rewrite `EmberTextInput.value` directly on submit (send a
+/// message, create a team, …), but the Text child was only redrawn by the
+/// typing system — so a cleared composer kept *showing* the sent message until
+/// the next keystroke. This syncs the display (back to the placeholder when
+/// emptied) and clamps the caret/selection whenever the value changes for any
+/// reason; its own writes bypass change detection so it settles instead of
+/// re-triggering itself every frame.
+pub(crate) fn text_input_sync(
+    mut inputs: Query<&mut EmberTextInput, Changed<EmberTextInput>>,
+    mut texts: Query<(&mut Text, &mut TextColor)>,
+) {
+    for mut inp in &mut inputs {
+        let inp = inp.bypass_change_detection();
+        let n = inp.value.chars().count();
+        if inp.caret_index > n {
+            inp.caret_index = n;
+        }
+        if let Some(a) = inp.sel_anchor {
+            if a > n {
+                inp.sel_anchor = Some(n);
+            }
+        }
+        if inp.value.is_empty() {
+            inp.select_all = false;
+            inp.sel_anchor = None;
+        }
+        let Ok((mut t, mut c)) = texts.get_mut(inp.text_entity) else {
+            continue;
+        };
+        let (disp, col) = display_for(&inp.value, &inp.placeholder, inp.password);
+        if t.0 != disp {
+            t.0 = disp;
+        }
+        let col = rgb(col);
+        if c.0 != col {
+            c.0 = col;
         }
     }
 }
@@ -501,5 +776,225 @@ pub(crate) fn caret_blink(
                 n.display = display;
             }
         }
+    }
+}
+
+
+// ── System clipboard (native only; wasm no-ops like the code editor) ─────────
+
+#[cfg(not(target_arch = "wasm32"))]
+fn clipboard_get() -> Option<String> {
+    arboard::Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok())
+}
+#[cfg(target_arch = "wasm32")]
+fn clipboard_get() -> Option<String> {
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn clipboard_set(s: &str) {
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        let _ = cb.set_text(s.to_string());
+    }
+}
+#[cfg(target_arch = "wasm32")]
+fn clipboard_set(_s: &str) {}
+
+// ── Right-click context menu: Copy / Cut / Paste / Select all ────────────────
+
+/// The open input context menu: (menu root, target input box).
+#[derive(Resource, Default)]
+pub(crate) struct InputContextMenu(Option<(Entity, Entity)>);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InputCtxAction {
+    Copy,
+    Cut,
+    Paste,
+    SelectAll,
+}
+
+#[derive(Component)]
+pub(crate) struct InputCtxBtn(InputCtxAction);
+#[derive(Component)]
+pub(crate) struct InputCtxBackdrop;
+
+/// Right-click on any text input → spawn the Copy/Cut/Paste menu at the cursor.
+pub(crate) fn text_input_context_open(
+    mut commands: Commands,
+    fonts: Option<Res<crate::font::EmberFonts>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    mut menu: ResMut<InputContextMenu>,
+    inputs: Query<(Entity, &Interaction), With<EmberTextInput>>,
+) {
+    if !mouse.just_pressed(MouseButton::Right) {
+        return;
+    }
+    let Some(fonts) = fonts else { return };
+    if let Some((root, _)) = menu.0.take() {
+        commands.entity(root).try_despawn();
+    }
+    let Some((target, _)) = inputs
+        .iter()
+        .find(|(_, i)| matches!(i, Interaction::Hovered | Interaction::Pressed))
+    else {
+        return;
+    };
+    let cursor = windows
+        .iter()
+        .next()
+        .and_then(|w| w.cursor_position())
+        .unwrap_or(Vec2::new(200.0, 200.0));
+
+    let backdrop = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            crate::cursor_icon::NoAutoCursor,
+            InputCtxBackdrop,
+            GlobalZIndex(980),
+            Name::new("input_context_menu"),
+        ))
+        .id();
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(cursor.x.max(4.0)),
+                top: Val::Px(cursor.y.max(4.0)),
+                width: Val::Px(130.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(4.0)),
+                row_gap: Val::Px(1.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            bevy::ui::FocusPolicy::Block,
+        ))
+        .id();
+    for (label, action) in [
+        ("Copy", InputCtxAction::Copy),
+        ("Cut", InputCtxAction::Cut),
+        ("Paste", InputCtxAction::Paste),
+        ("Select all", InputCtxAction::SelectAll),
+    ] {
+        let row = commands
+            .spawn((
+                Node {
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                InputCtxBtn(action),
+            ))
+            .id();
+        let t = commands
+            .spawn((Text::new(label), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
+            .id();
+        commands.entity(row).add_child(t);
+        commands.entity(panel).add_child(row);
+    }
+    commands.entity(backdrop).add_child(panel);
+    menu.0 = Some((backdrop, target));
+}
+
+/// Hover feedback + action execution + dismissal for the input context menu.
+pub(crate) fn text_input_context_clicks(
+    mut commands: Commands,
+    mut menu: ResMut<InputContextMenu>,
+    mut rows: Query<(&Interaction, &InputCtxBtn, &mut BackgroundColor), Changed<Interaction>>,
+    backdrops: Query<&Interaction, (With<InputCtxBackdrop>, Changed<Interaction>)>,
+    mut inputs: Query<&mut EmberTextInput>,
+    mut texts: Query<(&mut Text, &mut TextColor)>,
+) {
+    let Some((root, target)) = menu.0 else { return };
+    let mut close = false;
+    for (i, btn, mut bg) in &mut rows {
+        match i {
+            Interaction::Hovered => bg.0 = rgb(hover_bg()),
+            Interaction::None => bg.0 = Color::NONE,
+            Interaction::Pressed => {
+                if let Ok(mut inp) = inputs.get_mut(target) {
+                    match btn.0 {
+                        InputCtxAction::Copy => match inp.selection_range() {
+                            Some((a, b)) => clipboard_set(&char_slice(&inp.value, a, b)),
+                            None => clipboard_set(&inp.value),
+                        },
+                        InputCtxAction::Cut => {
+                            if let Some((a, b)) = inp.selection_range() {
+                                clipboard_set(&char_slice(&inp.value, a, b));
+                                let (s, e) =
+                                    (byte_offset(&inp.value, a), byte_offset(&inp.value, b));
+                                inp.value.replace_range(s..e, "");
+                                inp.caret_index = a;
+                                inp.sel_anchor = None;
+                            } else {
+                                clipboard_set(&inp.value);
+                                inp.value.clear();
+                                inp.caret_index = 0;
+                                inp.select_all = false;
+                            }
+                        }
+                        InputCtxAction::Paste => {
+                            if let Some(pasted) = clipboard_get() {
+                                let pasted = pasted.replace('\r', "");
+                                if inp.select_all {
+                                    inp.value.clear();
+                                    inp.select_all = false;
+                                    inp.caret_index = 0;
+                                } else if let Some((a, b)) = inp.selection_range() {
+                                    let (s, e) =
+                                        (byte_offset(&inp.value, a), byte_offset(&inp.value, b));
+                                    inp.value.replace_range(s..e, "");
+                                    inp.caret_index = a;
+                                }
+                                inp.sel_anchor = None;
+                                let len = inp.value.chars().count();
+                                let idx = inp.caret_index.min(len);
+                                let b = byte_offset(&inp.value, idx);
+                                inp.value.insert_str(b, &pasted);
+                                inp.caret_index = idx + pasted.chars().count();
+                            }
+                        }
+                        InputCtxAction::SelectAll => {
+                            inp.select_all = true;
+                            inp.sel_anchor = None;
+                        }
+                    }
+                    let (text_e, val, ph, pw) =
+                        (inp.text_entity, inp.value.clone(), inp.placeholder.clone(), inp.password);
+                    if let Ok((mut t, mut c)) = texts.get_mut(text_e) {
+                        let (disp, col) = display_for(&val, &ph, pw);
+                        *t = Text::new(disp);
+                        c.0 = rgb(col);
+                    }
+                }
+                close = true;
+            }
+        }
+    }
+    for i in &backdrops {
+        if *i == Interaction::Pressed {
+            close = true;
+        }
+    }
+    if close {
+        commands.entity(root).try_despawn();
+        menu.0 = None;
     }
 }

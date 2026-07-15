@@ -1,0 +1,31 @@
+[package]
+name = "renzora_social"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_auth = { path = "../renzora_auth" }
+# bevy_ui-native panel content + Send+Sync channels for async result polling.
+renzora_ember = { path = "../renzora_ember" }
+crossbeam-channel = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = "3"
+dirs = "6"
+# Native file picker for feed image uploads.
+rfd = "0.15"
+# Live events from renzora.com (`/api/ws/live`) — blocking client on a worker thread.
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# Pin the process-level crypto provider to ring: ureq (ring) and tungstenite's
+# rustls (aws-lc default) otherwise both link providers, and rustls panics at
+# connect time when it can't pick one automatically.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Avatar/thumbnail decoding for the shared image cache.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+
+[lints]
+workspace = true

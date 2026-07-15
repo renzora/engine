@@ -16,7 +16,7 @@ use renzora_ember::reactive::bind_bg;
 use renzora_ember::theme::{accent, border, hover_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, scroll_area, text_input, EmberTextInput, OverlaySurface};
 
-use crate::{collect_items, filter_items, CommandPaletteState};
+use crate::{collect_items, filter_items, CommandPaletteState, PaletteTab};
 
 type Handler = Arc<dyn Fn(&mut World) + Send + Sync>;
 
@@ -39,16 +39,21 @@ struct PaletteSearch;
 struct PaletteRow {
     index: usize,
 }
+#[derive(Component)]
+struct PaletteTabBtn(PaletteTab);
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<PaletteHandlers>();
+    app.init_resource::<crate::PaletteRemote>();
     app.add_systems(
         Update,
         (
             manage_palette,
+            crate::remote_search,
             rebuild_palette,
             focus_palette_search,
             palette_keys,
+            palette_tab_click,
             palette_row_hover,
             palette_row_click,
             palette_backdrop_click,
@@ -57,11 +62,13 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
-fn sig_of(query: &str, len: usize) -> u64 {
+fn sig_of(query: &str, len: usize, tab: PaletteTab, generation: u64) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     query.hash(&mut h);
     len.hash(&mut h);
+    tab.hash(&mut h);
+    generation.hash(&mut h);
     h.finish()
 }
 
@@ -135,7 +142,7 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
         .id();
 
     // Search field (bound to the shared query).
-    let search = text_input(commands, &fonts.ui, "Search tools and actions…", "");
+    let search = text_input(commands, &fonts.ui, "Search commands, docs, users, assets…", "");
     commands.entity(search).insert((
         PaletteSearch,
         Node {
@@ -160,13 +167,73 @@ fn spawn_palette(commands: &mut Commands, fonts: &EmberFonts) {
         },
     );
 
+    // Scope tabs: Commands / Entities / Settings plus the renzora.com searches
+    // (Docs, Forum, Users, Feed, Courses, Marketplace).
+    let tabs = commands
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(3.0),
+            row_gap: Val::Px(3.0),
+            padding: UiRect::vertical(Val::Px(2.0)),
+            ..default()
+        })
+        .id();
+    for tab in PaletteTab::ALL {
+        let tab = *tab;
+        let btn = commands
+            .spawn((
+                Node {
+                    padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                PaletteTabBtn(tab),
+                Name::new("palette-tab"),
+            ))
+            .id();
+        bind_bg(commands, btn, move |w| {
+            let active = w
+                .get_resource::<CommandPaletteState>()
+                .map(|s| s.tab == tab)
+                .unwrap_or(false);
+            if active {
+                rgb(accent()).with_alpha(0.35)
+            } else {
+                Color::NONE
+            }
+        });
+        let t = commands
+            .spawn((Text::new(tab.label()), ui_font(&fonts.ui, 10.5), TextColor(rgb(text_primary())), FocusPolicy::Pass))
+            .id();
+        commands.entity(btn).add_child(t);
+        commands.entity(tabs).add_child(btn);
+    }
+
     let results = commands
         .spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), ..default() }, PaletteResults))
         .id();
     let scroll = scroll_area(commands, results, 360.0);
 
-    commands.entity(panel).add_children(&[search, scroll]);
+    commands.entity(panel).add_children(&[search, tabs, scroll]);
     commands.entity(backdrop).add_child(panel);
+}
+
+/// Click a scope tab → switch the palette's corpus.
+fn palette_tab_click(
+    q: Query<(&Interaction, &PaletteTabBtn), Changed<Interaction>>,
+    mut state: Option<ResMut<CommandPaletteState>>,
+) {
+    let Some(state) = state.as_mut() else { return };
+    for (interaction, btn) in &q {
+        if *interaction == Interaction::Pressed && state.tab != btn.0 {
+            state.tab = btn.0;
+            state.selected = 0;
+        }
+    }
 }
 
 /// Auto-focus the search field the frame it spawns.
@@ -185,13 +252,40 @@ fn rebuild_palette(world: &mut World) {
     }
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
 
-    let items = {
-        let toolbar = world.resource::<ToolbarRegistry>().clone();
-        let shortcuts = world.resource::<ShortcutRegistry>().clone();
-        let keybindings = world.resource::<KeyBindings>().clone();
-        let all = collect_items(&toolbar, &shortcuts, &keybindings, world);
-        let query = world.resource::<CommandPaletteState>().query.clone();
-        filter_items(all, &query)
+    let (tab, query) = {
+        let st = world.resource::<CommandPaletteState>();
+        (st.tab, st.query.clone())
+    };
+    let mut generation = 0;
+    let items = match tab {
+        PaletteTab::Commands | PaletteTab::Settings => {
+            let toolbar = world.resource::<ToolbarRegistry>().clone();
+            let shortcuts = world.resource::<ShortcutRegistry>().clone();
+            let keybindings = world.resource::<KeyBindings>().clone();
+            let mut all = collect_items(&toolbar, &shortcuts, &keybindings, world);
+            if tab == PaletteTab::Settings {
+                all.retain(|i| i.kind == "Settings");
+            }
+            filter_items(all, &query)
+        }
+        PaletteTab::Entities => crate::collect_entity_items(world, &query),
+        // Remote tabs render whatever the async search has cached; a hint row
+        // stands in while it loads (or before the query is long enough).
+        _ => {
+            let remote = world.resource::<crate::PaletteRemote>();
+            generation = remote.generation;
+            if remote.loading {
+                vec![hint_item("Searching…")]
+            } else if remote.results.is_empty() {
+                if query.trim().chars().count() < crate::min_query_len(tab) {
+                    vec![hint_item(&format!("Type to search {}…", tab.label().to_lowercase()))]
+                } else {
+                    Vec::new() // falls through to the shared "No matches" row
+                }
+            } else {
+                remote.results.iter().map(|h| h.item()).collect()
+            }
+        }
     };
 
     // Clamp selection + refresh handlers.
@@ -203,8 +297,7 @@ fn rebuild_palette(world: &mut World) {
     }
     world.resource_mut::<PaletteHandlers>().0 = items.iter().map(|i| i.handler.clone()).collect();
 
-    let query = world.resource::<CommandPaletteState>().query.clone();
-    let sig = sig_of(&query, items.len());
+    let sig = sig_of(&query, items.len(), tab, generation);
     let mut q = world.query::<(Entity, &PaletteOverlay)>();
     let Some((root, old_sig)) = q.iter(world).map(|(e, o)| (e, o.sig)).next() else { return };
     if old_sig == Some(sig) {
@@ -244,6 +337,16 @@ fn rebuild_palette(world: &mut World) {
     queue.apply(world);
     if let Some(mut o) = world.get_mut::<PaletteOverlay>(root) {
         o.sig = Some(sig);
+    }
+}
+
+/// A non-actionable placeholder row ("Searching…", "Type to search…").
+fn hint_item(label: &str) -> crate::PaletteItem {
+    crate::PaletteItem {
+        kind: "",
+        label: label.to_string(),
+        detail: None,
+        handler: Arc::new(|_w: &mut World| {}),
     }
 }
 

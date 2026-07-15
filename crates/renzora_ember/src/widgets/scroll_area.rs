@@ -20,6 +20,24 @@ const BAR_W: f32 = 9.0;
 const MIN_THUMB: f32 = 28.0;
 const WHEEL_STEP: f32 = 52.0;
 const EASE: f32 = 16.0;
+/// Arrow-key scroll rate (logical px/sec) at speed 1.0, while the key is held.
+const ARROW_RATE: f32 = 480.0;
+
+/// User-tunable scrolling behavior. Ember can't depend on the editor's
+/// settings crates, so the Settings panel pushes the preference in — the same
+/// pattern as [`super::drag_value::DragValueConfig`].
+#[derive(Resource)]
+pub struct ScrollConfig {
+    /// Multiplier on every scroll gesture (wheel step, arrow-key rate,
+    /// middle-drag distance). Defaults to 1.5 (the stock 1.0 feel was too slow).
+    pub speed: f32,
+}
+
+impl Default for ScrollConfig {
+    fn default() -> Self {
+        Self { speed: 1.5 }
+    }
+}
 
 /// The scrolling viewport. Holds the smooth-scroll target + scrollbar handles.
 #[derive(Component)]
@@ -446,10 +464,11 @@ fn content_w(kids: &Children, computed: &Query<&ComputedNode>, inv: f32) -> f32 
 pub(crate) fn scroll_wheel(
     mut wheel: MessageReader<MouseWheel>,
     capture: Res<super::drag_value::WheelOverDragValue>,
+    config: Res<ScrollConfig>,
     // 0.19: the UI stack index moved off `ComputedNode` into its own
     // `ComputedStackIndex(u32)` component.
     mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
-    overlays: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &Node), With<super::popup::OverlaySurface>>,
+    overlays: OverlayQuery,
     modals: Query<Entity, With<super::overlay::ModalSurface>>,
     parents: Query<&ChildOf>,
 ) {
@@ -465,56 +484,186 @@ pub(crate) fn scroll_wheel(
     if capture.0 {
         return;
     }
-    let modal_open = !modals.is_empty();
+    // No eligible scroll area — if an overlay is under the cursor it swallows the
+    // wheel (returning here leaves the panel behind untouched).
+    let Some(target) = hovered_scroll_area(
+        areas.iter().map(|(e, rcp, si, es)| (e, rcp, si, es.wheel_scroll)),
+        &overlays,
+        &modals,
+        &parents,
+    ) else {
+        return;
+    };
 
-    // The topmost floating overlay (dropdown / menu / popup) under the cursor, if
-    // any. It confines the wheel exactly like a modal: only scroll areas *inside*
-    // that overlay may scroll, so an open overlay fully isolates the wheel from
-    // the panel behind it — and when the overlay has no scroll area of its own,
-    // the wheel is swallowed rather than leaking through. Ancestry, not stack
-    // index, decides this, so it's correct even when the panel behind sits higher
-    // in the UI tree's stacking order than the floating overlay.
+    if let Ok((_, _, _, mut s)) = areas.get_mut(target) {
+        s.target -= dy * WHEEL_STEP * config.speed;
+        s.stick = false; // user took control; scroll_update re-sticks at bottom
+    }
+}
+
+/// The floating-overlay query shared by every scroll-gesture system (wheel /
+/// arrows / middle-drag), aliased so their signatures stay readable.
+type OverlayQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static RelativeCursorPosition,
+        &'static bevy::ui::ComputedStackIndex,
+        &'static Node,
+    ),
+    With<super::popup::OverlaySurface>,
+>;
+
+/// The frontmost scroll area under the cursor (highest stack index) that may
+/// receive a scroll gesture, honoring modal / overlay confinement — shared by
+/// the wheel, arrow-key, and middle-drag systems so every gesture agrees on
+/// which view scrolls.
+///
+/// `candidates` yields `(entity, cursor, stack index, eligible)`; ineligible
+/// entries (e.g. wheel-opted-out image viewers, for wheel/arrows) never claim
+/// the gesture.
+///
+/// Overlay confinement: the topmost floating overlay (dropdown / menu / popup)
+/// under the cursor confines the gesture exactly like a modal — only scroll
+/// areas *inside* it may scroll, and when it has none the gesture is swallowed
+/// rather than leaking to the panel behind. Ancestry, not stack index, decides
+/// this, so it's correct even when the panel behind sits higher in the UI
+/// tree's stacking order than the floating overlay.
+fn hovered_scroll_area<'a>(
+    candidates: impl Iterator<
+        Item = (Entity, &'a RelativeCursorPosition, &'a bevy::ui::ComputedStackIndex, bool),
+    >,
+    overlays: &OverlayQuery,
+    modals: &Query<Entity, With<super::overlay::ModalSurface>>,
+    parents: &Query<&ChildOf>,
+) -> Option<Entity> {
+    let modal_open = !modals.is_empty();
     let top_overlay: Option<Entity> = overlays
         .iter()
         .filter(|(_, rcp, _, node)| rcp.cursor_over && node.display != Display::None)
         .max_by_key(|(_, _, si, _)| si.0)
         .map(|(e, _, _, _)| e);
 
-    // The frontmost scroll area under the cursor (highest stack index) that's
-    // allowed to scroll given any open modal / overlay confinement.
     let mut best: Option<(Entity, u32)> = None;
-    for (e, rcp, cn, es) in &areas {
-        if !rcp.cursor_over {
+    for (e, rcp, si, eligible) in candidates {
+        if !rcp.cursor_over || !eligible {
             continue;
         }
-        // Views that opt out of wheel scrolling (image viewers that zoom on the
-        // wheel) never claim it.
-        if !es.wheel_scroll {
-            continue;
-        }
-        if modal_open && !under_overlay(e, &parents, &modals) {
+        if modal_open && !under_overlay(e, parents, modals) {
             continue;
         }
         if let Some(ov) = top_overlay {
-            if e != ov && !is_descendant_of(e, ov, &parents) {
+            if e != ov && !is_descendant_of(e, ov, parents) {
                 continue;
             }
         }
-        let si = cn.0;
+        let si = si.0;
         if best.is_none_or(|(_, b)| si >= b) {
             best = Some((e, si));
         }
     }
-    // No eligible scroll area — if an overlay is under the cursor it swallows the
-    // wheel (returning here leaves the panel behind untouched).
-    let Some((target, _)) = best else {
+    best.map(|(e, _)| e)
+}
+
+/// Holding ↑/↓ with the cursor over a scroll view scrolls it (keyboard scroll,
+/// like a browser). Skipped while anything is consuming arrow keys as caret
+/// motion — a focused text input, a focused code editor, or a numeric field in
+/// its typing state.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn scroll_arrow_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
+    config: Res<ScrollConfig>,
+    editing: Res<super::drag_value::AnyDragValueEditing>,
+    inputs: Query<&super::text_input::EmberTextInput>,
+    editors: Query<&super::code_editor::CodeEditor>,
+    mut areas: Query<(Entity, &RelativeCursorPosition, &bevy::ui::ComputedStackIndex, &mut EmberScroll)>,
+    overlays: OverlayQuery,
+    modals: Query<Entity, With<super::overlay::ModalSurface>>,
+    parents: Query<&ChildOf>,
+) {
+    let dir = match (keys.pressed(KeyCode::ArrowUp), keys.pressed(KeyCode::ArrowDown)) {
+        (true, false) => -1.0,
+        (false, true) => 1.0,
+        _ => return,
+    };
+    if editing.0
+        || inputs.iter().any(|i| i.focused)
+        || editors.iter().any(|e| e.is_focused())
+    {
+        return;
+    }
+    let Some(target) = hovered_scroll_area(
+        areas.iter().map(|(e, rcp, si, es)| (e, rcp, si, es.wheel_scroll)),
+        &overlays,
+        &modals,
+        &parents,
+    ) else {
         return;
     };
-
     if let Ok((_, _, _, mut s)) = areas.get_mut(target) {
-        s.target -= dy * WHEEL_STEP;
-        s.stick = false; // user took control; scroll_update re-sticks at bottom
+        s.target += dir * ARROW_RATE * config.speed * time.delta_secs();
+        s.stick = false;
     }
+}
+
+/// Middle-click drag pans the hovered scroll view, grab-the-content style: the
+/// content follows the cursor 1:1 (through the usual easing), on both axes for
+/// both-axis views. The grab latches on press and runs off [`GlobalCursor`]
+/// deltas — like the thumb drag, it holds even when the cursor leaves the
+/// panel or the window.
+pub(crate) fn scroll_middle_drag(
+    mouse: Res<ButtonInput<MouseButton>>,
+    cursor: Res<crate::dock::GlobalCursor>,
+    mut areas: Query<(
+        Entity,
+        &RelativeCursorPosition,
+        &bevy::ui::ComputedStackIndex,
+        &ComputedNode,
+        &mut EmberScroll,
+    )>,
+    overlays: OverlayQuery,
+    modals: Query<Entity, With<super::overlay::ModalSurface>>,
+    parents: Query<&ChildOf>,
+    // The grabbed viewport + the cursor's physical position last frame.
+    mut drag: Local<Option<(Entity, Vec2)>>,
+) {
+    if !mouse.pressed(MouseButton::Middle) {
+        *drag = None;
+        return;
+    }
+    if mouse.just_pressed(MouseButton::Middle) {
+        // Every scroll view can be grabbed — `wheel_scroll` only opts a view out
+        // of the *wheel* (image viewers zoom with it); panning is still wanted.
+        let target = hovered_scroll_area(
+            areas.iter().map(|(e, rcp, si, _, _)| (e, rcp, si, true)),
+            &overlays,
+            &modals,
+            &parents,
+        );
+        *drag = target.zip(cursor.pos);
+        return;
+    }
+    let Some((viewport, last)) = *drag else { return };
+    let Some(cur) = cursor.pos else { return };
+    if cur == last {
+        return;
+    }
+    let Ok((_, _, _, cn, mut s)) = areas.get_mut(viewport) else {
+        // Viewport despawned mid-drag (panel rebuilt) — drop the grab.
+        *drag = None;
+        return;
+    };
+    // Physical cursor delta → logical scroll delta. Content follows the cursor
+    // (drag down = scroll up); `scroll_update` clamps to the scrollable range.
+    let d = (cur - last) * cn.inverse_scale_factor();
+    s.target -= d.y;
+    s.stick = false;
+    if s.h_track.is_some() {
+        s.target_x -= d.x;
+    }
+    *drag = Some((viewport, cur));
 }
 
 /// Is `e` a descendant of `ancestor` in the UI tree?

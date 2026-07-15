@@ -64,13 +64,7 @@ pub fn install_asset_with_filename(
     if is_zip {
         extract_zip(data, &dest, asset_name)
     } else {
-        // Single file — prefer download_filename, fall back to URL-derived name
-        let filename = if !download_filename.is_empty() {
-            download_filename
-        } else {
-            file_url.rsplit('/').next().unwrap_or(asset_name)
-        };
-        let file_path = dest.join(filename);
+        let file_path = single_asset_path(&dest, category, asset_name, file_url, download_filename);
         std::fs::write(&file_path, data).map_err(|e| format!("Failed to write file: {e}"))?;
         Ok(file_path)
     }
@@ -80,9 +74,14 @@ pub fn install_asset_with_filename(
 /// folder the user picked in the install prompt), rather than the
 /// category-derived default. Zips extract into an asset-named subfolder; single
 /// files are written directly into `dest`.
+///
+/// `category` is the asset's marketplace category (not the folder the user
+/// picked): it's what tells us a lone `.toml` is a *theme*, which needs its
+/// filename derived from the human asset name — see [`single_asset_path`].
 #[cfg(not(target_arch = "wasm32"))]
 pub fn install_asset_into(
     dest: &Path,
+    category: &str,
     asset_name: &str,
     file_url: &str,
     download_filename: &str,
@@ -94,15 +93,114 @@ pub fn install_asset_into(
     if is_zip {
         extract_zip(data, dest, asset_name)
     } else {
-        let filename = if !download_filename.is_empty() {
-            download_filename
-        } else {
-            file_url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(asset_name)
-        };
-        let file_path = dest.join(filename);
+        let file_path = single_asset_path(dest, category, asset_name, file_url, download_filename);
         std::fs::write(&file_path, data).map_err(|e| format!("Failed to write file: {e}"))?;
         Ok(file_path)
     }
+}
+
+/// Pick the on-disk path for a single (non-zip) downloaded asset.
+///
+/// Theme `.toml`s are the special case. The editor's theme picker shows a flat
+/// theme by its **file stem**, so keeping the download's name would make the
+/// dropdown read the asset UUID (e.g. `3e5959e4-….toml`) instead of the real
+/// name like "Amber Terminal". For themes we therefore name the file from the
+/// sanitized human asset name; every other category keeps the server's
+/// `download_filename` / URL-tail name unchanged. (Zipped themes already land
+/// in an asset-named folder via [`extract_zip`], so only the single-file path
+/// was affected.)
+#[cfg(not(target_arch = "wasm32"))]
+fn single_asset_path(
+    dest: &Path,
+    category: &str,
+    asset_name: &str,
+    file_url: &str,
+    download_filename: &str,
+) -> PathBuf {
+    if install_dir_for_category(category) == "themes" {
+        if let Some(stem) = sanitize_theme_stem(asset_name) {
+            return non_clobbering_theme_path(dest, &stem, asset_name);
+        }
+        // The name was all punctuation/control chars and sanitized to nothing:
+        // fall through to the download's original name rather than write a
+        // nameless file. Rare enough that the UUID fallback is acceptable.
+    }
+    let filename = if !download_filename.is_empty() {
+        download_filename
+    } else {
+        file_url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(asset_name)
+    };
+    dest.join(filename)
+}
+
+/// Sanitize a human asset name into a filename-safe stem for a single-file
+/// theme. This stem is exactly what the user reads in the theme dropdown, so we
+/// keep letters and spaces and only strip what a filesystem rejects: the path
+/// separators / reserved characters `/ \ : * ? " < > |` and control chars.
+/// Whitespace runs collapse to one space, and leading/trailing spaces and dots
+/// are trimmed (both are illegal at the end of a Windows filename). Returns
+/// `None` when nothing usable survives, so the caller falls back to the
+/// download's original name rather than writing a blank one.
+#[cfg(not(target_arch = "wasm32"))]
+fn sanitize_theme_stem(name: &str) -> Option<String> {
+    let mut out = String::with_capacity(name.len());
+    let mut pending_space = false;
+    for c in name.chars() {
+        if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+            continue;
+        }
+        if c.is_whitespace() {
+            pending_space = true;
+            continue;
+        }
+        // Emit a single separating space only between kept characters.
+        if pending_space && !out.is_empty() {
+            out.push(' ');
+        }
+        pending_space = false;
+        out.push(c);
+    }
+    let trimmed = out.trim_matches(|c: char| c == ' ' || c == '.').to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+/// Resolve `<stem>.toml` inside `dest` without silently clobbering a *different*
+/// theme. Reinstalling the same theme (the existing file's `[meta] name` equals
+/// the incoming asset name) overwrites in place — that's a legitimate update. A
+/// genuine clash with an unrelated theme that sanitized to the same stem is
+/// parked under a ` (2)`, ` (3)`… suffix instead of destroying it.
+#[cfg(not(target_arch = "wasm32"))]
+fn non_clobbering_theme_path(dest: &Path, stem: &str, asset_name: &str) -> PathBuf {
+    let primary = dest.join(format!("{stem}.toml"));
+    if !primary.exists() || theme_meta_name(&primary).as_deref() == Some(asset_name) {
+        return primary;
+    }
+    for n in 2..1000 {
+        let candidate = dest.join(format!("{stem} ({n}).toml"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    // Pathological (1000 same-named themes): overwrite rather than loop forever.
+    primary
+}
+
+/// Read `[meta] name` from an existing theme `.toml`, if it reads and parses.
+/// Lets an install tell "same theme, update it" from "different theme, same
+/// filename", so it won't overwrite a theme it doesn't own.
+#[cfg(not(target_arch = "wasm32"))]
+fn theme_meta_name(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let value: toml::Value = toml::from_str(&content).ok()?;
+    value
+        .get("meta")
+        .and_then(|meta| meta.get("name"))
+        .and_then(|name| name.as_str())
+        .map(str::to_string)
 }
 
 /// Metadata sidecar written next to an installed marketplace plugin dll, as

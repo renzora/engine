@@ -1,6 +1,6 @@
 # Publishing Assets
 
-List your models, scripts, audio, plugins, and more on the Renzora Marketplace through the publish wizard on renzora.com.
+List your models, scripts, audio, plugins, and more on the Renzora Marketplace through the publish wizard — either **on renzora.com** or **inside the editor** (see [Publishing from the editor](#publishing-from-the-editor)). Both flows are the same six steps and hit the same API, so this page describes them together.
 
 ## Become a creator first
 
@@ -28,6 +28,25 @@ Everything is published through one wizard at [Marketplace → Upload](/marketpl
 | **6 — Review & Publish** | Check the summary, then **Publish**. |
 
 > There is **no draft step and no review queue**. Clicking **Publish** uploads your files and makes the asset **live on the marketplace immediately**. (You can later unpublish it from the edit page — see below.)
+
+## Publishing from the editor
+
+You don't have to leave the engine to publish. The editor ships a **Publish** panel that is the same six-step wizard, laid out identically to the website.
+
+**Opening it:**
+
+- In the **Marketplace** panel's left column, click **Upload Asset**.
+- Or open the **command palette** (`Ctrl`/`Cmd` + `P`) and run **Open Publish**.
+
+The panel docks like any other, so you can keep it beside the viewport while you prepare files. You must be **signed in** (sign in from the Marketplace panel first); publishing to a *paid* price also needs a connected payout account, exactly as on the web.
+
+**How it differs from the website (only in mechanics, not in fields):**
+
+- File inputs open a **native file picker** rather than a browser file dialog — one for the main file, the cover image, screenshots (multi-select), and audio previews.
+- The same **content type → category → basic info → details → files & media → review** steps apply, with the same required fields, the same "credited assets are free" rule, and the same live tag autocomplete / submit-a-new-tag behaviour.
+- On success the panel shows a **View →** link that opens the published asset (or game) page in your browser.
+
+Everything below — field rules, category-specific details, size limits, categories, and pricing — applies to both the website and the editor panel.
 
 ### Step 3 — Basic information
 

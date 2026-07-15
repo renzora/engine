@@ -1058,6 +1058,68 @@ pub struct AuthToggleWindowRequest;
 #[derive(Resource)]
 pub struct AuthSignOutRequest;
 
+// ── Social bridge ────────────────────────────────────────────────────────────
+
+/// Connection state of the social live WebSocket (renzora.com `/api/ws/live`).
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SocialWsState {
+    #[default]
+    Disconnected,
+    Connecting,
+    Connected,
+}
+
+/// Deep-link target for opening a social panel with context (e.g. clicking a
+/// notification opens the right panel focused on the right thing).
+#[derive(Clone, Debug)]
+pub enum SocialPanelRequest {
+    Friends,
+    /// Friends panel, Requests tab.
+    FriendRequests,
+    Chat { conversation_id: Option<String> },
+    Notifications,
+    /// The community feed; `post_id` deep-links to one post (a mention/comment
+    /// notification), which the panel expands and highlights on arrival.
+    Feed { post_id: Option<String> },
+    Forum { thread_slug: Option<String> },
+    Profile { username: Option<String> },
+    Teams,
+    Learn,
+}
+
+/// Lightweight social state kept in sync by `renzora_social`. The shell status
+/// bar and other crates read this without depending on the social crate.
+#[derive(Resource)]
+pub struct SocialBridge {
+    pub ws_state: SocialWsState,
+    pub unread_notifications: u32,
+    pub unread_messages: u32,
+    pub friends_online: u32,
+    /// Whether the shell shows the notification bell in the top bar
+    /// (user preference from Settings → Social & Privacy).
+    pub notify_button_enabled: bool,
+    /// Set by any crate to open a social panel; consumed by `renzora_social`.
+    pub open_panel_request: Option<SocialPanelRequest>,
+    /// Set by the shell's bell button (logical screen x,y of the button's
+    /// bottom-left); consumed by `renzora_social`, which toggles the
+    /// notifications dropdown there.
+    pub notify_dropdown_request: Option<(f32, f32)>,
+}
+
+impl Default for SocialBridge {
+    fn default() -> Self {
+        Self {
+            ws_state: SocialWsState::default(),
+            unread_notifications: 0,
+            unread_messages: 0,
+            friends_online: 0,
+            notify_button_enabled: true,
+            open_panel_request: None,
+            notify_dropdown_request: None,
+        }
+    }
+}
+
 // ============================================================================
 // PropertyValue (shared between scripting and blueprints)
 // ============================================================================

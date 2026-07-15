@@ -71,6 +71,8 @@ pub fn list_assets(
     category: Option<&str>,
     sort: Option<&str>,
     page: u32,
+    min_rating: Option<i32>,
+    max_price: Option<i64>,
 ) -> Result<MarketplaceListResponse, String> {
     let mut url = format!("{API_BASE}/api/marketplace?page={page}");
     if let Some(q) = query {
@@ -81,6 +83,14 @@ pub fn list_assets(
     }
     if let Some(s) = sort {
         url.push_str(&format!("&sort={s}"));
+    }
+    // Filters: the backend reads `min_rating` (1–5) and `max_price` (credits;
+    // 0 = free-only). Omitted params mean "no filter".
+    if let Some(r) = min_rating {
+        url.push_str(&format!("&min_rating={r}"));
+    }
+    if let Some(p) = max_price {
+        url.push_str(&format!("&max_price={p}"));
     }
 
     let response = ureq::get(&url)
@@ -158,6 +168,74 @@ pub fn download_file(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("Failed to read file: {e}"))?;
 
     Ok(bytes)
+}
+
+/// One entry in an asset's preview-media gallery. `media_type` is one of
+/// `"image"`, `"video"`, or `"audio"`; the two optional fields default so an
+/// item that omits them (e.g. an image with no separate thumbnail) still parses.
+#[derive(Deserialize, Clone, Debug)]
+pub struct MediaItem {
+    pub id: String,
+    pub media_type: String,
+    pub url: String,
+    #[serde(default)]
+    pub thumbnail_url: Option<String>,
+    #[serde(default)]
+    pub sort_order: i64,
+}
+
+/// Fetch an asset's preview-media gallery (images / video / audio). Public
+/// endpoint — no auth. The server returns items in no guaranteed order, so we
+/// sort by `sort_order` here once, keeping every consumer's rendering stable.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_media(asset_id: &str) -> Result<Vec<MediaItem>, String> {
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/media");
+
+    let response = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+
+    let mut items: Vec<MediaItem> =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))?;
+    items.sort_by_key(|m| m.sort_order);
+    Ok(items)
+}
+
+/// One downloadable file of an asset (a multi-format model ships FBX + GLB + OBJ,
+/// a pack ships many). `download_url` is a presigned URL (present for free assets
+/// / owned paid assets).
+#[derive(Debug, Deserialize, Clone)]
+pub struct AssetFileInfo {
+    pub id: String,
+    #[serde(default)]
+    pub original_filename: String,
+    #[serde(default)]
+    pub mime_type: String,
+    #[serde(default)]
+    pub sort_order: i64,
+    #[serde(default)]
+    pub preview_url: Option<String>,
+    #[serde(default)]
+    pub download_url: Option<String>,
+}
+
+/// List an asset's files. Public endpoint — no auth. Used to pick the right
+/// format for a native preview (e.g. the `.glb`, since the `preview-file` proxy
+/// serves only the *first* file — often an FBX Bevy can't load).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn get_asset_files(asset_id: &str) -> Result<Vec<AssetFileInfo>, String> {
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/asset-files");
+    let response = ureq::get(&url).call().map_err(|e| format!("Request failed: {e}"))?;
+    let body = response
+        .into_body()
+        .read_to_string()
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
 }
 
 /// List marketplace categories.
@@ -245,7 +323,10 @@ pub struct Category {
     pub id: String,
     pub name: String,
     pub slug: String,
+    // Games categories may omit these; default so both endpoints parse.
+    #[serde(default)]
     pub description: String,
+    #[serde(default)]
     pub icon: String,
 }
 
@@ -282,10 +363,10 @@ pub struct AssetRating {
     pub user_rating: Option<i32>,
 }
 
-/// Get comments for an asset.
+/// Get comments for an asset (keyed by asset **id**, not slug).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn get_comments(slug: &str) -> Result<CommentsResponse, String> {
-    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/comments");
+pub fn get_comments(asset_id: &str) -> Result<CommentsResponse, String> {
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/comments");
 
     let response = ureq::get(&url)
         .call()
@@ -303,12 +384,12 @@ pub fn get_comments(slug: &str) -> Result<CommentsResponse, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn post_comment(
     session: &AuthSession,
-    slug: &str,
+    asset_id: &str,
     content: &str,
 ) -> Result<AssetComment, String> {
     let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
-    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/comments");
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/comments");
     let body = serde_json::json!({ "content": content });
     let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
 
@@ -326,49 +407,46 @@ pub fn post_comment(
     serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
 }
 
-/// Get the average rating and user's own rating for an asset.
+/// Get an asset's rating aggregate. Ratings are "reviews", keyed by asset **id**
+/// at `/{id}/reviews`, which returns `{ rating_avg, rating_count, reviews }`.
+/// Best-effort and NON-FATAL: any failure yields an empty rating rather than an
+/// error (so an unrated asset never surfaces a "404" toast in the overlay).
 #[cfg(not(target_arch = "wasm32"))]
-pub fn get_rating(slug: &str, session: Option<&AuthSession>) -> Result<AssetRating, String> {
-    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/rating");
-
-    let mut req = ureq::get(&url);
-    if let Some(s) = session {
-        if let Some(token) = s.access_token.as_deref() {
-            req = req.header("Authorization", &format!("Bearer {token}"));
-        }
-    }
-
-    let response = req.call().map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+pub fn get_rating(asset_id: &str, _session: Option<&AuthSession>) -> Result<AssetRating, String> {
+    let empty = AssetRating { average: 0.0, count: 0, user_rating: None };
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/reviews");
+    let Ok(response) = ureq::get(&url).call() else { return Ok(empty) };
+    let Ok(body) = response.into_body().read_to_string() else { return Ok(empty) };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) else { return Ok(empty) };
+    let average = v.get("rating_avg").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+    let count = v.get("rating_count").and_then(|x| x.as_i64()).unwrap_or(0);
+    Ok(AssetRating { average, count, user_rating: None })
 }
 
-/// Submit or update a rating for an asset (requires authentication).
+/// Submit or update your rating for an asset (requires authentication). Ratings
+/// are reviews: `POST /{id}/reviews` with `{ rating }`. The endpoint returns only
+/// `{ id, message }`, so we re-fetch the aggregate to reflect the new average and
+/// echo back the rating the user just set as their own.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn post_rating(session: &AuthSession, slug: &str, rating: i32) -> Result<AssetRating, String> {
+pub fn post_rating(session: &AuthSession, asset_id: &str, rating: i32) -> Result<AssetRating, String> {
     let token = session.access_token.as_deref().ok_or("Not signed in")?;
 
-    let url = format!("{API_BASE}/api/marketplace/detail/{slug}/rating");
+    let url = format!("{API_BASE}/api/marketplace/{asset_id}/reviews");
     let body = serde_json::json!({ "rating": rating });
     let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
 
-    let response = ureq::post(&url)
+    // Non-2xx (e.g. "you must own this asset") surfaces as Err here, which the
+    // overlay toasts.
+    ureq::post(&url)
         .header("Authorization", &format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .send(json.as_bytes())
         .map_err(|e| format!("Request failed: {e}"))?;
 
-    let body_str = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+    // Re-read the aggregate; stamp our own rating so the stars stay filled.
+    let mut agg = get_rating(asset_id, Some(session))?;
+    agg.user_rating = Some(rating);
+    Ok(agg)
 }
 
 /// Simple percent-encoding for query parameters.

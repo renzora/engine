@@ -213,6 +213,10 @@ pub struct EditorSettings {
     /// (1.0 follows the system). Persisted per-user in `~/.renzora/editor.toml`
     /// because it's a property of the user's display, not the project.
     pub ui_scale: f32,
+    /// Panel scroll-speed multiplier (mouse wheel / arrow keys / middle-drag);
+    /// 1.0 = default feel. Pushed into ember's `ScrollConfig` by the settings
+    /// panel and persisted per-user in `~/.renzora/editor.toml`.
+    pub scroll_speed: f32,
     /// Selected UI (proportional) font family
     pub ui_font: UiFont,
     /// Selected monospace (code) font family
@@ -288,6 +292,7 @@ impl Default for EditorSettings {
             selection_boundary_on_top: false,
             font_size: 17.0,
             ui_scale: renzora::load_ui_scale(),
+            scroll_speed: renzora::load_scroll_speed(),
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
             // Seeded from the persisted contract flag so dev mode (and anything

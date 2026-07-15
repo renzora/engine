@@ -6,7 +6,7 @@
 struct WaveUniforms {
     data: array<vec4<f32>, 8>, // 32 amplitudes packed 4-per-vec4
     color: vec4<f32>,
-    params: vec4<f32>,         // x = sample count
+    params: vec4<f32>,         // x = sample count, y = playback progress 0..1
 };
 
 @group(1) @binding(0)
@@ -35,12 +35,25 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
 
     let center = 1.0 - smoothstep(0.0, max(fwidth(in.uv.y) * 1.5, 0.004), abs(in.uv.y - 0.5));
 
+    // Playback split: bars left of the playhead are the bright accent, bars to
+    // the right are dimmed. As `progress` advances each frame the boundary sweeps
+    // across, so a playing clip visibly animates.
+    let progress = u.params.y;
+    let played = 1.0 - smoothstep(progress - 0.004, progress + 0.004, in.uv.x);
+    let dim = vec3<f32>(0.32, 0.34, 0.40);
+    let bar_col = mix(dim, u.color.rgb, mix(0.28, 1.0, played));
+
+    // A thin bright playhead marker at the boundary.
+    let head = 1.0 - smoothstep(0.0, max(fwidth(in.uv.x) * 1.5, 0.006), abs(in.uv.x - progress));
+
     let fa = fill * u.color.a;
     let ca = center * 0.3 * (1.0 - fa);
-    let alpha = fa + ca;
+    let base_alpha = fa + ca;
+    let alpha = max(base_alpha, head * 0.9);
     if (alpha <= 0.0) {
         discard;
     }
-    let col = (u.color.rgb * fa + vec3<f32>(0.45, 0.45, 0.53) * ca) / max(alpha, 1e-4);
+    let env_col = (bar_col * fa + vec3<f32>(0.45, 0.45, 0.53) * ca) / max(base_alpha, 1e-4);
+    let col = mix(env_col, u.color.rgb, head);
     return vec4<f32>(col, alpha);
 }

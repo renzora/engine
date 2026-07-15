@@ -202,6 +202,11 @@ pub fn raytracing_supported() -> bool {
 
 pub fn init_app() -> App {
     let mut app = App::new();
+    // Commands that fail (most commonly: a queued command targeting an entity
+    // another system despawned in the same frame — overlays, live-rebuilt UI,
+    // chrome rebuilds on theme switch) log a WARN and keep running instead of
+    // taking the whole editor down. Bevy's default handler panics.
+    app.set_error_handler(bevy::ecs::error::warn);
     renzora_engine::setup_asset_reader(&mut app);
     app
 }
@@ -300,6 +305,16 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     anisotropy_clamp: 16,
                     ..default()
                 },
+            })
+            // Allow loading assets from absolute paths outside a registered
+            // source. Bevy's default (`Deny`) blocks it as a path-traversal
+            // guard, but the editor legitimately loads absolute paths (the
+            // custom `EmbeddedAssetReader` resolves them) — e.g. the marketplace
+            // 3D preview stages a downloaded `.glb` into a temp cache and loads
+            // it by absolute path. Mirrors `renzora_xr`.
+            .set(bevy::asset::AssetPlugin {
+                unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
+                ..default()
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {

@@ -8,6 +8,10 @@ renzora_editor_framework = { path = "../renzora_editor_framework" }
 renzora_ember = { path = "../renzora_ember" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# Remote search tabs (docs / forum / users / feed / courses / marketplace)
+# query the renzora.com API on worker threads and stream results back.
+renzora_auth = { path = "../renzora_auth" }
+crossbeam-channel = "0.5"
 
 [lints]
 workspace = true

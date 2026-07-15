@@ -17,6 +17,22 @@ Press `Ctrl+P` to open the command palette (`renzora_command_palette`). It is a 
 - **Panels** — `Open <Panel>` (focuses it if already docked).
 - **Settings** tabs, **File** menu commands, and **Documentation** links.
 
+**Scope tabs.** A tab strip under the search box narrows what you're searching:
+
+| Tab | Searches | Picking a result |
+|---|---|---|
+| Commands | Everything above (the default) | Runs it |
+| Entities | Named entities in the open scene | Selects the entity |
+| Settings | Settings tabs | Opens Settings on that tab |
+| Docs | renzora.com documentation (live search) | Opens the page in your browser |
+| Forum | Forum threads | Opens the thread in the Forum panel |
+| Users | Community members | Opens their profile |
+| Feed | Recent community-feed posts | Opens the post, comments expanded |
+| Courses | Learning courses | Opens the Docs panel |
+| Marketplace | Store assets (server-side search) | Opens the Marketplace panel |
+
+The remote tabs (Docs → Marketplace) query renzora.com as you type, debounced; Docs/Forum/Users want at least two characters, while Feed/Courses/Marketplace list their latest content even with an empty query.
+
 | Key | Action |
 |---|---|
 | `Ctrl+P` | Open / close the palette |

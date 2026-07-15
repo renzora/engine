@@ -11,8 +11,14 @@
 mod infinite_grid;
 
 use bevy::prelude::*;
-use infinite_grid::{InfiniteGrid, InfiniteGridPlugin, InfiniteGridSettings};
+use infinite_grid::InfiniteGridPlugin;
 use renzora::core::viewport_types::ViewportSettings;
+
+// Re-export the grid primitives so other editor crates can drop a grid onto their
+// own offscreen preview cameras (e.g. the marketplace 3D model viewer) without
+// re-implementing the render feature. The `InfiniteGridPlugin` itself is added
+// once by `GridPlugin` below, so consumers only need to spawn the entity.
+pub use infinite_grid::{InfiniteGrid, InfiniteGridSettings};
 
 #[derive(Component)]
 pub struct EditorGrid;

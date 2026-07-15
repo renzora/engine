@@ -12,11 +12,27 @@ renzora_ember = { path = "../renzora_ember" }
 # Live theme preview without installing — applies a downloaded theme into the
 # editor's ThemeManager so the palette updates, then restores on "Stop preview".
 renzora_theme = { path = "../renzora_theme" }
+# The infinite ground grid for the 3D model preview's studio backdrop. Only the
+# `InfiniteGrid`/`InfiniteGridSettings` types are used here; the render plugin is
+# already registered by the editor's own GridPlugin.
+renzora_grid = { path = "../renzora_grid" }
+# The shader compiler + `CodeShaderMaterial` for the material/shader item preview
+# (compile a downloaded shader, extract its `@param`s, render it on a primitive).
+# `ShaderPlugin` (registry + cache + material pipeline) is already in the build.
+renzora_shader = { path = "../renzora_shader" }
 crossbeam-channel = "0.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ureq = "3"
+# Native file pickers for the asset-uploader panel (main file, cover, screenshots,
+# audio previews) — same dependency the profile avatar/cover upload uses.
+rfd = "0.15"
+# Native audio preview for the marketplace item overlay: the engine's Kira
+# manager plays the downloaded clip, and we name Kira's own handle/data types to
+# drive it. renzora_audio does NOT depend on renzora_hub, so this is acyclic.
+renzora_audio = { path = "../renzora_audio" }
+kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
 # Parse a downloaded theme `.toml` into a `renzora_theme::Theme` for live preview,
 # and serialize the installed-plugin metadata sidecar (`<crate>.plugin.toml`).
 toml = "0.8"

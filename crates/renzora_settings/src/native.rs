@@ -265,6 +265,7 @@ pub(crate) fn build(app: &mut App) {
             ember_theme_save_click,
             apply_font_settings,
             sync_drag_value_rail_sweep,
+            sync_scroll_speed,
         )
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
@@ -298,6 +299,18 @@ fn sync_drag_value_rail_sweep(
 ) {
     if settings.is_changed() && config.rail_quick_drag != settings.drag_value_rail_sweep {
         config.rail_quick_drag = settings.drag_value_rail_sweep;
+    }
+}
+
+/// Push the `EditorSettings.scroll_speed` preference into ember's
+/// `ScrollConfig` so every scroll gesture (wheel / arrow keys / middle-drag)
+/// honours it — same one-way sync as the rail-sweep toggle above.
+fn sync_scroll_speed(
+    settings: Res<EditorSettings>,
+    mut config: ResMut<renzora_ember::widgets::ScrollConfig>,
+) {
+    if settings.is_changed() && config.speed != settings.scroll_speed {
+        config.speed = settings.scroll_speed;
     }
 }
 
@@ -1758,6 +1771,23 @@ fn tab_interface(
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.ui_scale"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.ui_scale"));
+
+    let dv = ctl_drag(
+        commands,
+        fonts,
+        settings.scroll_speed,
+        0.25,
+        4.0,
+        0.05,
+        |w| w.resource::<EditorSettings>().scroll_speed,
+        |w, &v| {
+            let v = v.clamp(0.25, 4.0);
+            w.resource_mut::<EditorSettings>().scroll_speed = v;
+            let _ = renzora::save_scroll_speed(v);
+        },
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.scroll_speed"), dv);
+    note_row(commands, fonts, body, &tr("settings.hint.scroll_speed"));
 
     let (sec, body) = section(commands, fonts, "list-bullets", &tr("settings.cat.hierarchy"), A_BLUE);
     commands.entity(col).add_child(sec);

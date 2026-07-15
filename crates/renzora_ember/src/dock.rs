@@ -748,6 +748,24 @@ pub struct DockArea;
 #[derive(Resource, Default)]
 pub struct DockDirty(pub bool);
 
+/// Open (or focus) `panel` in the live dock and flag a rebuild.
+///
+/// The bevy_ui shell renders from this [`Dock`] model, so a panel added
+/// programmatically (a "go to Marketplace" button in another panel, the
+/// asset-uploader button, …) only becomes visible once [`DockDirty`] is armed.
+/// Mutating the tree via `focus_or_add_panel` alone leaves the rebuild
+/// un-triggered until something else (e.g. a theme switch) sets the flag — that
+/// was the "nothing happens until I change the theme" bug. Always go through
+/// this so both steps happen together.
+pub fn open_or_focus_panel(world: &mut World, panel: &str) {
+    if let Some(mut dock) = world.get_resource_mut::<Dock>() {
+        dock.tree.adopt_panel(panel);
+    }
+    if let Some(mut dirty) = world.get_resource_mut::<DockDirty>() {
+        dirty.0 = true;
+    }
+}
+
 // ── Floating dock windows ────────────────────────────────────────────────────
 
 /// One floating OS window hosting its own [`DockTree`] — created by

@@ -8,7 +8,9 @@ use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, border, popup_bg, rgb, text_muted, text_primary};
-use renzora_ember::widgets::{bind_text_input, password_input, text_input, EmberTextInput, OverlaySurface};
+use renzora_ember::widgets::{
+    bind_text_input, password_input, text_input, EmberForm, EmberTextInput, OverlaySurface,
+};
 
 use crate::{api, spawn_auth_request, AuthResult, AuthSession, AuthState, AuthView};
 
@@ -209,12 +211,14 @@ fn build_content(commands: &mut Commands, fonts: &EmberFonts, container: Entity,
         kids.push(text_node(commands, fonts, err, 11.0, RED));
     }
 
+    let submit;
     match view {
         AuthView::SignIn => {
             kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, true));
             kids.push(field(commands, fonts, "Password", "Password", g_password, s_password, true, false));
             kids.push(link_row(commands, fonts, None, "Forgot password?", AuthView::ForgotPassword, true));
-            kids.push(submit_button(commands, fonts, if loading { "Signing in..." } else { "Sign In" }));
+            submit = submit_button(commands, fonts, if loading { "Signing in..." } else { "Sign In" });
+            kids.push(submit);
             kids.push(link_row(commands, fonts, Some("Don't have an account?"), "Register", AuthView::Register, false));
         }
         AuthView::Register => {
@@ -222,17 +226,21 @@ fn build_content(commands: &mut Commands, fonts: &EmberFonts, container: Entity,
             kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, false));
             kids.push(field(commands, fonts, "Password", "Password", g_password, s_password, true, false));
             kids.push(field(commands, fonts, "Confirm Password", "Confirm password", g_confirm, s_confirm, true, false));
-            kids.push(submit_button(commands, fonts, if loading { "Creating account..." } else { "Create Account" }));
+            submit = submit_button(commands, fonts, if loading { "Creating account..." } else { "Create Account" });
+            kids.push(submit);
             kids.push(link_row(commands, fonts, Some("Already have an account?"), "Sign In", AuthView::SignIn, false));
         }
         AuthView::ForgotPassword => {
             kids.push(text_node(commands, fonts, "Enter your email and we'll send you a link to reset your password.", 11.0, text_muted()));
             kids.push(field(commands, fonts, "Email", "you@example.com", g_email, s_email, false, true));
-            kids.push(submit_button(commands, fonts, if loading { "Sending..." } else { "Send Reset Link" }));
+            submit = submit_button(commands, fonts, if loading { "Sending..." } else { "Send Reset Link" });
+            kids.push(submit);
             kids.push(link_row(commands, fonts, None, "Back to Sign In", AuthView::SignIn, false));
         }
     }
 
+    // Tab cycles the fields; Enter in any of them presses the submit button.
+    commands.entity(container).insert(EmberForm { submit });
     commands.entity(container).add_children(&kids);
 }
 
@@ -356,39 +364,62 @@ fn auth_submit_click(q: Query<&Interaction, (With<AuthSubmit>, Changed<Interacti
 }
 
 fn do_submit(world: &mut World) {
-    let Some(mut auth) = world.get_resource_mut::<AuthState>() else { return };
-    if auth.loading {
-        return;
-    }
-    match auth.view {
-        AuthView::SignIn => {
-            let (email, password) = (auth.email.clone(), auth.password.clone());
-            spawn_auth_request(&mut auth, move || match api::login(&email, &password) {
-                Ok(r) => AuthResult::Success(r),
-                Err(e) => AuthResult::Error(e),
-            });
+    // Set when a request actually spawns (not on validation errors): the
+    // password fields then clear like a normal form, while email/username stay
+    // for a retry.
+    let mut clear_passwords = false;
+    {
+        let Some(mut auth) = world.get_resource_mut::<AuthState>() else { return };
+        if auth.loading {
+            return;
         }
-        AuthView::Register => {
-            if auth.password != auth.confirm_password {
-                auth.error = Some("Passwords do not match".into());
-            } else if auth.password.len() < 8 {
-                auth.error = Some("Password must be at least 8 characters".into());
-            } else if auth.username.len() < 3 {
-                auth.error = Some("Username must be at least 3 characters".into());
-            } else {
-                let (u, e, p) = (auth.username.clone(), auth.email.clone(), auth.password.clone());
-                spawn_auth_request(&mut auth, move || match api::register(&u, &e, &p) {
+        match auth.view {
+            AuthView::SignIn => {
+                let (email, password) = (auth.email.clone(), auth.password.clone());
+                spawn_auth_request(&mut auth, move || match api::login(&email, &password) {
                     Ok(r) => AuthResult::Success(r),
-                    Err(err) => AuthResult::Error(err),
+                    Err(e) => AuthResult::Error(e),
+                });
+                clear_passwords = true;
+            }
+            AuthView::Register => {
+                if auth.password != auth.confirm_password {
+                    auth.error = Some("Passwords do not match".into());
+                } else if auth.password.len() < 8 {
+                    auth.error = Some("Password must be at least 8 characters".into());
+                } else if auth.username.len() < 3 {
+                    auth.error = Some("Username must be at least 3 characters".into());
+                } else {
+                    let (u, e, p) = (auth.username.clone(), auth.email.clone(), auth.password.clone());
+                    spawn_auth_request(&mut auth, move || match api::register(&u, &e, &p) {
+                        Ok(r) => AuthResult::Success(r),
+                        Err(err) => AuthResult::Error(err),
+                    });
+                    clear_passwords = true;
+                }
+            }
+            AuthView::ForgotPassword => {
+                let email = auth.email.clone();
+                spawn_auth_request(&mut auth, move || match api::forgot_password(&email) {
+                    Ok(r) => AuthResult::ForgotSuccess(r.message),
+                    Err(e) => AuthResult::Error(e),
                 });
             }
         }
-        AuthView::ForgotPassword => {
-            let email = auth.email.clone();
-            spawn_auth_request(&mut auth, move || match api::forgot_password(&email) {
-                Ok(r) => AuthResult::ForgotSuccess(r.message),
-                Err(e) => AuthResult::Error(e),
-            });
+        if clear_passwords {
+            auth.password.clear();
+            auth.confirm_password.clear();
+        }
+    }
+    if clear_passwords {
+        // Also clear the widgets, not just the state: a focused password field
+        // would otherwise push its old value straight back through its binding.
+        let mut q = world.query::<&mut EmberTextInput>();
+        for mut inp in q.iter_mut(world) {
+            if inp.password && !inp.value.is_empty() {
+                inp.value.clear();
+                inp.caret_index = 0;
+            }
         }
     }
 }

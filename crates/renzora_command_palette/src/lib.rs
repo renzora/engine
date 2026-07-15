@@ -20,11 +20,72 @@ mod native;
 
 // ── State ──────────────────────────────────────────────────────────────────
 
+/// Which corpus the palette searches. `Commands` is the local everything-list
+/// (tools, actions, panels, layouts, settings, menu commands); the rest are
+/// scoped tabs — `Entities`/`Settings` search locally, the others query
+/// renzora.com through [`PaletteRemote`].
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+pub enum PaletteTab {
+    #[default]
+    Commands,
+    Entities,
+    Settings,
+    Docs,
+    Forum,
+    Users,
+    Feed,
+    Courses,
+    Marketplace,
+}
+
+impl PaletteTab {
+    pub const ALL: &'static [PaletteTab] = &[
+        PaletteTab::Commands,
+        PaletteTab::Entities,
+        PaletteTab::Settings,
+        PaletteTab::Docs,
+        PaletteTab::Forum,
+        PaletteTab::Users,
+        PaletteTab::Feed,
+        PaletteTab::Courses,
+        PaletteTab::Marketplace,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            PaletteTab::Commands => "Commands",
+            PaletteTab::Entities => "Entities",
+            PaletteTab::Settings => "Settings",
+            PaletteTab::Docs => "Docs",
+            PaletteTab::Forum => "Forum",
+            PaletteTab::Users => "Users",
+            PaletteTab::Feed => "Feed",
+            PaletteTab::Courses => "Courses",
+            PaletteTab::Marketplace => "Marketplace",
+        }
+    }
+
+    /// Tabs whose results come from the renzora.com API.
+    pub(crate) fn is_remote(&self) -> bool {
+        matches!(
+            self,
+            PaletteTab::Docs
+                | PaletteTab::Forum
+                | PaletteTab::Users
+                | PaletteTab::Feed
+                | PaletteTab::Courses
+                | PaletteTab::Marketplace
+        )
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct CommandPaletteState {
     pub open: bool,
     pub query: String,
     pub selected: usize,
+    /// The active search scope tab.
+    pub tab: PaletteTab,
     /// True on the first render after opening — lets us force keyboard focus
     /// on the text input the frame the palette appears.
     pub just_opened: bool,
@@ -73,6 +134,7 @@ fn toggle_palette(world: &mut World) {
     if state.open {
         state.query.clear();
         state.selected = 0;
+        state.tab = PaletteTab::Commands;
         state.just_opened = true;
     }
 }
@@ -337,6 +399,332 @@ fn filter_items(items: Vec<PaletteItem>, query: &str) -> Vec<PaletteItem> {
         .into_iter()
         .filter(|i| i.label.to_lowercase().contains(&q) || i.kind.to_lowercase().contains(&q))
         .collect()
+}
+
+// ── Entities tab (local) ─────────────────────────────────────────────────────
+
+/// Named scene entities matching `query`; picking one selects it. UI nodes and
+/// cameras are excluded — this searches the *scene*, not the editor chrome.
+fn collect_entity_items(world: &mut World, query: &str) -> Vec<PaletteItem> {
+    const MAX: usize = 120;
+    type SceneEntityFilter = (With<Transform>, Without<Node>, Without<Camera>);
+    let q = query.to_lowercase();
+    let mut qy = world.query_filtered::<(Entity, &Name), SceneEntityFilter>();
+    let mut out = Vec::new();
+    for (e, name) in qy.iter(world) {
+        if !q.is_empty() && !name.as_str().to_lowercase().contains(&q) {
+            continue;
+        }
+        out.push(PaletteItem {
+            kind: "Entity",
+            label: name.as_str().to_string(),
+            detail: None,
+            handler: Arc::new(move |w: &mut World| {
+                if let Some(sel) = w.get_resource::<renzora_editor_framework::EditorSelection>() {
+                    sel.set(Some(e));
+                }
+            }),
+        });
+        if out.len() >= MAX {
+            break;
+        }
+    }
+    out.sort_by_key(|i| i.label.to_lowercase());
+    out
+}
+
+// ── Remote tabs (renzora.com) ────────────────────────────────────────────────
+
+/// What activating a remote search result does.
+#[derive(Clone)]
+enum RemoteAction {
+    /// Open a URL in the system browser (docs pages).
+    Url(String),
+    /// Deep-link into a social panel (forum thread, profile, feed post…).
+    Social(renzora::core::SocialPanelRequest),
+    /// Focus/open a dock panel by id (marketplace → the store).
+    Panel(&'static str),
+}
+
+/// One remote search result, carried from the worker thread to the UI.
+struct RemoteHit {
+    kind: &'static str,
+    label: String,
+    detail: Option<String>,
+    action: RemoteAction,
+}
+
+impl RemoteHit {
+    /// A palette row for this hit (cheap: clones the strings + action).
+    fn item(&self) -> PaletteItem {
+        let action = self.action.clone();
+        PaletteItem {
+            kind: self.kind,
+            label: self.label.clone(),
+            detail: self.detail.clone(),
+            handler: Arc::new(move |w: &mut World| match &action {
+                RemoteAction::Url(url) => open_url(url),
+                RemoteAction::Social(req) => {
+                    if let Some(mut bridge) = w.get_resource_mut::<renzora::core::SocialBridge>() {
+                        bridge.open_panel_request = Some(req.clone());
+                    }
+                }
+                RemoteAction::Panel(id) => {
+                    if let Some(mut docking) =
+                        w.get_resource_mut::<renzora_editor_framework::DockingState>()
+                    {
+                        docking.tree.focus_or_add_panel(id);
+                    }
+                }
+            }),
+        }
+    }
+}
+
+/// Async state for the remote search tabs: a debounced dispatch plus a results
+/// cache keyed by (tab, query), so switching back to a tab is instant and a
+/// slow response for a stale query is dropped.
+#[derive(Resource)]
+struct PaletteRemote {
+    /// The (tab, query) the cached `results` answer.
+    have: Option<(PaletteTab, String)>,
+    /// The most recent dispatch in flight.
+    sent: Option<(PaletteTab, String)>,
+    /// Debounced dispatch target: fire when `Time::elapsed` passes the f64.
+    due: Option<(PaletteTab, String, f64)>,
+    loading: bool,
+    results: Vec<RemoteHit>,
+    /// Bumped when results land so the UI re-signatures and rebuilds.
+    generation: u64,
+    tx: crossbeam_channel::Sender<(PaletteTab, String, Vec<RemoteHit>)>,
+    rx: crossbeam_channel::Receiver<(PaletteTab, String, Vec<RemoteHit>)>,
+}
+
+impl Default for PaletteRemote {
+    fn default() -> Self {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        Self {
+            have: None,
+            sent: None,
+            due: None,
+            loading: false,
+            results: Vec::new(),
+            generation: 0,
+            tx,
+            rx,
+        }
+    }
+}
+
+/// Minimum query length for the tabs that hit a server-side search endpoint.
+/// The catalog tabs (feed/courses/marketplace) list their first page unfiltered.
+fn min_query_len(tab: PaletteTab) -> usize {
+    match tab {
+        PaletteTab::Docs | PaletteTab::Forum | PaletteTab::Users => 2,
+        _ => 0,
+    }
+}
+
+/// Debounce + dispatch remote searches, and drain finished ones.
+fn remote_search(
+    time: Res<Time>,
+    state: Res<CommandPaletteState>,
+    session: Option<Res<renzora_auth::AuthSession>>,
+    mut remote: ResMut<PaletteRemote>,
+) {
+    // Land finished searches (only the one we're still waiting for).
+    let mut landed = Vec::new();
+    while let Ok(r) = remote.rx.try_recv() {
+        landed.push(r);
+    }
+    for (tab, q, hits) in landed {
+        if remote.sent.as_ref().is_some_and(|(t, sq)| *t == tab && *sq == q) {
+            remote.results = hits;
+            remote.have = Some((tab, q));
+            remote.sent = None;
+            remote.loading = false;
+            remote.generation = remote.generation.wrapping_add(1);
+        }
+    }
+
+    if !state.open || !state.tab.is_remote() {
+        remote.due = None;
+        return;
+    }
+    let want = (state.tab, state.query.trim().to_string());
+    if want.1.chars().count() < min_query_len(want.0) {
+        // Below the threshold: show the "type to search" hint, fetch nothing.
+        if remote.have.as_ref() != Some(&want) {
+            remote.results.clear();
+            remote.have = Some(want);
+            remote.due = None;
+            remote.generation = remote.generation.wrapping_add(1);
+        }
+        return;
+    }
+    if remote.have.as_ref() == Some(&want) || remote.sent.as_ref() == Some(&want) {
+        return;
+    }
+    let now = time.elapsed_secs_f64();
+    match &remote.due {
+        Some((t, q, at)) if *t == want.0 && *q == want.1 => {
+            if now >= *at {
+                remote.due = None;
+                remote.sent = Some(want.clone());
+                remote.loading = true;
+                let session = session.map(|s| renzora_auth::AuthSession {
+                    user: s.user.clone(),
+                    access_token: s.access_token.clone(),
+                    refresh_token: None,
+                });
+                dispatch_remote(want.0, want.1, session, remote.tx.clone());
+            }
+        }
+        _ => remote.due = Some((want.0, want.1.clone(), now + 0.3)),
+    }
+}
+
+/// Run one remote search on a worker thread and send the hits back.
+#[cfg(not(target_arch = "wasm32"))]
+fn dispatch_remote(
+    tab: PaletteTab,
+    query: String,
+    session: Option<renzora_auth::AuthSession>,
+    tx: crossbeam_channel::Sender<(PaletteTab, String, Vec<RemoteHit>)>,
+) {
+    std::thread::spawn(move || {
+        let q = query.to_lowercase();
+        let hits: Vec<RemoteHit> = match tab {
+            PaletteTab::Docs => {
+                // Resolve the site's default docs version once per process.
+                static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+                let version = VERSION.get_or_init(|| {
+                    renzora_auth::docs::get_versions()
+                        .ok()
+                        .filter(|v| !v.default.is_empty())
+                        .map(|v| v.default)
+                        .unwrap_or_else(|| "r1-alpha6".to_string())
+                });
+                renzora_auth::docs::search(version, &query)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|d| RemoteHit {
+                        kind: "Doc",
+                        label: d.title,
+                        detail: Some(format!("{} · {}", d.group, d.category)),
+                        action: RemoteAction::Url(format!(
+                            "https://renzora.com/docs/{}/{}",
+                            d.version, d.slug
+                        )),
+                    })
+                    .collect()
+            }
+            PaletteTab::Forum => renzora_auth::forum::search_forum(&query)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|h| RemoteHit {
+                    kind: "Thread",
+                    label: h.title,
+                    detail: Some(format!("by {} · {} posts", h.author_name, h.post_count)),
+                    action: RemoteAction::Social(renzora::core::SocialPanelRequest::Forum {
+                        thread_slug: Some(h.slug),
+                    }),
+                })
+                .collect(),
+            PaletteTab::Users => renzora_auth::social::search_users(&query)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|u| RemoteHit {
+                    kind: "User",
+                    detail: (u.role != "user" && !u.role.is_empty()).then(|| u.role.clone()),
+                    action: RemoteAction::Social(renzora::core::SocialPanelRequest::Profile {
+                        username: Some(u.username.clone()),
+                    }),
+                    label: u.username,
+                })
+                .collect(),
+            PaletteTab::Feed => {
+                // No feed-search endpoint: pull the latest page and filter here.
+                let posts = session
+                    .as_ref()
+                    .map(|s| renzora_auth::feed::get_feed(s, None, 30, None).unwrap_or_default())
+                    .unwrap_or_default();
+                posts
+                    .into_iter()
+                    .filter(|p| {
+                        q.is_empty()
+                            || p.body.to_lowercase().contains(&q)
+                            || p.username.to_lowercase().contains(&q)
+                    })
+                    .take(30)
+                    .map(|p| {
+                        let mut body: String = p.body.chars().take(64).collect();
+                        if body.len() < p.body.len() {
+                            body.push('…');
+                        }
+                        RemoteHit {
+                            kind: "Post",
+                            label: format!("{}: {}", p.username, body.replace('\n', " ")),
+                            detail: Some(format!("{} comments", p.comment_count)),
+                            action: RemoteAction::Social(renzora::core::SocialPanelRequest::Feed {
+                                post_id: Some(p.id),
+                            }),
+                        }
+                    })
+                    .collect()
+            }
+            PaletteTab::Courses => renzora_auth::docs::list_courses(None, 1)
+                .map(|r| r.courses)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|c| {
+                    q.is_empty()
+                        || c.title.to_lowercase().contains(&q)
+                        || c.category.to_lowercase().contains(&q)
+                })
+                .map(|c| RemoteHit {
+                    kind: "Course",
+                    label: c.title,
+                    detail: Some(if c.category.is_empty() {
+                        format!("{} chapters", c.chapter_count)
+                    } else {
+                        format!("{} · {} chapters", c.category, c.chapter_count)
+                    }),
+                    action: RemoteAction::Social(renzora::core::SocialPanelRequest::Learn),
+                })
+                .collect(),
+            PaletteTab::Marketplace => {
+                let query_opt = (!query.trim().is_empty()).then_some(query.trim());
+                renzora_auth::marketplace::list_assets(query_opt, None, None, 1, None, None)
+                    .map(|r| r.assets)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|a| RemoteHit {
+                        kind: "Asset",
+                        label: a.name,
+                        detail: Some(if a.price_credits == 0 {
+                            format!("{} · free", a.category)
+                        } else {
+                            format!("{} · {} credits", a.category, a.price_credits)
+                        }),
+                        action: RemoteAction::Panel("hub_store"),
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        };
+        let _ = tx.send((tab, query, hits));
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn dispatch_remote(
+    tab: PaletteTab,
+    query: String,
+    _session: Option<renzora_auth::AuthSession>,
+    tx: crossbeam_channel::Sender<(PaletteTab, String, Vec<RemoteHit>)>,
+) {
+    let _ = tx.send((tab, query, Vec::new()));
 }
 
 renzora::add!(CommandPalettePlugin, Editor);

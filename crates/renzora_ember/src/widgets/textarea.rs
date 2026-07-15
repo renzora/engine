@@ -52,6 +52,7 @@ pub fn textarea(commands: &mut Commands, font: &bevy::text::FontSource, placehol
         // (no `SingleLineInput` marker), so these are inert for it.
         caret_index: value.chars().count(),
         advance: 6.0,
+        sel_anchor: None,
     });
     commands.entity(box_e).add_children(&[text, car]);
     box_e

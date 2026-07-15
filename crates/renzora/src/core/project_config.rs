@@ -264,6 +264,11 @@ struct EditorPrefFile {
     /// project property.
     #[serde(default)]
     play_runtime_window: bool,
+    /// Multiplier on panel scrolling (mouse wheel / arrow keys / middle-drag);
+    /// defaults to 1.5. Per-user because scroll feel is a property of the
+    /// user's mouse and habits, not the project.
+    #[serde(default = "default_scroll_speed")]
+    scroll_speed: f32,
 }
 
 fn default_language() -> String {
@@ -276,6 +281,9 @@ fn default_autosave_interval_secs() -> u32 {
 
 fn default_ui_scale() -> f32 {
     1.0
+}
+fn default_scroll_speed() -> f32 {
+    1.5
 }
 fn default_system_monitor_ms() -> u32 {
     200
@@ -307,6 +315,7 @@ impl Default for EditorPrefFile {
             autosave_interval_secs: default_autosave_interval_secs(),
             language: default_language(),
             play_runtime_window: false,
+            scroll_speed: default_scroll_speed(),
         }
     }
 }
@@ -360,6 +369,50 @@ pub fn save_ui_scale(ui_scale: f32) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.ui_scale = ui_scale;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load the persisted panel scroll-speed multiplier, defaulting to 1.5 (the
+/// editor's default feel) when the file is absent or unreadable.
+pub fn load_scroll_speed() -> f32 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        default_scroll_speed()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return default_scroll_speed();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return default_scroll_speed();
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.scroll_speed)
+            .unwrap_or_else(|_| default_scroll_speed())
+            .clamp(0.1, 5.0)
+    }
+}
+
+/// Persist the panel scroll-speed multiplier (read-modify-write so other prefs
+/// in the file survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_scroll_speed(scroll_speed: f32) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.scroll_speed = scroll_speed;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

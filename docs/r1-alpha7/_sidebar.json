@@ -21,6 +21,7 @@
           "pages": [
             { "slug": "editor/scenes", "title": "Scenes & Hierarchy" },
             { "slug": "editor/panels-windows", "title": "Panels & Windows" },
+            { "slug": "editor/community", "title": "Community & Hub" },
             { "slug": "editor/inspector", "title": "Inspector" },
             { "slug": "editor/viewport", "title": "Viewport & Camera" },
             { "slug": "editor/modeling", "title": "Modeling & Sculpting" },

@@ -7840,7 +7840,9 @@ name = "renzora_command_palette"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "crossbeam-channel",
  "renzora",
+ "renzora_auth",
  "renzora_editor_framework",
  "renzora_ember",
 ]
@@ -8084,6 +8086,7 @@ dependencies = [
  "renzora_shell",
  "renzora_skybox",
  "renzora_skybox_editor",
+ "renzora_social",
  "renzora_splash",
  "renzora_sprite_anim_editor",
  "renzora_ssao",
@@ -8128,12 +8131,15 @@ dependencies = [
  "arboard",
  "bevy",
  "bevy_hui",
+ "crossbeam-channel",
+ "image",
  "nom",
  "renzora",
  "renzora_scripting",
  "serde",
  "tempfile",
  "toml 0.8.23",
+ "ureq",
 ]
 
 [[package]]
@@ -8483,10 +8489,15 @@ dependencies = [
  "bevy",
  "crossbeam-channel",
  "image",
+ "kira",
  "renzora",
+ "renzora_audio",
  "renzora_auth",
  "renzora_ember",
+ "renzora_grid",
+ "renzora_shader",
  "renzora_theme",
+ "rfd",
  "serde",
  "toml 0.8.23",
  "ureq",
@@ -9426,6 +9437,25 @@ dependencies = [
  "renzora_macros",
  "renzora_postprocess",
  "serde",
+]
+
+[[package]]
+name = "renzora_social"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "crossbeam-channel",
+ "dirs 6.0.0",
+ "image",
+ "renzora",
+ "renzora_auth",
+ "renzora_ember",
+ "rfd",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tungstenite",
+ "ureq",
 ]
 
 [[package]]
@@ -11425,6 +11455,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
+name = "tungstenite"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18e5b8366ee7a95b16d32197d0b2604b43a0be89dc5fac9f8e96ccafbaedda8a"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.8.6",
+ "rustls",
+ "rustls-pki-types",
+ "sha1",
+ "thiserror 1.0.69",
+ "utf-8",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
 name = "twox-hash"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11549,7 +11600,7 @@ dependencies = [
  "rustls-platform-verifier",
  "ureq-proto",
  "utf-8",
- "webpki-roots",
+ "webpki-roots 1.0.6",
 ]
 
 [[package]]
@@ -11905,6 +11956,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d46a5a140e6f7afeccd8eae97eff335163939eac8b929834875168b29b3d267"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.6",
 ]
 
 [[package]]

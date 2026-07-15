@@ -19,6 +19,16 @@ While dragging, a highlight previews exactly where the panel will land. The `+` 
 
 **Move a whole tab group at once**: every tab bar has a **grip handle at its far left** (⋮⋮). Drag it to move the entire group — all its tabs, keeping their order and active tab — to any drop target a single tab accepts: split against another panel, dock against a window edge, or merge into another group's tab bar. The drag ghost shows the active panel's name plus `+N` for the tabs riding along.
 
+## Scrolling panels
+
+Any scrollable panel (Hierarchy, Inspector, Assets, Console, …) accepts three gestures, always aimed at the panel under the cursor:
+
+- **Mouse wheel** — the classic smooth scroll.
+- **↑ / ↓ arrow keys** — hover the panel and hold an arrow key to scroll it, browser-style. Arrows stand down whenever something is using them as caret keys (a focused text field, the code editor, or a numeric field you're typing into).
+- **Middle-click drag** — grab the content and pan it with the cursor; the grip holds even if the drag strays outside the panel. Views that scroll both axes (like the tileset atlas) pan on both.
+
+All three honour **Settings → Interface → Scroll Speed**, a multiplier on the scroll rate (1.5 is the default feel) persisted per user in `~/.renzora/editor.toml`.
+
 ## The bottom panel
 
 The strip of panels along the bottom of the Scene workspace — Console, Timeline, Mixer, Sequencer, Shape Library — is the **bottom panel**. By default it sits **under the viewport, not the full window width**, so the side columns (Hierarchy/Assets on the left, Inspector on the right) keep their full height. It starts **closed** when the editor launches, keeping the viewport unobstructed:

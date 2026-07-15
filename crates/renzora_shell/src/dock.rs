@@ -435,7 +435,7 @@ pub fn scene_layout() -> DockTree {
         ),
         DockTree::horizontal(
             DockTree::vertical(
-                DockTree::tabs(&["viewport", "code_editor"]),
+                DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
                 DockTree::tabs(&[
                     "console",
                     "timeline",
@@ -452,7 +452,22 @@ pub fn scene_layout() -> DockTree {
     )
 }
 
-/// Hub workspace: the Marketplace as one full panel.
+/// Hub workspace: the community home. A left friends column | the main content
+/// tabs (marketplace, feed, messages, docs) | a right column with the asset
+/// library over the wallet. Notifications live in the top-bar bell dropdown,
+/// teams in the Friends panel's Teams tab, and profiles in a shared overlay, so
+/// none of them are panels here anymore; the forum was replaced by the feed.
 fn layout_hub() -> DockTree {
-    DockTree::leaf("hub_store")
+    DockTree::horizontal(
+        // Left: friends.
+        DockTree::leaf("social_friends"),
+        DockTree::horizontal(
+            // Center: the big content surfaces, now including messages.
+            DockTree::tabs(&["hub_store", "social_feed", "social_chat", "social_learn"]),
+            // Right: asset library over the wallet.
+            DockTree::tabs(&["hub_library", "social_wallet"]),
+            0.62,
+        ),
+        0.18,
+    )
 }

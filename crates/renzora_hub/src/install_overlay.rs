@@ -20,6 +20,7 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::bind_bg;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{button, overlay_sized, scroll_view};
+use renzora_theme::ThemeManager;
 
 use crate::install;
 
@@ -35,9 +36,15 @@ pub(crate) struct PendingInstall {
     session: Option<AuthSession>,
 }
 
-/// In-flight install result, polled to raise the completion notice.
+/// In-flight install result, polled to raise the completion notice. Carries the
+/// installed asset's category so a finished **theme** install can refresh the
+/// theme picker (via `ThemeManager::scan_themes`) without the user reopening the
+/// project — flat themes are otherwise only rescanned on project load.
 #[derive(Resource)]
-pub(crate) struct InstallResult(Receiver<Result<String, String>>);
+pub(crate) struct InstallResult {
+    rx: Receiver<Result<String, String>>,
+    category: String,
+}
 
 #[derive(Component)]
 pub(crate) struct InstallConfirmBtn;
@@ -199,7 +206,8 @@ fn install_buttons(
     commands.remove_resource::<PendingInstall>();
 
     let (tx, rx) = unbounded();
-    commands.insert_resource(InstallResult(rx));
+    let category = asset.category.clone();
+    commands.insert_resource(InstallResult { rx, category });
     spawn_install(session, asset, dest, tx);
 }
 
@@ -220,14 +228,23 @@ fn folder_click(
 fn poll_install_result(
     result: Option<Res<InstallResult>>,
     fonts: Option<Res<EmberFonts>>,
+    mut theme_manager: Option<ResMut<ThemeManager>>,
     mut commands: Commands,
 ) {
     let (Some(result), Some(fonts)) = (result, fonts) else { return };
-    let Ok(outcome) = result.0.try_recv() else { return };
+    let Ok(outcome) = result.rx.try_recv() else { return };
+    let installed_theme = install::install_dir_for_category(&result.category) == "themes";
     commands.remove_resource::<InstallResult>();
     let (title, body) = match outcome {
         Ok(msg) => {
             renzora::core::console_log::console_info("Marketplace", msg.clone());
+            // A freshly installed flat theme is only picked up by the picker on a
+            // rescan; do it now so it appears without reopening the project.
+            if installed_theme {
+                if let Some(manager) = theme_manager.as_mut() {
+                    manager.scan_themes();
+                }
+            }
             ("Asset Installed".to_string(), msg)
         }
         Err(e) => ("Install Failed".to_string(), e),
@@ -281,7 +298,7 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary, dest: &Path)
     } else {
         return Err("Sign in to download this asset".into());
     };
-    let path = install::install_asset_into(dest, &asset.name, &url, &filename, &bytes)?;
+    let path = install::install_asset_into(dest, &asset.category, &asset.name, &url, &filename, &bytes)?;
     // Plugins get a metadata sidecar next to the dll so a lean export can trace
     // it back to source and the official editor can fetch the right per-release
     // dll. Non-fatal: a missing sidecar doesn't fail the install.

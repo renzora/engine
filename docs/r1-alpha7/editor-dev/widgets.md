@@ -132,6 +132,26 @@ The `code_editor` widget is a monospace, syntax-highlighted, editable text view.
 
 **Monospace is intentional.** Bevy 0.19's `PositionedGlyph` exposes a glyph's pixel position but *not* its source character/cluster index, so an arbitrary glyph can't be mapped back to a column — which is what proportional-font click/caret hit-testing would need across our multi-token text. Monospace keeps column ↔ pixel math exact and matches every real code editor; ligature mono fonts still work, since a ligature keeps the combined cell advance.
 
+### Text inputs & forms (`text_input`, `textarea`, `EmberForm`)
+
+`text_input` / `password_input` are single-line fields with full caret editing: click places the caret (measured-advance hit-testing), double-click selects all, **drag selects a range** (highlighted, and consumed by typing/Backspace/Delete/paste like an OS field), arrows/Home/End move, and Ctrl+C/X/V/A plus a right-click Copy/Cut/Paste menu operate on the selection when one exists. `textarea` shares the same component (`EmberTextInput`) but keeps Enter as a literal newline.
+
+**Panels may write `EmberTextInput.value` directly** — e.g. clearing it after a send — and the displayed text follows automatically (back to the placeholder when emptied); a sync system watches for external value changes, so no manual `Text` update is needed.
+
+**Forms.** Insert `EmberForm { submit }` on any container holding inputs and a submit button:
+
+```rust
+let input = text_input(commands, &fonts.ui, "Say something...", "");
+let send  = button(commands, &fonts.ui, "Send");
+commands.entity(row).insert(EmberForm { submit: send });
+commands.entity(row).add_children(&[input, send]);
+```
+
+- **Enter** in a focused single-line input inside the container simulates a press of `submit` — the panel's existing `Changed<Interaction>` click handler fires unchanged, so there is no separate "submitted" event to wire. (The simulated press is set in `PreUpdate`, so every `Update` handler sees it regardless of system order; hidden forms — a `Display::None` ancestor — never submit.)
+- **Tab / Shift+Tab** cycles focus between the form's visible inputs (wrapping, selecting the tabbed-into value). Tab also works without the marker: it falls back to the smallest ancestor subtree containing at least two inputs.
+
+The sign-in modal, chat composer, feed comments, forum reply/new-thread, and teams create/invite forms all use this.
+
 ### Reactive values
 
 Builders run once; dynamic values are wired through `renzora_ember::reactive`. A slider stores its value in a `Bound<f32>` so `bind_2way` can read and write it; text is driven with `bind_text`, visibility with `bind_display`, and variable-length lists with `keyed_list`. See *Building Editor Panels → Reactive content* for the full helper table — the same helpers drive widget contents.
@@ -150,6 +170,8 @@ let m = scroll_area_keyed(commands, content, 260.0, "status-theme-menu"); // cap
 The offset is saved in the `ScrollMemory` resource under that key and restored — once the content is laid out — when an identically-keyed view spawns again. Use one **unique** key per logical list; two unrelated lists sharing a key would fight over the same saved offset.
 
 **Wheel over a numeric field.** A `drag_value` (and the markup `drag_value=` kernel) only scrubs its value on **Shift+wheel**. A plain wheel is always handed to the enclosing scroll area, so dragging the panel scrollbar past a field never snags on it and silently changes the number — the panel scroll always wins, and value-scrubbing is an explicit opt-in gesture.
+
+**Three gestures, one target.** The wheel, holding **↑/↓** while hovering, and **middle-click drag** (grab-the-content panning, both axes on `scroll_view_xy` views) all scroll the same view: the frontmost scroll area under the cursor, honoring modal/overlay confinement. Arrow-key scroll stands down while anything owns the arrows as caret keys (focused text input, code editor, editing drag-value). All three multiply by the `ScrollConfig` resource's `speed` — the editor's Settings panel pushes its *Scroll Speed* preference into it (ember can't read `EditorSettings`), the same one-way sync as `DragValueConfig`.
 
 ## Theming with `Styled` and `Role`
 

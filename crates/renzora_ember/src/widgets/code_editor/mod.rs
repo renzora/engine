@@ -202,6 +202,12 @@ pub(crate) struct CodeEditor {
 }
 
 impl CodeEditor {
+    /// Whether this editor has keyboard focus (arrow keys move its caret) —
+    /// read by the scroll-area arrow-key scroll to stand down while typing.
+    pub(crate) fn is_focused(&self) -> bool {
+        self.focused
+    }
+
     /// Recompute the derived metrics from the live font size / advance / line
     /// count. Returns `true` if any visible-affecting metric changed (so callers
     /// can flag a re-render).

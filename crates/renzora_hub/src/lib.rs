@@ -6,10 +6,15 @@
 //! - **My Library** (`hub_library`): view owned assets and install to project
 
 pub mod install;
+mod hub_lightbox;
 mod install_overlay;
+mod item_overlay;
+mod material_viewer;
+mod model_viewer;
 mod native_library;
 mod native_store;
 mod thumbs;
+mod upload_panel;
 
 use bevy::prelude::*;
 
@@ -24,6 +29,13 @@ impl Plugin for HubPlugin {
         app.add_systems(Update, thumbs::poll_thumbs);
         app.add_plugins(native_library::NativeHubLibrary);
         app.add_plugins(native_store::NativeHubStore);
+        // The Publish (asset/game uploader) panel — opened by the store's
+        // "Upload Asset" button and from the command palette.
+        app.add_plugins(upload_panel::UploaderPanel);
+        // Offscreen 3D turntable for model/animation assets in the item overlay.
+        app.add_plugins(model_viewer::ModelViewerPlugin);
+        // Offscreen live material/shader preview (selectable shape + @param controls).
+        app.add_plugins(material_viewer::MaterialViewerPlugin);
     }
 }
 

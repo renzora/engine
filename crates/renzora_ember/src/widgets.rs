@@ -14,6 +14,7 @@ mod button;
 mod checkbox;
 mod dropdown;
 mod font_picker;
+mod form;
 mod radio;
 mod segmented;
 mod slider;
@@ -50,6 +51,7 @@ pub use theme_shader::{
 };
 
 // Audio.
+mod audio_player;
 mod mixer;
 mod vu_meter;
 mod waveform;
@@ -66,7 +68,9 @@ mod toast;
 
 // Containers.
 mod accordion;
+mod accent;
 mod card;
+mod decor;
 mod divider;
 mod tabs;
 
@@ -127,6 +131,7 @@ pub use button::*;
 pub use checkbox::*;
 pub use dropdown::*;
 pub use font_picker::*;
+pub use form::*;
 pub use radio::*;
 pub use segmented::*;
 pub use slider::*;
@@ -153,6 +158,7 @@ pub use xy_pad::*;
 pub use curve::*;
 pub use gradient::*;
 
+pub use audio_player::*;
 pub use mixer::*;
 pub use vu_meter::*;
 pub use waveform::*;
@@ -166,7 +172,9 @@ pub use skeleton::*;
 pub use toast::*;
 
 pub use accordion::*;
+pub use accent::*;
 pub use card::*;
+pub use decor::*;
 pub use divider::*;
 pub use tabs::*;
 
@@ -226,9 +234,12 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<drag_value::WheelGesture>();
         app.init_resource::<drag_value::DragValueConfig>();
         app.init_resource::<drag_value::AnyDragValueEditing>();
+        app.init_resource::<markdown::MarkdownImages>();
+        app.init_resource::<markdown::MarkdownBaseUrl>();
         app.init_resource::<scroll_area::ScrollMemory>();
         app.init_resource::<scroll_area::DraggedThumb>();
         app.init_resource::<scroll_area::ScrollbarBusy>();
+        app.init_resource::<scroll_area::ScrollConfig>();
         // Compute the "pointer is on a scrollbar" flag before any panel's Update
         // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
         // fresh this frame.
@@ -236,11 +247,20 @@ impl Plugin for WidgetsPlugin {
             bevy::app::PreUpdate,
             scroll_area::scrollbar_busy.after(bevy::ui::UiSystems::Focus),
         );
+        // Enter-to-submit must set the simulated button press in PreUpdate (after
+        // the focus system settled this frame's real Interactions) so every
+        // panel's Changed<Interaction> handler sees it during Update, whatever
+        // its system order.
+        app.add_systems(
+            bevy::app::PreUpdate,
+            form::form_enter_submit.after(bevy::ui::UiSystems::Focus),
+        );
         app.add_systems(
             Update,
             (
                 (
                     button::button_interact,
+                    decor::gradient_button_interact,
                     toggle::toggle_interact,
                     slider::slider_drag,
                     slider::slider_apply,
@@ -309,6 +329,8 @@ impl Plugin for WidgetsPlugin {
                 (
                     spinner::spinner_anim,
                     scroll_area::scroll_wheel,
+                    scroll_area::scroll_arrow_keys,
+                    scroll_area::scroll_middle_drag,
                     scroll_area::scroll_restore.before(scroll_area::scroll_update),
                     scroll_area::scroll_update,
                     scroll_area::scroll_persist.after(scroll_area::scroll_update),
@@ -332,8 +354,34 @@ impl Plugin for WidgetsPlugin {
                     mixer::mixer_toggle,
                     mixer::mixer_button_apply,
                     knob::knob_apply,
+                    audio_player::audio_player_play_click,
+                    audio_player::audio_player_scrub,
+                    audio_player::audio_player_apply,
                 ),
             ),
+        );
+        app.init_resource::<text_input::InputContextMenu>();
+        app.add_systems(
+            Update,
+            (
+                accent::hover_tint,
+                accent::pulse_dots,
+                crate::cursor_icon::auto_pointer_cursor,
+                text_input::text_input_context_open,
+                text_input::text_input_context_clicks,
+                // After focus so the press frame anchors at the caret that click
+                // just placed.
+                text_input::text_input_drag_select.after(text_input::text_input_focus),
+                text_input::text_input_selection_pos,
+                text_input::text_input_sync,
+                form::form_tab_focus,
+            ),
+        );
+        // Markdown widget: open clicked links in the browser, swap image
+        // placeholders for their downloaded textures.
+        app.add_systems(
+            Update,
+            (markdown::markdown_link_click, markdown::markdown_images_sync),
         );
         app.add_plugins(node_graph::NodeGraphPlugin);
         app.add_plugins(collapsible::CollapsiblePlugin);

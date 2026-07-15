@@ -2,8 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Base URL for the Renzora API.
-const API_BASE: &str = "https://renzora.com";
+use crate::client::api_base;
 
 // ── Request types ──
 
@@ -78,7 +77,7 @@ fn post_json<T: serde::de::DeserializeOwned>(
 #[cfg(not(target_arch = "wasm32"))]
 pub fn login(email: &str, password: &str) -> Result<AuthResponse, String> {
     post_json(
-        &format!("{API_BASE}/api/auth/login"),
+        &format!("{}/api/auth/login", api_base()),
         &LoginRequest {
             email: email.to_string(),
             password: password.to_string(),
@@ -89,7 +88,7 @@ pub fn login(email: &str, password: &str) -> Result<AuthResponse, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn register(username: &str, email: &str, password: &str) -> Result<AuthResponse, String> {
     post_json(
-        &format!("{API_BASE}/api/auth/register"),
+        &format!("{}/api/auth/register", api_base()),
         &RegisterRequest {
             username: username.to_string(),
             email: email.to_string(),
@@ -101,7 +100,7 @@ pub fn register(username: &str, email: &str, password: &str) -> Result<AuthRespo
 #[cfg(not(target_arch = "wasm32"))]
 pub fn refresh_token(refresh_token: &str) -> Result<AuthResponse, String> {
     post_json(
-        &format!("{API_BASE}/api/auth/refresh"),
+        &format!("{}/api/auth/refresh", api_base()),
         &RefreshRequest {
             refresh_token: refresh_token.to_string(),
         },
@@ -111,7 +110,7 @@ pub fn refresh_token(refresh_token: &str) -> Result<AuthResponse, String> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn forgot_password(email: &str) -> Result<MessageResponse, String> {
     post_json(
-        &format!("{API_BASE}/api/auth/forgot"),
+        &format!("{}/api/auth/forgot", api_base()),
         &ForgotPasswordRequest {
             email: email.to_string(),
         },

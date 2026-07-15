@@ -20,6 +20,25 @@ use crate::markup::dnd::DragState;
 #[derive(Component)]
 pub struct HoverCursor(pub SystemCursorIcon);
 
+/// Opt-out marker for [`auto_pointer_cursor`] — for `Interaction` entities
+/// that track hover/press but aren't "clickable" (drag surfaces, etc.).
+#[derive(Component)]
+pub struct NoAutoCursor;
+
+/// Every interactive element gets a pointer cursor by default: any entity
+/// with `Interaction` that hasn't declared its own [`HoverCursor`] (text
+/// inputs use `Text`, drag handles use `Grab`, ...) is stamped `Pointer`.
+/// Runs continuously so late-spawned widgets are covered; `Without` keeps it
+/// a no-op after the first frame per entity.
+pub(crate) fn auto_pointer_cursor(
+    mut commands: Commands,
+    q: Query<Entity, (With<Interaction>, Without<HoverCursor>, Without<NoAutoCursor>)>,
+) {
+    for e in &q {
+        commands.entity(e).insert(HoverCursor(SystemCursorIcon::Pointer));
+    }
+}
+
 /// Map a CSS-ish cursor name to a `SystemCursorIcon`.
 pub fn parse_cursor(name: &str) -> Option<SystemCursorIcon> {
     use SystemCursorIcon as C;

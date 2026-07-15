@@ -48,23 +48,35 @@ impl UiMaterial for WaveMaterial {
 #[derive(Component)]
 pub(crate) struct WaveData {
     amps: Vec<f32>,
+    /// Playback progress 0..1. Splits the envelope into a bright "played" region
+    /// and a dim "unplayed" region, with a playhead at the boundary — so a
+    /// playing clip visibly sweeps. Left at 0 for a static (non-player) waveform.
+    progress: f32,
 }
 
 impl WaveData {
     /// Build from amplitudes (0..1) — used by the markup `vector="wave"` bridge.
     pub(crate) fn new(amps: Vec<f32>) -> Self {
-        Self { amps }
+        Self { amps, progress: 0.0 }
     }
 
     /// Replace the amplitudes in place (live markup `vector="wave"` sync).
     pub(crate) fn set_amps(&mut self, amps: Vec<f32>) {
         self.amps = amps;
     }
+
+    /// Set the playback progress (0..1). The audio player calls this each frame
+    /// while a clip plays; `Changed<WaveData>` then re-bakes the material so the
+    /// sweep animates.
+    pub(crate) fn set_progress(&mut self, progress: f32) {
+        self.progress = progress.clamp(0.0, 1.0);
+    }
 }
 
 /// Pack amplitudes (0..1) into the `WaveMaterial` uniforms, or `None` if there
-/// aren't enough samples to draw. The accent color is used.
-fn wave_material(amps: &[f32]) -> Option<WaveMaterial> {
+/// aren't enough samples to draw. The accent color is used; `progress` (0..1)
+/// drives the played/unplayed split the shader renders.
+fn wave_material(amps: &[f32], progress: f32) -> Option<WaveMaterial> {
     if amps.len() < 2 {
         return None;
     }
@@ -81,7 +93,7 @@ fn wave_material(amps: &[f32]) -> Option<WaveMaterial> {
     Some(WaveMaterial {
         data,
         color: Vec4::new(accent.red, accent.green, accent.blue, 1.0),
-        params: Vec4::new(n as f32, 0.0, 0.0, 0.0),
+        params: Vec4::new(n as f32, progress.clamp(0.0, 1.0), 0.0, 0.0),
     })
 }
 
@@ -115,6 +127,7 @@ pub fn waveform(commands: &mut Commands, amps: &[f32]) -> Entity {
             },
             WaveData {
                 amps: amps.to_vec(),
+                progress: 0.0,
             },
             Pickable::IGNORE,
             Name::new("waveform-plot"),
@@ -130,7 +143,7 @@ fn waveform_attach(
     waves: Query<(Entity, &WaveData), Without<MaterialNode<WaveMaterial>>>,
 ) {
     for (e, wd) in &waves {
-        if let Some(material) = wave_material(&wd.amps) {
+        if let Some(material) = wave_material(&wd.amps, wd.progress) {
             // try_insert: the waveform entity may be despawned this same frame (panel teardown).
             commands
                 .entity(e)
@@ -146,7 +159,7 @@ fn waveform_sync(
     waves: Query<(&WaveData, &MaterialNode<WaveMaterial>), Changed<WaveData>>,
 ) {
     for (wd, node) in &waves {
-        if let Some(material) = wave_material(&wd.amps) {
+        if let Some(material) = wave_material(&wd.amps, wd.progress) {
             if let Some(mut slot) = materials.get_mut(&node.0) {
                 *slot = material;
             }
