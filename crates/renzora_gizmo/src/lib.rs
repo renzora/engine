@@ -219,6 +219,42 @@ pub(crate) struct GizmoRoot;
 #[derive(Component)]
 pub(crate) struct GizmoMesh;
 
+/// Which viewport slot a gizmo mesh set belongs to. There is one full gizmo
+/// mesh set per slot (`0..VIEWPORT_COUNT`), each sitting on that slot's private
+/// overlay render layer (`VIEWPORT_3D_GIZMO_LAYER_BASE + slot`) and scaled to
+/// that slot's own camera — so every open viewport shows a correctly-sized
+/// transform handle rather than one handle sized for the focused camera.
+/// Interaction (hover / drag) still runs against the focused slot only; the
+/// non-focused sets are purely visual.
+#[derive(Component, Clone, Copy)]
+pub(crate) struct GizmoSlot(pub usize);
+
+/// Per-slot transform-gizmo draw parameters, filled by `update_gizmo_transforms`
+/// (which already sizes each slot's mesh set from its own camera) and read by
+/// `draw_line_gizmos` so the immediate-mode rotate / scale / plane lines match
+/// each slot's mesh handle exactly. Keyed by viewport slot index.
+#[derive(Resource)]
+pub(crate) struct PerSlotGizmo {
+    /// World-space scale factor of this slot's gizmo (distance-to-camera based).
+    pub scale: [f32; renzora::core::viewport_types::VIEWPORT_COUNT],
+    /// Per-axis camera-facing signs for this slot (X/Z flip toward its camera).
+    pub signs: [Vec3; renzora::core::viewport_types::VIEWPORT_COUNT],
+    /// Whether this slot should draw the tool-mode line gizmos this frame
+    /// (docked, has a live camera, and the shared show/hide gates pass).
+    pub draw: [bool; renzora::core::viewport_types::VIEWPORT_COUNT],
+}
+
+impl Default for PerSlotGizmo {
+    fn default() -> Self {
+        use renzora::core::viewport_types::VIEWPORT_COUNT;
+        Self {
+            scale: [1.0; VIEWPORT_COUNT],
+            signs: [Vec3::ONE; VIEWPORT_COUNT],
+            draw: [false; VIEWPORT_COUNT],
+        }
+    }
+}
+
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 enum GizmoPart {
     XShaft,
@@ -436,6 +472,22 @@ impl Plugin for GizmoPlugin {
                     ..default()
                 },
             )
+            // Per-slot transform / plane line groups, each bound to its slot's
+            // private overlay layer so a viewport draws only its own handle
+            // (see `draw_line_gizmos`). Widths mirror the shared groups above.
+            .insert_gizmo_config(
+                SlotTransformGroup0,
+                slot_line_config(0, 3.0),
+            )
+            .insert_gizmo_config(SlotPlaneGroup0, slot_line_config(0, 6.0))
+            .insert_gizmo_config(SlotTransformGroup1, slot_line_config(1, 3.0))
+            .insert_gizmo_config(SlotPlaneGroup1, slot_line_config(1, 6.0))
+            .insert_gizmo_config(SlotTransformGroup2, slot_line_config(2, 3.0))
+            .insert_gizmo_config(SlotPlaneGroup2, slot_line_config(2, 6.0))
+            .insert_gizmo_config(SlotTransformGroup3, slot_line_config(3, 3.0))
+            .insert_gizmo_config(SlotPlaneGroup3, slot_line_config(3, 6.0))
+            .init_resource::<PerSlotGizmo>()
+            .init_resource::<renzora::core::viewport_types::ViewportGizmoSpace>()
             .init_resource::<GizmoMode>()
             .init_resource::<GizmoSpace>()
             .init_resource::<GizmoState>()
@@ -453,6 +505,15 @@ impl Plugin for GizmoPlugin {
                 (handle_selection_shortcuts, handle_file_shortcuts)
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::not_in_play_mode),
+            )
+            // Keep the global `GizmoSpace` (read by the analytic drag/hit-test and
+            // any other consumer) in step with the FOCUSED viewport's per-slot
+            // space, so interaction always uses the space of the view you're in.
+            .add_systems(
+                Update,
+                mirror_focused_gizmo_space
+                    .before(update_gizmo_transforms)
+                    .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
             )
             .add_systems(
                 Update,
@@ -712,170 +773,186 @@ fn setup_gizmo_meshes(
         height: 0.4,
     });
     let cube_mesh = meshes.add(Cuboid::new(0.25, 0.25, 0.25));
-
-    let gizmo_root = commands
-        .spawn((
-            Transform::default(),
-            Visibility::Hidden,
-            GizmoRoot,
-            HideInHierarchy,
-            RenderLayers::layer(1),
-        ))
-        .id();
-
-    let spawn = |commands: &mut Commands,
-                 mesh: Handle<Mesh>,
-                 mat: Handle<GizmoMaterial>,
-                 transform: Transform,
-                 part: GizmoPart,
-                 root: Entity| {
-        commands.spawn((
-            Mesh3d(mesh),
-            MeshMaterial3d(mat),
-            transform,
-            Visibility::Inherited,
-            GizmoMesh,
-            part,
-            HideInHierarchy,
-            RenderLayers::layer(1),
-            ChildOf(root),
-        ));
-    };
-
+    let scale_cube_mesh = meshes.add(Cuboid::new(0.15, 0.15, 0.15));
     let half_shaft = (GIZMO_SIZE - 0.4) / 2.0;
 
-    // X axis (rotate cylinder to point along X)
-    spawn(
-        &mut commands,
-        shaft_mesh.clone(),
-        gizmo_mats.x_normal.clone(),
-        Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(half_shaft, 0.0, 0.0)),
-        GizmoPart::XShaft,
-        gizmo_root,
-    );
-    spawn(
-        &mut commands,
-        cone_mesh.clone(),
-        gizmo_mats.x_normal.clone(),
-        Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(GIZMO_SIZE - 0.2, 0.0, 0.0)),
-        GizmoPart::XHead,
-        gizmo_root,
-    );
+    // (mesh, material, transform, part) for one full handle set — spawned once
+    // per viewport slot below. All sets share the same mesh + material handles;
+    // `update_gizmo_materials` toggles them for every set uniformly.
+    let parts: [(Handle<Mesh>, Handle<GizmoMaterial>, Transform, GizmoPart); 10] = [
+        // X axis (rotate cylinder to point along X)
+        (
+            shaft_mesh.clone(),
+            gizmo_mats.x_normal.clone(),
+            Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
+                .with_translation(Vec3::new(half_shaft, 0.0, 0.0)),
+            GizmoPart::XShaft,
+        ),
+        (
+            cone_mesh.clone(),
+            gizmo_mats.x_normal.clone(),
+            Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
+                .with_translation(Vec3::new(GIZMO_SIZE - 0.2, 0.0, 0.0)),
+            GizmoPart::XHead,
+        ),
+        // Y axis (cylinder default is along Y)
+        (
+            shaft_mesh.clone(),
+            gizmo_mats.y_normal.clone(),
+            Transform::from_translation(Vec3::new(0.0, half_shaft, 0.0)),
+            GizmoPart::YShaft,
+        ),
+        (
+            cone_mesh.clone(),
+            gizmo_mats.y_normal.clone(),
+            Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE - 0.2, 0.0)),
+            GizmoPart::YHead,
+        ),
+        // Z axis (rotate cylinder to point along Z)
+        (
+            shaft_mesh.clone(),
+            gizmo_mats.z_normal.clone(),
+            Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                .with_translation(Vec3::new(0.0, 0.0, half_shaft)),
+            GizmoPart::ZShaft,
+        ),
+        (
+            cone_mesh.clone(),
+            gizmo_mats.z_normal.clone(),
+            Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
+                .with_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE - 0.2)),
+            GizmoPart::ZHead,
+        ),
+        // Scale cubes at axis tips (hidden by default, shown in Scale mode)
+        (
+            scale_cube_mesh.clone(),
+            gizmo_mats.x_normal.clone(),
+            Transform::from_translation(Vec3::new(GIZMO_SIZE, 0.0, 0.0)),
+            GizmoPart::XScaleCube,
+        ),
+        (
+            scale_cube_mesh.clone(),
+            gizmo_mats.y_normal.clone(),
+            Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE, 0.0)),
+            GizmoPart::YScaleCube,
+        ),
+        (
+            scale_cube_mesh.clone(),
+            gizmo_mats.z_normal.clone(),
+            Transform::from_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE)),
+            GizmoPart::ZScaleCube,
+        ),
+        // Center cube
+        (
+            cube_mesh.clone(),
+            gizmo_mats.center_normal.clone(),
+            Transform::default(),
+            GizmoPart::Center,
+        ),
+    ];
 
-    // Y axis (cylinder default is along Y)
-    spawn(
-        &mut commands,
-        shaft_mesh.clone(),
-        gizmo_mats.y_normal.clone(),
-        Transform::from_translation(Vec3::new(0.0, half_shaft, 0.0)),
-        GizmoPart::YShaft,
-        gizmo_root,
-    );
-    spawn(
-        &mut commands,
-        cone_mesh.clone(),
-        gizmo_mats.y_normal.clone(),
-        Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE - 0.2, 0.0)),
-        GizmoPart::YHead,
-        gizmo_root,
-    );
-
-    // Z axis (rotate cylinder to point along Z)
-    spawn(
-        &mut commands,
-        shaft_mesh.clone(),
-        gizmo_mats.z_normal.clone(),
-        Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(0.0, 0.0, half_shaft)),
-        GizmoPart::ZShaft,
-        gizmo_root,
-    );
-    spawn(
-        &mut commands,
-        cone_mesh.clone(),
-        gizmo_mats.z_normal.clone(),
-        Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE - 0.2)),
-        GizmoPart::ZHead,
-        gizmo_root,
-    );
-
-    // Scale cubes at axis tips (hidden by default, shown in Scale mode)
-    let scale_cube_mesh = meshes.add(Cuboid::new(0.15, 0.15, 0.15));
-    spawn(
-        &mut commands,
-        scale_cube_mesh.clone(),
-        gizmo_mats.x_normal.clone(),
-        Transform::from_translation(Vec3::new(GIZMO_SIZE, 0.0, 0.0)),
-        GizmoPart::XScaleCube,
-        gizmo_root,
-    );
-    spawn(
-        &mut commands,
-        scale_cube_mesh.clone(),
-        gizmo_mats.y_normal.clone(),
-        Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE, 0.0)),
-        GizmoPart::YScaleCube,
-        gizmo_root,
-    );
-    spawn(
-        &mut commands,
-        scale_cube_mesh.clone(),
-        gizmo_mats.z_normal.clone(),
-        Transform::from_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE)),
-        GizmoPart::ZScaleCube,
-        gizmo_root,
-    );
-
-    // Center cube
-    spawn(
-        &mut commands,
-        cube_mesh,
-        gizmo_mats.center_normal.clone(),
-        Transform::default(),
-        GizmoPart::Center,
-        gizmo_root,
-    );
+    // One full handle set per viewport slot, each on that slot's private overlay
+    // layer so only that slot's camera draws it. `update_gizmo_transforms` then
+    // sizes each set from its own camera.
+    use renzora::core::viewport_types::{VIEWPORT_3D_GIZMO_LAYER_BASE, VIEWPORT_COUNT};
+    for slot in 0..VIEWPORT_COUNT {
+        let layer = RenderLayers::layer(VIEWPORT_3D_GIZMO_LAYER_BASE + slot);
+        let root = commands
+            .spawn((
+                Transform::default(),
+                Visibility::Hidden,
+                GizmoRoot,
+                GizmoSlot(slot),
+                HideInHierarchy,
+                layer.clone(),
+            ))
+            .id();
+        for (mesh, mat, transform, part) in parts.iter().cloned() {
+            commands.spawn((
+                Mesh3d(mesh),
+                MeshMaterial3d(mat),
+                transform,
+                Visibility::Inherited,
+                GizmoMesh,
+                GizmoSlot(slot),
+                part,
+                HideInHierarchy,
+                layer.clone(),
+                ChildOf(root),
+            ));
+        }
+    }
 
     commands.insert_resource(gizmo_mats);
 }
 
 // ── Transform update (follow selection, scale by distance) ──────────────────
 
+/// Mirror the focused viewport's per-slot Local/World choice into the global
+/// [`GizmoSpace`] resource. The gizmo's drag math and hit-test (and any other
+/// `Res<GizmoSpace>` reader) always operate on the focused view, so this keeps
+/// them consistent with whichever viewport the cursor is in while each viewport
+/// still displays its own space.
+fn mirror_focused_gizmo_space(
+    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
+    vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    mut space: ResMut<GizmoSpace>,
+) {
+    let focused = viewports.as_ref().map(|v| v.focused).unwrap_or(0);
+    let local = vp_space
+        .as_ref()
+        .and_then(|s| s.local.get(focused).copied())
+        .unwrap_or(false);
+    let want = if local {
+        GizmoSpace::Local
+    } else {
+        GizmoSpace::World
+    };
+    if *space != want {
+        *space = want;
+    }
+}
+
 fn update_gizmo_transforms(
     selection: Res<EditorSelection>,
     mode: Res<GizmoMode>,
-    space: Res<GizmoSpace>,
     modal: Res<modal_transform::ModalTransformState>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
+    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
+    viewport_settings: Option<Res<ViewportSettings>>,
+    vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
     mut gizmo_state: ResMut<GizmoState>,
+    mut per_slot: ResMut<PerSlotGizmo>,
     transforms: Query<&GlobalTransform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     aabbs: Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children_q: Query<&Children>,
-    mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
+    mut gizmo_roots: Query<(&GizmoSlot, &mut Transform, &mut Visibility), With<GizmoRoot>>,
     mut gizmo_parts: Query<(&GizmoPart, &mut Visibility), (With<GizmoMesh>, Without<GizmoRoot>)>,
-    camera_query: Query<&GlobalTransform, With<EditorCamera>>,
+    cameras: Query<
+        (&renzora::core::ViewportCamera, &GlobalTransform),
+        Without<GizmoRoot>,
+    >,
 ) {
-    let Ok((mut root_transform, mut root_vis)) = gizmo_root.single_mut() else {
-        return;
-    };
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
 
     let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
     let selected = selection.get();
-    // Hide mesh gizmos during modal transform and when in Scale mode (drawn via immediate gizmos)
+    // Hide mesh gizmos during modal transform and when NOT in Translate mode
+    // (rotate/scale are drawn via immediate line gizmos).
     let show_meshes = selected.is_some()
         && !modal.active
         && !editing_collider
         && matches!(*mode, GizmoMode::Translate);
-    *root_vis = if show_meshes {
-        Visibility::Visible
-    } else {
-        Visibility::Hidden
-    };
+    // Lines (rotate/scale/plane) draw for any gizmo mode with a live selection.
+    let lines_active = selected.is_some()
+        && !modal.active
+        && !editing_collider
+        && matches!(
+            *mode,
+            GizmoMode::Translate | GizmoMode::Rotate | GizmoMode::Scale
+        );
 
-    // Toggle cone heads vs scale cubes based on mode
+    // Toggle cone heads vs scale cubes based on mode (applies to every slot's set).
     for (part, mut vis) in gizmo_parts.iter_mut() {
         if part.is_translate_only() {
             *vis = if *mode == GizmoMode::Translate {
@@ -892,50 +969,131 @@ fn update_gizmo_transforms(
         }
     }
 
-    if let Some(selected) = selected {
-        if let Ok(sel_gt) = transforms.get(selected) {
-            // Anchor on the world-space AABB center so the gizmo lands on top
-            // of the visible mesh even when the entity's pivot was authored at
-            // world (0,0,0) (common for scene-style GLBs). The hover hit-test
-            // and immediate-mode line gizmos use the same pivot, so visual,
-            // pick, and drag agree.
-            let sel_world = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
-            root_transform.translation = sel_world;
+    // Reset per-slot draw flags; set below only for slots we actually size.
+    per_slot.draw = [false; VIEWPORT_COUNT];
 
-            // Orient the handles per the active space (world-aligned, or the
-            // object's own rotation in Local mode). Scale handles always follow
-            // the object (see `gizmo_basis`).
-            let basis = gizmo_basis(*space, *mode, sel_gt.rotation());
-            let world_aligned = basis == Quat::IDENTITY;
-            root_transform.rotation = basis;
+    // Selection pivot + world rotation (shared across slots — same object). The
+    // handle *basis* is resolved per slot below, because each viewport can be in a
+    // different Local/World space.
+    let sel_data = selected.and_then(|s| {
+        transforms.get(s).ok().map(|sel_gt| {
+            // Anchor on the world-space AABB center so the gizmo lands on top of
+            // the visible mesh even when the entity's pivot was authored at world
+            // (0,0,0) (common for scene-style GLBs). Hover hit-test + line gizmos
+            // use the same pivot so visual, pick, and drag agree.
+            let sel_world = compute_gizmo_pivot(s, &aabbs, &children_q, sel_gt);
+            (sel_world, sel_gt.rotation())
+        })
+    });
 
-            if let Ok(cam_gt) = camera_query.single() {
-                let dist = (cam_gt.translation() - sel_world).length().max(0.1);
-                let scale = dist / GIZMO_SCALE_REF_DIST;
+    // Per-slot camera world positions (indexed by slot).
+    let mut cam_pos: [Option<Vec3>; VIEWPORT_COUNT] = [None; VIEWPORT_COUNT];
+    for (vc, gt) in &cameras {
+        if let Some(slot) = cam_pos.get_mut(vc.0) {
+            *slot = Some(gt.translation());
+        }
+    }
 
-                // Per-axis signs: X and Z flip toward the camera so handles
-                // stay visible. Y stays +1 always — the up arrow must always
-                // point up, never flip when looking from below (otherwise the
-                // gizmo can read as upside-down). Locked while dragging so
-                // the axis doesn't flip out from under the user. Only applied
-                // for world-aligned handles; oriented (Local / scale) handles
-                // point along the real axes without flipping.
-                if gizmo_state.active_axis.is_none() {
-                    gizmo_state.axis_signs = if world_aligned {
-                        let cam_dir = cam_gt.translation() - sel_world;
-                        Vec3::new(
-                            if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
-                            1.0,
-                            if cam_dir.z >= 0.0 { 1.0 } else { -1.0 },
-                        )
-                    } else {
-                        Vec3::ONE
-                    };
-                }
-                let s = gizmo_state.axis_signs;
-                root_transform.scale = Vec3::new(scale * s.x, scale * s.y, scale * s.z);
-                gizmo_state.gizmo_scale = scale;
-            }
+    let focused = viewports.as_ref().map(|v| v.focused).unwrap_or(0);
+    // Default: the gizmo shows only in the viewport the cursor is in (the focused
+    // slot). A setting shows it in every viewport at once.
+    let all_viewports = viewport_settings
+        .as_ref()
+        .map(|s| s.gizmos_all_viewports)
+        .unwrap_or(false);
+    // Per-slot Local/World space (defaults to World when the resource is absent).
+    let slot_space = |i: usize| -> GizmoSpace {
+        let local = vp_space
+            .as_ref()
+            .and_then(|s| s.local.get(i).copied())
+            .unwrap_or(false);
+        if local {
+            GizmoSpace::Local
+        } else {
+            GizmoSpace::World
+        }
+    };
+    let dragging = gizmo_state.active_axis.is_some();
+    // Signs are locked to the focused view's while a drag is in progress, so a
+    // handle can't flip out from under the user mid-drag — in any viewport.
+    let locked_signs = gizmo_state.axis_signs;
+
+    // Focused-slot scale/signs feed `GizmoState`, which the analytic hover/drag
+    // hit-test reads (interaction always happens in the focused view).
+    let mut focused_scale: Option<f32> = None;
+    let mut focused_signs: Option<Vec3> = None;
+
+    for (slot, mut tf, mut vis) in gizmo_roots.iter_mut() {
+        let i = slot.0;
+        let docked = viewports
+            .as_ref()
+            .and_then(|v| v.slots.get(i))
+            .map(|s| s.docked)
+            .unwrap_or(i == 0);
+
+        let (Some((sel_world, sel_rot)), Some(cam)) = (sel_data, cam_pos.get(i).copied().flatten())
+        else {
+            *vis = Visibility::Hidden;
+            continue;
+        };
+
+        // This slot draws the gizmo only if it's the focused viewport, or the
+        // "show in all viewports" setting is on.
+        let slot_shows = all_viewports || i == focused;
+
+        // Resolve the handle basis in THIS slot's own space (World-aligned or the
+        // object's Local rotation).
+        let basis = gizmo_basis(slot_space(i), *mode, sel_rot);
+        let world_aligned = basis == Quat::IDENTITY;
+        let dist = (cam - sel_world).length().max(0.1);
+        let scale = dist / GIZMO_SCALE_REF_DIST;
+
+        // Per-axis signs: X and Z flip toward THIS slot's camera so handles stay
+        // visible from its angle. Y stays +1 (the up arrow must never flip, or the
+        // gizmo reads upside-down). Locked to the focused view's signs while
+        // dragging. Only world-aligned handles flip; oriented (Local/scale)
+        // handles point along the real axes.
+        let signs = if dragging {
+            locked_signs
+        } else if world_aligned {
+            let cam_dir = cam - sel_world;
+            Vec3::new(
+                if cam_dir.x >= 0.0 { 1.0 } else { -1.0 },
+                1.0,
+                if cam_dir.z >= 0.0 { 1.0 } else { -1.0 },
+            )
+        } else {
+            Vec3::ONE
+        };
+
+        tf.translation = sel_world;
+        tf.rotation = basis;
+        tf.scale = Vec3::new(scale * signs.x, scale * signs.y, scale * signs.z);
+
+        *vis = if show_meshes && docked && slot_shows {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
+
+        per_slot.scale[i] = scale;
+        per_slot.signs[i] = signs;
+        per_slot.draw[i] = lines_active && docked && slot_shows;
+
+        if i == focused {
+            focused_scale = Some(scale);
+            focused_signs = Some(signs);
+        }
+    }
+
+    // Feed the focused slot's sizing into GizmoState for the hit-test. Signs are
+    // only refreshed when not dragging (they're locked for the drag's duration).
+    if let Some(scale) = focused_scale {
+        gizmo_state.gizmo_scale = scale;
+    }
+    if !dragging {
+        if let Some(signs) = focused_signs {
+            gizmo_state.axis_signs = signs;
         }
     }
 }
@@ -1058,10 +1216,67 @@ pub struct PlaneGizmoGroup;
 #[reflect(Default)]
 pub struct LabelGizmoGroup;
 
+// Per-slot immediate-mode gizmo groups. Bevy binds a gizmo group's render layer
+// at config time, so drawing the *camera-sized* rotate / scale / plane lines
+// into each viewport's private layer (sized for its own camera) needs one group
+// TYPE per slot rather than one shared group. `VIEWPORT_COUNT` is 4, so four of
+// each are declared; `draw_line_gizmos` matches the slot index to the pair.
+macro_rules! slot_gizmo_groups {
+    ($($t:ident $p:ident),* $(,)?) => {
+        $(
+            #[derive(Default, Reflect, GizmoConfigGroup)]
+            #[reflect(Default)]
+            pub struct $t;
+            #[derive(Default, Reflect, GizmoConfigGroup)]
+            #[reflect(Default)]
+            pub struct $p;
+        )*
+    };
+}
+slot_gizmo_groups!(
+    SlotTransformGroup0 SlotPlaneGroup0,
+    SlotTransformGroup1 SlotPlaneGroup1,
+    SlotTransformGroup2 SlotPlaneGroup2,
+    SlotTransformGroup3 SlotPlaneGroup3,
+);
+
+/// `GizmoConfig` for a per-slot transform/plane line group: always-on-top
+/// (depth_bias -1), the given line width, rendered onto that slot's private
+/// overlay layer so only that slot's camera draws it.
+fn slot_line_config(slot: usize, width: f32) -> GizmoConfig {
+    GizmoConfig {
+        depth_bias: -1.0,
+        line: GizmoLineConfig {
+            width,
+            ..default()
+        },
+        render_layers: RenderLayers::layer(
+            renzora::core::viewport_types::VIEWPORT_3D_GIZMO_LAYER_BASE + slot,
+        ),
+        ..default()
+    }
+}
+
 fn draw_line_gizmos(
-    mut gizmos: Gizmos<TransformGizmoGroup>,
+    // Per-slot transform-line groups (rotate rings / scale cubes) and plane-drag
+    // groups, each bound to its slot's private overlay layer in the plugin
+    // `build`. Grouped into two tuple params to stay under Bevy's 16-param system
+    // limit (a tuple of system params counts as one param).
+    mut t: (
+        Gizmos<SlotTransformGroup0>,
+        Gizmos<SlotTransformGroup1>,
+        Gizmos<SlotTransformGroup2>,
+        Gizmos<SlotTransformGroup3>,
+    ),
+    mut pl: (
+        Gizmos<SlotPlaneGroup0>,
+        Gizmos<SlotPlaneGroup1>,
+        Gizmos<SlotPlaneGroup2>,
+        Gizmos<SlotPlaneGroup3>,
+    ),
+    per_slot: Res<PerSlotGizmo>,
     mode: Res<GizmoMode>,
-    space: Res<GizmoSpace>,
+    vp_space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
     gizmo_state: Res<GizmoState>,
     selection: Res<EditorSelection>,
     modal: Res<modal_transform::ModalTransformState>,
@@ -1078,8 +1293,7 @@ fn draw_line_gizmos(
     children_q: Query<&Children>,
     camera_q: Query<&GlobalTransform, With<EditorCamera>>,
     viewport_settings: Option<Res<ViewportSettings>>,
-    // Thicker-lined group used only for the plane-drag squares.
-    mut plane_gizmos: Gizmos<PlaneGizmoGroup>,
+    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
 ) {
     // Modal transforms (G/R/S) take over input — hide the tool-mode handles so
     // they don't sit under the modal HUD while dragging. The modal *scale* HUD
@@ -1099,15 +1313,25 @@ fn draw_line_gizmos(
         return;
     };
     let pos = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
-    let gs = gizmo_state.gizmo_scale;
 
     if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
         return;
     }
 
-    // Orient the rotate circles / scale lines to match the active space (and the
-    // picking basis), so visuals and hit-testing agree.
-    let basis = gizmo_basis(*space, *mode, sel_gt.rotation());
+    // The handle basis is resolved per slot below (each viewport can be in a
+    // different Local/World space); keep the object's world rotation here.
+    let sel_rot = sel_gt.rotation();
+    let slot_space = |i: usize| -> GizmoSpace {
+        let local = vp_space
+            .as_ref()
+            .and_then(|s| s.local.get(i).copied())
+            .unwrap_or(false);
+        if local {
+            GizmoSpace::Local
+        } else {
+            GizmoSpace::World
+        }
+    };
     let active = gizmo_state.active_axis.or(gizmo_state.hovered_axis);
     // While actively dragging, fade the line elements (rings, scale lines/cubes,
     // plane squares) so the object underneath stays visible. The rotation pie and
@@ -1122,13 +1346,73 @@ fn draw_line_gizmos(
     } else {
         1.0
     };
+
+    // Draw each docked slot's rotate / scale / plane lines into ITS OWN group
+    // (bound to that slot's private overlay layer), scaled to ITS OWN camera via
+    // `PerSlotGizmo` — so every viewport shows a handle the right size, matching
+    // its per-slot mesh handle. The rotation-drag readout (pie + angle label) is
+    // drawn only for the focused slot (where the drag is happening) so it isn't
+    // duplicated across views.
+    let focused = viewports.as_ref().map(|v| v.focused).unwrap_or(0);
+    let focused_cam = camera_q.single().ok().map(|gt| gt.translation());
+
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    for i in 0..VIEWPORT_COUNT {
+        if !per_slot.draw[i] {
+            continue;
+        }
+        let gs = per_slot.scale[i];
+        let signs = per_slot.signs[i];
+        let basis = gizmo_basis(slot_space(i), *mode, sel_rot);
+        let readout = if i == focused { focused_cam } else { None };
+        match i {
+            0 => draw_transform_lines(
+                &mut t.0, &mut pl.0, *mode, pos, basis, active, gs, signs, drag_fade,
+                &gizmo_state, readout,
+            ),
+            1 => draw_transform_lines(
+                &mut t.1, &mut pl.1, *mode, pos, basis, active, gs, signs, drag_fade,
+                &gizmo_state, readout,
+            ),
+            2 => draw_transform_lines(
+                &mut t.2, &mut pl.2, *mode, pos, basis, active, gs, signs, drag_fade,
+                &gizmo_state, readout,
+            ),
+            3 => draw_transform_lines(
+                &mut t.3, &mut pl.3, *mode, pos, basis, active, gs, signs, drag_fade,
+                &gizmo_state, readout,
+            ),
+            _ => {}
+        }
+    }
+}
+
+/// Draw one slot's rotate / scale / plane tool-line gizmos into its own group
+/// pair. `gs` is this slot's gizmo world scale and `signs` its camera-facing axis
+/// flips (both from `PerSlotGizmo`); `readout` carries the focused camera's world
+/// position when this is the focused slot, gating the rotation-drag pie + angle
+/// label so they draw once, not once per view.
+#[allow(clippy::too_many_arguments)]
+fn draw_transform_lines<G: GizmoConfigGroup, P: GizmoConfigGroup>(
+    gizmos: &mut Gizmos<G>,
+    plane_gizmos: &mut Gizmos<P>,
+    mode: GizmoMode,
+    pos: Vec3,
+    basis: Quat,
+    active: Option<GizmoAxis>,
+    gs: f32,
+    signs: Vec3,
+    drag_fade: f32,
+    gizmo_state: &GizmoState,
+    readout: Option<Vec3>,
+) {
     let highlight = Color::srgb(1.0, 1.0, 0.3);
     let x_base = Color::srgb(1.0, 0.15, 0.15);
     let y_base = Color::srgb(0.15, 1.0, 0.15);
     let z_base = Color::srgb(0.2, 0.3, 1.0);
 
-    match *mode {
-        GizmoMode::Select | GizmoMode::None => unreachable!(),
+    match mode {
+        GizmoMode::Select | GizmoMode::None => {}
         GizmoMode::Translate => {
             // Plane-drag handles: a square bracket in each axis pair's plane
             // whose inner corner sits at the gizmo origin so two of its edges
@@ -1147,7 +1431,7 @@ fn draw_line_gizmos(
                 };
                 let color = if active == Some(plane) { Color::WHITE } else { base };
                 let color = color.with_alpha(drag_fade);
-                let (sa, sb) = plane.signed_plane_axes(gizmo_state.axis_signs).unwrap();
+                let (sa, sb) = plane.signed_plane_axes(signs).unwrap();
                 let a = basis * sa;
                 let b = basis * sb;
                 let c0 = pos;
@@ -1197,22 +1481,22 @@ fn draw_line_gizmos(
 
             // While dragging a ring, fill the swept angle with a pie sector and
             // show the angle in degrees, both always-on-top so they read over
-            // the object.
-            if let Some(active_axis) = gizmo_state.active_axis {
-                if gizmo_state.drag_angle.abs() > 1e-4 {
-                    draw_rotation_pie(
-                        &mut gizmos,
-                        pos,
-                        basis * active_axis.direction(),
-                        gizmo_state.drag_angle,
-                        radius,
-                        highlight,
-                    );
-                    if let Ok(cam_gt) = camera_q.single() {
-                        draw_angle_label(
-                            &mut gizmos,
+            // the object. Only the focused slot draws this readout.
+            if let Some(cam_pos) = readout {
+                if let Some(active_axis) = gizmo_state.active_axis {
+                    if gizmo_state.drag_angle.abs() > 1e-4 {
+                        draw_rotation_pie(
+                            gizmos,
                             pos,
-                            cam_gt.translation(),
+                            basis * active_axis.direction(),
+                            gizmo_state.drag_angle,
+                            radius,
+                            highlight,
+                        );
+                        draw_angle_label(
+                            gizmos,
+                            pos,
+                            cam_pos,
                             gizmo_state.drag_angle,
                             radius,
                             highlight,

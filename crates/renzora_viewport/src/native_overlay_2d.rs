@@ -316,6 +316,14 @@ fn render_overlay_2d(
         readout.0 = None;
     }
 
+    // Selection outline/handles follow the cursor's viewport by default; the
+    // "gizmos in all viewports" setting draws them in every view at once (matching
+    // the 3D gizmo).
+    let all_viewports = settings
+        .as_ref()
+        .map(|s| s.gizmos_all_viewports)
+        .unwrap_or(false);
+
     // Draw only in 2D view + edit mode.
     let (in_2d, show_rulers, show_coords, ruler_grid) = settings
         .map(|s| {
@@ -365,9 +373,9 @@ fn render_overlay_2d(
         };
         let origin = slot.screen_position;
         let size = slot.screen_size;
-        // The primary slot carries the in-viewport toolbar strip flush on its
-        // top edge; the ruler chrome starts below it instead of under it.
-        let top_offset = if i == 0 { crate::VIEWPORT_TOOLBAR_H } else { 0.0 };
+        // Every viewport now carries the in-viewport toolbar strip flush on its
+        // top edge, so the ruler chrome starts below it on all slots.
+        let top_offset = crate::VIEWPORT_TOOLBAR_H;
 
         if show_rulers {
             draw_rulers(
@@ -415,82 +423,99 @@ fn render_overlay_2d(
         }
     }
 
-    // ── Selection chrome on the FOCUSED viewport only ───────────────────────
-    // The picker hit-tests handles against the focused view, so the interactive
-    // outline/handles live there; the rulers above already cover all viewports.
-    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
-    let Some(slot) = viewports.slots.get(focused) else { return };
-    if !slot.docked || slot.screen_size.x <= 1.0 || slot.screen_size.y <= 1.0 {
-        return;
-    }
-    let Some((camera, cam_gt)) = cams[focused] else { return };
-    let panel = Panel2d {
-        screen_position: slot.screen_position,
-        screen_size: slot.screen_size,
-        current_size: slot.current_size,
-    };
-    let origin = slot.screen_position;
-    let size = slot.screen_size;
-
-    // ── Selection chrome + box-select band, clipped to the panel ────────────
-    // All selection visuals live under ONE absolute container matching the
-    // panel rect with `Overflow::clip`, children positioned relative to it. A
-    // selection dragged past the panel edge used to paint over neighbouring
-    // panels (outlines were root-level window-space nodes); the clip pins
-    // everything inside the viewport.
+    // ── Selection chrome for EVERY docked 2D viewport ───────────────────────
+    // Each viewport shows its own selection outline + resize/rotate handles,
+    // projected through its OWN camera (so a zoomed-out view frames the selection
+    // at its own scale) — mirroring the 3D per-slot gizmo. Interaction still runs
+    // against the focused view (the picker hit-tests there), so the handles in the
+    // other viewports are a visual echo; the box-select rubber-band therefore only
+    // draws in the focused viewport, where the drag is actually happening.
     let band = box_select.as_ref().and_then(|b| b.0);
     let selected = selection.as_ref().map(|s| s.get_all()).unwrap_or_default();
+    let primary = selection.as_ref().and_then(|s| s.get());
+    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
     if band.is_none() && selected.is_empty() {
         return;
     }
-    let chrome_root = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(origin.x),
-                top: Val::Px(origin.y),
-                width: Val::Px(size.x),
-                height: Val::Px(size.y),
-                overflow: bevy::ui::Overflow::clip(),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            GlobalZIndex(Z_SELECTION),
-            bevy::ui::FocusPolicy::Pass,
-            bevy::picking::Pickable::IGNORE,
-            Overlay2dPart,
-            Name::new("selection-chrome-2d"),
-        ))
-        .id();
 
-    // Rubber-band rect (drawn while a box-select drag is in flight).
-    if let Some((a, b)) = band {
-        let min = a.min(b) - origin;
-        let dims = (a - b).abs();
-        commands.spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(min.x),
-                top: Val::Px(min.y),
-                width: Val::Px(dims.x.max(1.0)),
-                height: Val::Px(dims.y.max(1.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(ACCENT.with_alpha(0.08)),
-            BorderColor::all(ACCENT),
-            bevy::ui::FocusPolicy::Pass,
-            bevy::picking::Pickable::IGNORE,
-            ChildOf(chrome_root),
-            Name::new("box-select-2d"),
-        ));
-    }
+    for (i, cam) in cams.iter().enumerate() {
+        let Some(slot) = viewports.slots.get(i) else { continue };
+        if !slot.docked || slot.screen_size.x <= 1.0 || slot.screen_size.y <= 1.0 {
+            continue;
+        }
+        let Some((camera, cam_gt)) = *cam else { continue };
+        let panel = Panel2d {
+            screen_position: slot.screen_position,
+            screen_size: slot.screen_size,
+            current_size: slot.current_size,
+        };
+        let origin = slot.screen_position;
+        let size = slot.screen_size;
 
-    // Selection outlines — every selected entity gets one; only the PRIMARY
-    // gets resize/rotate handles (the handle hit-tests in the picker key off
-    // the primary).
-    let primary = selection.as_ref().and_then(|s| s.get());
-    for entity in selected {
+        // By default the selection outline/handles show only in the focused
+        // viewport (the one the cursor is in); the setting shows them everywhere.
+        if i != focused && !all_viewports {
+            continue;
+        }
+        // The rubber-band is window-space geometry for the focused panel, so it
+        // only makes sense in that panel.
+        let slot_band = if i == focused { band } else { None };
+        if slot_band.is_none() && selected.is_empty() {
+            continue;
+        }
+
+        // ── Selection chrome + box-select band, clipped to the panel ────────
+        // All selection visuals live under ONE absolute container matching the
+        // panel rect with `Overflow::clip`, children positioned relative to it,
+        // so a selection dragged past the panel edge can't paint over a
+        // neighbouring panel.
+        let chrome_root = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(origin.x),
+                    top: Val::Px(origin.y),
+                    width: Val::Px(size.x),
+                    height: Val::Px(size.y),
+                    overflow: bevy::ui::Overflow::clip(),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                GlobalZIndex(Z_SELECTION),
+                bevy::ui::FocusPolicy::Pass,
+                bevy::picking::Pickable::IGNORE,
+                Overlay2dPart,
+                Name::new("selection-chrome-2d"),
+            ))
+            .id();
+
+        // Rubber-band rect (drawn while a box-select drag is in flight).
+        if let Some((a, b)) = slot_band {
+            let min = a.min(b) - origin;
+            let dims = (a - b).abs();
+            commands.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(min.x),
+                    top: Val::Px(min.y),
+                    width: Val::Px(dims.x.max(1.0)),
+                    height: Val::Px(dims.y.max(1.0)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(ACCENT.with_alpha(0.08)),
+                BorderColor::all(ACCENT),
+                bevy::ui::FocusPolicy::Pass,
+                bevy::picking::Pickable::IGNORE,
+                ChildOf(chrome_root),
+                Name::new("box-select-2d"),
+            ));
+        }
+
+        // Selection outlines — every selected entity gets one; only the PRIMARY
+        // gets resize/rotate handles (the handle hit-tests in the picker key off
+        // the primary).
+        for &entity in &selected {
         // Resolve the entity's centre + half-size in world units, plus its z
         // rotation. Sprites use their effective render size; bare Node2d
         // groups get a small fixed box so empty groups still show feedback.
@@ -685,6 +710,7 @@ fn render_overlay_2d(
                     Name::new("rotate-handle-2d"),
                 ));
             }
+        }
         }
     }
 }

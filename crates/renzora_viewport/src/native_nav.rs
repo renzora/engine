@@ -123,6 +123,12 @@ fn nav_btn(
         ))
         .id();
     let g = icon_text(commands, &fonts.phosphor, icon, (235, 235, 240), 16.0);
+    // Let clicks fall through the glyph to the button, or a press on the icon
+    // itself (dead-center of the button) never reaches the button's `Interaction`
+    // and the Grid/Icons toggles silently do nothing.
+    commands
+        .entity(g)
+        .insert(bevy::picking::Pickable::IGNORE);
     if tag_glyph {
         commands.entity(g).insert(NavIconsGlyph);
     }

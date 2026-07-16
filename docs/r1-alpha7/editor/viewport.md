@@ -164,9 +164,19 @@ The grid is the faint set of lines on the ground that helps you judge distance a
 
 You can open **up to four viewports at once** to set up a classic layout — perspective, front, top, and side all visible together. Each one looks at the same scene from its own angle.
 
-The **active** viewport is whichever one your cursor is over, so the gizmo and camera controls always act on the view you're working in. Switching to perspective or flat view applies to all of them at once; each viewport keeps its own angle.
+The **active** viewport is whichever one your cursor is over, so camera controls and dragging always act on the view you're working in.
 
-This works in **2D** too: switch to the 2D view and every open viewport shows the 2D scene, each with its own independent **pan and zoom** — so you can keep one viewport framed on the whole level while another stays zoomed in on a character. A newly opened 2D viewport starts on the same framing as the one you're working in, then pans and zooms independently from there. Interaction (select, paint, the tools) always follows the active viewport, exactly as in 3D.
+**Each viewport has its own toolbar** across its top edge with the controls that belong to that specific view:
+
+- a **view-angle dropdown** — pick Perspective, Front, Back, Left, Right, Top, or Bottom for *that* viewport, so you can lay out the classic perspective / front / top / side quad and change any one without touching the others;
+- a **World / Local** toggle that sets the transform gizmo's axes for that viewport independently;
+- a **maximize** button that expands *that* viewport to fill the editor (click it again, or the maximize button on the now-full viewport, to restore your layout).
+
+The shared **top toolbar** below the document tabs holds the things that aren't per-view: undo / redo / save, the move / rotate / scale snap steps, and the shape / display / camera menus.
+
+**The selection gizmo follows your cursor.** When you select something, the transform gizmo (and, in 2D, the selection outline and resize handles) shows in the viewport your cursor is in, sized to that view — so the other views stay clean. Prefer to see it everywhere at once? Turn on **Settings → Viewport → Gizmos in All Viewports**, and every viewport draws its own correctly-sized handle; dragging still happens in whichever viewport you're pointing at. The grid, and the orientation cube in each corner, always reflect each viewport's own camera.
+
+This works in **2D** too: switch to the 2D view and every open viewport shows the 2D scene, each with its own independent **pan and zoom** — so you can keep one viewport framed on the whole level while another stays zoomed in on a character, each with its own grid. A newly opened 2D viewport starts on the same framing as the one you're working in, then pans and zooms independently from there. Interaction (select, paint, the tools) always follows the active viewport, exactly as in 3D.
 
 ## Previewing a camera shot
 

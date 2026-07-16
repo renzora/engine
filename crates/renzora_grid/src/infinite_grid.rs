@@ -26,6 +26,7 @@ use bevy::math::{Mat3, Vec3, Vec4};
 use bevy::reflect::{std_traits::ReflectDefault, Reflect};
 use bevy::render::{
     camera::ExtractedCamera,
+    extract_component::{ExtractComponent, ExtractComponentPlugin},
     prelude::*,
     render_phase::{
         AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, RenderCommand,
@@ -53,7 +54,16 @@ impl Plugin for InfiniteGridPlugin {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "infinite_grid.wgsl");
         app.register_type::<InfiniteGrid>()
-            .register_type::<InfiniteGridSettings>();
+            .register_type::<InfiniteGridSettings>()
+            // Extract `InfiniteGridSettings` that live on *cameras* into the
+            // render world, so `prepare_infinite_grids` can build a per-camera
+            // settings override (`PerCameraSettingsUniformOffset`). Without this
+            // the per-camera path is dead — every view would share the grid
+            // entity's single settings (fade radius, scale), which is exactly
+            // what made a zoomed-out viewport fade the grid at the focused
+            // camera's radius. (Grid *entity* settings are still extracted
+            // manually alongside their transform in `extract_infinite_grids`.)
+            .add_plugins(ExtractComponentPlugin::<InfiniteGridSettings>::default());
     }
 
     fn finish(&self, app: &mut App) {
@@ -102,7 +112,7 @@ pub struct InfiniteGrid;
 /// Component to configure the infinite grid
 ///
 /// This component can be applied directly on the grid entity or on a camera that can see the grid
-#[derive(Component, Copy, Clone, Reflect)]
+#[derive(Component, Copy, Clone, Reflect, ExtractComponent)]
 #[reflect(Component, Default)]
 pub struct InfiniteGridSettings {
     /// The color of the X axis
@@ -284,7 +294,10 @@ fn extract_infinite_grids(
 
 fn prepare_infinite_grids(
     mut commands: Commands,
-    grids: Query<(Entity, &GlobalTransform, &InfiniteGridSettings)>,
+    // `Without<ExtractedView>` so a camera carrying a per-view `InfiniteGridSettings`
+    // override isn't itself treated as a grid *instance* (it has both a transform
+    // and the settings). Cameras are handled by the `cameras` query below.
+    grids: Query<(Entity, &GlobalTransform, &InfiniteGridSettings), Without<ExtractedView>>,
     cameras: Query<(Entity, &InfiniteGridSettings), With<ExtractedView>>,
     mut position_uniforms: ResMut<InfiniteGridUniforms>,
     mut settings_uniforms: ResMut<InfiniteGridDisplaySettingsUniforms>,

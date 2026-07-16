@@ -13,7 +13,7 @@ use crate::external_runtime::{
 /// "maximize viewport on play" setting drove the maximize), so [`exit_play_mode`]
 /// restores exactly what the user had.
 #[derive(Resource)]
-struct PrePlayMaximized(bool);
+struct PrePlayMaximized(Option<usize>);
 
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
@@ -247,12 +247,16 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     if maximize {
         let was = world
             .get_resource::<renzora_ui::ViewportMaximized>()
-            .map(|m| m.0)
-            .unwrap_or(false);
+            .and_then(|m| m.0);
         world.insert_resource(PrePlayMaximized(was));
+        // Maximize the focused viewport for the game view.
+        let focused = world
+            .get_resource::<renzora::core::viewport_types::Viewports>()
+            .map(|v| v.focused)
+            .unwrap_or(0);
         world
             .get_resource_or_insert_with(renzora_ui::ViewportMaximized::default)
-            .0 = true;
+            .0 = Some(focused);
     }
 
     let is_2d = world.get::<Camera2d>(cam_entity).is_some();

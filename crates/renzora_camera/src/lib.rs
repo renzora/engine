@@ -214,6 +214,10 @@ impl Plugin for CameraPlugin {
                     goto_selected_camera,
                     // Load the focused slot's angle into the singleton orbit…
                     mirror_focused_orbit_in,
+                    // …then honor any per-viewport view-angle snap (each viewport's
+                    // own dropdown), routing the focused slot through the live orbit
+                    // and the others straight to their stored angle.
+                    apply_per_slot_view_angle,
                     sync_viewport_settings,
                     handle_view_angle_keys,
                     focus_selected,
@@ -413,6 +417,37 @@ fn sync_viewport_settings(
         if let Some(cmd) = vp.pending_view_angle.take() {
             orbit.yaw = cmd.yaw;
             orbit.pitch = cmd.pitch;
+        }
+    }
+}
+
+/// Consume each viewport slot's own `pending_view_angle` (set by that viewport's
+/// view-angle dropdown), so every viewport can be snapped to a different preset
+/// independently. The focused slot goes through the live [`OrbitCameraState`]
+/// (persisted by `mirror_focused_orbit_out`); the others are written straight to
+/// their stored angle, which `apply_secondary_viewport_cameras` drives each frame.
+fn apply_per_slot_view_angle(
+    mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
+    mut orbit: ResMut<OrbitCameraState>,
+) {
+    use renzora::core::viewport_types::VIEWPORT_COUNT;
+    let focused = viewports.focused.min(VIEWPORT_COUNT - 1);
+    for i in 0..VIEWPORT_COUNT {
+        let Some(slot) = viewports.slots.get_mut(i) else {
+            continue;
+        };
+        if slot.pending_view_angle.is_none() {
+            continue;
+        }
+        let Some(cmd) = slot.pending_view_angle.take() else {
+            continue;
+        };
+        if i == focused {
+            orbit.yaw = cmd.yaw;
+            orbit.pitch = cmd.pitch;
+        } else {
+            slot.yaw = cmd.yaw;
+            slot.pitch = cmd.pitch;
         }
     }
 }

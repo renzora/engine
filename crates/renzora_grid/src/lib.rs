@@ -58,7 +58,11 @@ impl Plugin for GridPlugin {
             .add_systems(PostStartup, spawn_grid)
             .add_systems(
                 Update,
-                (sync_grid_from_viewport, apply_grid_config, update_fade_distance)
+                (
+                    sync_grid_from_viewport,
+                    apply_grid_config,
+                    sync_per_camera_grid,
+                )
                     .run_if(in_state(renzora::SplashState::Editor)),
             );
     }
@@ -114,20 +118,50 @@ fn apply_grid_config(
     }
 }
 
-/// Scale the grid fade with camera height so zooming out reveals a bigger patch,
-/// Blender-style.
-fn update_fade_distance(
-    cam: Query<&GlobalTransform, With<renzora::EditorCamera>>,
-    mut grid: Query<&mut InfiniteGridSettings, With<EditorGrid>>,
+/// Give every viewport camera its **own** grid settings, scaled to its **own**
+/// height — so each open viewport fades the grid at a radius that matches its own
+/// zoom (Blender-style), instead of every view inheriting the focused camera's
+/// fade radius. The infinite-grid renderer reads an `InfiniteGridSettings` sitting
+/// on a camera as a per-view override (`PerCameraSettingsUniformOffset`); we keep
+/// each override's colors/scale in lock-step with `GridConfig` and only its
+/// `fadeout_distance` varies per camera.
+///
+/// The single grid *entity* keeps the shared base settings, so offscreen preview
+/// cameras (material/model viewers) that carry no override still get a grid.
+fn sync_per_camera_grid(
+    mut commands: Commands,
+    config: Res<GridConfig>,
+    cameras: Query<
+        (Entity, &GlobalTransform, Option<&InfiniteGridSettings>),
+        With<renzora::core::ViewportCamera>,
+    >,
 ) {
-    let Ok(cam_tf) = cam.single() else {
-        return;
-    };
-    let elev = cam_tf.translation().y.abs().max(1.5);
-    let fadeout = (elev * 8.0).max(20.0);
-    for mut settings in &mut grid {
-        if (settings.fadeout_distance - fadeout).abs() > 0.5 {
-            settings.fadeout_distance = fadeout;
+    for (entity, cam_tf, existing) in &cameras {
+        let elev = cam_tf.translation().y.abs().max(1.5);
+        let fadeout = (elev * 8.0).max(20.0);
+        let want = InfiniteGridSettings {
+            x_axis_color: config.x_axis_color,
+            z_axis_color: config.z_axis_color,
+            minor_line_color: config.minor_color,
+            major_line_color: config.major_color,
+            fadeout_distance: fadeout,
+            dot_fadeout_strength: 0.25,
+            scale: config.scale,
+        };
+        // Only re-insert when something actually moved past a threshold, so a
+        // steady view doesn't churn the component (and its render-world extract)
+        // every frame.
+        let changed = match existing {
+            None => true,
+            Some(cur) => {
+                (cur.fadeout_distance - want.fadeout_distance).abs() > 0.5
+                    || cur.scale != want.scale
+                    || cur.minor_line_color != want.minor_line_color
+                    || cur.major_line_color != want.major_line_color
+            }
+        };
+        if changed {
+            commands.entity(entity).insert(want);
         }
     }
 }

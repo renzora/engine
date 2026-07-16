@@ -331,11 +331,13 @@ pub struct DockingState {
     pub tree: DockTree,
 }
 
-/// When set, the editor renders only the `viewport` panel filling the whole
-/// layout (a render-time override — the real [`DockingState`] tree is left
-/// untouched, so toggling off restores the exact layout).
+/// When set to `Some(slot)`, the editor renders only that viewport slot's panel
+/// filling the whole layout (a render-time override — the real [`DockingState`]
+/// tree is left untouched, so toggling off restores the exact layout). `None`
+/// means no viewport is maximized. Per-slot so the maximize button in each
+/// viewport maximizes the view it belongs to.
 #[derive(Resource, Default)]
-pub struct ViewportMaximized(pub bool);
+pub struct ViewportMaximized(pub Option<usize>);
 
 impl Default for DockingState {
     fn default() -> Self {

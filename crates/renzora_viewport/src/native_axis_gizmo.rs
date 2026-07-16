@@ -39,6 +39,14 @@ const NEG_D: f32 = 12.0;
 #[derive(Component)]
 struct AxisGizmoRoot;
 
+/// Which viewport slot this axis-gizmo cluster belongs to. Every viewport panel
+/// builds its own cluster; this tags it so `gizmo_layout` projects it from that
+/// slot's *own* camera orbit rather than every cluster mirroring the focused
+/// camera. Propagated onto the tips + lines too so their per-frame projection
+/// reads the right slot without walking the hierarchy.
+#[derive(Component, Clone, Copy)]
+struct AxisGizmoSlot(usize);
+
 #[derive(Component)]
 struct AxisBackplate;
 
@@ -80,8 +88,10 @@ fn project(dir: Vec3, cy: f32, sy: f32, cp: f32, sp: f32) -> (Vec2, f32) {
     (Vec2::new(v.x * AXIS_LEN, -v.y * AXIS_LEN), v.z)
 }
 
-/// Build the gizmo cluster on a viewport content node's top-right. Returns the root.
-pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+/// Build the gizmo cluster on a viewport content node's top-right. Returns the
+/// root. `slot` is the viewport slot this panel shows, so the cluster projects
+/// from that slot's own camera orbit.
+pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
     let root = commands
         .spawn((
             Node {
@@ -97,6 +107,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             OverlaySurface,
             Interaction::default(),
             AxisGizmoRoot,
+            AxisGizmoSlot(slot),
             Name::new("axis-gizmo"),
         ))
         .id();
@@ -148,6 +159,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 ZIndex(0),
                 bevy::picking::Pickable::IGNORE,
                 AxisLine { dir, color },
+                AxisGizmoSlot(slot),
                 ChildOf(root),
                 Name::new("axis-line"),
             ));
@@ -177,6 +189,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                     positive,
                     color,
                 },
+                AxisGizmoSlot(slot),
                 ChildOf(root),
                 Name::new("axis-tip"),
             ))
@@ -200,15 +213,23 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// and hide the gizmo when the setting is off.
 fn gizmo_layout(
     orbit: Option<Res<CameraOrbitSnapshot>>,
+    viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
     settings: Option<Res<ViewportSettings>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     mut roots: Query<&mut Node, (With<AxisGizmoRoot>, Without<AxisTip>, Without<AxisLine>)>,
     mut tips: Query<
-        (&AxisTip, &mut Node, &mut BackgroundColor, &mut ZIndex),
+        (&AxisTip, &AxisGizmoSlot, &mut Node, &mut BackgroundColor, &mut ZIndex),
         Without<AxisLine>,
     >,
     mut lines: Query<
-        (&AxisLine, &mut Node, &mut UiTransform, &mut BackgroundColor, &mut ZIndex),
+        (
+            &AxisLine,
+            &AxisGizmoSlot,
+            &mut Node,
+            &mut UiTransform,
+            &mut BackgroundColor,
+            &mut ZIndex,
+        ),
         Without<AxisTip>,
     >,
 ) {
@@ -231,11 +252,26 @@ fn gizmo_layout(
     if !show {
         return;
     }
-    let Some(orbit) = orbit else { return };
-    let (cy, sy) = (orbit.yaw.cos(), orbit.yaw.sin());
-    let (cp, sp) = (orbit.pitch.cos(), orbit.pitch.sin());
 
-    for (tip, mut node, mut bg, mut z) in &mut tips {
+    // Each cluster reads its OWN slot's stored orbit angle (`Viewports.slots[i]`),
+    // which `renzora_camera::mirror_focused_orbit_out` rewrites for the focused
+    // slot every frame — so it's current for all slots. We deliberately do NOT
+    // special-case the focused slot to read the live `CameraOrbitSnapshot`: on the
+    // frame focus moves to a new viewport, the snapshot still holds the *previous*
+    // view's angle (it's refreshed later in the schedule), so the newly focused
+    // cube would flash the old angle for one frame. Reading slots[i] avoids that
+    // race; the only cost is a 1-frame lag mid-orbit, which is invisible.
+    let slot_orbit = |slot: usize| -> (f32, f32) {
+        if let Some(s) = viewports.as_ref().and_then(|v| v.slots.get(slot)) {
+            return (s.yaw, s.pitch);
+        }
+        orbit.as_deref().map(|o| (o.yaw, o.pitch)).unwrap_or((0.0, 0.0))
+    };
+
+    for (tip, slot, mut node, mut bg, mut z) in &mut tips {
+        let (yaw, pitch) = slot_orbit(slot.0);
+        let (cy, sy) = (yaw.cos(), yaw.sin());
+        let (cp, sp) = (pitch.cos(), pitch.sin());
         let (off, depth) = project(tip.dir, cy, sy, cp, sp);
         let d = if tip.positive { POS_D } else { NEG_D };
         node.left = Val::Px(CENTRE + off.x - d / 2.0);
@@ -245,7 +281,10 @@ fn gizmo_layout(
         *z = ZIndex(100 + (depth * 10.0) as i32);
     }
 
-    for (line, mut node, mut tf, mut bg, mut z) in &mut lines {
+    for (line, slot, mut node, mut tf, mut bg, mut z) in &mut lines {
+        let (yaw, pitch) = slot_orbit(slot.0);
+        let (cy, sy) = (yaw.cos(), yaw.sin());
+        let (cp, sp) = (pitch.cos(), pitch.sin());
         let (off, depth) = project(line.dir, cy, sy, cp, sp);
         let len = off.length();
         node.width = Val::Px(len);

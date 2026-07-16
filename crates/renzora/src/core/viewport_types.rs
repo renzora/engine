@@ -74,6 +74,19 @@ pub const VIEWPORT_COUNT: usize = 4;
 /// low layers (0/1) the scene and 3D cameras use.
 pub const VIEWPORT_2D_GRID_LAYER_BASE: usize = 20;
 
+/// Base bevy `RenderLayers` index for the per-slot 3D gizmo overlays.
+///
+/// Every viewport's 3D camera renders layer 0 (the scene), layer 1 (shared
+/// world-space overlays — light/collider/skeleton gizmos, the selection box —
+/// which look correct from any angle so one instance serves all views), and its
+/// own private overlay layer `VIEWPORT_3D_GIZMO_LAYER_BASE + slot`. The
+/// *camera-sized* transform gizmo (translate handles, rotate/scale/plane lines)
+/// is drawn per slot onto that private layer, scaled and axis-flipped for that
+/// slot's own camera — so each viewport shows a correctly-sized handle instead
+/// of one shared handle sized for the focused camera. Kept clear of the 2D grid
+/// layers (`VIEWPORT_2D_GRID_LAYER_BASE`, 20..) and the low scene layers (0/1).
+pub const VIEWPORT_3D_GIZMO_LAYER_BASE: usize = 24;
+
 /// Per-slot state for one editor viewport: its render-target image, panel rect,
 /// and its own orbit camera (focus / distance / yaw / pitch).
 ///
@@ -117,6 +130,12 @@ pub struct ViewportSlot {
     pub yaw: f32,
     /// Orbit pitch (radians).
     pub pitch: f32,
+    /// A view-angle snap requested for THIS slot (from its own view-angle
+    /// dropdown), consumed by the camera controller — so each viewport can be
+    /// set to a different preset (Front / Top / Side / …) independently. The
+    /// global `ViewportSettings::pending_view_angle` still drives the focused
+    /// view (keyboard shortcuts, the axis cube); this is the per-slot channel.
+    pub pending_view_angle: Option<ViewAngleCommand>,
 }
 
 impl ViewportSlot {
@@ -136,6 +155,7 @@ impl ViewportSlot {
             distance,
             yaw,
             pitch,
+            pending_view_angle: None,
         }
     }
 
@@ -751,6 +771,12 @@ pub struct ViewportSettings {
     /// `renzora_level_presets::graphics_quality`. Defaults to `Medium` so the
     /// editor stays responsive on weak / high-DPI hardware out of the box.
     pub graphics_quality: GraphicsQuality,
+    /// Show the transform gizmo + selection outline/handles in **every** open
+    /// viewport at once. Off by default — the gizmo follows the viewport your
+    /// cursor is in, so the other views stay clean — matching most DCCs. Turn it
+    /// on to see a (correctly-sized) handle in all viewports simultaneously.
+    /// Settings → Viewport.
+    pub gizmos_all_viewports: bool,
 }
 
 impl Default for ViewportSettings {
@@ -786,6 +812,26 @@ impl Default for ViewportSettings {
             vsync: true,
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
             graphics_quality: GraphicsQuality::default(),
+            gizmos_all_viewports: false,
+        }
+    }
+}
+
+/// Per-viewport transform-gizmo space (World vs Local), independent per slot so
+/// one viewport can align the handles to the world axes while another aligns
+/// them to the object's own rotation. `true` = Local. The *focused* slot's value
+/// is mirrored into the global `GizmoSpace` resource each frame so the analytic
+/// drag/hit-test (which always acts on the focused view) and any other
+/// `Res<GizmoSpace>` reader keep working unchanged.
+#[derive(Resource, Debug, Clone)]
+pub struct ViewportGizmoSpace {
+    pub local: [bool; VIEWPORT_COUNT],
+}
+
+impl Default for ViewportGizmoSpace {
+    fn default() -> Self {
+        Self {
+            local: [false; VIEWPORT_COUNT],
         }
     }
 }

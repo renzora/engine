@@ -23,7 +23,7 @@ use renzora_ember::reactive::bind_with;
 use crate::ViewportResizeRequest;
 
 /// Dock panel id per viewport slot (slot 0 keeps the historical `"viewport"`).
-const PANEL_IDS: [&str; 4] = ["viewport", "viewport-2", "viewport-3", "viewport-4"];
+pub(crate) const PANEL_IDS: [&str; 4] = ["viewport", "viewport-2", "viewport-3", "viewport-4"];
 
 #[derive(Component)]
 struct NativeViewport(usize);
@@ -128,8 +128,8 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     let nav = crate::native_nav::build(commands, fonts);
     commands.entity(content).add_child(nav);
 
-    // Axis-orientation gizmo, top-right.
-    let gizmo = crate::native_axis_gizmo::build(commands, fonts);
+    // Axis-orientation gizmo, top-right — projected from this slot's own camera.
+    let gizmo = crate::native_axis_gizmo::build(commands, fonts, index);
     commands.entity(content).add_child(gizmo);
 
     // The primary viewport (slot 0) owns the shared header + the UI editor; the
@@ -145,6 +145,8 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             Name::new("native-viewport-root"),
         ))
         .id();
+    // The embedded UI-editor canvas is slot-0 only — it edits the single shared
+    // UI document, so it belongs to the primary viewport.
     if index == 0 {
         use renzora::core::viewport_types::{ViewportSettings, ViewportView};
         // In UI view the shared image hides and the embedded UI editor (toolbar +
@@ -160,19 +162,20 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
         });
         commands.entity(content).add_child(editor);
-        // In-viewport tool strip flush on the top edge — undo / redo / save,
-        // the registry tool buttons, snap pills, and maximize (moved out of
-        // the header strip). Added last so it draws on top of the UI-editor
-        // canvas in every view.
-        let side_toolbar = crate::native_header::build_side_toolbar(commands, fonts);
-        commands.entity(content).add_child(side_toolbar);
-        // The rest of the viewport toolbar (header) lives in the shared toolbar
-        // strip below the document tabs (registered as the "viewport" panel's
-        // toolbar — see `native_header::register`).
-        commands.entity(root).add_child(content);
-    } else {
-        commands.entity(root).add_child(content);
     }
+    // In-viewport tool strip flush on the top edge — undo / redo / save, the
+    // registry tool buttons, snap pills, and maximize — on EVERY viewport, so each
+    // view has its own controls (the axis gizmo + nav overlay already reserve
+    // `VIEWPORT_TOOLBAR_H` on all slots for it). The driver systems in
+    // `native_header::register` locate every widget by component and iterate all
+    // instances, and `populate_tools` fills each `ToolContainer` in turn, so N
+    // strips all behave. Added last so it draws over the slot-0 UI-editor canvas.
+    let side_toolbar = crate::native_header::build_side_toolbar(commands, fonts, index);
+    commands.entity(content).add_child(side_toolbar);
+    // The rest of the viewport toolbar (header) lives in the shared toolbar strip
+    // below the document tabs (registered as the "viewport" panel's toolbar — see
+    // `native_header::register`).
+    commands.entity(root).add_child(content);
     root
 }
 

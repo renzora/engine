@@ -54,6 +54,11 @@ enum HeaderAction {
     Maximize,
 }
 
+/// Tags a Maximize button with the viewport slot it belongs to, so clicking it
+/// maximizes THAT viewport (each viewport carries its own Maximize button).
+#[derive(Component, Clone, Copy)]
+struct MaximizeSlot(usize);
+
 /// Points a button at its child glyph `Text` entity so the visuals system can
 /// re-glyph / re-color it without walking children.
 #[derive(Component)]
@@ -124,9 +129,14 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // The session actions (undo / redo / save) and the registry-driven tool
-    // buttons live in the viewport's vertical side toolbar — see
-    // [`build_side_toolbar`].
+    // Session actions (undo / redo / save) — moved here from the per-viewport
+    // strip so they live in the single shared top toolbar. The World/Local space
+    // toggle and the per-viewport view-angle dropdown moved the OTHER way, into
+    // each viewport's own side toolbar (see [`build_side_toolbar`]).
+    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", BTN_W, BTN_H, SIDE_ICON);
+    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", BTN_W, BTN_H, SIDE_ICON);
+    let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk", BTN_W, BTN_H, SIDE_ICON);
+    let sep0 = tool_separator(commands);
 
     // "Add shape" menu — a dropdown listing every registered shape (the same
     // ShapeRegistry the shape-library panel reads), grouped by category.
@@ -134,14 +144,9 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let shapes_dd = build_shapes_dropdown(commands, fonts);
     commands.entity(shapes_dd).insert(ThreeDOnly);
 
-    // World/Local space toggle for the transform gizmo (3D only).
-    let space_gap = gap(commands, 8.0);
-    let space_btn = space_toggle(commands, fonts);
-    commands.entity(space_btn).insert(ThreeDOnly);
-
     let gap3 = gap(commands, 8.0);
-    let view_dd = dropdown(commands, fonts, DropKind::View, 56.0);
-    let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0);
+    let view_dd = dropdown(commands, fonts, DropKind::View, 56.0, 0);
+    let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0, 0);
 
     // 2D-only Overlays dropdown — Grid (`show_grid_2d`, off by default; separate
     // from the 3D Display dropdown's "Grid", which drives the 3D floor grid),
@@ -151,11 +156,34 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let overlay_2d_dd = build_overlay_2d_dropdown(commands, fonts);
     commands.entity(overlay_2d_dd).insert(TwoDOnly);
 
-    // The inline snap pills (translate / rotate / scale) live in the viewport
-    // toolbar — see [`build_side_toolbar`]. The camera-speed widget is 3D-only.
     let gap5 = gap(commands, 6.0);
     let cam_speed = cam_speed_widget(commands, fonts);
     commands.entity(cam_speed).insert(ThreeDOnly);
+
+    // Inline snap pills (move / rotate / scale) — moved here from the per-viewport
+    // strip. Translate doubles as the 2D grid snap; rotate / scale are 3D-only.
+    let snap_gap = gap(commands, 8.0);
+    let translate = snap_pair(
+        commands, fonts, SnapToggle::Translate, "arrows-out-cardinal", 1.0, 100.0, 1.0,
+        |w| snap_val(w, |s| s.translate_snap),
+        |w, v| set_snap(w, |s| &mut s.translate_snap, v),
+    );
+    let rotate = snap_pair(
+        commands, fonts, SnapToggle::Rotate, "arrow-clockwise", 1.0, 90.0, 1.0,
+        |w| snap_val(w, |s| s.rotate_snap),
+        |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
+    );
+    let scale = snap_pair(
+        commands, fonts, SnapToggle::Scale, "arrows-out", 1.0, 10.0, 1.0,
+        |w| snap_val(w, |s| s.scale_snap),
+        |w, v| set_snap(w, |s| &mut s.scale_snap, v),
+    );
+    commands.entity(rotate).insert(ThreeDOnly);
+    commands.entity(scale).insert(ThreeDOnly);
+    let pill_gap1 = gap(commands, 4.0);
+    let pill_gap2 = gap(commands, 4.0);
+    commands.entity(pill_gap1).insert(ThreeDOnly);
+    commands.entity(pill_gap2).insert(ThreeDOnly);
 
     // Fixed gap (not a flex spacer) so the whole toolbar reads as one centered
     // cluster rather than splitting to the left/right edges.
@@ -167,12 +195,10 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     for e in [display_dd, snap_dd, camera_dd] {
         commands.entity(e).insert(ThreeDOnly);
     }
-    // One centered cluster: shapes + World/Local, then view/mode, camera speed,
-    // and the Display / Snap / Camera dropdowns — all grouped in the middle via
-    // the row's `justify-content`. (Maximize moved to the viewport toolbar.)
     commands.entity(row).add_children(&[
-        shapes_dd, space_gap, space_btn,
-        center_gap, view_dd, mode_dd, gap5, cam_speed, gap3,
+        undo, redo, save, sep0, shapes_dd,
+        center_gap, view_dd, mode_dd, gap5, cam_speed,
+        snap_gap, translate, pill_gap1, rotate, pill_gap2, scale, gap3,
         display_dd, snap_dd, camera_dd, overlay_2d_dd,
     ]);
     row
@@ -187,7 +213,7 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// into the viewport changes nothing about how they behave. The cluster is an
 /// [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
 /// tool never bleeds into picking / box-select underneath).
-pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
     let cluster = commands
         .spawn((
             Node {
@@ -209,11 +235,6 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) ->
         ))
         .id();
 
-    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", SIDE_BTN, SIDE_BTN, SIDE_ICON);
-    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", SIDE_BTN, SIDE_BTN, SIDE_ICON);
-    let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk", SIDE_BTN, SIDE_BTN, SIDE_ICON);
-    let sep = tool_separator(commands);
-
     // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
     // Populated from ToolbarRegistry by a deferred system (predicates need
     // World). The container stays visible in 2D — its 3D transform tools hide
@@ -232,61 +253,28 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts) ->
         ))
         .id();
 
-    // Inline snapping: translate doubles as the 2D grid snap; rotate / scale
-    // are 3D-only (hidden in 2D via `ThreeDOnly`). The pills float on the
-    // right, just left of maximize (the spacer below pushes them over).
-    let translate = snap_pair(
-        commands,
-        fonts,
-        SnapToggle::Translate,
-        "arrows-out-cardinal",
-        1.0,
-        100.0,
-        1.0,
-        |w| snap_val(w, |s| s.translate_snap),
-        |w, v| set_snap(w, |s| &mut s.translate_snap, v),
-    );
-    let rotate = snap_pair(
-        commands,
-        fonts,
-        SnapToggle::Rotate,
-        "arrow-clockwise",
-        1.0,
-        90.0,
-        1.0,
-        |w| snap_val(w, |s| s.rotate_snap),
-        |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
-    );
-    let scale = snap_pair(
-        commands,
-        fonts,
-        SnapToggle::Scale,
-        "arrows-out",
-        1.0,
-        10.0,
-        1.0,
-        |w| snap_val(w, |s| s.scale_snap),
-        |w, v| set_snap(w, |s| &mut s.scale_snap, v),
-    );
-    commands.entity(rotate).insert(ThreeDOnly);
-    commands.entity(scale).insert(ThreeDOnly);
-    // The gaps between the pills hide with their 3D-only neighbours, so 2D view
-    // (translate only) doesn't carry stray spacing.
-    let pill_gap1 = gap(commands, 4.0);
-    let pill_gap2 = gap(commands, 4.0);
-    commands.entity(pill_gap1).insert(ThreeDOnly);
-    commands.entity(pill_gap2).insert(ThreeDOnly);
-
-    // Flex spacer pushes the snap pills + maximize to the strip's right edge.
+    // Flex spacer pushes the per-viewport controls to the strip's right edge.
     let spacer = commands
         .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-toolbar-spacer")))
         .id();
-    let snap_gap = gap(commands, 4.0);
+
+    // This viewport's own camera view-angle dropdown (Perspective / Front / Top /
+    // …) — sets THIS slot's angle independently of the others. 3D-only.
+    let view_angle = dropdown(commands, fonts, DropKind::ViewAngle, 96.0, slot);
+    commands.entity(view_angle).insert(ThreeDOnly);
+    let gap_a = gap(commands, 4.0);
+
+    // This viewport's own World/Local gizmo-space toggle (acts independently).
+    let space_btn = space_toggle(commands, fonts, slot);
+    commands.entity(space_btn).insert(ThreeDOnly);
+    let gap_b = gap(commands, 4.0);
+
+    // Maximize THIS viewport (tagged with the slot so the click knows which).
     let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out", SIDE_BTN, SIDE_BTN, SIDE_ICON);
+    commands.entity(maximize).insert(MaximizeSlot(slot));
 
     commands.entity(cluster).add_children(&[
-        undo, redo, save, sep, tools, spacer,
-        translate, pill_gap1, rotate, pill_gap2, scale, snap_gap, maximize,
+        tools, spacer, view_angle, gap_a, space_btn, gap_b, maximize,
     ]);
 
     // Track the live theme (the static BackgroundColor above only covers the
@@ -386,11 +374,15 @@ fn grid_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── World / Local gizmo-space toggle ─────────────────────────────────────────
 
-#[derive(Component)]
-struct SpaceToggleBtn;
+/// Tags a space-toggle button with the viewport slot it controls (each viewport
+/// has its own World/Local toggle, acting independently — see
+/// `renzora::core::viewport_types::ViewportGizmoSpace`).
+#[derive(Component, Clone, Copy)]
+struct SpaceToggleSlot(usize);
 
+/// Points a space-toggle button at its child glyph `Text` entity.
 #[derive(Component)]
-struct SpaceToggleText;
+struct SpaceToggleGlyphRef(Entity);
 
 /// Phosphor icons for the two gizmo spaces (globe = World, cube = Local).
 fn space_icon(space: GizmoSpace) -> &'static str {
@@ -407,9 +399,17 @@ fn space_label(space: GizmoSpace) -> String {
     }
 }
 
-/// An icon button that flips the transform gizmo between World and Local space
-/// (globe / cube glyph; the tooltip names the active space).
-fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn space_for(local: bool) -> GizmoSpace {
+    if local {
+        GizmoSpace::Local
+    } else {
+        GizmoSpace::World
+    }
+}
+
+/// An icon button that flips THIS viewport's transform gizmo between World and
+/// Local space (globe / cube glyph; the tooltip names the active space).
+fn space_toggle(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
     let glyph = icon_text(
         commands,
         &fonts.phosphor,
@@ -419,7 +419,7 @@ fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     commands
         .entity(glyph)
-        .insert((SpaceToggleText, bevy::picking::Pickable::IGNORE));
+        .insert(bevy::picking::Pickable::IGNORE);
     let btn = commands
         .spawn((
             Node {
@@ -434,7 +434,8 @@ fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
             renzora_ember::widgets::HoverTooltip::new(space_label(GizmoSpace::World)),
-            SpaceToggleBtn,
+            SpaceToggleSlot(slot),
+            SpaceToggleGlyphRef(glyph),
             Name::new("vp-space-toggle"),
         ))
         .id();
@@ -442,38 +443,43 @@ fn space_toggle(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     btn
 }
 
-/// Click flips the space; cycles World ↔ Local.
+/// Click flips THIS viewport's space (World ↔ Local) in `ViewportGizmoSpace`.
 fn space_toggle_click(
-    q: Query<&Interaction, (Changed<Interaction>, With<SpaceToggleBtn>)>,
-    mut space: ResMut<GizmoSpace>,
+    q: Query<(&Interaction, &SpaceToggleSlot), Changed<Interaction>>,
+    space: Option<ResMut<renzora::core::viewport_types::ViewportGizmoSpace>>,
 ) {
-    for i in &q {
+    let Some(mut space) = space else { return };
+    for (i, slot) in &q {
         if *i == Interaction::Pressed {
-            *space = match *space {
-                GizmoSpace::World => GizmoSpace::Local,
-                GizmoSpace::Local => GizmoSpace::World,
-            };
+            if let Some(local) = space.local.get_mut(slot.0) {
+                *local = !*local;
+            }
         }
     }
 }
 
-/// Keep the button's glyph + tooltip in sync with the active space.
+/// Keep each viewport's space-toggle glyph + tooltip in sync with its own space.
 fn update_space_toggle(
-    space: Res<GizmoSpace>,
-    mut texts: Query<&mut Text, With<SpaceToggleText>>,
-    mut tips: Query<&mut renzora_ember::widgets::HoverTooltip, With<SpaceToggleBtn>>,
+    space: Option<Res<renzora::core::viewport_types::ViewportGizmoSpace>>,
+    mut buttons: Query<(
+        &SpaceToggleSlot,
+        &SpaceToggleGlyphRef,
+        &mut renzora_ember::widgets::HoverTooltip,
+    )>,
+    mut texts: Query<&mut Text>,
 ) {
+    let Some(space) = space else { return };
     if !space.is_changed() {
         return;
     }
-    if let Some(g) = icon_glyph(space_icon(*space)) {
-        for mut t in &mut texts {
-            t.0 = g.to_string();
+    for (slot, glyph, mut tip) in &mut buttons {
+        let s = space_for(space.local.get(slot.0).copied().unwrap_or(false));
+        if let Some(g) = icon_glyph(space_icon(s)) {
+            if let Ok(mut t) = texts.get_mut(glyph.0) {
+                t.0 = g.to_string();
+            }
         }
-    }
-    let label = space_label(*space);
-    for mut tip in &mut tips {
-        tip.0.clone_from(&label);
+        tip.0 = space_label(s);
     }
 }
 
@@ -578,7 +584,26 @@ pub(crate) fn register(app: &mut App) {
 enum DropKind {
     View,
     Mode,
+    /// Per-viewport camera view-angle preset (Perspective / Front / Top / …).
+    /// Unlike View/Mode this one carries a slot and writes that slot's own
+    /// `pending_view_angle`.
+    ViewAngle,
 }
+
+/// Per-viewport view-angle presets: (label, yaw, pitch). "Perspective" is the
+/// default free 3/4 angle; the rest are the orthographic-style snaps.
+const VIEW_ANGLE_OPTIONS: &[(&str, f32, f32)] = {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    &[
+        ("Perspective", 0.3, 0.4),
+        ("Front", 0.0, 0.0),
+        ("Back", PI, 0.0),
+        ("Left", -FRAC_PI_2, 0.0),
+        ("Right", FRAC_PI_2, 0.0),
+        ("Top", 0.0, FRAC_PI_2),
+        ("Bottom", 0.0, -FRAC_PI_2),
+    ]
+};
 
 impl DropKind {
     /// Localized option labels for this dropdown, in `ALL` order (the enum's
@@ -588,6 +613,9 @@ impl DropKind {
         match self {
             DropKind::View => ViewportView::ALL.iter().map(|v| loc_opt(v.label())).collect(),
             DropKind::Mode => ViewportMode::ALL.iter().map(|m| loc_opt(m.label())).collect(),
+            DropKind::ViewAngle => {
+                VIEW_ANGLE_OPTIONS.iter().map(|(l, ..)| loc_opt(l)).collect()
+            }
         }
     }
 }
@@ -596,6 +624,9 @@ impl DropKind {
 #[derive(Component)]
 struct DropTrigger {
     kind: DropKind,
+    /// Viewport slot for a per-viewport dropdown (`ViewAngle`); 0 for the shared
+    /// View/Mode dropdowns.
+    slot: usize,
     panel: Entity,
     label: Entity,
     open: bool,
@@ -605,10 +636,17 @@ struct DropTrigger {
 #[derive(Component)]
 struct DropOption {
     kind: DropKind,
+    slot: usize,
     index: usize,
 }
 
-fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: f32) -> Entity {
+fn dropdown(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    kind: DropKind,
+    width: f32,
+    slot: usize,
+) -> Entity {
     let labels = kind.labels();
 
     // Popup panel (hidden until the trigger is clicked).
@@ -633,7 +671,7 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
                 },
                 BackgroundColor(Color::NONE),
                 Interaction::default(),
-                DropOption { kind, index: i },
+                DropOption { kind, slot, index: i },
                 HoverCursor(SystemCursorIcon::Pointer),
                 Name::new("vp-drop-option"),
             ))
@@ -692,6 +730,7 @@ fn dropdown(commands: &mut Commands, fonts: &EmberFonts, kind: DropKind, width: 
             HoverCursor(SystemCursorIcon::Pointer),
             DropTrigger {
                 kind,
+                slot,
                 panel,
                 label: label_e,
                 open: false,
@@ -733,6 +772,7 @@ fn dropdown_option_click(
     options: Query<(&Interaction, &DropOption), Changed<Interaction>>,
     mut triggers: Query<&mut DropTrigger>,
     mut nodes: Query<&mut Node>,
+    mut texts: Query<&mut Text>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
@@ -758,10 +798,40 @@ fn dropdown_option_click(
                     s.viewport_mode = m;
                 }
             }),
+            DropKind::ViewAngle => {
+                // Snap THIS viewport's camera to the chosen preset (per-slot
+                // channel consumed by `renzora_camera::apply_per_slot_view_angle`).
+                let slot = opt.slot;
+                if let Some((_, yaw, pitch)) = VIEW_ANGLE_OPTIONS.get(idx).copied() {
+                    cmds.push(move |w: &mut World| {
+                        if let Some(mut vps) =
+                            w.get_resource_mut::<renzora::core::viewport_types::Viewports>()
+                        {
+                            if let Some(s) = vps.slots.get_mut(slot) {
+                                s.pending_view_angle =
+                                    Some(renzora::core::viewport_types::ViewAngleCommand {
+                                        yaw,
+                                        pitch,
+                                    });
+                            }
+                        }
+                    });
+                }
+                // Reflect the pick on this dropdown's trigger label.
+                if let Some(label) = VIEW_ANGLE_OPTIONS.get(idx).map(|(l, ..)| loc_opt(l)) {
+                    for t in &triggers {
+                        if t.kind == DropKind::ViewAngle && t.slot == opt.slot {
+                            if let Ok(mut txt) = texts.get_mut(t.label) {
+                                txt.0 = label.clone();
+                            }
+                        }
+                    }
+                }
+            }
         }
-        // Close the dropdown this option belongs to.
+        // Close the dropdown this option belongs to (matching slot for per-slot ones).
         for mut t in &mut triggers {
-            if t.kind == opt.kind {
+            if t.kind == opt.kind && t.slot == opt.slot {
                 t.open = false;
                 if let Ok(mut n) = nodes.get_mut(t.panel) {
                     n.display = Display::None;
@@ -779,19 +849,28 @@ fn viewport_maximize_dock(
     dock: Option<ResMut<renzora_ember::dock::Dock>>,
     dirty: Option<ResMut<renzora_ember::dock::DockDirty>>,
     mut saved: Local<Option<renzora_ember::dock::DockTree>>,
-    mut last: Local<bool>,
+    mut last: Local<Option<usize>>,
 ) {
     let (Some(mut dock), Some(mut dirty)) = (dock, dirty) else {
         return;
     };
-    let maximized = max.is_some_and(|m| m.0);
+    let maximized = max.and_then(|m| m.0);
     if maximized == *last {
         return;
     }
+    let was_maximized = last.is_some();
     *last = maximized;
-    if maximized {
-        *saved = Some(dock.tree.clone());
-        dock.tree = renzora_ember::dock::DockTree::leaf("viewport");
+    if let Some(slot) = maximized {
+        // Save the layout the first time we maximize (not when switching which
+        // viewport is maximized — the saved tree must stay the un-maximized one).
+        if !was_maximized {
+            *saved = Some(dock.tree.clone());
+        }
+        let panel = crate::native_viewport::PANEL_IDS
+            .get(slot)
+            .copied()
+            .unwrap_or("viewport");
+        dock.tree = renzora_ember::dock::DockTree::leaf(panel);
     } else if let Some(tree) = saved.take() {
         dock.tree = tree;
     }
@@ -850,17 +929,24 @@ fn update_dropdown_visuals(
     let current = |k: DropKind| match k {
         DropKind::View => current_view,
         DropKind::Mode => current_mode,
+        // The per-viewport angle isn't a single global index; its trigger label
+        // is set directly when an option is picked.
+        DropKind::ViewAngle => None,
     };
 
     for (trig, interaction, mut bg) in triggers {
-        // Trigger label tracks the live setting.
+        // Trigger label tracks the live setting (View/Mode only — the ViewAngle
+        // label is written on click in `dropdown_option_click`).
         if let Ok(mut text) = texts.get_mut(trig.label) {
             let label = match trig.kind {
-                DropKind::View => loc_opt(settings.viewport_view.label()),
-                DropKind::Mode => loc_opt(settings.viewport_mode.label()),
+                DropKind::View => Some(loc_opt(settings.viewport_view.label())),
+                DropKind::Mode => Some(loc_opt(settings.viewport_mode.label())),
+                DropKind::ViewAngle => None,
             };
-            if text.0 != label {
-                text.0 = label;
+            if let Some(label) = label {
+                if text.0 != label {
+                    text.0 = label;
+                }
             }
         }
         let want = if trig.open || *interaction == Interaction::Hovered {
@@ -906,7 +992,8 @@ struct HeaderModel {
     can_undo: bool,
     can_redo: bool,
     can_save: bool,
-    maximized: bool,
+    /// Which viewport slot is currently maximized (if any).
+    maximized: Option<usize>,
     primary: Color,
     muted: Color,
     accent: Color,
@@ -914,7 +1001,13 @@ struct HeaderModel {
 }
 
 fn update_header_visuals(
-    actions: Query<(&HeaderAction, &HeaderIcon, &Interaction, &mut BackgroundColor)>,
+    actions: Query<(
+        &HeaderAction,
+        &HeaderIcon,
+        &Interaction,
+        Option<&MaximizeSlot>,
+        &mut BackgroundColor,
+    )>,
     mut texts: Query<(&mut Text, &mut TextColor)>,
     undo: Option<Res<renzora_undo::UndoStacks>>,
     tabs: Option<Res<renzora_ui::DocumentTabState>>,
@@ -935,15 +1028,19 @@ fn update_header_visuals(
         can_undo,
         can_redo,
         can_save,
-        maximized: maximized.is_some_and(|m| m.0),
+        maximized: maximized.and_then(|m| m.0),
         primary: col(t.text.primary),
         muted: col(t.text.muted),
         accent: col(t.semantic.accent),
         hovered_bg: col(t.widgets.hovered_bg),
     };
 
-    for (action, icon, interaction, mut bg) in actions {
-        let (glyph_name, color, enabled) = action_appearance(action, &model);
+    for (action, icon, interaction, max_slot, mut bg) in actions {
+        // This maximize button is "active" only if ITS viewport is the maximized
+        // one (each viewport has its own button).
+        let this_maximized = *action == HeaderAction::Maximize
+            && model.maximized == Some(max_slot.map(|m| m.0).unwrap_or(0));
+        let (glyph_name, color, enabled) = action_appearance(action, &model, this_maximized);
 
         if let Ok((mut text, mut tc)) = texts.get_mut(icon.0) {
             if let Some(ch) = icon_glyph(glyph_name) {
@@ -959,7 +1056,7 @@ fn update_header_visuals(
 
         // Background: maximize shows the accent while active; the rest just
         // light up on hover. Disabled buttons never show a hover fill.
-        let want = if *action == HeaderAction::Maximize && model.maximized {
+        let want = if this_maximized {
             model.accent
         } else if enabled && *interaction == Interaction::Hovered {
             model.hovered_bg
@@ -973,7 +1070,13 @@ fn update_header_visuals(
 }
 
 /// Glyph name, color, and whether the button is clickable for the given action.
-fn action_appearance(action: &HeaderAction, m: &HeaderModel) -> (&'static str, Color, bool) {
+/// `this_maximized` is whether THIS specific maximize button's viewport is the
+/// maximized one (ignored for the other actions).
+fn action_appearance(
+    action: &HeaderAction,
+    m: &HeaderModel,
+    this_maximized: bool,
+) -> (&'static str, Color, bool) {
     match action {
         HeaderAction::Undo => (
             "arrow-u-up-left",
@@ -991,19 +1094,19 @@ fn action_appearance(action: &HeaderAction, m: &HeaderModel) -> (&'static str, C
             m.can_save,
         ),
         HeaderAction::Maximize => (
-            if m.maximized { "arrows-in" } else { "arrows-out" },
-            if m.maximized { m.primary } else { m.muted },
+            if this_maximized { "arrows-in" } else { "arrows-out" },
+            if this_maximized { m.primary } else { m.muted },
             true,
         ),
     }
 }
 
 fn header_action_click(
-    q: Query<(&Interaction, &HeaderAction), Changed<Interaction>>,
+    q: Query<(&Interaction, &HeaderAction, Option<&MaximizeSlot>), Changed<Interaction>>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
-    for (interaction, action) in &q {
+    for (interaction, action, max_slot) in &q {
         if *interaction != Interaction::Pressed {
             continue;
         }
@@ -1013,10 +1116,16 @@ fn header_action_click(
             HeaderAction::Save => cmds.push(|w: &mut World| {
                 w.insert_resource(renzora::core::SaveSceneRequested);
             }),
-            HeaderAction::Maximize => cmds.push(|w: &mut World| {
-                let mut m = w.get_resource_or_insert_with(renzora_ui::ViewportMaximized::default);
-                m.0 = !m.0;
-            }),
+            HeaderAction::Maximize => {
+                let slot = max_slot.map(|m| m.0).unwrap_or(0);
+                cmds.push(move |w: &mut World| {
+                    let mut m =
+                        w.get_resource_or_insert_with(renzora_ui::ViewportMaximized::default);
+                    // Toggle: maximizing the already-maximized viewport restores;
+                    // otherwise maximize this one (swapping straight from another).
+                    m.0 = if m.0 == Some(slot) { None } else { Some(slot) };
+                });
+            }
         }
     }
 }

@@ -79,7 +79,18 @@ pub fn spawn_editor_camera(
             ViewportCamera(i),
             HideInHierarchy,
             EditorLocked,
-            RenderLayers::from_layers(&[0, 1]),
+            // Layer 0: the scene. Layer 1: shared world-space overlays
+            // (light/collider/skeleton gizmos, selection box) — one instance
+            // reads correctly from every angle, so all slots share it. Layer
+            // `VIEWPORT_3D_GIZMO_LAYER_BASE + i`: this slot's *private* overlay
+            // layer, carrying the camera-sized transform gizmo drawn just for
+            // this view (see `renzora_gizmo`). Each camera draws only its own
+            // slot's transform handle, never another slot's.
+            RenderLayers::from_layers(&[
+                0,
+                1,
+                renzora::core::viewport_types::VIEWPORT_3D_GIZMO_LAYER_BASE + i,
+            ]),
             Name::new(format!("Editor Camera {i}")),
             Hdr,
             // Atmosphere/sky binds depth as non-multisampled (binding 13);

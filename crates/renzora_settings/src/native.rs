@@ -2327,6 +2327,16 @@ fn tab_viewport(
     );
     settings_row(commands, fonts, body, 4, &tr("settings.row.drag_opacity"), dv);
     note_row(commands, fonts, body, &tr("settings.hint.drag_opacity"));
+    // Show the transform gizmo + selection outline in every viewport at once
+    // (default: only the viewport the cursor is in).
+    let t = ctl_toggle(
+        commands,
+        vp.gizmos_all_viewports,
+        |w| w.resource::<ViewportSettings>().gizmos_all_viewports,
+        |w, &v| w.resource_mut::<ViewportSettings>().gizmos_all_viewports = v,
+    );
+    settings_row(commands, fonts, body, 5, &tr("settings.row.gizmos_all_viewports"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.gizmos_all_viewports"));
 }
 
 // ── Scripting ────────────────────────────────────────────────────────────────
