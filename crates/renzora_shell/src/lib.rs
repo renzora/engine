@@ -712,6 +712,9 @@ enum PlayLaunchChoice {
     Viewport,
     /// Full play in its own OS runtime window (project window settings).
     Window,
+    /// Full play in a VR headset: the external runtime process launched with
+    /// `--vr` (OpenXR stereo rendering + a desktop mirror window).
+    Vr,
     /// Simulate: scripts + physics tick while the editor stays live.
     Simulate,
 }
@@ -721,6 +724,8 @@ impl PlayLaunchChoice {
     fn current(s: &renzora_editor_framework::EditorSettings) -> Self {
         if s.play_launch_simulate {
             Self::Simulate
+        } else if s.play_launch_vr {
+            Self::Vr
         } else if s.external_play_window {
             Self::Window
         } else {
@@ -732,6 +737,7 @@ impl PlayLaunchChoice {
         match self {
             Self::Viewport => "frame-corners",
             Self::Window => "app-window",
+            Self::Vr => "virtual-reality",
             Self::Simulate => "flask",
         }
     }
@@ -792,6 +798,11 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
             PlayLaunchChoice::Window,
             "app-window",
             renzora::lang::t_or("shell.play_target.runtime_window", "Window"),
+        ),
+        (
+            PlayLaunchChoice::Vr,
+            "virtual-reality",
+            renzora::lang::t_or("shell.play_target.vr", "VR Headset"),
         ),
         (
             PlayLaunchChoice::Simulate,
@@ -890,8 +901,15 @@ fn play_target_option_click(
         if let Some(s) = settings.as_mut() {
             match opt.choice {
                 PlayLaunchChoice::Simulate => s.play_launch_simulate = true,
+                PlayLaunchChoice::Vr => {
+                    s.play_launch_simulate = false;
+                    s.play_launch_vr = true;
+                    let _ = renzora::save_play_vr(true);
+                }
                 PlayLaunchChoice::Viewport | PlayLaunchChoice::Window => {
                     s.play_launch_simulate = false;
+                    s.play_launch_vr = false;
+                    let _ = renzora::save_play_vr(false);
                     let runtime_window = opt.choice == PlayLaunchChoice::Window;
                     s.external_play_window = runtime_window;
                     let _ = renzora::save_play_runtime_window(runtime_window);

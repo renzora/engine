@@ -90,10 +90,12 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     // running, and Stop must still kill it rather than fall through to the
     // in-editor path (which would clear the request without doing anything,
     // leaving the child orphaned behind a stuck Stop button).
-    let enabled = world
+    // "Window" and "VR Headset" both run the external-process path; VR just
+    // adds `--vr` to the child's arguments.
+    let (enabled, vr) = world
         .get_resource::<EditorSettings>()
-        .map(|s| s.external_play_window)
-        .unwrap_or(false);
+        .map(|s| (s.external_play_window || s.play_launch_vr, s.play_launch_vr))
+        .unwrap_or((false, false));
     if !enabled && !runtime_alive {
         return false;
     }
@@ -158,13 +160,14 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     console_info(
         "PlayMode",
         format!(
-            "Spawning external runtime: {} --no-editor --project {}",
+            "Spawning external runtime: {} --no-editor --project {}{}",
             binary.display(),
-            project_path.display()
+            project_path.display(),
+            if vr { " --vr" } else { "" }
         ),
     );
 
-    match spawn_runtime(&binary, &project_path) {
+    match spawn_runtime(&binary, &project_path, vr) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);

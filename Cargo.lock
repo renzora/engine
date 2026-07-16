@@ -9503,6 +9503,7 @@ dependencies = [
  "renzora_tonemapping",
  "renzora_volumetric_fog",
  "renzora_water",
+ "renzora_xr",
  "toml 0.8.23",
  "wgpu",
  "winit",
@@ -10171,15 +10172,13 @@ dependencies = [
 
 [[package]]
 name = "renzora_xr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bevy",
  "bevy_mod_openxr",
  "bevy_mod_xr",
  "bevy_xr_utils",
- "log",
  "openxr",
- "renzora",
  "serde",
 ]
 

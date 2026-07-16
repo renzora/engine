@@ -413,11 +413,13 @@ Planned and completed work across the Renzora engine; completed items link to th
 - Add navmesh baking UI
 
 ## VR/XR
-> Parked. `bevy_oxr` is vendored and `renzora_xr` exists, but the editor integration `renzora_vr_editor` is parked under `disabled/` (outside the workspace) and still references `renzora_xr` APIs that were removed (`VrControllerState`, `VrHand`, `reexports::*`). The items below are blocked until XR is un-parked.
+> Un-parked. VR is a runtime boot mode (`--vr` → `renzora_runtime::add_xr_rendering` → rebuilt `renzora_xr`), launched from the editor via the Play dropdown's "VR Headset" target (external runtime process). Ships stereo rendering, Oculus Touch input, smooth locomotion + snap turn, controller wands, and a head-tracked desktop mirror. The old egui-quad `renzora_vr_editor` was deleted; in-headset editing will be rebuilt on the ember shell if/when wanted.
+- ✅ VR play target: OpenXR boot mode + editor launch flow + locomotion + controller visuals + desktop mirror
+- Shared depth sort for co-located cameras (eyes + mirror render 3 gaussian-splat sorts today; one suffices when poses are near-identical)
+- Route `VrInput` into the action-map/`ScriptInput` layer so scripts see VR controllers
+- Hand-tracking joints (extension already negotiated), haptics
 - Implement parabolic arc raycast for VR teleport
-- Implement XR teleport parabolic arc raycast
-- Add throw velocity on VR grab release (physics impulse)
-- Fix VR grab release not applying throw velocity
+- Add grab interaction + throw velocity on release (physics impulse)
 
 ## Audio
 - ✅ Build DAW audio arrangement timeline — [`8c90d75`](https://github.com/renzora/engine/commit/8c90d75)

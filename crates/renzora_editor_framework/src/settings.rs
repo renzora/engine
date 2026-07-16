@@ -241,6 +241,10 @@ pub struct EditorSettings {
     /// deliberately NOT persisted, so a fresh editor always Plays. When false,
     /// `external_play_window` (which IS persisted) picks viewport vs window.
     pub play_launch_simulate: bool,
+    /// The Play button launches the scene into a VR headset: the external
+    /// runtime process with `--vr` (OpenXR stereo). Sits above
+    /// `external_play_window` in precedence and is persisted per-user like it.
+    pub play_launch_vr: bool,
     /// When entering play mode, maximize the viewport (collapse the rest of the
     /// dock to a single viewport leaf) for a clean game view; restored on Stop.
     pub maximize_viewport_on_play: bool,
@@ -304,6 +308,7 @@ impl Default for EditorSettings {
             // choice); defaults to in-viewport play.
             external_play_window: renzora::load_play_runtime_window(),
             play_launch_simulate: false,
+            play_launch_vr: renzora::load_play_vr(),
             maximize_viewport_on_play: true,
             auto_import_on_drop: true,
             drag_value_rail_sweep: true,

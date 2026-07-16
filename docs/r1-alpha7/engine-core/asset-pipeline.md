@@ -128,8 +128,9 @@ buckets, decided by `renzora_import_ui::kinds::detect_kind`:
   one **copies it verbatim** into the destination folder (name-collisions get a
   numeric suffix, `tex.png` → `tex1.png`).
 
-**Workflow.** Clicking the asset browser's **Import** button (or the command
-palette's *File: Import…*) opens the **OS file picker first**, filtered to every
+**Workflow.** Clicking the asset browser's **Import** button (or **File →
+Import Assets…** in the top bar, or the command palette's *File: Import…*)
+opens the **OS file picker first**, filtered to every
 importable kind. Once files are chosen, the modal appears pre-loaded with them —
 there's no separate "open empty modal, then Browse" step. (Drag-and-drop still
 works too, and honours the same kind filter.)

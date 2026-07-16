@@ -107,14 +107,16 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 ///
 /// `--no-editor` is always passed: it's what makes the self-relaunch fallback
 /// boot as a game, and a harmless no-op for a dedicated runtime binary (which
-/// has no editor bundle to suppress in the first place).
-pub fn spawn_runtime(binary: &Path, project_path: &Path) -> std::io::Result<Child> {
+/// has no editor bundle to suppress in the first place). `vr` adds `--vr`, the
+/// OpenXR boot flag — the "VR Headset" play target.
+pub fn spawn_runtime(binary: &Path, project_path: &Path, vr: bool) -> std::io::Result<Child> {
     use std::process::Command;
-    Command::new(binary)
-        .arg("--no-editor")
-        .arg("--project")
-        .arg(project_path)
-        .spawn()
+    let mut command = Command::new(binary);
+    command.arg("--no-editor").arg("--project").arg(project_path);
+    if vr {
+        command.arg("--vr");
+    }
+    command.spawn()
 }
 
 /// Detach the running child, if any, and kill it. Returns whether a child

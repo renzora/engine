@@ -146,7 +146,13 @@ fn main() {
     // editor session even if the bundle dll happens to sit beside the exe.
     let host_mode = std::env::args().any(|a| a == "--host");
     let server_mode = !host_mode && std::env::args().any(|a| a == "--server");
-    let is_editor = !server_mode && !host_mode && editor_session();
+    // `--vr` boots the game into the headset (OpenXR owns render init, so the
+    // decision must be made here, before plugins assemble). VR implies game
+    // mode — the editor never runs in-headset; its "VR Headset" play target
+    // launches this exact flag on a child process. Ignored for server/host.
+    let vr_mode =
+        !host_mode && !server_mode && std::env::args().any(|a| a == "--vr");
+    let is_editor = !server_mode && !host_mode && !vr_mode && editor_session();
 
     // Install the panic hook now that we know the session kind — it picks the
     // crash-file location + dialog from `is_editor` (it can't read the World).
@@ -181,6 +187,23 @@ fn main() {
             renzora_runtime::attach_console();
             app.init_resource::<renzora_runtime::renzora::DedicatedServer>();
             renzora_runtime::add_headless_rendering(&mut app, net_config.tick_rate);
+        }
+    } else if vr_mode {
+        #[cfg(feature = "xr")]
+        {
+            // VR sessions keep a console: OpenXR runtime discovery failures
+            // (no headset, runtime not installed) surface as log lines that
+            // would otherwise vanish with the windowless subsystem.
+            renzora_runtime::attach_console();
+            renzora_runtime::add_xr_rendering(&mut app);
+        }
+        #[cfg(not(feature = "xr"))]
+        {
+            eprintln!(
+                "--vr requested but this build has no XR support (built without \
+                 the `xr` feature); starting flat."
+            );
+            add_default_rendering(&mut app, is_editor);
         }
     } else {
         add_default_rendering(&mut app, is_editor);

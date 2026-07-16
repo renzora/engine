@@ -24,6 +24,7 @@
             { "slug": "editor/community", "title": "Community & Hub" },
             { "slug": "editor/inspector", "title": "Inspector" },
             { "slug": "editor/viewport", "title": "Viewport & Camera" },
+            { "slug": "editor/vr", "title": "VR Preview" },
             { "slug": "editor/modeling", "title": "Modeling & Sculpting" },
             { "slug": "editor/materials", "title": "Material Editor" },
             { "slug": "editor/terrain", "title": "Terrain" },

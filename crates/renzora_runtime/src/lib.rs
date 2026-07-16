@@ -459,6 +459,74 @@ fn is_transient_surface_error(description: &str) -> bool {
 ///
 /// `tick_rate` (Hz) sets the runner's loop rate; it matches the network tick so
 /// the server loop runs at the simulation cadence.
+/// OpenXR/VR client plugin set — the `--vr` boot path (feature `xr`).
+///
+/// Mirrors [`add_default_rendering`]'s asset/image/log configuration but hands
+/// render-plugin ownership to `bevy_mod_openxr` via [`renzora_xr::xr_plugins`]:
+/// the OpenXR runtime dictates the graphics device, spawns the per-eye stereo
+/// cameras targeting its swapchain, and drives frame pacing. Differences from
+/// the flat path, each deliberate:
+///
+/// - **No `RenderPlugin`/`platform_wgpu_settings`** — device creation goes
+///   through OpenXR; requesting our custom wgpu features there would need
+///   `OxrInitPlugin` plumbing (future work; POLYGON_MODE_LINE debug wireframes
+///   are simply absent in VR until then).
+/// - **`PipelinedRenderingPlugin` disabled** — pipelining renders poses located
+///   a frame earlier; in-headset that reads as the world lagging your head.
+/// - **No render-error recovery** — the flat path's `DeviceLost` recovery
+///   recreates a NON-XR renderer, which would silently drop out of the
+///   headset; better to exit and let the user relaunch into VR.
+/// - **`GpuRaytracing` forced off** — solari + VR frame budgets don't mix, and
+///   the probe in `raytracing_supported()` describes a device we didn't create.
+/// - Always a game session (`--vr` implies `--no-editor`), so the runtime
+///   window-config systems apply as usual to the desktop mirror window.
+#[cfg(feature = "xr")]
+pub fn add_xr_rendering(app: &mut App) {
+    use bevy::window::{PresentMode, Window, WindowPlugin};
+    init_io_task_pool_with_large_stack();
+    let base = DefaultPlugins
+        .build()
+        .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+    let plugins = renzora_xr::xr_plugins(base)
+        .set(ImagePlugin {
+            default_sampler: bevy::image::ImageSamplerDescriptor {
+                address_mode_u: bevy::image::ImageAddressMode::Repeat,
+                address_mode_v: bevy::image::ImageAddressMode::Repeat,
+                address_mode_w: bevy::image::ImageAddressMode::Repeat,
+                mag_filter: bevy::image::ImageFilterMode::Linear,
+                min_filter: bevy::image::ImageFilterMode::Linear,
+                mipmap_filter: bevy::image::ImageFilterMode::Linear,
+                anisotropy_clamp: 16,
+                ..default()
+            },
+        })
+        .set(bevy::asset::AssetPlugin {
+            unapproved_path_mode: bevy::asset::UnapprovedPathMode::Allow,
+            ..default()
+        })
+        .set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Renzora (VR)".into(),
+                // The desktop window only hosts the spectator mirror — never
+                // block the XR frame loop on the monitor's vsync.
+                present_mode: PresentMode::AutoNoVsync,
+                decorations: true,
+                resizable: true,
+                ..default()
+            }),
+            ..default()
+        })
+        .set(bevy::log::LogPlugin {
+            #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+            custom_layer: renzora::runtime_warnings::runtime_warnings_layer,
+            fmt_layer: runtime_fmt_layer,
+            ..default()
+        });
+    app.add_plugins(plugins);
+    app.add_plugins(renzora_xr::XrPlugin);
+    app.insert_resource(renzora::GpuRaytracing { enabled: false });
+}
+
 pub fn add_headless_rendering(app: &mut App, tick_rate: u16) {
     use bevy::app::ScheduleRunnerPlugin;
     use bevy::log::LogPlugin;

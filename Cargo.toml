@@ -53,11 +53,9 @@ members = [
 # physics consumers. (bevy_oxr is the same shape but uses explicit versions, so
 # it doesn't trip the inheritance lookup.)
 exclude = ["crates/avian"]
-# Crates parked under `disabled/` are intentionally outside the `crates/*`
-# glob so they don't enter the workspace. `disabled/renzora_vr_editor`
-# references items in `renzora_xr` that no longer exist
-# (`VrControllerState`, `VrHand`, `reexports::*`); resurrect it once the
-# renzora_xr API has stabilised, then move it back under `crates/`.
+# (The old egui-based `disabled/renzora_vr_editor` was deleted — the VR editor
+# is being rebuilt from scratch on the ember/bevy_ui shell. Park any future
+# not-yet-compiling crates under `disabled/`, outside the `crates/*` glob.)
 
 [workspace.lints.rust]
 # `renzora::add!` uses `#[cfg(feature = "dlopen")]` to gate FFI exports.
@@ -194,7 +192,7 @@ path = "src/main.rs"
 # --features runtime`, producing a fully static single binary (static Bevy +
 # static std, no dylibs) — see `crates/renzora_export` and `[profile.dist-lean]`.
 # Dropping it does NOT move the dev/editor ABI: the default build is unchanged.
-default = ["runtime", "dynamic_linking"]
+default = ["runtime", "dynamic_linking", "xr"]
 # One binary, always runtime-shaped. The editor is no longer a compile-time
 # feature: it ships as the `renzora_editor` cdylib loaded at startup
 # from beside the exe (Operation Merge). Present → the binary is the editor;
@@ -214,6 +212,12 @@ static_plugins = ["dep:renzora_static_plugins"]
 # crates), so `bevy_dylib` — a dylib-only crate that can't link into an iOS
 # staticlib / Android cdylib / wasm — correctly stays out of those builds.
 dynamic_linking = ["bevy/dynamic_linking"]
+# OpenXR/VR boot mode: launching with `--vr` renders the game into a headset
+# (see `renzora_runtime::add_xr_rendering` / `renzora_xr`). In `default` so
+# every desktop build can be a VR runtime; the wasm/mobile lanes never enable
+# it, and the lean exporter's `--no-default-features --features runtime` drops
+# it unless a game opts back in.
+xr = ["renzora_runtime?/xr"]
 wasm = [
     "runtime",
     "bevy/webgpu",

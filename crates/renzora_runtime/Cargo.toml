@@ -23,6 +23,11 @@ default = [
     "rhai", "script_http", "physics", "render_3d", "render_2d", "tilemap",
     "sprite_anim",
 ]
+# OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
+# NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
+# own default `xr` feature, so wasm/mobile lanes and the lean exporter never
+# pull the OpenXR stack unless explicitly asked.
+xr = ["dep:renzora_xr"]
 # The 3D rendering pipeline (bevy_pbr + renzora_shader). Off = a 2D-only export
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
 # Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped
@@ -122,6 +127,8 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false }
 renzora_lang = { path = "../renzora_lang" }
 renzora_blueprint = { path = "../renzora_blueprint", optional = true }
 renzora_input = { path = "../renzora_input" }
+# OpenXR/VR boot mode — desktop only, behind the `xr` feature (see [features]).
+renzora_xr = { path = "../renzora_xr", optional = true }
 renzora_physics = { path = "../renzora_physics", optional = true }
 renzora_globals = { path = "../renzora_globals" }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
