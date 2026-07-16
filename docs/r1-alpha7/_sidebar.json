@@ -145,7 +145,8 @@
             { "slug": "rendering/pipeline", "title": "Render Pipeline" },
             { "slug": "rendering/shaders", "title": "WGSL Shaders" },
             { "slug": "rendering/camera", "title": "Camera System" },
-            { "slug": "rendering/2d-lighting", "title": "2D Lighting" }
+            { "slug": "rendering/2d-lighting", "title": "2D Lighting" },
+            { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" }
           ]
         },
         {

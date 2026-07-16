@@ -98,8 +98,8 @@ fn compute_2d_position(world: &mut World, screen_pos: Vec2, viewport_rect: Rect)
 }
 
 /// Raycast the editor camera onto the Y=0 plane. `screen_pos` / `viewport_rect`
-/// are in window logical pixels.
-fn compute_ground_position(
+/// are in window logical pixels. Shared with the gaussian-splat drop.
+pub(crate) fn compute_ground_position(
     world: &mut World,
     screen_pos: Vec2,
     viewport_rect: Rect,

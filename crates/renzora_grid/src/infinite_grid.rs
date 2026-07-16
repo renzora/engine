@@ -419,9 +419,18 @@ fn queue_infinite_grids(
                 batch_range: 0..1,
                 extra_index: PhaseItemExtraIndex::None,
                 indexed: false,
+                // Retained items get their `distance` recomputed from `sorting_info`
+                // every frame, so the NEG_INFINITY above is overwritten. Sorting by
+                // the world origin made the grid's draw order flip against
+                // non-depth-writing transparents (gaussian splats), drawing grid
+                // lines over them whenever the origin sorted nearer. The huge
+                // negative bias keeps the recalculated distance at -inf: the phase
+                // draws back-to-front (ascending view-space Z, in-front is
+                // negative), so the grid renders first, as background beneath all
+                // other transparents, while still depth-testing against opaques.
                 sorting_info: TransparentSortingInfo3d::Sorted {
                     mesh_center: Vec3::ZERO,
-                    depth_bias: 0.0,
+                    depth_bias: f32::NEG_INFINITY,
                 },
             });
         }

@@ -365,6 +365,14 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
                 if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
                     return false;
                 }
+                // Gaussian-splat runtime components (CloudSettings, selection
+                // markers) are resolved on load from the serializable
+                // renzora::GaussianSplat by the renzora_gaussian_splatting
+                // plugin's sync system. Persisting them duplicates that state
+                // and makes scenes warn on hosts running without the plugin.
+                if type_name.starts_with("bevy_gaussian_splatting::") {
+                    return false;
+                }
                 // Transient render-world links + per-frame computed data that
                 // 0.19 made reflectable, so they now leak into saves. `RenderEntity`
                 // is a stale render-world id; the `Cascades*` blobs are recomputed
@@ -512,6 +520,14 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
                 // Persisting them causes duplicate-reflect-type errors on
                 // deserialize — same filter as `save_scene`.
                 if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+                    return false;
+                }
+                // Gaussian-splat runtime components (CloudSettings, selection
+                // markers) are resolved on load from the serializable
+                // renzora::GaussianSplat by the renzora_gaussian_splatting
+                // plugin's sync system. Persisting them duplicates that state
+                // and makes scenes warn on hosts running without the plugin.
+                if type_name.starts_with("bevy_gaussian_splatting::") {
                     return false;
                 }
                 let serializer = bevy::reflect::serde::TypedReflectSerializer::new(
@@ -664,6 +680,11 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
                 return false;
             }
             if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+                return false;
+            }
+            // Gaussian-splat runtime components are resolved on load from the
+            // serializable renzora::GaussianSplat — same filter as `save_scene`.
+            if type_name.starts_with("bevy_gaussian_splatting::") {
                 return false;
             }
             let registry = type_registry.read();
@@ -1636,6 +1657,11 @@ pub fn save_prefab_source(
                 return false;
             }
             if type_name.starts_with("avian3d::") || type_name.starts_with("avian2d::") {
+                return false;
+            }
+            // Gaussian-splat runtime components are resolved on load from the
+            // serializable renzora::GaussianSplat — same filter as `save_scene`.
+            if type_name.starts_with("bevy_gaussian_splatting::") {
                 return false;
             }
             // Drop ChildOf components that reference the instance entity.

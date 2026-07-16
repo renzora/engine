@@ -37,6 +37,7 @@ enum DropKind {
     Sprite,
     Particle,
     Blueprint,
+    Gaussian,
 }
 
 /// The last drop candidate seen hovering the focused viewport. Captured while
@@ -68,6 +69,11 @@ fn classify(payload: &AssetDragPayload, view: ViewportView) -> Option<DropKind> 
     {
         // Sprites only drop in 2D view — 3D is owned by the model/material drops.
         Some(DropKind::Sprite)
+    } else if view != ViewportView::Two
+        && payload.matches_extensions(crate::gaussian_drop::GAUSSIAN_EXTENSIONS)
+    {
+        // Splat clouds are 3D-only content — no 2D-view drop target.
+        Some(DropKind::Gaussian)
     } else {
         None
     }
@@ -157,5 +163,6 @@ pub fn commit_viewport_drop(
         DropKind::Sprite => crate::sprite_drop::commit_sprite_drop(world, cursor, vp_rect, path),
         DropKind::Particle => crate::particle_drop::commit_particle_drop(world, cursor, vp_rect, path),
         DropKind::Blueprint => crate::blueprint_drop::commit_blueprint_drop(world, cursor, vp_rect, path),
+        DropKind::Gaussian => crate::gaussian_drop::commit_gaussian_drop(world, cursor, vp_rect, path),
     });
 }

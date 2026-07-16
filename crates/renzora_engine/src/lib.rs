@@ -274,6 +274,11 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::MeshLod>()
             .register_type::<SceneCamera>()
             .register_type::<renzora::SceneInstance>()
+            // Registered by the HOST (not just the gaussian-splatting plugin)
+            // so scenes containing splats still load/save cleanly when the
+            // plugin is absent from plugins/ — the component rides along as
+            // inert data instead of failing type-path resolution.
+            .register_type::<renzora::GaussianSplat>()
             .register_type::<renzora::DefaultCamera>()
             .register_type::<renzora::core::CameraRenderResolution>()
             .register_type::<renzora::core::viewport_types::RenderResolution>()

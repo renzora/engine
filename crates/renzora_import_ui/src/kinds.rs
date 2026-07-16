@@ -39,6 +39,11 @@ pub enum AssetKind {
     Font,
     /// A script (`.lua` / `.rhai`). Copied.
     Script,
+    /// A gaussian-splat cloud (`.gcloud`, or a `.ply` that is a 3DGS capture
+    /// or a faceless point cloud). Copied — the splat renderer loads these
+    /// directly (synthesizing splats for plain points), unlike mesh PLYs
+    /// which convert to GLB.
+    GaussianSplat,
 }
 
 impl AssetKind {
@@ -65,11 +70,63 @@ pub const FONT_EXTS: &[&str] = &["ttf", "otf"];
 /// Script extensions.
 pub const SCRIPT_EXTS: &[&str] = &["lua", "rhai"];
 
+/// True when a `.ply` file belongs to the splat renderer rather than the mesh
+/// converter.
+///
+/// `.ply` is genuinely ambiguous: it's a classic mesh format (routed to GLB
+/// conversion), the de-facto 3DGS splat format, AND a common plain point-cloud
+/// container (CloudCompare / LiDAR / Sketchfab downloads). The header is ASCII
+/// even in binary PLYs, so an 8 KiB header peek classifies reliably:
+///
+/// * `f_dc_0` (3DGS spherical-harmonics property no mesh PLY has) → splat;
+/// * otherwise, no faces → point cloud → also splat: the splat loader
+///   synthesizes isotropic gaussians for plain points, while the mesh
+///   converter would have no triangles to convert;
+/// * faces present → mesh → GLB conversion, the old behaviour.
+///
+/// Unreadable / truncated-header files fall back to `false` (mesh).
+fn is_gaussian_ply(path: &Path) -> bool {
+    use std::io::Read;
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut buf = [0u8; 8192];
+    let Ok(n) = file.read(&mut buf) else {
+        return false;
+    };
+    let text = String::from_utf8_lossy(&buf[..n]);
+    if !text.starts_with("ply") {
+        return false;
+    }
+    let complete = text.contains("end_header");
+    let header = text.split("end_header").next().unwrap_or("");
+    if header.contains("f_dc_0") {
+        return true;
+    }
+    // Faceless = point cloud. Only trust the absence of faces when the whole
+    // header fit in the peek buffer.
+    let face_count: u64 = header
+        .lines()
+        .find_map(|line| line.strip_prefix("element face "))
+        .and_then(|count| count.trim().parse().ok())
+        .unwrap_or(0);
+    complete && face_count == 0
+}
+
 /// Classify a path by extension. Models are detected via the import backend so
 /// the model list stays single-sourced; other kinds match the tables above.
 /// Returns `None` for anything the importer doesn't accept.
 pub fn detect_kind(path: &Path) -> Option<AssetKind> {
-    // Models first — `renzora_import` owns the authoritative model extension
+    // Splat clouds first: `.ply` is ALSO a model extension, so a splat `.ply`
+    // (detected by header sniff) must claim the file before the model check
+    // routes it into GLB conversion, which would garble point-cloud data.
+    let sniffed_ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
+    match sniffed_ext.as_deref() {
+        Some("gcloud" | "sog" | "ssog") => return Some(AssetKind::GaussianSplat),
+        Some("ply") if is_gaussian_ply(path) => return Some(AssetKind::GaussianSplat),
+        _ => {}
+    }
+    // Models next — `renzora_import` owns the authoritative model extension
     // list, so we never duplicate it here.
     if renzora_import::formats::is_supported(path) {
         return Some(AssetKind::Model);
@@ -112,6 +169,10 @@ pub fn all_importable_extensions() -> Vec<&'static str> {
     v.push("material");
     v.extend_from_slice(FONT_EXTS);
     v.extend_from_slice(SCRIPT_EXTS);
+    // "ply" is already advertised by the model extension list above.
+    v.push("gcloud");
+    v.push("sog");
+    v.push("ssog");
     v
 }
 
@@ -127,6 +188,7 @@ pub fn kind_icon(path: &Path) -> (&'static str, (u8, u8, u8)) {
         Some(AssetKind::Material) => ("circle-half", (180, 185, 205)),
         Some(AssetKind::Font) => ("text-aa", (205, 205, 210)),
         Some(AssetKind::Script) => ("code", (150, 205, 150)),
+        Some(AssetKind::GaussianSplat) => ("cloud", (190, 150, 255)),
     }
 }
 
@@ -147,6 +209,7 @@ pub(crate) fn pick_importable_files() -> Option<Vec<std::path::PathBuf>> {
         .add_filter("Materials", &["material"])
         .add_filter("Fonts", FONT_EXTS)
         .add_filter("Scripts", SCRIPT_EXTS)
+        .add_filter("Gaussian Splats", &["ply", "gcloud", "sog", "ssog"])
         .add_filter("All Files", &["*"])
         .pick_files()
         .filter(|p| !p.is_empty())
@@ -176,6 +239,52 @@ mod tests {
         for k in [AssetKind::Image, AssetKind::Audio, AssetKind::Scene] {
             assert!(!k.is_model());
         }
+    }
+
+    #[test]
+    fn gaussian_splats_route_by_extension_and_header() {
+        assert_eq!(detect_kind(Path::new("scan.gcloud")), Some(AssetKind::GaussianSplat));
+        // An unreadable .ply can't be header-sniffed → mesh/model routing, the
+        // pre-splat behaviour.
+        assert_eq!(detect_kind(Path::new("mesh.ply")), Some(AssetKind::Model));
+
+        // A .ply whose header carries the 3DGS `f_dc_0` property is a splat.
+        let p = std::env::temp_dir().join("renzora_kinds_test_splat.ply");
+        std::fs::write(
+            &p,
+            "ply\nformat binary_little_endian 1.0\nelement vertex 1\n\
+             property float x\nproperty float f_dc_0\nend_header\n",
+        )
+        .unwrap();
+        assert_eq!(detect_kind(&p), Some(AssetKind::GaussianSplat));
+        std::fs::remove_file(&p).ok();
+
+        // A faceless colored point cloud (CloudCompare-style) also routes to
+        // the splat renderer, which synthesizes splats for plain points.
+        let p = std::env::temp_dir().join("renzora_kinds_test_points.ply");
+        std::fs::write(
+            &p,
+            "ply\nformat binary_little_endian 1.0\nelement vertex 3\n\
+             property float x\nproperty float y\nproperty float z\n\
+             property uchar red\nproperty uchar green\nproperty uchar blue\n\
+             end_header\n",
+        )
+        .unwrap();
+        assert_eq!(detect_kind(&p), Some(AssetKind::GaussianSplat));
+        std::fs::remove_file(&p).ok();
+
+        // A ply WITH faces is a mesh → model/GLB conversion.
+        let p = std::env::temp_dir().join("renzora_kinds_test_mesh.ply");
+        std::fs::write(
+            &p,
+            "ply\nformat binary_little_endian 1.0\nelement vertex 3\n\
+             property float x\nproperty float y\nproperty float z\n\
+             element face 1\nproperty list uchar int vertex_indices\n\
+             end_header\n",
+        )
+        .unwrap();
+        assert_eq!(detect_kind(&p), Some(AssetKind::Model));
+        std::fs::remove_file(&p).ok();
     }
 
     #[test]

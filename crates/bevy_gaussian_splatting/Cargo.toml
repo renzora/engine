@@ -1,0 +1,152 @@
+# Vendored from https://crates.io/crates/bevy_gaussian_splatting @ 8.0.1
+# (https://github.com/mosure/bevy_gaussian_splatting, MIT OR Apache-2.0).
+# Local changes vs upstream:
+#   - `bevy` points at the workspace dep so the crate compiles into the ONE
+#     shared bevy_dylib every dlopen plugin links (CLAUDE.md §3) instead of
+#     pulling its own bevy with a different feature set.
+#   - `nightly_generic_alias` dropped from default features: it needs
+#     `#![feature(lazy_type_alias)]` and the toolchain is pinned to stable
+#     (rust-toolchain.toml / docker base image). The stable fallback path is
+#     what upstream CI builds with `--no-default-features`.
+#   - `viewer` / `tooling` / `web_asset` dropped from defaults and their
+#     feature defs + deps (bevy_panorbit_camera, byte-unit) removed: they only
+#     gate the standalone viewer/tool BINARIES, which are not vendored. Library
+#     src never cfg's on them.
+#   - viewer/, tools/, www/, examples/, tests/, benches/ + their manifest
+#     targets and dev-dependencies dropped (not vendored).
+#   - sort: `SortTrigger::camera_index` is assigned as a dense 0..N over live
+#     gaussian cameras instead of `Camera::order` (upstream asserted order >= 0
+#     and indexed per-camera sort chunks with it — panics on the editor's
+#     negative-order render-to-texture cameras and overruns on sparse orders),
+#     and the CPU sorters skip a tick instead of unwrapping when a just-added
+#     camera races the sort-buffer resize. See "renzora patch" comments in
+#     src/sort/{mod,rayon,std_sort}.rs.
+#   - io/ply: a `.ply` with positions but no gaussian parameters (plain
+#     colored point cloud — CloudCompare exports, Sketchfab downloads) loads
+#     as synthesized isotropic splats (color → SH DC, density-estimated
+#     radius) instead of failing with "missing required properties". See
+#     "renzora patch" comment in src/io/ply.rs.
+#   - io/ply: fixed the `f_rest_*` channel mapping — upstream divided by the
+#     DC-inclusive per-channel count (16 at sh3) though f_rest is 15 per
+#     channel, corrupting all G/B higher-order SH coefficients (f_rest_15
+#     collided with f_rest_0, etc.).
+# Consumed by `renzora_gaussian_splatting`; excluded from CI test/clippy like
+# the other vendored ecosystem crates.
+[package]
+name = "bevy_gaussian_splatting"
+description = "bevy gaussian splatting render pipeline plugin"
+version = "8.0.1"
+edition = "2024"
+rust-version = "1.95.0"
+authors = ["mosure <mitchell@mosure.me>"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/mosure/bevy_gaussian_splatting"
+repository = "https://github.com/mosure/bevy_gaussian_splatting"
+readme = "README.md"
+
+[features]
+default = [
+  "io_flexbuffers",
+  "io_ply",
+
+  "planar",
+
+  "buffer_storage",
+
+  "sh3",
+
+  "query_select",
+
+  "morph_interpolate",
+
+  "sort_bitonic",
+  "sort_radix",
+  "sort_rayon",
+  "sort_std",
+]
+
+debug_gpu = []
+
+io_bincode2 = ["dep:bincode2", "dep:flate2"]
+io_flexbuffers = ["dep:flexbuffers"]
+io_ply = ["dep:ply-rs"]
+
+material_noise = ["noise", "dep:noise"]
+
+morph_particles = []
+morph_interpolate = []
+
+nightly_generic_alias = []
+
+noise = []
+
+sh0 = []
+sh1 = []
+sh2 = []
+sh3 = []
+sh4 = []
+
+precompute_covariance_3d = []
+
+packed = []
+planar = []
+
+buffer_storage = []
+buffer_texture = []
+
+query_raycast = []
+query_select = []
+query_sparse = ["dep:kd-tree", "query_select"]
+
+sort_bitonic = []
+sort_radix = []
+sort_rayon = ["dep:rayon"]
+sort_std = []
+
+# note: webgl2/buffer_texture are deprecated
+webgl2 = ["bevy/webgl2"]
+webgpu = ["bevy/webgpu"]
+
+[dependencies]
+base64 = "0.22"
+bevy_args = "4.0.0"
+bevy_interleave = "0.10.0"
+bincode2 = { version = "2.0", optional = true }
+bytemuck = "1.23"
+clap = { version = "4.5", features = ["derive"] }
+flate2 = { version = "1.1", optional = true }
+flexbuffers = { version = "25.2", optional = true }
+gltf = "1.4"
+half = { version = "2.7", features = ["serde"] }
+kd-tree = { version = "0.6", optional = true }
+noise = { version = "0.9.0", optional = true }
+ply-rs = { version = "0.1", optional = true }
+rand = "0.9"
+rayon = { version = "1.8", optional = true }
+serde = "1.0"
+serde_json = "1.0"
+static_assertions = "1.1"
+typenum = "1.18"
+wgpu = "29"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.3", default-features = false, features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+
+[dependencies.bevy]
+workspace = true
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  'Document',
+  'Element',
+  'HtmlElement',
+  'Location',
+  'Node',
+  'Window',
+]
+
+[lib]
+path = "src/lib.rs"

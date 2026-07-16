@@ -4414,6 +4414,12 @@ fn build_menu_items(
                 w.insert_resource(renzora::core::SaveAsSceneRequested);
             }),
             menu_sep(commands),
+            // Same request the asset panel's Import button fires; renzora_import_ui
+            // picks it up and opens the file picker / import overlay. No
+            // ImportTargetDir here, so files land in the importer's default folder.
+            menu_item(commands, fonts, "download-simple", &renzora::lang::t("menu.file.import_assets"), |w| {
+                w.insert_resource(renzora::core::ImportRequested);
+            }),
             menu_item(commands, fonts, "package", &renzora::lang::t("menu.file.export_project"), |w| {
                 w.insert_resource(renzora::core::ExportRequested);
             }),

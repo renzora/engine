@@ -108,6 +108,15 @@ impl Material for CloudMaterial {
         AlphaMode::Blend
     }
 
+    /// The dome is centered on the camera, so its transparent-sort distance is
+    /// ~0 — the nearest item in the phase — making it draw *last* and blend
+    /// clouds over every transparent that doesn't write depth (gaussian
+    /// splats). Bias the sort distance to -inf so the dome always draws first,
+    /// as sky background; it still depth-tests against opaque geometry.
+    fn depth_bias(&self) -> f32 {
+        f32::NEG_INFINITY
+    }
+
     fn specialize(
         _pipeline: &bevy::pbr::MaterialPipeline,
         descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,

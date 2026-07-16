@@ -389,6 +389,50 @@ impl Default for SceneInstance {
     }
 }
 
+/// A 3D Gaussian-splat cloud instance (`.ply` / `.gcloud`).
+///
+/// Stores the project-relative *path* to the cloud file rather than an asset
+/// `Handle` — the same path-in-component / handle-at-runtime split models,
+/// audio, and particles use — so the component survives the reflection-driven
+/// scene serializer. The `renzora_gaussian_splatting` distribution plugin
+/// watches for added/changed components and resolves `source` into the live
+/// `bevy_gaussian_splatting` cloud handle + `CloudSettings`; without that
+/// plugin in `plugins/` the component is inert data.
+///
+/// Lives in the contract crate (not the plugin) because it crosses the dlopen
+/// boundary: the viewport drop handler and inspector run in the host while the
+/// sync system runs in the plugin, and both must agree on one `TypeId`.
+#[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, Serialize, Deserialize)]
+pub struct GaussianSplat {
+    /// Project-relative path to the `.ply` / `.gcloud` cloud file.
+    pub source: String,
+    /// Uniform opacity multiplier applied to every splat (0–1).
+    #[serde(default = "default_splat_multiplier")]
+    #[reflect(default = "default_splat_multiplier")]
+    pub opacity: f32,
+    /// Uniform size multiplier applied to every splat. This scales the
+    /// individual gaussians, not the entity transform — use it to fatten or
+    /// thin the splats without moving them.
+    #[serde(default = "default_splat_multiplier")]
+    #[reflect(default = "default_splat_multiplier")]
+    pub splat_scale: f32,
+}
+
+fn default_splat_multiplier() -> f32 {
+    1.0
+}
+
+impl Default for GaussianSplat {
+    fn default() -> Self {
+        Self {
+            source: String::new(),
+            opacity: default_splat_multiplier(),
+            splat_scale: default_splat_multiplier(),
+        }
+    }
+}
+
 /// Serializable marker for a scene camera entity.
 ///
 /// Stored alongside `Camera3d` so the camera can be recreated on scene load

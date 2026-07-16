@@ -432,6 +432,7 @@ fn import_title(w: &World) -> String {
         Some(AssetKind::Material) => "Import Materials",
         Some(AssetKind::Font) => "Import Fonts",
         Some(AssetKind::Script) => "Import Scripts",
+        Some(AssetKind::GaussianSplat) => "Import Gaussian Splats",
         None => "Import Assets",
     }
     .to_string()
