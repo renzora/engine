@@ -577,40 +577,27 @@ fn new_scene_system(world: &mut World) {
         return;
     }
 
-    // The scene is being wiped on the current tab — drop the tab's live
-    // pin set so we're not holding strong handles to assets whose
-    // entities have just been despawned. GLB pins stay so a follow-up
-    // drag-drop of the same model is still instant.
-    let active_id = world
-        .get_resource::<renzora_ui::DocumentTabState>()
-        .and_then(|ts| ts.active_tab_id());
-    if let (Some(id), Some(mut cache)) = (active_id, world.get_resource_mut::<TabAssetCache>()) {
-        cache.drop_tab_live(id);
+    // "New Scene" opens a fresh document in its own tab rather than wiping the
+    // scene on the current tab — the work already open stays open and remains
+    // switchable, matching every other document-based editor. This mirrors the
+    // document tab bar's "+" button: add an empty scene tab, then fire a
+    // `TabSwitchRequest` so `handle_tab_switch` caches the leaving scene into
+    // its buffer, despawns it, and lands on the new tab. The new tab is
+    // pathless and buffer-less, so `handle_tab_switch` restores it as a fresh
+    // empty scene — exactly what "New Scene" should show.
+    let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() else {
+        return;
+    };
+    let idx = tabs.add_tab("Untitled Scene".into(), None);
+    let switch = tabs.activate_tab(idx);
+    if let Some((old_id, new_id)) = switch {
+        world.insert_resource(TabSwitchRequest {
+            old_tab_id: old_id,
+            new_tab_id: new_id,
+        });
     }
 
-    // Despawn all scene entities (keep editor infrastructure)
-    despawn_scene_entities(world);
-
-    // Update active tab
-    if let Some(mut tabs) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
-        let active = tabs.active_tab;
-        if let Some(tab) = tabs.tabs.get_mut(active) {
-            tab.name = "Untitled Scene".to_string();
-            tab.scene_path = None;
-            tab.is_modified = false;
-        }
-    }
-
-    // Reset camera
-    if let Some(mut orbit) = world.get_resource_mut::<OrbitCameraState>() {
-        let def = OrbitCameraState::default();
-        orbit.focus = def.focus;
-        orbit.distance = def.distance;
-        orbit.yaw = def.yaw;
-        orbit.pitch = def.pitch;
-    }
-
-    renzora::core::console_log::console_info("Scene", "New scene created (cleared all entities)");
+    renzora::core::console_log::console_info("Scene", "New scene created in a new tab");
 }
 
 // ============================================================================

@@ -99,6 +99,20 @@ Prefer to work with the keyboard? Press a key, move the mouse, then click to con
 | `Enter` or left-click | Confirm |
 | `Escape` or right-click | Cancel |
 
+## Working with document tabs
+
+The strip of tabs across the top of the editor is your open documents — one per scene (plus any materials, scripts, shaders, particles, or blueprints you've opened). You can keep several scenes open at once and click between them; each remembers its own contents and camera.
+
+- **New scene** — press `Ctrl+N` (or use the **`+`** button at the end of the tab strip). This opens a fresh **Untitled Scene** in its *own* new tab and switches to it; whatever you were working on stays open in its old tab, untouched. New scene never wipes the scene you're currently in.
+- **Closing a tab** — click the **×** on a tab to close it. If that tab has **unsaved changes**, the editor brings it forward and asks first:
+  - **Save & Close** — saves the scene (prompting for a location if it's never been saved), then closes the tab.
+  - **Don't Save** — closes it and discards the edits.
+  - **Cancel** (or `Escape`) — leaves the tab open.
+  
+  Closing a tab with no unsaved changes just closes it, with no prompt. The editor always keeps at least one scene tab open.
+
+A tab with unsaved edits shows a **`*`** after its name.
+
 ## Saving your scene
 
 Press `Ctrl+S` to save. Scenes are stored as `.ron` files, kept by convention in your project's `scenes/` folder. You almost never edit these by hand — the editor writes them for you — but they are plain text if you ever want to peek.
