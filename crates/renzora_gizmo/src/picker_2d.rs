@@ -36,7 +36,7 @@ use bevy::window::{PrimaryWindow, SystemCursorIcon};
 use renzora::core::viewport_types::{
     ViewportBoxSelect2d, ViewportCursorRequest, ViewportSettings, ViewportState, ViewportView,
 };
-use renzora::core::{Node2d, PlayModeState};
+use renzora::core::{Node2d, PickBounds2d, PlayModeState};
 use renzora_editor_framework::EditorSelection;
 
 /// Cursor travel (window px) below which a rubber-band release counts as a
@@ -416,6 +416,10 @@ fn entity_half_size(world: &World, entity: Entity) -> Option<Vec2> {
             return None;
         }
         Some(size * 0.5)
+    } else if let Some(bounds) = world.get::<PickBounds2d>(entity) {
+        // Spriteless entity with a known footprint (e.g. a particle emitter's
+        // shape) — its real extents beat the generic marker box.
+        Some(bounds.half_extents)
     } else if world.get::<Node2d>(entity).is_some() {
         Some(Vec2::splat(NODE_MARKER_HALF))
     } else {
@@ -610,7 +614,7 @@ pub fn pick_2d_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
-    nodes_2d: Query<(Entity, &GlobalTransform), (With<Node2d>, Without<Sprite>)>,
+    nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
@@ -724,20 +728,30 @@ pub fn pick_2d_system(
     }
 
     // Spriteless 2D nodes (Point Light 2D, Occluder 2D, empty groups) have no
-    // silhouette to alpha-test, so they're picked against the fixed marker box.
-    // They win ties (`>=`) against a sprite at the same z: the marker is drawn
-    // as an on-top gizmo, and it's tiny, so a user clicking it means to grab it
-    // rather than the tile beneath.
-    for (entity, gt) in &nodes_2d {
+    // silhouette to alpha-test, so they're picked against the fixed marker box,
+    // or against their `PickBounds2d` envelope when a system published one
+    // (particle emitters). Tie-breaking against a sprite at the same z depends
+    // on which box was used: the tiny marker is drawn as an on-top gizmo, so
+    // clicking it means grabbing IT (`>=`); a travel envelope can cover large
+    // areas (a snow column), so it must not steal same-z clicks from sprites
+    // inside it (`>`).
+    for (entity, gt, bounds) in &nodes_2d {
+        let (half, offset) = bounds
+            .map(|b| (b.half_extents, b.offset))
+            .unwrap_or((Vec2::splat(NODE_MARKER_HALF), Vec2::ZERO));
         let pos = gt.translation();
-        let local = Rot2::radians(-rotation_z(gt.rotation())) * (cursor_world - pos.truncate());
-        if local.x.abs() > NODE_MARKER_HALF || local.y.abs() > NODE_MARKER_HALF {
+        let local = Rot2::radians(-rotation_z(gt.rotation())) * (cursor_world - pos.truncate())
+            - offset;
+        if local.x.abs() > half.x || local.y.abs() > half.y {
             continue;
         }
-        match best {
-            None => best = Some((entity, pos.z, pos.truncate())),
-            Some((_, z, _)) if pos.z >= z => best = Some((entity, pos.z, pos.truncate())),
-            _ => {}
+        let wins = match best {
+            None => true,
+            Some((_, z, _)) if bounds.is_some() => pos.z > z,
+            Some((_, z, _)) => pos.z >= z,
+        };
+        if wins {
+            best = Some((entity, pos.z, pos.truncate()));
         }
     }
 
@@ -975,7 +989,7 @@ pub fn box_select_2d_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(Entity, &Sprite, &GlobalTransform)>,
-    nodes_2d: Query<(Entity, &GlobalTransform), (With<Node2d>, Without<Sprite>)>,
+    nodes_2d: Query<(Entity, &GlobalTransform, Option<&PickBounds2d>), (With<Node2d>, Without<Sprite>)>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
     // Collider edit mode owns the left button (see `pick_2d_system`).
@@ -1061,9 +1075,13 @@ pub fn box_select_2d_system(
 
     // Spriteless nodes (lights, occluders, empty groups) join the marquee via
     // their fixed marker box, so a rubber band grabs them alongside sprites.
-    hits.extend(nodes_2d.iter().filter_map(|(e, gt)| {
-        let node_rect =
-            Rect::from_center_half_size(gt.translation().truncate(), Vec2::splat(NODE_MARKER_HALF));
+    hits.extend(nodes_2d.iter().filter_map(|(e, gt, bounds)| {
+        let (half, offset) = bounds
+            .map(|b| (b.half_extents, b.offset))
+            .unwrap_or((Vec2::splat(NODE_MARKER_HALF), Vec2::ZERO));
+        let center =
+            gt.translation().truncate() + Rot2::radians(rotation_z(gt.rotation())) * offset;
+        let node_rect = Rect::from_center_half_size(center, half);
         (!rect.intersect(node_rect).is_empty()).then_some(e)
     }));
 
@@ -1168,7 +1186,7 @@ pub fn update_cursor_2d(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&Camera, &GlobalTransform), With<renzora::core::EditorCamera2d>>,
     sprites: Query<(&Sprite, &GlobalTransform)>,
-    nodes_2d: Query<(), (With<Node2d>, Without<Sprite>)>,
+    nodes_2d: Query<Option<&PickBounds2d>, (With<Node2d>, Without<Sprite>)>,
     transforms: Query<&Transform>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
 ) {
@@ -1265,21 +1283,25 @@ pub fn update_cursor_2d(
             let Ok(tr) = transforms.get(entity) else {
                 continue;
             };
-            // Sprite body uses its render size; a spriteless node falls back to
-            // the marker box so lights / occluders preview a Move cursor too.
-            let half = if let Some(size) = sprites
+            // Sprite body uses its render size; a spriteless node uses its
+            // known footprint (particle emitters) or falls back to the marker
+            // box so lights / occluders preview a Move cursor too.
+            let (half, offset) = if let Some(size) = sprites
                 .get(entity)
                 .ok()
                 .and_then(|(s, _)| sprite_size_from_query(s, &images))
             {
-                size * 0.5
-            } else if nodes_2d.get(entity).is_ok() {
-                Vec2::splat(NODE_MARKER_HALF)
+                (size * 0.5, Vec2::ZERO)
+            } else if let Ok(bounds) = nodes_2d.get(entity) {
+                bounds
+                    .map(|b| (b.half_extents, b.offset))
+                    .unwrap_or((Vec2::splat(NODE_MARKER_HALF), Vec2::ZERO))
             } else {
                 continue;
             };
             let angle = rotation_z(tr.rotation);
-            let local = Rot2::radians(-angle) * (cursor_world - tr.translation.truncate());
+            let local =
+                Rot2::radians(-angle) * (cursor_world - tr.translation.truncate()) - offset;
             if local.x.abs() <= half.x && local.y.abs() <= half.y {
                 cursor_icon = Some(SystemCursorIcon::Move);
                 break;

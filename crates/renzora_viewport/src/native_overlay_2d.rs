@@ -26,7 +26,7 @@ use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::{
     ViewportBoxSelect2d, ViewportSettings, ViewportView, Viewports, VIEWPORT_COUNT,
 };
-use renzora::core::{EditorCamera2d, Node2d, PlayModeState, ViewportCamera2d};
+use renzora::core::{EditorCamera2d, Node2d, PickBounds2d, PlayModeState, ViewportCamera2d};
 use renzora_editor_framework::EditorSelection;
 use renzora_ember::font::{ui_font, EmberFonts};
 
@@ -296,7 +296,7 @@ fn render_overlay_2d(
     windows: Query<&Window, With<PrimaryWindow>>,
     cameras_2d: Query<(&ViewportCamera2d, &Camera, &GlobalTransform)>,
     sprites: Query<(&GlobalTransform, &Sprite)>,
-    node2ds: Query<&GlobalTransform, With<Node2d>>,
+    node2ds: Query<(&GlobalTransform, Option<&PickBounds2d>), With<Node2d>>,
     // Tupled: the system sits at bevy's 16-param cap, so the collider-edit and
     // y-sort chrome inputs share one slot.
     (collider_edit, shapes, ysorts): (
@@ -528,9 +528,17 @@ fn render_overlay_2d(
             }
             let angle = gt.rotation().to_euler(EulerRot::XYZ).2;
             (gt.translation().truncate(), s * 0.5, angle)
-        } else if let Ok(gt) = node2ds.get(entity) {
+        } else if let Ok((gt, bounds)) = node2ds.get(entity) {
             let angle = gt.rotation().to_euler(EulerRot::XYZ).2;
-            (gt.translation().truncate(), Vec2::splat(20.0), angle)
+            // Known footprint (particle travel envelope) beats the fixed box,
+            // so the frame matches what's on screen and the picker's hit area.
+            // The offset shifts the frame to the envelope centre (a snow
+            // emitter's box hangs below it, a fire plume's rises above).
+            let (half, offset) = bounds
+                .map(|b| (b.half_extents, b.offset))
+                .unwrap_or((Vec2::splat(20.0), Vec2::ZERO));
+            let center = gt.translation().truncate() + Rot2::radians(angle) * offset;
+            (center, half, angle)
         } else {
             continue;
         };

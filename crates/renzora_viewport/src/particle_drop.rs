@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use renzora::core::{CurrentProject, EditorCamera};
+use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+use renzora::core::{CurrentProject, EditorCamera, EditorCamera2d, Node2d};
 use renzora_editor_framework::EditorSelection;
 use renzora_hanabi::{EffectSource, HanabiEffect};
 
@@ -36,7 +37,23 @@ pub(crate) fn commit_particle_drop(
         .map(|s| s.to_string())
         .unwrap_or_else(|| "Particle Effect".to_string());
 
-    let pos = compute_ground_position(world, screen_pos, vp_rect).unwrap_or(Vec3::ZERO);
+    // In 2D view the drop lands on the 2D plane through the ortho camera;
+    // hanabi renders the effect through the `Transparent2d` phase of the same
+    // `Camera2d`, so the entity needs no extra render wiring — just a `Node2d`
+    // marker so the 2D picker and hierarchy treat it as a 2D node.
+    let is_2d = world
+        .get_resource::<ViewportSettings>()
+        .is_some_and(|s| s.viewport_view == ViewportView::Two);
+
+    let (pos, node_2d) = if is_2d {
+        let p = compute_2d_position(world, screen_pos, vp_rect).unwrap_or(Vec2::ZERO);
+        (p.extend(0.0), true)
+    } else {
+        (
+            compute_ground_position(world, screen_pos, vp_rect).unwrap_or(Vec3::ZERO),
+            false,
+        )
+    };
 
     let entity = world
         .spawn((
@@ -49,10 +66,35 @@ pub(crate) fn commit_particle_drop(
             },
         ))
         .id();
+    if node_2d {
+        world.entity_mut(entity).insert(Node2d);
+    }
 
     if let Some(sel) = world.get_resource::<EditorSelection>() {
         sel.set(Some(entity));
     }
+}
+
+/// Project the drop point through the 2D editor camera to world space.
+/// `screen_pos` / `viewport_rect` are in window logical pixels (same convention
+/// as `sprite_drop::commit_sprite_drop`).
+fn compute_2d_position(world: &mut World, screen_pos: Vec2, viewport_rect: Rect) -> Option<Vec2> {
+    let mut q =
+        world.query_filtered::<(&GlobalTransform, &Camera), With<EditorCamera2d>>();
+    let (cam_gt, camera) = q.iter(world).next()?;
+    let cam_gt = *cam_gt;
+    let camera = camera.clone();
+
+    let vp_state = world.get_resource::<ViewportState>()?;
+    let image_size = vp_state.current_size.as_vec2();
+    if image_size.x <= 0.0 || image_size.y <= 0.0 || viewport_rect.width() <= 0.0 {
+        return None;
+    }
+    let render_pos = Vec2::new(
+        (screen_pos.x - viewport_rect.min.x) * image_size.x / viewport_rect.width(),
+        (screen_pos.y - viewport_rect.min.y) * image_size.y / viewport_rect.height(),
+    );
+    camera.viewport_to_world_2d(&cam_gt, render_pos).ok()
 }
 
 /// Raycast the editor camera onto the Y=0 plane. `screen_pos` / `viewport_rect`

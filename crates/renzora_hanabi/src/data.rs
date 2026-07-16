@@ -559,6 +559,15 @@ pub struct HanabiEffectDefinition {
     pub simulation_condition: SimulationCondition,
     #[serde(default)]
     pub motion_integration: MotionIntegrationMode,
+    /// Author the effect for 2D (XY-plane) scenes. The simulation itself is
+    /// dimension-agnostic — this flips the *conventions* that assume a 3D
+    /// ground plane: `Circle` emitters lie in XY (facing the 2D camera)
+    /// instead of XZ, `Sphere` emitters flatten to an XY disc,
+    /// `Radial`/`Random` velocities burst in-plane instead of as a 3D
+    /// sphere, directional spread stays in-plane, and noise turbulence
+    /// stops pushing along Z (which is sprite sort order in 2D, not depth).
+    #[serde(default)]
+    pub plane_2d: bool,
 
     // Kill Zones
     #[serde(default)]
@@ -671,6 +680,7 @@ impl Default for HanabiEffectDefinition {
             simulation_space: SimulationSpace::Local,
             simulation_condition: SimulationCondition::Always,
             motion_integration: MotionIntegrationMode::PostUpdate,
+            plane_2d: false,
             kill_zones: Vec::new(),
             variables: HashMap::new(),
         }

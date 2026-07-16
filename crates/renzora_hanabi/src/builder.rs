@@ -86,11 +86,23 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         },
     }
 
+    // 2D effects live in the XY plane (the 2D camera looks down -Z): circles
+    // face the camera instead of lying flat on the 3D ground plane, and
+    // spheres flatten to a disc so particles don't scatter along Z — which is
+    // sprite sort order in 2D, not visible depth.
+    let circle_axis = if def.plane_2d { Vec3::Z } else { Vec3::Y };
+
     let pos_modifier = match &def.emit_shape {
         HanabiEmitShape::Point => PosModifier::Attribute(writer.lit(Vec3::ZERO).expr()),
         HanabiEmitShape::Circle { radius, dimension } => PosModifier::Circle {
             center: writer.lit(Vec3::ZERO).expr(),
-            axis: writer.lit(Vec3::Y).expr(),
+            axis: writer.lit(circle_axis).expr(),
+            radius: writer.lit(*radius).expr(),
+            dim: map_dimension(*dimension),
+        },
+        HanabiEmitShape::Sphere { radius, dimension } if def.plane_2d => PosModifier::Circle {
+            center: writer.lit(Vec3::ZERO).expr(),
+            axis: writer.lit(Vec3::Z).expr(),
             radius: writer.lit(*radius).expr(),
             dim: map_dimension(*dimension),
         },
@@ -127,6 +139,11 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
             center: ExprHandle,
             speed: ExprHandle,
         },
+        Circle {
+            center: ExprHandle,
+            axis: ExprHandle,
+            speed: ExprHandle,
+        },
         Tangent {
             origin: ExprHandle,
             axis: ExprHandle,
@@ -140,8 +157,15 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
             if def.velocity_spread > 0.001 {
                 let avg_speed = (speed_min + speed_max) / 2.0;
                 let spread_range = avg_speed * def.velocity_spread.sin();
-                let vel_min = dir * speed_min - Vec3::splat(spread_range);
-                let vel_max = dir * speed_max + Vec3::splat(spread_range);
+                // In 2D, spread must stay in-plane: a Z component would move
+                // particles through the sprite sort order instead of visibly.
+                let spread = if def.plane_2d {
+                    Vec3::new(spread_range, spread_range, 0.0)
+                } else {
+                    Vec3::splat(spread_range)
+                };
+                let vel_min = dir * speed_min - spread;
+                let vel_max = dir * speed_max + spread;
                 VelModifier::Attribute(writer.lit(vel_min).uniform(writer.lit(vel_max)).expr())
             } else if speed_min != speed_max {
                 VelModifier::Attribute(
@@ -160,9 +184,19 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
             } else {
                 writer.lit(speed_min).expr()
             };
-            VelModifier::Sphere {
-                center: writer.lit(Vec3::ZERO).expr(),
-                speed: speed_expr,
+            if def.plane_2d {
+                // In-plane burst: a sphere would waste a third of the motion
+                // on the invisible Z axis (and churn the 2D sort order).
+                VelModifier::Circle {
+                    center: writer.lit(Vec3::ZERO).expr(),
+                    axis: writer.lit(Vec3::Z).expr(),
+                    speed: speed_expr,
+                }
+            } else {
+                VelModifier::Sphere {
+                    center: writer.lit(Vec3::ZERO).expr(),
+                    speed: speed_expr,
+                }
             }
         }
         VelocityMode::Tangent => {
@@ -419,6 +453,17 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
         VelModifier::Sphere { center, speed } => {
             effect = effect.init(SetVelocitySphereModifier { center, speed });
         }
+        VelModifier::Circle {
+            center,
+            axis,
+            speed,
+        } => {
+            effect = effect.init(SetVelocityCircleModifier {
+                center,
+                axis,
+                speed,
+            });
+        }
         VelModifier::Tangent {
             origin,
             axis,
@@ -489,6 +534,7 @@ pub fn build_complete_effect(def: &HanabiEffectDefinition) -> EffectAsset {
             amplitude: amp,
             octaves: def.noise_octaves,
             lacunarity: def.noise_lacunarity,
+            planar: def.plane_2d,
         });
     }
     if let Some((center, axis, speed, radial_pull, orbit_radius)) = orbit_data {
@@ -755,12 +801,26 @@ mod tests {
     #[test]
     fn all_shipped_effects_parse_and_build() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/particles");
-        let entries = std::fs::read_dir(dir)
-            .unwrap_or_else(|e| panic!("cannot read {dir}: {e}"));
+        // Recursive walk: shipped effects are organized into subfolders
+        // (e.g. `2d/` for the plane_2d pixel-scale variants), and a flat
+        // read_dir would silently drop them from coverage.
+        let mut pending = vec![std::path::PathBuf::from(dir)];
+        let mut files: Vec<std::path::PathBuf> = Vec::new();
+        while let Some(d) = pending.pop() {
+            let entries = std::fs::read_dir(&d)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", d.display()));
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
+        }
         let mut count = 0usize;
         let mut failures: Vec<String> = Vec::new();
-        for entry in entries.flatten() {
-            let path = entry.path();
+        for path in files {
             if path.extension().and_then(|s| s.to_str()) != Some("particle") {
                 continue;
             }

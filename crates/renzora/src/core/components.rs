@@ -87,6 +87,27 @@ pub struct EnvironmentBakeCamera;
 #[reflect(Component)]
 pub struct Node2d;
 
+/// Editor pick/selection half-extents for a spriteless 2D entity.
+///
+/// Spriteless 2D nodes normally pick against a small fixed marker box, which
+/// is fine for point-like things (lights, occluders) but useless for entities
+/// with real spatial extent and no sprite — a particle emitter spanning
+/// hundreds of pixels would only be grabbable in a 20px square at its origin.
+/// A system that knows the entity's true footprint (e.g. the hanabi sync from
+/// the effect's emitter shape) inserts this, and the 2D picker/overlay use it
+/// in place of the marker box. Derived data — deliberately NOT reflected, so
+/// scene save never serializes it.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct PickBounds2d {
+    /// Half-extents of the pick box, in world units.
+    pub half_extents: Vec2,
+    /// Centre of the pick box in the entity's LOCAL frame. Non-zero when the
+    /// footprint is asymmetric around the origin — a snow emitter's particles
+    /// all travel below it, a fire plume rises above it — so the box tracks
+    /// where the effect actually is instead of ballooning symmetrically.
+    pub offset: Vec2,
+}
+
 /// Asset-relative path of the image bound to a `Sprite`.
 ///
 /// Mirror of `UiImagePath` for sprites. Bevy's `Sprite.image` holds a

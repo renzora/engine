@@ -12,6 +12,16 @@ Everything runs on the GPU, so you can have hundreds of thousands of particles. 
 
 That's the whole loop for using the library. To build or tweak an effect, read on.
 
+### Particles in 2D scenes
+
+The same `.particle` files work in 2D. With the viewport in **2D view**, drag a `.particle` in as usual: the emitter spawns at the drop point on the 2D plane as a 2D node, and the effect renders through the 2D camera alongside your sprites. Three things to keep in mind:
+
+- **`plane_2d: true`** — set this in the `.particle` file for effects meant for 2D scenes. The simulation is dimension-agnostic, but several authoring conventions assume a 3D ground plane: `Circle` emitters lie flat (edge-on to a 2D camera), `Radial`/`Random` velocities burst as a 3D sphere, and noise turbulence pushes along Z. `plane_2d` flips all of those into the XY plane the 2D camera actually sees. The bundled `*_2d.particle` effects (fire, magic sparks, snow, rain) use it.
+- **Sorting** — 2D particles draw in the transparent-sprite pass and sort by the entity's `Z`, exactly like sprites. Raise or lower the emitter's `Z` to put the effect in front of or behind other 2D content.
+- **Scale** — effects are authored in world units, and 2D scenes are pixel-scaled (1 unit ≈ 1 px), so a stock 3D-scale effect will look tiny. Author 2D effects with pixel-sized values (the `*_2d` bundled effects are the reference), or scale the emitter entity up for local-space effects.
+
+In the 2D viewport the emitter's selection/pick box matches its **emitter shape** (not the fixed marker box other spriteless nodes get), so a wide effect like a snow strip can be grabbed and moved anywhere along its span.
+
 ## The Hanabi Effect component
 
 `HanabiEffect` is the component that turns an entity into a particle emitter. Add it from the Inspector (**Add Component → "Hanabi Effect"**) or get it for free by dragging a `.particle` into the scene.

@@ -315,6 +315,11 @@ pub struct NoiseTurbulenceModifier {
     pub octaves: u32,
     /// Frequency multiplier per octave.
     pub lacunarity: f32,
+    /// Constrain the turbulence force to the XY plane (zero Z push). For 2D
+    /// effects, where Z is sprite sort order rather than visible depth. The
+    /// noise field is still sampled in 3D so the drift pattern is unchanged.
+    #[serde(default)]
+    pub planar: bool,
 }
 
 impl Hash for NoiseTurbulenceModifier {
@@ -323,6 +328,7 @@ impl Hash for NoiseTurbulenceModifier {
         self.amplitude.hash(state);
         self.octaves.hash(state);
         self.lacunarity.to_bits().hash(state);
+        self.planar.hash(state);
     }
 }
 
@@ -339,7 +345,14 @@ impl NoiseTurbulenceModifier {
             amplitude,
             octaves,
             lacunarity,
+            planar: false,
         }
+    }
+
+    /// Constrain the turbulence force to the XY plane (for 2D effects).
+    pub fn with_planar(mut self, planar: bool) -> Self {
+        self.planar = planar;
+        self
     }
 }
 
@@ -415,6 +428,9 @@ r##"    {{
     amp *= 0.5;
 "##
                     );
+                }
+                if self.planar {
+                    body += "    curl_total.z = 0.0;\n";
                 }
                 body += &format!("    {attr_vel} += curl_total * {amplitude} * sim_params.delta_time;\n");
 

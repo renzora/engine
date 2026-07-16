@@ -1,0 +1,45 @@
+(
+    // 2D pixel-scale variant of weather_snow (spatial values ×32, noise
+    // frequency ÷32 so the drift pattern survives the unit change). The 3D
+    // emitter is a flat XZ sheet overhead; in 2D (XY plane, Y up) it becomes
+    // a wide thin strip along X with zero Z depth — place the emitter above
+    // the visible area and the flakes fall down-screen.
+    name: "Snow 2D (px scale)",
+    plane_2d: true,
+    capacity: 4096,
+    spawn_mode: Rate,
+    spawn_rate: 400.0,
+    spawn_count: 1,
+    lifetime_min: 6.0,
+    lifetime_max: 9.0,
+    emit_shape: Box(half_extents: (224.0, 3.2, 0.0)),
+    velocity_mode: Directional,
+    // Drag reshapes everything toward accel/drag terminal velocity within
+    // ~2s (1/drag), so the initial fall speed barely matters — what the eye
+    // sees is terminal fall (30/0.5 = 60 px/s down) vs terminal noise drift
+    // (12/0.5 = 24 px/s any direction). Fall must clearly win or the flakes
+    // stall mid-screen and the turbulence reads as gravity flipping.
+    velocity_magnitude: 60.0,
+    velocity_spread: 0.1,
+    velocity_direction: (0.0, -1.0, 0.0),
+    acceleration: (0.0, -30.0, 0.0),
+    linear_drag: 0.5,
+    radial_acceleration: 0.0,
+    tangent_acceleration: 0.0,
+    size_start: 2.24,
+    size_end: 2.24,
+    size_curve: [],
+    roundness: 1.0,
+    noise_frequency: 0.009375,
+    noise_amplitude: 12.0,
+    noise_octaves: 2,
+    noise_lacunarity: 2.0,
+    color_gradient: [ (position: 0.0, color: (1.0, 1.0, 1.0, 0.0)), (position: 0.1, color: (1.0, 1.0, 1.0, 0.9)), (position: 0.9, color: (0.95, 0.97, 1.0, 0.9)), (position: 1.0, color: (0.95, 0.97, 1.0, 0.0)) ],
+    blend_mode: Blend,
+    texture_path: None,
+    billboard_mode: FaceCamera,
+    render_layer: 0,
+    simulation_space: World,
+    simulation_condition: Always,
+    variables: {},
+)

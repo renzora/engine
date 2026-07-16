@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use crate::builder::build_complete_effect;
 use crate::data::*;
+use renzora::core::PickBounds2d;
 use renzora::CurrentProject;
 
 /// A built-in soft radial sprite bound to every particle effect, so quads render
@@ -217,6 +218,102 @@ pub fn flicker_particle_lights(
     }
 }
 
+/// Editor pick box for the (spriteless) emitter entity, estimating where the
+/// particles actually GO — emitter shape extents plus the travel envelope
+/// (velocity reach, acceleration displacement, attractor positions) over the
+/// particle lifetime. Without this, 2D picking falls back to a small fixed
+/// marker box at the origin: unusable for a snow strip hundreds of pixels
+/// wide, and mismatched for a sparks ring whose particles fly well beyond a
+/// tiny emitter circle. The envelope is directional (min/max per axis), so a
+/// fall-only effect gets a box below the emitter, not a symmetric balloon.
+fn emitter_pick_bounds(def: &HanabiEffectDefinition) -> PickBounds2d {
+    // Matches picker_2d::NODE_MARKER_HALF so tiny emitters keep the standard
+    // grab size instead of degenerating to an unclickable sliver.
+    const MIN_HALF: f32 = 20.0;
+
+    // Emitter shape extents, symmetric around the origin.
+    let emit = match &def.emit_shape {
+        HanabiEmitShape::Point => Vec2::ZERO,
+        HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } => {
+            Vec2::splat(*radius)
+        }
+        HanabiEmitShape::Cone {
+            base_radius,
+            top_radius,
+            height,
+            ..
+        } => Vec2::new(base_radius.max(*top_radius), height * 0.5),
+        HanabiEmitShape::Rect { half_extents, .. } => Vec2::from_array(*half_extents),
+        HanabiEmitShape::Box { half_extents } => Vec2::new(half_extents[0], half_extents[1]),
+    };
+    let mut min = -emit;
+    let mut max = emit;
+
+    let t = def.lifetime_max.max(def.lifetime_min).max(0.0);
+    let drag = def.linear_drag.max(0.0);
+    // Distance an initial speed v covers before dying: drag decays it with
+    // time constant 1/drag (total distance v/drag); undragged it just runs.
+    let reach = |v: f32| {
+        let v = v.abs();
+        if drag > 0.01 {
+            (v / drag).min(v * t)
+        } else {
+            v * t
+        }
+    };
+
+    let speed = if def.velocity_speed_max > 0.0 {
+        def.velocity_speed_min.abs().max(def.velocity_speed_max.abs())
+    } else {
+        def.velocity_magnitude.abs()
+    };
+    match def.velocity_mode {
+        VelocityMode::Directional => {
+            let dir = Vec3::from_array(def.velocity_direction)
+                .truncate()
+                .normalize_or_zero();
+            let d = dir * reach(speed);
+            min = min.min(min + d);
+            max = max.max(max + d);
+            // Spread fans out around the main direction on both axes.
+            let s = reach(speed) * def.velocity_spread.abs();
+            min -= Vec2::splat(s);
+            max += Vec2::splat(s);
+        }
+        // In-plane (or spherical) bursts go everywhere equally.
+        VelocityMode::Radial | VelocityMode::Random | VelocityMode::Tangent => {
+            let d = reach(speed);
+            min -= Vec2::splat(d);
+            max += Vec2::splat(d);
+        }
+    }
+
+    // Constant acceleration: dragged particles settle at terminal velocity
+    // (a/drag) and coast for the lifetime; undragged ones integrate a*t²/2.
+    let accel = Vec3::from_array(def.acceleration).truncate();
+    let disp = if drag > 0.01 {
+        accel / drag * t
+    } else {
+        accel * (0.5 * t * t)
+    };
+    min = min.min(min + disp);
+    max = max.max(max + disp);
+
+    // Attractors gather particles around their own positions.
+    for att in &def.attractors {
+        let p = Vec3::from_array(att.position).truncate();
+        let r = att.radius.abs() + att.influence_dist.abs();
+        min = min.min(p - Vec2::splat(r));
+        max = max.max(p + Vec2::splat(r));
+    }
+
+    let half = ((max - min) * 0.5).max(Vec2::splat(MIN_HALF));
+    PickBounds2d {
+        half_extents: half,
+        offset: (max + min) * 0.5,
+    }
+}
+
 /// Sync HanabiEffect with bevy_hanabi ParticleEffect.
 pub fn sync_hanabi_effects(
     mut commands: Commands,
@@ -230,6 +327,11 @@ pub fn sync_hanabi_effects(
     for (entity, effect_data, maybe_synced) in query.iter() {
         let definition = resolve_effect_definition(&effect_data.source, project.as_deref());
         let effect_asset = build_complete_effect(&definition);
+
+        // Re-inserted on every sync so an emitter-shape edit resizes the box.
+        commands
+            .entity(entity)
+            .try_insert(emitter_pick_bounds(&definition));
 
         if let Some(synced) = maybe_synced {
             if let Some(mut existing) = effects.get_mut(&synced.effect_handle) {
@@ -282,6 +384,7 @@ pub fn rehydrate_hanabi_effects(
             ParticleEffect::new(effect_handle.clone()),
             EffectMaterial { images: effect_images(&definition, &soft, &noise) },
             HanabiEffectSynced { effect_handle },
+            emitter_pick_bounds(&definition),
         ));
         if let Some(l) = &definition.light {
             let phase = ((entity.to_bits() % 997) as f32) * 0.618_034;

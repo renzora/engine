@@ -1,0 +1,52 @@
+(
+    // 2D test variant of drakkar_fire: every spatial value ×32 so
+    // sizes/velocities read in pixels (2D scenes are ~1 unit = 1 px), and
+    // plane_2d so the circle emitter + radial burst live in the XY plane
+    // facing the 2D camera instead of the 3D ground plane.
+    name: "Fire 2D (px scale)",
+    plane_2d: true,
+    capacity: 1024,
+    spawn_mode: Rate,
+    spawn_rate: 32.0,
+    spawn_count: 1,
+    lifetime_min: 1.2,
+    lifetime_max: 1.8,
+    emit_shape: Circle(radius: 12.0, dimension: Volume),
+    velocity_mode: Radial,
+    velocity_magnitude: 64.0,
+    velocity_spread: 0.0,
+    velocity_direction: (0.0, 1.0, 0.0),
+    acceleration: (0.0, 64.0, 0.0),
+    linear_drag: 3.0,
+    radial_acceleration: 0.0,
+    tangent_acceleration: 0.0,
+    size_start: 2.0,
+    size_end: 4.0,
+    size_curve: [
+        (time: 0.0,   value: 2.0),
+        (time: 0.05,  value: 1.2),
+        (time: 0.15,  value: 0.288),
+        (time: 0.18,  value: 0.8),
+        (time: 0.22,  value: 2.0),
+        (time: 0.375, value: 3.488),
+        (time: 1.0,   value: 4.0),
+    ],
+    // HDR colours baked in from the drakkar source (values > 1.0 drive bloom).
+    color_gradient: [
+        (position: 0.0,        color: (10.0, 9.490196, 5.019608, 1.0)),
+        (position: 0.01,       color: (10.0, 4.0, 0.0, 1.0)),
+        (position: 0.05,       color: (10.0, 0.0, 0.0, 1.0)),
+        (position: 0.1,        color: (10.0, 0.0, 0.0, 1.0)),
+        (position: 0.13,       color: (10.0, 0.0, 0.0, 0.8)),
+        (position: 0.18,       color: (0.1, 0.1, 0.1, 0.3)),
+        (position: 0.6,        color: (0.0, 0.0, 0.0, 0.0)),
+        (position: 1.0,        color: (0.0, 0.0, 0.0, 0.0)),
+    ],
+    blend_mode: Blend,
+    texture_path: None,
+    billboard_mode: FaceCamera,
+    render_layer: 0,
+    simulation_space: World,
+    simulation_condition: WhenVisible,
+    variables: {},
+)
