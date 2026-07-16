@@ -143,11 +143,7 @@ impl<T: Pod + ShaderSize> AlignedBufferVec<T> {
         // we wouldn't be calling the xxx_bindings() helpers, we'd have earlied out
         // before.
         let buffer = self.buffer()?;
-        Some(BindingResource::Buffer(BufferBinding {
-            buffer,
-            offset: 0,
-            size: None, // entire buffer
-        }))
+        Some(buffer.as_entire_binding())
     }
 
     /// Get a binding for a subset of the elements of the buffer.
@@ -201,6 +197,7 @@ impl<T: Pod + ShaderSize> AlignedBufferVec<T> {
     ///
     /// [`aligned_size()`]: crate::AlignedBufferVec::aligned_size
     #[inline]
+    #[must_use]
     pub fn dynamic_offset(&self, index: usize) -> u32 {
         let offset = self.aligned_size * index;
         assert!(offset <= u32::MAX as usize);
@@ -208,6 +205,7 @@ impl<T: Pod + ShaderSize> AlignedBufferVec<T> {
     }
 
     #[inline]
+    #[must_use]
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
@@ -223,6 +221,19 @@ impl<T: Pod + ShaderSize> AlignedBufferVec<T> {
         let index = self.values.len();
         self.values.push(value);
         index
+    }
+
+    #[inline]
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn last(&self) -> Option<&T> {
+        self.values.last()
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn last_mut(&mut self) -> Option<&mut T> {
+        self.values.last_mut()
     }
 
     /// Reserve some capacity into the buffer.
@@ -250,11 +261,12 @@ impl<T: Pod + ShaderSize> AlignedBufferVec<T> {
             self.capacity = capacity;
             if let Some(old_buffer) = self.buffer.take() {
                 trace!(
-                    "reserve['{}']: destroying old buffer #{:?}",
+                    "reserve['{}']: forgetting old buffer #{:?}",
                     self.safe_label(),
                     old_buffer.id()
                 );
-                old_buffer.destroy();
+                // Do not explicitly destroy the old buffer here; let the
+                // backend drop it safely.
             }
             let new_buffer = device.create_buffer(&BufferDescriptor {
                 label: self.label.as_ref().map(|s| &s[..]),
@@ -473,6 +485,7 @@ impl HybridAlignedBufferVec {
     /// This represents the size of the CPU data uploaded to GPU. Pending a GPU
     /// buffer re-allocation or re-upload, this size might differ from the
     /// actual GPU buffer size. But they're eventually consistent.
+    #[allow(dead_code)]
     #[inline]
     pub fn len(&self) -> usize {
         self.values.len()
@@ -815,8 +828,10 @@ impl HybridAlignedBufferVec {
                 capacity,
             );
             self.capacity = capacity;
-            if let Some(buffer) = self.buffer.take() {
-                buffer.destroy();
+            if let Some(old_buffer) = self.buffer.take() {
+                trace!("reserve: forgetting old buffer #{:?}", old_buffer.id());
+                // Do not explicitly destroy the old buffer here; let the
+                // backend drop it safely.
             }
             self.buffer = Some(device.create_buffer(&BufferDescriptor {
                 label: self.label.as_ref().map(|s| &s[..]),

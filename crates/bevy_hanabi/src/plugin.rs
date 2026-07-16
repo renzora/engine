@@ -1,9 +1,9 @@
+use std::borrow::Cow;
+
 #[cfg(feature = "2d")]
 use bevy::core_pipeline::core_2d::Transparent2d;
 #[cfg(feature = "3d")]
 use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
-// Bevy 0.19: the global render-schedule system the particle sim orders before.
-use bevy::core_pipeline::schedule::camera_driver;
 use bevy::{
     asset::uuid_handle,
     camera::visibility::VisibilitySystems,
@@ -13,9 +13,7 @@ use bevy::{
         render_asset::prepare_assets,
         render_phase::DrawFunctions,
         render_resource::{SpecializedComputePipelines, SpecializedRenderPipelines},
-        // Bevy 0.19: `RenderGraph`/`RenderGraphSystems` are now the global
-        // render schedule + its system sets (not the old graph resource).
-        renderer::{RenderAdapterInfo, RenderDevice, RenderGraph, RenderGraphSystems},
+        renderer::{RenderAdapterInfo, RenderDevice},
         texture::GpuImage,
         view::prepare_view_uniforms,
         Render, RenderApp, RenderSystems,
@@ -23,12 +21,12 @@ use bevy::{
     time::{time_system, TimeSystems},
 };
 
-#[cfg(feature = "serde")]
 use crate::asset::EffectAssetLoader;
 use crate::{
     asset::{DefaultMesh, EffectAsset},
     compile_effects,
     properties::EffectProperties,
+    register_modifiers,
     render::{
         allocate_effects, allocate_events, allocate_metadata, allocate_parent_child_infos,
         allocate_properties, batch_effects, clear_previous_frame_resizes,
@@ -38,14 +36,14 @@ use crate::{
         prepare_batch_inputs, prepare_bind_groups, prepare_effect_metadata, prepare_gpu_resources,
         prepare_indirect_pipeline, prepare_init_update_pipelines, prepare_property_buffers,
         propagate_ready_state, queue_effects, queue_init_fill_dispatch_ops,
-        queue_init_indirect_workgroup_update, report_ready_state, start_stop_gpu_debug_capture,
-        update_mesh_locations, DebugSettings, DispatchIndirectPipeline, DrawEffects,
-        EffectAssetEvents, EffectBindGroups, EffectCache, EffectsMeta, EventCache,
-        GpuBufferOperations, GpuEffectMetadata, GpuSpawnerParams, InitFillDispatchQueue,
-        ParticlesInitPipeline, ParticlesRenderPipeline, ParticlesUpdatePipeline,
-        PropertyBindGroups, PropertyCache, RenderDebugSettings, ShaderCache, SimParams,
-        SortBindGroups, SortedEffectBatches, StorageType as _, UtilsPipeline,
-        vfx_simulate,
+        queue_init_indirect_workgroup_update, queue_sort_fill_dispatch_ops, report_ready_state,
+        start_stop_gpu_debug_capture, update_mesh_locations, DebugSettings,
+        DispatchIndirectPipeline, DrawEffects, EffectAssetEvents, EffectBindGroups, EffectCache,
+        EffectsMeta, EventCache, GpuBatchInfo, GpuBufferOperations, GpuEffectMetadata,
+        GpuSpawnerParams, HanabiRenderPlugin, InitFillDispatchQueue, ParticlesInitPipeline,
+        ParticlesRenderPipeline, ParticlesUpdatePipeline, PrefixSumPipeline, PropertyBindGroups,
+        PropertyCache, RenderDebugSettings, ShaderCache, SimParams, SortBindGroups,
+        SortFillDispatchQueue, SortedEffectBatches, StorageType as _, UtilsPipeline,
     },
     spawn::{self, Random},
     tick_spawners,
@@ -53,6 +51,10 @@ use crate::{
     update_properties_from_asset, EffectSimulation, EffectVisibilityClass, ParticleEffect,
     SpawnerSettings, ToWgslString,
 };
+
+/// Source code for the `vfx_sort` compute shader.
+pub(crate) const VFX_SORT_WGSL: Cow<'static, str> =
+    Cow::Borrowed(include_str!("render/vfx_sort.wgsl"));
 
 /// Labels for the Hanabi systems.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, SystemSet)]
@@ -105,12 +107,6 @@ pub enum EffectSystems {
     PrepareBindGroups,
 }
 
-// Bevy 0.19 removed the render graph + sub-graphs, so the old `main_graph` /
-// `simulate_graph` render-graph label modules (HanabiDriverNode /
-// HanabiSimulateGraph / HanabiSimulateNode) are gone. The simulation now runs as
-// the `vfx_simulate` render system in the global `RenderGraph` schedule — see
-// the `add_systems(RenderGraph, …)` call in `build()`.
-
 const HANABI_COMMON_TEMPLATE_HANDLE: Handle<Shader> =
     uuid_handle!("626E7AD3-4E54-487E-B796-9A90E34CC1EC");
 
@@ -128,6 +124,8 @@ impl HanabiPlugin {
     pub(crate) fn make_common_shader(min_storage_buffer_offset_alignment: u32) -> Shader {
         let spawner_padding_code =
             GpuSpawnerParams::padding_code(min_storage_buffer_offset_alignment);
+        let batch_info_padding_code =
+            GpuBatchInfo::padding_code(min_storage_buffer_offset_alignment);
         let effect_metadata_padding_code =
             GpuEffectMetadata::padding_code(min_storage_buffer_offset_alignment);
         let render_effect_indirect_size =
@@ -136,6 +134,7 @@ impl HanabiPlugin {
             (render_effect_indirect_size.get() as u32).to_wgsl_string();
         let common_code = include_str!("render/vfx_common.wgsl")
             .replace("{{SPAWNER_PADDING}}", &spawner_padding_code)
+            .replace("{{BATCH_INFO_PADDING}}", &batch_info_padding_code)
             .replace("{{EFFECT_METADATA_PADDING}}", &effect_metadata_padding_code)
             .replace("{{EFFECT_METADATA_STRIDE}}", &effect_metadata_stride_code);
         Shader::from_wgsl(
@@ -182,13 +181,36 @@ impl HanabiPlugin {
                 .to_string_lossy(),
         )
     }
+
+    /// Create the `vfx_prefix_sum.wgsl` shader.
+    ///
+    /// This creates a new [`Shader`] from the `vfx_prefix_sum.wgsl` template
+    /// file.
+    pub(crate) fn make_prefix_sum_shader() -> Shader {
+        let prefix_sum_code = include_str!("render/vfx_prefix_sum.wgsl");
+        Shader::from_wgsl(
+            prefix_sum_code,
+            std::path::Path::new(file!())
+                .parent()
+                .unwrap()
+                .join("render/vfx_prefix_sum.wgsl")
+                .to_string_lossy(),
+        )
+    }
 }
 
 impl Plugin for HanabiPlugin {
     fn build(&self, app: &mut App) {
+        // Register modifiers
+        {
+            let type_registry = app.world().resource::<AppTypeRegistry>();
+            register_modifiers(type_registry);
+        }
+
         // Register asset
         app.init_asset::<EffectAsset>()
             .insert_resource(Random(spawn::new_rng()))
+            .add_plugins(HanabiRenderPlugin)
             .add_plugins(ExtractComponentPlugin::<EffectVisibilityClass>::default())
             .init_resource::<DefaultMesh>()
             .init_resource::<ShaderCache>()
@@ -223,7 +245,6 @@ impl Plugin for HanabiPlugin {
                 ),
             );
 
-        #[cfg(feature = "serde")]
         app.init_asset_loader::<EffectAssetLoader>();
 
         // Register types with reflection
@@ -274,6 +295,7 @@ impl Plugin for HanabiPlugin {
         let (
             indirect_shader_noevent,
             indirect_shader_events,
+            prefix_sum_shader,
             sort_fill_shader,
             sort_shader,
             sort_copy_shader,
@@ -281,6 +303,7 @@ impl Plugin for HanabiPlugin {
             let align = render_device.limits().min_storage_buffer_offset_alignment;
             let indirect_shader_noevent = HanabiPlugin::make_indirect_shader(align, false);
             let indirect_shader_events = HanabiPlugin::make_indirect_shader(align, true);
+            let prefix_sum_shader = HanabiPlugin::make_prefix_sum_shader();
             let sort_fill_shader = Shader::from_wgsl(
                 include_str!("render/vfx_sort_fill.wgsl"),
                 std::path::Path::new(file!())
@@ -290,7 +313,7 @@ impl Plugin for HanabiPlugin {
                     .to_string_lossy(),
             );
             let sort_shader = Shader::from_wgsl(
-                include_str!("render/vfx_sort.wgsl"),
+                VFX_SORT_WGSL,
                 std::path::Path::new(file!())
                     .parent()
                     .unwrap()
@@ -309,6 +332,7 @@ impl Plugin for HanabiPlugin {
             let mut assets = app.world_mut().resource_mut::<Assets<Shader>>();
             let indirect_shader_noevent = assets.add(indirect_shader_noevent);
             let indirect_shader_events = assets.add(indirect_shader_events);
+            let prefix_sum_shader = assets.add(prefix_sum_shader);
             let sort_fill_shader = assets.add(sort_fill_shader);
             let sort_shader = assets.add(sort_shader);
             let sort_copy_shader = assets.add(sort_copy_shader);
@@ -316,6 +340,7 @@ impl Plugin for HanabiPlugin {
             (
                 indirect_shader_noevent,
                 indirect_shader_events,
+                prefix_sum_shader,
                 sort_fill_shader,
                 sort_shader,
                 sort_copy_shader,
@@ -326,10 +351,11 @@ impl Plugin for HanabiPlugin {
             render_device.clone(),
             indirect_shader_noevent,
             indirect_shader_events,
+            prefix_sum_shader,
         );
 
         let effect_cache = EffectCache::new(render_device.clone());
-        let property_cache = PropertyCache::new(render_device.clone());
+        let property_cache = PropertyCache::new(&render_device);
         let event_cache = EventCache::new(render_device);
 
         let render_app = app.sub_app_mut(RenderApp);
@@ -350,9 +376,11 @@ impl Plugin for HanabiPlugin {
             .init_resource::<EffectBindGroups>()
             .init_resource::<PropertyBindGroups>()
             .init_resource::<InitFillDispatchQueue>()
+            .init_resource::<SortFillDispatchQueue>()
             .insert_resource(sort_bind_groups)
             .init_resource::<UtilsPipeline>()
             .init_resource::<GpuBufferOperations>()
+            .init_resource::<PrefixSumPipeline>()
             .init_resource::<DispatchIndirectPipeline>()
             .init_resource::<SpecializedComputePipelines<DispatchIndirectPipeline>>()
             .init_resource::<ParticlesInitPipeline>()
@@ -484,7 +512,21 @@ impl Plugin for HanabiPlugin {
                         .after(fixup_parents)
                         // Need the indirect dispatch args index for GPU event based init pass
                         .after(allocate_events)
+                        // Need the properties block offset in GPU slab
+                        .after(allocate_properties)
                         // This may invalidate some bind groups when resizing the metadata buffer
+                        .before(prepare_bind_groups),
+                    // Queue the dispatch ops to fill the indirect dispatch args of the ribbon
+                    // particle sort pass. Deferred from batch_effects() so it runs after the
+                    // effect metadata buffer has been (re-)allocated to this frame's size.
+                    queue_sort_fill_dispatch_ops
+                        .in_set(EffectSystems::PrepareEffectGpuResources)
+                        // Need the metadata buffer (re-)allocated so the captured handle and
+                        // dynamic offsets are correct and in-bounds
+                        .after(prepare_effect_metadata)
+                        // Must submit into the shared GpuBufferOperations before
+                        // queue_init_fill_dispatch_ops uploads its args buffer (end_frame)
+                        .before(queue_init_fill_dispatch_ops)
                         .before(prepare_bind_groups),
                     queue_init_fill_dispatch_ops
                         .in_set(EffectSystems::PrepareEffectGpuResources)
@@ -548,20 +590,5 @@ impl Plugin for HanabiPlugin {
                 .write()
                 .add(draw_particles);
         }
-
-        // Run the GPU particle simulation once per frame. Bevy 0.19 replaced the
-        // render graph with schedules: `vfx_simulate` is a global render system
-        // in the top-level `RenderGraph` schedule (the simulation is
-        // view-independent, so it does NOT belong in the per-view `Core3d`
-        // schedule). It must run in `RenderGraphSystems::Render` (the set whose
-        // command buffers get submitted) and `.before(camera_driver)` so each
-        // view renders just-simulated particles — the same ordering the old
-        // driver-node → CameraDriver edge gave.
-        render_app.add_systems(
-            RenderGraph,
-            vfx_simulate
-                .in_set(RenderGraphSystems::Render)
-                .before(camera_driver),
-        );
     }
 }

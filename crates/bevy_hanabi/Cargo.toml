@@ -1,15 +1,14 @@
 [package]
 name = "bevy_hanabi"
-version = "0.18.0"
+version = "0.19.0"
 edition = "2021"
 publish = false
 
 [features]
 2d = []
 3d = []
-default = ["2d", "3d", "serde", "gpu_tests"]
+default = ["2d", "3d", "gpu_tests"]
 gpu_tests = []
-serde = ["typetag"]
 trace = []
 
 [lib]
@@ -25,12 +24,11 @@ fixedbitset = "0.5"
 # composed `naga::Module` was a different type than wgpu 29's `ShaderSource::Naga`.
 naga = { version = "29", features = ["wgsl-in"] }
 naga_oil = { version = "0.22", default-features = false, features = ["test_shader"] }
-rand = "0.9"
-rand_pcg = "0.9"
-ron = "0.8"
+rand = "0.10"
+rand_pcg = "0.10"
+ron = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2"
-typetag = { version = "0.2", optional = true }
 
 [dev-dependencies]
 # Test code (`#[cfg(test)]` modules in `render/*` and `test_utils`) blocks on

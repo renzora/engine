@@ -90,7 +90,6 @@ impl ParticleTextureModifier {
 
 impl_mod_render!(ParticleTextureModifier, &[]); // TODO - should require some UV maybe?
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for ParticleTextureModifier {
     fn apply_render(
         &self,
@@ -175,7 +174,6 @@ impl ErosionModifier {
 
 impl_mod_render!(ErosionModifier, &[]);
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for ErosionModifier {
     fn apply_render(
         &self,
@@ -314,7 +312,6 @@ impl SetColorModifier {
 
 impl_mod_render!(SetColorModifier, &[]);
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for SetColorModifier {
     fn apply_render(
         &self,
@@ -376,7 +373,6 @@ impl_mod_render!(
     &[Attribute::AGE, Attribute::LIFETIME]
 );
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for ColorOverLifetimeModifier {
     fn apply_render(
         &self,
@@ -448,7 +444,6 @@ pub struct SetSizeModifier {
 
 impl_mod_render!(SetSizeModifier, &[]);
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for SetSizeModifier {
     fn apply_render(
         &self,
@@ -491,7 +486,6 @@ impl_mod_render!(
     &[Attribute::AGE, Attribute::LIFETIME]
 );
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for SizeOverLifetimeModifier {
     fn apply_render(
         &self,
@@ -653,7 +647,6 @@ impl OrientModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl Modifier for OrientModifier {
     fn context(&self) -> ModifierContext {
         ModifierContext::Render
@@ -687,7 +680,6 @@ impl Modifier for OrientModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for OrientModifier {
     fn apply_render(
         &self,
@@ -856,7 +848,6 @@ impl Default for FlipbookModifier {
 
 impl_mod_render!(FlipbookModifier, &[Attribute::SPRITE_INDEX]);
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for FlipbookModifier {
     fn apply_render(
         &self,
@@ -904,7 +895,6 @@ impl_mod_render!(
     &[Attribute::POSITION, Attribute::SIZE]
 );
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for ScreenSpaceSizeModifier {
     fn apply_render(
         &self,
@@ -966,7 +956,6 @@ pub struct RoundModifier {
 
 impl_mod_render!(RoundModifier, &[]);
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl RenderModifier for RoundModifier {
     fn apply_render(
         &self,

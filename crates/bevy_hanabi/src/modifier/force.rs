@@ -159,7 +159,6 @@ impl ConformToSphereModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl Modifier for ConformToSphereModifier {
     fn context(&self) -> ModifierContext {
         ModifierContext::Update
@@ -269,7 +268,6 @@ impl LinearDragModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl Modifier for LinearDragModifier {
     fn context(&self) -> ModifierContext {
         ModifierContext::Update
@@ -345,7 +343,6 @@ impl NoiseTurbulenceModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl Modifier for NoiseTurbulenceModifier {
     fn context(&self) -> ModifierContext {
         ModifierContext::Update
@@ -471,7 +468,6 @@ impl OrbitModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl Modifier for OrbitModifier {
     fn context(&self) -> ModifierContext {
         ModifierContext::Update
@@ -565,7 +561,6 @@ impl VelocityLimitModifier {
     }
 }
 
-#[cfg_attr(feature = "serde", typetag::serde)]
 impl Modifier for VelocityLimitModifier {
     fn context(&self) -> ModifierContext {
         ModifierContext::Update

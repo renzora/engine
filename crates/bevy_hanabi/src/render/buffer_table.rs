@@ -679,8 +679,6 @@ impl<T: Pod + ShaderSize> BufferTable<T> {
                     let unaligned_range = base_size..(base_size + extra_size);
                     let (range, byte_offset) = round_range_start_down(unaligned_range, 8);
 
-                    // wgpu 29: `BufferViewMut` is write-only (no `&mut [u8]`); own
-                    // it `mut` and write portions via `.slice(range).copy_from_slice`.
                     let mut dst_slice = new_buffer.slice(range).get_mapped_range_mut();
 
                     let base_offset = byte_offset as usize;
