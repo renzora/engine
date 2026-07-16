@@ -1,9 +1,26 @@
 //! Interactive resize + move handles for the selected collider when
 //! `ColliderEditMode.active` is true.
 //!
-//! Handles are real `Mesh3d` sphere entities (spawned fresh each frame, like
-//! the skeleton gizmo) so they pick via `MeshRayCast` and read as solid in
-//! the viewport.
+//! Handles are real `Mesh3d` entities (spawned fresh each frame, like the
+//! skeleton gizmo) so they pick via `MeshRayCast` and read as solid in the
+//! viewport. The visual vocabulary is deliberately kept legible rather than a
+//! cloud of same-shape balls:
+//!
+//! - **Resize** handles are small white cube grips sitting on each face/extent
+//!   of the shape. Each grip rides a thin green **axis spoke** running out from
+//!   the centre, so the set reads as a coordinate manipulator with grab points
+//!   on its axes rather than a cloud of disconnected dots. The spokes stay thin
+//!   so they never occlude the mesh being edited.
+//! - **Offset** handles are axis-coloured cubes (red X, green Y, blue Z) sitting
+//!   out past the shape on a matching thin spoke — the same grip shape as resize,
+//!   distinguished by colour rather than by being a different primitive.
+//! - **Body move** is a single small neutral sphere at the centre for
+//!   free screen-plane dragging.
+//! - Whatever is hovered/dragged turns yellow.
+//!
+//! Every piece of a handle carries the same [`ColliderHandleMesh`] marker, so a
+//! multi-part arrow (shaft + cone) still resolves to one logical handle when
+//! picked — the pick/drag logic keys purely off that marker.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::input::mouse::MouseMotion;
@@ -17,7 +34,10 @@ use renzora_physics::{ColliderEditMode, CollisionShapeData, CollisionShapeType};
 
 use crate::GizmoMaterial;
 
-const HANDLE_SCREEN_SIZE: f32 = 12.0;
+/// Reference on-screen size (px) of a resize cube / centre handle. Arrow
+/// dimensions are derived from this so the whole gizmo stays a constant size in
+/// the viewport regardless of camera distance.
+const HANDLE_SCREEN_SIZE: f32 = 11.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HandleKind {
@@ -65,15 +85,23 @@ pub struct ColliderHandleMesh {
 
 #[derive(Resource)]
 pub struct ColliderHandleAssets {
-    pub mesh: Handle<Mesh>,
+    /// Unit sphere (radius 1) — the centre body-move handle.
+    pub sphere: Handle<Mesh>,
+    /// Unit cube (1×1×1, origin-centred) — the resize grips.
+    pub cube: Handle<Mesh>,
+    /// Unit cylinder (radius 1, height 1, along +Y) — the thin axis spokes that
+    /// carry both the resize grips and the offset cubes (same mesh, different
+    /// scale).
+    pub shaft: Handle<Mesh>,
+    /// One uniform colour for every resize grip cube.
+    pub mat_face: Handle<GizmoMaterial>,
+    /// Green axis spokes tying the resize grips to the centre.
+    pub mat_spoke: Handle<GizmoMaterial>,
     pub mat_x: Handle<GizmoMaterial>,
     pub mat_y: Handle<GizmoMaterial>,
     pub mat_z: Handle<GizmoMaterial>,
-    pub mat_resize_x: Handle<GizmoMaterial>,
-    pub mat_resize_y: Handle<GizmoMaterial>,
-    pub mat_resize_z: Handle<GizmoMaterial>,
-    pub mat_hover: Handle<GizmoMaterial>,
     pub mat_body: Handle<GizmoMaterial>,
+    pub mat_hover: Handle<GizmoMaterial>,
 }
 
 #[derive(Resource, Default)]
@@ -176,68 +204,6 @@ fn handles_for(shape_type: CollisionShapeType) -> Vec<HandleKind> {
     out
 }
 
-fn material_for(
-    handle: HandleKind,
-    hovered: bool,
-    a: &ColliderHandleAssets,
-) -> Handle<GizmoMaterial> {
-    if hovered {
-        return a.mat_hover.clone();
-    }
-    match handle {
-        HandleKind::BodyMove => a.mat_body.clone(),
-        HandleKind::Offset(LinearAxis::X) => a.mat_x.clone(),
-        HandleKind::Offset(LinearAxis::Y) => a.mat_y.clone(),
-        HandleKind::Offset(LinearAxis::Z) => a.mat_z.clone(),
-        HandleKind::Resize(ResizeAxis::BoxX(_)) | HandleKind::Resize(ResizeAxis::Radius) => {
-            a.mat_resize_x.clone()
-        }
-        HandleKind::Resize(ResizeAxis::BoxY(_)) | HandleKind::Resize(ResizeAxis::Height(_)) => {
-            a.mat_resize_y.clone()
-        }
-        HandleKind::Resize(ResizeAxis::BoxZ(_)) => a.mat_resize_z.clone(),
-    }
-}
-
-fn make_uv_sphere(radius: f32, lat: u32, lon: u32) -> Mesh {
-    use bevy::asset::RenderAssetUsages;
-    use bevy::mesh::{Indices, PrimitiveTopology};
-    let mut positions = Vec::with_capacity(((lat + 1) * (lon + 1)) as usize);
-    let mut normals = Vec::with_capacity(positions.capacity());
-    let mut uvs = Vec::with_capacity(positions.capacity());
-    for i in 0..=lat {
-        let v = i as f32 / lat as f32;
-        let phi = std::f32::consts::PI * v;
-        for j in 0..=lon {
-            let u = j as f32 / lon as f32;
-            let theta = std::f32::consts::TAU * u;
-            let x = phi.sin() * theta.cos();
-            let y = phi.cos();
-            let z = phi.sin() * theta.sin();
-            positions.push([x * radius, y * radius, z * radius]);
-            normals.push([x, y, z]);
-            uvs.push([u, v]);
-        }
-    }
-    let mut indices = Vec::new();
-    for i in 0..lat {
-        for j in 0..lon {
-            let a = i * (lon + 1) + j;
-            let b = a + lon + 1;
-            indices.extend_from_slice(&[a, b, a + 1, b, b + 1, a + 1]);
-        }
-    }
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
-    );
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_indices(Indices::U32(indices));
-    mesh
-}
-
 fn ensure_assets(
     commands: &mut Commands,
     assets: Option<&ColliderHandleAssets>,
@@ -254,15 +220,19 @@ fn ensure_assets(
         })
     };
     commands.insert_resource(ColliderHandleAssets {
-        mesh: meshes.add(make_uv_sphere(1.0, 10, 14)),
-        mat_x: mk(materials, 1.0, 0.25, 0.25),
-        mat_y: mk(materials, 0.3, 0.95, 0.3),
-        mat_z: mk(materials, 0.25, 0.45, 1.0),
-        mat_resize_x: mk(materials, 1.0, 0.55, 0.55),
-        mat_resize_y: mk(materials, 0.55, 1.0, 0.55),
-        mat_resize_z: mk(materials, 0.55, 0.7, 1.0),
+        sphere: meshes.add(Sphere::new(1.0)),
+        cube: meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
+        shaft: meshes.add(Cylinder::new(1.0, 1.0)),
+        mat_face: mk(materials, 0.92, 0.92, 0.96),
+        // Green spokes echo the collider outline so the axes read as part of the
+        // same gizmo.
+        mat_spoke: mk(materials, 0.30, 0.85, 0.42),
+        // Axis colours match the translate gizmo (x=red, y=green, z=blue).
+        mat_x: mk(materials, 1.0, 0.15, 0.15),
+        mat_y: mk(materials, 0.15, 1.0, 0.15),
+        mat_z: mk(materials, 0.2, 0.3, 1.0),
+        mat_body: mk(materials, 0.82, 0.82, 0.88),
         mat_hover: mk(materials, 1.0, 0.85, 0.15),
-        mat_body: mk(materials, 0.85, 0.85, 0.85),
     });
 }
 
@@ -312,33 +282,138 @@ pub fn spawn_handle_meshes(
 
     let (_scale, rot, trans) = gt.to_scale_rotation_translation();
     let center = trans + rot * shape.offset;
+    let cam = cam_gt.translation();
 
     for handle in handles_for(shape.shape_type) {
-        let (pos, _axis) = handle_world(handle, shape, center, rot);
-        let distance = (cam_gt.translation() - pos).length().max(0.01);
-        let size_pixels = if matches!(handle, HandleKind::BodyMove) {
-            HANDLE_SCREEN_SIZE * 1.6
-        } else {
-            HANDLE_SCREEN_SIZE
-        };
-        let world_size = screen_to_world(size_pixels, distance, projection, vp);
+        let (pos, axis) = handle_world(handle, shape, center, rot);
         let hovered = state.hovered == Some(handle)
             || state.dragging.as_ref().map(|d| d.handle) == Some(handle);
 
-        commands.spawn((
-            Name::new("ColliderHandle"),
-            Mesh3d(assets.mesh.clone()),
-            MeshMaterial3d(material_for(handle, hovered, assets)),
-            Transform {
-                translation: pos,
-                rotation: Quat::IDENTITY,
-                scale: Vec3::splat(world_size * 0.5),
-            },
-            Visibility::default(),
-            RenderLayers::layer(0),
-            HideInHierarchy,
-            ColliderHandleMesh { handle },
-        ));
+        // Size point-scaled handles (arrows, round grips) for a constant on-screen
+        // footprint. Face panels are NOT scaled — they *are* the surface, so they
+        // track the collider's real dimensions.
+        let distance = (cam - pos).length().max(0.01);
+        let unit = screen_to_world(HANDLE_SCREEN_SIZE, distance, projection, vp);
+
+        // Each handle contributes one or more mesh pieces, all tagged with the
+        // same `handle` so a picked shaft/cone still resolves to the arrow.
+        let mut pieces: Vec<(Handle<Mesh>, Handle<GizmoMaterial>, Transform)> =
+            Vec::with_capacity(2);
+
+        match handle {
+            // Resize grip: a small white cube on the face/extent, riding a thin
+            // green spoke from the centre so it reads as a point on an axis
+            // rather than a floating dot. The spoke is kept hair-thin so it never
+            // hides the mesh underneath.
+            HandleKind::Resize(_) => {
+                // Spoke: a thin cylinder from the centre out to the grip. Skip it
+                // if the grip sits on the centre (zero-length) to avoid a NaN
+                // orientation.
+                let span = pos - center;
+                let len = span.length();
+                if len > 1e-4 {
+                    let dir = span / len;
+                    let orient = Quat::from_rotation_arc(Vec3::Y, dir);
+                    pieces.push((
+                        assets.shaft.clone(),
+                        assets.mat_spoke.clone(),
+                        Transform {
+                            translation: center + dir * (len * 0.5),
+                            rotation: orient,
+                            scale: Vec3::new(unit * 0.05, len, unit * 0.05),
+                        },
+                    ));
+                }
+                let mat = if hovered {
+                    assets.mat_hover.clone()
+                } else {
+                    assets.mat_face.clone()
+                };
+                pieces.push((
+                    assets.cube.clone(),
+                    mat,
+                    Transform {
+                        translation: pos,
+                        rotation: rot,
+                        scale: Vec3::splat(unit),
+                    },
+                ));
+            }
+            // Free screen-plane move: a small neutral sphere at the centre.
+            HandleKind::BodyMove => {
+                let mat = if hovered {
+                    assets.mat_hover.clone()
+                } else {
+                    assets.mat_body.clone()
+                };
+                pieces.push((
+                    assets.sphere.clone(),
+                    mat,
+                    Transform {
+                        translation: center,
+                        rotation: Quat::IDENTITY,
+                        scale: Vec3::splat(unit * 0.6),
+                    },
+                ));
+            }
+            // Offset: an axis-coloured cube sitting out past the shape on a thin
+            // spoke of the same colour, so it reads as the same kind of grip as
+            // the resize handles but clearly distinguished by axis colour.
+            HandleKind::Offset(a) => {
+                let dir = axis.normalize_or_zero();
+                if dir == Vec3::ZERO {
+                    continue;
+                }
+                let orient = Quat::from_rotation_arc(Vec3::Y, dir);
+                // Start just clear of the shape surface along this axis; the cube
+                // sits a short stalk further out.
+                let base = center + dir * (max_extent(shape) + unit * 0.6);
+                let stalk = unit * 2.2;
+                let cube_pos = base + dir * stalk;
+                let spoke_mat = match a {
+                    LinearAxis::X => assets.mat_x.clone(),
+                    LinearAxis::Y => assets.mat_y.clone(),
+                    LinearAxis::Z => assets.mat_z.clone(),
+                };
+                let cube_mat = if hovered {
+                    assets.mat_hover.clone()
+                } else {
+                    spoke_mat.clone()
+                };
+
+                pieces.push((
+                    assets.shaft.clone(),
+                    spoke_mat,
+                    Transform {
+                        translation: base + dir * (stalk * 0.5),
+                        rotation: orient,
+                        scale: Vec3::new(unit * 0.05, stalk, unit * 0.05),
+                    },
+                ));
+                pieces.push((
+                    assets.cube.clone(),
+                    cube_mat,
+                    Transform {
+                        translation: cube_pos,
+                        rotation: rot,
+                        scale: Vec3::splat(unit),
+                    },
+                ));
+            }
+        }
+
+        for (mesh, material, transform) in pieces {
+            commands.spawn((
+                Name::new("ColliderHandle"),
+                Mesh3d(mesh),
+                MeshMaterial3d(material),
+                transform,
+                Visibility::default(),
+                RenderLayers::layer(0),
+                HideInHierarchy,
+                ColliderHandleMesh { handle },
+            ));
+        }
     }
 }
 
