@@ -48,7 +48,14 @@ pub struct EmberTextInput {
     /// Measured average advance (logical px per char) of the current value, from
     /// the text node's [`TextLayoutInfo`] — the same probe-style measurement the
     /// code editor uses to map clicks↔columns. `FALLBACK_ADVANCE` until measured.
+    /// Only a fallback: exact positions come from `offsets` once measured.
     pub advance: f32,
+    /// Exact caret x offsets (logical px from the text's left edge), one per
+    /// caret slot `0..=chars`, read from the parley layout's per-cluster
+    /// advances. An average advance is wrong for proportional fonts (the caret
+    /// lands mid-glyph and click rounding skips slots); these are the real
+    /// glyph boundaries. Empty until measured — fall back to `advance`.
+    pub offsets: Vec<f32>,
     /// Anchor (char index) of a drag selection: the selection spans from here to
     /// `caret_index` (either direction). `None`, or anchor == caret, means no
     /// selection. Set on press by the drag-select system; collapsed by caret
@@ -66,6 +73,16 @@ impl EmberTextInput {
             return None;
         }
         Some((a.min(b), a.max(b)))
+    }
+
+    /// Caret x (logical px from the text's left edge) for char boundary `idx`.
+    /// Uses the measured per-glyph `offsets` when they cover the current value,
+    /// else estimates from the average advance (pre-measure / layout lag).
+    pub fn caret_x(&self, idx: usize) -> f32 {
+        self.offsets
+            .get(idx)
+            .copied()
+            .unwrap_or(idx as f32 * self.advance)
     }
 }
 
@@ -97,7 +114,7 @@ pub(crate) fn caret(commands: &mut Commands) -> Entity {
     commands
         .spawn((
             Node {
-                width: Val::Px(2.0),
+                width: Val::Px(1.0),
                 height: Val::Px(14.0),
                 margin: UiRect::left(Val::Px(1.0)),
                 display: Display::None,
@@ -200,7 +217,7 @@ fn build_input(
                 position_type: PositionType::Absolute,
                 left: Val::Px(PAD_X),
                 top: Val::Px(CARET_TOP),
-                width: Val::Px(2.0),
+                width: Val::Px(1.0),
                 height: Val::Px(CARET_H),
                 display: Display::None,
                 ..default()
@@ -220,6 +237,7 @@ fn build_input(
         select_all: false,
         caret_index: value.chars().count(),
         advance: FALLBACK_ADVANCE,
+        offsets: Vec::new(),
         sel_anchor: None,
     });
     commands.entity(box_e).add_children(&[sel, text, car]);
@@ -374,10 +392,23 @@ fn wipe_selection(inp: &mut EmberTextInput, range: Option<(usize, usize)>, idx: 
 /// ends).
 fn index_at_cursor(inp: &EmberTextInput, cn: &ComputedNode, nrm: Vec2) -> usize {
     let width = cn.size().x * cn.inverse_scale_factor();
-    let local_x = (nrm.x + 0.5) * width;
-    let adv = inp.advance.max(0.1);
-    let idx = ((local_x - PAD_X) / adv).round().max(0.0) as usize;
-    idx.min(inp.value.chars().count())
+    let local_x = (nrm.x + 0.5) * width - PAD_X;
+    let n = inp.value.chars().count();
+    if inp.offsets.len() == n + 1 {
+        // Nearest measured glyph boundary — exact for proportional fonts.
+        inp.offsets
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                (local_x - **a).abs().total_cmp(&(local_x - **b).abs())
+            })
+            .map(|(i, _)| i)
+            .unwrap_or(n)
+    } else {
+        let adv = inp.advance.max(0.1);
+        let idx = (local_x / adv).round().max(0.0) as usize;
+        idx.min(n)
+    }
 }
 
 /// Drag selection: press in an input anchors a selection at the caret, moving
@@ -449,8 +480,9 @@ pub(crate) fn text_input_selection_pos(
         let Ok(inp) = inputs.get(bar.0) else { continue };
         match (inp.focused, inp.selection_range()) {
             (true, Some((a, b))) => {
-                let left = Val::Px(PAD_X + a as f32 * inp.advance);
-                let width = Val::Px((b - a) as f32 * inp.advance);
+                let (xa, xb) = (inp.caret_x(a), inp.caret_x(b));
+                let left = Val::Px(PAD_X + xa);
+                let width = Val::Px(xb - xa);
                 if n.display != Display::Flex || n.left != left || n.width != width {
                     n.display = Display::Flex;
                     n.left = left;
@@ -700,19 +732,25 @@ pub(crate) fn text_input_sync(
     }
 }
 
-/// Measure the field's average advance (px/char) from its text node's laid-out
-/// width — the code editor's probe technique, here on the live text. Drives the
-/// caret position + click hit-testing. Skips empty fields (placeholder ≠ value).
+/// Measure per-char caret boundaries from the text node's shaped parley layout
+/// (via [`bevy::text::ComputedTextBlock`]). Each cluster's advance yields the
+/// exact x of every caret slot, so the caret sits between the right glyphs and
+/// clicks hit every position — an averaged advance drifts on proportional
+/// fonts. Also keeps the average `advance` as the pre-measure fallback. Skips
+/// empty fields (the layout holds the placeholder, not the value).
 pub(crate) fn text_input_measure(
     mut inputs: Query<&mut EmberTextInput, With<SingleLineInput>>,
-    layouts: Query<&TextLayoutInfo>,
+    layouts: Query<(&TextLayoutInfo, &bevy::text::ComputedTextBlock)>,
 ) {
     for mut inp in &mut inputs {
         let n = inp.value.chars().count();
         if n == 0 {
+            if !inp.offsets.is_empty() {
+                inp.offsets.clear();
+            }
             continue;
         }
-        let Ok(info) = layouts.get(inp.text_entity) else {
+        let Ok((info, block)) = layouts.get(inp.text_entity) else {
             continue;
         };
         let sf = if info.scale_factor > 0.0 { info.scale_factor } else { 1.0 };
@@ -720,17 +758,52 @@ pub(crate) fn text_input_measure(
         if adv > 0.5 && (adv - inp.advance).abs() > 0.01 {
             inp.advance = adv;
         }
+        // What the layout actually shaped (bullets for password fields — same
+        // char count as the value, so slots map 1:1).
+        let (disp, _) = display_for(&inp.value, &inp.placeholder, inp.password);
+        let mut offsets: Vec<f32> = Vec::with_capacity(n + 1);
+        offsets.push(0.0);
+        let mut x = 0.0f32;
+        // Single line (no_wrap); logical order == visual order for LTR text.
+        for line in block.buffer().lines() {
+            for run in line.runs() {
+                for cluster in run.clusters() {
+                    let chars = disp
+                        .get(cluster.text_range())
+                        .map(|s| s.chars().count())
+                        .unwrap_or(1)
+                        .max(1);
+                    let cadv = cluster.advance() / sf;
+                    // A multi-char cluster (ligature) gets evenly split slots.
+                    for k in 1..=chars {
+                        offsets.push(x + cadv * k as f32 / chars as f32);
+                    }
+                    x += cadv;
+                }
+            }
+        }
+        // Commit only when the layout matches the value — while the shaper is
+        // a frame behind a keystroke, stale boundaries would misplace the
+        // caret; `caret_x` falls back to the average advance instead.
+        if offsets.len() == n + 1 {
+            if inp.offsets != offsets {
+                inp.offsets = offsets;
+            }
+        } else if !inp.offsets.is_empty() && inp.offsets.len() != n + 1 {
+            inp.offsets.clear();
+        }
     }
 }
 
-/// Position the absolute caret at `PAD_X + caret_index * advance`.
+/// Position the absolute caret at `PAD_X +` the measured boundary x of
+/// `caret_index` (see [`EmberTextInput::caret_x`]).
 pub(crate) fn text_input_caret_pos(
     inputs: Query<&EmberTextInput, With<SingleLineInput>>,
     mut nodes: Query<&mut Node>,
 ) {
     for inp in &inputs {
         if let Ok(mut n) = nodes.get_mut(inp.caret) {
-            let left = Val::Px(PAD_X + inp.caret_index as f32 * inp.advance);
+            let left = Val::Px(PAD_X + inp.caret_x(inp.caret_index));
             if n.left != left {
                 n.left = left;
             }
