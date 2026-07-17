@@ -33,6 +33,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod environment;
+mod eyes;
 mod input;
 mod locomotion;
 mod rig;
@@ -84,6 +85,14 @@ pub fn xr_plugins(base: PluginGroupBuilder, auto_start: bool) -> PluginGroupBuil
     bevy_mod_openxr::add_xr_plugins(base)
         .set(bevy_mod_xr::session::XrSessionPlugin {
             auto_handle: auto_start,
+        })
+        // Eye cameras are spawned by eyes.rs with the engine's full camera
+        // decoration (bind-group layouts lock at first render, so the backend's
+        // bare spawn can never gain atmosphere/IBL afterwards). The backend
+        // still registers the swapchain texture views and adopts our cameras.
+        .set(bevy_mod_openxr::render::OxrRenderPlugin {
+            spawn_cameras: false,
+            default_wait_frame: true,
         })
         .set(bevy_mod_openxr::init::OxrInitPlugin {
             exts,
@@ -151,6 +160,7 @@ impl Plugin for XrPlugin {
         app.add_plugins(bevy_xr_utils::tracking_utils::TrackingUtilitiesPlugin);
         app.add_plugins(bevy_xr_utils::actions::XRUtilsActionsPlugin);
 
+        eyes::register(app);
         input::register(app);
         locomotion::register(app);
         rig::register(app);

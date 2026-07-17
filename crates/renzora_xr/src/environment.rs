@@ -5,13 +5,48 @@
 //! XR-side view each frame.
 
 use bevy::core_pipeline::Skybox;
+use bevy::light::EnvironmentMapLight;
 use bevy::prelude::*;
 use bevy_mod_xr::camera::XrCamera;
 
 use crate::rig::VrMirrorCamera;
 
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(Update, sync_environment_to_xr_cameras);
+    app.add_systems(
+        Update,
+        (sync_environment_to_xr_cameras, share_ibl_to_xr_cameras),
+    );
+}
+
+/// Share the engine's baked IBL into the eye cameras. Exactly one camera (the
+/// primary viewport in the editor, the active game camera in `--vr`) carries
+/// the atmosphere bake probe (`AtmosphereEnvironmentMapLight`) whose output
+/// lands in its `EnvironmentMapLight`; the eyes spawned with placeholder maps
+/// (eyes.rs) receive those maps here — the same share-out the engine does for
+/// secondary viewport cameras. In-place data writes only, so the locked bind
+/// layouts are never disturbed.
+fn share_ibl_to_xr_cameras(
+    source: Query<
+        &EnvironmentMapLight,
+        (
+            With<bevy::light::AtmosphereEnvironmentMapLight>,
+            Without<bevy_mod_xr::camera::XrCamera>,
+        ),
+    >,
+    mut targets: Query<&mut EnvironmentMapLight, With<bevy_mod_xr::camera::XrCamera>>,
+) {
+    let Some(src) = source.iter().next() else {
+        return;
+    };
+    for mut dst in targets.iter_mut() {
+        if dst.diffuse_map != src.diffuse_map
+            || dst.specular_map != src.specular_map
+            || dst.intensity != src.intensity
+            || dst.rotation != src.rotation
+        {
+            *dst = src.clone();
+        }
+    }
 }
 
 /// Query split, not `&mut Camera` everywhere: the read-only source query and
