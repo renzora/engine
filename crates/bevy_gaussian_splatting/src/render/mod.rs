@@ -1156,6 +1156,13 @@ pub struct GaussianUniformBindGroups {
 #[derive(Component)]
 pub struct SortBindGroup {
     pub sorted_bind_group: BindGroup,
+    /// renzora patch: how many per-camera chunks the bound sorted-entries
+    /// buffer actually holds. A camera tagged this frame can reach the draw
+    /// before `update_sorted_entries_sizes` regrows the buffer for it; the
+    /// draw skips such views instead of issuing a dynamic offset past the
+    /// buffer end (a wgpu validation error, fatal in the VR boot path).
+    #[cfg(feature = "buffer_storage")]
+    pub chunk_capacity: u32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1270,9 +1277,16 @@ fn queue_gaussian_bind_group<R: PlanarSync>(
 
         debug!("inserting sorted bind group");
 
-        commands
-            .entity(entity)
-            .insert(SortBindGroup { sorted_bind_group });
+        // renzora patch: record how many per-camera chunks the buffer holds
+        // so the draw can skip cameras the buffer hasn't grown to cover yet.
+        #[cfg(feature = "buffer_storage")]
+        let chunk_capacity = (sorted_entries.count / cloud.len().max(1)) as u32;
+
+        commands.entity(entity).insert(SortBindGroup {
+            sorted_bind_group,
+            #[cfg(feature = "buffer_storage")]
+            chunk_capacity,
+        });
     }
 }
 
@@ -1605,7 +1619,16 @@ where
 
         #[cfg(feature = "buffer_storage")]
         {
-            // TODO: align dynamic offset to `min_storage_buffer_offset_alignment`
+            // renzora patch: a camera tagged this frame can draw before the
+            // sorted-entries buffer regrows to include its chunk — skip the
+            // view for a frame instead of overrunning the binding (a wgpu
+            // validation error, fatal in the VR boot path). Chunk stride is
+            // cloud.len() entries, 32-padded by the loaders, so the dynamic
+            // offset stays 256-byte aligned.
+            if view.camera_index as u32 >= sort_bind_groups.chunk_capacity {
+                debug!("sorted-entries buffer has no chunk for this camera yet");
+                return RenderCommandResult::Skip;
+            }
             pass.set_bind_group(
                 3,
                 &sort_bind_groups.sorted_bind_group,

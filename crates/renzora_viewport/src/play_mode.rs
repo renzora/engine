@@ -15,6 +15,41 @@ use crate::external_runtime::{
 #[derive(Resource)]
 struct PrePlayMaximized(Option<usize>);
 
+/// Keep the in-process VR session in step with play mode: when the "VR
+/// Headset" target is selected, entering play raises the headset session and
+/// stopping lowers it (the XR side polls `renzora::VrPlayState`). Simulate is
+/// excluded — it's an editing aid, not a play session. When the editor didn't
+/// boot XR-capable (no OpenXR runtime at launch) the resource is absent; a
+/// one-shot console error explains instead of silently playing flat.
+pub fn sync_vr_play_request(
+    play_mode: Res<PlayModeState>,
+    settings: Option<Res<EditorSettings>>,
+    vr: Option<ResMut<renzora::VrPlayState>>,
+    mut warned: Local<bool>,
+) {
+    let vr_target = settings.is_some_and(|s| s.play_launch_vr);
+    let want = vr_target && play_mode.is_in_play_mode();
+    match vr {
+        Some(mut state) => {
+            if state.requested != want {
+                state.requested = want;
+            }
+        }
+        None => {
+            if want && !*warned {
+                *warned = true;
+                renzora::core::console_log::console_error(
+                    "PlayMode",
+                    "VR play unavailable: no OpenXR runtime was found when the \
+                     editor started. Connect the headset (Quest Link / SteamVR \
+                     running, correct default OpenXR runtime), then restart the \
+                     editor.",
+                );
+            }
+        }
+    }
+}
+
 /// Handles play mode transitions each frame.
 pub fn handle_play_mode_transitions(world: &mut World) {
     // Try the external-runtime path first. If the Play target is set to
@@ -90,12 +125,18 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     // running, and Stop must still kill it rather than fall through to the
     // in-editor path (which would clear the request without doing anything,
     // leaving the child orphaned behind a stuck Stop button).
-    // "Window" and "VR Headset" both run the external-process path; VR just
-    // adds `--vr` to the child's arguments.
-    let (enabled, vr) = world
+    // Only the "Window" target runs the external-process path. "VR Headset"
+    // plays IN-PROCESS: the editor booted on an XR-capable device, so the
+    // normal in-viewport play flow runs and `sync_vr_play_request` raises the
+    // headset session alongside it.
+    // The VR target OVERRIDES a persisted window preference: both are stored
+    // independently (picking VR doesn't erase the remembered viewport-vs-
+    // window choice), so external play must only fire when Window is the
+    // EFFECTIVE target.
+    let enabled = world
         .get_resource::<EditorSettings>()
-        .map(|s| (s.external_play_window || s.play_launch_vr, s.play_launch_vr))
-        .unwrap_or((false, false));
+        .map(|s| s.external_play_window && !s.play_launch_vr)
+        .unwrap_or(false);
     if !enabled && !runtime_alive {
         return false;
     }
@@ -160,14 +201,13 @@ fn try_handle_external_runtime(world: &mut World) -> bool {
     console_info(
         "PlayMode",
         format!(
-            "Spawning external runtime: {} --no-editor --project {}{}",
+            "Spawning external runtime: {} --no-editor --project {}",
             binary.display(),
             project_path.display(),
-            if vr { " --vr" } else { "" }
         ),
     );
 
-    match spawn_runtime(&binary, &project_path, vr) {
+    match spawn_runtime(&binary, &project_path, false) {
         Ok(child) => {
             if let Some(mut runtime) = world.get_resource_mut::<ExternalRuntime>() {
                 replace_child(&mut runtime, child);

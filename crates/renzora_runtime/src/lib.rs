@@ -355,7 +355,34 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         fmt_layer,
         ..default()
     });
+
+    // XR-capable editor boot: when an OpenXR runtime is reachable, the editor
+    // renders on the OpenXR-created device with the headset SESSION dormant —
+    // flat editing is unchanged (same windows, same RTT viewports; the XR
+    // Vulkan init requests full adapter features, so wireframe etc. survive),
+    // and the "VR Headset" play target can light the headset up in-process,
+    // on demand, with the live scene. Without a runtime this is a no-op and
+    // the editor boots exactly as before (the VR play target then reports
+    // itself unavailable). Games opt into VR with `--vr` instead
+    // (`add_xr_rendering`), which auto-starts the session.
+    #[cfg(feature = "xr")]
+    let (plugins, xr_capable) = {
+        if is_editor && renzora_xr::runtime_available() {
+            info!("[runtime] OpenXR runtime detected — booting XR-capable editor");
+            let base = plugins
+                .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+            (renzora_xr::xr_plugins(base, false), true)
+        } else {
+            (plugins, false)
+        }
+    };
+
     app.add_plugins(plugins);
+
+    #[cfg(feature = "xr")]
+    if xr_capable {
+        app.add_plugins(renzora_xr::XrPlugin { auto_start: false });
+    }
     // Record GPU ray-tracing capability so the `renzora_solari` distribution
     // plugin can gate `SolariPlugins` in its `build()`. The `RenderDevice`'s
     // feature set is frozen here (before dlopen plugins load), so the plugin
@@ -487,7 +514,7 @@ pub fn add_xr_rendering(app: &mut App) {
     let base = DefaultPlugins
         .build()
         .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
-    let plugins = renzora_xr::xr_plugins(base)
+    let plugins = renzora_xr::xr_plugins(base, true)
         .set(ImagePlugin {
             default_sampler: bevy::image::ImageSamplerDescriptor {
                 address_mode_u: bevy::image::ImageAddressMode::Repeat,
@@ -523,7 +550,7 @@ pub fn add_xr_rendering(app: &mut App) {
             ..default()
         });
     app.add_plugins(plugins);
-    app.add_plugins(renzora_xr::XrPlugin);
+    app.add_plugins(renzora_xr::XrPlugin { auto_start: true });
     app.insert_resource(renzora::GpuRaytracing { enabled: false });
 }
 

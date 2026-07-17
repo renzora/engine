@@ -129,7 +129,10 @@ impl Plugin for ViewportPlugin {
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::foliage::material::GrassMaterial>,
                 ),
                 render_systems::update_shadow_settings,
-                play_mode::handle_play_mode_transitions,
+                (
+                    play_mode::handle_play_mode_transitions,
+                    play_mode::sync_vr_play_request,
+                ),
                 external_runtime::poll_external_runtime,
                 external_runtime::advance_runtime_phase,
                 effect_routing::update_effect_routing,

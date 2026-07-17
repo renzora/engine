@@ -19,8 +19,9 @@
 
 use bevy::prelude::*;
 
+use bevy::render::renderer::RenderDevice;
 use bevy_gaussian_splatting::{
-    CloudSettings, GaussianCamera, PlanarGaussian3d, PlanarGaussian3dHandle,
+    CloudSettings, GaussianCamera, Planar, PlanarGaussian3d, PlanarGaussian3dHandle,
     sort::SortMode,
 };
 use renzora::GaussianSplat;
@@ -59,10 +60,62 @@ impl Plugin for GaussianSplatPlugin {
         // sorting still only happens while the camera actually moves.
         app.insert_resource(bevy_gaussian_splatting::sort::SortConfig { period_ms: 100 });
 
-        app.add_systems(Update, (sync_gaussian_splats, tag_gaussian_cameras));
+        app.add_systems(
+            Update,
+            (reject_oversized_clouds, sync_gaussian_splats, tag_gaussian_cameras),
+        );
 
         #[cfg(feature = "editor")]
         editor::register(app);
+    }
+}
+
+/// Refuse clouds whose GPU buffers can't exist on this device, BEFORE the
+/// renderer tries to upload them. wgpu panics ("Buffer is invalid") when a
+/// creation fails validation or allocation, killing the app — a multi-million
+/// splat capture on a limit-constrained or VRAM-starved device (VR: stereo
+/// eye buffers + compositor already resident) must instead degrade to a clear
+/// error. The fattest per-splat plane is the spherical-harmonics buffer
+/// (SH_COEFF_COUNT × f32 = 192 bytes at sh3); if that plane alone exceeds the
+/// device's buffer/binding limits the whole cloud is unrenderable, so it is
+/// replaced with an empty cloud (renders nothing, everything else lives on).
+fn reject_oversized_clouds(
+    mut clouds: ResMut<Assets<PlanarGaussian3d>>,
+    mut events: MessageReader<AssetEvent<PlanarGaussian3d>>,
+    device: Option<Res<RenderDevice>>,
+) {
+    let Some(device) = device else { return };
+    let limits = device.limits();
+    let max_bytes = limits
+        .max_buffer_size
+        .min(limits.max_storage_buffer_binding_size as u64);
+    const WORST_BYTES_PER_SPLAT: u64 = 192;
+
+    for event in events.read() {
+        let AssetEvent::Added { id } = event else {
+            continue;
+        };
+        let Some(cloud) = clouds.get(*id) else {
+            continue;
+        };
+        let count = cloud.len() as u64;
+        let need = count * WORST_BYTES_PER_SPLAT;
+        if need <= max_bytes {
+            continue;
+        }
+        error!(
+            "gaussian cloud rejected: {count} splats need {:.2} GiB per GPU \
+             buffer but this device allows {:.2} GiB — decimate the capture \
+             (SuperSplat can reduce splat count) or use a smaller scene",
+            need as f64 / (1 << 30) as f64,
+            max_bytes as f64 / (1 << 30) as f64,
+        );
+        if let Some(mut cloud) = clouds.get_mut(*id) {
+            *cloud = PlanarGaussian3d::from_interleaved(vec![
+                bevy_gaussian_splatting::Gaussian3d::default();
+                32
+            ]);
+        }
     }
 }
 

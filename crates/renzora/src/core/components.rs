@@ -433,6 +433,24 @@ impl Default for GaussianSplat {
     }
 }
 
+/// Contract between the editor and the XR layer for in-editor VR play.
+///
+/// Lives in the contract crate because the two sides never link each other:
+/// the editor (viewport play-mode code) flips `requested` when the "VR
+/// Headset" play target starts/stops, and the statically-linked `renzora_xr`
+/// session controller — present only when the engine booted XR-capable —
+/// creates/ends the OpenXR session to match and reports back through
+/// `active`. Booting XR-capable requires an OpenXR runtime at launch; when
+/// none was found this resource simply never gets inserted, which is how the
+/// editor knows to tell the user VR is unavailable.
+#[derive(Resource, Default, Debug)]
+pub struct VrPlayState {
+    /// Editor wants the headset session up (set on VR play, cleared on stop).
+    pub requested: bool,
+    /// The OpenXR session is running and rendering to the headset.
+    pub active: bool,
+}
+
 /// Serializable marker for a scene camera entity.
 ///
 /// Stored alongside `Camera3d` so the camera can be recreated on scene load

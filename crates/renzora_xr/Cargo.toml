@@ -12,6 +12,8 @@ description = "OpenXR/VR boot mode for the Renzora runtime — stereo rendering 
 
 [dependencies]
 bevy = { workspace = true }
+# Contract crate: only for `renzora::VrPlayState`, the editor↔XR play handshake.
+renzora = { path = "../renzora", default-features = false }
 bevy_mod_openxr = { path = "../bevy_oxr/crates/bevy_openxr", features = ["raw_vulkan_init"] }
 bevy_mod_xr = { path = "../bevy_oxr/crates/bevy_xr" }
 bevy_xr_utils = { path = "../bevy_oxr/crates/bevy_xr_utils" }

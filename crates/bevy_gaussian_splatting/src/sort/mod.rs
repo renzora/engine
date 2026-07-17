@@ -274,9 +274,24 @@ fn auto_insert_sorted_entries<R: PlanarSync>(
         }
         let cloud = cloud.unwrap();
 
+        // renzora patch: the per-camera chunk stride must be cloud.len() —
+        // the CPU sorters chunk the buffer by it and the draw's dynamic
+        // offset strides by it. Upstream allocated len_sqrt_ceil()² entries
+        // per camera (a square-image legacy from the buffer_texture path),
+        // which misaligns every chunk after the first, produces dynamic
+        // offsets that violate the 256-byte alignment rule, and overruns the
+        // binding for the last camera. cloud.len() is 32-padded by the
+        // loaders, so len-strided chunks stay 256-byte aligned. The square
+        // sizing is kept for buffer_texture, which really does build square
+        // image layers.
+        #[cfg(feature = "buffer_storage")]
+        let entry_count = cloud.len();
+        #[cfg(all(feature = "buffer_texture", not(feature = "buffer_storage")))]
+        let entry_count = cloud.len_sqrt_ceil().pow(2);
+
         let sorted_entries = sorted_entries_res.add(SortedEntries::new(
             camera_count,
-            cloud.len_sqrt_ceil().pow(2),
+            entry_count,
             #[cfg(feature = "buffer_texture")]
             &mut images,
         ));

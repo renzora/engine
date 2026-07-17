@@ -22,7 +22,57 @@ pub struct VrControllerVisual;
 
 pub(crate) fn register(app: &mut App) {
     app.add_systems(Startup, spawn_rig);
-    app.add_systems(Update, (apply_visibility_config, suppress_flat_scene_cameras));
+    app.add_systems(
+        Update,
+        (
+            apply_visibility_config,
+            suppress_flat_scene_cameras,
+            suspend_editor_viewports,
+        ),
+    );
+}
+
+/// While an in-editor VR session runs, suspend the editor's render-to-texture
+/// viewport cameras entirely: the headset needs the whole GPU budget (the
+/// per-frame flat scene renders read as frame hitching in-headset), and the
+/// flat panels show a "VR mode active" takeover meanwhile. Only cameras this
+/// system itself deactivated are reactivated on session end, so undocked
+/// slots keep whatever state the dock logic gave them.
+#[allow(clippy::type_complexity)]
+fn suspend_editor_viewports(
+    boot: Res<crate::XrBootMode>,
+    play: Option<Res<renzora::VrPlayState>>,
+    mut cameras: Query<
+        (Entity, &mut Camera),
+        Or<(
+            With<renzora::core::ViewportCamera>,
+            With<renzora::core::ViewportCamera2d>,
+        )>,
+    >,
+    mut suspended: Local<Vec<Entity>>,
+) {
+    if boot.game {
+        return;
+    }
+    if play.is_some_and(|p| p.active) {
+        for (entity, mut camera) in cameras.iter_mut() {
+            if camera.is_active {
+                camera.is_active = false;
+                suspended.push(entity);
+            }
+        }
+    } else if !suspended.is_empty() {
+        for entity in suspended.drain(..) {
+            if let Ok((_, mut camera)) = cameras.get_mut(entity) {
+                camera.is_active = true;
+            }
+        }
+    }
+}
+
+/// The XR session is currently rendering to the headset.
+fn session_active(play: Option<Res<renzora::VrPlayState>>) -> bool {
+    play.is_some_and(|p| p.active)
 }
 
 /// Spawn the controller wands and the mirror camera once at boot. The
@@ -33,6 +83,7 @@ fn spawn_rig(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    boot: Res<crate::XrBootMode>,
 ) {
     // ── Controller wands ────────────────────────────────────────────────
     // A stubby capsule "handle" plus an emissive tip sphere, tinted per hand
@@ -92,6 +143,14 @@ fn spawn_rig(
     // snaps it to the HMD pose each frame; rendering to the window is
     // independent of the eye cameras' swapchain targets. Ordered after the
     // eyes so frame timing stays headset-first.
+    //
+    // Game mode (`--vr`) only: in an XR-capable EDITOR session the primary
+    // window is the editor UI — a window-targeting 3D camera would draw the
+    // scene over the chrome. The editor's own viewport panel is the mirror
+    // there (it keeps rendering through the normal play-mode path).
+    if !boot.game {
+        return;
+    }
     commands.spawn((
         Name::new("VR Desktop Mirror"),
         Camera3d::default(),
@@ -110,21 +169,28 @@ fn spawn_rig(
 /// every frame — cheap, and keeps the knobs live-editable.
 fn apply_visibility_config(
     config: Res<VrConfig>,
+    play: Option<Res<renzora::VrPlayState>>,
     mut mirror: Query<&mut Camera, With<VrMirrorCamera>>,
     mut wands: Query<&mut Visibility, With<VrControllerVisual>>,
 ) {
-    if !config.is_changed() {
-        return;
-    }
+    // Everything rig-side exists only while the headset session runs — wands
+    // parked at the origin during flat editing would litter the scene.
+    let active = play.is_some_and(|p| p.active);
     for mut camera in mirror.iter_mut() {
-        camera.is_active = config.desktop_mirror;
+        let want = active && config.desktop_mirror;
+        if camera.is_active != want {
+            camera.is_active = want;
+        }
     }
+    let want = if active && config.controller_visuals {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
     for mut visibility in wands.iter_mut() {
-        *visibility = if config.controller_visuals {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
+        if *visibility != want {
+            *visibility = want;
+        }
     }
 }
 
@@ -135,6 +201,8 @@ fn apply_visibility_config(
 /// only window-targeting cameras conflict. Runs every frame so cameras
 /// arriving with scene loads are caught too.
 fn suppress_flat_scene_cameras(
+    boot: Res<crate::XrBootMode>,
+    play: Option<Res<renzora::VrPlayState>>,
     mut cameras: Query<
         (&mut Camera, Option<&RenderTarget>),
         (
@@ -144,6 +212,11 @@ fn suppress_flat_scene_cameras(
         ),
     >,
 ) {
+    // Game mode: always (the headset is the only real view). Editor: only
+    // while the session runs — flat editing must keep its cameras.
+    if !boot.game && !session_active(play) {
+        return;
+    }
     for (mut camera, target) in cameras.iter_mut() {
         // No RenderTarget component = the default (primary window) target.
         let windowed = target.is_none_or(|t| matches!(t, RenderTarget::Window(_)));

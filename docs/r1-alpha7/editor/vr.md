@@ -1,32 +1,40 @@
 # VR Preview
 
-Renzora can play your scene straight into a **VR headset** over OpenXR. It's a
-play *target*, not a separate editor: pick **VR Headset** from the Play
-button's dropdown and pressing Play launches the runtime into your headset —
-head tracking, controllers, and locomotion included — while the editor waits,
-exactly like the "Window" target.
+Renzora can play your scene straight into a **VR headset** over OpenXR,
+**in-process**: pick **VR Headset** from the Play button's dropdown and
+pressing Play lights the headset up with the live scene — no separate window,
+no relaunch. The editor keeps running (the viewport panel plays the scene as
+usual), scripts and physics run through the normal play mode, and Stop drops
+the headset session and returns to editing.
 
 ## Requirements
 
-- An OpenXR runtime installed and active (Meta Quest Link / SteamVR / any
-  conformant desktop runtime) with a connected headset.
+- An OpenXR runtime **active when the editor starts**: Meta Quest Link /
+  Air Link (headset in Link mode) or SteamVR, with the matching runtime set
+  as the system's default OpenXR runtime. The editor binds to the headset's
+  graphics device at boot — connect first, then launch the editor. (Started
+  the editor without the headset? Restart it after connecting.)
 - A desktop build of the engine (VR is not available on web/mobile exports).
 
 ## Playing in VR
 
-1. Open the Play button's dropdown (the caret next to Play) and choose
+1. Connect the headset (Quest: enable Quest Link so you're in the Link home
+   environment), then start the editor. The console logs
+   `OpenXR runtime detected — booting XR-capable editor` when it worked.
+2. Open the Play button's dropdown (the caret next to Play) and choose
    **VR Headset**. The choice persists per-user, like the other targets.
-2. Press **Play**. The engine saves the scene and launches the runtime as a
-   separate process with `--vr`. Put on the headset — the scene starts at the
-   tracking origin.
-3. Press **Stop** in the editor (or close the mirror window / take off the
-   headset and quit) to end the session.
+3. Press **Play**. The headset session starts with the live scene; put it on.
+4. Press **Stop** to end the headset session and return to flat editing.
 
-The same thing works from a terminal against any project:
+Shipped games run in VR with the same engine binary and a flag:
 
 ```
 renzora.exe --no-editor --project path/to/project --vr
 ```
+
+(`--vr` game mode auto-starts the session and adds a head-tracked desktop
+mirror window for spectators; in the editor, the viewport panel is the
+mirror.)
 
 ## In the headset
 

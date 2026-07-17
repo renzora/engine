@@ -30,6 +30,13 @@
 #     DC-inclusive per-channel count (16 at sh3) though f_rest is 15 per
 #     channel, corrupting all G/B higher-order SH coefficients (f_rest_15
 #     collided with f_rest_0, etc.).
+#   - sort/render (buffer_storage): per-camera sorted-entry chunks are strided
+#     by cloud.len() (matching the CPU sorters and the draw's dynamic offset)
+#     instead of len_sqrt_ceil()² — upstream's square sizing misaligned every
+#     chunk after the first, broke the 256-byte dynamic-offset alignment, and
+#     overran the binding for the last camera (wgpu validation error, fatal in
+#     VR: 2 eyes + mirror = 3 chunks). The draw also skips views whose chunk
+#     the buffer hasn't grown to cover yet (SortBindGroup::chunk_capacity).
 # Consumed by `renzora_gaussian_splatting`; excluded from CI test/clippy like
 # the other vendored ecosystem crates.
 [package]

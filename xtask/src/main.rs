@@ -176,6 +176,19 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     // ── Rust std (prefer-dynamic links it as a shared lib) ───────────────────
     copy_rust_std(&out, plat)?;
 
+    // ── OpenXR loader (VR) ───────────────────────────────────────────────────
+    // The Khronos loader every OpenXR app must ship: `openxr::Entry::load()`
+    // (the `--vr` boot / XR-capable editor probe) LoadLibrary's it from beside
+    // the exe. Vendored under tools/openxr; Windows-only for now.
+    if plat.ext == "dll" {
+        let loader = repo.join("tools/openxr/openxr_loader.dll");
+        if loader.exists() {
+            copy(&loader, &out.join("openxr_loader.dll"))?;
+        } else {
+            eprintln!("[xtask] WARN: tools/openxr/openxr_loader.dll missing — VR won't initialize");
+        }
+    }
+
     // ── SDK dylibs that ship beside the exe (host + every plugin link them) ──
     // `renzora` (folded contract + post-process) and `renzora_editor` (the
     // removable editor bundle). Each lives next to the exe, never in plugins/.
