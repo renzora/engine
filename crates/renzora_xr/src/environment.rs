@@ -53,12 +53,25 @@ fn share_ibl_to_xr_cameras(
 /// the mutable target query stay provably disjoint (`Without<XrCamera>` vs
 /// `With<XrCamera>`, likewise the mirror marker) so the system can't trip
 /// Bevy's access checker.
+///
+/// The source is the PROBE camera specifically (the one carrying the
+/// atmosphere/IBL bake), never an arbitrary flat camera: secondary viewport
+/// cameras carry the *baked sky cubemap* as their `Skybox`, and copying that
+/// onto the eyes would freeze the headset sky at the last bake — the eyes
+/// have live `AtmosphereSettings` and should render the procedural sky
+/// themselves. The probe only carries a `Skybox` when the scene authors a
+/// real one (HDRI mode), which is exactly when the eyes should mirror it.
 #[allow(clippy::type_complexity)]
 fn sync_environment_to_xr_cameras(
     mut commands: Commands,
     source_cameras: Query<
         (Option<&Skybox>, &Camera),
-        (With<Camera3d>, Without<XrCamera>, Without<VrMirrorCamera>),
+        (
+            With<Camera3d>,
+            With<bevy::light::AtmosphereEnvironmentMapLight>,
+            Without<XrCamera>,
+            Without<VrMirrorCamera>,
+        ),
     >,
     xr_cameras: Query<(Entity, Option<&Skybox>), With<XrCamera>>,
     mirror_cameras: Query<(Entity, Option<&Skybox>), (With<VrMirrorCamera>, Without<XrCamera>)>,

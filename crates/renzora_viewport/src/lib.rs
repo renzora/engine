@@ -731,6 +731,7 @@ fn sync_viewport_camera_activation(
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     runtime: Option<Res<external_runtime::ExternalRuntime>>,
+    vr_play: Option<Res<renzora::VrPlayState>>,
     last_scene_view: Res<LastSceneView>,
 ) {
     use renzora::core::viewport_types::ViewportView;
@@ -746,6 +747,33 @@ fn sync_viewport_camera_activation(
         for (mut camera, _) in cameras_3d.iter_mut() {
             if camera.is_active {
                 camera.is_active = false;
+            }
+        }
+        for (mut camera, _) in cameras_2d.iter_mut() {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+        }
+        for mut camera in cameras_ui.iter_mut() {
+            if camera.is_active {
+                camera.is_active = false;
+            }
+        }
+        return;
+    }
+
+    // In-process VR play: the headset owns the GPU. The primary 3D camera must
+    // stay alive — it hosts the atmosphere/IBL probe (the bake panics on an
+    // inactive probe) and the XR eyes' environment is shared FROM it — but it
+    // renders into the token parking image (`park_primary_3d_target`), so its
+    // passes rasterize almost nothing. Every other offscreen editor camera
+    // goes quiet, same as the external-runtime pause above.
+    let vr_active = vr_play.as_ref().is_some_and(|v| v.active);
+    if vr_active {
+        for (mut camera, vc) in cameras_3d.iter_mut() {
+            let want = vc.0 == 0;
+            if camera.is_active != want {
+                camera.is_active = want;
             }
         }
         for (mut camera, _) in cameras_2d.iter_mut() {
@@ -850,6 +878,7 @@ fn park_primary_3d_target(
         &mut bevy::camera::RenderTarget,
         With<renzora::core::PrimaryViewportCamera>,
     >,
+    vr_play: Option<Res<renzora::VrPlayState>>,
     last_scene_view: Res<LastSceneView>,
 ) {
     use renzora::core::viewport_types::ViewportView;
@@ -864,7 +893,12 @@ fn park_primary_3d_target(
             .and_then(|pm| pm.active_game_camera)
             .is_some_and(|e| kind_2d.get(e).is_ok());
     let ui_backdrop_2d = view == ViewportView::Ui && last_scene_view.0 == ViewportView::Two;
-    let two_d_owns_image = view == ViewportView::Two || ui_backdrop_2d || playing_2d_game;
+    // During in-process VR play the primary keeps rendering only as the
+    // atmosphere/IBL probe — park it on the token image so those passes cost
+    // nothing while the headset owns the GPU.
+    let vr_active = vr_play.as_ref().is_some_and(|v| v.active);
+    let two_d_owns_image =
+        view == ViewportView::Two || ui_backdrop_2d || playing_2d_game || vr_active;
 
     // `RenderTarget` only exists once `sync_viewport_camera_targets` has bound
     // the startup images, so this query is empty until then — fine, there is

@@ -22,53 +22,13 @@ pub struct VrControllerVisual;
 
 pub(crate) fn register(app: &mut App) {
     app.add_systems(Startup, spawn_rig);
-    app.add_systems(
-        Update,
-        (
-            apply_visibility_config,
-            suppress_flat_scene_cameras,
-            suspend_editor_viewports,
-        ),
-    );
+    app.add_systems(Update, (apply_visibility_config, suppress_flat_scene_cameras));
 }
 
-/// While an in-editor VR session runs, suspend the editor's render-to-texture
-/// viewport cameras entirely: the headset needs the whole GPU budget (the
-/// per-frame flat scene renders read as frame hitching in-headset), and the
-/// flat panels show a "VR mode active" takeover meanwhile. Only cameras this
-/// system itself deactivated are reactivated on session end, so undocked
-/// slots keep whatever state the dock logic gave them.
-#[allow(clippy::type_complexity)]
-fn suspend_editor_viewports(
-    boot: Res<crate::XrBootMode>,
-    play: Option<Res<renzora::VrPlayState>>,
-    mut cameras: Query<
-        (Entity, &mut Camera),
-        Or<(
-            With<renzora::core::ViewportCamera>,
-            With<renzora::core::ViewportCamera2d>,
-        )>,
-    >,
-    mut suspended: Local<Vec<Entity>>,
-) {
-    if boot.game {
-        return;
-    }
-    if play.is_some_and(|p| p.active) {
-        for (entity, mut camera) in cameras.iter_mut() {
-            if camera.is_active {
-                camera.is_active = false;
-                suspended.push(entity);
-            }
-        }
-    } else if !suspended.is_empty() {
-        for entity in suspended.drain(..) {
-            if let Ok((_, mut camera)) = cameras.get_mut(entity) {
-                camera.is_active = true;
-            }
-        }
-    }
-}
+// (Editor viewport suspension lives editor-side: renzora_viewport's
+// `sync_viewport_camera_activation` owns per-frame camera activity and now
+// quiets everything but the parked atmosphere/IBL probe while
+// `VrPlayState.active` — an XR-side override here would just fight it.)
 
 /// The XR session is currently rendering to the headset.
 fn session_active(play: Option<Res<renzora::VrPlayState>>) -> bool {

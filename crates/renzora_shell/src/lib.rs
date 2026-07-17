@@ -124,7 +124,7 @@ impl Plugin for ShellPlugin {
                 ribbon_rename_commit,
                 content_dispatch,
                 (top_menu_open, top_menu_hover, top_menu_sync),
-                (settings_btn_click, play_btn_click, update_play_button),
+                (settings_btn_click, play_btn_click, update_play_button, vr_active_overlay),
                 plugin_install::install_buttons,
                 palette_btn_click,
                 (theme_bridge, sync_theme_menu_open),
@@ -629,6 +629,76 @@ fn play_btn_click(
                 pm.request_play = true;
             }
         }
+    }
+}
+
+/// Fullscreen takeover shown while an in-process VR session renders to the
+/// headset. The editor's offscreen cameras are suspended meanwhile (see
+/// `renzora_viewport::sync_viewport_camera_activation`), so without this the
+/// panels would sit on a frozen stale frame; instead the whole window reads
+/// unambiguously as "the headset owns the session". Stop (or taking the
+/// session down from the headset) removes it.
+#[derive(Component)]
+struct VrActiveOverlay;
+
+fn vr_active_overlay(
+    mut commands: Commands,
+    vr: Option<Res<renzora::VrPlayState>>,
+    existing: Query<Entity, With<VrActiveOverlay>>,
+    fonts: Option<Res<EmberFonts>>,
+) {
+    let active = vr.as_ref().is_some_and(|v| v.active);
+    match (active, existing.iter().next()) {
+        (true, None) => {
+            let Some(fonts) = fonts else { return };
+            let root = commands
+                .spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(0.0),
+                        top: Val::Px(0.0),
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        row_gap: Val::Px(14.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.02, 0.02, 0.03, 0.96)),
+                    GlobalZIndex(5000),
+                    bevy::ui::FocusPolicy::Block,
+                    // Registers with ember's pointer-blocking pass so clicks
+                    // can't reach panels underneath (see overlay conventions).
+                    renzora_ember::widgets::OverlaySurface,
+                    VrActiveOverlay,
+                    Name::new("vr-active-overlay"),
+                ))
+                .id();
+            let icon = glyph(&mut commands, "virtual-reality", (140, 160, 220), 56.0);
+            let title = commands
+                .spawn((
+                    Text::new(renzora::lang::t_or("shell.vr_active", "VR Mode Active")),
+                    ui_font(&fonts.ui, 22.0),
+                    TextColor(Color::srgb(0.92, 0.94, 1.0)),
+                ))
+                .id();
+            let hint = commands
+                .spawn((
+                    Text::new(renzora::lang::t_or(
+                        "shell.vr_active_hint",
+                        "The scene is playing in the headset. Press Stop to return.",
+                    )),
+                    ui_font(&fonts.ui, 13.0),
+                    TextColor(Color::srgb(0.55, 0.58, 0.68)),
+                ))
+                .id();
+            commands.entity(root).add_children(&[icon, title, hint]);
+        }
+        (false, Some(entity)) => {
+            commands.entity(entity).try_despawn();
+        }
+        _ => {}
     }
 }
 
