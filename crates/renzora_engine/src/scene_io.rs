@@ -717,12 +717,36 @@ pub fn spawn_entities_from_snapshot(
             return entity_map;
         }
     };
+
+    // Entity references that point *outside* the snapshot — a deleted root's
+    // `ChildOf` parent above all — are absent from the map, and
+    // `SceneEntityMapper` maps anything absent to a freshly reserved DEAD id.
+    // The relationship hook then drops the `ChildOf` outright, so undoing the
+    // delete of a child restored it at the scene root instead of under its
+    // parent. Identity-map every live entity that isn't itself part of the
+    // snapshot so those references survive the remap.
+    let scene_ids: Vec<Entity> = scene.entities.iter().map(|e| e.entity).collect();
+    let snapshot_ids: bevy::ecs::entity::EntityHashSet = scene_ids.iter().copied().collect();
+    for id in world.iter_entities().map(|e| e.id()) {
+        if !snapshot_ids.contains(&id) {
+            entity_map.insert(id, id);
+        }
+    }
+
     if let Err(e) = scene.write_to_world(world, &mut entity_map) {
         error!("[undo] failed to restore entity snapshot: {}", e);
         return entity_map;
     }
+
+    // Old->new for the snapshot's own entities. The identity seeds above are
+    // scaffolding for the remap, not results — callers look up restored roots.
+    let restored: bevy::ecs::entity::EntityHashMap<Entity> = scene_ids
+        .iter()
+        .filter_map(|old| entity_map.get(old).map(|new| (*old, *new)))
+        .collect();
+
     // Re-insert ChildOf so hierarchy hooks fire (same as load_scene_from_string).
-    let children_with_parents: Vec<(Entity, Entity)> = entity_map
+    let children_with_parents: Vec<(Entity, Entity)> = restored
         .values()
         .filter_map(|&entity| {
             world
@@ -736,7 +760,7 @@ pub fn spawn_entities_from_snapshot(
         world.entity_mut(child).remove::<ChildOf>();
         world.entity_mut(child).insert(ChildOf(parent));
     }
-    entity_map
+    restored
 }
 
 /// Save the current project's main scene.
@@ -2993,6 +3017,89 @@ mod tests {
         assert!(!inst.streamed, "missing `streamed` must default to false");
         assert_eq!(inst.load_radius, 150.0);
         assert_eq!(inst.unload_radius, 200.0);
+    }
+
+    // ------------------------------------------------------------------
+    // snapshot_entity_subtrees / spawn_entities_from_snapshot
+    // ------------------------------------------------------------------
+
+    /// Deleting a *child* and undoing must put it back under the same parent.
+    /// The parent is outside the snapshot, so its id is absent from the
+    /// entity map that `write_to_world` remaps through.
+    #[test]
+    fn snapshot_restore_reattaches_root_to_its_original_parent() {
+        let atr = bevy::ecs::reflect::AppTypeRegistry::default();
+        {
+            let mut reg = atr.write();
+            reg.register::<Name>();
+            reg.register::<ChildOf>();
+        }
+
+        let mut world = World::new();
+        world.insert_resource(atr.clone());
+        let parent = world.spawn(Name::new("Parent")).id();
+        let child = world.spawn((Name::new("Child"), ChildOf(parent))).id();
+
+        let snapshot = snapshot_entity_subtrees(&mut world, &[child]).expect("snapshot");
+        world.entity_mut(child).despawn();
+
+        let map = spawn_entities_from_snapshot(&mut world, &snapshot);
+        let restored = *map.get(&child).expect("child restored");
+
+        assert_eq!(
+            world.get::<ChildOf>(restored).map(|c| c.parent()),
+            Some(parent),
+            "restored entity must point at the original live parent"
+        );
+        assert!(
+            world
+                .get::<Children>(parent)
+                .is_some_and(|c| c.contains(&restored)),
+            "parent must list the restored entity as a child"
+        );
+    }
+
+    /// The identity seeding that fixes the external-parent link must not leak
+    /// into the snapshot's own entities: those still need fresh ids, and the
+    /// links *between* them must follow the remap, not the stale originals.
+    #[test]
+    fn snapshot_restore_remaps_internal_links_to_fresh_ids() {
+        let atr = bevy::ecs::reflect::AppTypeRegistry::default();
+        {
+            let mut reg = atr.write();
+            reg.register::<Name>();
+            reg.register::<ChildOf>();
+        }
+
+        let mut world = World::new();
+        world.insert_resource(atr.clone());
+        let grandparent = world.spawn(Name::new("Grandparent")).id();
+        let root = world.spawn((Name::new("Root"), ChildOf(grandparent))).id();
+        let leaf = world.spawn((Name::new("Leaf"), ChildOf(root))).id();
+
+        let snapshot = snapshot_entity_subtrees(&mut world, &[root]).expect("snapshot");
+        world.entity_mut(root).despawn();
+        assert!(world.get_entity(leaf).is_err(), "despawn takes the subtree");
+
+        let map = spawn_entities_from_snapshot(&mut world, &snapshot);
+        let new_root = *map.get(&root).expect("root restored");
+        let new_leaf = *map.get(&leaf).expect("leaf restored");
+
+        assert_eq!(
+            world.get::<ChildOf>(new_root).map(|c| c.parent()),
+            Some(grandparent),
+            "root reattaches to the untouched grandparent"
+        );
+        assert_eq!(
+            world.get::<ChildOf>(new_leaf).map(|c| c.parent()),
+            Some(new_root),
+            "leaf follows the remap to the root's NEW id, not the stale one"
+        );
+        assert_eq!(
+            map.len(),
+            2,
+            "map reports only the restored entities, not the identity seeds"
+        );
     }
 
     // ------------------------------------------------------------------
