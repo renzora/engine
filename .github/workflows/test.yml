@@ -29,7 +29,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # Tests the engine's own crates only. The vendored Bevy-ecosystem crates
-      # (bevy_*, vleue_navigator) are third-party code copied into the tree;
+      # (avian*, bevy_*, vleue_navigator) are third-party code copied into the tree;
+      # NOTE: the root manifest's `exclude = ["crates/avian"]` does NOT keep
+      # avian2d/avian3d out of the workspace — `renzora_physics` path-depends on
+      # them from inside the workspace dir, so they auto-join as members
+      # (`cargo metadata` lists both). They must be excluded by name here.
       # running their suites just re-tests upstream against our Bevy version and
       # breaks on every API drift — noise, not signal. They're still built as
       # dependencies; we just don't run their tests. New first-party crates stay
@@ -37,6 +41,8 @@ jobs:
       - name: Run tests
         run: |
           cargo test --workspace \
+            --exclude avian2d \
+            --exclude avian3d \
             --exclude bevy_firefly \
             --exclude bevy_gauge \
             --exclude bevy_gaussian_splatting \
