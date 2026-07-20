@@ -6,7 +6,7 @@
     spawn_count: 1,
     lifetime_min: 1.5,
     lifetime_max: 3.0,
-    emit_shape: Box(half_extents: [0.1, 0.5, 2.0]),
+    emit_shape: Box(half_extents: (0.1, 0.5, 2.0)),
     velocity_mode: Directional,
     velocity_magnitude: 1.5,
     velocity_spread: 0.3,

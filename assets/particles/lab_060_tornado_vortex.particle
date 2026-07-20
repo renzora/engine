@@ -30,7 +30,7 @@
         (position: 0.3, color: (0.5, 0.45, 0.4, 0.7)),
         (position: 1.0, color: (0.3, 0.28, 0.25, 0.0)),
     ],
-    blend_mode: AlphaBlend,
+    blend_mode: Blend,
     texture_path: None,
     billboard_mode: FaceCamera,
     render_layer: 0,

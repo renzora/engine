@@ -489,6 +489,7 @@ pub struct HanabiEffectDefinition {
     // Size
     pub size_start: f32,
     pub size_end: f32,
+    #[serde(default)]
     pub size_curve: Vec<CurvePoint>,
     #[serde(default)]
     pub size_start_min: f32,

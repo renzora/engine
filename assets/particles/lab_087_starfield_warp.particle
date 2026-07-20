@@ -48,7 +48,7 @@
     ribbon: Some((groups: 4)),
     erosion: false,
     light: None,
-    kill_zones: [Aabb(center: [0.0, 0.0, 60.0], half_size: [40.0, 40.0, 10.0], kill_inside: true)],
+    kill_zones: [Aabb(center: (0.0, 0.0, 60.0), half_size: (40.0, 40.0, 10.0), kill_inside: true)],
     simulation_space: World,
     simulation_condition: Always,
     variables: {},

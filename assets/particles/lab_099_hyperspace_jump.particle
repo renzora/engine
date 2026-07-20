@@ -50,7 +50,7 @@
     ribbon: Some((groups: 6)),
     erosion: false,
     light: Some((color: (0.6, 0.8, 1.0), intensity: 800000.0, range: 55.0, flicker: 0.3, shadows: false)),
-    kill_zones: [Aabb(center: [0.0, 0.0, 80.0], half_size: [60.0, 60.0, 15.0], kill_inside: true)],
+    kill_zones: [Aabb(center: (0.0, 0.0, 80.0), half_size: (60.0, 60.0, 15.0), kill_inside: true)],
     simulation_space: World,
     simulation_condition: Always,
     variables: {},
