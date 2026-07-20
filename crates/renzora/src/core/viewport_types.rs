@@ -925,6 +925,9 @@ pub struct PersistedViewportSettings {
     /// (`"Medium"`), so upgrading projects pick up the lighter default.
     #[serde(default = "default_graphics_quality")]
     pub graphics_quality: String,
+    /// Missing in configs written before this field existed → `false`.
+    #[serde(default)]
+    pub gizmos_all_viewports: bool,
 }
 
 impl PersistedViewportSettings {
@@ -982,6 +985,7 @@ impl PersistedViewportSettings {
             vsync: s.vsync,
             gizmo_drag_opacity: s.gizmo_drag_opacity,
             graphics_quality: s.graphics_quality.label().to_string(),
+            gizmos_all_viewports: s.gizmos_all_viewports,
         }
     }
 
@@ -1056,6 +1060,7 @@ impl PersistedViewportSettings {
         s.vsync = self.vsync;
         s.gizmo_drag_opacity = self.gizmo_drag_opacity;
         s.graphics_quality = GraphicsQuality::from_label(&self.graphics_quality);
+        s.gizmos_all_viewports = self.gizmos_all_viewports;
     }
 }
 
@@ -1173,6 +1178,8 @@ mod tests {
             gizmo_drag_opacity: 0.6,
             // Non-default tier (default is Medium) so the round-trip exercises it.
             graphics_quality: GraphicsQuality::High,
+            // Non-default (default is false) so the round-trip exercises it.
+            gizmos_all_viewports: true,
         }
     }
 
@@ -1216,6 +1223,10 @@ mod tests {
         assert_eq!(original.vsync, restored.vsync);
         assert_eq!(original.gizmo_drag_opacity, restored.gizmo_drag_opacity);
         assert_eq!(original.graphics_quality, restored.graphics_quality);
+        assert_eq!(
+            original.gizmos_all_viewports,
+            restored.gizmos_all_viewports
+        );
     }
 
     #[test]
