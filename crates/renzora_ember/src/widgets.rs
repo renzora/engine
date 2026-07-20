@@ -159,6 +159,10 @@ pub use curve::*;
 pub use gradient::*;
 
 pub use audio_player::*;
+// Explicit: `use bevy::prelude::*` above also carries an `AudioPlayer`, and a
+// private glob beats a public one — leaving this implicit resolves
+// `widgets::AudioPlayer` to bevy's (E0603). An explicit re-export shadows both globs.
+pub use audio_player::AudioPlayer;
 pub use mixer::*;
 pub use vu_meter::*;
 pub use waveform::*;

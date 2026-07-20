@@ -88,7 +88,7 @@ fn reject_oversized_clouds(
     let limits = device.limits();
     let max_bytes = limits
         .max_buffer_size
-        .min(limits.max_storage_buffer_binding_size as u64);
+        .min(limits.max_storage_buffer_binding_size);
     const WORST_BYTES_PER_SPLAT: u64 = 192;
 
     for event in events.read() {
