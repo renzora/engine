@@ -8,7 +8,7 @@
     spawn_cycle_count: 0,
     lifetime_min: 1.5,
     lifetime_max: 3.0,
-    emit_shape: Rect(half_extents: [1.2, 0.2], dimension: Volume),
+    emit_shape: Rect(half_extents: (1.2, 0.2), dimension: Volume),
     velocity_mode: Directional,
     velocity_magnitude: 0.6,
     velocity_spread: 0.5,

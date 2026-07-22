@@ -8,7 +8,7 @@
     spawn_cycle_count: 0,
     lifetime_min: 10.0,
     lifetime_max: 20.0,
-    emit_shape: Box(half_extents: [12.0, 12.0, 12.0]),
+    emit_shape: Box(half_extents: (12.0, 12.0, 12.0)),
     velocity_mode: Random,
     velocity_magnitude: 2.0,
     velocity_spread: 1.0,

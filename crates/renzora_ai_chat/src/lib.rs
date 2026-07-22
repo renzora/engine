@@ -1898,7 +1898,25 @@ mod tests {
         // _versions.json marking the current version.
         let docs = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs");
         let root = resolve_docs_root(docs).expect("docs root resolves");
-        assert!(root.ends_with("r1-alpha5"), "honors _versions.json current: {root:?}");
+        // Read the expected version out of `_versions.json` rather than
+        // hardcoding it — this previously pinned "r1-alpha5" and silently rotted
+        // when the manual moved to alpha6.
+        let manifest = std::fs::read_to_string(std::path::Path::new(docs).join("_versions.json"))
+            .expect("_versions.json readable");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&manifest).expect("_versions.json parses");
+        let current = parsed["versions"]
+            .as_array()
+            .and_then(|vs| {
+                vs.iter()
+                    .find(|v| v["status"] == "current")
+                    .and_then(|v| v["id"].as_str())
+            })
+            .expect("a version marked current");
+        assert!(
+            root.ends_with(current),
+            "honors _versions.json current ({current}): {root:?}"
+        );
         let hits = retrieve_docs(docs, "how do lua lifecycle hooks work in scripts");
         assert!(!hits.is_empty(), "lua docs should match");
         assert!(hits.iter().any(|(label, _)| label.contains("scripting")), "{hits:?}");

@@ -8,7 +8,7 @@
     spawn_cycle_count: 0,
     lifetime_min: 0.3,
     lifetime_max: 1.5,
-    emit_shape: Box(half_extents: [0.2, 6.0, 0.2]),
+    emit_shape: Box(half_extents: (0.2, 6.0, 0.2)),
     velocity_mode: Random,
     velocity_magnitude: 20.0,
     velocity_spread: 1.0,
@@ -54,7 +54,7 @@
     erosion: true,
     light: Some((color: (1.0, 0.2, 0.7), intensity: 300000.0, range: 25.0, flicker: 0.9, shadows: false)),
     kill_zones: [
-        Aabb(center: [0.0, 0.0, 0.0], half_size: [15.0, 12.0, 15.0], kill_inside: false),
+        Aabb(center: (0.0, 0.0, 0.0), half_size: (15.0, 12.0, 15.0), kill_inside: false),
     ],
     simulation_space: World,
     simulation_condition: Always,
