@@ -7,6 +7,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# The GitHub runner gives us ~20 GB of usable disk. The full Bevy workspace's
+# `dev`/`test` target dir carries enormous debuginfo, and once `rust-cache`
+# restores a populated target dir and we build on top of it the two together
+# overflow the disk ("No space left on device"). CI never debugs, and tests
+# pass/fail identically without line tables, so drop debuginfo and incremental
+# artifacts workspace-wide — this both fits the disk and speeds the build.
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_TERM_COLOR: always
+
 # Both jobs run INSIDE the shared base toolchain image
 # (ghcr.io/renzora/base) — native Linux `cargo test`/`clippy` need only
 # rustc 1.93 + the Linux dev libs (alsa/udev/wayland/xkbcommon/vulkan/mold),
@@ -26,7 +38,11 @@ jobs:
         with:
           submodules: true
 
+      # `prefix-key` bumped to v1 to discard the old debuginfo-heavy caches; the
+      # new debug=0 builds save a much smaller target dir.
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
 
       # Tests the engine's own crates only. The vendored Bevy-ecosystem crates
       # (avian*, bevy_*, vleue_navigator) are third-party code copied into the tree;
@@ -82,6 +98,8 @@ jobs:
         run: rustup component add clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
 
       # Lints the engine's own crates (same first-party scope as `test`).
       # `--no-deps` keeps clippy off the vendored crates that leak in as
