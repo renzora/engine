@@ -555,13 +555,6 @@ impl Plugin for GizmoPlugin {
                     .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                     .run_if(renzora::core::in_three_view),
             )
-            .init_resource::<renzora::core::ClickDebug>()
-            .add_systems(
-                Update,
-                // Not gated on `in_three_view` — runs in UI view too so
-                // UI-canvas click bleed is captured.
-                click_diag.run_if(in_state(renzora_editor_framework::SplashState::Editor)),
-            )
             .init_resource::<collider_handles::ColliderHandleState>()
             .add_systems(
                 Update,
@@ -2825,69 +2818,6 @@ fn screen_delta_to_scale(mouse_delta: Vec2, axis_world: Vec3, cam: &GlobalTransf
         0.0
     } else {
         mouse_delta.dot(sa / len) * 0.005
-    }
-}
-
-// ── Click diagnostics ───────────────────────────────────────────────────────
-
-/// Console diagnostic for "click bleed" between panels: on each left press it
-/// logs the cursor, whether the 3D viewport thinks it's hovered, every UI node
-/// that took `Interaction::Pressed`, and the selection; on release it logs the
-/// selection again. Runs in every view (not just 3D) so UI-canvas selection is
-/// covered too. Gated on [`ClickDebug`] (default on).
-fn click_diag(
-    mouse: Res<ButtonInput<MouseButton>>,
-    debug: Option<Res<renzora::core::ClickDebug>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    viewport: Option<Res<ViewportState>>,
-    selection: Res<EditorSelection>,
-    interactions: Query<(Entity, &Interaction, Option<&Name>)>,
-) {
-    if !debug.map(|d| d.0).unwrap_or(false) {
-        return;
-    }
-    let pressed = mouse.just_pressed(MouseButton::Left);
-    let released = mouse.just_released(MouseButton::Left);
-    if !pressed && !released {
-        return;
-    }
-    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
-    if pressed {
-        let mut hits: Vec<String> = interactions
-            .iter()
-            .filter(|(_, i, _)| **i == Interaction::Pressed)
-            .map(|(e, _, name)| {
-                name.map(|n| n.as_str().to_string())
-                    .unwrap_or_else(|| format!("{e:?}"))
-            })
-            .collect();
-        hits.sort();
-        let vp = viewport
-            .as_ref()
-            .map(|v| {
-                format!(
-                    "hovered={} pos=({:.0},{:.0}) size=({:.0},{:.0})",
-                    v.hovered, v.screen_position.x, v.screen_position.y, v.screen_size.x, v.screen_size.y
-                )
-            })
-            .unwrap_or_else(|| "none".into());
-        let cur = cursor
-            .map(|c| format!("({:.0},{:.0})", c.x, c.y))
-            .unwrap_or_else(|| "?".into());
-        renzora::core::console_log::console_info(
-            "Click",
-            format!(
-                "press @ {cur} | viewport[{vp}] | pressed=[{}] | sel_before={:?}",
-                hits.join(", "),
-                selection.get()
-            ),
-        );
-    }
-    if released {
-        renzora::core::console_log::console_info(
-            "Click",
-            format!("release | sel_after={:?}", selection.get()),
-        );
     }
 }
 

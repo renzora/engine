@@ -801,20 +801,6 @@ pub struct OpenSceneRequested;
 #[derive(Resource)]
 pub struct OpenScenePathRequested(pub std::path::PathBuf);
 
-/// When on, click systems log to the editor console what a left click actually
-/// hit — cursor position, viewport hover state, every UI node that took
-/// `Interaction::Pressed`, and the selection before/after — so a click that
-/// "bleeds" between panels can be traced to the exact node/system responsible.
-#[derive(Resource)]
-pub struct ClickDebug(pub bool);
-
-impl Default for ClickDebug {
-    fn default() -> Self {
-        // Default ON so click-hit tracing is available without a toggle dance.
-        Self(true)
-    }
-}
-
 /// Request a tab switch — serializes current scene, deserializes target.
 #[derive(Resource)]
 pub struct TabSwitchRequest {

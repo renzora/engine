@@ -82,11 +82,9 @@ fn canvas_interact(
     parents: Query<&ChildOf>,
     mut state: ResMut<NativeCanvasState>,
     selection: Option<Res<EditorSelection>>,
-    click_debug: Option<Res<renzora::core::ClickDebug>>,
     mut commands: Commands,
 ) {
     let Some(selection) = selection else { return };
-    let dbg = click_debug.map(|d| d.0).unwrap_or(false);
     let Ok(rcp) = hit.single() else {
         if mouse.just_released(MouseButton::Left) {
             *active = None;
@@ -105,12 +103,6 @@ fn canvas_interact(
         match active.take() {
             // Never became a drag → a click: apply its (possibly empty) selection.
             Some(Mode::Pending { select, .. }) => {
-                if dbg {
-                    renzora::core::console_log::console_info(
-                        "Click",
-                        format!("canvas_interact release(pending) select -> {select:?}"),
-                    );
-                }
                 selection.set(select);
             }
             // Marquee: select everything fully enclosed by the rubber-band.
@@ -145,18 +137,6 @@ fn canvas_interact(
 
     // ── Begin ──
     if mouse.just_pressed(MouseButton::Left) {
-        // Click diagnostic: report what the canvas interaction sees on press, so
-        // a UI-selection that fires from a click in another panel can be traced.
-        if dbg {
-            let bg = background.iter().any(|i| *i == Interaction::Pressed);
-            renzora::core::console_log::console_info(
-                "Click",
-                format!(
-                    "canvas_interact press | hit.cursor_over={} | background_pressed={} | design_cursor=({:.0},{:.0})",
-                    rcp.cursor_over, bg, cursor.x, cursor.y
-                ),
-            );
-        }
         if let Some((_, handle)) = handles.iter().find(|(i, _)| **i == Interaction::Pressed) {
             // A grab handle takes precedence and acts immediately.
             if let Some(g) = state.widgets.iter().find(|g| g.entity == handle.widget) {
@@ -198,12 +178,6 @@ fn canvas_interact(
             // Empty canvas (no widget, outside the selection) → marquee.
             let marquee = !within_sel && hit_e.is_none();
             if !within_sel {
-                if dbg {
-                    renzora::core::console_log::console_info(
-                        "Click",
-                        format!("canvas_interact OVER-FRAME select -> {hit_e:?}"),
-                    );
-                }
                 selection.set(hit_e);
             }
             let start_bbox = drag
