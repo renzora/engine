@@ -19,8 +19,8 @@ pub enum SettingsTab {
 /// Selection highlight mode when using the Select tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SelectionHighlightMode {
-    Outline,
     #[default]
+    Outline,
     Gizmo,
 }
 

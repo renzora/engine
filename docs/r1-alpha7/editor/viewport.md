@@ -154,7 +154,7 @@ A small readout shows the current mode and any number you type.
 | **Click + drag** | Box-select everything inside the box |
 | **Click empty space** | Deselect everything |
 
-Selected objects get a glowing outline and a bounding box so you always know what's picked.
+Selected objects get a glowing **outline** by default so you always know what's picked. Prefer the wireframe bounding box instead? Switch **Settings → Viewport → Gizmos → Selection** from Outline to Gizmo.
 
 ## The grid
 
