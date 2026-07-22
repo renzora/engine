@@ -8,8 +8,8 @@ use std::collections::{HashSet, VecDeque};
 
 // Re-export core logging types so existing `renzora_console::state::*` imports keep working.
 pub use renzora::core::console_log::{
-    console_log, get_global_log_buffer, init_global_log_buffer, LogEntry, LogLevel,
-    SharedLogBuffer, MAX_LOG_ENTRIES,
+    console_log, get_global_log_buffer, init_global_log_buffer, max_log_entries, LogEntry, LogLevel,
+    SharedLogBuffer, DEFAULT_MAX_LOG_ENTRIES,
 };
 
 /// Resource for the console state.
@@ -111,7 +111,8 @@ impl ConsoleState {
         }
         self.entries.push_back(entry);
         self.pushed += 1;
-        while self.entries.len() > MAX_LOG_ENTRIES {
+        let cap = max_log_entries();
+        while self.entries.len() > cap {
             self.entries.pop_front();
         }
     }
@@ -241,13 +242,16 @@ mod tests {
 
     #[test]
     fn log_caps_at_max_entries() {
+        // Pin the cap so this is deterministic regardless of any other test in
+        // the binary that might change the runtime limit.
+        renzora::core::console_log::set_max_log_entries(DEFAULT_MAX_LOG_ENTRIES);
         let mut state = ConsoleState::default();
         state.entries.clear();
         // Push a few past the cap; oldest should fall out.
-        for i in 0..(MAX_LOG_ENTRIES + 5) {
+        for i in 0..(DEFAULT_MAX_LOG_ENTRIES + 5) {
             state.log(LogLevel::Info, "cat", format!("msg-{}", i));
         }
-        assert_eq!(state.entries.len(), MAX_LOG_ENTRIES);
+        assert_eq!(state.entries.len(), DEFAULT_MAX_LOG_ENTRIES);
         // First entry kept should be one we pushed mid-loop, not msg-0.
         assert_ne!(state.entries.front().unwrap().message, "msg-0");
     }

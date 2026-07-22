@@ -285,6 +285,12 @@ pub struct EditorSettings {
     /// "Open in Code Editor" behaviour: `false` adds a Code Editor panel to the
     /// current dock layout; `true` switches to the dedicated "Scripting" layout.
     pub code_open_switch_layout: bool,
+
+    /// Max entries the editor console retains before dropping the oldest. Small
+    /// by default (100) because the console panel spawns a UI row per entry, so
+    /// a long backlog costs frames. Persisted per-user in `~/.renzora/editor.toml`
+    /// and pushed into the shared log buffer's cap by the settings panel.
+    pub console_log_limit: usize,
 }
 
 impl Default for EditorSettings {
@@ -327,6 +333,9 @@ impl Default for EditorSettings {
             code_show_whitespace: false,
             code_word_wrap: false,
             code_open_switch_layout: false,
+            // Seed from the persisted per-user pref so the console cap the buffer
+            // enforces matches what the settings panel shows.
+            console_log_limit: renzora::load_console_log_limit(),
         }
     }
 }

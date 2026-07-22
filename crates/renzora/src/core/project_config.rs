@@ -274,6 +274,12 @@ struct EditorPrefFile {
     /// user's mouse and habits, not the project.
     #[serde(default = "default_scroll_speed")]
     scroll_speed: f32,
+    /// Max entries the editor console retains. Per-user because it trades memory
+    /// / per-frame console-panel cost against scrollback depth — a preference of
+    /// the machine, not the project. Defaults small (100) so a chatty log can't
+    /// drop frames; users who want deeper history raise it in Settings.
+    #[serde(default = "default_console_log_limit")]
+    console_log_limit: u32,
 }
 
 fn default_language() -> String {
@@ -289,6 +295,9 @@ fn default_ui_scale() -> f32 {
 }
 fn default_scroll_speed() -> f32 {
     1.5
+}
+fn default_console_log_limit() -> u32 {
+    super::console_log::DEFAULT_MAX_LOG_ENTRIES as u32
 }
 fn default_system_monitor_ms() -> u32 {
     200
@@ -322,6 +331,7 @@ impl Default for EditorPrefFile {
             play_runtime_window: false,
             play_vr: false,
             scroll_speed: default_scroll_speed(),
+            console_log_limit: default_console_log_limit(),
         }
     }
 }
@@ -419,6 +429,52 @@ pub fn save_scroll_speed(scroll_speed: f32) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.scroll_speed = scroll_speed;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load the persisted console log-entry limit, defaulting to
+/// [`console_log::DEFAULT_MAX_LOG_ENTRIES`] when the file is absent or
+/// unreadable. Floored at 10 so the console can never be capped to nothing.
+pub fn load_console_log_limit() -> usize {
+    let default = super::console_log::DEFAULT_MAX_LOG_ENTRIES;
+    #[cfg(target_arch = "wasm32")]
+    {
+        default
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return default;
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return default;
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.console_log_limit as usize)
+            .unwrap_or(default)
+            .max(10)
+    }
+}
+
+/// Persist the console log-entry limit (read-modify-write so other prefs in the
+/// file survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_console_log_limit(limit: usize) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.console_log_limit = limit as u32;
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

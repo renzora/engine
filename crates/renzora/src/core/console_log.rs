@@ -4,10 +4,33 @@
 //! by the editor console panel (or any other consumer).
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// Maximum number of log entries to keep.
-pub const MAX_LOG_ENTRIES: usize = 1000;
+/// Default cap on retained log entries. Kept deliberately small: the editor
+/// console panel spawns one UI row per entry, so a large backlog adds per-frame
+/// layout/render work and drops frames. Users can raise it in
+/// Settings → Developer → Console Log Limit.
+pub const DEFAULT_MAX_LOG_ENTRIES: usize = 100;
+
+/// Live cap, seeded to [`DEFAULT_MAX_LOG_ENTRIES`] and overridable at runtime
+/// from the editor setting (see [`set_max_log_entries`]). Atomic because
+/// [`SharedLogBuffer::push`] is called from any thread and must read the cap
+/// without taking a lock.
+static MAX_LOG_ENTRIES: AtomicUsize = AtomicUsize::new(DEFAULT_MAX_LOG_ENTRIES);
+
+/// The current retained-entry cap.
+pub fn max_log_entries() -> usize {
+    MAX_LOG_ENTRIES.load(Ordering::Relaxed)
+}
+
+/// Set the retained-entry cap (floored at 1). Called by the editor when the
+/// Console Log Limit setting loads or changes; the smaller buffer takes effect
+/// on the next push (existing entries above the new cap trim as fresh logs
+/// arrive).
+pub fn set_max_log_entries(limit: usize) {
+    MAX_LOG_ENTRIES.store(limit.max(1), Ordering::Relaxed);
+}
 
 /// Log level for console messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +98,8 @@ impl SharedLogBuffer {
                 }
             }
             buffer.push_back(entry);
-            while buffer.len() > MAX_LOG_ENTRIES {
+            let cap = max_log_entries();
+            while buffer.len() > cap {
                 buffer.pop_front();
             }
         }

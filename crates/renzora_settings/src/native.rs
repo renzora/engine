@@ -252,6 +252,10 @@ pub(crate) fn build(app: &mut App) {
     // value even if the `renzora_autosave` plugin (its real owner) isn't present.
     // `insert_resource` from that plugin wins over this when it is.
     app.insert_resource(renzora::load_autosave());
+    // Seed the shared log-buffer cap from the persisted pref up front, so logs
+    // emitted during startup (before `sync_console_log_limit` first runs) are
+    // already bounded by the user's chosen limit.
+    renzora::core::console_log::set_max_log_entries(renzora::load_console_log_limit());
     app.add_systems(
         Update,
         (
@@ -266,6 +270,7 @@ pub(crate) fn build(app: &mut App) {
             apply_font_settings,
             sync_drag_value_rail_sweep,
             sync_scroll_speed,
+            sync_console_log_limit,
         )
             .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
     );
@@ -311,6 +316,18 @@ fn sync_scroll_speed(
 ) {
     if settings.is_changed() && config.speed != settings.scroll_speed {
         config.speed = settings.scroll_speed;
+    }
+}
+
+/// Push the `EditorSettings.console_log_limit` preference into the shared log
+/// buffer's runtime cap so the console retains (and the panel renders) only that
+/// many entries. Fires on the first frame (the resource reads changed on insert)
+/// so the loaded pref takes effect before much can be logged.
+fn sync_console_log_limit(settings: Res<EditorSettings>) {
+    if settings.is_changed()
+        && renzora::core::console_log::max_log_entries() != settings.console_log_limit
+    {
+        renzora::core::console_log::set_max_log_entries(settings.console_log_limit);
     }
 }
 
@@ -1951,6 +1968,25 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
         },
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.dev_mode"), t);
+
+    let dv = ctl_drag(
+        commands,
+        fonts,
+        renzora::core::console_log::DEFAULT_MAX_LOG_ENTRIES as f32,
+        10.0,
+        10000.0,
+        10.0,
+        |w| w.resource::<EditorSettings>().console_log_limit as f32,
+        |w, &v| {
+            let limit = (v.round() as usize).clamp(10, 10000);
+            w.resource_mut::<EditorSettings>().console_log_limit = limit;
+            // Apply immediately to the live buffer cap, then persist.
+            renzora::core::console_log::set_max_log_entries(limit);
+            let _ = renzora::save_console_log_limit(limit);
+        },
+    );
+    settings_row(commands, fonts, body, 1, &tr("settings.row.console_log_limit"), dv);
+    note_row(commands, fonts, body, &tr("settings.hint.console_log_limit"));
 
     let (sec, body) = section(commands, fonts, "floppy-disk", &tr("settings.cat.autosave"), A_GREEN);
     commands.entity(col).add_child(sec);

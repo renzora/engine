@@ -96,6 +96,8 @@ The **Console** is where the engine talks to you. Messages stream in as you work
 
 Use the filter buttons to show only warnings or errors, search to find a message, and the box at the bottom to type **slash commands** (start with `/help` to see what's available).
 
+The Console keeps the most recent **100** messages by default and drops the oldest as new ones arrive — a deliberately small cap, because each retained message is a row the panel has to lay out, and a very long backlog can cost frames. Want deeper scrollback? Raise **Settings → Editor → Developer → Console Log Limit** (identical messages already collapse into one row with a count, so the limit measures distinct entries).
+
 ## The Assets browser
 
 The **Assets** browser along the bottom is a file explorer for your project: a folder tree on the left and a grid (or list) of the current folder's files and sub-folders on the right.
