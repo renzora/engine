@@ -68,6 +68,10 @@ fn spawn_rig(
                 Transform::default(),
                 Visibility::default(),
                 VrControllerVisual,
+                // Editor-internal rig, not scene content: keep it out of the
+                // hierarchy panel and the scene saver (descendant meshes are
+                // hidden with it via the hierarchy's ancestor check).
+                renzora::HideInHierarchy,
             ))
             .id();
         // Grip pose: +Z points back along the handle, so tilt the capsule to
@@ -122,6 +126,8 @@ fn spawn_rig(
         Transform::default(),
         XrTrackedView,
         VrMirrorCamera,
+        // Editor-internal spectator camera, not scene content.
+        renzora::HideInHierarchy,
     ));
 }
 
