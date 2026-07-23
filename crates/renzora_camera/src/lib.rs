@@ -902,23 +902,39 @@ fn camera_controller(
     }
 
     // --- Cursor lock/unlock ---
-    // Only start drag if the click originated inside the viewport
+    // Only start the drag if the click originated inside the viewport.
     if (right_just_pressed || middle_just_pressed) && viewport_hovered {
-        if let Ok(mut cursor) = window_query.single_mut() {
-            cursor.visible = false;
-            cursor.grab_mode = CursorGrabMode::Locked;
-        }
         drag.dragging = true;
         mouse_motion.clear();
-        return;
+    }
+    if right_just_released || middle_just_released {
+        drag.dragging = false;
     }
 
-    if right_just_released || middle_just_released {
-        if let Ok(mut cursor) = window_query.single_mut() {
+    // Enforce the hidden/confined cursor every frame *while* dragging, not just
+    // on the press edge — so a transient reset from another system can't re-show
+    // it mid-drag. `Confined`, NOT `Locked`: winit doesn't support `Locked` on
+    // Windows, and requesting the unsupported mode leaves the cursor visible
+    // (the crosshair stayed on screen during a right-drag orbit). `Confined` is
+    // the Windows-supported mode the markup cursor code already uses; combined
+    // with `visible = false` it hides the pointer for the look-drag.
+    if let Ok(mut cursor) = window_query.single_mut() {
+        if drag.dragging {
+            if cursor.visible {
+                cursor.visible = false;
+            }
+            if cursor.grab_mode != CursorGrabMode::Confined {
+                cursor.grab_mode = CursorGrabMode::Confined;
+            }
+        } else if !cursor.visible {
             cursor.visible = true;
             cursor.grab_mode = CursorGrabMode::None;
         }
-        drag.dragging = false;
+    }
+    // On the press frame, skip the rest so the first accumulated motion delta
+    // doesn't jerk the camera.
+    if (right_just_pressed || middle_just_pressed) && drag.dragging {
+        return;
     }
 
     // --- Scroll wheel: dolly zoom (only when hovering viewport) ---

@@ -69,6 +69,7 @@ fn apply_cursor_icon(
     hovered: Query<(&Interaction, &HoverCursor)>,
     viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
     windows: Query<(Entity, &Window)>,
+    cursor_opts: Query<&bevy::window::CursorOptions>,
     primary: Query<Entity, With<PrimaryWindow>>,
     mut commands: Commands,
     mut last: Local<Option<(Entity, SystemCursorIcon)>>,
@@ -109,6 +110,16 @@ fn apply_cursor_icon(
         .map(|(e, _)| e)
         .or_else(|| primary.single().ok());
     let Some(win) = win else { return };
+
+    // Don't paint a cursor icon on a window whose OS cursor is hidden. Something
+    // deliberately hid it — an editor-camera right/middle look-drag, a terrain
+    // brush, a modal transform, a script `lock_cursor()` — and re-asserting a
+    // `CursorIcon` here re-shows it, which is why the viewport's crosshair used
+    // to stay visible (pinned by the camera's cursor-lock) during a right-drag
+    // orbit instead of disappearing. Leave the hidden cursor hidden.
+    if cursor_opts.get(win).is_ok_and(|o| !o.visible) {
+        return;
+    }
 
     if *last != Some((win, target)) {
         // Reset the previous window's cursor when the pointer moves to another
