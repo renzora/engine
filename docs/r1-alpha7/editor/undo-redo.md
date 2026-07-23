@@ -20,7 +20,7 @@ Undo is wired through the whole editor:
 - **Transforms** — moving, rotating, scaling with the gizmo, in **both 3D and 2D** viewports (each drag is one step; arrow-key nudges too).
 - **The inspector** — every field: numbers, vectors, colors, toggles, text, dropdowns, asset drops and the per-field **reset** button. Scrubbing a value is a single undo step per drag; a separate drag on the same field is its own step. Also **adding/removing a component** and toggling a component **enabled/disabled** (removing restores the component with its edited values, not a default).
 - **The hierarchy** — rename, reparent, reorder, group, lock, hide, spawn and delete.
-- **Deleting anything** — lights, cameras, imported models, 2D sprites/nodes, and groups (with all their children and components) restore faithfully, not just primitive shapes.
+- **Deleting anything** — lights, cameras, imported models, 2D sprites/nodes, and groups (with all their children and components) restore faithfully, not just primitive shapes. A deleted entity comes back **under its original parent**, in place — undoing the delete of a child never drops it at the scene root.
 - **Spawning** — shapes, presets, components, drawn meshes.
 - **Terrain** — each sculpt or paint stroke is one undo step (this used to be a separate, hidden history; it is now part of the main one).
 - **Tilemaps** — each paint/erase/fill stroke, and the Randomise scatter, is one step.

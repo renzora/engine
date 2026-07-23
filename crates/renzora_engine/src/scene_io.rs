@@ -718,18 +718,28 @@ pub fn spawn_entities_from_snapshot(
         }
     };
 
-    // Entity references that point *outside* the snapshot — a deleted root's
-    // `ChildOf` parent above all — are absent from the map, and
-    // `SceneEntityMapper` maps anything absent to a freshly reserved DEAD id.
-    // The relationship hook then drops the `ChildOf` outright, so undoing the
-    // delete of a child restored it at the scene root instead of under its
-    // parent. Identity-map every live entity that isn't itself part of the
-    // snapshot so those references survive the remap.
-    let scene_ids: Vec<Entity> = scene.entities.iter().map(|e| e.entity).collect();
-    let snapshot_ids: bevy::ecs::entity::EntityHashSet = scene_ids.iter().copied().collect();
-    for id in world.iter_entities().map(|e| e.id()) {
-        if !snapshot_ids.contains(&id) {
-            entity_map.insert(id, id);
+    // A snapshot keeps each entity's `ChildOf`, but the parent of a deleted
+    // *root* lives outside the snapshot, so its id is absent from `entity_map`.
+    // `write_to_world` remaps every entity reference through that map, and
+    // `SceneEntityMapper` turns an absent id into a freshly reserved DEAD id —
+    // the relationship hook then drops the `ChildOf`, so the entity restores at
+    // the scene root instead of under its parent (issue #75). Seed an identity
+    // entry for each external parent that is still live so the link survives the
+    // remap. Only the parents the snapshot actually references are seeded, read
+    // straight off its own `ChildOf` links — not the whole world. Snapshot-
+    // internal entities are deliberately left unseeded: they still receive fresh
+    // ids, so the links between them follow the remap.
+    let snapshot_ids: bevy::ecs::entity::EntityHashSet =
+        scene.entities.iter().map(|e| e.entity).collect();
+    for dynamic_entity in &scene.entities {
+        for component in &dynamic_entity.components {
+            let Some(child_of) = ChildOf::from_reflect(component.as_partial_reflect()) else {
+                continue;
+            };
+            let parent = child_of.parent();
+            if !snapshot_ids.contains(&parent) && world.get_entity(parent).is_ok() {
+                entity_map.insert(parent, parent);
+            }
         }
     }
 
@@ -738,11 +748,13 @@ pub fn spawn_entities_from_snapshot(
         return entity_map;
     }
 
-    // Old->new for the snapshot's own entities. The identity seeds above are
-    // scaffolding for the remap, not results — callers look up restored roots.
-    let restored: bevy::ecs::entity::EntityHashMap<Entity> = scene_ids
+    // Narrow the returned map to the snapshot's own old->new pairs; the identity
+    // seeds above are scaffolding for the remap, not results. The sole caller
+    // (`DeleteEntitiesCmd::undo`) only looks up restored roots.
+    let restored: bevy::ecs::entity::EntityHashMap<Entity> = scene
+        .entities
         .iter()
-        .filter_map(|old| entity_map.get(old).map(|new| (*old, *new)))
+        .filter_map(|e| entity_map.get(&e.entity).map(|new| (e.entity, *new)))
         .collect();
 
     // Re-insert ChildOf so hierarchy hooks fire (same as load_scene_from_string).
