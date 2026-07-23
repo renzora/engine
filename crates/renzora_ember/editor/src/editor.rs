@@ -13,7 +13,7 @@ use bevy_hui::prelude::{HtmlNode, Tags};
 use renzora::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
-use renzora_ember::game_ui::UiWidget;
+use renzora_ember::game_ui::{UiCanvas, UiWidget};
 
 use renzora_ember::markup::HtmlTemplatePath;
 
@@ -26,7 +26,7 @@ pub struct HuiEditorPlugin;
 impl Plugin for HuiEditorPlugin {
     fn build(&self, app: &mut App) {
         register_editor_entries(app);
-        app.add_systems(Update, tag_built_nodes);
+        app.add_systems(Update, (tag_built_nodes, ensure_canvas_template));
     }
 }
 
@@ -124,6 +124,11 @@ fn register_editor_entries(app: &mut App) {
                 .insert(HtmlTemplatePath(DEFAULT_TEMPLATE.to_string()));
         }),
         remove_fn: Some(|world, entity| {
+            // A UiCanvas's template is its backbone — mandatory, not removable.
+            // (Standalone `html_template` instance entities can still drop it.)
+            if world.get::<UiCanvas>(entity).is_some() {
+                return;
+            }
             // Drop the path and any markup child it built.
             let children: Vec<Entity> = world
                 .get::<Children>(entity)
@@ -161,4 +166,102 @@ fn register_editor_entries(app: &mut App) {
             },
         }],
     });
+}
+
+/// Every `UiCanvas` is backed by an `.html` template — a canvas's contents are
+/// authored as markup, so the template is its backbone, not an optional add-on.
+/// A freshly created canvas has none, so we create one under the project's `ui/`
+/// folder and link it here.
+///
+/// Filtered to `Added<UiCanvas>` *without* a path, so scene-loaded canvases
+/// (which already carry their template) are left alone. Creating it eagerly on
+/// spawn — rather than lazily on the first widget — means a canvas always has its
+/// template *before* any widget is added, so the markup loader's build-on-insert
+/// runs against an empty canvas and never wipes authored children.
+fn ensure_canvas_template(
+    mut commands: Commands,
+    project: Option<Res<renzora::CurrentProject>>,
+    canvases: Query<(Entity, Option<&Name>), (Added<UiCanvas>, Without<HtmlTemplatePath>)>,
+) {
+    let Some(project) = project else {
+        return; // No project open — nowhere to write the file.
+    };
+    for (entity, name) in &canvases {
+        let slug = name
+            .map(|n| slug_name(n.as_str()))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "canvas".to_string());
+        if let Some(rel) = create_unique_template(&project.path, &slug) {
+            commands.entity(entity).insert(HtmlTemplatePath(rel));
+        }
+    }
+}
+
+/// Sanitize an entity name into a lowercase, filesystem-safe file stem
+/// (`"UI Canvas"` → `ui_canvas`). Non-alphanumerics become `_`; leading/trailing
+/// `_` are trimmed.
+fn slug_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+/// Pick the first free stem: `slug`, else `slug_1`, `slug_2`, … `exists` reports
+/// whether a stem is already taken. Pure, so it can be unit-tested without disk.
+fn unique_stem(slug: &str, exists: impl Fn(&str) -> bool) -> String {
+    if !exists(slug) {
+        return slug.to_string();
+    }
+    (1..10_000)
+        .map(|n| format!("{slug}_{n}"))
+        .find(|s| !exists(s))
+        .unwrap_or_else(|| slug.to_string())
+}
+
+/// Create a fresh `ui/<stem>.html` under the project root (collision-bumped),
+/// write the default empty template, and return the project-relative path
+/// (`ui/<stem>.html`) for `HtmlTemplatePath`. `None` if it can't be written.
+fn create_unique_template(project_root: &std::path::Path, slug: &str) -> Option<String> {
+    // The same minimal template the asset browser's "New → HTML Template" writes.
+    const DEFAULT_CONTENT: &str = "<template>\n    <node></node>\n</template>\n";
+    let ui_dir = project_root.join("ui");
+    if let Err(e) = std::fs::create_dir_all(&ui_dir) {
+        warn!("could not create project ui/ dir: {e}");
+        return None;
+    }
+    let stem = unique_stem(slug, |s| ui_dir.join(format!("{s}.html")).exists());
+    let abs = ui_dir.join(format!("{stem}.html"));
+    if let Err(e) = std::fs::write(&abs, DEFAULT_CONTENT) {
+        warn!("could not write UI template {}: {e}", abs.display());
+        return None;
+    }
+    Some(format!("ui/{stem}.html"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{slug_name, unique_stem};
+
+    #[test]
+    fn slug_name_sanitizes() {
+        assert_eq!(slug_name("UI Canvas"), "ui_canvas");
+        assert_eq!(slug_name("  Menu!  "), "menu");
+        assert_eq!(slug_name("HUD 2"), "hud_2");
+        assert_eq!(slug_name("***"), "");
+    }
+
+    #[test]
+    fn unique_stem_bumps_past_collisions() {
+        let taken = ["canvas", "canvas_1", "canvas_2"];
+        assert_eq!(unique_stem("canvas", |s| taken.contains(&s)), "canvas_3");
+        assert_eq!(unique_stem("fresh", |_| false), "fresh");
+    }
 }
