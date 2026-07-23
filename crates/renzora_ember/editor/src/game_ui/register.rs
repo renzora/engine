@@ -571,10 +571,6 @@ pub fn register_game_ui_editor(app: &mut App) {
     // camera image — 3D, or 2D when UI view was entered from
     // 2D), so we don't spawn or maintain a second preview camera.
     app.add_systems(Startup, canvas_render::setup_ui_canvas_render);
-    app.add_systems(
-        Update,
-        canvas_render::sync_canvases_to_editor_camera.after(sync_ui_canvas_target_camera),
-    );
     app.add_systems(Update, canvas_render::sync_render_target_to_reference);
     app.add_systems(
         Update,
@@ -702,66 +698,67 @@ fn ensure_ui_visibility_components(
     }
 }
 
-/// Route UI canvases to the right camera in the editor.
+/// Route every UI canvas to the one camera it should render through this frame.
 ///
-/// The editor has both an editor camera (rendering to the viewport image)
-/// and a play-mode game camera. Without an explicit target, Bevy UI
-/// picks "the first Camera it finds," which is non-deterministic. This
-/// system inserts `UiTargetCamera` pointing at the editor camera while in
-/// play mode, and removes it otherwise so edit-mode renders go through
-/// whatever default Bevy picks (typically the editor camera).
+/// This is the **single authority** on canvas `UiTargetCamera` in the editor,
+/// for both modes — it previously shared the job with a second system
+/// (`sync_canvases_to_editor_camera`) that re-added the edit-mode target after
+/// this one removed it. That remove-then-re-add churn left a window where a
+/// canvas perturbed by a reparent/reorder (or a freshly spawned one) could be
+/// left with *no* target and fall back to Bevy's `IsDefaultUiCamera` — the
+/// editor's own chrome camera — so game UI bled into the editor interface. One
+/// system that only ever *sets* the correct camera, never removes, closes that
+/// window: a canvas keeps a valid target at all times and merely switches it on
+/// a mode change.
 ///
-/// **Why the editor camera, not the authored game camera:** play mode never
-/// renders through the authored scene camera. `renzora_camera`'s
-/// `drive_editor_camera_in_play` drives the *editor* viewport camera to the
-/// game camera's pose, so the editor camera is the one that actually renders
-/// the running game into the viewport image. Pointing the UI at the authored
-/// scene camera (which has no viewport render target in-editor) rendered it to
-/// a target nobody displays — the UI vanished in play mode. Hanging it off the
-/// editor camera composites it on top of the game, exactly like a shipped
-/// runtime composites UI over the game camera's window output.
+/// - **Edit mode** → the offscreen UI render camera (`UiCanvasRender`), whose
+///   image the canvas tab displays. (That camera is only *active* while the
+///   Viewport is in UI view, so in the 3D/2D viewport the canvas simply isn't
+///   drawn — never composited into the chrome.)
+/// - **Play mode** → the editor viewport camera that renders the running game
+///   into the viewport image, so the UI composites on top. A 2D game plays
+///   through the editor 2D camera (the 3D editor camera is parked on a token
+///   render target then — UI hung off it would rasterize into a 64² image
+///   nobody displays). Play mode never renders through the *authored* scene
+///   camera, so we deliberately don't target it.
 ///
-/// **Does not touch `Visibility`** — that's the user's / the script's
-/// concern. Earlier versions of this system also force-hid every canvas
-/// outside of play mode, which polluted saved scenes and broke shipped
-/// runtime visibility.
+/// **Does not touch `Visibility`** — that's the user's / the script's concern.
+/// Earlier versions force-hid every canvas outside play mode, which polluted
+/// saved scenes and broke shipped runtime visibility.
 fn sync_ui_canvas_target_camera(
     mut commands: Commands,
     play_mode: Res<renzora::PlayModeState>,
+    render: Option<Res<canvas_render::UiCanvasRender>>,
     editor_cam: Query<Entity, With<renzora::core::EditorCamera>>,
     editor_cam_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
     canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
 ) {
-    let in_play = play_mode.is_in_play_mode();
-    // The camera that actually renders the running game into the viewport
-    // image. A 2D game plays through the editor 2D camera (the 3D editor
-    // camera is parked on a token render target then — UI hung off it would
-    // rasterize into a 64² image nobody displays).
-    let game_is_2d = play_mode
-        .active_game_camera
-        .is_some_and(|e| kind_2d.get(e).is_ok());
-    let render_camera = if game_is_2d {
-        editor_cam_2d.iter().next()
+    let target = if play_mode.is_in_play_mode() {
+        let game_is_2d = play_mode
+            .active_game_camera
+            .is_some_and(|e| kind_2d.get(e).is_ok());
+        if game_is_2d {
+            editor_cam_2d.iter().next()
+        } else {
+            editor_cam.iter().next()
+        }
     } else {
-        editor_cam.iter().next()
+        render.as_ref().map(|r| r.camera_entity)
+    };
+
+    // No camera resolved yet (startup, or the render target not spawned) — leave
+    // canvases as they are rather than stripping a target they already hold.
+    let Some(target) = target else {
+        return;
     };
 
     for (entity, existing_target_cam) in &canvases {
-        if in_play {
-            if let Some(cam_entity) = render_camera {
-                let needs_insert = match existing_target_cam {
-                    Some(tc) => tc.entity() != cam_entity,
-                    None => true,
-                };
-                if needs_insert {
-                    commands
-                        .entity(entity)
-                        .insert(bevy::ui::UiTargetCamera(cam_entity));
-                }
-            }
-        } else if existing_target_cam.is_some() {
-            commands.entity(entity).remove::<bevy::ui::UiTargetCamera>();
+        let needs_insert = existing_target_cam.is_none_or(|tc| tc.entity() != target);
+        if needs_insert {
+            commands
+                .entity(entity)
+                .insert(bevy::ui::UiTargetCamera(target));
         }
     }
 }

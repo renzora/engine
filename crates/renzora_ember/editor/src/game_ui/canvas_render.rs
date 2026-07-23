@@ -17,8 +17,6 @@ use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 
-use renzora_ember::game_ui::components::UiCanvas;
-
 /// *Initial* resolution of the UI editor render-target image (the default
 /// canvas reference). The target is resized to follow the active canvas's
 /// reference resolution by [`sync_render_target_to_reference`], so the render
@@ -143,37 +141,8 @@ pub(crate) fn sync_render_target_to_reference(
     }
 }
 
-/// Sync system — keeps every `UiCanvas` pointed at the editor's UI render
-/// camera while the editor is in edit mode. In play mode, the existing
-/// `sync_ui_canvas_target_camera` system takes over and points canvases
-/// at the editor viewport camera (which renders the running game into the
-/// viewport image) so the UI composites on top. In standalone runtime,
-/// this system doesn't exist (it's editor-only) and canvases use Bevy's
-/// default camera-finding.
-pub fn sync_canvases_to_editor_camera(
-    mut commands: Commands,
-    play_mode: Option<Res<renzora::PlayModeState>>,
-    render: Option<Res<UiCanvasRender>>,
-    canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
-) {
-    let in_play = play_mode.is_some_and(|p| p.is_in_play_mode());
-    if in_play {
-        // Play-mode handler owns target-camera assignment.
-        return;
-    }
-    let Some(render) = render else {
-        return;
-    };
-    let target = render.camera_entity;
-    for (entity, existing) in &canvases {
-        let needs_update = match existing {
-            Some(tc) => tc.entity() != target,
-            None => true,
-        };
-        if needs_update {
-            commands
-                .entity(entity)
-                .insert(bevy::ui::UiTargetCamera(target));
-        }
-    }
-}
+// Canvas → target-camera assignment now lives entirely in
+// `register::sync_ui_canvas_target_camera` (the single authority for both edit
+// and play mode). Splitting it across two systems previously caused a
+// remove-then-re-add race that could strand a canvas with no target camera,
+// bleeding game UI into the editor chrome.

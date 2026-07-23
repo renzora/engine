@@ -94,6 +94,14 @@ impl Plugin for GameUiPlugin {
         app.add_systems(Update, on_widget_reparented);
         app.add_observer(on_childof_inserted);
 
+        // ── UI canvas invariant ────────────────────────────────────────
+        // Widgets must stay under a `UiCanvas` (their scoping camera) and a
+        // canvas must never nest under a widget. These healers re-establish
+        // that after any reparent — drag, undo-restore, scene load, or script.
+        // See the systems below for why the leak is otherwise invisible-yet-
+        // destructive (an orphaned widget renders into the editor's own UI).
+        app.add_systems(Update, (heal_orphaned_ui_widgets, heal_nested_ui_canvases));
+
         // Visibility-mode binding: same dual-path setup as the reparent
         // logic. The Changed system handles inspector edits to the
         // mode dropdown; the observer applies the saved mode on scene
@@ -267,6 +275,109 @@ fn on_childof_inserted(
     });
 }
 
+// ── UI canvas invariant healers ─────────────────────────────────────────────
+//
+// A `UiWidget` renders on the right camera *only* because a `UiCanvas` ancestor
+// carries `UiTargetCamera` (Bevy propagates it down the child chain). Break that
+// chain — drag the widget to the scene root, or under a non-UI entity — and the
+// widget becomes a bare root `Node` with no target camera, which Bevy hands to
+// the `IsDefaultUiCamera` camera: in the editor that is the *chrome* camera, so
+// the widget renders straight into the editor's own UI ("merges into the
+// editor"). Worse, a bare root `Node` is indistinguishable from editor chrome,
+// so it drops out of the hierarchy panel and can no longer be selected to
+// delete — which is why deleting "doesn't work" once a widget has escaped.
+//
+// Rather than forbid the move, we restore the invariant: an orphaned widget is
+// wrapped in a fresh root canvas (having a second canvas is fine), and a canvas
+// that got nested under a widget is popped back to the root.
+//
+// These run as deferred systems, NOT `On<Remove, ChildOf>` observers: recursive
+// despawn removes `ChildOf` from every child in a deleted subtree, and an
+// observer would try to re-home entities that are about to vanish. A system sees
+// the world only after despawn commands have flushed, so doomed widgets are
+// already gone and never spuriously healed.
+
+/// Wrap any `UiWidget` that has lost its `UiCanvas` ancestor in a fresh root
+/// canvas. Covers a widget dragged to the root (no `ChildOf`) and a widget
+/// reparented under a non-UI / non-canvas entity (`ChildOf` changed to a parent
+/// whose chain has no canvas).
+fn heal_orphaned_ui_widgets(
+    mut commands: Commands,
+    roots: Query<Entity, (With<UiWidget>, Without<ChildOf>)>,
+    moved: Query<Entity, (With<UiWidget>, Changed<ChildOf>)>,
+    child_of: Query<&ChildOf>,
+    canvases: Query<(), With<UiCanvas>>,
+) {
+    let has_canvas_ancestor = |start: Entity| -> bool {
+        let mut e = start;
+        loop {
+            if canvases.get(e).is_ok() {
+                return true;
+            }
+            match child_of.get(e) {
+                Ok(c) => e = c.parent(),
+                Err(_) => return false,
+            }
+        }
+    };
+
+    // Root widgets are always orphans; reparented widgets only when their new
+    // chain reaches no canvas. Dedup so a widget that is both root and freshly
+    // changed isn't healed twice.
+    let mut orphans: Vec<Entity> = roots.iter().collect();
+    for e in &moved {
+        if !has_canvas_ancestor(e) {
+            orphans.push(e);
+        }
+    }
+    orphans.sort();
+    orphans.dedup();
+
+    for widget in orphans {
+        commands.queue(move |world: &mut World| {
+            // Re-check against the live world: a despawn or an earlier heal this
+            // frame may have already resolved (or removed) the widget.
+            if world.get::<UiWidget>(widget).is_none() {
+                return;
+            }
+            if crate::game_ui::spawn::find_ancestor_canvas(world, widget).is_some() {
+                return;
+            }
+            let canvas = crate::game_ui::spawn::spawn_root_canvas(world);
+            world.entity_mut(widget).set_parent_in_place(canvas);
+        });
+    }
+}
+
+/// Pop any `UiCanvas` that got nested under a `UiWidget` back to the scene root.
+/// Widgets belong to canvases, never the reverse; a canvas dragged onto a widget
+/// inverts the model and re-scopes the canvas inside the widget's layout.
+fn heal_nested_ui_canvases(
+    mut commands: Commands,
+    moved: Query<Entity, (With<UiCanvas>, Changed<ChildOf>)>,
+    child_of: Query<&ChildOf>,
+    widgets: Query<(), With<UiWidget>>,
+) {
+    for canvas in &moved {
+        let mut cur = canvas;
+        let mut nested_under_widget = false;
+        while let Ok(c) = child_of.get(cur) {
+            cur = c.parent();
+            if widgets.get(cur).is_ok() {
+                nested_under_widget = true;
+                break;
+            }
+        }
+        if nested_under_widget {
+            commands.queue(move |world: &mut World| {
+                if let Ok(mut em) = world.get_entity_mut(canvas) {
+                    em.remove_parent_in_place();
+                }
+            });
+        }
+    }
+}
+
 // ── Canvas scaler ───────────────────────────────────────────────────────────
 
 /// Scales `Val::Px` values (text size, padding, border-radius) uniformly so
@@ -403,3 +514,111 @@ fn sync_ui_zindex(
     }
 }
 renzora::add!(GameUiPlugin);
+
+#[cfg(test)]
+mod invariant_tests {
+    use super::*;
+    use crate::game_ui::components::UiCanvas;
+
+    /// Drive the two healers over a bare world once. `Schedule::run` applies the
+    /// systems' deferred commands at the end, so a single call is enough to both
+    /// detect the violation and repair it.
+    fn run_healers(world: &mut World) {
+        let mut schedule = Schedule::default();
+        schedule.add_systems((heal_orphaned_ui_widgets, heal_nested_ui_canvases));
+        schedule.run(world);
+    }
+
+    /// A widget dragged to the scene root (no parent) must be re-homed under a
+    /// freshly spawned canvas — otherwise it renders into the editor's own UI.
+    #[test]
+    fn orphan_widget_at_root_is_wrapped_in_a_canvas() {
+        let mut world = World::new();
+        let widget = world.spawn((UiWidget::default(), Node::default())).id();
+
+        run_healers(&mut world);
+
+        let parent = world
+            .get::<ChildOf>(widget)
+            .map(|c| c.parent())
+            .expect("orphaned widget must be reparented");
+        assert!(
+            world.get::<UiCanvas>(parent).is_some(),
+            "the widget's new parent must be a UiCanvas"
+        );
+    }
+
+    /// A widget reparented under a non-UI entity (a parent whose chain reaches
+    /// no canvas) is just as orphaned as one at the root, and must be healed.
+    #[test]
+    fn widget_under_a_non_canvas_parent_is_rehomed() {
+        let mut world = World::new();
+        let empty = world.spawn(Name::new("Empty")).id();
+        let widget = world
+            .spawn((UiWidget::default(), Node::default(), ChildOf(empty)))
+            .id();
+
+        run_healers(&mut world);
+
+        let parent = world
+            .get::<ChildOf>(widget)
+            .map(|c| c.parent())
+            .expect("widget must have a parent");
+        assert_ne!(parent, empty, "widget must be moved off the non-UI parent");
+        assert!(
+            world.get::<UiCanvas>(parent).is_some(),
+            "widget must land under a UiCanvas"
+        );
+    }
+
+    /// A widget already correctly under a canvas must be left untouched — the
+    /// healer must not spawn spurious canvases for valid hierarchies.
+    #[test]
+    fn widget_already_under_a_canvas_is_left_alone() {
+        let mut world = World::new();
+        let canvas = world.spawn((UiCanvas::default(), Node::default())).id();
+        let widget = world
+            .spawn((UiWidget::default(), Node::default(), ChildOf(canvas)))
+            .id();
+
+        run_healers(&mut world);
+
+        assert_eq!(
+            world.get::<ChildOf>(widget).map(|c| c.parent()),
+            Some(canvas),
+            "a validly parented widget must not move"
+        );
+        let canvas_count = world
+            .query_filtered::<Entity, With<UiCanvas>>()
+            .iter(&world)
+            .count();
+        assert_eq!(canvas_count, 1, "no extra canvas should be spawned");
+    }
+
+    /// A canvas dragged so it becomes a child of a widget inverts the model
+    /// (widgets belong to canvases, not the reverse) and must be popped back to
+    /// the scene root, while the widget keeps its own canvas parent.
+    #[test]
+    fn canvas_nested_under_a_widget_is_popped_to_root() {
+        let mut world = World::new();
+        let root_canvas = world.spawn((UiCanvas::default(), Node::default())).id();
+        let widget = world
+            .spawn((UiWidget::default(), Node::default(), ChildOf(root_canvas)))
+            .id();
+        let nested_canvas = world
+            .spawn((UiCanvas::default(), Node::default(), ChildOf(widget)))
+            .id();
+
+        run_healers(&mut world);
+
+        assert!(
+            world.get::<ChildOf>(nested_canvas).is_none(),
+            "a canvas nested under a widget must be popped to the root"
+        );
+        assert_eq!(
+            world.get::<ChildOf>(widget).map(|c| c.parent()),
+            Some(root_canvas),
+            "the widget must keep its own canvas parent"
+        );
+    }
+}

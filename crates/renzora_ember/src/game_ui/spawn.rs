@@ -63,7 +63,10 @@ fn classify_parent(world: &World, parent: Option<Entity>) -> (Option<Entity>, Pa
 
 /// Walk up the parent chain to find the enclosing `UiCanvas` so we can
 /// look up its reference width/height for `pct_*` math.
-fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<Entity> {
+///
+/// `pub(crate)` because the canvas-invariant healer (`game_ui::mod`) uses the
+/// same walk to decide whether a widget still has a canvas ancestor.
+pub(crate) fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<Entity> {
     loop {
         if world.get::<UiCanvas>(entity).is_some() {
             return Some(entity);
@@ -73,6 +76,25 @@ fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<Entity> {
             None => return None,
         }
     }
+}
+
+/// Spawn a bare full-screen root `UiCanvas` (no parent). This is the single
+/// definition of "a fresh canvas": the default parent when a widget is spawned
+/// with no canvas in the scene, and the wrapper the invariant healer parents an
+/// orphaned widget under. Kept in one place so canvas defaults never drift.
+pub(crate) fn spawn_root_canvas(world: &mut World) -> Entity {
+    world
+        .spawn((
+            Name::new("UI Canvas"),
+            UiCanvas::default(),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+        ))
+        .id()
 }
 
 pub fn spawn_widget(
@@ -89,20 +111,7 @@ pub fn spawn_widget(
             let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
             q.iter(world).next()
         })
-        .unwrap_or_else(|| {
-            world
-                .spawn((
-                    Name::new("UI Canvas"),
-                    UiCanvas::default(),
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        position_type: PositionType::Absolute,
-                        ..default()
-                    },
-                ))
-                .id()
-        });
+        .unwrap_or_else(|| spawn_root_canvas(world));
 
     // Reference dimensions for pct_w/pct_h come from the enclosing canvas.
     // Container children still use canvas-reference percentages so the
@@ -270,18 +279,7 @@ pub fn spawn_html_template_at(
         let mut q = world.query_filtered::<Entity, With<UiCanvas>>();
         match parent.or_else(|| q.iter(world).next()) {
             Some(e) => e,
-            None => world
-                .spawn((
-                    Name::new("UI Canvas"),
-                    UiCanvas::default(),
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Percent(100.0),
-                        position_type: PositionType::Absolute,
-                        ..default()
-                    },
-                ))
-                .id(),
+            None => spawn_root_canvas(world),
         }
     };
 
