@@ -27,6 +27,19 @@ pub struct MenuAction(pub Box<dyn Fn(&mut World) + Send + Sync>);
 /// window.
 const SCREEN_MENU_MAX_H: f32 = 420.0;
 
+// Row metrics shared by every screen-menu row ([`menu_item`], [`menu_header`],
+// [`menu_submenu`](super::submenu::menu_submenu)). The glyph is deliberately
+// larger than the label and the vertical padding deliberately thin — the
+// Photoshop layer-menu feel, where you pick a row by its icon and a long list
+// still fits on screen. Because the icon sets the row height, growing it and
+// trimming the padding together keeps rows the same height as the old, smaller
+// icon did.
+pub(crate) const MENU_ICON: f32 = 15.0;
+pub(crate) const MENU_TEXT: f32 = 12.0;
+pub(crate) const MENU_PAD_X: f32 = 8.0;
+pub(crate) const MENU_PAD_Y: f32 = 2.0;
+pub(crate) const MENU_GAP: f32 = 7.0;
+
 /// Spawn a floating menu at window position `(x, y)`. It's a [`ScreenMenu`] (kept
 /// on-screen + pointer-blocking), dismissed by clicking outside it. Fill the
 /// returned entity with [`menu_item`] / [`menu_item_styled`] / [`menu_sep`]
@@ -189,9 +202,9 @@ where
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
+                column_gap: Val::Px(MENU_GAP),
                 width: Val::Percent(100.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
+                padding: UiRect::axes(Val::Px(MENU_PAD_X), Val::Px(MENU_PAD_Y)),
                 border_radius: BorderRadius::all(Val::Px(3.0)),
                 ..default()
             },
@@ -206,11 +219,11 @@ where
         Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
         _ => Color::NONE,
     });
-    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, 12.0);
+    let ic = icon_text(commands, &fonts.phosphor, icon, icon_color, MENU_ICON);
     let t = commands
         .spawn((
             Text::new(label),
-            ui_font(&fonts.ui, 12.0),
+            ui_font(&fonts.ui, MENU_TEXT),
             TextColor(rgb(text_color)),
         ))
         .id();
@@ -328,7 +341,12 @@ pub fn menu_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> 
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(5.0), Val::Px(3.0)),
+                padding: UiRect::new(
+                    Val::Px(MENU_PAD_X),
+                    Val::Px(MENU_PAD_X),
+                    Val::Px(5.0),
+                    Val::Px(3.0),
+                ),
                 ..default()
             },
             Name::new("menu-header"),
@@ -352,7 +370,7 @@ pub fn menu_sep(commands: &mut Commands) -> Entity {
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Px(1.0),
-                margin: UiRect::vertical(Val::Px(3.0)),
+                margin: UiRect::vertical(Val::Px(2.0)),
                 ..default()
             },
             BackgroundColor(rgb(divider())),
@@ -392,13 +410,28 @@ pub(crate) fn menu_action_run(
 /// Press outside an open [`ScreenMenu`] → close it.
 pub(crate) fn screen_menu_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
-    menus: Query<(Entity, &RelativeCursorPosition), With<ScreenMenu>>,
+    menus: Query<(Entity, &RelativeCursorPosition, Ref<ScreenMenu>)>,
+    submenus: Query<(&RelativeCursorPosition, &Node), With<super::submenu::SubPanel>>,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Left) && !mouse.just_pressed(MouseButton::Right) {
         return;
     }
-    for (e, rcp) in &menus {
+    // A submenu panel hangs *outside* its menu root's rect, so a click inside one
+    // reads as "outside the menu" here. Clicking a submenu item is handled by
+    // `menu_action_run` (which closes the menu itself); anything else in there
+    // must leave the menu standing.
+    if super::submenu::cursor_over_submenu(&submenus) {
+        return;
+    }
+    for (e, rcp, menu) in &menus {
+        // A menu spawned this frame is the one this very press just opened (a
+        // sync point can make it visible here before the press is over), and it
+        // has no cursor-over state yet — dismissing it would close menus on the
+        // click that asked for them.
+        if menu.is_added() {
+            continue;
+        }
         if !rcp.cursor_over {
             commands.entity(e).despawn();
         }

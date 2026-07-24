@@ -24,7 +24,11 @@ const GUIDE: (u8, u8, u8) = (62, 62, 74);
 const SIDEBAR_BG: (u8, u8, u8) = crate::theme::WINDOW_BG;
 
 /// A stable accent color per category (ember port of `category_colors`).
-fn category_color(name: &str) -> (u8, u8, u8) {
+///
+/// Public so anything presenting the *same* categories in another shape — the
+/// hierarchy's right-click quick-add menu, say — tints them identically to this
+/// overlay instead of inventing a second palette.
+pub fn category_color(name: &str) -> (u8, u8, u8) {
     match name.to_lowercase().as_str() {
         "transform" => (150, 200, 255),
         "environment" => (130, 210, 160),

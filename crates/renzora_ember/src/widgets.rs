@@ -118,6 +118,7 @@ mod section;
 mod search;
 mod sortable;
 mod spinner;
+mod submenu;
 mod timeline;
 mod timeline_view;
 
@@ -223,6 +224,7 @@ pub use section::{
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
+pub use submenu::{menu_submenu, menu_submenu_styled};
 pub use timeline::*;
 pub use timeline_view::{timeline_view, TimelineHandle, TimelineView, LANE_INSET};
 
@@ -319,7 +321,16 @@ impl Plugin for WidgetsPlugin {
                     modal::modal_toggle,
                     popup::screen_menu_clamp,
                     popup::menu_action_run,
+                    // Deliberately unordered against the systems that *open*
+                    // menus. Any `.before`/`.after` here makes bevy insert an
+                    // `ApplyDeferred` ahead of it, which flushes every pending
+                    // command — including a menu a panel just spawned for this
+                    // very press — so dismiss would see the new menu while the
+                    // opening click is still `just_pressed` and kill it on the
+                    // frame it appeared. (`screen_menu_dismiss` also skips
+                    // freshly spawned menus, but don't rely on that alone.)
                     popup::screen_menu_dismiss,
+                    submenu::submenu_reveal,
                     popup::update_pointer_over_overlay,
                     popup::tag_popup_panels,
                     overlay::overlay_dismiss,

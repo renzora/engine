@@ -92,7 +92,7 @@ app.register_panel_content("my_panel", true, |commands, fonts| {
 | Data viz | `gauge`, `line_chart`, `bar_chart`, `sparkline`, `line_chart_live`, `waveform`, `vu_meter`, `mixer` |
 | Containers | `card`, `section`, `accordion`, `collapsible`, `tabs`, `divider`, `scroll_area` |
 | Data display | `table`, `tree`, `grid`, `avatar`, `chip`, `badge`, `list_group`, `timeline_view` |
-| Overlays | `modal`, `popover`, `tooltip`, `popup`, `menu`, `context_menu`, `toast`, `alert` |
+| Overlays | `modal`, `popover`, `tooltip`, `popup`, `menu`, `screen_menu`, `menu_submenu`, `context_menu`, `toast`, `alert` |
 | Navigation | `navbar`, `breadcrumb`, `pagination` |
 | Editors | `node_graph`, `code_editor`, `property_row`, `vec3_edit` |
 | Feedback | `progress`, `spinner`, `skeleton` |
@@ -115,6 +115,28 @@ let ng = node_graph(commands, fonts);
 ### Tooltips (`HoverTooltip`)
 
 Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
+
+### Floating menus & submenus (`screen_menu`, `menu_submenu`)
+
+A right-click menu is a `screen_menu(commands, x, y)` at the cursor: ember keeps it on-screen, blocks pointer pass-through, and closes it when you click outside. Fill the entity it returns with `menu_item` / `menu_item_styled` / `menu_header` / `menu_sep` rows — each item carries a `Fn(&mut World)` closure that runs when it's clicked, after which the menu closes itself.
+
+For a nested list, use `menu_submenu(commands, fonts, icon, label)`. It returns `(row, content)`: add `row` to the parent menu like any other item, and fill `content` with items — including further submenus, which nest to any depth. The panel opens on hover, follows the row as the menu scrolls, and flips to the other side when it would run off the window. `menu_submenu_styled` takes an icon color for color-coded rows; pair it with `category_color(name)` to tint a category the same accent the search overlay gives it.
+
+```rust
+let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+let (row, content) = menu_submenu(&mut commands, &fonts, "lightbulb", "Lighting");
+let item = menu_item(&mut commands, &fonts, "lightbulb", "Point Light", move |w| spawn_light(w));
+commands.entity(content).add_children(&[item]);
+commands.entity(menu).add_children(&[row]);
+```
+
+Every row — `menu_item`, `menu_header`, `menu_submenu` — shares one set of metrics (`MENU_ICON`, `MENU_TEXT`, `MENU_PAD_X/Y`, `MENU_GAP` in `popup.rs`): a glyph larger than the label on a thin row, so you pick a row by its icon and a long list still fits on screen. Change them there, not per builder.
+
+Three rules worth knowing when you touch this machinery:
+
+- **Never order a system against `screen_menu_dismiss`.** Any `.before`/`.after` on it makes bevy insert an `ApplyDeferred` in front of it, which flushes *every* pending command — including the menu a panel just spawned for the very press being handled. Dismiss would then see a brand-new menu while the opening click is still `just_pressed` and close it on the frame it appeared.
+- **A submenu panel is a parentless root node**, positioned in window pixels and despawned by an `on_remove` hook on its row. It can't be a child of the row: a `screen_menu` keeps its items in a height-capped scroll area, and a scroll area clips its children, so the panel would be sliced off at the menu's edge. Same clipping trap tooltips avoid — and the reason `GlobalZIndex` alone never fixes a vanishing popup.
+- **Read a UI node's placement from `UiGlobalTransform`, never `GlobalTransform`.** Bevy 0.19's layout writes the former (an `Affine2` whose `translation` is the node's **centre**, in *physical* px — multiply by `ComputedNode::inverse_scale_factor()` for the logical px that `Val::Px` speaks). A UI node's `GlobalTransform` is left at the origin, so anything positioned from it lands in the window's top-left corner.
 
 ### Code editor (`code_editor`)
 

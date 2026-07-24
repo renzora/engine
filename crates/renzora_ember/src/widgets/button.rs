@@ -50,14 +50,33 @@ pub fn icon_label_button(
     icon: &str,
     label: &str,
 ) -> Entity {
+    icon_label_button_parts(commands, fonts, icon, label).0
+}
+
+/// [`icon_label_button`] that also hands back its icon and label entities, for
+/// callers that restyle the parts — e.g. a toolbar that hides the label to fall
+/// back to an icon-only button when the panel gets too narrow.
+pub fn icon_label_button_parts(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+) -> (Entity, Entity, Entity) {
     let b = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
                 column_gap: Val::Px(5.0),
                 padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
+                // A button is a fixed-size control, never a flexible one: left
+                // shrinkable, a crowded toolbar squeezed it until its label broke
+                // onto a second line ("New / Folder", "Add / Entity") and the row
+                // grew taller. Now the row overflows into whatever *is* shrinkable
+                // (search boxes, breadcrumbs) instead of mangling the buttons.
+                flex_shrink: 0.0,
                 ..default()
             },
             BackgroundColor(rgb(tab_active())),
@@ -74,10 +93,60 @@ pub fn icon_label_button(
             Text::new(label),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_primary())),
+            // Belt-and-braces with `flex_shrink: 0.0` above: even if a caller
+            // width-constrains the button, the label stays on one line.
+            bevy::text::TextLayout::no_wrap(),
         ))
         .id();
     commands.entity(b).add_children(&[ic, t]);
-    b
+    (b, ic, t)
+}
+
+/// An [`icon_label_button`] that degrades instead of deforming: while `compact`
+/// reads true it drops the label, squares up to an icon-only key, and moves the
+/// label to a hover tooltip so it stays identifiable.
+///
+/// WHY panels want this: a button is not a flexible control, so a crowded
+/// toolbar can't take width from it — without a collapse rule the row either
+/// overflows or (before [`icon_label_button_parts`] pinned `flex_shrink: 0.0`)
+/// squeezed the button until its label broke onto a second line. Collapsing the
+/// label buys back ~40-60px per button and keeps everything on one row.
+pub fn icon_label_button_collapsing<F>(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    compact: F,
+) -> Entity
+where
+    F: Fn(&World) -> bool + Clone + Send + Sync + 'static,
+{
+    let (btn, _ic, text) = icon_label_button_parts(commands, fonts, icon, label);
+    let hidden = compact.clone();
+    crate::reactive::bind_display(commands, text, move |w| !hidden(w));
+    let label = label.to_string();
+    crate::reactive::bind_with(commands, btn, compact, move |w, e, compact: &bool| {
+        if let Some(mut n) = w.get_mut::<Node>(e) {
+            // Even padding + a square footprint in the collapsed form, so it
+            // reads as a key rather than a label-less pill.
+            n.padding = if *compact {
+                UiRect::axes(Val::Px(6.0), Val::Px(5.0))
+            } else {
+                UiRect::axes(Val::Px(10.0), Val::Px(5.0))
+            };
+            n.min_width = if *compact { Val::Px(24.0) } else { Val::Auto };
+        }
+        // Only tip what the button no longer says: a tooltip echoing a visible
+        // label is noise.
+        if let Ok(mut ent) = w.get_entity_mut(e) {
+            if *compact {
+                ent.insert(crate::widgets::tooltip::HoverTooltip::new(label.clone()));
+            } else {
+                ent.remove::<crate::widgets::tooltip::HoverTooltip>();
+            }
+        }
+    });
+    btn
 }
 
 /// An icon-only square button (Styled `IconButton`), themed with the same
