@@ -38,10 +38,10 @@ At the very top is a **filter box** — start typing a component name to hide ev
 
 ### Which sections start open
 
-By default, only the **Name**, **Transform**, and **Scripts** sections start expanded when you select something — everything else starts collapsed so a busy object stays scannable. You can change this in **Settings → Interface → Inspector → Default Expand**:
+By default, every component section starts expanded when you select something, so nothing is hidden behind a click. If a busy object gets too long to scan, hit the collapse-all button — or change the starting state in **Settings → Interface → Inspector → Default Expand**:
 
-- **Essentials Only** *(default)* — Name, Transform, and Scripts open; the rest closed.
-- **All Open** — every section starts expanded.
+- **All Open** *(default)* — every section starts expanded.
+- **Essentials Only** — Name, Transform, and Scripts open; the rest closed.
 - **All Closed** — every section starts collapsed.
 
 This sets the *starting* state each time the Inspector rebuilds for a new selection — you can still fold any section by hand, and the expand/collapse-all button overrides it for the current object.

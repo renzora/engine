@@ -66,10 +66,11 @@ impl SelectionGranularity {
 pub enum InspectorExpandDefault {
     /// Only the most-edited components (Name, Transform, Scripts) start open;
     /// everything else starts collapsed so long inspectors stay scannable.
-    /// The default.
-    #[default]
     Essentials,
-    /// Every component starts open.
+    /// Every component starts open. The default — hiding fields behind a click
+    /// costs more than the extra scrolling, and the collapse-all button is one
+    /// click away for anyone who wants the scannable view.
+    #[default]
     AllOpen,
     /// Every component starts collapsed.
     AllClosed,
@@ -77,7 +78,7 @@ pub enum InspectorExpandDefault {
 
 impl InspectorExpandDefault {
     pub const ALL: &'static [InspectorExpandDefault] =
-        &[Self::Essentials, Self::AllOpen, Self::AllClosed];
+        &[Self::AllOpen, Self::Essentials, Self::AllClosed];
 
     pub fn label(&self) -> &'static str {
         match self {
