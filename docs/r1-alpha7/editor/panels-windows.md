@@ -29,6 +29,13 @@ Any scrollable panel (Hierarchy, Inspector, Assets, Console, …) accepts three 
 
 All three honour **Settings → Interface → Scroll Speed**, a multiplier on the scroll rate (1.5 is the default feel) persisted per user in `~/.renzora/editor.toml`.
 
+## Narrow panels
+
+Panel toolbars stay on one row as you drag a panel narrower. Buttons never squash or split their labels across two lines — instead the labels drop away and the buttons become icon-only keys, with the name moving to a hover tooltip. Flexible controls (search boxes, the Assets breadcrumb) shrink around them, down to a floor that keeps them usable.
+
+- **Assets** — below roughly 820px the **Add**, **Import**, **New Folder** and **Sort** buttons go icon-only, the item count hides and the zoom slider slims, so the breadcrumb path keeps a readable share of the row. Narrower still (~310px) the panel drops the grid entirely and becomes a tree-only file browser, with the three actions right-aligned in a bar pinned along the **bottom** of the panel — labelled there, since that bar shares its row with nothing else, until the pane is squeezed below ~270px.
+- **Hierarchy** — below roughly 210px **+ Add Entity** collapses to a **+** key so the entity search keeps its width.
+
 ## The bottom panel
 
 The strip of panels along the bottom of the Scene workspace — Console, Timeline, Mixer, Sequencer, Shape Library — is the **bottom panel**. By default it sits **under the viewport, not the full window width**, so the side columns (Hierarchy/Assets on the left, Inspector on the right) keep their full height. It starts **closed** when the editor launches, keeping the viewport unobstructed:

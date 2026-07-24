@@ -25,8 +25,8 @@ use renzora_ember::reactive::{
 use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
-    icon_label_button, menu_card, menu_header, menu_item, menu_item_styled, menu_sep, screen_menu,
-    screen_menu_flip, scroll_view, slider,
+    icon_label_button_collapsing, menu_card, menu_header, menu_item, menu_item_styled,
+    menu_sep, screen_menu, screen_menu_flip, scroll_view, slider,
     text_input, EmberScroll, EmberTextInput, ScrollbarBusy,
 };
 
@@ -148,6 +148,16 @@ pub(crate) struct NativeAssets {
     /// a tree-only file browser (grid + splitter hidden, tree shows files). Set
     /// by `responsive_layout` from the panel's measured width.
     narrow: bool,
+    /// The panel is wide enough for the grid but too tight for the toolbar's full
+    /// action labels: Add / Import / New Folder / Sort collapse to icon-only (the
+    /// label lives on in a hover tooltip) and the item count hides, so the
+    /// breadcrumb keeps a readable share of the row. Also set by
+    /// `responsive_layout`.
+    compact: bool,
+    /// The tree-only layout's bottom action bar can't fit all three labelled
+    /// buttons on one row, so they fall back to icon-only. A tighter breakpoint
+    /// than `compact` because that bar carries nothing else.
+    tree_actions_compact: bool,
     /// Which list the narrow browser shows (Folders | Recent tabs).
     tree_tab: TreeTab,
     /// Narrow-mode filename filter (the tree pane's own search box).
@@ -198,6 +208,8 @@ impl Default for NativeAssets {
             sort_desc: false,
             list_view: false,
             narrow: false,
+            compact: false,
+            tree_actions_compact: false,
             tree_tab: TreeTab::Folders,
             tree_search: String::new(),
             selection: HashSet::new(),
@@ -1165,13 +1177,22 @@ fn add_menu_open(
     let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
         return;
     };
-    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+    let Some((win_h, cursor)) = windows
+        .iter()
+        .find_map(|w| w.cursor_position().map(|c| (w.height(), c)))
+    else {
         return;
     };
-    // Anchor the menu to the button's bottom-left (stable, cursor-independent).
+    // Anchor the menu to the button's bottom-left (stable, cursor-independent) —
+    // except for the narrow layout's bottom action bar, where "below the button"
+    // is off-screen. There, grow the menu up from the button's top edge instead.
     let size = cn.size() * cn.inverse_scale_factor();
     let top_left = cursor - (rcp.normalized.unwrap_or(Vec2::ZERO) + Vec2::splat(0.5)) * size;
-    let menu = screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0);
+    let menu = if top_left.y > win_h * 0.5 {
+        screen_menu_flip(&mut commands, top_left.x, top_left.y - 2.0, win_h)
+    } else {
+        screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0)
+    };
     let kids = new_asset_menu_items(&mut commands, &fonts);
     commands.entity(menu).add_children(&kids);
 }
@@ -1638,13 +1659,22 @@ fn finish_rename(world: &mut World, old: &Path, new_name: &str) {
     }
 }
 
-/// Collapse to a tree-only file browser when the panel is too narrow for a
-/// usable grid (mirrors the egui browser's `TREE_ONLY_WIDTH` behaviour).
+/// Two width breakpoints, both measured on the panel root:
+/// - below `TREE_ONLY_WIDTH`, collapse to a tree-only file browser (no room for
+///   a usable grid beside the tree — mirrors the egui browser's behaviour);
+/// - below `COMPACT_WIDTH`, keep the grid but drop the toolbar's action labels.
+///   The full row (Add + Import + New Folder + Sort + view + search + zoom) needs
+///   roughly this much before the breadcrumb is left with a usable share; under
+///   it, icon-only buttons buy back ~150px for the path.
+/// - below `TREE_ACTIONS_WIDTH` (inside tree-only mode), the bottom action bar's
+///   three labelled buttons stop fitting one row, so they too go icon-only.
 fn responsive_layout(
     root: Query<&bevy::ui::ComputedNode, With<AssetRoot>>,
     mut state: ResMut<NativeAssets>,
 ) {
     const TREE_ONLY_WIDTH: f32 = 310.0;
+    const COMPACT_WIDTH: f32 = 820.0;
+    const TREE_ACTIONS_WIDTH: f32 = 272.0;
     let Ok(cn) = root.single() else {
         return;
     };
@@ -1656,6 +1686,36 @@ fn responsive_layout(
     if state.narrow != narrow {
         state.narrow = narrow;
     }
+    let compact = width < COMPACT_WIDTH;
+    if state.compact != compact {
+        state.compact = compact;
+    }
+    let tree_actions_compact = width < TREE_ACTIONS_WIDTH;
+    if state.tree_actions_compact != tree_actions_compact {
+        state.tree_actions_compact = tree_actions_compact;
+    }
+}
+
+/// True once the panel is too tight for the toolbar's full action labels.
+fn is_compact(w: &World) -> bool {
+    w.get_resource::<NativeAssets>().is_some_and(|s| s.compact)
+}
+
+/// A toolbar action button that collapses to icon-only once the panel is too
+/// tight for its label (see [`is_compact`]). Dropping the four action labels
+/// frees ~150px, which is what keeps the breadcrumb readable and the whole row
+/// on one line.
+fn toolbar_action(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
+    icon_label_button_collapsing(commands, fonts, icon, label, is_compact)
+}
+
+/// An action button for the tree-only layout's bottom bar. Labelled by default —
+/// the bar shares its row with nothing else, so there's room — and icon-only
+/// only once the pane is squeezed past what three labelled buttons need.
+fn tree_action(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
+    icon_label_button_collapsing(commands, fonts, icon, label, |w| {
+        w.get_resource::<NativeAssets>().is_some_and(|s| s.tree_actions_compact)
+    })
 }
 
 /// Toggle grid/list view.
@@ -2022,37 +2082,50 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(panel_bg())),
         ))
         .id();
-    // ── Tree-pane header ──
+    // ── Tree-pane actions (pinned bottom bar) ──
     // When the panel collapses to the tree-only file browser the main toolbar
     // (which carries Add / Import / New Folder and the search box) is hidden with
-    // the grid, so the browser lost its actions entirely. Rebuild them here, atop
-    // the tree: the same action buttons (same marker components, so the existing
-    // click systems drive both instances) and a search box of its own — both
-    // display-gated on `narrow`. The Folders | Recent | Favs tabs below them stay
-    // visible in BOTH layouts, replacing the old collapsible FAVORITES / RECENT
-    // sections so each list gets the full pane height.
+    // the grid, so the browser lost its actions entirely. Rebuild them here: the
+    // same action buttons (same marker components, so the existing click systems
+    // drive both instances) plus a search box of its own — all display-gated on
+    // `narrow`. The Folders | Recent | Favs tabs stay visible in BOTH layouts,
+    // replacing the old collapsible FAVORITES / RECENT sections so each list gets
+    // the full pane height.
+    //
+    // The actions sit in a bar pinned to the pane's bottom edge, right-aligned,
+    // and keep their labels — at the bottom they never compete with the tree for
+    // width, so the old three-lines-of-wrapped-buttons problem is gone. Only when
+    // the pane is squeezed past the point where all three labelled buttons fit one
+    // row (`tree_actions_compact`) do they fall back to icon-only keys.
     let narrow_actions = commands
-        .spawn(Node {
-            flex_direction: FlexDirection::Row,
-            flex_wrap: FlexWrap::Wrap,
-            align_items: AlignItems::Center,
-            column_gap: Val::Px(6.0),
-            row_gap: Val::Px(4.0),
-            padding: UiRect::all(Val::Px(6.0)),
-            flex_shrink: 0.0,
-            ..default()
-        })
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexEnd,
+                column_gap: Val::Px(6.0),
+                padding: UiRect::all(Val::Px(6.0)),
+                flex_shrink: 0.0,
+                border: UiRect::top(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(renzora_ember::theme::header_bg())),
+            BorderColor::all(rgb(renzora_ember::theme::border())),
+            Name::new("assets-narrow-actions"),
+        ))
         .id();
-    let n_add = icon_label_button(commands, fonts, "plus", &renzora::lang::t("common.add"));
+    let n_add = tree_action(commands, fonts, "plus", &renzora::lang::t("common.add"));
     commands
         .entity(n_add)
         .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
-    let n_import = icon_label_button(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
+    let n_import = tree_action(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
     commands.entity(n_import).insert(ImportBtn);
-    let n_new_folder =
-        icon_label_button(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
+    let n_new_folder = tree_action(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
     commands.entity(n_new_folder).insert(NewAssetBtn(NewAsset::Folder));
     commands.entity(narrow_actions).add_children(&[n_add, n_import, n_new_folder]);
+    bind_display(commands, narrow_actions, |w| {
+        w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow)
+    });
 
     // Search box — full width (stretched by the column parent), own marker +
     // state field so it can't fight the hidden toolbar search (see `TreeSearch`).
@@ -2061,7 +2134,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         TreeSearch,
         Node {
             min_width: Val::Px(0.0),
-            margin: UiRect::new(Val::Px(6.0), Val::Px(6.0), Val::Px(0.0), Val::Px(6.0)),
+            // Even margin all round: with the actions moved to the bottom bar
+            // this box now sits at the very top of the pane.
+            margin: UiRect::all(Val::Px(6.0)),
             padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),
@@ -2157,14 +2232,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("assets-narrow-header"),
         ))
         .id();
-    commands
-        .entity(narrow_header)
-        .add_children(&[narrow_actions, tree_search_input]);
+    commands.entity(narrow_header).add_children(&[tree_search_input]);
     bind_display(commands, narrow_header, |w| {
         w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow)
     });
 
-    commands.entity(tree_pane).add_children(&[narrow_header, tree_tabs, tree_scroll]);
+    // Actions last so the bar sits under the (flex-shrinking) tree scroller,
+    // pinned to the pane's bottom edge.
+    commands
+        .entity(tree_pane)
+        .add_children(&[narrow_header, tree_tabs, tree_scroll, narrow_actions]);
     bind_with(
         commands,
         tree_pane,
@@ -2222,14 +2299,19 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Toolbar.
+    // Toolbar. Buttons no longer shrink (they'd deform), so wrapping is the
+    // last-resort escape valve: below roughly 400px of content width even the
+    // icon-only row can't fit, and a second line beats clipping controls out of
+    // reach. At every normal width the row stays single-line.
     let toolbar = commands
         .spawn((
             Node {
                 flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
                 align_items: AlignItems::Center,
                 width: Val::Percent(100.0),
                 column_gap: Val::Px(6.0),
+                row_gap: Val::Px(4.0),
                 padding: UiRect::all(Val::Px(6.0)),
                 flex_shrink: 0.0,
                 ..default()
@@ -2261,17 +2343,17 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // `Display::None` rather than just hiding it, so it leaves no empty gap.
     bind_display(commands, back, |w| current_folder(w) != project_root(w));
 
-    let new_folder = icon_label_button(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
+    let new_folder = toolbar_action(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
     commands.entity(new_folder).insert(NewAssetBtn(NewAsset::Folder));
-    let add = icon_label_button(commands, fonts, "plus", &renzora::lang::t("common.add"));
+    let add = toolbar_action(commands, fonts, "plus", &renzora::lang::t("common.add"));
     commands
         .entity(add)
         .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
-    let import = icon_label_button(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
+    let import = toolbar_action(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
     commands.entity(import).insert(ImportBtn);
 
     // Sort dropdown (opens a screen_menu of sort modes + direction).
-    let sort_btn = icon_label_button(commands, fonts, "sort-ascending", &renzora::lang::t("assets.sort"));
+    let sort_btn = toolbar_action(commands, fonts, "sort-ascending", &renzora::lang::t("assets.sort"));
     commands
         .entity(sort_btn)
         .insert((SortMenuBtn, bevy::ui::RelativeCursorPosition::default()));
@@ -2320,7 +2402,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 border: UiRect::all(Val::Px(1.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 flex_shrink: 1.0,
-                min_width: Val::Px(0.0),
+                // Never let the path collapse to a sliver: it shrinks, but only
+                // down to a floor that still shows the current folder. The search
+                // box (shrink 3) gives up its width first.
+                min_width: Val::Px(72.0),
                 overflow: Overflow::clip(),
                 ..default()
             },
@@ -2382,6 +2467,15 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     commands.entity(zoom_box).add_children(&[zoom_icon, zoom]);
+    // Widest control in the row, but the *only* way to resize tiles — so it
+    // slims rather than disappears when space runs short: the magnifier glyph
+    // goes and the track halves, keeping the slider usable.
+    bind_display(commands, zoom_icon, |w| !is_compact(w));
+    bind_with(commands, zoom, is_compact, |w, e, compact: &bool| {
+        if let Some(mut n) = w.get_mut::<Node>(e) {
+            n.width = Val::Px(if *compact { 44.0 } else { 70.0 });
+        }
+    });
 
     // Compact search field, placed just left of the zoom control.
     let search = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
@@ -2389,7 +2483,11 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         AssetSearch,
         Node {
             width: Val::Px(160.0),
-            min_width: Val::Px(0.0),
+            // The row's designated shock absorber: it yields width faster than
+            // the breadcrumb (shrink 1) so the path stays readable as the panel
+            // narrows, down to a floor that still fits a few characters.
+            flex_shrink: 3.0,
+            min_width: Val::Px(60.0),
             padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),
@@ -2453,6 +2551,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
+    // Nice-to-know, not need-to-know: it's the first thing dropped when the row
+    // is tight, ahead of anything interactive.
+    bind_display(commands, count, |w| !is_compact(w));
 
     // The framed breadcrumb box holds the back button + path; the item count
     // trails just outside it.
