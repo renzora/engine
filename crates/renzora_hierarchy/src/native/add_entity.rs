@@ -1,6 +1,10 @@
 //! Native "Add Entity" — a header button that opens the shared ember search
 //! overlay, populated from the spawn / shape / inspector registries. Selecting an
 //! entry spawns it through the same undoable commands as the egui panel.
+//!
+//! [`spawn_entries`] is the one place that list is built: the header button
+//! feeds it to the search overlay, and the right-click menu (`context_menu`)
+//! groups the same entries into category submenus, so the two can't drift apart.
 
 use bevy::prelude::*;
 
@@ -31,9 +35,24 @@ pub(crate) fn hier_add_entity_open(
         return;
     };
 
+    let entries = spawn_entries(
+        spawn_reg.as_deref(),
+        shape_reg.as_deref(),
+        inspector_reg.as_deref(),
+    );
+    search_overlay(&mut commands, &fonts, &renzora::lang::t("hierarchy.add.title"), entries);
+}
+
+/// Every spawnable preset / shape / component, as search entries whose actions
+/// spawn undoably at the scene root.
+pub(crate) fn spawn_entries(
+    spawn_reg: Option<&SpawnRegistry>,
+    shape_reg: Option<&ShapeRegistry>,
+    inspector_reg: Option<&InspectorRegistry>,
+) -> Vec<SearchEntry> {
     let mut entries: Vec<SearchEntry> = Vec::new();
 
-    if let Some(reg) = &spawn_reg {
+    if let Some(reg) = spawn_reg {
         for p in reg.iter() {
             let id = p.id.to_string();
             // Localize the preset name + category for display only — the spawn
@@ -60,7 +79,7 @@ pub(crate) fn hier_add_entity_open(
         }
     }
 
-    if let Some(reg) = &shape_reg {
+    if let Some(reg) = shape_reg {
         for s in reg.iter() {
             let (shape_id, name, color) = (s.id.to_string(), s.name.to_string(), s.default_color);
             let category = renzora::lang::t_or(&format!("entity.cat.{}", slug(s.category)), s.category);
@@ -85,7 +104,7 @@ pub(crate) fn hier_add_entity_open(
         }
     }
 
-    if let Some(reg) = &inspector_reg {
+    if let Some(reg) = inspector_reg {
         const CATS: [&str; 4] = ["rendering", "post_process", "effects", "Audio"];
         for e in reg.iter() {
             if e.add_fn.is_some() && CATS.contains(&e.category) {
@@ -113,7 +132,7 @@ pub(crate) fn hier_add_entity_open(
         }
     }
 
-    search_overlay(&mut commands, &fonts, &renzora::lang::t("hierarchy.add.title"), entries);
+    entries
 }
 
 /// Slugify a preset/category name into a localization-key segment: lowercased,

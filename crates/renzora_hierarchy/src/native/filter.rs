@@ -37,7 +37,9 @@ pub(crate) fn build_search_box(commands: &mut Commands, fonts: &EmberFonts) -> E
         HierSearchInput,
         Node {
             flex_grow: 1.0,
-            min_width: Val::Px(0.0),
+            // The header's flexible element (the Add button and funnel are fixed),
+            // but not to the point of vanishing: keep enough width to type into.
+            min_width: Val::Px(56.0),
             padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),

@@ -3,21 +3,61 @@
 //! dismiss, and action dispatch all come from ember). Each item carries a
 //! closure run with `&mut World`; the menu closes itself afterward. Action
 //! bodies mirror the egui panel.
+//!
+//! Right-clicking the empty space under the tree gets a *different* menu: the
+//! header button's whole spawn list, one ember [`menu_submenu`] row per category
+//! (hover a category, click an entity), spawning at the scene root.
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
+use bevy::ui::RelativeCursorPosition;
 
-use renzora_editor_framework::{EditorSelection, EntityLabelColor};
+use renzora::core::ShapeRegistry;
+use renzora_editor_framework::{EditorSelection, EntityLabelColor, InspectorRegistry, SpawnRegistry};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
-use renzora_ember::widgets::{menu_item, menu_item_styled, menu_sep, screen_menu, MenuAction};
+use renzora_ember::widgets::{
+    category_color, menu_item, menu_item_styled, menu_sep, menu_submenu_styled, screen_menu,
+    MenuAction, SearchEntry,
+};
 use renzora_undo::{execute, GroupAsChildrenCmd, UndoContext};
 
 use crate::LABEL_COLORS;
 
+use super::add_entity::spawn_entries;
 use super::components::HierRowClick;
 
+/// Marks the tree's scroll wrapper — the region a right-click can land in
+/// *without* hitting a row (the empty space under the last entity). Scoped to
+/// the list rather than the whole panel so right-clicking the search box still
+/// gets the text field's own menu instead of this one.
+#[derive(Component)]
+pub(crate) struct HierListArea;
 
-/// Right-click a row → open a menu of actions for that entity.
+/// Registries the "Add Entity" submenu is built from — one bundle so the context
+/// menu's own parameter list stays readable.
+#[derive(SystemParam)]
+pub(crate) struct SpawnRegistries<'w> {
+    spawn: Option<Res<'w, SpawnRegistry>>,
+    shape: Option<Res<'w, ShapeRegistry>>,
+    inspector: Option<Res<'w, InspectorRegistry>>,
+}
+
+impl SpawnRegistries<'_> {
+    fn entries(&self) -> Vec<SearchEntry> {
+        spawn_entries(
+            self.spawn.as_deref(),
+            self.shape.as_deref(),
+            self.inspector.as_deref(),
+        )
+    }
+}
+
+/// Right-click a row → open a menu of actions for that entity. Right-click the
+/// empty space below the tree → the quick-add categories instead, so a scene can
+/// be filled without going through the header button's search overlay. The two
+/// are deliberately separate menus: on a row you're acting on that entity, not
+/// hunting for a new one.
 pub(crate) fn hier_context_menu(
     mouse: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
@@ -25,6 +65,8 @@ pub(crate) fn hier_context_menu(
     selection: Option<Res<EditorSelection>>,
     rows: Query<(&Interaction, &HierRowClick)>,
     props: Query<(Has<Camera3d>, Has<renzora::SceneInstance>, Has<EntityLabelColor>)>,
+    list_area: Query<&RelativeCursorPosition, With<HierListArea>>,
+    registries: SpawnRegistries,
     mut commands: Commands,
 ) {
     if !mouse.just_pressed(MouseButton::Right) {
@@ -33,14 +75,21 @@ pub(crate) fn hier_context_menu(
     let Some(fonts) = fonts else {
         return;
     };
+    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+        return;
+    };
     let Some(target) = rows
         .iter()
         .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
         .map(|(_, r)| r.entity)
     else {
-        return;
-    };
-    let Some(cursor) = windows.iter().find_map(|w| w.cursor_position()) else {
+        // Not on a row: only the empty area below the tree gets a menu, and all
+        // it offers is adding at the scene root.
+        if list_area.iter().any(|rcp| rcp.cursor_over) {
+            let menu = screen_menu(&mut commands, cursor.x, cursor.y);
+            let rows = add_entity_rows(&mut commands, &fonts, registries.entries());
+            commands.entity(menu).add_children(&rows);
+        }
         return;
     };
     let (is_cam, is_inst, has_color) = props.get(target).unwrap_or((false, false, false));
@@ -108,6 +157,52 @@ pub(crate) fn hier_context_menu(
     }));
 
     commands.entity(menu).add_children(&kids);
+}
+
+/// The header button's whole spawn list as hover submenus, one row per category,
+/// sitting at the *top level* of the menu — no "Add Entity" row to open first,
+/// so a common entity is one hover and a click away instead of a search-overlay
+/// round-trip. `entries` decide where the spawn lands (see [`spawn_entries`]).
+fn add_entity_rows(commands: &mut Commands, fonts: &EmberFonts, entries: Vec<SearchEntry>) -> Vec<Entity> {
+    // Group by category, first-seen order — the same order (presets, shapes,
+    // then component-backed entries) the search overlay lists them in.
+    let mut cats: Vec<(String, Vec<SearchEntry>)> = Vec::new();
+    for entry in entries {
+        match cats.iter_mut().find(|(name, _)| *name == entry.category) {
+            Some((_, group)) => group.push(entry),
+            None => cats.push((entry.category.clone(), vec![entry])),
+        }
+    }
+
+    cats.into_iter()
+        .map(|(name, group)| {
+            // Same accent the Add Entity overlay gives this category, so the two
+            // views of one list read as the same thing — and the icons carry it
+            // down into the category's own items.
+            let accent = category_color(&name);
+            // The first entry's glyph reads better as the category's icon than a
+            // generic folder would (Lights → bulb, Shapes → cube).
+            let icon = group.first().map(|e| e.icon.clone()).unwrap_or_default();
+            let (cat_row, cat_content) = menu_submenu_styled(commands, fonts, &icon, &name, accent);
+            let items: Vec<Entity> = group
+                .into_iter()
+                .map(|entry| {
+                    let SearchEntry { icon, label, action, .. } = entry;
+                    menu_item_styled(
+                        commands,
+                        fonts,
+                        &icon,
+                        &label,
+                        accent,
+                        renzora_ember::theme::text_primary(),
+                        action,
+                    )
+                })
+                .collect();
+            commands.entity(cat_content).add_children(&items);
+            cat_row
+        })
+        .collect()
 }
 
 /// "Label Color" header (palette glyph + label).

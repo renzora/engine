@@ -30,6 +30,8 @@ Click **+ Add Entity** to open a searchable list, then pick what you want. The l
 
 Installed plugins (physics, terrain, foliage, world environment) add their own entries too, so the list reflects whatever your project has loaded.
 
+**Or skip the search entirely**: right-click the **empty space below the tree** and you get the same list as a menu of categories — Lighting, Camera, Basic, Physics, Effects and the rest. Hover one and its entities appear beside it, so a Point Light is a hover and a click away with nothing typed. Each category carries the same accent color it has in the search overlay — amber for Lighting, violet for Camera, and so on — and its entities inherit it, so you can find a category by color once you know it. (Right-clicking a *row* keeps its own menu of actions for that object — see below.)
+
 Just added the wrong thing? Press `Ctrl+Z` to undo it like any other action.
 
 ### Selecting objects

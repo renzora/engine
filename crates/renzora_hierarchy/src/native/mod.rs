@@ -40,6 +40,13 @@ pub(crate) struct HierExpanded(pub HashSet<Entity>);
 #[derive(Component)]
 pub(crate) struct HierScrollContent;
 
+/// The panel is too narrow for the header's full "+ Add Entity" label. Set by
+/// [`hier_responsive_header`] from the measured panel width; the button collapses
+/// to icon-only so the search box keeps a usable width. Before this, the button
+/// simply shrank and broke its label onto two lines.
+#[derive(Resource, Default)]
+pub(crate) struct HierCompact(pub bool);
+
 /// A selection waiting to be revealed (ancestors expanded + scrolled into view).
 /// Armed *only* when the primary selection changes — never on cache rebuilds, so
 /// it can't fight the user scrolling. Persists a few frames because newly
@@ -60,6 +67,7 @@ pub(crate) struct HierRevealPending {
 pub fn register_native_hierarchy(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<HierExpanded>();
+    app.init_resource::<HierCompact>();
     app.init_resource::<HierRevealPending>();
     app.init_resource::<tree::HierFlatCache>();
     app.init_resource::<drag::HierDrag>();
@@ -87,7 +95,13 @@ pub fn register_native_hierarchy(app: &mut App) {
             ))
             .id();
 
-        let add = renzora_ember::widgets::icon_label_button(commands, fonts, "plus", &renzora::lang::t("hierarchy.add_entity"));
+        let add = renzora_ember::widgets::icon_label_button_collapsing(
+            commands,
+            fonts,
+            "plus",
+            &renzora::lang::t("hierarchy.add_entity"),
+            |w| w.get_resource::<HierCompact>().is_some_and(|c| c.0),
+        );
         commands
             .entity(add)
             .insert((add_entity::HierAddEntity, Name::new("add-entity")));
@@ -135,6 +149,11 @@ pub fn register_native_hierarchy(app: &mut App) {
             tree::hierarchy_snapshot,
         );
         let scroll = renzora_ember::widgets::scroll_view(commands, list);
+        // Hit-test target for the right-click quick-add menu (see `context_menu`).
+        commands.entity(scroll).insert((
+            context_menu::HierListArea,
+            bevy::ui::RelativeCursorPosition::default(),
+        ));
         // Parent-stacking overlay: pinned ancestor headers over the top of the
         // scroll viewport (toggled by EditorSettings.hierarchy_parent_stacking).
         let stack_container = pin::build_stack_container(commands);
@@ -171,6 +190,7 @@ pub fn register_native_hierarchy(app: &mut App) {
                 marquee::hier_marquee,
                 marquee::hier_marquee_overlay,
                 marquee::hier_marquee_autoscroll,
+                hier_responsive_header,
             ),
             scene_drop::arm_hier_scene_drop,
             scene_drop::commit_hier_scene_drop,
@@ -186,4 +206,26 @@ pub fn register_native_hierarchy(app: &mut App) {
             .run_if(renzora_ember::dock::panel_active(PANEL_ID)),
     );
     scene_starter::register(app);
+}
+
+/// Watch the panel width and flip [`HierCompact`] at the point where the header's
+/// three controls stop fitting on one line: an "+ Add Entity" pill (~85px), the
+/// search box at its usable floor (~56px) and the filter funnel (~24px), plus
+/// gaps and padding.
+fn hier_responsive_header(
+    root: Query<&bevy::ui::ComputedNode, With<scene_drop::HierRoot>>,
+    mut compact: ResMut<HierCompact>,
+) {
+    const COMPACT_WIDTH: f32 = 210.0;
+    let Ok(cn) = root.single() else {
+        return;
+    };
+    let width = cn.size().x * cn.inverse_scale_factor();
+    if width <= 0.0 {
+        return;
+    }
+    let c = width < COMPACT_WIDTH;
+    if compact.0 != c {
+        compact.0 = c;
+    }
 }
