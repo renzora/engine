@@ -273,7 +273,14 @@ fn spawn_worker(token: String, tx: Sender<SocialWsEvent>, shutdown: Arc<AtomicBo
                 return;
             }
             let connected_at = std::time::Instant::now();
-            match tungstenite::connect(&url) {
+            let request = match build_request(&url) {
+                Ok(req) => req,
+                Err(e) => {
+                    bevy::log::warn!("[social] live WebSocket URL rejected: {e}");
+                    return;
+                }
+            };
+            match tungstenite::connect(request) {
                 Ok((mut socket, _resp)) => {
                     bevy::log::info!("[social] live WebSocket connected");
                     // Short read timeout so the shutdown flag is honored.
@@ -342,6 +349,24 @@ fn spawn_worker(token: String, tx: Sender<SocialWsEvent>, shutdown: Arc<AtomicBo
             }
         }
     });
+}
+
+/// Build the handshake request, adding the `User-Agent` tungstenite omits.
+///
+/// renzora.com sits behind Cloudflare, whose managed WAF rules block requests
+/// that arrive with no `User-Agent` at all — the handshake never reaches axum
+/// and comes back as a 403 HTML error page instead of the 401 the route would
+/// return for a bad token. Our `ureq` calls are fine because ureq sends its own
+/// UA by default; tungstenite sends none, so we set one here.
+#[cfg(not(target_arch = "wasm32"))]
+fn build_request(url: &str) -> Result<tungstenite::http::Request<()>, tungstenite::Error> {
+    use tungstenite::client::IntoClientRequest;
+    let mut request = url.into_client_request()?;
+    request.headers_mut().insert(
+        tungstenite::http::header::USER_AGENT,
+        tungstenite::http::HeaderValue::from_static("renzora-editor"),
+    );
+    Ok(request)
 }
 
 #[cfg(target_arch = "wasm32")]
