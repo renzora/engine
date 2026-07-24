@@ -164,6 +164,8 @@ Prefer clicking to typing? The second path lets you drop ready-made widgets stra
 
 Each widget is an entity that lives in your scene and saves with it, so it's there next time you open the project. There are widgets for the usual things — buttons, sliders, checkboxes, dropdowns, text inputs, progress and health bars, tooltips, modal pop-ups, and basic shapes.
 
+When you add a canvas yourself — **Add Entity → UI Canvas**, or the **New UI** scene starter — a blank `ui/<name>.html` is created alongside it and linked as its template, so selecting the canvas opens that file in the code editor. A canvas that appears *on your behalf*, to host something you dropped into an empty scene, doesn't get one: it keeps the template or widget you dropped, rather than adding a second, empty template file to your project.
+
 **Widgets always live under a UI Canvas.** The canvas is what scopes its widgets to the game view; a widget outside one has nowhere to render. So the editor keeps that relationship intact for you: if you drag a widget out to the scene root (or under a non-UI entity), it's automatically re-homed under a fresh **UI Canvas** rather than escaping into the editor's own interface — you'll simply see a new canvas appear in the hierarchy holding it. Having more than one canvas is fine (a HUD and a pause menu, say). The reverse is also enforced: a canvas can't become a child of a widget — drop one there and it pops back to the top level.
 
 ### Controlling those widgets from a script

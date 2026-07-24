@@ -839,11 +839,16 @@ fn debug_ui_tree(
 fn register_ui_presets(app: &mut App) {
     use renzora::{AppEditorExt, EntityPreset, SceneStarter};
 
+    // The user asked for a bare canvas, so this is the one path that wants a
+    // blank backing template created for it (`ensure_canvas_template`). Canvases
+    // spawned implicitly to host a dropped template/widget/image carry no marker
+    // and keep the content that was dropped, with no stray `.html` written.
     fn spawn_ui_canvas(world: &mut World) -> Entity {
         world
             .spawn((
                 Name::new("UI Canvas"),
                 components::UiCanvas::default(),
+                crate::editor::AutoCanvasTemplate,
                 Node {
                     width: Val::Percent(100.0),
                     height: Val::Percent(100.0),

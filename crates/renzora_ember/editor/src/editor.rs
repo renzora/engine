@@ -168,20 +168,36 @@ fn register_editor_entries(app: &mut App) {
     });
 }
 
-/// Every `UiCanvas` is backed by an `.html` template — a canvas's contents are
-/// authored as markup, so the template is its backbone, not an optional add-on.
-/// A freshly created canvas has none, so we create one under the project's `ui/`
-/// folder and link it here.
+/// A canvas the user asked for *directly* — "+ Add Entity → UI Canvas" or the
+/// "New UI" scene starter. Only these get a blank template written for them.
+///
+/// Canvases also appear implicitly, as a host for something the user dropped
+/// when the scene had no canvas yet (`spawn_html_template_at` for a dropped
+/// `.html`, `spawn_widget`, `spawn_image_at`). Those already carry the content
+/// the user chose, so writing a fresh `ui/<name>.html` for the host would leave
+/// a stray blank template in the project next to the real one.
+#[derive(Component)]
+pub(crate) struct AutoCanvasTemplate;
+
+/// A `UiCanvas` the user created deliberately is backed by an `.html` template —
+/// its contents are authored as markup, so the template is its backbone, not an
+/// optional add-on. Such a canvas starts with none, so we create one under the
+/// project's `ui/` folder and link it here.
 ///
 /// Filtered to `Added<UiCanvas>` *without* a path, so scene-loaded canvases
-/// (which already carry their template) are left alone. Creating it eagerly on
-/// spawn — rather than lazily on the first widget — means a canvas always has its
-/// template *before* any widget is added, so the markup loader's build-on-insert
-/// runs against an empty canvas and never wipes authored children.
+/// (which already carry their template) are left alone, and to
+/// `AutoCanvasTemplate` so implicitly-spawned host canvases don't get a blank
+/// template they never asked for. Creating it eagerly on spawn — rather than
+/// lazily on the first widget — means a canvas always has its template *before*
+/// any widget is added, so the markup loader's build-on-insert runs against an
+/// empty canvas and never wipes authored children.
 fn ensure_canvas_template(
     mut commands: Commands,
     project: Option<Res<renzora::CurrentProject>>,
-    canvases: Query<(Entity, Option<&Name>), (Added<UiCanvas>, Without<HtmlTemplatePath>)>,
+    canvases: Query<
+        (Entity, Option<&Name>),
+        (Added<UiCanvas>, With<AutoCanvasTemplate>, Without<HtmlTemplatePath>),
+    >,
 ) {
     let Some(project) = project else {
         return; // No project open — nowhere to write the file.
