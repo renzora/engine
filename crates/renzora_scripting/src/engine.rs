@@ -143,6 +143,25 @@ impl ScriptEngine {
         Ok(())
     }
 
+    /// Dispatch a script's `on_draw(g)` immediate-mode drawing pass and return the
+    /// frame's draw list (surface size `width`×`height` in px). Unlike the other
+    /// hooks these aren't `ScriptCommand`s — they're handed straight back for the
+    /// UI vector renderer to reconcile, so nothing goes through `process_command`.
+    pub fn call_on_draw(
+        &self,
+        path: &Path,
+        width: f32,
+        height: f32,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<renzora::DrawCmd>, String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        backend.call_on_draw(&resolved, width, height, ctx, vars)
+    }
+
     /// Dispatch a received networked RPC to a script's `on_rpc(name, args)`.
     pub fn call_on_rpc(
         &self,

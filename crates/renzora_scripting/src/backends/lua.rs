@@ -482,6 +482,37 @@ impl ScriptBackend for LuaBackend {
         })
     }
 
+    fn call_on_draw(
+        &self,
+        path: &Path,
+        width: f32,
+        height: f32,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<renzora::DrawCmd>, String> {
+        let mut draws: Vec<renzora::DrawCmd> = Vec::new();
+        // `with_hook_vm` drains the *command* buffer; the draw buffer is separate,
+        // so we clear it before and drain it after the hook (into `draws`).
+        let _ = self.with_hook_vm(path, ctx, vars, |lua| {
+            let globals = lua.globals();
+            let Ok(func) = globals.get::<LuaFunction>("on_draw") else {
+                return Ok(()); // script doesn't draw — fine
+            };
+            let _ = super::drain_draws(); // discard anything stale
+            let g = build_draw_context(lua, width, height).map_err(|e| e.to_string())?;
+            func.call::<()>((g,)).map_err(|e| {
+                let script = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                format!("{} on_draw: {}", script, e)
+            })?;
+            draws = super::drain_draws();
+            Ok(())
+        })?;
+        Ok(draws)
+    }
+
     fn call_on_animation_event(
         &self,
         path: &Path,
@@ -599,6 +630,120 @@ impl ScriptBackend for LuaBackend {
             Err(e) => Err(format!("{}", e)),
         }
     }
+}
+
+/// Parse a `#RRGGBB` / `#RRGGBBAA` hex string to sRGB `[r,g,b,a]` in 0..1. Anything
+/// unparseable falls back to opaque white so a typo is visible, not invisible.
+fn parse_hex(s: &str) -> [f32; 4] {
+    let s = s.trim().trim_start_matches('#');
+    let ch = |i: usize| u8::from_str_radix(&s[i..i + 2], 16).ok().map(|v| v as f32 / 255.0);
+    match s.len() {
+        6 => [
+            ch(0).unwrap_or(1.0),
+            ch(2).unwrap_or(1.0),
+            ch(4).unwrap_or(1.0),
+            1.0,
+        ],
+        8 => [
+            ch(0).unwrap_or(1.0),
+            ch(2).unwrap_or(1.0),
+            ch(4).unwrap_or(1.0),
+            ch(6).unwrap_or(1.0),
+        ],
+        _ => [1.0, 1.0, 1.0, 1.0],
+    }
+}
+
+/// Build the `g` canvas context passed to `on_draw(g)`: `g.width`/`g.height` plus
+/// the complete-shape methods, each of which records a [`renzora::DrawCmd`]. Called
+/// with dot syntax (`g.arc(...)`, not `g:arc(...)`) — the functions take no `self`.
+/// Colours are `#hex` strings; the trailing thickness arg is optional.
+fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::Table> {
+    use renzora::DrawCmd;
+    let g = lua.create_table()?;
+    g.set("width", width)?;
+    g.set("height", height)?;
+    g.set(
+        "line",
+        lua.create_function(
+            |_, (x1, y1, x2, y2, color, thickness): (f32, f32, f32, f32, String, Option<f32>)| {
+                super::push_draw(DrawCmd::Line {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    color: parse_hex(&color),
+                    thickness: thickness.unwrap_or(2.0),
+                });
+                Ok(())
+            },
+        )?,
+    )?;
+    g.set(
+        "arc",
+        lua.create_function(
+            |_,
+             (cx, cy, r, start, end, color, thickness): (
+                f32,
+                f32,
+                f32,
+                f32,
+                f32,
+                String,
+                Option<f32>,
+            )| {
+                super::push_draw(DrawCmd::Arc {
+                    cx,
+                    cy,
+                    r,
+                    start,
+                    end,
+                    color: parse_hex(&color),
+                    thickness: thickness.unwrap_or(2.0),
+                });
+                Ok(())
+            },
+        )?,
+    )?;
+    g.set(
+        "circle",
+        lua.create_function(|_, (cx, cy, r, color): (f32, f32, f32, String)| {
+            super::push_draw(DrawCmd::Circle {
+                cx,
+                cy,
+                r,
+                color: parse_hex(&color),
+            });
+            Ok(())
+        })?,
+    )?;
+    g.set(
+        "rect",
+        lua.create_function(|_, (x, y, w, h, color): (f32, f32, f32, f32, String)| {
+            super::push_draw(DrawCmd::Rect {
+                x,
+                y,
+                w,
+                h,
+                color: parse_hex(&color),
+            });
+            Ok(())
+        })?,
+    )?;
+    g.set(
+        "text",
+        lua.create_function(|_, (x, y, text, size, color): (f32, f32, String, f32, String)| {
+            super::push_draw(DrawCmd::Text {
+                x,
+                y,
+                text,
+                size,
+                color: parse_hex(&color),
+            });
+            Ok(())
+        })?,
+    )?;
+    Ok(g)
 }
 
 // =============================================================================

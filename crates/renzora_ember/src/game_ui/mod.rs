@@ -17,6 +17,7 @@ pub mod script_extension;
 pub mod shapes;
 pub mod spawn;
 pub mod systems;
+pub mod script_canvas;
 pub mod world_panel;
 pub mod world_ui_mesh;
 
@@ -119,6 +120,7 @@ impl Plugin for GameUiPlugin {
         // the one place that orders the contract's two sets.
         world_panel::register(app);
         world_ui_mesh::register(app);
+        script_canvas::register(app);
 
         // ── Canvas scaler & visibility-mode ──────────────────────────────
         //

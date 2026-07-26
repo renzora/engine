@@ -80,6 +80,8 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptInput>()
             .init_resource::<ScriptTimers>()
             .init_resource::<ScriptCommandQueue>()
+            .init_resource::<renzora::ScriptDrawBuffer>()
+            .init_resource::<renzora::ScriptDrawSurfaces>()
             .init_resource::<CharacterCommandQueue>()
             .init_resource::<renzora::TransformWriteQueue>()
             .init_resource::<ScriptLogBuffer>()

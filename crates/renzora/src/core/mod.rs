@@ -732,6 +732,76 @@ pub struct ScriptAnimEventInbox {
     pub pending: Vec<AnimEvent>,
 }
 
+/// One immediate-mode 2D draw command issued from a script's `on_draw(g)` hook
+/// (a Godot `_draw()` / HTML-canvas-style drawing pass). Coordinates are in the
+/// draw surface's local pixels — top-left origin, y-down, like CSS/UI. Colours are
+/// sRGB `[r, g, b, a]` in 0..1. Each frame a script rebuilds its whole list.
+#[derive(Clone, Debug)]
+pub enum DrawCmd {
+    /// Straight stroke between two points.
+    Line {
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        color: [f32; 4],
+        thickness: f32,
+    },
+    /// Stroked circular arc, `start`/`end` in degrees (0 = +x, clockwise, y-down).
+    Arc {
+        cx: f32,
+        cy: f32,
+        r: f32,
+        start: f32,
+        end: f32,
+        color: [f32; 4],
+        thickness: f32,
+    },
+    /// Filled circle.
+    Circle {
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: [f32; 4],
+    },
+    /// Filled axis-aligned rectangle.
+    Rect {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        color: [f32; 4],
+    },
+    /// Text baseline-anchored at `(x, y)`, centred horizontally on `x`.
+    Text {
+        x: f32,
+        y: f32,
+        text: String,
+        size: f32,
+        color: [f32; 4],
+    },
+}
+
+/// Per-entity immediate-mode draw lists, rebuilt each frame from scripts'
+/// `on_draw(g)` hooks. `renzora_scripting` fills it (keyed by the script's own
+/// entity); the UI vector renderer in `renzora_ember`'s game_ui drains it into a
+/// pooled set of shape entities under the entity's draw surface. Lives in core so
+/// scripting depends on neither `renzora_ember` nor `bevy_hui`.
+#[derive(Resource, Default)]
+pub struct ScriptDrawBuffer {
+    pub per_entity: std::collections::HashMap<Entity, Vec<DrawCmd>>,
+}
+
+/// Draw-surface sizes (px) published by the UI renderer, keyed by the *script*
+/// entity that owns each `<canvas>` node. `renzora_scripting` reads this to size
+/// the `g` context (`g.width`/`g.height`) before calling `on_draw`, and only calls
+/// `on_draw` for entities that have a registered surface. The inverse of
+/// [`ScriptDrawBuffer`]: game_ui writes sizes here, reads commands from there.
+#[derive(Resource, Default)]
+pub struct ScriptDrawSurfaces {
+    pub per_entity: std::collections::HashMap<Entity, Vec2>,
+}
+
 /// Marker resource: present when the runtime is running as a dedicated server
 /// (`renzora-runtime --server`). Inserted before engine plugins build so they
 /// can opt out of client/render-only setup. A dedicated server has no render

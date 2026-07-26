@@ -88,6 +88,23 @@ pub trait ScriptBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Execute the `on_draw(g)` hook — an immediate-mode 2D drawing pass, run once
+    /// per frame per script-bearing entity. `g` is a canvas-style context
+    /// (`g.width`/`g.height` = the draw surface size in px, plus `arc`/`line`/
+    /// `circle`/`rect`/`text` methods) whose calls accumulate into the returned
+    /// [`renzora::DrawCmd`] list. Default no-op so backends without support compile.
+    fn call_on_draw(
+        &self,
+        path: &Path,
+        width: f32,
+        height: f32,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<renzora::DrawCmd>, String> {
+        let _ = (path, width, height, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Execute the `on_animation_event(name, entity)` hook when animation
     /// playback crosses a clip marker. `entity_bits` is the animator entity's
     /// `Entity::to_bits()`. Default is a no-op so backends without support compile.

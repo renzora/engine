@@ -187,6 +187,15 @@ pub fn run_scripts(world: &mut World) {
         .map(|inbox| inbox.drain())
         .unwrap_or_default();
 
+    // Draw-surface sizes published by the UI vector renderer, keyed by script
+    // entity. `on_draw` is called only for entities that have a surface, sized to
+    // it; the frame's draw lists collect here and get published after the loop.
+    let draw_surfaces: HashMap<Entity, Vec2> = world
+        .get_resource::<renzora::ScriptDrawSurfaces>()
+        .map(|s| s.per_entity.clone())
+        .unwrap_or_default();
+    let mut draw_results: HashMap<Entity, Vec<renzora::DrawCmd>> = HashMap::new();
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
@@ -599,6 +608,24 @@ pub fn run_scripts(world: &mut World) {
                 entry.runtime_state.has_error = false;
             }
 
+            // Immediate-mode draw pass — only for entities the UI renderer gave a
+            // draw surface. Runs while the get-handler is live so `on_draw` can read
+            // script/component state (e.g. a `speed` prop) to compute geometry.
+            if let Some(size) = draw_surfaces.get(&sed.entity).copied() {
+                match engine.call_on_draw(
+                    &script_path,
+                    size.x,
+                    size.y,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    Ok(cmds) => {
+                        draw_results.insert(sed.entity, cmds);
+                    }
+                    Err(e) => warn!("Script on_draw error [{}]: {}", script_path.display(), e),
+                }
+            }
+
             // Deliver any networked RPCs received this frame to the script's
             // `on_rpc(name, args)` hook. Runs while the get-handler is still
             // live so handlers can read component fields too.
@@ -756,6 +783,12 @@ pub fn run_scripts(world: &mut World) {
 
         // Put the ScriptComponent back on the entity
         world.entity_mut(sed.entity).insert(sc);
+    }
+
+    // Publish this frame's immediate-mode draw lists for the UI vector renderer to
+    // reconcile into pooled shape entities. Replaces the whole map (immediate mode).
+    if let Some(mut buf) = world.get_resource_mut::<renzora::ScriptDrawBuffer>() {
+        buf.per_entity = draw_results;
     }
 
     // Apply collected per-hook timings to the shared stats resource.

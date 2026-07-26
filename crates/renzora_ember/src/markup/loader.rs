@@ -161,6 +161,12 @@ fn is_icon_node(node: &XNode) -> bool {
     matches!(&node.node_type, NodeType::Custom(n) if n == "icon")
 }
 
+/// True for a `<canvas>` element — a script draw surface (see
+/// [`game_ui::script_canvas`](crate::game_ui::script_canvas)).
+fn is_canvas_node(node: &XNode) -> bool {
+    matches!(&node.node_type, NodeType::Custom(n) if n == "canvas")
+}
+
 /// Navigate `template` from its root down `path` (chain of child indices).
 fn node_at<'a>(template: &'a HtmlTemplate, path: &[u32]) -> Option<&'a XNode> {
     let mut node = template.root.first()?;
@@ -381,6 +387,13 @@ fn apply_xnode_to(
         // `<icon>` — styled like a node here; the glyph + Phosphor font are
         // applied later by `icons::apply_icons` (stamped below where the font
         // size/color are known). Fall through to node styling.
+    } else if is_canvas_node(node) {
+        // `<canvas width=.. height=..>` — a script draw surface. The owning
+        // script's `on_draw(g)` (bound to `ctx.host`) paints into it via the SDF
+        // shape pool. Falls through to node styling so its size/background apply.
+        commands
+            .entity(entity)
+            .insert(crate::game_ui::script_canvas::ScriptCanvas::new(ctx.host));
     } else if let NodeType::Custom(name) = &node.node_type {
         // Bare `<custom_tag>` with no `template=` attribute. The file-stem
         // registry that used to resolve these is gone — components must be
@@ -641,6 +654,7 @@ fn apply_xnode_to(
             ec.insert(spec);
         }
     }
+
 
     // `gradient="linear 180deg #A #B"` / `shadow="0px 6px 16px #00000088"` —
     // native bevy_ui decoration (see `decor.rs`). Static; no per-frame system.
