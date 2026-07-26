@@ -5680,6 +5680,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "lyon_geom"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4336502e29e32af93cf2dad2214ed6003c17ceb5bd499df77b1de663b9042b92"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "num-traits",
+]
+
+[[package]]
+name = "lyon_path"
+version = "1.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c463f9c428b7fc5ec885dcd39ce4aa61e29111d0e33483f6f98c74e89d8621e"
+dependencies = [
+ "lyon_geom",
+ "num-traits",
+]
+
+[[package]]
+name = "lyon_tessellation"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e43b7e44161571868f5c931d12583592c223c5583eef86b08aa02b7048a3552"
+dependencies = [
+ "float_next_after",
+ "lyon_path",
+ "num-traits",
+]
+
+[[package]]
 name = "lz4_flex"
 version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8419,6 +8451,7 @@ dependencies = [
  "tempfile",
  "toml 0.8.23",
  "ureq",
+ "uuid",
 ]
 
 [[package]]
@@ -9902,6 +9935,17 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_macros",
+]
+
+[[package]]
+name = "renzora_text3d"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "lyon_tessellation",
+ "renzora",
+ "renzora_macros",
+ "ttf-parser",
 ]
 
 [[package]]
