@@ -13,7 +13,7 @@ use bevy_hui::prelude::{HtmlNode, Tags};
 use renzora::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
-use renzora_ember::game_ui::{UiCanvas, UiWidget};
+use renzora_ember::game_ui::{UiCanvas, UiWidget, WorldUiPanel};
 
 use renzora_ember::markup::HtmlTemplatePath;
 
@@ -69,6 +69,37 @@ fn register_editor_entries(app: &mut App) {
         },
     });
 
+    // "+ Add Entity" → UI → "World UI Panel". Unlike every other UI preset this
+    // is a 3D object, not a widget under a canvas: a quad in the scene showing a
+    // template, for a monitor on a wall or a menu you walk up to in VR.
+    //
+    // The template is just an `HtmlTemplatePath` on the panel entity — the same
+    // component every markup holder uses — so the inspector path row, hot-reload
+    // and the code editor all work on it unchanged. `WorldUiPanel`'s systems
+    // read that path and render it to the quad. A freshly-created panel gets its
+    // own starter template written under `ui/` (like a deliberately-created
+    // canvas), with visible placeholder content so the quad isn't a blank sheet.
+    app.register_entity_preset(EntityPreset {
+        id: "world_ui_panel",
+        display_name: "World UI Panel",
+        icon: "monitor",
+        category: "ui",
+        spawn_fn: |world| {
+            let template = world
+                .get_resource::<renzora::CurrentProject>()
+                .and_then(|project| create_unique_panel_template(&project.path, "world_panel"))
+                .unwrap_or_default();
+            world
+                .spawn((
+                    Name::new("World UI Panel"),
+                    WorldUiPanel::default(),
+                    HtmlTemplatePath(template),
+                    Transform::default(),
+                ))
+                .id()
+        },
+    });
+
     // Distinctive icon + type label in the hierarchy tree.
     app.register_component_icon(ComponentIconEntry {
         type_id: std::any::TypeId::of::<HtmlTemplatePath>(),
@@ -76,6 +107,18 @@ fn register_editor_entries(app: &mut App) {
         icon: "code",
         color: [120, 170, 220],
         priority: 96,
+        dynamic_icon_fn: None,
+    });
+
+    // Above `HtmlTemplatePath` (96): the panel entity carries a template path
+    // like any markup holder, but it's a 3D object, so it reads in the tree as
+    // "World UI Panel" with an object icon rather than the generic HTML row.
+    app.register_component_icon(ComponentIconEntry {
+        type_id: std::any::TypeId::of::<WorldUiPanel>(),
+        name: "World UI Panel",
+        icon: "monitor",
+        color: [150, 190, 235],
+        priority: 97,
         dynamic_icon_fn: None,
     });
 
@@ -257,6 +300,44 @@ fn create_unique_template(project_root: &std::path::Path, slug: &str) -> Option<
     let abs = ui_dir.join(format!("{stem}.html"));
     if let Err(e) = std::fs::write(&abs, DEFAULT_CONTENT) {
         warn!("could not write UI template {}: {e}", abs.display());
+        return None;
+    }
+    Some(format!("ui/{stem}.html"))
+}
+
+/// Like [`create_unique_template`], but writes a *visible* starter panel rather
+/// than an empty node. A world panel with an empty template renders a
+/// transparent quad — nothing to see and nothing to grab in the viewport — so a
+/// freshly-added panel gets a filled card the user can immediately see, aim at,
+/// and then edit or replace.
+fn create_unique_panel_template(project_root: &std::path::Path, slug: &str) -> Option<String> {
+    // Self-contained (no `template="..."` includes) so the panel works in any
+    // project, even one with no component library. Full-bleed dark card with a
+    // heading and one button — enough to confirm the quad renders and that a
+    // pointer hit lands where you aimed.
+    const PANEL_CONTENT: &str = "\
+<template>
+    <node width=\"100%\" height=\"100%\" flex_direction=\"column\"
+          justify_content=\"center\" align_items=\"center\" row_gap=\"18px\"
+          background=\"#12151C\" padding=\"32px\">
+        <text font_size=\"40\" font_color=\"#FFFFFF\">World Panel</text>
+        <text font_size=\"16\" font_color=\"#8A93A2\">Edit this template to build your panel</text>
+        <button padding=\"14px 28px\" border_radius=\"10px\" background=\"#2A2D34\"
+                hover:background=\"#4C8BF5\" pressed:background=\"#2E9E5B\" on_press=\"panel_button\">
+            <text font_size=\"18\" font_color=\"#FFFFFF\">Click Me</text>
+        </button>
+    </node>
+</template>
+";
+    let ui_dir = project_root.join("ui");
+    if let Err(e) = std::fs::create_dir_all(&ui_dir) {
+        warn!("could not create project ui/ dir: {e}");
+        return None;
+    }
+    let stem = unique_stem(slug, |s| ui_dir.join(format!("{s}.html")).exists());
+    let abs = ui_dir.join(format!("{stem}.html"));
+    if let Err(e) = std::fs::write(&abs, PANEL_CONTENT) {
+        warn!("could not write UI panel template {}: {e}", abs.display());
         return None;
     }
     Some(format!("ui/{stem}.html"))

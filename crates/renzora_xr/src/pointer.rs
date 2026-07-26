@@ -14,7 +14,10 @@ use crate::VrInput;
 
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<renzora::WorldUiPointers>();
-    app.add_systems(Update, publish_wand_rays);
+    app.add_systems(
+        Update,
+        publish_wand_rays.in_set(renzora::WorldUiPointerSet::Publish),
+    );
 }
 
 fn publish_wand_rays(

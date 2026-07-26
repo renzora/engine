@@ -1,0 +1,140 @@
+<!-- Hit-test target sheet for world-space UI panels.
+
+     Point this at a `WorldUiPanel` (Add Entity -> UI -> World UI Panel, which
+     uses it by default) to check that a ray hitting the quad lands on the right
+     UI pixel. Every cell is labelled with where it sits on the panel, so a
+     mirrored or transposed axis shows up instantly: aim at the cell you *see*
+     under the pointer and confirm the highlighted cell is the same one.
+
+     What each state proves:
+       hover   (blue)  the ray hit the quad and the UV -> pixel mapping is right
+       pressed (green) the trigger crossed the press threshold on that cell
+
+     A panel whose Y is flipped highlights BOTTOM-* when you point at TOP-*; one
+     whose X is flipped swaps LEFT and RIGHT; one whose axes are transposed
+     highlights the cell diagonally opposite. All three are distinguishable from
+     this sheet alone, without a debugger.
+
+     `on_press` names go to Lua's `on_ui(name, args)` hook (broadcast) when no
+     Rust binding claims them, so a script can log exactly which cell fired. -->
+<template>
+    <property name="edge">#222B38</property>
+    <property name="idle">#161A22</property>
+    <property name="hover">#2F6FD0</property>
+    <property name="press">#2E9E5B</property>
+
+    <node
+        width="100%"
+        height="100%"
+        flex_direction="column"
+        background="#0B0E14"
+        padding="14px"
+        row_gap="10px"
+    >
+        <!-- Header doubles as an orientation check: it must read across the TOP
+             of the quad. If it renders along the bottom, the panel's Y is
+             flipped before the pointer math is even involved. -->
+        <node flex_direction="row" justify_content="space_between" align_items="center">
+            <text font_size="22" font_color="#FFFFFF">World Panel — Hit Test</text>
+            <text font_size="14" font_color="#7C879A">hover = blue · press = green</text>
+        </node>
+
+        <node flex_grow="1" flex_direction="column" row_gap="10px">
+            <!-- ── Top row ──────────────────────────────────────────────── -->
+            <node flex_grow="1" flex_direction="row" column_gap="10px">
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_top_left">
+                    <text font_size="18" font_color="#E6EAF2">TOP LEFT</text>
+                </button>
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_top">
+                    <text font_size="18" font_color="#E6EAF2">TOP</text>
+                </button>
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_top_right">
+                    <text font_size="18" font_color="#E6EAF2">TOP RIGHT</text>
+                </button>
+            </node>
+
+            <!-- ── Middle row ───────────────────────────────────────────── -->
+            <node flex_grow="1" flex_direction="row" column_gap="10px">
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_left">
+                    <text font_size="18" font_color="#E6EAF2">LEFT</text>
+                </button>
+                <!-- Centre is the one cell an off-by-a-bit mapping still hits,
+                     so it's marked out: if ONLY this ever lights up, the ray is
+                     landing but the UV scale is collapsed. -->
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="#3C4759" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_center">
+                    <text font_size="18" font_color="#FFFFFF">CENTER</text>
+                </button>
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_right">
+                    <text font_size="18" font_color="#E6EAF2">RIGHT</text>
+                </button>
+            </node>
+
+            <!-- ── Bottom row ───────────────────────────────────────────── -->
+            <node flex_grow="1" flex_direction="row" column_gap="10px">
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_bottom_left">
+                    <text font_size="18" font_color="#E6EAF2">BOTTOM LEFT</text>
+                </button>
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_bottom">
+                    <text font_size="18" font_color="#E6EAF2">BOTTOM</text>
+                </button>
+                <button flex_grow="1" justify_content="center" align_items="center"
+                        background="{idle}" border="2px" border_color="{edge}" border_radius="10px"
+                        hover:background="{hover}" hover:border_color="{hover}"
+                        pressed:background="{press}" pressed:border_color="{press}"
+                        on_press="hit_bottom_right">
+                    <text font_size="18" font_color="#E6EAF2">BOTTOM RIGHT</text>
+                </button>
+            </node>
+        </node>
+
+        <!-- Thin edge strips: the last few pixels before the quad's border are
+             where a half-texel or rounding error in the UV shows up, and a
+             full-size cell is too forgiving to reveal it. -->
+        <node flex_direction="row" column_gap="10px" height="26px">
+            <button flex_grow="1" justify_content="center" align_items="center"
+                    background="{idle}" border_radius="6px"
+                    hover:background="{hover}" pressed:background="{press}"
+                    on_press="hit_edge_left">
+                <text font_size="12" font_color="#7C879A">EDGE L</text>
+            </button>
+            <button flex_grow="1" justify_content="center" align_items="center"
+                    background="{idle}" border_radius="6px"
+                    hover:background="{hover}" pressed:background="{press}"
+                    on_press="hit_edge_right">
+                <text font_size="12" font_color="#7C879A">EDGE R</text>
+            </button>
+        </node>
+    </node>
+</template>

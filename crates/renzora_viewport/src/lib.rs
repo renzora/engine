@@ -32,6 +32,7 @@ pub mod scene_drop;
 pub mod settings;
 pub mod shape_drop;
 pub mod sprite_drop;
+mod world_ui_pointer;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -226,6 +227,17 @@ impl Plugin for ViewportPlugin {
             )
                 .run_if(in_state(renzora_editor_framework::SplashState::Editor))
                 .run_if(camera_preview::camera_preview_panel_mounted),
+        );
+
+        // Editor-viewport mouse → world-UI ray. Its own `add_systems` rather
+        // than a slot in the big Update tuple above: that one is already at
+        // Bevy's 20-element cap, and this needs its own set membership anyway.
+        // Not gated on play mode — world panels stay clickable while authoring.
+        app.add_systems(
+            Update,
+            world_ui_pointer::publish_viewport_mouse_ray
+                .in_set(renzora::WorldUiPointerSet::Publish)
+                .run_if(in_state(renzora_editor_framework::SplashState::Editor)),
         );
 
         app.add_systems(Last, external_runtime::kill_on_app_exit);

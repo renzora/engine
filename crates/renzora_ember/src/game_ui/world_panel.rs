@@ -29,12 +29,18 @@ use serde::{Deserialize, Serialize};
 
 use super::components::{HtmlTemplatePath, HuiBuildOnSelf};
 
-/// A game-UI template rendered onto a quad in the 3D world.
+/// Turns the entity's [`HtmlTemplatePath`] into a quad in the 3D world.
+///
+/// The template lives in `HtmlTemplatePath` — the same component every other
+/// markup holder uses — rather than a field here, so the existing inspector
+/// row, the asset-drop path, the code editor's "open the file I selected" and
+/// hot-reload all work on a world panel with no special cases. This component
+/// only says *how* to present it: the physical size of the quad and how many
+/// pixels to render into.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
+#[require(HtmlTemplatePath)]
 pub struct WorldUiPanel {
-    /// Asset-relative path to the game-UI `.html` template.
-    pub template: String,
     /// Quad size in world meters (width, height).
     #[serde(default = "default_panel_size")]
     #[reflect(default = "default_panel_size")]
@@ -55,12 +61,23 @@ fn default_panel_resolution() -> UVec2 {
 impl Default for WorldUiPanel {
     fn default() -> Self {
         Self {
-            template: String::new(),
             size: default_panel_size(),
             resolution: default_panel_resolution(),
         }
     }
 }
+
+/// The generated, camera-routed UI root a panel's markup builds under.
+///
+/// Exists so the canvas invariants in `GameUiPlugin` can tell this root apart
+/// from a genuinely orphaned widget. Those healers exist because a widget with
+/// no `UiCanvas` ancestor renders into the editor's own UI — invisible but
+/// destructive — and their fix is to spawn a canvas and adopt the widget. A
+/// panel root is parentless *by design* (it's routed by `UiTargetCamera`, not
+/// by ancestry), so without this marker every panel would have a stray
+/// `UiCanvas` built around it moments after spawning.
+#[derive(Component)]
+pub struct WorldUiRoot;
 
 /// Runtime pieces backing a resolved panel. Not reflect-registered: rebuilt
 /// from [`WorldUiPanel`] on load, never serialized.
@@ -74,16 +91,67 @@ pub struct WorldUiPanelLive {
 
 pub(crate) fn register(app: &mut App) {
     app.register_type::<WorldUiPanel>();
+    // The consumer owns the resource and the ordering: producers live in
+    // crates that never link this one (renzora_xr, renzora_viewport), so
+    // they can only declare set membership, not the relationship between
+    // sets. `init_resource` here rather than in a producer means panels work
+    // even in a build with no XR and no editor viewport.
+    app.init_resource::<renzora::WorldUiPointers>();
+    app.configure_sets(
+        Update,
+        renzora::WorldUiPointerSet::Publish.before(renzora::WorldUiPointerSet::Consume),
+    );
     app.add_systems(
         Update,
+        publish_game_mouse_ray.in_set(renzora::WorldUiPointerSet::Publish),
+    );
+    app.add_systems(
+        Update,
+        // Panels resolve before the pointers that hit-test them, so a panel
+        // added this frame is clickable this frame rather than next.
         (
-            publish_game_mouse_ray,
             sync_world_ui_panels,
             cleanup_world_ui_panels,
             drive_panel_pointers,
         )
-            .chain(),
+            .chain()
+            .in_set(renzora::WorldUiPointerSet::Consume),
     );
+    // Scene load inserts components by reflection, which does NOT bump change
+    // ticks, so `Changed<WorldUiPanel>`/`Changed<HtmlTemplatePath>` above never
+    // fires for a loaded panel and it would stay unbuilt. These observers fire
+    // on the reflection insert (as they do on a fresh spawn) and force the
+    // component changed so the sync system rebuilds it next frame. Both are
+    // needed because the two components load in an unspecified order.
+    app.add_observer(mark_panel_changed_on_panel_insert);
+    app.add_observer(mark_panel_changed_on_path_insert);
+}
+
+/// Bump `WorldUiPanel`'s change tick so `sync_world_ui_panels` reprocesses it —
+/// the reflection-load bridge described in [`register`].
+fn touch_panel(world: &mut World, entity: Entity) {
+    if let Some(mut panel) = world.get_mut::<WorldUiPanel>(entity) {
+        panel.set_changed();
+    }
+}
+
+fn mark_panel_changed_on_panel_insert(trigger: On<Insert, WorldUiPanel>, mut commands: Commands) {
+    let entity = trigger.entity;
+    commands.queue(move |world: &mut World| touch_panel(world, entity));
+}
+
+fn mark_panel_changed_on_path_insert(
+    trigger: On<Insert, HtmlTemplatePath>,
+    panels: Query<(), With<WorldUiPanel>>,
+    mut commands: Commands,
+) {
+    let entity = trigger.entity;
+    // Only the panel case — a plain markup holder is handled by the generic
+    // pipeline's own observer.
+    if panels.get(entity).is_err() {
+        return;
+    }
+    commands.queue(move |world: &mut World| touch_panel(world, entity));
 }
 
 /// Shipped-game mouse → world-UI ray (pointer id 2). Editor sessions publish
@@ -284,19 +352,31 @@ fn drive_panel_pointers(
 /// Resolve added/changed panels. A change tears the old camera/root down and
 /// rebuilds — template edits, resolution changes and size changes all take
 /// the same (cheap, rare) path.
+///
+/// Triggered by a change to *either* the presentation ([`WorldUiPanel`]) or the
+/// template path ([`HtmlTemplatePath`]), so editing the path in the inspector
+/// re-renders the panel just like editing its size does.
 fn sync_world_ui_panels(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    panels: Query<(Entity, &WorldUiPanel, Option<&WorldUiPanelLive>), Changed<WorldUiPanel>>,
+    panels: Query<
+        (
+            Entity,
+            &WorldUiPanel,
+            &HtmlTemplatePath,
+            Option<&WorldUiPanelLive>,
+        ),
+        Or<(Changed<WorldUiPanel>, Changed<HtmlTemplatePath>)>,
+    >,
 ) {
-    for (entity, panel, live) in panels.iter() {
+    for (entity, panel, template, live) in panels.iter() {
         if let Some(live) = live {
             commands.entity(live.camera).try_despawn();
             commands.entity(live.ui_root).try_despawn();
         }
-        if panel.template.is_empty() {
+        if template.0.is_empty() {
             commands.entity(entity).remove::<WorldUiPanelLive>();
             continue;
         }
@@ -354,8 +434,15 @@ fn sync_world_ui_panels(
                     ..default()
                 },
                 UiTargetCamera(camera),
-                HtmlTemplatePath(panel.template.clone()),
+                // The path lives on the panel entity, but the panel is a 3D
+                // object the markup pipeline is told to leave alone (see
+                // `on_template_path_inserted`'s filter). So the generated root
+                // is where the template actually builds — it carries its own
+                // copy of the path plus `HuiBuildOnSelf` so the markup lands
+                // directly on it and is routed to the panel's camera.
+                HtmlTemplatePath(template.0.clone()),
                 HuiBuildOnSelf,
+                WorldUiRoot,
                 renzora::HideInHierarchy,
             ))
             .id();

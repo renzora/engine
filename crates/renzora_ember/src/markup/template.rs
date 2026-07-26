@@ -33,7 +33,13 @@ struct PendingTemplate(Handle<HtmlTemplate>);
 
 fn on_template_path_inserted(
     trigger: On<Insert, HtmlTemplatePath>,
-    paths: Query<&HtmlTemplatePath>,
+    // `Without<WorldUiPanel>`: a world panel is a 3D object that carries a
+    // template path, but its markup must NOT build onto the panel entity —
+    // that would add screen-space `Node` children to a mesh, rendering to the
+    // primary UI camera instead of the panel's quad. `sync_world_ui_panels`
+    // instead routes the path to a camera-bound root of its own. Filtering the
+    // panel out here is what keeps the generic pipeline from also building it.
+    paths: Query<&HtmlTemplatePath, Without<crate::game_ui::world_panel::WorldUiPanel>>,
     server: Res<AssetServer>,
     mut commands: Commands,
 ) {
@@ -173,7 +179,11 @@ fn hot_reload_templates(
     mut events: MessageReader<AssetEvent<HtmlTemplate>>,
     mut requests: ResMut<TemplateReloadRequests>,
     server: Res<AssetServer>,
-    holders: Query<(Entity, &HtmlTemplatePath)>,
+    // Same exclusion as `on_template_path_inserted`: a world panel routes its
+    // template to a generated `WorldUiRoot`, which is itself a holder and gets
+    // re-queued here on its own. Re-queuing the panel entity would build the
+    // markup onto the 3D object.
+    holders: Query<(Entity, &HtmlTemplatePath), Without<crate::game_ui::world_panel::WorldUiPanel>>,
     mut commands: Commands,
 ) {
     // A save can surface as both a `reload()`-driven and a file-watcher-driven

@@ -78,6 +78,25 @@ pub(crate) fn find_ancestor_canvas(world: &World, mut entity: Entity) -> Option<
     }
 }
 
+/// Whether `entity` sits inside a world-panel's UI subtree.
+///
+/// A [`WorldUiRoot`](super::world_panel::WorldUiRoot) is routed to its panel's
+/// camera by `UiTargetCamera`, not by a `UiCanvas` ancestor, so the widgets a
+/// panel's markup builds have no canvas above them and would otherwise trip the
+/// orphan healer into wrapping them in a stray `UiCanvas`. This lets the healer
+/// recognise the panel root as a legitimate UI scope and leave the subtree be.
+pub(crate) fn is_within_world_ui_root(world: &World, mut entity: Entity) -> bool {
+    loop {
+        if world.get::<super::world_panel::WorldUiRoot>(entity).is_some() {
+            return true;
+        }
+        match world.get::<ChildOf>(entity) {
+            Some(co) => entity = co.parent(),
+            None => return false,
+        }
+    }
+}
+
 /// Spawn a bare full-screen root `UiCanvas` (no parent). This is the single
 /// definition of "a fresh canvas": the default parent when a widget is spawned
 /// with no canvas in the scene, and the wrapper the invariant healer parents an

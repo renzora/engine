@@ -17,12 +17,14 @@ pub mod script_extension;
 pub mod shapes;
 pub mod spawn;
 pub mod systems;
+pub mod world_panel;
 
 use bevy::prelude::*;
 
 pub use components::{
     HtmlTemplatePath, HuiBuildOnSelf, UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType,
 };
+pub use world_panel::WorldUiPanel;
 
 #[derive(Default)]
 pub struct GameUiPlugin;
@@ -110,6 +112,12 @@ impl Plugin for GameUiPlugin {
 
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
+
+        // ── World-space panels ──────────────────────────────────────────
+        // Templates rendered onto a quad in the 3D scene, clickable from a VR
+        // wand or the mouse. Owns the `WorldUiPointers` consumer, so it's also
+        // the one place that orders the contract's two sets.
+        world_panel::register(app);
 
         // ── Canvas scaler & visibility-mode ──────────────────────────────
         //
@@ -307,11 +315,16 @@ fn heal_orphaned_ui_widgets(
     moved: Query<Entity, (With<UiWidget>, Changed<ChildOf>)>,
     child_of: Query<&ChildOf>,
     canvases: Query<(), With<UiCanvas>>,
+    world_roots: Query<(), With<world_panel::WorldUiRoot>>,
 ) {
-    let has_canvas_ancestor = |start: Entity| -> bool {
+    // A widget is in-scope if it reaches either a `UiCanvas` OR a
+    // `WorldUiRoot` — the latter is a world panel's camera-routed subtree, a
+    // legitimate scope with no canvas above it. Missing the world-root case is
+    // what made a panel spawn a stray `UiCanvas` around its built markup.
+    let has_ui_scope_ancestor = |start: Entity| -> bool {
         let mut e = start;
         loop {
-            if canvases.get(e).is_ok() {
+            if canvases.get(e).is_ok() || world_roots.get(e).is_ok() {
                 return true;
             }
             match child_of.get(e) {
@@ -322,11 +335,11 @@ fn heal_orphaned_ui_widgets(
     };
 
     // Root widgets are always orphans; reparented widgets only when their new
-    // chain reaches no canvas. Dedup so a widget that is both root and freshly
+    // chain reaches no scope. Dedup so a widget that is both root and freshly
     // changed isn't healed twice.
     let mut orphans: Vec<Entity> = roots.iter().collect();
     for e in &moved {
-        if !has_canvas_ancestor(e) {
+        if !has_ui_scope_ancestor(e) {
             orphans.push(e);
         }
     }
@@ -340,7 +353,9 @@ fn heal_orphaned_ui_widgets(
             if world.get::<UiWidget>(widget).is_none() {
                 return;
             }
-            if crate::game_ui::spawn::find_ancestor_canvas(world, widget).is_some() {
+            if crate::game_ui::spawn::find_ancestor_canvas(world, widget).is_some()
+                || crate::game_ui::spawn::is_within_world_ui_root(world, widget)
+            {
                 return;
             }
             let canvas = crate::game_ui::spawn::spawn_root_canvas(world);

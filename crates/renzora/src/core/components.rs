@@ -451,6 +451,64 @@ pub struct VrPlayState {
     pub active: bool,
 }
 
+/// One device's pointing ray at a world-space UI panel this frame.
+///
+/// `id` names the producer and must be unique across them — see
+/// [`WorldUiPointers`] for the assignments. It also seeds the `bevy_picking`
+/// pointer id the panel system spawns, so it has to stay stable frame to
+/// frame or the pointer would be torn down and rebuilt every tick.
+///
+/// `trigger` is an analog 0..1 press (a VR trigger's pull, or 0/1 for a mouse
+/// button) rather than a bool, because the panel system applies press/release
+/// hysteresis to it — a trigger resting near its threshold would otherwise
+/// chatter clicks.
+#[derive(Clone, Copy, Debug)]
+pub struct WorldUiPointerRay {
+    /// Producer id — unique per source, stable across frames.
+    pub id: u8,
+    /// Where the device is pointing, in world space.
+    pub ray: bevy::math::Ray3d,
+    /// Analog press, 0..1.
+    pub trigger: f32,
+}
+
+/// Ordering for the [`WorldUiPointers`] producers and their consumer.
+///
+/// The producers live in crates that never link the consumer, so nothing else
+/// can order them: without this, whether a click reached a panel on the frame
+/// it happened or the frame after would depend on system-insertion order. The
+/// consumer configures `Publish` before `Consume`; producers only declare
+/// which side they're on.
+#[derive(
+    bevy::ecs::schedule::SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub enum WorldUiPointerSet {
+    /// Refill this frame's rays (wands, mouse).
+    Publish,
+    /// Turn them into `bevy_picking` pointers.
+    Consume,
+}
+
+/// Every device currently pointing into the world, refilled each frame.
+///
+/// The contract behind world-space game UI: several crates that never link
+/// each other produce rays, and one consumer (ember's world-panel system)
+/// turns them into `bevy_picking` pointers. Producers can't just clear the
+/// list — they'd delete each other's entries depending on system order — so
+/// each owns fixed ids and retains away only its own before pushing:
+///
+/// | id | Producer |
+/// |----|----------|
+/// | 0, 1 | `renzora_xr` — left / right wand |
+/// | 2 | the mouse: `renzora_viewport` in an editor session, ember's own publisher in the shipped game (each gates itself off in the other case, so only one writes) |
+///
+/// A producer that has nothing to publish (cursor left the viewport, VR play
+/// stopped) simply retains its ids away and pushes nothing. The consumer
+/// treats an absent id as "this device is gone" and releases whatever its
+/// pointer was holding, so a button can't be left stuck down.
+#[derive(Resource, Default, Debug)]
+pub struct WorldUiPointers(pub Vec<WorldUiPointerRay>);
+
 /// Serializable marker for a scene camera entity.
 ///
 /// Stored alongside `Camera3d` so the camera can be recreated on scene load

@@ -168,6 +168,21 @@ When you add a canvas yourself — **Add Entity → UI Canvas**, or the **New UI
 
 **Widgets always live under a UI Canvas.** The canvas is what scopes its widgets to the game view; a widget outside one has nowhere to render. So the editor keeps that relationship intact for you: if you drag a widget out to the scene root (or under a non-UI entity), it's automatically re-homed under a fresh **UI Canvas** rather than escaping into the editor's own interface — you'll simply see a new canvas appear in the hierarchy holding it. Having more than one canvas is fine (a HUD and a pause menu, say). The reverse is also enforced: a canvas can't become a child of a widget — drop one there and it pops back to the top level.
 
+## UI in the 3D world
+
+A canvas draws its UI flat across the screen. A **World UI Panel** draws the same kind of `.html` template onto a flat surface *inside* the scene — a monitor on a wall, a control terminal you walk up to, a floating menu in VR. It's a real 3D object: it has a position and rotation, it's lit by the scene, and things can pass in front of it.
+
+Add one with **Add Entity → UI → World UI Panel**. It comes with a starter template so you can see it straight away; the panel carries an **HTML Template** field just like any other UI entity, so point it at any of your `.html` files (in the inspector, or by editing the file it created) and that template is what appears on the surface. Everything else about authoring is identical — the same tags, the same live `{{ Component.field }}` values, the same hot-reload on **Ctrl+S**.
+
+Two settings are specific to the panel, both in the inspector:
+
+- **Size** — how big the surface is in the world, in meters (width × height).
+- **Resolution** — how many pixels the template is drawn at before it's mapped onto the surface. Higher is crisper but costs more; the default (1280×720) suits a wall-sized panel.
+
+Panels are **interactive**, not just decorative. Point at one and click — with the mouse in the editor viewport, or with a controller in VR — and the buttons, sliders and hover states respond exactly as they do on a normal canvas. Aiming anywhere on the surface maps to the matching spot on the template, so a button in the top-right of the file is a button in the top-right of the panel.
+
+Unlike a canvas, a panel doesn't hold widget entities — its content is entirely the template it points at, so you build it by editing the `.html`, not by dragging widgets onto it.
+
 ### Controlling those widgets from a script
 
 Widgets respond to a set of `ui_*` verbs. You target a widget by the `name` you gave it in the editor:

@@ -35,7 +35,9 @@ use serde::{Deserialize, Serialize};
 mod environment;
 mod eyes;
 mod input;
+mod interaction;
 mod locomotion;
+mod pointer;
 mod rig;
 mod session;
 
@@ -165,6 +167,10 @@ impl Plugin for XrPlugin {
         locomotion::register(app);
         rig::register(app);
         environment::register(app);
+        // Wand rays into the world-UI contract, and proximity grab. Both read
+        // `VrInput`, so they register after it.
+        pointer::register(app);
+        interaction::register(app);
         session::register(app, self.auto_start);
 
         // Session-state breadcrumbs: "window opened but headset is dark" is
