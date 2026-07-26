@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use bevy::math::{Quat, Vec3};
 use bevy::prelude::*;
-use renzora::core::{EditorCamera, EntityTag};
+use renzora::core::EditorCamera;
 
 use crate::model::{CameraClip, CameraKey, MediaClip, Sequence, Track, TrackKind, TransformClip};
 
@@ -593,21 +593,23 @@ fn smoothstep(u: f32) -> f32 {
 
 // ─── Apply: Transform tracks ────────────────────────────────────────────────
 
-/// `tag -> entities` lookup so a transform track can reach its targets without
-/// scanning every tagged entity. Rebuilt only when the tagged set changes (see
-/// [`update_tag_index`]).
+/// `id -> entities` lookup so a transform track can reach its target without
+/// scanning every entity. Rebuilt only when the id set changes (see
+/// [`update_id_index`]). Keyed on the entity's unique id (its `Name`); the value
+/// stays a `Vec` only to tolerate transient duplicate ids mid-rename.
 #[derive(Resource, Default)]
-pub struct TagIndex {
+pub struct IdIndex {
     map: bevy::platform::collections::HashMap<String, Vec<Entity>>,
 }
 
-/// Keep [`TagIndex`] current. The full rebuild runs only on a frame where some
-/// `EntityTag` was added, changed or removed; otherwise it's an O(1) early-out.
-pub fn update_tag_index(
-    mut index: ResMut<TagIndex>,
-    changed: Query<(), Or<(Added<EntityTag>, Changed<EntityTag>)>>,
-    mut removed: RemovedComponents<EntityTag>,
-    tags: Query<(Entity, &EntityTag)>,
+/// Keep [`IdIndex`] current. The full rebuild runs only on a frame where some
+/// entity id (`Name`) was added, changed or removed; otherwise it's an O(1)
+/// early-out.
+pub fn update_id_index(
+    mut index: ResMut<IdIndex>,
+    changed: Query<(), Or<(Added<Name>, Changed<Name>)>>,
+    mut removed: RemovedComponents<Name>,
+    ids: Query<(Entity, &Name)>,
     mut inited: Local<bool>,
 ) {
     let dirty = !*inited || !changed.is_empty() || removed.read().next().is_some();
@@ -616,16 +618,17 @@ pub fn update_tag_index(
     }
     *inited = true;
     index.map.clear();
-    for (e, tag) in &tags {
-        index.map.entry(tag.tag.clone()).or_default().push(e);
+    for (e, name) in &ids {
+        index.map.entry(name.as_str().to_string()).or_default().push(e);
     }
 }
 
-/// Drive tagged entities' Transforms from any active TransformClip. Only the
-/// entities matching each active track's tag are touched (via [`TagIndex`]).
+/// Drive a track's target entity's Transform from any active TransformClip.
+/// Only the entity whose id matches each active track's `target_id` is touched
+/// (via [`IdIndex`]).
 pub fn apply_transform_tracks(
     state: Res<SequencerState>,
-    index: Res<TagIndex>,
+    index: Res<IdIndex>,
     mut transforms: Query<&mut Transform>,
 ) {
     let playhead = state.playhead;
@@ -633,7 +636,7 @@ pub fn apply_transform_tracks(
         if track.muted {
             continue;
         }
-        let TrackKind::Transform { target_tag, clips } = &track.kind else {
+        let TrackKind::Transform { target_id, clips } = &track.kind else {
             continue;
         };
         let Some(clip) = clips
@@ -642,7 +645,7 @@ pub fn apply_transform_tracks(
         else {
             continue;
         };
-        let Some(entities) = index.map.get(target_tag) else {
+        let Some(entities) = index.map.get(target_id) else {
             continue;
         };
         let pose = sample_transform_clip(clip, playhead - clip.start);

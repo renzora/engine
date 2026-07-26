@@ -743,6 +743,55 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
             Ok(())
         })?,
     )?;
+    g.set(
+        "triangle",
+        lua.create_function(
+            |_, (x1, y1, x2, y2, x3, y3, color): (f32, f32, f32, f32, f32, f32, String)| {
+                super::push_draw(DrawCmd::Triangle {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x3,
+                    y3,
+                    color: parse_hex(&color),
+                });
+                Ok(())
+            },
+        )?,
+    )?;
+    // `g.poly(points, color)` — points is a flat table `{x1,y1, x2,y2, ...}`. A
+    // convex polygon fans from vertex 0 into (n-2) filled triangles.
+    g.set(
+        "poly",
+        lua.create_function(|_, (points, color): (mlua::Table, String)| {
+            let col = parse_hex(&color);
+            let n_coords = points.raw_len();
+            let mut xs: Vec<f32> = Vec::with_capacity(n_coords);
+            for i in 1..=n_coords {
+                xs.push(points.get::<f32>(i).unwrap_or(0.0));
+            }
+            let n = xs.len() / 2;
+            if n >= 3 {
+                let pt = |i: usize| (xs[i * 2], xs[i * 2 + 1]);
+                let (x0, y0) = pt(0);
+                for i in 1..(n - 1) {
+                    let (xa, ya) = pt(i);
+                    let (xb, yb) = pt(i + 1);
+                    super::push_draw(DrawCmd::Triangle {
+                        x1: x0,
+                        y1: y0,
+                        x2: xa,
+                        y2: ya,
+                        x3: xb,
+                        y3: yb,
+                        color: col,
+                    });
+                }
+            }
+            Ok(())
+        })?,
+    )?;
     Ok(g)
 }
 

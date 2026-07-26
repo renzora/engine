@@ -14,7 +14,7 @@ use crate::{
     FieldDef, FieldType, FieldValue, InspectorEntry, InspectorRegistry,
 };
 use crate::{ComponentIconEntry, ComponentIconRegistry};
-use crate::{EntityLabelColor, EntityTag};
+use crate::EntityLabelColor;
 
 /// Register spawn presets for core Bevy entity types.
 pub fn register_bevy_presets(registry: &mut crate::SpawnRegistry) {
@@ -832,8 +832,8 @@ fn sprite_image_entry() -> InspectorEntry {
 fn name_entry() -> InspectorEntry {
     InspectorEntry {
         type_id: "name",
-        display_name: "Name",
-        icon: "tag",
+        display_name: "ID",
+        icon: "hash",
         category: "transform",
         has_fn: |world, entity| world.get::<Name>(entity).is_some(),
         add_fn: None,
@@ -841,8 +841,13 @@ fn name_entry() -> InspectorEntry {
         is_enabled_fn: None,
         set_enabled_fn: None,
         fields: vec![
+            // The single canonical identifier: a unique, snake_case id stored in
+            // `Name`. Typing anything here is sanitized (spaces/punctuation →
+            // `_`, lowercased) and de-duplicated against every other entity, so
+            // ids stay unique and space-free. This replaces the old separate
+            // Name + Tag pair.
             FieldDef {
-                name: "Name",
+                name: "ID",
                 field_type: FieldType::String,
                 get_fn: |world, entity| {
                     world
@@ -851,29 +856,9 @@ fn name_entry() -> InspectorEntry {
                 },
                 set_fn: |world, entity, val| {
                     if let FieldValue::String(v) = val {
+                        let id = renzora::unique_entity_name(world, &v, entity);
                         if let Some(mut n) = world.get_mut::<Name>(entity) {
-                            *n = Name::new(v);
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Tag",
-                field_type: FieldType::String,
-                get_fn: |world, entity| {
-                    Some(FieldValue::String(
-                        world
-                            .get::<EntityTag>(entity)
-                            .map(|t| t.tag.clone())
-                            .unwrap_or_default(),
-                    ))
-                },
-                set_fn: |world, entity, val| {
-                    if let FieldValue::String(v) = val {
-                        if let Some(mut t) = world.get_mut::<EntityTag>(entity) {
-                            t.tag = v;
-                        } else {
-                            world.entity_mut(entity).insert(EntityTag { tag: v });
+                            *n = Name::new(id);
                         }
                     }
                 },

@@ -86,10 +86,13 @@ pub enum TrackKind {
     /// Drives the editor camera's transform/FOV between keyframes during the
     /// clip's time range.
     Camera { clips: Vec<CameraClip> },
-    /// Drives a target entity's `Transform` between keyframes. Resolved by
-    /// `EntityTag` so re-loading the scene rebinds correctly.
+    /// Drives a target entity's `Transform` between keyframes. Resolved by the
+    /// target entity's unique id (its `Name`) so re-loading the scene rebinds
+    /// correctly. `#[serde(alias)]` keeps sequences saved under the old
+    /// `target_tag` field loading — the stored string is now matched as an id.
     Transform {
-        target_tag: String,
+        #[serde(alias = "target_tag")]
+        target_id: String,
         clips: Vec<TransformClip>,
     },
     /// Time-stamped labels — purely cosmetic, but they show up as bake

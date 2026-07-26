@@ -210,11 +210,19 @@ fn handle_reset_script_states(
 
 /// Run condition: scripts should execute this frame.
 ///
-/// In editor: only when PlayModeState says scripts are running.
+/// In editor: when PlayModeState says scripts are running, OR when at least one
+/// script is being *previewed* (the inspector's per-script play button) — in which
+/// case `run_scripts` runs only the previewing scripts.
 /// In standalone runtime (no PlayModeState): always run.
-fn scripts_should_run(play_mode: Option<Res<renzora::PlayModeState>>) -> bool {
+fn scripts_should_run(
+    play_mode: Option<Res<renzora::PlayModeState>>,
+    scripts: Query<&ScriptComponent>,
+) -> bool {
     match play_mode {
-        Some(pm) => pm.is_scripts_running(),
+        Some(pm) if pm.is_scripts_running() => true,
+        Some(_) => scripts
+            .iter()
+            .any(|sc| sc.scripts.iter().any(|e| e.enabled && e.preview)),
         None => true, // standalone runtime — always run
     }
 }

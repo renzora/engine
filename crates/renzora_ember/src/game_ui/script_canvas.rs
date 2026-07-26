@@ -19,7 +19,7 @@ use bevy::ui::ComputedNode;
 
 use renzora::DrawCmd;
 
-use super::shapes::{ArcShape, CircleShape, LineShape, RectangleShape, UiShapeWidget};
+use super::shapes::{ArcShape, CircleShape, LineShape, RectangleShape, Tri3Shape, UiShapeWidget};
 
 /// A `<node canvas>` surface a script draws into via `on_draw(g)`.
 #[derive(Component)]
@@ -32,6 +32,7 @@ pub struct ScriptCanvas {
     lines: Vec<Entity>,
     circles: Vec<Entity>,
     rects: Vec<Entity>,
+    tris: Vec<Entity>,
     texts: Vec<Entity>,
 }
 
@@ -43,6 +44,7 @@ impl ScriptCanvas {
             lines: Vec::new(),
             circles: Vec::new(),
             rects: Vec::new(),
+            tris: Vec::new(),
             texts: Vec::new(),
         }
     }
@@ -62,7 +64,8 @@ pub(crate) fn register(app: &mut App) {
             .before(super::shapes::sync_arc_materials)
             .before(super::shapes::sync_line_materials)
             .before(super::shapes::sync_circle_materials)
-            .before(super::shapes::sync_rectangle_materials),
+            .before(super::shapes::sync_rectangle_materials)
+            .before(super::shapes::sync_tri3_materials),
     );
 }
 
@@ -104,7 +107,8 @@ fn render_script_canvas(
     let empty: Vec<DrawCmd> = Vec::new();
     for (canvas_entity, mut canvas) in &mut canvases {
         let cmds = draws.per_entity.get(&canvas.owner).unwrap_or(&empty);
-        let (mut ai, mut li, mut ci, mut ri, mut ti) = (0usize, 0usize, 0usize, 0usize, 0usize);
+        let (mut ai, mut li, mut ci, mut ri, mut tri_i, mut ti) =
+            (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
 
         for (z, cmd) in cmds.iter().enumerate() {
             let z = ZIndex(z as i32);
@@ -154,6 +158,35 @@ fn render_script_canvas(
                         },
                     ));
                     ri += 1;
+                }
+                DrawCmd::Triangle {
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x3,
+                    y3,
+                    color,
+                } => {
+                    // Node = the triangle's bbox (padded a touch for AA); vertices
+                    // are passed to the SDF in node-local px.
+                    let pad = 2.0;
+                    let minx = x1.min(*x2).min(*x3) - pad;
+                    let miny = y1.min(*y2).min(*y3) - pad;
+                    let maxx = x1.max(*x2).max(*x3) + pad;
+                    let maxy = y1.max(*y2).max(*y3) + pad;
+                    let e = slot(&mut commands, &mut canvas.tris, tri_i, canvas_entity);
+                    commands.entity(e).try_insert((
+                        abs_node(minx, miny, maxx - minx, maxy - miny),
+                        z,
+                        Tri3Shape {
+                            color: col(*color),
+                            a: Vec2::new(x1 - minx, y1 - miny),
+                            b: Vec2::new(x2 - minx, y2 - miny),
+                            c: Vec2::new(x3 - minx, y3 - miny),
+                        },
+                    ));
+                    tri_i += 1;
                 }
                 DrawCmd::Line {
                     x1,
@@ -219,6 +252,7 @@ fn render_script_canvas(
         hide_from(&mut commands, &canvas.arcs, ai);
         hide_from(&mut commands, &canvas.circles, ci);
         hide_from(&mut commands, &canvas.rects, ri);
+        hide_from(&mut commands, &canvas.tris, tri_i);
         hide_from(&mut commands, &canvas.lines, li);
         hide_from(&mut commands, &canvas.texts, ti);
     }

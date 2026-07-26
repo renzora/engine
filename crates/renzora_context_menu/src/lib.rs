@@ -302,7 +302,13 @@ pub fn spawn_preset_at(world: &mut World, preset_id: &'static str, position: Vec
     let Some(spawn_fn) = spawn_fn else { return };
 
     let entity = spawn_fn(world);
+    // Enforce the one-id-per-entity rule: replace whatever display-y name the
+    // spawn_fn set with a unique, snake_case id derived from the preset id
+    // (`directional_light`, `directional_light_2`, …). The preset id is already
+    // clean, so this is really just the dedupe pass.
+    let id = renzora::unique_entity_name(world, preset_id, entity);
     if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+        entity_mut.insert(Name::new(id));
         if let Some(mut xform) = entity_mut.get_mut::<Transform>() {
             xform.translation = position;
         }

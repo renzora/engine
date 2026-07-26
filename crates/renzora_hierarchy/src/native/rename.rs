@@ -95,6 +95,10 @@ pub(crate) fn rename_commit(
     }
     commands.queue(move |world: &mut World| {
         let old = world.get::<Name>(entity).map(|n| n.as_str().to_string()).unwrap_or_default();
+        // Enforce the id rule at the input: sanitize (spaces/punctuation → `_`,
+        // lowercased) and de-duplicate, so a hierarchy rename can never introduce
+        // a spaced or colliding id.
+        let new = renzora::unique_entity_name(world, &new, entity);
         if old == new {
             return;
         }

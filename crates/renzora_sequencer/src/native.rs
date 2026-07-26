@@ -296,7 +296,7 @@ fn seq_btn_click(
             SeqBtn::ZoomOut => SequencerAction::SetZoom(state.timeline_zoom * 0.8),
             SeqBtn::AddTrack => SequencerAction::AddTrack(match state.sequence.tracks.len() % 3 {
                 0 => TrackKind::Camera { clips: vec![] },
-                1 => TrackKind::Transform { target_tag: "target".into(), clips: vec![] },
+                1 => TrackKind::Transform { target_id: "target".into(), clips: vec![] },
                 _ => TrackKind::Marker { clips: vec![] },
             }),
         };

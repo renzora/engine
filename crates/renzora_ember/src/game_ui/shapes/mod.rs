@@ -14,6 +14,7 @@ pub mod line;
 pub mod polygon;
 pub mod radial_progress;
 pub mod rectangle;
+pub mod tri3;
 pub mod triangle;
 pub mod wedge;
 
@@ -23,6 +24,7 @@ pub use line::*;
 pub use polygon::*;
 pub use radial_progress::*;
 pub use rectangle::*;
+pub use tri3::*;
 pub use triangle::*;
 pub use wedge::*;
 
@@ -47,6 +49,7 @@ impl Plugin for ShapesPlugin {
         bevy::asset::embedded_asset!(app, "polygon.wgsl");
         bevy::asset::embedded_asset!(app, "rectangle.wgsl");
         bevy::asset::embedded_asset!(app, "wedge.wgsl");
+        bevy::asset::embedded_asset!(app, "tri3.wgsl");
 
         app.add_plugins((
             UiMaterialPlugin::<CircleMaterial>::default(),
@@ -57,6 +60,7 @@ impl Plugin for ShapesPlugin {
             UiMaterialPlugin::<PolygonMaterial>::default(),
             UiMaterialPlugin::<RectangleMaterial>::default(),
             UiMaterialPlugin::<WedgeMaterial>::default(),
+            UiMaterialPlugin::<Tri3Material>::default(),
         ));
 
         app.register_type::<UiShapeWidget>();
@@ -80,6 +84,8 @@ impl Plugin for ShapesPlugin {
                 polygon::sync_polygon_materials,
                 rectangle::sync_rectangle_materials,
                 wedge::sync_wedge_materials,
+                tri3::sync_tri3_materials,
+                tri3::init_tri3_materials,
             ),
         );
         app.add_systems(

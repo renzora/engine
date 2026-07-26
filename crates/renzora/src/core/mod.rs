@@ -8,12 +8,14 @@ pub mod viewport_types;
 // dlopen contract only cares that the types resolve to this one shared dylib.
 pub mod animation; // .anim clip format + property keyframes
 pub mod components; // shared ECS components + entity-tag markers
+pub mod entity_id; // canonical unique snake_case entity ids (Name)
 pub mod project_config; // project.toml model + editor preferences
 pub mod sprite_anim; // multi-sheet sprites (SpriteImages) for 2D animation
 pub mod streaming; // world-streaming gate + camera-position helpers
 pub use animation::*;
 pub use project_config::*;
 pub use components::*;
+pub use entity_id::*;
 pub use sprite_anim::*;
 pub use streaming::*;
 
@@ -770,6 +772,16 @@ pub enum DrawCmd {
         y: f32,
         w: f32,
         h: f32,
+        color: [f32; 4],
+    },
+    /// Filled triangle from three points. `g.poly` fans a point list into these.
+    Triangle {
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        x3: f32,
+        y3: f32,
         color: [f32; 4],
     },
     /// Text baseline-anchored at `(x, y)`, centred horizontally on `x`.

@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use renzora::EntityTag;
 
 use crate::command::ScriptCommand;
 use crate::component::ScriptComponent;
@@ -196,11 +195,23 @@ pub fn run_scripts(world: &mut World) {
         .unwrap_or_default();
     let mut draw_results: HashMap<Entity, Vec<renzora::DrawCmd>> = HashMap::new();
 
+    // Edit-mode preview: if PlayModeState exists but scripts aren't "running", the
+    // run condition only let us through because ≥1 script is being previewed (the
+    // inspector's per-script play button). Run ONLY previewing scripts, skip the
+    // rest, so the rest of the scene stays static.
+    let preview_only = world
+        .get_resource::<renzora::PlayModeState>()
+        .map(|pm| !pm.is_scripts_running())
+        .unwrap_or(false);
+
     // Note: do NOT clear the command queue here — other systems (e.g. blueprints)
     // may have already pushed writes this frame. The queue is drained by
     // apply_script_commands in the CommandProcessing set.
 
-    // Build entity lookup tables (by Name, then by EntityTag — tags take priority)
+    // Build the entity lookup table. Entities are addressed by their unique,
+    // snake_case id — stored in `Name` (see `renzora::entity_id`). This is the
+    // single identifier scripts use in `get_on`/`set_on`/`{{ … }}`; the old
+    // separate `EntityTag` overlay is gone, so `id` is the only way in.
     let mut entities_by_name: HashMap<String, u64> = HashMap::new();
     let mut name_to_entity: HashMap<String, Entity> = HashMap::new();
     {
@@ -209,15 +220,6 @@ pub fn run_scripts(world: &mut World) {
             let name = n.as_str().to_string();
             entities_by_name.insert(name.clone(), e.to_bits());
             name_to_entity.insert(name, e);
-        }
-    }
-    {
-        let mut query = world.query::<(Entity, &EntityTag)>();
-        for (e, tag) in query.iter(world) {
-            if !tag.tag.is_empty() {
-                entities_by_name.insert(tag.tag.clone(), e.to_bits());
-                name_to_entity.insert(tag.tag.clone(), e);
-            }
         }
     }
 
@@ -348,7 +350,7 @@ pub fn run_scripts(world: &mut World) {
             if !sc
                 .scripts
                 .iter()
-                .any(|e| e.enabled && e.script_path.is_some())
+                .any(|e| e.enabled && e.script_path.is_some() && (!preview_only || e.preview))
             {
                 continue;
             }
@@ -402,6 +404,10 @@ pub fn run_scripts(world: &mut World) {
 
         for entry in sc.scripts.iter_mut() {
             if !entry.enabled {
+                continue;
+            }
+            // Edit-mode preview runs only the previewed scripts.
+            if preview_only && !entry.preview {
                 continue;
             }
             let script_path = match &entry.script_path {

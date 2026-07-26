@@ -76,6 +76,12 @@ That's it — press play and the script runs. Edit and save the file and it **ho
 
 > Tip: an object becomes scriptable as soon as it has a name, so most of the time the script slot is already waiting for you.
 
+## Previewing one script without play mode
+
+Sometimes you just want to see *this one* script run — a UI canvas animation, a spinning coin — without entering full play mode and running everything else. Each script entry has a **play button** in its header (next to the enable toggle). Press it and that single script starts running live in edit mode; the icon turns into a green **pause** while it's active. Press it again to stop.
+
+It's the fastest way to iterate on a `on_draw` HUD or a small animated behavior: leave preview on, edit the file, and hot-reload shows your change immediately. Preview only ever runs the scripts you've explicitly toggled — the rest of the scene stays still — and it never touches your saved scene (the preview flag isn't serialized). Entering real play mode ignores it and runs everything as usual.
+
 ## Exposing settings in the editor
 
 You'll often want a knob you can tweak in the editor without touching code — a speed, a color, a damage number. Add a `props()` function and those values show up as editable fields next to your object:

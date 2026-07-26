@@ -944,7 +944,15 @@ impl UndoCommand for SpawnEntityCmd {
                     .get_resource::<SpawnRegistry>()
                     .and_then(|r| r.iter().find(|p| p.id == id).map(|p| p.spawn_fn));
                 if let Some(f) = spawn_fn {
-                    self.entity = f(world);
+                    let entity = f(world);
+                    // Same one-unique-snake_case-id-per-entity rule the live
+                    // spawn path applies, so redo doesn't resurrect the spawn_fn's
+                    // spaced default name.
+                    let new_id = renzora::unique_entity_name(world, id, entity);
+                    if let Ok(mut em) = world.get_entity_mut(entity) {
+                        em.insert(Name::new(new_id));
+                    }
+                    self.entity = entity;
                 }
             }
             SpawnEntityKind::Component {

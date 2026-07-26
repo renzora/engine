@@ -178,12 +178,12 @@ end
 
 ## Reading and writing components
 
-The reflection functions read or write any registered component field by a `"Component.field"` path:
+The reflection functions read or write any registered component field by a `"Component.field"` path. To reach *another* entity you pass its **id** — the unique, lowercase `snake_case` identifier shown in the hierarchy and the inspector's ID field (every entity has exactly one; there are no separate names or tags):
 
 ```lua
 function on_update()
-    -- Read another entity's health
-    local hp = get_on("Boss", "Health.current")
+    -- Read another entity's health (by its id, e.g. an entity whose id is "boss")
+    local hp = get_on("boss", "Health.current")
 
     -- Write a field on this entity
     set("Health.current", hp - 1)
@@ -197,11 +197,13 @@ end
 
 | Function | Description |
 |----------|-------------|
-| `get(path)` / `get_on(name, path)` | Read a field on this / a named entity |
-| `set(path, value)` / `set_on(name, path, value)` | Write a field |
-| `get_component(type)` / `get_component_on(name, type)` | Read all fields of a component as a table |
+| `get(path)` / `get_on(id, path)` | Read a field on this / another entity (by id) |
+| `set(path, value)` / `set_on(id, path, value)` | Write a field |
+| `get_component(type)` / `get_component_on(id, type)` | Read all fields of a component as a table |
 | `get_components(...)` / `get_components_on(...)` | Read multiple components at once |
-| `has_component(type)` / `has_component_on(name, type)` | Test for a component |
+| `has_component(type)` / `has_component_on(id, type)` | Test for a component |
+
+> The `id` argument is an entity's unique `snake_case` id. Case matters, and it's never a component type name (component types are PascalCase) — that's what keeps `get_on("boss", "Health.current")` unambiguous.
 
 Engine subsystems mirror read-only state through this same mechanism: `get("PhysicsReadState.grounded")`, `get("NavReadState.*")`, and `get("AnimatorReadState.*")`.
 

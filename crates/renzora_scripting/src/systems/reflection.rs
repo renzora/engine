@@ -37,21 +37,14 @@ pub fn apply_reflection_sets(world: &mut World) {
         // Resolve target entity
         let target = if let Some(name) = &set_op.entity_name {
             if name_map.is_none() {
-                // Resolve by Name first, then by EntityTag so tags take
-                // priority — mirrors the get_on lookup in `execution.rs`, so
-                // set_on and get_on accept the same identifier (a tag or a
-                // Name). Without the tag pass, a scripted `set_on("camera", …)`
-                // silently no-op'd whenever the entity was addressed by tag.
+                // Resolve by the entity's unique snake_case id (its `Name`) —
+                // the one identifier scripts use. Mirrors the `get_on` lookup in
+                // `execution.rs`; the old `EntityTag` overlay is gone so both
+                // accept the same id.
                 let mut map = std::collections::HashMap::new();
                 let mut query = world.query::<(Entity, &Name)>();
                 for (e, n) in query.iter(world) {
                     map.insert(n.as_str().to_string(), e);
-                }
-                let mut tag_query = world.query::<(Entity, &renzora::EntityTag)>();
-                for (e, tag) in tag_query.iter(world) {
-                    if !tag.tag.is_empty() {
-                        map.insert(tag.tag.clone(), e);
-                    }
                 }
                 name_map = Some(map);
             }

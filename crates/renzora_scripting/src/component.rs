@@ -12,6 +12,11 @@ pub struct ScriptEntry {
     pub script_path: Option<std::path::PathBuf>,
     pub enabled: bool,
     pub variables: ScriptVariables,
+    /// Editor-only: run *this one script* live in edit mode (the inspector's
+    /// per-script play button), without entering full play mode. Transient — not
+    /// serialized — so it never leaks into a saved scene.
+    #[reflect(ignore)]
+    pub preview: bool,
     #[reflect(ignore)]
     pub runtime_state: ScriptRuntimeState,
 }
@@ -24,6 +29,7 @@ impl ScriptEntry {
             script_path: None,
             enabled: true,
             variables: ScriptVariables::default(),
+            preview: false,
             runtime_state: ScriptRuntimeState::default(),
         }
     }
@@ -35,6 +41,7 @@ impl ScriptEntry {
             script_path: Some(path),
             enabled: true,
             variables: ScriptVariables::default(),
+            preview: false,
             runtime_state: ScriptRuntimeState::default(),
         }
     }

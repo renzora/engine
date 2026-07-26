@@ -433,7 +433,52 @@ impl Plugin for RenzoraEditorPlugin {
             .add_systems(
                 Update,
                 editor_panel_drop.run_if(in_state(SplashState::Editor)),
+            )
+            .add_systems(
+                Update,
+                enforce_entity_ids.run_if(in_state(SplashState::Editor)),
             );
+    }
+}
+
+/// Enforce the one-unique-`snake_case`-id-per-entity rule across the scene. Any
+/// entity `Name` that carries spaces/invalid characters is sanitized, and
+/// duplicate ids are de-duplicated (`_2`, `_3`, …). This is the safety net that
+/// covers *every* path — hierarchy/inspector rename, spawn, paste, GLTF import,
+/// and loading an old scene with spaced/duplicate names — so nothing has to
+/// remember to sanitize at its own call site.
+///
+/// - Runs only on frames where some `Name` actually changed (via `Ref::is_changed`),
+///   then early-outs — cheap in steady state.
+/// - Excludes UI nodes (`Without<Node>`): markup nodes use their own `#id`
+///   naming scheme and must not be churned or de-duplicated here.
+/// - Deterministic: entities are processed in `Entity` order, so on a collision
+///   the lower-index entity keeps the base id and later ones get suffixed — ids
+///   never flip-flop between frames regardless of query iteration order.
+/// - Rewrites go through `Commands` (deferred `insert`), avoiding a read+write
+///   conflict on `Name`; the re-inserted clean id is idempotent, so the next
+///   frame's pass finds nothing to do.
+fn enforce_entity_ids(
+    names: Query<(Entity, bevy::ecs::change_detection::Ref<Name>), Without<bevy::ui::Node>>,
+    mut commands: Commands,
+) {
+    if !names.iter().any(|(_, n)| n.is_changed()) {
+        return;
+    }
+    let mut current: Vec<(Entity, String)> = names
+        .iter()
+        .map(|(e, n)| (e, n.as_str().to_string()))
+        .collect();
+    current.sort_by_key(|(e, _)| *e);
+
+    let mut taken: bevy::platform::collections::HashSet<String> = Default::default();
+    for (e, raw) in &current {
+        let clean = renzora::sanitize_id(raw);
+        let unique = renzora::unique_id(&clean, |c| taken.contains(c));
+        taken.insert(unique.clone());
+        if &unique != raw {
+            commands.entity(*e).insert(Name::new(unique));
+        }
     }
 }
 

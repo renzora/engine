@@ -964,7 +964,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             InspectorExpandDefault::AllOpen => true,
             InspectorExpandDefault::AllClosed => false,
             InspectorExpandDefault::Essentials => {
-                matches!(title, "Name" | "Transform" | "Scripts")
+                matches!(title, "ID" | "Transform" | "Scripts")
             }
         }
     };
@@ -1136,7 +1136,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
 /// registry order under the stable sort in [`collect_sections`].
 fn section_priority(title: &str) -> u8 {
     match title {
-        "Name" => 0,
+        "ID" => 0,
         "Transform" => 1,
         "Scripts" => 2,
         "Material" => 3,

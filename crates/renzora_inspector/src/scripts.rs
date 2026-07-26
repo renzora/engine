@@ -40,6 +40,7 @@ pub fn register(app: &mut App) {
             rebuild_scripts,
             remember_script_sections,
             script_remove_click,
+            script_preview_click,
             script_open_click,
             add_script_drop,
             add_script_drop_highlight,
@@ -57,6 +58,14 @@ struct ScriptsRoot {
 
 #[derive(Component)]
 struct ScriptRemoveBtn {
+    entity: Entity,
+    script_id: u32,
+}
+
+/// Per-script play/pause button — toggles [`ScriptEntry::preview`] so the
+/// scripting runner executes just this one script live in edit mode.
+#[derive(Component)]
+struct ScriptPreviewBtn {
     entity: Entity,
     script_id: u32,
 }
@@ -128,6 +137,9 @@ struct ScriptSpec {
     /// drives the header icon's click-to-open-in-code-editor.
     path: Option<PathBuf>,
     enabled: bool,
+    /// Whether this script is being live-previewed in edit mode (the per-script
+    /// play button) — drives the play/pause icon's glyph + colour.
+    preview: bool,
     vars: Vec<VarSpec>,
 }
 
@@ -183,6 +195,7 @@ fn collect_script_specs(world: &World, entity: Entity) -> Vec<ScriptSpec> {
             name,
             path: entry.script_path.clone(),
             enabled: entry.enabled,
+            preview: entry.preview,
             vars,
         });
     }
@@ -199,6 +212,8 @@ fn scripts_sig(specs: &[ScriptSpec], root: Entity) -> u64 {
         // must rebuild even when the filename (the displayed name) is the same.
         s.path.hash(&mut h);
         s.enabled.hash(&mut h);
+        // Toggling preview swaps the play/pause glyph + colour, so rebuild.
+        s.preview.hash(&mut h);
         for v in &s.vars {
             v.name.hash(&mut h);
             v.value.type_name().hash(&mut h);
@@ -345,6 +360,23 @@ fn build_script_section(
         move |w| script_enabled(w, entity, id),
         move |w, v: &bool| set_script_enabled(w, entity, id, *v),
     );
+    // Per-script play button: previews just this one script live in edit mode,
+    // without entering full play mode. Green "pause" while previewing, muted
+    // "play" otherwise.
+    let (play_glyph, play_col) = if spec.preview {
+        ("pause", (90, 200, 120))
+    } else {
+        ("play", (150, 150, 162))
+    };
+    let play = icon_text(commands, &fonts.phosphor, play_glyph, play_col, 13.0);
+    commands.entity(play).insert((
+        Interaction::default(),
+        bevy::ui::FocusPolicy::Block,
+        ScriptPreviewBtn {
+            entity,
+            script_id: spec.id,
+        },
+    ));
     let trash = icon_text(commands, &fonts.phosphor, "trash", (150, 150, 162), 13.0);
     commands.entity(trash).insert((
         Interaction::default(),
@@ -354,7 +386,9 @@ fn build_script_section(
             script_id: spec.id,
         },
     ));
-    commands.entity(header).add_children(&[spacer, toggle, trash]);
+    commands
+        .entity(header)
+        .add_children(&[spacer, play, toggle, trash]);
 
     for (i, var) in spec.vars.iter().enumerate() {
         let row = build_var_row(commands, fonts, entity, spec.id, var);
@@ -533,6 +567,31 @@ fn script_remove_click(
             if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
                 if let Some(idx) = sc.scripts.iter().position(|s| s.id == id) {
                     sc.remove_script(idx);
+                }
+            }
+        });
+    }
+}
+
+/// Per-script play/pause click → toggle live edit-mode preview for that one
+/// entry. Resets its runtime state on each toggle so `on_ready` re-fires cleanly
+/// every time a preview starts (and a stopped preview leaves nothing half-inited).
+fn script_preview_click(
+    q: Query<(&Interaction, &ScriptPreviewBtn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else { return };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (entity, id) = (btn.entity, btn.script_id);
+        cmds.push(move |w: &mut World| {
+            if let Some(mut sc) = w.get_mut::<ScriptComponent>(entity) {
+                if let Some(entry) = sc.scripts.iter_mut().find(|s| s.id == id) {
+                    entry.preview = !entry.preview;
+                    entry.runtime_state.initialized = false;
+                    entry.runtime_state.has_error = false;
                 }
             }
         });
