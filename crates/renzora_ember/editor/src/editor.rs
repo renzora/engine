@@ -13,7 +13,7 @@ use bevy_hui::prelude::{HtmlNode, Tags};
 use renzora::{
     AppEditorExt, ComponentIconEntry, EntityPreset, FieldDef, FieldType, FieldValue, InspectorEntry,
 };
-use renzora_ember::game_ui::{UiCanvas, UiWidget, WorldUiPanel};
+use renzora_ember::game_ui::{UiCanvas, UiWidget};
 
 use renzora_ember::markup::HtmlTemplatePath;
 
@@ -69,36 +69,9 @@ fn register_editor_entries(app: &mut App) {
         },
     });
 
-    // "+ Add Entity" → UI → "World UI Panel". Unlike every other UI preset this
-    // is a 3D object, not a widget under a canvas: a quad in the scene showing a
-    // template, for a monitor on a wall or a menu you walk up to in VR.
-    //
-    // The template is just an `HtmlTemplatePath` on the panel entity — the same
-    // component every markup holder uses — so the inspector path row, hot-reload
-    // and the code editor all work on it unchanged. `WorldUiPanel`'s systems
-    // read that path and render it to the quad. A freshly-created panel gets its
-    // own starter template written under `ui/` (like a deliberately-created
-    // canvas), with visible placeholder content so the quad isn't a blank sheet.
-    app.register_entity_preset(EntityPreset {
-        id: "world_ui_panel",
-        display_name: "World UI Panel",
-        icon: "monitor",
-        category: "ui",
-        spawn_fn: |world| {
-            let template = world
-                .get_resource::<renzora::CurrentProject>()
-                .and_then(|project| create_unique_panel_template(&project.path, "world_panel"))
-                .unwrap_or_default();
-            world
-                .spawn((
-                    Name::new("World UI Panel"),
-                    WorldUiPanel::default(),
-                    HtmlTemplatePath(template),
-                    Transform::default(),
-                ))
-                .id()
-        },
-    });
+    // World-space UI is no longer a separate entity — it's a `UiCanvas` with its
+    // `render_space` set to "world" (see the canvas inspector). So there's no
+    // "World UI Panel" preset; you add a UI Canvas and flip it to world space.
 
     // Distinctive icon + type label in the hierarchy tree.
     app.register_component_icon(ComponentIconEntry {
@@ -107,18 +80,6 @@ fn register_editor_entries(app: &mut App) {
         icon: "code",
         color: [120, 170, 220],
         priority: 96,
-        dynamic_icon_fn: None,
-    });
-
-    // Above `HtmlTemplatePath` (96): the panel entity carries a template path
-    // like any markup holder, but it's a 3D object, so it reads in the tree as
-    // "World UI Panel" with an object icon rather than the generic HTML row.
-    app.register_component_icon(ComponentIconEntry {
-        type_id: std::any::TypeId::of::<WorldUiPanel>(),
-        name: "World UI Panel",
-        icon: "monitor",
-        color: [150, 190, 235],
-        priority: 97,
         dynamic_icon_fn: None,
     });
 
@@ -152,6 +113,10 @@ fn register_editor_entries(app: &mut App) {
         priority: 80,
         dynamic_icon_fn: None,
     });
+
+    // World-space UI settings now live on the `UiCanvas` inspector (render_space
+    // + render_mode) — see `renzora_ember_editor::game_ui::register`. No separate
+    // World UI Panel inspector.
 
     // Inspector: pick/replace the .html the instance displays. Adding the
     // component (also via "Add Component") seeds the default template.
@@ -188,8 +153,30 @@ fn register_editor_entries(app: &mut App) {
         set_enabled_fn: None,
         fields: vec![FieldDef {
             name: "Template",
-            field_type: FieldType::Asset {
+            field_type: FieldType::AssetCreatable {
                 extensions: vec!["html".into()],
+                // "+" (shown only while empty): author a template in place. A world
+                // canvas gets a visible starter card; anything else gets a blank
+                // template. Then the normal path-binding observer builds it.
+                create_fn: |world, entity| {
+                    let Some(root) = world
+                        .get_resource::<renzora::CurrentProject>()
+                        .map(|p| p.path.clone())
+                    else {
+                        return;
+                    };
+                    let is_world_canvas = world
+                        .get::<UiCanvas>(entity)
+                        .is_some_and(|c| c.is_world());
+                    let rel = if is_world_canvas {
+                        create_unique_panel_template(&root, "world_canvas")
+                    } else {
+                        create_unique_template(&root, "template")
+                    };
+                    if let Some(rel) = rel {
+                        world.entity_mut(entity).insert(HtmlTemplatePath(rel));
+                    }
+                },
             },
             get_fn: |world, entity| {
                 let path = world

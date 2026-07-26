@@ -33,19 +33,23 @@ struct PendingTemplate(Handle<HtmlTemplate>);
 
 fn on_template_path_inserted(
     trigger: On<Insert, HtmlTemplatePath>,
-    // `Without<WorldUiPanel>`: a world panel is a 3D object that carries a
-    // template path, but its markup must NOT build onto the panel entity —
-    // that would add screen-space `Node` children to a mesh, rendering to the
-    // primary UI camera instead of the panel's quad. `sync_world_ui_panels`
-    // instead routes the path to a camera-bound root of its own. Filtering the
-    // panel out here is what keeps the generic pipeline from also building it.
-    paths: Query<&HtmlTemplatePath, Without<crate::game_ui::world_panel::WorldUiPanel>>,
+    paths: Query<&HtmlTemplatePath>,
+    // A WORLD-space canvas is a 3D object that carries a template path, but its
+    // markup must NOT build onto the canvas entity — that would add screen-space
+    // `Node` children to a mesh, rendering to the primary UI camera instead of
+    // the canvas's quad. `sync_world_ui_canvases` routes the path to a camera-
+    // bound root of its own. A SCREEN canvas builds normally, so we only skip the
+    // world ones. (Field checks can't be query filters, so we look it up.)
+    canvases: Query<&crate::game_ui::UiCanvas>,
     server: Res<AssetServer>,
     mut commands: Commands,
 ) {
     let entity = trigger.entity;
     let Ok(path) = paths.get(entity) else { return };
     if path.0.is_empty() {
+        return;
+    }
+    if canvases.get(entity).is_ok_and(|c| c.is_world()) {
         return;
     }
     let handle: Handle<HtmlTemplate> = server.load(path.0.clone());
@@ -74,6 +78,7 @@ fn finalize_pending_templates(
     pending: Query<(Entity, &PendingTemplate)>,
     has_node: Query<(), With<Node>>,
     children_q: Query<&Children>,
+    binding_host: Query<&crate::markup::binding::MarkupBindingHost>,
     mut commands: Commands,
 ) {
     let no_overrides: HashMap<String, String> = HashMap::default();
@@ -120,11 +125,16 @@ fn finalize_pending_templates(
                 .map(|p| p.to_string())
                 .unwrap_or_else(|| "<no path>".into())
         );
+        // Binding host is normally the holder itself, but a world-space canvas
+        // builds its template on a generated offscreen root while the script lives
+        // on the canvas — `MarkupBindingHost` redirects the host there so bindings
+        // resolve against the canvas's components (see its doc).
+        let host = binding_host.get(entity).map(|h| h.0).unwrap_or(entity);
         build_template_onto(
             &mut commands,
             &server,
-            entity, // host = the canvas holder (binding source for bare paths)
-            child,  // build target = the template root, a child of the canvas
+            host,  // binding source for bare paths (`{{ health }}`, `fill="…"`)
+            child, // build target = the template root, a child of the holder
             template,
             marker.0.clone(),
             &templates,
@@ -179,11 +189,12 @@ fn hot_reload_templates(
     mut events: MessageReader<AssetEvent<HtmlTemplate>>,
     mut requests: ResMut<TemplateReloadRequests>,
     server: Res<AssetServer>,
-    // Same exclusion as `on_template_path_inserted`: a world panel routes its
+    // Same exclusion as `on_template_path_inserted`: a world canvas routes its
     // template to a generated `WorldUiRoot`, which is itself a holder and gets
-    // re-queued here on its own. Re-queuing the panel entity would build the
+    // re-queued here on its own. Re-queuing the canvas entity would build the
     // markup onto the 3D object.
-    holders: Query<(Entity, &HtmlTemplatePath), Without<crate::game_ui::world_panel::WorldUiPanel>>,
+    holders: Query<(Entity, &HtmlTemplatePath)>,
+    canvases: Query<&crate::game_ui::UiCanvas>,
     mut commands: Commands,
 ) {
     // A save can surface as both a `reload()`-driven and a file-watcher-driven
@@ -202,6 +213,9 @@ fn hot_reload_templates(
     }
     for (entity, path) in &holders {
         if path.0.is_empty() {
+            continue;
+        }
+        if canvases.get(entity).is_ok_and(|c| c.is_world()) {
             continue;
         }
         let handle: Handle<HtmlTemplate> = server.load(path.0.clone());

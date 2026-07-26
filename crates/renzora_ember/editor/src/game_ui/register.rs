@@ -117,6 +117,43 @@ pub fn register_game_ui_editor(app: &mut App) {
             },
             renzora::float_field!("Ref Width", components::UiCanvas, reference_width, 1.0, 1.0, 7680.0),
             renzora::float_field!("Ref Height", components::UiCanvas, reference_height, 1.0, 1.0, 4320.0),
+            // Screen (normal fullscreen UI) vs world (projected onto a plane in
+            // the 3D scene, placed by the entity's Transform).
+            renzora::FieldDef {
+                name: "Render Space",
+                field_type: renzora::FieldType::Enum {
+                    options: &["screen", "world"],
+                },
+                get_fn: |w, e| {
+                    w.get::<components::UiCanvas>(e)
+                        .map(|c| renzora::FieldValue::Enum(c.render_space.clone()))
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                        (v, w.get_mut::<components::UiCanvas>(e))
+                    {
+                        c.render_space = s;
+                    }
+                },
+            },
+            // World space only: RTT texture-on-quad vs Unity-style emitted mesh.
+            renzora::FieldDef {
+                name: "Render Mode",
+                field_type: renzora::FieldType::Enum {
+                    options: &["texture", "mesh"],
+                },
+                get_fn: |w, e| {
+                    w.get::<components::UiCanvas>(e)
+                        .map(|c| renzora::FieldValue::Enum(c.render_mode.clone()))
+                },
+                set_fn: |w, e, v| {
+                    if let (renzora::FieldValue::Enum(s), Some(mut c)) =
+                        (v, w.get_mut::<components::UiCanvas>(e))
+                    {
+                        c.render_mode = s;
+                    }
+                },
+            },
         ],
     });
     app.register_inspector(renzora::InspectorEntry {
@@ -583,6 +620,7 @@ pub fn register_game_ui_editor(app: &mut App) {
             .chain(),
     );
     app.add_systems(Update, auto_switch_view_on_selection);
+    app.add_systems(Update, switch_to_3d_on_world_canvas);
 }
 
 // ── Canvas reference resolution ─────────────────────────────────────────
@@ -629,6 +667,21 @@ fn auto_switch_view_on_selection(world: &mut World) {
     }
     let Some(entity) = current_sel else { return };
 
+    // A world-space canvas IS a 3D plane — selecting it should show 3D, not the
+    // flat UI view. This must come before the hybrid `Mesh3d` guard below, since a
+    // world canvas carries a mesh and would otherwise be left alone.
+    if world
+        .get::<UiCanvas>(entity)
+        .is_some_and(|c| c.is_world())
+    {
+        if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
+            if settings.viewport_view != ViewportView::Three {
+                settings.viewport_view = ViewportView::Three;
+            }
+        }
+        return;
+    }
+
     // Hybrid entity (a 3D mesh that *also* carries a `UiCanvas` to render UI
     // onto itself): don't auto-switch either way. Yanking the viewport to UI
     // every time you click a cube-with-a-canvas would make it impossible to
@@ -668,6 +721,34 @@ fn auto_switch_view_on_selection(world: &mut World) {
     };
     if let Some(mut settings) = world.get_resource_mut::<ViewportSettings>() {
         settings.viewport_view = target;
+    }
+}
+
+/// Flip the viewport to 3D when the selected canvas is switched to world space.
+///
+/// A world canvas is a 3D object, so authoring it from the flat UI view makes no
+/// sense — the user can't see or place the plane. We switch on the actual
+/// screen→world *transition* of the *selected* canvas (tracked per-entity), so a
+/// stray `Changed<UiCanvas>` (sort-order sync, hot-reload) doesn't yank the view,
+/// and the user can still manually drop back to UI/2D afterward to peek.
+fn switch_to_3d_on_world_canvas(
+    changed: Query<(Entity, &UiCanvas), Changed<UiCanvas>>,
+    selection: Option<Res<renzora::EditorSelection>>,
+    mut settings: Option<ResMut<renzora::core::viewport_types::ViewportSettings>>,
+    mut last_world: Local<std::collections::HashMap<Entity, bool>>,
+) {
+    use renzora::core::viewport_types::ViewportView;
+    let sel = selection.and_then(|s| s.get());
+    for (entity, canvas) in &changed {
+        let now = canvas.is_world();
+        let was = last_world.insert(entity, now).unwrap_or(false);
+        if now && !was && sel == Some(entity) {
+            if let Some(settings) = settings.as_mut() {
+                if settings.viewport_view != ViewportView::Three {
+                    settings.viewport_view = ViewportView::Three;
+                }
+            }
+        }
     }
 }
 
@@ -732,7 +813,7 @@ fn sync_ui_canvas_target_camera(
     editor_cam: Query<Entity, With<renzora::core::EditorCamera>>,
     editor_cam_2d: Query<Entity, With<renzora::core::EditorCamera2d>>,
     kind_2d: Query<(), With<bevy::camera::Camera2d>>,
-    canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>), With<UiCanvas>>,
+    canvases: Query<(Entity, Option<&bevy::ui::UiTargetCamera>, &UiCanvas)>,
 ) {
     let target = if play_mode.is_in_play_mode() {
         let game_is_2d = play_mode
@@ -753,7 +834,13 @@ fn sync_ui_canvas_target_camera(
         return;
     };
 
-    for (entity, existing_target_cam) in &canvases {
+    for (entity, existing_target_cam, canvas) in &canvases {
+        // A world-space canvas is a 3D object routed to its OWN offscreen camera
+        // (see `world_panel::sync_world_ui_canvases`); it must not be pointed at
+        // the screen UI camera.
+        if canvas.is_world() {
+            continue;
+        }
         let needs_insert = existing_target_cam.is_none_or(|tc| tc.entity() != target);
         if needs_insert {
             commands

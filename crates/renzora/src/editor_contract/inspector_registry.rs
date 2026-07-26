@@ -76,6 +76,16 @@ pub enum FieldType {
     Asset {
         extensions: Vec<std::string::String>,
     },
+    /// Like [`Asset`](FieldType::Asset), but with a "+" button that *creates* a
+    /// new asset in place when the field would otherwise be empty (e.g. a world-UI
+    /// panel's template — add the panel, then click + to author one). `create_fn`
+    /// does the whole job: make the asset and assign it to the entity (typically
+    /// by inserting the path component the `get_fn`/`set_fn` read). Drag-drop of an
+    /// existing asset still works exactly as for `Asset`.
+    AssetCreatable {
+        extensions: Vec<std::string::String>,
+        create_fn: fn(&mut World, Entity),
+    },
     /// Dropdown choice from a fixed list of variant labels (e.g.
     /// `["row", "column", "row_reverse", "column_reverse"]`). The `set_fn`
     /// receives a `FieldValue::Enum(String)` carrying the selected label.

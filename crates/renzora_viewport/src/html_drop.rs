@@ -1,8 +1,9 @@
 //! Drag-and-drop HTML template spawning — when a `.html` asset is dropped on the
-//! viewport, spawn a UI Canvas with a child `HtmlTemplatePath` entity (the same
-//! shape as the "+ Add Entity → HTML Template" preset). The runtime observer in
-//! `renzora_hui` turns the path into an `HtmlNode` and bevy_hui builds the markup
-//! beneath it. UI is screen-space, so the 3D drop point is ignored.
+//! viewport, spawn a `UiCanvas` carrying that template in its `HtmlTemplatePath`
+//! field (the unified "template lives on a canvas" shape). The runtime pipeline
+//! builds the markup as the canvas's content; the scene hierarchy shows just the
+//! clean canvas. UI is screen-space by default (flip its Render Space to world for
+//! a 3D plane), so the 3D drop point is ignored.
 
 use std::path::PathBuf;
 
@@ -48,10 +49,11 @@ pub fn native_html_drop(
 }
 
 fn spawn_html_template(world: &mut World, abs_path: PathBuf) {
-    // Shared spawn: a draggable, absolutely-positioned instance under a canvas
-    // (path stored project-relative; markup built under a child HtmlNode).
-    let instance = renzora_ember::game_ui::spawn::spawn_html_template_at(world, &abs_path, None);
+    // Drop → a clean `UiCanvas` with the template stored in its `HtmlTemplatePath`
+    // field (no nested instance/wrapper). Select the canvas so its inspector — with
+    // the Template row and the Render Space (screen/world) dropdown — is right there.
+    let canvas = renzora_ember::game_ui::spawn::spawn_ui_canvas_with_template(world, &abs_path);
     if let Some(sel) = world.get_resource::<EditorSelection>() {
-        sel.set(Some(instance));
+        sel.set(Some(canvas));
     }
 }

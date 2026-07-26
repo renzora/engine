@@ -3,6 +3,11 @@
 // 0.5 == the glyph outline (>0.5 inside, <0.5 outside). `fwidth` gives the
 // screen-space rate of change of that distance, so the anti-alias band is ~1
 // pixel wide however close the camera gets — the whole point of SDF text.
+//
+// Colour = the `text_color` uniform, multiplied by the mesh's per-vertex colour
+// when present (`VERTEX_COLORS`). 3D text leaves vertex colours white and tints
+// via the uniform; the world-space UI emitter batches many-coloured glyphs into
+// one mesh and tints per vertex (uniform white) — one material, every colour.
 
 #import bevy_pbr::forward_io::VertexOutput
 
@@ -19,5 +24,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     if (alpha <= 0.001) {
         discard;
     }
-    return vec4<f32>(text_color.rgb, text_color.a * alpha);
+    var col = text_color;
+#ifdef VERTEX_COLORS
+    col = col * in.color;
+#endif
+    return vec4<f32>(col.rgb, col.a * alpha);
 }

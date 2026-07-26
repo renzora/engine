@@ -295,6 +295,7 @@ pub fn register_native_inspector(app: &mut App) {
             enum_option_click,
             asset_drop,
             asset_clear_click,
+            asset_create_click,
             asset_drop_highlight,
             inspector_filter_sync,
             component_menu_click,
@@ -354,6 +355,8 @@ struct FieldSpec {
     /// Accepted extensions for `Asset` fields (empty = accept any). Unused for
     /// other kinds.
     extensions: Vec<String>,
+    /// `AssetCreatable` fields only: the "+" button's create-in-place action.
+    create_fn: Option<Mutate>,
 }
 
 struct SectionSpec {
@@ -1075,7 +1078,8 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                     FieldKind::DynamicEnum,
                     FieldInit::DynEnum(options(world, entity), v.round().max(0.0) as usize),
                 ),
-                (FieldType::Asset { .. }, Some(FieldValue::Asset(_))) => {
+                (FieldType::Asset { .. }, Some(FieldValue::Asset(_)))
+                | (FieldType::AssetCreatable { .. }, Some(FieldValue::Asset(_))) => {
                     (FieldKind::Asset, FieldInit::Text(String::new()))
                 }
                 // Buttons have no value to read — match regardless of `val`.
@@ -1085,8 +1089,13 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 _ => (FieldKind::ReadOnly, FieldInit::Text(format_value(val.as_ref()))),
             };
             let extensions = match &f.field_type {
-                FieldType::Asset { extensions } => extensions.clone(),
+                FieldType::Asset { extensions }
+                | FieldType::AssetCreatable { extensions, .. } => extensions.clone(),
                 _ => Vec::new(),
+            };
+            let create_fn = match &f.field_type {
+                FieldType::AssetCreatable { create_fn, .. } => Some(*create_fn),
+                _ => None,
             };
             fields.push(FieldSpec {
                 name: f.name,
@@ -1095,6 +1104,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 set_fn: f.set_fn,
                 init,
                 extensions,
+                create_fn,
             });
         }
         out.push(SectionSpec {
@@ -1753,6 +1763,7 @@ fn build_field_value(
                 field.get_fn,
                 field.set_fn,
                 field.extensions.clone(),
+                field.create_fn,
             );
             commands.entity(value_parent).add_child(f);
         }
@@ -1990,9 +2001,10 @@ pub fn asset_drop_field(
     set_fn: fn(&mut World, Entity, FieldValue),
     extensions: Vec<String>,
 ) -> Entity {
-    build_asset_field(commands, fonts, entity, "asset", get_fn, set_fn, extensions)
+    build_asset_field(commands, fonts, entity, "asset", get_fn, set_fn, extensions, None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_asset_field(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -2001,6 +2013,7 @@ fn build_asset_field(
     get_fn: GetFn,
     set_fn: SetFn,
     extensions: Vec<String>,
+    create_fn: Option<Mutate>,
 ) -> Entity {
     let path_text = commands
         .spawn((
@@ -2087,7 +2100,80 @@ fn build_asset_field(
         ))
         .id();
     commands.entity(row).add_children(&[drop_box, clear]);
+
+    // Creatable fields get a "+" that authors a fresh asset in place (e.g. a
+    // world-UI panel's template), so an empty field isn't a dead end — you don't
+    // have to go make the file in the browser first and drag it back.
+    if let Some(create_fn) = create_fn {
+        let plus = commands
+            .spawn((
+                Text::new("\u{FF0B}"), // ＋ (full-width, reads as a button glyph)
+                ui_font(&fonts.ui, 11.0),
+                TextColor(c(renzora_ember::theme::text_muted())),
+                Node {
+                    padding: UiRect::horizontal(Val::Px(2.0)),
+                    ..default()
+                },
+                Interaction::default(),
+                AssetCreateBtn {
+                    create_fn,
+                    get_fn,
+                    entity,
+                },
+                Name::new("asset-create"),
+            ))
+            .id();
+        // Only offer "+" while the field is empty — once it points at an asset,
+        // the ✕ clears it and drag-drop replaces it. Reactive so it hides the
+        // instant a template is created/assigned.
+        bind_with(
+            commands,
+            plus,
+            move |w| matches!(get_fn(w, entity), Some(FieldValue::Asset(Some(_)))),
+            |w, e, has: &bool| {
+                if let Some(mut node) = w.get_mut::<Node>(e) {
+                    let want = if *has { Display::None } else { Display::Flex };
+                    if node.display != want {
+                        node.display = want;
+                    }
+                }
+            },
+        );
+        commands.entity(row).add_child(plus);
+    }
     row
+}
+
+/// The "+" on an [`FieldType::AssetCreatable`](renzora::FieldType) field. Runs
+/// `create_fn` to author + assign the asset in place, but only when the field is
+/// still empty — once it points at something, the ✕ clears and drag-drop replaces.
+#[derive(Component)]
+struct AssetCreateBtn {
+    create_fn: Mutate,
+    get_fn: GetFn,
+    entity: Entity,
+}
+
+fn asset_create_click(
+    q: Query<(&Interaction, &AssetCreateBtn), Changed<Interaction>>,
+    cmds: Option<Res<EditorCommands>>,
+) {
+    let Some(cmds) = cmds else {
+        return;
+    };
+    for (interaction, btn) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (create_fn, get_fn, entity) = (btn.create_fn, btn.get_fn, btn.entity);
+        cmds.push(move |w: &mut World| {
+            // Guard against a double-fire creating two files: skip if the field
+            // already has a value (e.g. a race with drag-drop).
+            if !matches!(get_fn(w, entity), Some(FieldValue::Asset(Some(_)))) {
+                create_fn(w, entity);
+            }
+        });
+    }
 }
 
 /// Drop an asset (dragged from the asset browser) onto the hovered, extension-

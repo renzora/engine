@@ -116,6 +116,40 @@ pub(crate) fn spawn_root_canvas(world: &mut World) -> Entity {
         .id()
 }
 
+/// Spawn a fresh screen [`UiCanvas`] whose template is `asset_path`, stored
+/// directly in the canvas's [`HtmlTemplatePath`] field.
+///
+/// This is the unified "a template lives *on* a canvas" shape (Unity UI Toolkit's
+/// `UIDocument` model): the scene hierarchy shows just the canvas + its template
+/// component, the markup builds as the canvas's content, the canvas is the binding
+/// host (so `{{ }}` and scripts resolve against it), and it can be flipped to
+/// world space with no restructuring. No `AutoCanvasTemplate` — we already have a
+/// template, so no blank `.html` is written.
+pub fn spawn_ui_canvas_with_template(world: &mut World, asset_path: &std::path::Path) -> Entity {
+    let load_path = if let Some(project) = world.get_resource::<renzora::CurrentProject>() {
+        project.make_asset_relative(asset_path)
+    } else {
+        asset_path.to_string_lossy().replace('\\', "/")
+    };
+    let name = asset_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "UI Canvas".to_string());
+    world
+        .spawn((
+            Name::new(name),
+            UiCanvas::default(),
+            HtmlTemplatePath(load_path),
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                ..default()
+            },
+        ))
+        .id()
+}
+
 pub fn spawn_widget(
     world: &mut World,
     widget_type: &UiWidgetType,

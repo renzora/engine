@@ -18,13 +18,13 @@ pub mod shapes;
 pub mod spawn;
 pub mod systems;
 pub mod world_panel;
+pub mod world_ui_mesh;
 
 use bevy::prelude::*;
 
 pub use components::{
     HtmlTemplatePath, HuiBuildOnSelf, UiCanvas, UiTheme, UiThemed, UiWidget, UiWidgetType,
 };
-pub use world_panel::WorldUiPanel;
 
 #[derive(Default)]
 pub struct GameUiPlugin;
@@ -118,6 +118,7 @@ impl Plugin for GameUiPlugin {
         // wand or the mouse. Owns the `WorldUiPointers` consumer, so it's also
         // the one place that orders the contract's two sets.
         world_panel::register(app);
+        world_ui_mesh::register(app);
 
         // ── Canvas scaler & visibility-mode ──────────────────────────────
         //

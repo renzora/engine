@@ -38,6 +38,10 @@ renzora_scripting = { path = "../renzora_scripting", default-features = false }
 # Send+Sync channel for the markdown widget's image downloads (background
 # thread → per-frame poll), same as renzora_hub's thumbnail cache.
 crossbeam-channel = "0.5"
+# Shared SDF glyph machinery (coverage→SDF, strip packing, the SDF text material)
+# — the mesh-mode world-space UI emitter reuses it for crisp text, the same rlib
+# renzora_text3d links (ember can't link that cdylib, but an rlib is fine).
+renzora_text_mesh = { path = "../renzora_text_mesh" }
 
 # System clipboard for the code editor's cut/copy/paste. Native-only: arboard
 # has no wasm backend (the browser clipboard is async + gesture-gated), so the

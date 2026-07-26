@@ -4,10 +4,9 @@
 use bevy::prelude::*;
 use bevy::text::{Font, FontAtlasSet, FontCx, FontSource, LayoutCx, RemSize, ScaleCx, TextPipeline};
 
-use crate::material::SdfTextMaterial;
-use crate::mesh::build_text_mesh;
 use crate::outline::build_outline_mesh;
 use crate::Text3d;
+use renzora_text_mesh::{build_text_mesh, SdfTextMaterial};
 
 /// Marks a `Text3d` whose font hasn't finished loading yet, so the rebuild
 /// system keeps retrying every frame until the glyphs are available. `Changed`
@@ -22,7 +21,7 @@ pub struct Text3dPending;
 /// (needs a font file to read outlines from). Otherwise → flat SDF quads with
 /// [`SdfTextMaterial`]. Switching modes swaps the material component.
 #[allow(clippy::too_many_arguments)]
-pub fn rebuild_text3d(
+pub(crate) fn rebuild_text3d(
     mut commands: Commands,
     mut pipeline: ResMut<TextPipeline>,
     fonts: Res<Assets<Font>>,
@@ -133,7 +132,7 @@ pub fn rebuild_text3d(
 }
 
 /// Strip the generated mesh/materials when a `Text3d` is removed.
-pub fn cleanup_text3d(
+pub(crate) fn cleanup_text3d(
     mut commands: Commands,
     mut removed: RemovedComponents<Text3d>,
     still_mesh: Query<(), With<Mesh3d>>,

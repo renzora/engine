@@ -555,6 +555,7 @@ fn update_input_focus(
     mut input_focus: ResMut<renzora::core::InputFocusState>,
     ember_inputs: Query<&renzora_ember::widgets::EmberTextInput>,
     drag_editing: Option<Res<renzora_ember::widgets::AnyDragValueEditing>>,
+    code_editing: Option<Res<renzora_ember::widgets::AnyCodeEditorFocused>>,
     over_overlay: Option<Res<renzora_ember::widgets::PointerOverOverlay>>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
 ) {
@@ -565,12 +566,16 @@ fn update_input_focus(
     // inspector number field would also trigger the numpad camera/view shortcuts.
     let ember_focused = ember_inputs.iter().any(|i| i.focused);
     let drag_editing = drag_editing.is_some_and(|r| r.0);
+    // A focused code editor owns the keyboard the same way a text field does —
+    // otherwise Ctrl+Z in the code panel ALSO fires the scene/hierarchy undo, and
+    // typing (e.g. `x`, `s`) triggers gizmo/view shortcuts.
+    let code_focused = code_editing.is_some_and(|r| r.0);
     // While simulating, scripts take over input: suppress every editor keyboard
     // shortcut (and the editor-camera WASD) so the running game owns the keys —
     // exactly the behaviour that lets a script's `is_key_*` see them. Stop is
     // still reachable via Esc (checked before this guard) and the Stop button.
     let simulating = play_mode.as_ref().is_some_and(|p| p.is_simulating());
-    input_focus.ui_wants_keyboard = ember_focused || drag_editing || simulating;
+    input_focus.ui_wants_keyboard = ember_focused || drag_editing || code_focused || simulating;
     // "Pointer over UI" = the cursor is over a floating overlay (dropdown / menu
     // / popup). The viewport's own hover flag (which already excludes overlays)
     // is what gates per-viewport interaction, so this only needs to flag the

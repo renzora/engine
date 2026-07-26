@@ -97,8 +97,27 @@ pub(crate) struct Metrics {
 /// Registers the code-editor systems.
 pub(crate) struct CodeEditorPlugin;
 
+/// True while any [`CodeEditor`] widget has keyboard focus. The viewport's focus
+/// tracker reads this so global editor shortcuts stand down while you're typing in
+/// a code panel — most importantly Ctrl+Z, which would otherwise fire the scene /
+/// hierarchy undo *at the same time* as the code editor's own undo.
+#[derive(Resource, Default)]
+pub struct AnyCodeEditorFocused(pub bool);
+
+/// Keep [`AnyCodeEditorFocused`] in sync with whether any code editor is focused.
+pub(crate) fn track_code_editor_focus(
+    editors: Query<&CodeEditor>,
+    mut focused: ResMut<AnyCodeEditorFocused>,
+) {
+    let any = editors.iter().any(|e| e.focused);
+    if focused.0 != any {
+        focused.0 = any;
+    }
+}
+
 impl Plugin for CodeEditorPlugin {
     fn build(&self, app: &mut App) {
+        app.init_resource::<AnyCodeEditorFocused>();
         app.add_systems(
             Update,
             (
@@ -115,6 +134,7 @@ impl Plugin for CodeEditorPlugin {
                 systems::code_fold_click,
                 systems::code_pointer,
                 systems::code_input,
+                track_code_editor_focus,
                 systems::code_scroll,
                 systems::code_theme_watch,
                 systems::code_render,

@@ -15,7 +15,7 @@ use lyon_tessellation::{
     VertexBuffers,
 };
 
-use crate::mesh::WORLD_UNITS_PER_PX;
+use renzora_text_mesh::WORLD_UNITS_PER_PX;
 
 /// Bézier flattening steps. Fixed (not adaptive) — glyphs are small and this
 /// runs only on rebuild; 8/12 is smooth enough for typical sizes.

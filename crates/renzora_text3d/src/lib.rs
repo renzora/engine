@@ -6,18 +6,18 @@
 //! one textured quad per glyph as a `Mesh3d`, so text sits in the 3D scene like
 //! any other object — lit-independent (unlit), movable, orientable.
 //!
-//! The glyph-mesh generator ([`mesh::build_text_mesh`]) is a plain function so
-//! the mesh-based world-space UI can reuse it for its text runs later.
+//! The glyph-mesh machinery ([`renzora_text_mesh`]) is a shared rlib so the
+//! mesh-based world-space UI can reuse the SDF packing for its own text runs.
 
 use bevy::prelude::*;
 
-pub mod material;
-pub mod mesh;
 pub mod outline;
-pub mod sdf;
 pub mod systems;
 
-pub use mesh::build_text_mesh;
+// The SDF glyph-mesh machinery now lives in the shared `renzora_text_mesh` rlib
+// (so the world-space UI emitter can reuse it); re-export the builder for anyone
+// depending on this plugin's old path.
+pub use renzora_text_mesh::build_text_mesh;
 
 /// Embedded fallback font (Noto Sans), used when a `Text3d` leaves its `font`
 /// field empty — so BOTH flat and mesh modes render out of the box. Mesh mode
@@ -38,7 +38,7 @@ fn register_default_font(mut commands: Commands, mut fonts: ResMut<Assets<bevy::
 ///
 /// `font` is an asset-relative path to a `.ttf`/`.otf` (e.g. `"fonts/Roboto.ttf"`),
 /// or empty for the OS sans-serif. `size` is the rasterization size in pixels;
-/// the resulting mesh is scaled to world units (`mesh::WORLD_UNITS_PER_PX`) and
+/// the resulting mesh is scaled to world units ([`renzora_text_mesh::WORLD_UNITS_PER_PX`]) and
 /// centred on the origin, so the entity's `Transform` scale/rotation place it.
 ///
 /// Reflect (not serde) backs scene save/load, matching the other distribution
@@ -85,8 +85,7 @@ impl Plugin for Text3dPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] Text3dPlugin (font → 3D SDF quad mesh)");
 
-        bevy::asset::embedded_asset!(app, "sdf_text.wgsl");
-        app.add_plugins(MaterialPlugin::<material::SdfTextMaterial>::default());
+        renzora_text_mesh::ensure_sdf_material(app);
         app.add_systems(Startup, register_default_font);
 
         // Rebuild the quad mesh whenever the text/font/size/colour changes (and

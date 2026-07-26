@@ -8447,6 +8447,7 @@ dependencies = [
  "nom",
  "renzora",
  "renzora_scripting",
+ "renzora_text_mesh",
  "serde",
  "tempfile",
  "toml 0.8.23",
@@ -9945,7 +9946,15 @@ dependencies = [
  "lyon_tessellation",
  "renzora",
  "renzora_macros",
+ "renzora_text_mesh",
  "ttf-parser",
+]
+
+[[package]]
+name = "renzora_text_mesh"
+version = "0.1.0"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]

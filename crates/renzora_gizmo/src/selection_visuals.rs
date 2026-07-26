@@ -186,10 +186,12 @@ pub fn update_selection_outlines(
             outline_mode.clone(),
             &mesh_entities,
             &children_query,
+            &hidden,
         );
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_outline_to_children(
     commands: &mut Commands,
     entity: Entity,
@@ -198,11 +200,18 @@ fn add_outline_to_children(
     outline_mode: OutlineMode,
     mesh_entities: &Query<Entity, With<Mesh3d>>,
     children_query: &Query<&Children>,
+    hidden: &Query<(), With<HideInHierarchy>>,
 ) {
     let Ok(children) = children_query.get(entity) else {
         return;
     };
     for child in children.iter() {
+        // Skip hierarchy-hidden chrome (e.g. the mesh geometry a world-UI panel
+        // emits for its own text) — outlining it traces every glyph as stray
+        // dotted lines. Matches the top-level loop's `hidden` skip.
+        if hidden.get(child).is_ok() {
+            continue;
+        }
         if mesh_entities.get(child).is_ok() {
             if let Ok(mut ec) = commands.get_entity(child) {
                 ec.insert((
@@ -225,6 +234,7 @@ fn add_outline_to_children(
             outline_mode.clone(),
             mesh_entities,
             children_query,
+            hidden,
         );
     }
 }

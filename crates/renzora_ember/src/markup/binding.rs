@@ -20,6 +20,19 @@ use bevy::prelude::*;
 use bevy::reflect::{GetPath, PartialReflect, TypeRegistry};
 use bevy::ui::Display;
 
+/// Overrides which entity a built template resolves its `{{ }}` bindings
+/// against, when that entity is NOT the one the markup is built on.
+///
+/// Normally the binding host IS the `HtmlTemplatePath` holder (a screen canvas
+/// resolves against itself). A **world-space canvas** is a 3D object, so its
+/// template is built on a generated offscreen UI root instead — but the script
+/// lives on the canvas. Tagging that root with `MarkupBindingHost(canvas)` makes
+/// `finalize_pending_templates` pass the canvas as the build host, so
+/// `{{ health }}` / `fill="health"` resolve against the canvas's `ScriptComponent`
+/// just like a screen canvas. Without it they'd resolve against the empty root.
+#[derive(Component, Clone, Copy)]
+pub struct MarkupBindingHost(pub Entity);
+
 /// Attached to a `<text>` entity whose content holds `{{ ... }}` tokens.
 #[derive(Component)]
 pub struct TextBinding {
