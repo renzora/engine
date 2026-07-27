@@ -66,14 +66,26 @@ A note on the old "native can't link" claim: the shared `renzora` dylib plus the
 full plugin set exceeds the **65,535 exported-symbol cap** of the Windows PE
 format, which MSVC `link.exe` refuses. That is *not* a blocker, because
 `.cargo/config.toml` already pins the linker to **`rust-lld`** for
-`x86_64-pc-windows-msvc` (host and container alike), and rust-lld has no such cap.
-So native links succeed; we simply never use `link.exe`. So:
+`x86_64-pc-windows-msvc` (host and container alike), which raises the cap far
+enough for the normal build. So native links succeed; we simply never use
+`link.exe`. So:
 
 - ✅ `cargo check` natively / via the editor — the fast local gate while editing
   (doesn't link).
+- ✅ `cargo clippy` natively — links nothing, so it reproduces the CI gate exactly.
+  Mirror CI's exclude list from `.github/workflows/test.yml` (notably `polyanya`),
+  and don't add `--all-targets` — CI doesn't, and the extra test targets pull in
+  vendored crates CI never lints.
 - ✅ `cargo renzora` — native build + stage + run on the **host platform** (an
   `xtask` that mirrors the container's `build-all.sh` staging; `rust-toolchain.toml`
   pins rustc so it matches the images). Convenient, but host-only.
+- ❌ **`cargo test` does NOT link natively on Windows**, even with rust-lld. The
+  test harness pushes the `renzora` dylib's export count to ~875k against PE's
+  65,535 ceiling and rust-lld hard-errors (`too many exported symbols`). Verified
+  2026-07 on the pinned 1.95.0 toolchain — it is not a stale claim and not fixable
+  by tweaking flags. **Run tests with `renzora test`** (the Linux container has no
+  PE export table, so the cap doesn't exist there). A native `cargo clippy` plus
+  `renzora test` is the full local gate.
 - ✅ `renzora check`, `renzora test`, `renzora build`, `renzora run` — the
   canonical builds inside the container; **required** for cross-platform/release
   and for reproducing CI. **Prefer these when verifying.**
