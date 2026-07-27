@@ -562,8 +562,8 @@ pub fn register_native_gamepad(app: &mut App) {
             .id();
         keyed_list(commands, list, gamepad_snapshot);
         list
-    });
-    app.add_systems(
+    })
+    .systems(
         Update,
         (stick_attach, stick_sync).run_if(in_state(SplashState::Editor)),
     );

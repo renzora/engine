@@ -428,6 +428,18 @@ impl GraphicsQuality {
     pub fn taa(&self) -> bool {
         !matches!(self, Self::Low)
     }
+
+    /// Screen-space ambient occlusion — on at `Medium` and `High`.
+    ///
+    /// Gated for the same reason as the rest: it is a fullscreen,
+    /// resolution-bound pass, and profiling put it **second only to the deferred
+    /// prepass** among GPU passes (0.46 ms of a 2.63 ms GPU frame on a discrete
+    /// card — proportionally far worse on the integrated GPUs `Low` exists for).
+    /// It was previously ungated, so picking `Low` explicitly for frame rate
+    /// still paid for it.
+    pub fn ssao(&self) -> bool {
+        !matches!(self, Self::Low)
+    }
 }
 
 /// The render resolution the editor viewport is currently rendering at, derived

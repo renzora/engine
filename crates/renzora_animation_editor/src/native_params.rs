@@ -63,8 +63,8 @@ pub struct NativeAnimParams;
 impl Plugin for NativeAnimParams {
     fn build(&self, app: &mut App) {
         app.init_resource::<NewParamScratch>();
-        app.register_panel_content("animator_params", true, build);
-        app.add_systems(
+        app.register_panel_content("animator_params", true, build)
+            .systems(
             Update,
             (add_param_click, trash_click, fire_click, kind_combo_open)
                 .run_if(in_state(SplashState::Editor)),

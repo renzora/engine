@@ -91,10 +91,13 @@ pub(crate) fn default_param_value(
 /// Walk the project root for `.material` files and return their
 /// `(asset_relative_path, absolute_path)` pairs sorted alphabetically.
 ///
-/// Bounded to [`MATERIAL_SCAN_MAX_DEPTH`] levels to keep the scan cheap. The
-/// browse popup rebuilds this list every frame it's open — for a project
-/// with hundreds of materials this is well under a millisecond on a SSD,
-/// and avoiding a cache means added/renamed files show up immediately.
+/// Bounded to [`MATERIAL_SCAN_MAX_DEPTH`] levels to keep the scan cheap, but it
+/// is still a recursive `read_dir` of the project and **must not be called from a
+/// system**. It used to run inline in the picker's rebuild, which fires on every
+/// keystroke in the search box — profiling caught that path at 13.9 ms in one
+/// frame, not the "well under a millisecond" this comment used to claim. Callers
+/// go through `native_material_ref`'s `MaterialIndex`, which runs it on the IO
+/// task pool and caches the result.
 pub(crate) fn find_material_files(project_root: &std::path::Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(project_root.to_path_buf(), 0)];

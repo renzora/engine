@@ -817,10 +817,35 @@ impl<T: PostProcessEffect> Plugin for PostProcessPlugin<T> {
             app.add_plugins(PostProcessCorePlugin);
         }
 
-        // Proxy effects from any entity to the camera
+        // Proxy effects from any entity to the camera.
+        //
+        // Gated on anything at all carrying `T`, because the overwhelmingly
+        // common case is that nothing does: a scene uses one to three effects
+        // while ~50 effect plugins are loaded, so these two systems were
+        // dispatched every frame, per effect, to do nothing. Worse than nothing
+        // in `cleanup_proxy_effect`'s case — its `sources.is_empty()` branch is
+        // taken *precisely when the effect is inactive*, so it was queueing a
+        // `try_remove::<T>()` command for every routed camera, every frame,
+        // forever, to remove a component that was never there.
+        //
+        // Correct in both directions, which is why the condition is
+        // `any_with_component` rather than a source-only query:
+        //  - a SOURCE gains `T`     -> condition true, proxy installs it on the
+        //    routed cameras;
+        //  - the last source loses `T` but the CAMERA still carries the proxied
+        //    copy -> condition is still true (it matches the camera), so
+        //    `cleanup_proxy_effect` gets the frame it needs to strip it. Its
+        //    `try_remove` is deferred, so the camera still matches when the
+        //    condition is evaluated; the frame after, nothing carries `T` and
+        //    both systems correctly stop.
+        //
+        // Skipped systems don't advance `last_run`, so `Ref<T>::is_changed()` and
+        // `RemovedComponents<T>` see a widened window when the condition resumes
+        // and re-sync rather than missing an edge.
         app.add_systems(
             Update,
-            (proxy_effect_to_camera::<T>, cleanup_proxy_effect::<T>),
+            (proxy_effect_to_camera::<T>, cleanup_proxy_effect::<T>)
+                .run_if(any_with_component::<T>),
         );
 
         // Snapshot-backed effects need a per-view capture texture maintained

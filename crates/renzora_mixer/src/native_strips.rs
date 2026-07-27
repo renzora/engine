@@ -39,8 +39,8 @@ pub struct NativeMixer;
 
 impl Plugin for NativeMixer {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("mixer", false, build);
-        app.add_systems(
+        app.register_panel_content("mixer", false, build)
+            .systems(
             Update,
             (bus_create, bus_delete).run_if(in_state(SplashState::Editor)),
         );

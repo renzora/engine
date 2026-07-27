@@ -218,8 +218,8 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<TilemapList>();
     app.init_resource::<PaintLayerList>();
     app.register_shell_panel("tilemap", "Tilemap", "grid-four", "2D");
-    app.register_panel_content("tilemap", false, build);
-    app.add_systems(
+    app.register_panel_content("tilemap", false, build)
+        .systems(
         Update,
         (
             mirror_tilemap_list,

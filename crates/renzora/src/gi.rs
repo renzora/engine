@@ -171,6 +171,26 @@ pub struct GpuRaytracing {
     pub enabled: bool,
 }
 
+/// Whether the GPU the renderer picked is integrated (or a software fallback)
+/// rather than a discrete card — probed once at boot by `renzora_runtime`
+/// alongside [`GpuRaytracing`], from the same `wgpu` adapter request.
+///
+/// The editor's cost is dominated by **fullscreen, resolution-bound** passes
+/// (SSGI, SSAO, bloom, auto-exposure, TAA), which is exactly what an integrated
+/// GPU is worst at — the same scene that runs comfortably on a discrete card can
+/// sit in single digits. The Graphics Quality tier exists to trade those passes
+/// away, but it defaults to `Medium` and users generally never find it, so this
+/// flag lets the editor *point them at it* once.
+///
+/// Deliberately only a hint: nothing changes a user's tier on their behalf.
+///
+/// Lives in the contract dylib so the host (producer) and the editor plugins
+/// (consumers) share one `TypeId` across the dlopen boundary.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct GpuIsIntegrated {
+    pub yes: bool,
+}
+
 /// Solari raytraced-GI settings. Authored on a non-camera source entity
 /// (typically "World Environment") and routed onto the active cameras via
 /// [`EffectRouting`], mirroring [`LumenLighting`]. The `renzora_solari` plugin

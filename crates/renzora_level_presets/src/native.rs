@@ -30,8 +30,8 @@ pub struct NativeLevelPresets;
 impl Plugin for NativeLevelPresets {
     fn build(&self, app: &mut App) {
         // `false`: this panel owns its own vertical scroll over the card grid.
-        app.register_panel_content("level_presets", false, build);
-        app.add_systems(
+        app.register_panel_content("level_presets", false, build)
+            .systems(
             Update,
             (preset_card_click, clear_btn_click).run_if(in_state(SplashState::Editor)),
         );

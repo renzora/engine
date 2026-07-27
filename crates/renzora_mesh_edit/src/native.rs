@@ -28,8 +28,8 @@ pub struct NativeModeling;
 impl Plugin for NativeModeling {
     fn build(&self, app: &mut App) {
         renzora::RenzoraShellExt::register_shell_panel(app, "modeling", "Modeling", "cube", "3D");
-        app.register_panel_content("modeling", true, build);
-        app.add_systems(
+        app.register_panel_content("modeling", true, build)
+            .systems(
             Update,
             (
                 mode_btn_click,

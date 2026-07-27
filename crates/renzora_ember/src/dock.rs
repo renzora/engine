@@ -927,12 +927,16 @@ pub struct DockLeaf {
     overlay: Entity,
 }
 
-/// A per-tab content pane that lives inside a leaf's `content` container. Panes
-/// are built **once** (lazily, when their tab is first activated) and kept; tab
-/// switches just toggle their [`Node::display`] via [`sync_panes`] instead of
-/// despawning + rebuilding. This is the persistent-content model — it avoids the
-/// despawn/rebuild churn (and entity-reuse races) of swapping a single content
-/// node on every tab switch.
+/// A per-tab content pane that lives inside a leaf's `content` container.
+///
+/// Built lazily when its tab is activated ([`build_active_panels`]) and despawned
+/// when it stops being the active tab ([`sync_panes`]) — so at most one pane per
+/// leaf exists at a time, and a workspace you are not looking at holds none.
+///
+/// This replaced a persistent-content model that kept every pane alive and hid it
+/// with `Display::None`. That was cheaper per switch but accumulated without
+/// bound, and hidden UI is *not* free: see [`sync_panes`] for the measurements and
+/// the tradeoff taken.
 #[derive(Component)]
 pub struct TabPane {
     pub id: String,
@@ -968,16 +972,47 @@ pub fn tab_pane(commands: &mut Commands, id: &str, content: Entity, scroll: bool
     outer
 }
 
-/// Toggle each pane's visibility to match its leaf's active tab, and drop panes
-/// whose tab has left the leaf (e.g. moved to another leaf). Runs every frame;
-/// writes are guarded so it never churns.
+/// Keep exactly one pane alive per leaf — the active tab's — and despawn the
+/// rest. Runs every frame; `build_active_panels` rebuilds a pane when its tab is
+/// activated again.
+///
+/// **This used to hide inactive panes with `Display::None` and keep them.** That
+/// persistent-content model was cheaper per tab switch but unbounded over a
+/// session: `ui_layout_system` performs three *unconditional* full-tree walks per
+/// frame and does **not** skip `Display::None` subtrees, and taffy is worse still
+/// — `compute_hidden_layout` clears the cache and recurses, so a hidden subtree is
+/// re-walked from scratch every frame and never cached. So every panel ever
+/// opened, in every workspace ever visited, kept costing layout forever. Lazy
+/// building only deferred that: visit five workspaces and you have permanently
+/// accumulated five workspaces of hidden panes. Measured, editor chrome layout was
+/// 1.397 ms/frame on a *completely empty scene*.
+///
+/// The trade, taken deliberately: a tab switch now costs a rebuild instead of a
+/// `display` flip, and transient in-panel state (scroll offset, search text,
+/// expanded rows, in-progress typing) is lost with the entities. Dock *layout*
+/// still persists via `layout.json`. State that should survive belongs in a
+/// resource keyed by panel id — the pattern `ScriptSectionsOpen` and
+/// `InspectorSectionsOpen` already use — not on the pane entities.
 fn sync_panes(
     mut commands: Commands,
+    dirty: Option<Res<DockDirty>>,
     leaves: Query<&DockLeaf>,
     children: Query<&Children>,
     panes: Query<&TabPane>,
-    mut nodes: Query<&mut Node>,
 ) {
+    // Stand down while a dock rebuild is armed. The rebuild owns pane lifetimes
+    // on that frame: it detaches the panes the new tree will reuse to the root and
+    // lets the rest die attached to their old leaf — deliberately, because a
+    // content node detached *and then despawned* in the same frame frees its
+    // taffy slotmap key while the old leaf still lists it as a child, which panics
+    // with `invalid SlotMap key` (see `DockTree::active_tab_ids`).
+    //
+    // Before this system despawned inactive panes it only fired on the rare
+    // "tab left the leaf" case and the overlap was unlikely; now it would fire on
+    // essentially every multi-tab frame, so the collision is no longer a corner.
+    if dirty.is_some_and(|d| d.0) {
+        return;
+    }
     for leaf in &leaves {
         let Ok(kids) = children.get(leaf.content) else {
             continue;
@@ -986,19 +1021,10 @@ fn sync_panes(
             let Ok(pane) = panes.get(child) else {
                 continue;
             };
-            if !leaf.tabs.contains(&pane.id) {
+            // One rule now covers both cases the old code split: a tab that left
+            // the leaf entirely, and a tab that is merely not the active one.
+            if pane.id != leaf.active {
                 commands.entity(child).despawn();
-                continue;
-            }
-            let display = if pane.id == leaf.active {
-                Display::Flex
-            } else {
-                Display::None
-            };
-            if let Ok(mut n) = nodes.get_mut(child) {
-                if n.display != display {
-                    n.display = display;
-                }
             }
         }
     }

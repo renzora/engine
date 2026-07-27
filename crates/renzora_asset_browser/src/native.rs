@@ -558,6 +558,7 @@ pub fn register_native_asset_browser(app: &mut App) {
     // `asset_drag_tab_spring` sets `FocusPanelRequest`, which the dock consumes
     // (at worst one frame later — imperceptible against the 0.35s dwell) through
     // the same in-place switch a tab click performs.
+    // panel-systems-ungated: a drag STARTS here and continues over other panels; asset_drag_tab_spring springs other tabs open mid-drag
     app.add_systems(
         Update,
         (asset_drag, drag_ghost, asset_drag_tab_spring).run_if(in_state(SplashState::Editor)),
@@ -583,6 +584,7 @@ pub fn register_native_asset_browser(app: &mut App) {
     // and the hierarchy reads that flag to decide whether to handle Ctrl+A. If we
     // froze it while the panel was hidden, the flag could stay stuck "claimed"
     // and swallow the hierarchy's select-all. It's a single cheap query.
+    // panel-systems-ungated: TODO review: select-all is panel-scoped and probably gateable, left alone to avoid churn without a test
     app.add_systems(
         Update,
         select_all_shortcut.run_if(in_state(SplashState::Editor)),
@@ -592,12 +594,14 @@ pub fn register_native_asset_browser(app: &mut App) {
     // Ungated by panel visibility — it's a single cheap resource write, and the
     // drop handler needs a fresh value even if the Assets tab isn't the active
     // one when the file lands.
+    // panel-systems-ungated: publish_cwd feeds renzora_import_ui's drop-target folder — a different crate reads it
     app.add_systems(
         Update,
         publish_cwd.run_if(in_state(SplashState::Editor)),
     );
     // After a drop-import, pin the grid to the bottom for a short window so the
     // freshly-copied file scrolls into view once the rescan surfaces it.
+    // panel-systems-ungated: scroll-on-drop must land after an import that may complete while focus moved
     app.add_systems(
         Update,
         scroll_grid_on_drop.run_if(in_state(SplashState::Editor)),
@@ -605,6 +609,7 @@ pub fn register_native_asset_browser(app: &mut App) {
     // PreUpdate (after input is collected) so it can consume Delete before the
     // gizmo's Update entity-delete sees the press. After `UiSystems::Focus` so
     // the grid's `cursor_over` is fresh this frame.
+    // panel-systems-ungated: consumes Delete in PreUpdate before the gizmo's entity-delete sees it; the ordering is the point
     app.add_systems(
         PreUpdate,
         asset_delete_shortcut

@@ -39,16 +39,29 @@ fn register_shell_panel(
 ### `register_panel_content` — content
 
 ```rust
-fn register_panel_content<F>(&mut self, id: &str, scroll: bool, build: F) -> &mut Self
+fn register_panel_content<F>(&mut self, id: &'static str, scroll: bool, build: F) -> PanelScope<'_>
 where
     F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static;
 ```
 
 - `scroll` — `true` wraps your content in a scroll view; pass `false` if the panel scrolls itself.
-- `build` — returns the **root entity** of your content. It runs **once**, the first time the panel's tab is activated. Everything after that is driven by the reactive layer (next section), so you do *not* rebuild every frame.
+- `build` — returns the **root entity** of your content. It runs when the panel's tab becomes active. Everything while it *stays* active is driven by the reactive layer (next section), so you do not rebuild every frame.
 - `EmberFonts` carries the three editor fonts: `fonts.ui`, `fonts.phosphor`, `fonts.mono`.
+- The return value is a [`PanelScope`](#keeping-a-hidden-panel-cheap--panelscope) — chain `.systems(..)` off it to register systems that only run while the panel is visible.
 
 Calling this also registers the id with `NativePanelIds`, so the shell stops drawing its generic placeholder for that id and lets your build own the dock leaf's `content` entity.
+
+> **`build` re-runs on every tab activation — don't keep state in the entities.**
+> A dock leaf keeps only its **active** tab's content alive; switching tabs despawns
+> the pane you left and rebuilds it when you come back. That is deliberate: hidden
+> panels used to accumulate in the tree, and `bevy_ui` walks the *whole* tree three
+> times a frame with no skip for hidden subtrees, so their layout cost was paid every
+> frame forever. Removing them was worth ~3.5 ms of main-world time in a
+> representative editor layout — the single largest main-world win in the r1-alpha7
+> performance pass. The cost is that per-panel view state (scroll offset, which
+> section was expanded) does **not** survive a tab switch unless you store it in a
+> `Resource` and read it back in `build`. The inspector's
+> `InspectorSectionsOpen` is the reference example.
 
 ### `register_shell_status_item` — status bar
 
@@ -180,6 +193,23 @@ keyed_list(commands, list, |world: &World| {
 
 > To **mutate** the world from a panel (spawn, despawn, change a selection), do it from your plugin's own systems or from an interaction callback that receives `&mut World` — not from the build closure, which only constructs UI. Bindings read the world; systems write it.
 
+### Escape hatch — `react` and `react_anchored`
+
+When a widget needs to do something the `bind_*` table doesn't cover, `react` runs an arbitrary `FnMut(&mut World) -> bool` each frame (returning `false` retires it):
+
+```rust
+use renzora_ember::reactive::{react, react_anchored};
+
+react_anchored(commands, my_widget, move |world: &mut World| {
+    // arbitrary per-frame work for this widget
+    true
+});
+```
+
+**Prefer `react_anchored` for anything that belongs to a widget.** The anchor entity does two things: it opts the reaction into the hidden-pane skip, and it becomes the liveness handle — the reaction is dropped when the entity despawns, exactly like a `bind_*`. Plain `react` has no anchor, so it can't be skipped and shows up as `"(world)"` in the reactivity debug panel. Text inputs and colour pickers were each cloning several `String`s per frame for panes the user couldn't see before they were anchored.
+
+Do **not** anchor work that must keep running while its panel is backgrounded — export progress, background loads. Anchoring those silently pauses them.
+
 ### Virtualized lists — `virtual_scroll`
 
 A `keyed_list` builds one UI entity per item the snapshot emits. For a long list (hundreds–thousands of rows) that tanks the frame rate — every off-screen row still costs layout, change-detection and render. Wrap the same snapshot in `virtual_scroll` instead and only the rows in (or near) the viewport are built; two empty spacer nodes stand in for the rest so the scrollbar and scroll height stay correct.
@@ -196,21 +226,65 @@ let scroll = renzora_ember::widgets::scroll_view(commands, list);
 
 It's **self-measuring**: the row height and column count are read from the laid-out children each frame, so it adapts to variable item sizes (e.g. a zoom slider), grid wrapping and DPI with no per-panel constants. The hierarchy and the asset browser both build on it — prefer it over hand-rolling windowing.
 
-### Keeping a hidden panel cheap — `panel_active`
+#### `virtual_scroll_versioned` — when the snapshot itself is expensive
 
-Reactive bindings and `keyed_list`/`virtual_scroll` snapshots are **automatically skipped while a panel is a hidden background tab** — no work needed. Plain `Update` *systems*, though, run regardless of visibility. If your panel has per-frame view systems (directory scans, thumbnail loading, layout over many entities), gate them so a backgrounded tab stops burning frame time:
+`virtual_scroll` still calls your snapshot every frame; it's the *rows* that are windowed, not the snapshot. If building the item list is itself costly (a large directory listing, a material index), pass a cheap version function and it's skipped entirely on frames where nothing changed:
 
 ```rust
-use renzora_ember::dock::panel_active;
+use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 
-app.add_systems(
-    Update,
-    (refresh_thumbnails, relayout_tiles)
-        .run_if(panel_active("my_panel")),
+virtual_scroll_versioned(
+    commands,
+    list,
+    6,
+    |w| w.resource::<MaterialIndex>().generation,  // bumps when the data changes
+    picker_snapshot,
 );
 ```
 
-Gate only **view** systems. Leave always-on work ungated — e.g. a console that must keep capturing logs while hidden, or a flag other panels read each frame.
+Scroll position and viewport size are folded into the version automatically, so the window still rebuilds while scrolling and resizing — you only have to account for **data** changes.
+
+Pick the version so it changes when the *rendered row content* changes, and no more often. The material picker hashes `(absolute path, is_current)` per row and deliberately **not** the thumbnail handle: thumbnails stream in asynchronously, so including them would invalidate the list on almost every frame during a load and give back nothing. Converting that one picker from a full rebuild to `virtual_scroll_versioned` took `text_system`'s worst frame from 14.54 ms to 2.58 ms and removed every frame over 25 ms.
+
+### Keeping a hidden panel cheap — `PanelScope`
+
+Reactive bindings and `keyed_list`/`virtual_scroll` snapshots are **automatically skipped while a panel is a hidden background tab**, and the panel's entities are despawned outright. Plain `Update` *systems*, though, run regardless of visibility. Register them by chaining off `register_panel_content` and they inherit the gate:
+
+```rust
+app.register_panel_content("my_panel", true, build_content)
+    .systems(Update, (refresh_thumbnails, relayout_tiles));
+```
+
+`.systems(..)` applies `panel_active("my_panel")` for you. Because the id comes from the registration it is written **once** and can't drift — the old failure mode was a panel renamed on one line and left stale on another, silently un-gating itself. You can still stack your own conditions; they compose:
+
+```rust
+app.register_panel_content("my_panel", true, build_content)
+    .systems(
+        Update,
+        refresh
+            .run_if(in_state(renzora::SplashState::Editor))
+            .run_if(on_timer(Duration::from_millis(250))),
+    );
+```
+
+For work that must continue while the panel is hidden, use `.always(..)` on the same chain, or `.app()` to drop back to the raw `&mut App`.
+
+Gate only **view** systems. Leave always-on work ungated — a console that must keep capturing logs while hidden, an async poll that has to drain in-flight requests, or a flag another panel reads each frame.
+
+#### The regression guard
+
+`crates/renzora_ember/tests/panel_systems_gated.rs` fails the build if a file that calls `register_panel_content` also uses a bare `app.add_systems` without gating. It checks for *gating*, not for a particular style — a per-system `.run_if(panel_active(..))` still passes, so correctly-gated older panels aren't churned.
+
+This is a test rather than a convention because the convention lost: a survey found 1283 of 1535 per-frame system registrations running unconditionally in an idle editor. Nobody skipped the gate on purpose — most authors never knew it existed.
+
+If your systems genuinely must run while the panel is hidden, put the exemption **at the call site**:
+
+```rust
+// panel-systems-ungated: poll_store drains in-flight async requests
+app.add_systems(Update, (poll_store, ..));
+```
+
+Deliberately not a path list in the test: a list rots the moment a file is renamed, and it puts the justification where nobody looks while editing the code it excuses. At the call site the reason travels with the code and can't go stale — delete the systems and the marker goes with them.
 
 ## A status-bar item
 

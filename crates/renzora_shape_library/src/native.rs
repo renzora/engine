@@ -22,8 +22,8 @@ impl Plugin for NativeShapeLibrary {
     fn build(&self, app: &mut App) {
         app.init_resource::<ShapesState>();
         app.init_resource::<ShapePress>();
-        app.register_panel_content("shape_library", true, build);
-        app.add_systems(
+        app.register_panel_content("shape_library", true, build)
+            .systems(
             Update,
             (shape_search_sync, shape_press, shape_drag_or_click).run_if(in_state(SplashState::Editor)),
         );

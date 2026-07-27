@@ -28,6 +28,14 @@ default = [
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
 # pull the OpenXR stack unless explicitly asked.
 xr = ["dep:renzora_xr"]
+# Throwaway PROFILING build. The binary (`renzora_app`) enables `bevy/trace` +
+# `bevy/trace_tracy` alongside this; that alone gives per-system + render-node CPU
+# zones and the Tracy layer/frame-mark, but Bevy only emits GPU-pass zones when a
+# `RenderDiagnosticsPlugin` is present to create the Tracy GPU context — so this
+# feature is the switch that adds it in `add_default_rendering`. NOT in default:
+# it's paired with an ABI-moving Bevy feature set (CLAUDE.md §3) and only ever
+# built explicitly for profiling.
+profiling = []
 # The 3D rendering pipeline (bevy_pbr + renzora_shader). Off = a 2D-only export
 # (sprites + UI; bevy_light/atmosphere survive — they don't depend on bevy_pbr).
 # Forwards `renzora_engine/render_3d`; the root bevy `3d` meta-feature is dropped

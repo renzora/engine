@@ -57,8 +57,8 @@ impl Section {
 
 pub(super) fn register_ecs_stats(app: &mut App) {
     app.init_resource::<EcsExpanded>();
-    app.register_panel_content("ecs_stats", true, build_ecs_stats);
-    app.add_systems(Update, toggle_click.run_if(in_state(SplashState::Editor)));
+    app.register_panel_content("ecs_stats", true, build_ecs_stats)
+        .systems(Update, toggle_click.run_if(in_state(SplashState::Editor)));
 }
 
 fn ecs<R: Default>(w: &World, f: impl FnOnce(&EcsStatsState) -> R) -> R {

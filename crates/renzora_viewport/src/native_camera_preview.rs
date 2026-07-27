@@ -24,6 +24,7 @@ pub struct NativeCamPreview;
 
 pub fn register(app: &mut App) {
     app.register_panel_content("camera_preview", false, build);
+    // panel-systems-ungated: camera preview owns its own is_active gating
     app.add_systems(Update, report_geometry.run_if(in_state(SplashState::Editor)));
 }
 

@@ -79,8 +79,8 @@ impl Plugin for NativeStateMachine {
             dirty: false,
             error: None,
         });
-        app.register_panel_content("animator_state_machine", true, build);
-        app.add_systems(
+        app.register_panel_content("animator_state_machine", true, build)
+            .systems(
             Update,
             (
                 load_state_machine,

@@ -39,6 +39,7 @@
 //! whatever the new tier still forbids.
 
 use bevy::anti_alias::taa::TemporalAntiAliasing;
+use bevy::pbr::ScreenSpaceAmbientOcclusion;
 use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
@@ -54,8 +55,51 @@ struct GraphicsQualityState {
     last: Option<renzora::core::viewport_types::GraphicsQuality>,
 }
 
+/// Suggest the `Low` tier once per session when running on an integrated GPU.
+///
+/// The tier defaults to `Medium`, and the users who most need `Low` are exactly
+/// the ones least likely to go looking for Settings → Viewport → Performance —
+/// the editor just feels slow and they have no reason to suspect a setting.
+///
+/// Deliberately a *hint*, not an action: nothing changes the user's tier for
+/// them. A silently-applied override would be indistinguishable from the engine
+/// misbehaving, and someone on integrated graphics may well have picked their
+/// tier on purpose.
+///
+/// Needs no "already asked" flag on disk because the condition is
+/// **self-clearing**: it only fires while the tier is not already `Low`, so
+/// acting on it silences it permanently. Ignoring it costs one toast per launch,
+/// which is the right pressure for a hint the user hasn't acted on.
+fn suggest_low_tier_on_integrated_gpu(
+    integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    settings: Option<Res<ViewportSettings>>,
+    toasts: Option<ResMut<renzora_ui::Toasts>>,
+    mut done: Local<bool>,
+) {
+    if *done {
+        return;
+    }
+    let (Some(integrated), Some(settings), Some(mut toasts)) = (integrated, settings, toasts) else {
+        return;
+    };
+    if !integrated.yes {
+        *done = true;
+        return;
+    }
+    if settings.graphics_quality == renzora::core::viewport_types::GraphicsQuality::Low {
+        *done = true;
+        return;
+    }
+    toasts.info(renzora::lang::t("settings.hint.integrated_gpu"));
+    *done = true;
+}
+
 pub(crate) fn register(app: &mut App) {
     app.init_resource::<GraphicsQualityState>();
+    app.add_systems(
+        PostUpdate,
+        suggest_low_tier_on_integrated_gpu.run_if(in_state(SplashState::Editor)),
+    );
     // PostUpdate so we run after the Update-stage effect routers, and the force
     // below has the last word over what they applied this frame.
     app.add_systems(
@@ -75,6 +119,7 @@ fn enforce_graphics_quality(
     bloom_cams: Query<Entity, (With<ViewportCamera>, With<Bloom>)>,
     taa_cams: Query<Entity, (With<ViewportCamera>, With<TemporalAntiAliasing>)>,
     ae_cams: Query<Entity, (With<ViewportCamera>, With<AutoExposure>)>,
+    ssao_cams: Query<Entity, (With<ViewportCamera>, With<ScreenSpaceAmbientOcclusion>)>,
 ) {
     let Some(settings) = settings else {
         return;
@@ -124,8 +169,29 @@ fn enforce_graphics_quality(
         }
     }
     if !q.auto_exposure() {
+        // DIAGNOSTIC (temporary): profiling shows the `auto_exposure` pass costing
+        // the same at `Low` as above it, even though this branch should have
+        // stripped the component. Note the pass's *zone* is expected to persist
+        // either way — bevy registers `auto_exposure` as a `Core3d` graph system
+        // with no run condition — so zone presence proves nothing; only the cost
+        // does. This narrows it to one of two answers in a single launch:
+        //   * logs once then stops  -> removal works, the cost is elsewhere
+        //     (most likely bevy retaining the per-view buffer after the component
+        //     goes away, the same bug as `prepare_uniform_components`);
+        //   * logs every frame      -> something re-inserts it each frame and the
+        //     gate is losing a fight it re-enters forever.
+        // Delete once answered.
+        let n = ae_cams.iter().count();
+        if n > 0 {
+            debug!("[graphics_quality] stripping AutoExposure from {n} viewport camera(s) at Low");
+        }
         for e in &ae_cams {
             commands.entity(e).remove::<AutoExposure>();
+        }
+    }
+    if !q.ssao() {
+        for e in &ssao_cams {
+            commands.entity(e).remove::<ScreenSpaceAmbientOcclusion>();
         }
     }
 }

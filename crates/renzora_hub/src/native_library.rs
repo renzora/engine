@@ -85,8 +85,8 @@ pub struct NativeHubLibrary;
 impl Plugin for NativeHubLibrary {
     fn build(&self, app: &mut App) {
         app.init_resource::<HubLibraryData>();
-        app.register_panel_content("hub_library", true, build);
-        app.add_systems(
+        app.register_panel_content("hub_library", true, build)
+            .systems(
             Update,
             (
                 poll_library,

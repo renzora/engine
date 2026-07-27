@@ -260,6 +260,7 @@ impl Plugin for NativeHubStore {
         app.register_panel_content("hub_store", false, build);
         crate::install_overlay::register(app);
         crate::item_overlay::register(app);
+        // panel-systems-ungated: poll_store drains in-flight async marketplace requests
         app.add_systems(
             Update,
             (
@@ -285,6 +286,7 @@ impl Plugin for NativeHubStore {
             )
                 .run_if(in_state(SplashState::Editor)),
         );
+        // panel-systems-ungated: async store work must continue while the tab is hidden
         app.add_systems(
             Update,
             (poll_preview, store_stop_preview_click, store_preview_install_click)

@@ -34,8 +34,8 @@ pub struct NativeFoliage;
 
 impl Plugin for NativeFoliage {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("foliage_painting", true, build);
-        app.add_systems(
+        app.register_panel_content("foliage_painting", true, build)
+            .systems(
             Update,
             (
                 foliage_type_select,

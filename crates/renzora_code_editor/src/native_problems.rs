@@ -22,8 +22,8 @@ struct ProblemRow {
 }
 
 pub fn register_native_problems(app: &mut App) {
-    app.register_panel_content("problems", true, build);
-    app.add_systems(Update, problems_goto_click.run_if(in_state(SplashState::Editor)));
+    app.register_panel_content("problems", true, build)
+        .systems(Update, problems_goto_click.run_if(in_state(SplashState::Editor)));
 }
 
 fn has_problems(w: &World) -> bool {

@@ -36,6 +36,7 @@ impl Plugin for ReactivePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ReactionRegistry>()
             .init_resource::<KeyedListRegistry>()
+            .init_resource::<PendingKeyedLists>()
             .init_resource::<ReactiveStats>()
             // Chained: run_reactions resets the per-frame stats that
             // run_keyed_lists then adds to.
@@ -303,7 +304,37 @@ fn bind_with_kind<V, F, A>(
 ///
 /// Raw reactions can't report value changes, so they show up in
 /// [`ReactiveStats`] with cost but zero churn.
+///
+/// **Runs even when its pane is a hidden dock tab.** With no target entity there
+/// is nothing to locate it in the UI tree, so [`run_reactions`]' hidden-pane skip
+/// cannot apply, and it also labels as `"(world)"` in the debug panel. If the
+/// reaction belongs to a widget, prefer [`react_anchored`].
 pub fn react<F>(commands: &mut Commands, reaction: F)
+where
+    F: FnMut(&mut World) -> bool + Send + Sync + 'static,
+{
+    react_inner(commands, None, reaction);
+}
+
+/// [`react`], but anchored to a widget entity so it participates in the
+/// hidden-pane skip and reports against a real name in the debug panel.
+///
+/// Use this whenever the reaction only matters while its widget is on screen —
+/// text inputs and colour pickers were each cloning several `String`s per frame
+/// for panes the user could not see. Do **not** use it for work that must keep
+/// running while its panel is backgrounded (export progress, background loads):
+/// anchoring those would silently pause them.
+///
+/// The anchor is also the liveness handle — the reaction is dropped when the
+/// entity despawns, exactly like a `bind_*`.
+pub fn react_anchored<F>(commands: &mut Commands, anchor: Entity, reaction: F)
+where
+    F: FnMut(&mut World) -> bool + Send + Sync + 'static,
+{
+    react_inner(commands, Some(anchor), reaction);
+}
+
+fn react_inner<F>(commands: &mut Commands, anchor: Option<Entity>, reaction: F)
 where
     F: FnMut(&mut World) -> bool + Send + Sync + 'static,
 {
@@ -311,7 +342,7 @@ where
         if let Some(mut reg) = world.get_resource_mut::<ReactionRegistry>() {
             let mut reaction = reaction;
             reg.0.push(ReactionEntry {
-                meta: EntryMeta::new(None, "raw"),
+                meta: EntryMeta::new(anchor, "raw"),
                 f: Box::new(move |world: &mut World| {
                     if reaction(world) {
                         ReactionOutcome::Unchanged
@@ -493,7 +524,12 @@ pub(crate) fn run_reactions(world: &mut World) {
             // ~1s change-rate windows, advanced by wall-clock delta.
             roll_rate_windows(&mut stats, &mut reg, dt);
 
-            if stats.frame.is_multiple_of(30) {
+            // Only build the top-N reports when someone is actually looking.
+            // They cost two O(N log N) sorts plus an `entry_label` `format!` per
+            // row, and their sole consumer is the debugger's "UI Reactivity"
+            // panel — so with it closed (the overwhelmingly common case) this was
+            // pure waste every 30 frames.
+            if stats.frame.is_multiple_of(30) && reactivity_panel_open(world) {
                 build_reports(world, &reg, &mut stats);
             }
         });
@@ -514,6 +550,21 @@ fn roll_rate_windows(stats: &mut ReactiveStats, reg: &mut ReactionRegistry, dt: 
         stats.changes_per_sec = total as f32 / elapsed;
         stats.window_elapsed = 0.0;
     }
+}
+
+/// Is the debugger's "UI Reactivity" panel the active tab anywhere?
+///
+/// The reports below exist only to feed it. Checked inline rather than via
+/// `dock::panel_active` because that returns a run-condition closure, and these
+/// drivers are exclusive systems that need the check mid-body.
+fn reactivity_panel_open(world: &World) -> bool {
+    const PANEL: &str = "ui_reactivity";
+    world
+        .get_resource::<crate::dock::Dock>()
+        .is_some_and(|d| d.tree.is_active_tab(PANEL))
+        || world
+            .get_resource::<crate::dock::DockWindows>()
+            .is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(PANEL)))
 }
 
 fn build_reports(world: &World, reg: &ReactionRegistry, stats: &mut ReactiveStats) {
@@ -587,6 +638,22 @@ struct KeyedList {
 #[derive(Resource, Default)]
 pub struct KeyedListRegistry(Vec<KeyedList>);
 
+/// Keyed lists that have been registered but not yet installed into
+/// [`KeyedListRegistry`].
+///
+/// Registration cannot write straight to `KeyedListRegistry`: [`run_keyed_lists`]
+/// holds that resource in a `resource_scope` for its entire pass, and applies the
+/// row-build `CommandQueue` *inside* it. So a `keyed_list` registered from within
+/// a row builder found the resource missing and was dropped — **silently**, with
+/// no panic and no log, which made nested lists look like they simply never ran.
+///
+/// Staging registrations in a separate resource that nothing scopes out makes
+/// nesting work by construction. Entries are drained into the real registry at
+/// the top of the next pass, so a nested list starts one frame later — the same
+/// deferral bindings already have.
+#[derive(Resource, Default)]
+struct PendingKeyedLists(Vec<KeyedList>);
+
 /// A keyed, granular child list (`<For>`): rebuild only changed rows, add new,
 /// remove gone, reorder — never a full-list rebuild. `snapshot` returns this
 /// frame's `(key, hash)` order + a builder; a row rebuilds only when its hash
@@ -620,8 +687,14 @@ fn register_keyed_list<F>(
     F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
 {
     commands.queue(move |world: &mut World| {
-        if let Some(mut reg) = world.get_resource_mut::<KeyedListRegistry>() {
-            reg.0.push(KeyedList {
+        // Stage rather than pushing straight to `KeyedListRegistry` — see
+        // [`PendingKeyedLists`]. `get_resource_or_insert_with` so a registration
+        // that lands before `ReactivePlugin` has initialised the resource still
+        // survives instead of being silently dropped.
+        world
+            .get_resource_or_insert_with(PendingKeyedLists::default)
+            .0
+            .push(KeyedList {
                 container,
                 current: HashMap::default(),
                 order: Vec::new(),
@@ -631,7 +704,6 @@ fn register_keyed_list<F>(
                 meta: EntryMeta::new(Some(container), "list"),
                 rows_rebuilt: 0,
             });
-        }
     });
 }
 
@@ -639,6 +711,20 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
+    // Install anything registered since the last pass, including lists
+    // registered from inside a row builder (which cannot reach the registry
+    // directly — see `PendingKeyedLists`). Done before the `resource_scope`
+    // below, which is precisely what makes those registrations unreachable.
+    let pending: Vec<KeyedList> = world
+        .get_resource_mut::<PendingKeyedLists>()
+        .map(|mut p| std::mem::take(&mut p.0))
+        .unwrap_or_default();
+    if !pending.is_empty() {
+        world
+            .get_resource_or_insert_with(KeyedListRegistry::default)
+            .0
+            .extend(pending);
+    }
     world.resource_scope(|world, mut reg: Mut<KeyedListRegistry>| {
         let mut total_us = 0.0f32;
         let mut rows_rebuilt = 0usize;
@@ -758,7 +844,9 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
             }
             stats.history_us.push(frame_total);
 
-            if stats.frame.is_multiple_of(30) {
+            // Same gate as the binding reports: an `entry_label` `format!` per
+            // list plus a sort, for a panel that is usually closed.
+            if stats.frame.is_multiple_of(30) && reactivity_panel_open(world) {
                 let mut reports: Vec<ListReport> = reg
                     .0
                     .iter()

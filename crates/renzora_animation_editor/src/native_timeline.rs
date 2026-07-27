@@ -51,7 +51,25 @@ impl Plugin for NativeAnimTimeline {
         // crate loads first.
         app.init_resource::<renzora::ActiveTimeline>();
         app.init_resource::<renzora::KeyframeRequests>();
+        // NOT migrated to `PanelScope::systems` (visibility gating), deliberately.
+        // The other four animation panels were; this one must not be, for three
+        // reasons that are easy to miss:
+        //
+        //  * `publish_active_timeline` feeds the `ActiveTimeline` resource that the
+        //    *inspector* reads to decide whether to show its per-field add-keyframe
+        //    button. Gating it would make those buttons go stale whenever the
+        //    timeline tab wasn't the active one.
+        //  * `apply_keyframe_requests` applies `KeyframeRequests` queued by that
+        //    same inspector button. Gated, pressing add-keyframe with the timeline
+        //    hidden would silently do nothing.
+        //  * `auto_save_clip` is autosave — pausing it risks losing edits.
+        //
+        // Splitting the block is not a free fix either: it is `.chain()`ed with a
+        // documented ordering requirement ("key_drag must run before anim_sync"),
+        // so separating the gated and ungated halves would have to preserve that.
+        // Worth doing carefully one day; not worth doing as part of a sweep.
         app.register_panel_content("timeline", false, build);
+        // panel-systems-ungated: publishes ActiveTimeline (read by the inspector's add-keyframe buttons), applies KeyframeRequests queued by those buttons, and runs autosave
         app.add_systems(
             Update,
             (
@@ -83,6 +101,7 @@ impl Plugin for NativeAnimTimeline {
 
         // Property scrub-preview + record-capture. Editor-only (not in play
         // mode — there the runtime property sampler drives the entity instead).
+        // panel-systems-ungated: property scrub-preview drives the VIEWPORT, not this panel
         app.add_systems(
             Update,
             (preview_property_animation, record_capture, live_edit_selected_key)
@@ -93,6 +112,7 @@ impl Plugin for NativeAnimTimeline {
         );
 
         app.init_resource::<AnimUndoShadow>();
+        // panel-systems-ungated: undo must work from anywhere, not only with the timeline focused
         app.add_systems(
             Update,
             anim_undo_observer

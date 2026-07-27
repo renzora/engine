@@ -10,8 +10,10 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy::prelude::*;
+use bevy::tasks::{block_on, poll_once, IoTaskPool, Task};
 use bevy::ui::widget::ImageNode;
 use bevy::ui::RelativeCursorPosition;
 
@@ -21,7 +23,8 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field_rgba, inspector_row, inspector_stripe};
-use renzora_ember::reactive::{bind_2way, bind_with};
+use renzora_ember::reactive::{bind_2way, bind_with, KeyedSnapshot};
+use renzora_ember::virtual_scroll::{virtual_scroll_versioned, VirtualMetrics};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{checkbox, drag_value, scroll_area, text_input, Popup};
 
@@ -40,12 +43,16 @@ impl Plugin for NativeMaterialRef {
     fn build(&self, app: &mut App) {
         app.init_resource::<MatCache>();
         app.init_resource::<MatPickerFilter>();
+        app.init_resource::<MaterialIndex>();
         app.register_native_inspector_ui("material_ref", material_native);
         app.add_systems(
             Update,
             (
                 rebuild_material,
-                rebuild_picker,
+                // Only ticks while a picker popup exists. The rows themselves are
+                // a keyed list driven by `MaterialIndex.generation`, so a walk
+                // that lands here is picked up by the next snapshot.
+                refresh_material_index.run_if(any_with_component::<MatPickerPanel>),
                 flush_overrides,
                 mat_slot_drop,
                 mat_slot_drop_highlight,
@@ -73,11 +80,92 @@ struct MatCache {
     dirty: bool,
 }
 
-/// Search text for the material picker popup; `sig` bumps to drive a list rebuild.
+/// Search text for the material picker popup. No dirty counter: the rows are a
+/// keyed list whose token reads `text` directly, so typing re-snapshots and
+/// reconciles rather than rebuilding the popup.
 #[derive(Resource, Default)]
 struct MatPickerFilter {
     text: String,
-    sig: u64,
+}
+
+/// Cached list of the project's `.material` files, feeding the picker popup.
+///
+/// The scan is a recursive `read_dir` walk of the project (see
+/// [`find_material_files`]). It used to run inline in `rebuild_one_picker`, which
+/// rebuilds on **every keystroke** in the picker's search box — so typing one
+/// character walked the whole project. Profiling put that path at 13.9 ms in a
+/// single frame. The walk now runs on the IO task pool and publishes here.
+///
+/// Same shape and same reasoning as `renzora_inspector`'s `ScriptIndex`: there is
+/// no file-watch signal to hook (`.material` files are read with raw `std::fs`,
+/// never through the `AssetServer`), so a slow throttle catches files created by
+/// anything other than the editor itself.
+#[derive(Resource, Default)]
+struct MaterialIndex {
+    /// Last completed scan: `(project-relative path, absolute path)`, sorted.
+    /// `Arc` so the picker snapshots it without cloning every entry per rebuild.
+    materials: Arc<Vec<(String, String)>>,
+    /// Bumped only when `materials` actually changes content. The picker's keyed
+    /// list folds this into its dirty token, so a periodic rescan that finds
+    /// nothing new re-snapshots nothing.
+    generation: u64,
+    /// Project root the cached scan came from; a change rescans immediately.
+    root: Option<PathBuf>,
+    /// `Time::elapsed_secs()` when the in-flight walk *started*, so a slow walk
+    /// can't immediately trigger the next one. Wall-clock rather than an
+    /// accumulated delta because this system is gated on a popup being open.
+    last_scan: Option<f32>,
+    /// The walk in flight. Never dropped to "cancel" — dropping a bevy `Task`
+    /// cancels the work — it is held until `poll_once` yields.
+    task: Option<Task<Vec<(String, String)>>>,
+}
+
+/// How often to re-walk for `.material` files created by something other than the
+/// editor. Matches `ScriptIndex`'s throttle; the popup is short-lived, so in
+/// practice this is one walk per time it is opened.
+const MATERIAL_SCAN_THROTTLE: f32 = 3.0;
+
+/// Land a finished walk and start a new one when the project changed or the
+/// throttle elapsed. Bumps [`MatPickerFilter::sig`] only when the file set
+/// actually changed, so a rescan that finds nothing new rebuilds nothing.
+fn refresh_material_index(
+    mut index: ResMut<MaterialIndex>,
+    project: Option<Res<CurrentProject>>,
+    time: Res<Time>,
+) {
+    // Bind the poll result before touching `index.task` again — folding this into
+    // the `if let` keeps the `as_mut()` borrow alive across the body.
+    let finished = index.task.as_mut().and_then(|t| block_on(poll_once(t)));
+    if let Some(materials) = finished {
+        index.task = None;
+        // Only republish when the set really changed: the generation bump makes
+        // the picker re-snapshot, and a rebuilt row loses its thumbnail binding,
+        // so a periodic no-op rescan must not churn the list under the user.
+        if materials != *index.materials {
+            index.materials = Arc::new(materials);
+            index.generation = index.generation.wrapping_add(1);
+        }
+    }
+
+    let Some(project) = project else { return };
+    if index.task.is_some() {
+        return;
+    }
+
+    let now = time.elapsed_secs();
+    let root_changed = index.root.as_deref() != Some(project.path.as_path());
+    let stale = index.last_scan.is_none_or(|t| now - t >= MATERIAL_SCAN_THROTTLE);
+    if !root_changed && !stale {
+        return;
+    }
+    if root_changed {
+        index.root = Some(project.path.clone());
+        index.materials = Arc::new(Vec::new());
+    }
+    index.last_scan = Some(now);
+
+    let root = project.path.clone();
+    index.task = Some(IoTaskPool::get().spawn(async move { find_material_files(&root) }));
 }
 
 #[derive(Component)]
@@ -97,11 +185,12 @@ struct MatEditBtn {
 struct MatClearBtn {
     entity: Entity,
 }
+/// Marks a picker popup panel. Purely a marker now — the rows are a keyed list
+/// that captures its inspected entity directly, so nothing needs to look it up
+/// off the panel. Kept because `refresh_material_index` gates on its presence
+/// (no popup built → never walk the project).
 #[derive(Component)]
-struct MatPickerPanel {
-    entity: Entity,
-    sig: Option<u64>,
-}
+struct MatPickerPanel;
 #[derive(Component)]
 struct MatPickerItem {
     entity: Entity,
@@ -227,10 +316,8 @@ fn rebuild_material(world: &mut World) {
         if let Some(mut mr) = world.get_mut::<MatRoot>(root) {
             mr.sig = Some(sig);
         }
-        // Force the picker to repopulate for the new selection.
-        if let Some(mut f) = world.get_resource_mut::<MatPickerFilter>() {
-            f.sig = f.sig.wrapping_add(1);
-        }
+        // No picker poke needed: its keyed list folds `material_path(entity)`
+        // into its dirty token, so the new selection re-snapshots on its own.
     }
 }
 
@@ -322,10 +409,26 @@ fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, path:
             BackgroundColor(rgb((24, 24, 30))),
             BorderColor::all(rgb((70, 70, 82))),
             GlobalZIndex(1000),
-            MatPickerPanel { entity, sig: None },
+            MatPickerPanel,
             Name::new("material-picker-popup"),
         ))
         .id();
+
+    // Popup shell, built ONCE here rather than refilled per keystroke. The rows
+    // are registered on the inner `list` node, so the search box below is never
+    // despawned and keeps focus + in-progress text across every filter change.
+    let search = text_input(commands, &fonts.ui, "Search materials…", "");
+    bind_search(commands, search);
+    let list = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(1.0),
+            ..default()
+        })
+        .id();
+    register_picker_rows(commands, list, entity);
+    let scroll = scroll_area(commands, list, PICKER_VIEWPORT_H);
+    commands.entity(panel).add_children(&[search, scroll]);
 
     // Name button = popup trigger.
     let name_btn = commands
@@ -373,75 +476,120 @@ fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> Entity {
     btn
 }
 
-// ── Picker popup (rebuilt on filter change) ──────────────────────────────────
+// ── Picker popup rows (a windowed keyed list, registered once) ───────────────
 
-fn rebuild_picker(world: &mut World) {
-    let filter_sig = world.get_resource::<MatPickerFilter>().map(|f| f.sig).unwrap_or(0);
-    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
-    // The picker container is the popup panel itself; locate panels needing a refill.
-    let mut q = world.query::<(Entity, &MatPickerPanel)>();
-    let panels: Vec<(Entity, Entity, Option<u64>)> = q.iter(world).map(|(e, p)| (e, p.entity, p.sig)).collect();
-    for (panel, entity, old_sig) in panels {
-        if old_sig == Some(filter_sig) {
-            continue;
-        }
-        rebuild_one_picker(world, &fonts, panel, entity, filter_sig);
-    }
+/// Popup viewport height, and the row stride `picker_item` produces (26 px tall +
+/// 1 px `row_gap`). Used to seed [`VirtualMetrics`] so the list is windowed from
+/// the very first frame instead of building every row until a real measurement
+/// lands — that first-frame burst is the thing this whole change removes.
+const PICKER_VIEWPORT_H: f32 = 280.0;
+const PICKER_ROW_H: f32 = 27.0;
+
+/// Most rows the picker will ever offer. The search box is the way to reach the
+/// rest; building thousands would defeat the windowing on first open.
+const PICKER_MAX_ROWS: usize = 200;
+
+/// Register the result rows as a windowed keyed list.
+///
+/// Called **once**, when the popup shell is built — never per frame and never per
+/// keystroke. Registered on the inner `list` node rather than the panel, so
+/// reconciling rows can never touch the search box: `run_keyed_lists` calls
+/// `replace_children` on its container, which would otherwise blow the input away
+/// (and with it the user's focus and half-typed query) on every keystroke.
+fn register_picker_rows(commands: &mut Commands, list: Entity, entity: Entity) {
+    virtual_scroll_versioned(
+        commands,
+        list,
+        4,
+        // Dirty token: re-snapshot only when the query text, the cached index, or
+        // this entity's assigned material actually changes. `virtual_scroll_versioned`
+        // folds the scroll window in on top of this, so scrolling still re-windows.
+        move |w: &World| {
+            let mut h = DefaultHasher::new();
+            w.get_resource::<MatPickerFilter>()
+                .map(|f| f.text.as_str())
+                .unwrap_or("")
+                .hash(&mut h);
+            w.get_resource::<MaterialIndex>().map(|i| i.generation).unwrap_or(0).hash(&mut h);
+            material_path(w, entity).hash(&mut h);
+            h.finish()
+        },
+        move |w: &World| picker_snapshot(w, entity),
+    );
+    commands.entity(list).insert(VirtualMetrics {
+        offset: 0.0,
+        viewport_h: PICKER_VIEWPORT_H,
+        row_h: PICKER_ROW_H,
+        columns: 1,
+        measured: true,
+    });
 }
 
-fn rebuild_one_picker(world: &mut World, fonts: &EmberFonts, panel: Entity, entity: Entity, sig: u64) {
-    let query = world.get_resource::<MatPickerFilter>().map(|f| f.text.clone()).unwrap_or_default();
-    let current_path = material_path(world, entity);
-    let root = world.get_resource::<CurrentProject>().map(|p| p.path.clone());
-    let materials = match &root {
-        Some(r) => find_material_files(r),
-        None => Vec::new(),
-    };
+/// This frame's filtered row set. Cheap: an `Arc` clone plus a substring test per
+/// candidate; no filesystem access (see [`MaterialIndex`]).
+fn picker_snapshot(w: &World, entity: Entity) -> KeyedSnapshot {
+    let query = w.get_resource::<MatPickerFilter>().map(|f| f.text.clone()).unwrap_or_default();
+    let current_path = material_path(w, entity);
+    let materials = w
+        .get_resource::<MaterialIndex>()
+        .map(|i| i.materials.clone())
+        .unwrap_or_default();
     let lower = query.trim().to_ascii_lowercase();
-    let filtered: Vec<(String, String)> = materials
-        .into_iter()
+    // Filter by reference and clone only the survivors — the cached index can be
+    // far larger than the rows the popup shows.
+    let rows: Vec<(String, String, bool)> = materials
+        .iter()
         .filter(|(rel, _)| lower.is_empty() || rel.to_ascii_lowercase().contains(&lower))
-        .take(200)
+        .take(PICKER_MAX_ROWS)
+        .map(|(rel, abs)| {
+            let is_current = rel.as_str() == current_path.as_str();
+            (rel.clone(), abs.clone(), is_current)
+        })
         .collect();
 
-    let existing: Vec<Entity> = world.get::<Children>(panel).map(|c| c.iter().collect()).unwrap_or_default();
-    let mut queue = bevy::ecs::world::CommandQueue::default();
-    {
-        let mut commands = Commands::new(&mut queue, world);
-        // Keep only the search box (the first child); despawn the previous list.
-        for (i, ch) in existing.iter().enumerate() {
-            if i == 0 {
-                continue;
-            }
-            commands.entity(*ch).despawn();
-        }
-        if existing.is_empty() {
-            // First build — create the search field.
-            let search = text_input(&mut commands, &fonts.ui, "Search materials…", "");
-            bind_search(&mut commands, search);
-            commands.entity(panel).add_child(search);
-        }
-        // Build the list.
-        let list = commands
-            .spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(1.0), ..default() })
-            .id();
-        if filtered.is_empty() {
-            let empty = commands
-                .spawn((Text::new("No matches"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted()))))
-                .id();
-            commands.entity(list).add_child(empty);
-        } else {
-            for (rel, abs) in &filtered {
-                let item = picker_item(&mut commands, fonts, entity, rel, abs, rel.as_str() == current_path.as_str());
-                commands.entity(list).add_child(item);
-            }
-        }
-        let scroll = scroll_area(&mut commands, list, 280.0);
-        commands.entity(panel).add_child(scroll);
+    if rows.is_empty() {
+        // NB: deliberately not `u64::MAX` / `u64::MAX - 1` — `virtual_scroll`
+        // reserves those as its spacer keys, and colliding would make the empty
+        // row and a spacer alias each other.
+        let mut k = DefaultHasher::new();
+        "\u{0}<no-matches>".hash(&mut k);
+        return KeyedSnapshot {
+            items: vec![(k.finish(), 0)],
+            build: Box::new(|c: &mut Commands, f: &EmberFonts, _| {
+                c.spawn((
+                    Text::new("No matches"),
+                    ui_font(&f.ui, 11.0),
+                    TextColor(rgb(text_muted())),
+                ))
+                .id()
+            }),
+        };
     }
-    queue.apply(world);
-    if let Some(mut p) = world.get_mut::<MatPickerPanel>(panel) {
-        p.sig = Some(sig);
+
+    // Key = the project-relative path: stable identity that survives filtering, so
+    // narrowing the search keeps surviving rows AND their thumbnail bindings.
+    // Hash = only what is baked into the row at build time. The thumbnail
+    // `Handle<Image>` is deliberately excluded — it arrives via the row's own
+    // `bind_with`, and hashing it would make every thumbnail that resolves
+    // despawn and rebuild its row.
+    let items: Vec<(u64, u64)> = rows
+        .iter()
+        .map(|(rel, abs, is_current)| {
+            let mut k = DefaultHasher::new();
+            rel.hash(&mut k);
+            let mut h = DefaultHasher::new();
+            abs.hash(&mut h);
+            is_current.hash(&mut h);
+            (k.finish(), h.finish())
+        })
+        .collect();
+
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c: &mut Commands, f: &EmberFonts, i: usize| {
+            let (rel, abs, is_current) = &rows[i];
+            picker_item(c, f, entity, rel, abs, *is_current)
+        }),
     }
 }
 
@@ -505,7 +653,6 @@ fn bind_search(commands: &mut Commands, input: Entity) {
         move |w, s: String| {
             if let Some(mut f) = w.get_resource_mut::<MatPickerFilter>() {
                 f.text = s;
-                f.sig = f.sig.wrapping_add(1);
             }
         },
     );

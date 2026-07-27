@@ -193,6 +193,79 @@ pub fn raytracing_supported() -> bool {
     })
 }
 
+/// Is the adapter the renderer will pick an integrated GPU (or a software
+/// fallback) rather than a discrete card?
+///
+/// Cached in a `OnceLock` and mirroring `platform_wgpu_settings()`' backend
+/// selection for the same reason `raytracing_supported` does: the probe must see
+/// the same adapter the renderer will, or the answer is about the wrong GPU.
+///
+/// Used only as a hint — see [`renzora::GpuIsIntegrated`]. `Other` is treated as
+/// *not* integrated: it usually means a driver that did not report a type, and
+/// wrongly nudging a discrete-GPU user toward `Low` is worse than staying quiet.
+#[cfg(all(not(target_os = "android"), not(target_arch = "wasm32")))]
+pub fn gpu_is_integrated() -> bool {
+    use std::sync::OnceLock;
+    static INTEGRATED: OnceLock<bool> = OnceLock::new();
+    *INTEGRATED.get_or_init(|| {
+        use renzora::RendererBackend;
+        use wgpu::Backends;
+
+        #[cfg(target_os = "windows")]
+        let default_backend = Backends::VULKAN;
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        let default_backend = Backends::METAL;
+        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "ios")))]
+        let default_backend = Backends::VULKAN;
+
+        let backends = match renzora::load_renderer_backend() {
+            RendererBackend::Auto => default_backend,
+            RendererBackend::Dx12 => Backends::DX12,
+            RendererBackend::Vulkan => Backends::VULKAN,
+            RendererBackend::Metal => Backends::METAL,
+            RendererBackend::Gl => Backends::GL,
+        };
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = bevy::tasks::block_on(instance.request_adapter(
+            &wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: None,
+            },
+        ));
+        match adapter {
+            Ok(adapter) => {
+                let info = adapter.get_info();
+                let integrated = matches!(
+                    info.device_type,
+                    wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::Cpu
+                );
+                if integrated {
+                    info!(
+                        "[runtime] integrated/software adapter detected ({}) — the editor \
+                         will suggest the Low graphics tier",
+                        info.name
+                    );
+                }
+                integrated
+            }
+            // No adapter means rendering is about to fail for bigger reasons;
+            // don't add a misleading performance hint on top.
+            Err(_) => false,
+        }
+    })
+}
+
+/// Non-desktop targets have no meaningful discrete/integrated distinction here.
+#[cfg(any(target_os = "android", target_arch = "wasm32"))]
+pub fn gpu_is_integrated() -> bool {
+    false
+}
+
 /// Non-desktop targets (Android / wasm), or a build with Solari stripped, have no
 /// ray-tracing path here.
 #[cfg(any(target_os = "android", target_arch = "wasm32", not(feature = "solari")))]
@@ -367,22 +440,61 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // (`add_xr_rendering`), which auto-starts the session.
     #[cfg(feature = "xr")]
     let (plugins, xr_capable) = {
-        if is_editor && renzora_xr::runtime_available() {
-            info!("[runtime] OpenXR runtime detected — booting XR-capable editor");
+        // Booting XR-capable disables `PipelinedRenderingPlugin` (the headset
+        // compositor wants synchronous submission), which serializes the main-world
+        // sim and the render sub-app onto one thread — a real editor-FPS cost. That
+        // trade is only worth it when a headset is actually in play. A dev who has an
+        // OpenXR runtime installed AND set as the system default (e.g. Oculus/Meta,
+        // SteamVR) but isn't using VR would otherwise pay it on every flat editor
+        // launch. `RENZORA_NO_XR=1` (or `--no-xr`) opts out: skip the XR plugins
+        // entirely and keep pipelined rendering on.
+        let no_xr = std::env::var_os("RENZORA_NO_XR").is_some()
+            || std::env::args().any(|a| a == "--no-xr");
+        if is_editor && !no_xr && renzora_xr::runtime_available() {
+            info!(
+                "[runtime] OpenXR runtime detected — booting XR-capable editor \
+                 (pipelined rendering disabled; set RENZORA_NO_XR=1 for a flat, \
+                 pipelined boot if you're not using a headset)"
+            );
             let base = plugins
                 .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
             (renzora_xr::xr_plugins(base, false), true)
         } else {
+            if is_editor && no_xr && renzora_xr::runtime_available() {
+                info!(
+                    "[runtime] RENZORA_NO_XR set — skipping XR-capable boot; \
+                     pipelined rendering stays enabled"
+                );
+            }
             (plugins, false)
         }
     };
 
     app.add_plugins(plugins);
 
+    // Profiling build only: record per-render-pass GPU timings. Bevy's render
+    // diagnostics recorder is what allocates the Tracy GPU context and emits the
+    // GPU-pass zones (`main_opaque_pass_3d`, shadow passes, ssao, atmosphere,
+    // bloom, …) — but only when `RenderDiagnosticsPlugin` is present. `trace_tracy`
+    // supplies the running Tracy client (via LogPlugin's layer) that the recorder
+    // needs, so this is safe here. Guarded so it's a no-op if something already
+    // added it (e.g. the `renzora_tracy` plot bridge, if its toggle is on).
+    #[cfg(feature = "profiling")]
+    if !app.is_plugin_added::<bevy::render::diagnostic::RenderDiagnosticsPlugin>() {
+        app.add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin);
+    }
+
     #[cfg(feature = "xr")]
     if xr_capable {
         app.add_plugins(renzora_xr::XrPlugin { auto_start: false });
     }
+    // Same shape and the same reason as the ray-tracing probe below: resolve it
+    // here, before dlopen plugins load, and publish it so the editor can point an
+    // integrated-GPU user at the Graphics Quality tier instead of leaving them on
+    // the default `Medium`. See `renzora::GpuIsIntegrated`.
+    app.insert_resource(renzora::GpuIsIntegrated {
+        yes: gpu_is_integrated(),
+    });
     // Record GPU ray-tracing capability so the `renzora_solari` distribution
     // plugin can gate `SolariPlugins` in its `build()`. The `RenderDevice`'s
     // feature set is frozen here (before dlopen plugins load), so the plugin

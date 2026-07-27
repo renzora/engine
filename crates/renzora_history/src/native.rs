@@ -328,8 +328,8 @@ pub fn register_native_history(app: &mut App) {
             .id();
         keyed_list(commands, list, history_snapshot);
         list
-    });
-    app.add_systems(Update, history_click.run_if(in_state(SplashState::Editor)));
+    })
+    .systems(Update, history_click.run_if(in_state(SplashState::Editor)));
 }
 
 // ── Systems ───────────────────────────────────────────────────────────────

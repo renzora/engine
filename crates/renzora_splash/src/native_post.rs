@@ -129,9 +129,25 @@ fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.insert_resource(SplashPost { image, camera, size: UVec2::new(INIT_W, INIT_H) });
 }
 
-/// Only render the background pass while the splash is showing.
-fn gate_post_camera(state: Res<State<SplashState>>, mut cam: Query<&mut Camera, With<PostCamera>>) {
-    let want = matches!(state.get(), SplashState::Splash);
+/// Only render the background pass while the splash is showing — and never on an
+/// integrated GPU.
+///
+/// The cinematic is a full-window, multi-pass post chain (procedural terrain
+/// flyover → CRT/post shaders) rendered at the display's physical resolution. That
+/// is precisely the fill-rate-bound workload an integrated adapter is worst at, and
+/// it is the *first* thing a user sees — so on a weak GPU the engine's opening
+/// impression is a stuttering animation before the editor has even loaded. It is
+/// decorative, so it is not worth paying for; the splash UI itself is unaffected.
+///
+/// With the camera inactive the offscreen target simply keeps its initial clear
+/// (`Color::NONE`), so the backdrop reads as flat rather than broken.
+fn gate_post_camera(
+    state: Res<State<SplashState>>,
+    integrated: Option<Res<renzora::GpuIsIntegrated>>,
+    mut cam: Query<&mut Camera, With<PostCamera>>,
+) {
+    let cinematic_ok = !integrated.is_some_and(|g| g.yes);
+    let want = matches!(state.get(), SplashState::Splash) && cinematic_ok;
     for mut c in &mut cam {
         if c.is_active != want {
             c.is_active = want;

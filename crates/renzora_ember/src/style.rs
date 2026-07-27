@@ -681,6 +681,25 @@ impl Styled {
 }
 
 /// Paint every styled widget whose `Styled` (state/role) or the `Theme` changed.
+/// Marks a node whose `Node::padding` is owned by the widget, not the theme.
+///
+/// [`apply_theme`] rewrites `padding` from the style token on **every** `Styled`
+/// change — and `Styled` changes on hover and press, so that is constantly. A
+/// widget that computes its own padding therefore has it silently overwritten,
+/// and the loss is **permanent, not a one-frame flicker**: these widgets drive
+/// padding from a `bind_with` that value-diffs its *source*, so once the theme
+/// clobbers the target the binding still sees an unchanged source, reports
+/// `Unchanged`, and never re-applies.
+///
+/// `icon_label_button_collapsing` is the live instance — its collapsed form uses
+/// a square footprint that reverted to the themed padding the first time the
+/// cursor touched it.
+///
+/// Opting out per-entity (rather than teaching the theme about specific widgets)
+/// keeps the rule local to whoever actually owns the value.
+#[derive(Component)]
+pub struct StyleOwnsPadding;
+
 pub fn apply_theme(
     theme: Res<Theme>,
     mut q: Query<(
@@ -688,10 +707,11 @@ pub fn apply_theme(
         &mut BackgroundColor,
         Option<&mut BorderColor>,
         &mut Node,
+        Has<StyleOwnsPadding>,
     )>,
 ) {
     let repaint_all = theme.is_changed();
-    for (styled, mut bg, border, mut node) in &mut q {
+    for (styled, mut bg, border, mut node, own_padding) in &mut q {
         if !repaint_all && !styled.is_changed() {
             continue;
         }
@@ -699,7 +719,9 @@ pub fn apply_theme(
         bg.0 = token.bg_for(styled.state);
         node.border = UiRect::all(Val::Px(token.border_width));
         node.border_radius = BorderRadius::all(Val::Px(token.radius));
-        node.padding = UiRect::axes(Val::Px(token.pad_x), Val::Px(token.pad_y));
+        if !own_padding {
+            node.padding = UiRect::axes(Val::Px(token.pad_x), Val::Px(token.pad_y));
+        }
         if let Some(mut bc) = border {
             *bc = BorderColor::all(token.border_for(styled.state));
         }

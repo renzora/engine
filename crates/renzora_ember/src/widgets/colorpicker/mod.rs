@@ -262,7 +262,9 @@ pub fn bind_hsv_picker(
     set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
 ) {
     let mut last: Option<[f32; 3]> = None;
-    crate::reactive::react(commands, move |world: &mut World| {
+    // Anchored to the picker so it stops running while its pane is a hidden dock
+    // tab — see `react_anchored`.
+    crate::reactive::react_anchored(commands, picker, move |world: &mut World| {
         if world.get_entity(picker).is_err() {
             return false;
         }

@@ -122,6 +122,11 @@ where
     F: Fn(&World) -> bool + Clone + Send + Sync + 'static,
 {
     let (btn, _ic, text) = icon_label_button_parts(commands, fonts, icon, label);
+    // This button drives its own padding below (square when collapsed), so the
+    // theme must not rewrite it — see `style::StyleOwnsPadding`. Without this the
+    // collapsed footprint reverted to the themed padding the first time the
+    // cursor touched the button, and never came back.
+    commands.entity(btn).insert(crate::style::StyleOwnsPadding);
     let hidden = compact.clone();
     crate::reactive::bind_display(commands, text, move |w| !hidden(w));
     let label = label.to_string();

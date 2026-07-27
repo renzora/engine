@@ -48,6 +48,7 @@ impl Plugin for NativeParticleEditor {
         );
         // `particle_doc_load` stays ungated: it loads the active particle document,
         // which the separate preview panel also depends on.
+        // panel-systems-ungated: loads the active particle document for the viewport preview, not for this panel
         app.add_systems(Update, particle_doc_load.run_if(in_state(SplashState::Editor)));
     }
 }

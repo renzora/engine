@@ -51,8 +51,8 @@ pub struct NativeMaterialInspector;
 
 impl Plugin for NativeMaterialInspector {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("material_inspector", true, build);
-        app.add_systems(
+        app.register_panel_content("material_inspector", true, build)
+            .systems(
             Update,
             (tex_drop, tex_clear, tex_browse, tex_drop_highlight).run_if(in_state(SplashState::Editor)),
         );

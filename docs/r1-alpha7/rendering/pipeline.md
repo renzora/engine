@@ -201,17 +201,40 @@ high-DPI (Retina) displays even when the scene is empty. **Settings → Viewport
 Performance → Graphics Quality** is the single switch that trades those passes for
 frame rate:
 
-| Tier | Screen-space GI | Auto-exposure | Bloom | TAA |
-|---|---|---|---|---|
-| **High** | on | on | on | on |
-| **Medium** *(default)* | **off** | on | on | on |
-| **Low** | off | off | off | off |
+| Tier | Screen-space GI | SSAO | Auto-exposure | Bloom | TAA |
+|---|---|---|---|---|---|
+| **High** | on | on | on | on | on |
+| **Medium** *(default)* | **off** | on | on | on | on |
+| **Low** | off | **off** | off | off | off |
 
 The ladder drops the next-most-expensive pass at each step down; `Medium` is the
 shipping default because screen-space GI is the heaviest pass and removing it
 keeps the editor responsive on older / integrated GPUs while preserving the
 tonemapped look. The tier is stored per project (in `project.toml`'s `[editor]`
 section) on `ViewportSettings.graphics_quality`.
+
+SSAO is gated for the same reason as the rest — it's fullscreen and
+resolution-bound. Profiling put it **second only to the deferred prepass** among
+GPU passes (0.46 ms of a 2.63 ms GPU frame on a discrete card, proportionally far
+worse on the integrated GPUs `Low` exists for), and it was previously ungated, so
+choosing `Low` explicitly for frame rate still paid for it. Gating it took the
+measured GPU total at `Low` from 2.870 ms to 1.798 ms — **−37%**.
+
+### The integrated-GPU hint
+
+The tier defaults to `Medium`, and the users who most need `Low` are the least
+likely to go looking for Settings → Viewport → Performance — the editor just feels
+slow and there's no reason to suspect a setting. So on first launch, if the
+adapter is integrated (`renzora::GpuIsIntegrated`, probed once from wgpu at
+startup) and the tier isn't already `Low`, the editor raises a toast suggesting it.
+
+It is deliberately a **hint, not an action**: nothing changes the tier for you. A
+silently-applied override would be indistinguishable from the engine misbehaving,
+and someone on integrated graphics may well have picked their tier on purpose.
+There's no "already asked" flag on disk either, because the condition is
+*self-clearing* — it only fires while the tier isn't `Low`, so acting on it
+silences it permanently. Ignoring it costs one toast per launch, which is about the
+right pressure for a hint you haven't acted on.
 
 Mechanically the tier is a **ceiling, not an authority**: it only ever forces an
 effect *off*, by flipping the `enabled` flag on the routed effect source (the same

@@ -230,6 +230,23 @@ fn register(app: &mut App) {
 
 The drawer takes `&mut World` and the selected `Entity`, builds its UI (typically via a local `CommandQueue` so it can use ember widgets and two-way bindings), and returns the **root entity**; the inspector parents that under the component's section header. Read the world through bindings and write it from your own systems or interaction callbacks — see *Building Editor Panels* for the reactive helpers.
 
+> **Your drawer runs on expand, and again after every collapse — write it idempotent.**
+> Inspector sections are built empty and filled only while they're actually
+> expanded, so a drawer is *not* called once per selection. It's called when its
+> section opens, its subtree is despawned when the section closes, and it's called
+> again on the next open. Two consequences: don't stash state in the returned
+> entities that you can't rebuild (put it in a `Resource` and read it back), and
+> don't do expensive one-time setup in the drawer body — it can run many times per
+> selection.
+>
+> Why it works this way: collapsing a section only sets its body to
+> `Display::None`, and `bevy_ui` does **not** prune hidden subtrees from its
+> per-frame walk — `compute_hidden_layout` clears the cache and recurses, so hidden
+> rows are never cached and pay full layout every frame. An entity with a dozen
+> components and two sections open was laying out every row of the other ten, and
+> running all ten drawers to build content nobody could see. The reconciliation
+> lives in `renzora_inspector::native::reconcile_section_bodies`.
+
 ## Reference
 
 ### `FieldType`

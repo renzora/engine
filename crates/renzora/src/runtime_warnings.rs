@@ -56,6 +56,10 @@ pub struct CapturedWarning {
     /// e.g. `bevy_ecs::hierarchy`. Lets the panel group/filter.
     pub target: String,
     pub message: String,
+    /// How many consecutive identical events this entry stands for. The panel
+    /// renders `>1` as a `×N` badge instead of N separate rows — see the
+    /// coalescing note on the capture layer for why that matters here.
+    pub count: u32,
 }
 
 impl CapturedWarning {
@@ -111,12 +115,42 @@ impl<S: Subscriber> Layer<S> for WarningCaptureLayer {
             level,
             target: metadata.target().to_string(),
             message,
+            count: 1,
         };
 
         if let Ok(mut buf) = buffer().lock() {
-            buf.push_back(entry);
-            while buf.len() > MAX_WARNINGS {
-                buf.pop_front();
+            // Coalesce an exact repeat into the previous entry (Chrome-devtools
+            // style, matching the console's `push_entry`) rather than appending.
+            // A misbehaving system can emit the SAME warning every frame — the
+            // despawned-entity `insert` errors do exactly this — and each entry
+            // becomes a multi-line text node in the diagnostics panel. Without
+            // this, such a flood fills all `MAX_WARNINGS` slots with one message,
+            // evicts every other warning (the ones you actually needed to read),
+            // and costs the panel a full `bevy_ui` layout pass over ~1400 text
+            // nodes every frame. Bumping a counter costs one badge redraw.
+            //
+            // Only the back entry is compared, so an alternating A/B/A/B pattern
+            // still appends — deliberate: those are distinct events interleaved,
+            // and collapsing them would hide the interleaving.
+            let merged = buf.back_mut().is_some_and(|last| {
+                if last.level == entry.level
+                    && last.target == entry.target
+                    && last.message == entry.message
+                {
+                    last.count = last.count.saturating_add(1);
+                    // Keep the age showing the MOST RECENT occurrence: a warning
+                    // still firing now is a live problem, not an old one.
+                    last.timestamp = entry.timestamp;
+                    true
+                } else {
+                    false
+                }
+            });
+            if !merged {
+                buf.push_back(entry);
+                while buf.len() > MAX_WARNINGS {
+                    buf.pop_front();
+                }
             }
         }
     }

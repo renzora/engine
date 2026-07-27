@@ -16,8 +16,10 @@ use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use bevy::tasks::{block_on, poll_once, IoTaskPool, Task};
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
@@ -34,9 +36,17 @@ pub fn register(app: &mut App) {
     use renzora_editor_framework::{AppEditorExt, SplashState};
     app.register_native_inspector_ui("script_component", script_component_native);
     app.init_resource::<ScriptSectionsOpen>();
+    app.init_resource::<ScriptIndex>();
     app.add_systems(
         Update,
         (
+            // Ordered before `rebuild_scripts` so a project walk that lands this
+            // frame is seen by the signature check immediately rather than a
+            // frame late. Only ticks while a script drawer is actually built —
+            // a project with no scripted entity selected never walks the disk.
+            refresh_script_index
+                .run_if(any_with_component::<ScriptsRoot>)
+                .before(rebuild_scripts),
             rebuild_scripts,
             remember_script_sections,
             script_remove_click,
@@ -202,9 +212,14 @@ fn collect_script_specs(world: &World, entity: Entity) -> Vec<ScriptSpec> {
     out
 }
 
-fn scripts_sig(specs: &[ScriptSpec], root: Entity) -> u64 {
+fn scripts_sig(specs: &[ScriptSpec], root: Entity, index_hash: u64) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     root.to_bits().hash(&mut h);
+    // `build_add_bar` bakes the available-script list into the Add-Script menu's
+    // click closure, so the menu is a snapshot rather than a live read — a script
+    // that appears on disk only reaches it when the drawer rebuilds. Folding the
+    // index hash in is what triggers that, and only when the set really changed.
+    index_hash.hash(&mut h);
     for s in specs {
         s.id.hash(&mut h);
         s.name.hash(&mut h);
@@ -222,23 +237,142 @@ fn scripts_sig(specs: &[ScriptSpec], root: Entity) -> u64 {
     h.finish()
 }
 
+// ── Project script index ─────────────────────────────────────────────────────
+
+/// Cached index of the project's `.lua`/`.rhai` files — the source for every
+/// script drawer's Add-Script menu.
+///
+/// Producing it means a recursive `read_dir` walk of the entire project, which
+/// measured **130 ms in a single frame** on an asset-heavy project. It used to
+/// run inline inside `rebuild_scripts` (an exclusive system) on every signature
+/// change, which is exactly where a 130 ms stall hurts most. It now runs on the
+/// IO task pool and publishes here when it lands.
+///
+/// There is no file-change signal to subscribe to: scripts are read with raw
+/// `std::fs` by the backends and never go through the `AssetServer`, so bevy's
+/// `file_watcher` never emits an event for a `.lua`/`.rhai` file. Like the asset
+/// browser's directory listing and the scripting hot-reload check, this polls on
+/// a slow throttle instead.
+#[derive(Resource, Default)]
+struct ScriptIndex {
+    /// Last completed scan — `(display-relative path, absolute path)`, sorted by
+    /// display path. Shared in an `Arc` so `rebuild_scripts` can snapshot it
+    /// without cloning every `PathBuf` each time it runs.
+    scripts: Arc<Vec<(String, PathBuf)>>,
+    /// Content hash of `scripts`, folded into each drawer's rebuild signature.
+    /// A hash rather than a bumped generation on purpose: a counter would change
+    /// on every throttled rescan and so rebuild the drawer every few seconds,
+    /// and a rebuild despawns every child — which would destroy focus and
+    /// in-progress typing in a script-variable text field.
+    hash: u64,
+    /// Project root the cached scan came from. A different root rescans at once
+    /// instead of waiting out the throttle.
+    root: Option<PathBuf>,
+    /// `Time::elapsed_secs()` when the in-flight walk *started* — not when it
+    /// finished, since timing from completion would let a slow walk immediately
+    /// trigger the next one. Wall-clock rather than an accumulated delta because
+    /// this system is gated on a drawer existing; an accumulator would stop
+    /// ageing while gated off and hand back a stale list on the next selection.
+    last_scan: Option<f32>,
+    /// The walk in flight, if any. Never dropped to "cancel" it — dropping a
+    /// bevy `Task` cancels the work — it is held until `poll_once` yields.
+    task: Option<Task<Vec<(String, PathBuf)>>>,
+}
+
+/// How often to re-walk the project for scripts created by something other than
+/// the editor — an external code editor, a `git pull`, files pasted into the
+/// folder. The editor sees its own script creation (asset-browser new-script,
+/// code-editor save, drag-drop import), but nothing notifies it about those, and
+/// there is no file-watch signal to hook: scripts are read with raw `std::fs` by
+/// the backends and never go through the `AssetServer`, so bevy's `file_watcher`
+/// never fires for a `.lua`/`.rhai`. Deliberately slower than the asset browser's
+/// listing throttle — the script set changes far less often than a folder listing.
+const SCAN_THROTTLE: f32 = 3.0;
+
+/// Land a finished project walk and start a new one when the project changed or
+/// the throttle elapsed. Publishes only when the file set actually differs, so a
+/// periodic rescan that finds nothing new costs no rebuilds.
+fn refresh_script_index(
+    mut index: ResMut<ScriptIndex>,
+    project: Option<Res<renzora::core::CurrentProject>>,
+    time: Res<Time>,
+) {
+    // Bind the poll result in its own statement before touching `index.task`
+    // again: folding this into `if let Some(..) = index.task.as_mut().and_then(..)`
+    // keeps the `as_mut()` borrow alive across the body and won't compile.
+    let finished = index.task.as_mut().and_then(|t| block_on(poll_once(t)));
+    if let Some(scripts) = finished {
+        index.task = None;
+        let hash = hash_scripts(&scripts);
+        if hash != index.hash {
+            index.hash = hash;
+            index.scripts = Arc::new(scripts);
+        }
+    }
+
+    let Some(project) = project else { return };
+    // A walk is already in flight — let it finish before queueing another.
+    if index.task.is_some() {
+        return;
+    }
+
+    let now = time.elapsed_secs();
+    let root_changed = index.root.as_deref() != Some(project.path.as_path());
+    let stale = index.last_scan.is_none_or(|t| now - t >= SCAN_THROTTLE);
+    if !root_changed && !stale {
+        return;
+    }
+
+    // Switching projects invalidates the old list outright: clear it now rather
+    // than offering the previous project's scripts until the new walk lands.
+    if root_changed {
+        index.root = Some(project.path.clone());
+        index.scripts = Arc::new(Vec::new());
+        index.hash = 0;
+    }
+    index.last_scan = Some(now);
+
+    // The IO pool is the right home for this: it is syscall-bound, and its
+    // workers are the ones given a 32 MiB stack by
+    // `renzora_runtime::init_io_task_pool_with_large_stack` — the headroom a
+    // deep recursive directory walk wants.
+    let root = project.path.clone();
+    index.task = Some(IoTaskPool::get().spawn(async move { scan_scripts_at(&root) }));
+}
+
+/// Content hash of a scan result — see [`ScriptIndex::hash`].
+fn hash_scripts(scripts: &[(String, PathBuf)]) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    scripts.len().hash(&mut h);
+    for (display, path) in scripts {
+        display.hash(&mut h);
+        path.hash(&mut h);
+    }
+    h.finish()
+}
+
 // ── Rebuild ──────────────────────────────────────────────────────────────────
 
 fn rebuild_scripts(world: &mut World) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
+    // Snapshot the cached project index once for every drawer: an `Arc` clone,
+    // no filesystem access. `refresh_script_index` owns keeping it current.
+    let (available, index_hash) = world
+        .get_resource::<ScriptIndex>()
+        .map(|i| (i.scripts.clone(), i.hash))
+        .unwrap_or_default();
     let mut q = world.query::<(Entity, &ScriptsRoot)>();
     let roots: Vec<(Entity, Entity, Option<u64>)> =
         q.iter(world).map(|(re, sr)| (re, sr.entity, sr.sig)).collect();
 
     for (root, entity, old_sig) in roots {
         let specs = collect_script_specs(world, entity);
-        let sig = scripts_sig(&specs, root);
+        let sig = scripts_sig(&specs, root, index_hash);
         if old_sig == Some(sig) {
             continue;
         }
-        let available = scan_scripts(world);
         let existing: Vec<Entity> = world
             .get::<Children>(root)
             .map(|c| c.iter().collect())
@@ -736,14 +870,13 @@ fn build_add_bar(
     root
 }
 
-/// Recursively scan the project for `.lua`/`.rhai` files, returning
+/// Recursively scan `root` for `.lua`/`.rhai` files, returning
 /// `(display-relative-path, absolute-path)` pairs sorted by display path.
-fn scan_scripts(world: &World) -> Vec<(String, PathBuf)> {
-    let Some(project) = world.get_resource::<renzora::core::CurrentProject>() else {
-        return Vec::new();
-    };
+///
+/// Runs on the IO task pool, never the main thread — see [`ScriptIndex`].
+fn scan_scripts_at(root: &std::path::Path) -> Vec<(String, PathBuf)> {
     let mut out = Vec::new();
-    scan_scripts_inner(&project.path, &project.path, &mut out);
+    scan_scripts_inner(root, root, &mut out);
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
 }

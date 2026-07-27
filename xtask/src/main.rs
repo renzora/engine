@@ -75,29 +75,51 @@ fn main() -> ExitCode {
     match cmd.as_str() {
         // Build + stage + launch — the default `cargo renzora`.
         "run" => {
-            let out = match build_and_stage(&repo, &plat) {
+            let out = match build_and_stage(&repo, &plat, &[]) {
                 Ok(out) => out,
                 Err(code) => return code,
             };
-            launch(&repo, &out, &plat)
+            launch(&repo, &out, &plat, false)
         }
         // Build + stage only — produce the dist/ folder, don't launch.
-        "dist" => match build_and_stage(&repo, &plat) {
+        "dist" => match build_and_stage(&repo, &plat, &[]) {
             Ok(out) => {
                 println!("[xtask] staged {}", out.display());
                 ExitCode::SUCCESS
             }
             Err(code) => code,
         },
+        // Profiling build + stage + launch — same as `run` but compiles the
+        // `profiling` feature in, which re-adds Bevy's Tracy instrumentation
+        // (per-system + render-node CPU zones, GPU-pass zones, frame marks). Use
+        // it with a running Tracy server to get the full flame graph + per-system
+        // Statistics. It recompiles `bevy_dylib` with `trace_tracy`, so prebuilt
+        // community plugins won't load against it — everything built here from
+        // source still matches (CLAUDE.md §3).
+        //
+        // Launches with `RENZORA_NO_XR=1` unless you pass `--xr`. A dev with an
+        // OpenXR runtime installed and set as the system default gets the
+        // XR-capable editor boot, which disables `PipelinedRenderingPlugin` and so
+        // runs the render sub-app inline on the main thread — measured at ~11.6 ms
+        // of a 27 ms frame, i.e. the profile is dominated by a serialization you
+        // almost certainly didn't mean to measure. Pass `--xr` when the headset
+        // path is the thing under the microscope.
+        "profile" => {
+            let out = match build_and_stage(&repo, &plat, &["profiling"]) {
+                Ok(out) => out,
+                Err(code) => return code,
+            };
+            launch(&repo, &out, &plat, true)
+        }
         other => {
-            eprintln!("[xtask] unknown command '{other}' (expected: run | dist)");
+            eprintln!("[xtask] unknown command '{other}' (expected: run | dist | profile)");
             ExitCode::from(2)
         }
     }
 }
 
-fn build_and_stage(repo: &Path, plat: &Platform) -> Result<PathBuf, ExitCode> {
-    if !build(repo) {
+fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<PathBuf, ExitCode> {
+    if !build(repo, features) {
         eprintln!("[xtask] cargo build failed");
         return Err(ExitCode::FAILURE);
     }
@@ -114,22 +136,34 @@ fn build_and_stage(repo: &Path, plat: &Platform) -> Result<PathBuf, ExitCode> {
 /// (`build-all.sh`): the whole workspace on the `dist` profile, minus the
 /// mobile crates (cdylib/staticlib targets that don't belong in a desktop
 /// build) and minus this helper itself.
-fn build(repo: &Path) -> bool {
-    println!("[xtask] cargo build --profile dist --workspace …");
+fn build(repo: &Path, features: &[&str]) -> bool {
+    let mut args: Vec<String> = [
+        "build",
+        "--profile",
+        "dist",
+        "--workspace",
+        "--exclude",
+        "renzora-android",
+        "--exclude",
+        "renzora-ios",
+        "--exclude",
+        "xtask",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    // Enable the requested workspace features (e.g. `profiling`). Applied under
+    // `--workspace`, cargo turns the feature on for the members that define it
+    // (`renzora_app` + `renzora_runtime`) and leaves the rest alone; feature
+    // unification then propagates the Bevy features to the one shared `bevy_dylib`.
+    if !features.is_empty() {
+        args.push("--features".to_string());
+        args.push(features.join(","));
+    }
+    println!("[xtask] cargo {}", args.join(" "));
     Command::new(cargo())
         .current_dir(repo)
-        .args([
-            "build",
-            "--profile",
-            "dist",
-            "--workspace",
-            "--exclude",
-            "renzora-android",
-            "--exclude",
-            "renzora-ios",
-            "--exclude",
-            "xtask",
-        ])
+        .args(&args)
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -298,11 +332,31 @@ fn copy_rust_std(out: &Path, plat: &Platform) -> std::io::Result<()> {
 /// Launch the staged editor. cwd = repo root so the editor resolves project
 /// assets the same way a plain `cargo run` does; plugins resolve via the loader's
 /// `<exe-dir>/plugins/` scan, independent of cwd.
-fn launch(repo: &Path, out: &Path, plat: &Platform) -> ExitCode {
+///
+/// `default_no_xr` makes the launch pass `RENZORA_NO_XR=1` (the profiling lane —
+/// see the `profile` arm). `--xr` anywhere in the passthrough args cancels it, and
+/// is consumed here rather than forwarded: the runtime doesn't know that flag, and
+/// XR-capable boot is its default whenever a runtime is reachable, so simply *not*
+/// setting the variable is what asks for it. An `RENZORA_NO_XR` already in the
+/// environment wins either way — the runtime only tests for the variable's
+/// presence, so an explicit one from the caller must not be second-guessed here.
+fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> ExitCode {
     let bin = out.join(format!("renzora{}", plat.exe_suffix));
     println!("[xtask] launching {}", bin.display());
-    let extra: Vec<String> = std::env::args().skip(2).collect();
-    match Command::new(&bin).current_dir(repo).args(&extra).status() {
+    let mut extra: Vec<String> = std::env::args().skip(2).collect();
+    let want_xr = extra.iter().any(|a| a == "--xr");
+    extra.retain(|a| a != "--xr");
+    let mut cmd = Command::new(&bin);
+    cmd.current_dir(repo).args(&extra);
+    if default_no_xr && !want_xr && std::env::var_os("RENZORA_NO_XR").is_none() {
+        println!(
+            "[xtask] RENZORA_NO_XR=1 (flat, pipelined boot so the profile isn't \
+             dominated by XR's serialized render sub-app; pass --xr to profile the \
+             headset path)"
+        );
+        cmd.env("RENZORA_NO_XR", "1");
+    }
+    match cmd.status() {
         Ok(s) => s.code().map(|c| ExitCode::from(c as u8)).unwrap_or(ExitCode::SUCCESS),
         Err(e) => {
             eprintln!("[xtask] failed to launch {}: {e}", bin.display());

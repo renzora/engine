@@ -28,8 +28,8 @@ struct CamSelect(Entity);
 struct CamToggle(Entity);
 
 pub(super) fn register_camera(app: &mut App) {
-    app.register_panel_content("camera_debug", true, build);
-    app.add_systems(
+    app.register_panel_content("camera_debug", true, build)
+        .systems(
         Update,
         (camera_toggle_click, camera_select_click).run_if(in_state(SplashState::Editor)),
     );

@@ -50,7 +50,25 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<LoadingAnim>();
     app.add_systems(
         Update,
-        (manage_loading_screen, manage_editor_overlay, tick_loading_anim),
+        (
+            // Both are exclusive (`&mut World`) and ran every frame regardless of
+            // whether their UI existed. They cost roughly the ~14 µs they measure —
+            // see `native::register` for why the "exclusive systems cost more than
+            // they measure" claim was withdrawn. Each spawns *and* despawns its UI, so the
+            // gate is an `or`: the second arm keeps it alive for the teardown pass
+            // after its trigger goes away, then both arms go false and it stops
+            // permanently. A plain state gate would strand the UI on screen.
+            manage_loading_screen.run_if(
+                in_state(SplashState::Loading).or_else(any_with_component::<LoadingScreenRoot>),
+            ),
+            // Keyed on the overlay actually being requested rather than on
+            // `SplashState::Editor` — the editor state is true for the whole
+            // session, which would defeat the point.
+            manage_editor_overlay.run_if(
+                editor_overlay_requested.or_else(any_with_component::<EditorOverlayRoot>),
+            ),
+            tick_loading_anim,
+        ),
     );
 }
 
@@ -138,6 +156,16 @@ fn project_info(world: &World) -> (String, String) {
         .get_resource::<renzora::CurrentProject>()
         .map(|p| (p.config.name.clone(), p.path.display().to_string()))
         .unwrap_or_default()
+}
+
+/// Has something asked for the in-editor loading overlay?
+///
+/// Used as the *build* arm of `manage_editor_overlay`'s gate. Deliberately not
+/// `in_state(SplashState::Editor)` — that is true for the entire editor session,
+/// so it would leave the exclusive system running every frame, which is the cost
+/// being removed.
+fn editor_overlay_requested(active: Option<Res<EditorLoadingOverlayActive>>) -> bool {
+    active.is_some_and(|a| a.0)
 }
 
 fn manage_editor_overlay(world: &mut World) {

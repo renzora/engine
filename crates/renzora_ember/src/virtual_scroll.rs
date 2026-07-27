@@ -230,8 +230,16 @@ fn update_virtual_metrics(
         let Some((offset, viewport_h, inv)) = nearest_viewport(entity, &parents, &viewports) else {
             continue;
         };
-        m.offset = offset;
-        m.viewport_h = viewport_h;
+        // Ignore a degenerate viewport instead of recording it. A list inside a
+        // collapsed dock tab or a closed popup measures `viewport_h == 0`, and
+        // storing that trips the `m.viewport_h <= 0.0` fallback in
+        // `virtual_scroll_impl` — so the next time the panel is shown it builds
+        // EVERY row for a frame before the real measurement lands. Keeping the
+        // last good measurement means a re-shown list is windowed immediately.
+        if viewport_h > 0.0 {
+            m.offset = offset;
+            m.viewport_h = viewport_h;
+        }
 
         // Collect (top-edge y, height) for the real (non-spacer) children, in
         // logical px. UiGlobalTransform.translation is the node centre.
@@ -263,10 +271,20 @@ fn update_virtual_metrics(
         if row1.is_finite() {
             m.row_h = (row1 - row0).max(1.0);
             m.measured = true;
-        } else {
-            // Single visible row → can't derive a stride; keep rendering all.
+        } else if !m.measured {
+            // No second row yet and we've never measured one — we genuinely
+            // can't derive a stride, so keep rendering everything.
             m.measured = false;
         }
+        // Otherwise: we HAVE measured a stride before and are now down to a
+        // single visible row (a filter narrowed the list, or the pane shrank).
+        // Deliberately keep the previous `row_h`/`measured` rather than
+        // discarding them. Clearing here re-armed the render-everything path, so
+        // a search that narrowed to one hit and was then backspaced rebuilt the
+        // entire list for a frame — the exact burst virtualization exists to
+        // avoid. A stale stride only mis-sizes the spacers for one frame and is
+        // corrected as soon as two rows are visible again; rendering every row
+        // costs far more.
     }
 }
 

@@ -71,8 +71,19 @@ pub(super) fn register(app: &mut App) {
     // Standalone panel: content builder + Add-Panel menu entry (Debug group).
     app.register_panel_content("render_toggles", true, build);
     app.register_shell_panel("render_toggles", renzora::lang::t("render.toggles_title"), "sliders-horizontal", "Debug");
+    // NOT visibility-gated (`PanelScope::systems`), deliberately — do not
+    // "finish the sweep" here. These systems *enforce* the toggles on the live
+    // cameras; the panel is only the UI that sets them. Gating them on the panel
+    // being visible would mean switching away from the Debug tab silently undid
+    // whatever you had just turned off, because the editor's own Update-stage
+    // camera-activation and effect-routing systems would re-apply unopposed.
+    //
+    // Same shape as `renzora_level_presets::graphics_quality`, which enforces the
+    // quality tier every frame regardless of whether Settings is open.
+    //
     // PostUpdate so these win over the editor's own Update-stage camera
     // activation / effect-routing systems, and before render extraction.
+    // panel-systems-ungated: see above — enforcement, not panel UI
     app.add_systems(
         PostUpdate,
         (

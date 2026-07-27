@@ -21,8 +21,8 @@ pub struct NativeMaterialPreview;
 
 impl Plugin for NativeMaterialPreview {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("material_preview", false, build);
-        app.add_systems(
+        app.register_panel_content("material_preview", false, build)
+            .systems(
             Update,
             (mat_btn_click, shape_combo_open, orbit_drag, orbit_pan, orbit_zoom).run_if(in_state(SplashState::Editor)),
         );

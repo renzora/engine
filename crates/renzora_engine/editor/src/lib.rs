@@ -78,6 +78,7 @@ impl Plugin for EngineEditorPlugin {
         // crash while in the editor. The runtime-side `CrashReportPlugin` (in
         // renzora_engine) owns the panic hook and the `CrashReportWindowState`
         // this reads.
+        // panel-systems-ungated: the crash overlay must appear regardless of which panel is focused
         app.add_systems(
             Update,
             (
@@ -93,11 +94,13 @@ impl Plugin for EngineEditorPlugin {
             use renzora_ember::panel::RegisterPanelContent;
             app.init_resource::<streaming_panel::StreamingDebugSnapshot>()
                 .register_panel_content("streaming_debug", true, streaming_panel::build)
-                .add_systems(
+                // `systems` applies `panel_active("streaming_debug")` itself — the
+                // id no longer has to be repeated here, so it can't drift from the
+                // one registered on the line above.
+                .systems(
                     Update,
                     streaming_panel::update_streaming_debug_snapshot
                         .run_if(in_state(renzora::SplashState::Editor))
-                        .run_if(renzora_ember::dock::panel_active("streaming_debug"))
                         .run_if(bevy::time::common_conditions::on_timer(
                             std::time::Duration::from_millis(250),
                         )),

@@ -49,8 +49,8 @@ struct CodeTab(usize);
 struct CodeTabClose(usize);
 
 pub fn register_native_code_editor(app: &mut App) {
-    app.register_panel_content("code_editor", false, build);
-    app.add_systems(
+    app.register_panel_content("code_editor", false, build)
+        .systems(
         Update,
         (tab_click, tab_close_click, save_shortcut, code_drop).run_if(in_state(SplashState::Editor)),
     );

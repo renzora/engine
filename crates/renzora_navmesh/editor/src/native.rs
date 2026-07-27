@@ -30,8 +30,8 @@ pub struct NativeNavmesh;
 
 impl Plugin for NativeNavmesh {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("navmesh", true, build);
-        app.add_systems(
+        app.register_panel_content("navmesh", true, build)
+            .systems(
             Update,
             (button_clicks, volume_actions).run_if(in_state(SplashState::Editor)),
         );

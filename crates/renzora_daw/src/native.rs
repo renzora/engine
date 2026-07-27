@@ -46,8 +46,8 @@ pub struct NativeDaw;
 
 impl Plugin for NativeDaw {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("daw", false, build);
-        app.add_systems(
+        app.register_panel_content("daw", false, build)
+            .systems(
             Update,
             (
                 transport_btn_click,

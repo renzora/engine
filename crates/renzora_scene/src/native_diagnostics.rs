@@ -402,19 +402,61 @@ fn warnings_snapshot(world: &World) -> KeyedSnapshot {
     }
     // Newest first.
     let list: Vec<CapturedWarning> = warnings.into_iter().rev().collect();
+    // Key by CONTENT, never by position. The list is newest-first, so a single
+    // incoming warning shifts every existing entry down one slot — with a
+    // positional key that changed the content behind all ~200 keys at once and
+    // the keyed list despawned and rebuilt every row (~7 entities each, most of
+    // them multi-line text). That churn is exactly what `keyed_list` exists to
+    // avoid, and it pinned `ui_layout_system` at ~22 ms on EVERY frame while the
+    // warnings kept coming. Hashing (level, target, message) keeps a row's
+    // identity fixed as it slides down, so an arrival spawns one row and a
+    // repeat only re-renders one badge.
+    //
+    // `count` is the content hash rather than part of the key, for the same
+    // reason: a coalesced repeat must update the row in place, not replace it.
     let items: Vec<(u64, u64)> = list
         .iter()
-        .enumerate()
-        .map(|(i, wn)| {
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            (&wn.target, &wn.message).hash(&mut h);
-            (i as u64, h.finish())
+        .map(|wn| {
+            let mut key = std::collections::hash_map::DefaultHasher::new();
+            (wn.level as u8, &wn.target, &wn.message).hash(&mut key);
+            let mut content = std::collections::hash_map::DefaultHasher::new();
+            wn.count.hash(&mut content);
+            (key.finish(), content.finish())
         })
         .collect();
     KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| warning_row(c, f, &list[i])),
     }
+}
+
+/// A small rounded `×N` pill shown when a warning repeated. Same shape and
+/// palette as the console's badge (`renzora_console::native::count_badge`) so
+/// the two feeds read as one system; kept as a local copy rather than a shared
+/// helper because the console is a separate crate this one doesn't depend on.
+fn count_badge(commands: &mut Commands, fonts: &EmberFonts, count: u32) -> Entity {
+    let badge = commands
+        .spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(5.0), Val::Px(1.0)),
+                margin: UiRect::left(Val::Px(4.0)),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(7.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgb_u8(70, 78, 92)),
+        ))
+        .id();
+    let label = commands
+        .spawn((
+            Text::new(format!("\u{d7}{count}")),
+            ui_font(&fonts.mono, 10.0),
+            TextColor(rgb(text_primary())),
+        ))
+        .id();
+    commands.entity(badge).add_child(label);
+    badge
 }
 
 fn warning_row(commands: &mut Commands, fonts: &EmberFonts, wn: &CapturedWarning) -> Entity {
@@ -461,7 +503,15 @@ fn warning_row(commands: &mut Commands, fonts: &EmberFonts, wn: &CapturedWarning
     let age_e = commands
         .spawn((Text::new(age_label), ui_font(&fonts.mono, 10.0), TextColor(rgb(text_muted()))))
         .id();
-    commands.entity(head).add_children(&[ic, target, gap, age_e]);
+    let mut head_kids = vec![ic, target];
+    // Repeat-count badge, mirroring the console's `×N` pill. A system that emits
+    // the same warning every frame now occupies one row whose badge ticks up,
+    // instead of flooding the buffer and evicting every other warning.
+    if wn.count > 1 {
+        head_kids.push(count_badge(commands, fonts, wn.count));
+    }
+    head_kids.extend_from_slice(&[gap, age_e]);
+    commands.entity(head).add_children(&head_kids);
     let msg = commands
         .spawn((
             Text::new(wn.message.clone()),

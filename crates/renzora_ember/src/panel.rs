@@ -35,17 +35,88 @@ struct PanelBuilder {
 #[derive(Resource, Default)]
 pub struct NativePanelBuilders(HashMap<String, PanelBuilder>);
 
+/// A panel-scoped handle on the `App`, returned by
+/// [`RegisterPanelContent::register_panel_content`].
+///
+/// **Systems added through this are gated on the panel being visible, by
+/// default.** That default is the entire point. Panel systems that keep running
+/// while their tab is hidden are the largest avoidable cost in the editor's idle
+/// frame, and asking every panel author to remember `.run_if(panel_active(id))`
+/// demonstrably did not work: surveying the panel crates found some fully gated,
+/// several with *zero* gating, and no pattern beyond who happened to think of it.
+/// A default you have to opt into is a default that is wrong most of the time.
+///
+/// Work that genuinely must keep running while the panel is backgrounded — an
+/// in-flight load, autosave, teardown that has to observe a despawn — goes
+/// through [`PanelScope::always`]. That is deliberately more to type than the
+/// gated path, and deliberately reads as a claim at the call site.
+pub struct PanelScope<'a> {
+    app: &'a mut App,
+    id: &'static str,
+}
+
+impl<'a> PanelScope<'a> {
+    /// Add systems that only run while this panel is the active tab somewhere.
+    ///
+    /// The gate is [`crate::dock::panel_active`], which covers both the main dock
+    /// and torn-off dock windows.
+    pub fn systems<M>(
+        &mut self,
+        schedule: impl bevy::ecs::schedule::ScheduleLabel,
+        systems: impl IntoScheduleConfigs<bevy::ecs::system::ScheduleSystem, M>,
+    ) -> &mut Self {
+        self.app
+            .add_systems(schedule, systems.run_if(crate::dock::panel_active(self.id)));
+        self
+    }
+
+    /// Add systems that run regardless of whether the panel is visible.
+    ///
+    /// Only for work that is wrong to pause: background loads, autosave, cleanup
+    /// that must observe an event or a despawn while the tab is hidden. If you
+    /// are reaching for this because a system "seemed like it should always run",
+    /// prefer [`Self::systems`] — a panel that is not on screen has nothing to
+    /// show, and pausing is almost always correct.
+    pub fn always<M>(
+        &mut self,
+        schedule: impl bevy::ecs::schedule::ScheduleLabel,
+        systems: impl IntoScheduleConfigs<bevy::ecs::system::ScheduleSystem, M>,
+    ) -> &mut Self {
+        self.app.add_systems(schedule, systems);
+        self
+    }
+
+    /// Escape hatch to the underlying `App` for registrations that aren't systems
+    /// (resources, assets, plugins, reflection).
+    pub fn app(&mut self) -> &mut App {
+        self.app
+    }
+}
+
 /// App extension: register a native panel's content as a single build closure.
 pub trait RegisterPanelContent {
     /// Register `id` as a native panel and supply its content builder. `scroll`
     /// wraps the content in a scroll view (`false` if the panel scrolls itself).
-    fn register_panel_content<F>(&mut self, id: &str, scroll: bool, build: F) -> &mut Self
+    ///
+    /// Returns a [`PanelScope`] — add the panel's systems through it and they are
+    /// visibility-gated automatically.
+    fn register_panel_content<F>(
+        &mut self,
+        id: &'static str,
+        scroll: bool,
+        build: F,
+    ) -> PanelScope<'_>
     where
         F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static;
 }
 
 impl RegisterPanelContent for App {
-    fn register_panel_content<F>(&mut self, id: &str, scroll: bool, build: F) -> &mut Self
+    fn register_panel_content<F>(
+        &mut self,
+        id: &'static str,
+        scroll: bool,
+        build: F,
+    ) -> PanelScope<'_>
     where
         F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static,
     {
@@ -66,7 +137,7 @@ impl RegisterPanelContent for App {
                     build: Box::new(build),
                 },
             );
-        self
+        PanelScope { app: self, id }
     }
 }
 

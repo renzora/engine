@@ -7,8 +7,19 @@
 //!
 //! `rebuild_inspector` (exclusive) rebuilds sections + rows whenever the
 //! selection / locked entity / component set / add-overlay changes (hashed
-//! signature, so field-value edits don't trigger a rebuild — those are reactive
-//! via `bind_2way`).
+//! signature). Ordinary field-value edits — scalars, `Vec3`, colours — do **not**
+//! rebuild; they are reactive via `bind_2way`.
+//!
+//! Two field reads DO feed the signature, so edits to them rebuild the whole
+//! panel, and the distinction is easy to lose:
+//!   * `is_enabled_fn` — 37 of 39 implementations read a component *field*
+//!     (`s.enabled`, `l.active`, …), so flipping any effect's enable switch
+//!     rebuilds every section, not just that one.
+//!   * `DynamicEnum` field options — recomputed and hashed each frame, so an
+//!     edit that grows or shrinks an option list rebuilds too.
+//!
+//! (The doc here previously claimed field-value edits never rebuild, which was
+//! false for exactly those two.)
 //!
 //! Layout matches the egui inspector: component sections with a header
 //! (caret · icon · title · enable toggle · trash) and field rows with a
@@ -27,7 +38,7 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
+use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, dropdown_with_icons, scroll_view, set_section_open,
     text_input, toggle_switch, DragRange, EmberTextInput, Section,
@@ -184,9 +195,46 @@ struct ExpandAllGlyph;
 /// the category colour when open.
 #[derive(Component)]
 struct InspectorSectionHeader {
-    index: usize,
+    /// Which component this section is for — the key both
+    /// [`InspectorSectionsOpen`] and the (future) keyed-list reconcile use.
+    ///
+    /// Deliberately *not* the section's list position. Position is presentation,
+    /// not identity: baking it in made adding a component near the top look like
+    /// a content change for every section below it. `stripe_collapsed_headers`
+    /// now derives the stripe index from the live child order instead.
+    type_id: &'static str,
     header_bg: (u8, u8, u8),
 }
+
+/// Should a section start expanded under `policy`, ignoring any remembered state?
+///
+/// Keyed on `type_id`, not the display name — the two are easy to confuse (the
+/// "ID" section's `type_id` is `"name"`), and matching on the localized-adjacent
+/// display string would silently stop working if a label were reworded. Shared by
+/// `collect_sections` and `apply_expand_policy_change` so the two can never drift.
+fn policy_open(policy: InspectorExpandDefault, type_id: &str) -> bool {
+    match policy {
+        InspectorExpandDefault::AllOpen => true,
+        InspectorExpandDefault::AllClosed => false,
+        InspectorExpandDefault::Essentials => {
+            matches!(type_id, "name" | "transform" | "script_component")
+        }
+    }
+}
+
+/// Remembered collapse state per component type.
+///
+/// Keyed by **type**, not by `(entity, type_id)` like `ScriptSectionsOpen` —
+/// script sections are per-entity instances, component sections are per-type, so
+/// "I keep Transform collapsed and Material open" should follow the user across
+/// selections rather than resetting on every click.
+///
+/// The Inspector Expand Default setting stays authoritative: changing it clears
+/// this map *and* re-applies to the live sections, so the preference is always
+/// reachable and can never be permanently shadowed by accumulated per-section
+/// toggles.
+#[derive(Resource, Default)]
+struct InspectorSectionsOpen(std::collections::HashMap<&'static str, bool>);
 
 /// Stable host for the vertical component menu down the left of the inspector.
 /// `rebuild_inspector` despawns this host's children and rebuilds one icon button
@@ -219,6 +267,7 @@ fn filter_style(world: &World) -> InspectorComponentFilterStyle {
 pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<NativeInspectorState>();
+    app.init_resource::<InspectorSectionsOpen>();
     // Bridge to the timeline editor's per-property keyframe buttons.
     // `init_resource` is idempotent — the timeline editor inits these too, so
     // they exist whichever crate loads first (and stay default when it's absent).
@@ -301,13 +350,20 @@ pub fn register_native_inspector(app: &mut App) {
             expand_all_click,
             sync_expand_glyph,
             stripe_collapsed_headers,
+            remember_inspector_sections,
+            apply_expand_policy_change,
         )
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
     );
     app.add_systems(
         Update,
-        rebuild_inspector
+        // Chained: the reconciler reads the `Section` open flags that
+        // `rebuild_inspector` has just (re)created, so running it after in the
+        // same frame means a rebuild lands with its open sections already filled
+        // — no one-frame flash of empty bodies on selection change.
+        (rebuild_inspector, reconcile_section_bodies)
+            .chain()
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
     );
@@ -336,6 +392,7 @@ enum FieldKind {
     ReadOnly,
 }
 
+#[derive(Clone)]
 enum FieldInit {
     Float(f32),
     Vec3([f32; 3]),
@@ -345,6 +402,7 @@ enum FieldInit {
     DynEnum(Vec<String>, usize),
 }
 
+#[derive(Clone)]
 struct FieldSpec {
     name: &'static str,
     kind: FieldKind,
@@ -733,7 +791,16 @@ fn component_menu_click(
 
 // ── Rebuild ──────────────────────────────────────────────────────────────────
 
-fn rebuild_inspector(world: &mut World) {
+/// `container_q` is a `Local` rather than a fresh `world.query_filtered(..)` per
+/// call: this system runs every frame the Inspector tab is active, and building a
+/// `QueryState` each time forces `update_archetypes` down its
+/// from-generation-zero full-scan branch. `With<T>` goes through `and_with` and
+/// never populates `FilteredAccess::required`, so there is no cheap path — it
+/// rescans every archetype in the world, every frame, to find one entity.
+fn rebuild_inspector(
+    world: &mut World,
+    mut container_q: Local<QueryState<Entity, With<InspectorRoot>>>,
+) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
@@ -764,8 +831,7 @@ fn rebuild_inspector(world: &mut World) {
         }
     }
 
-    let mut cq = world.query_filtered::<Entity, With<InspectorRoot>>();
-    let Some(container) = cq.iter(world).next() else {
+    let Some(container) = container_q.iter(world).next() else {
         return;
     };
 
@@ -855,11 +921,13 @@ fn rebuild_inspector(world: &mut World) {
                     commands.entity(container).add_child(l);
                 }
                 let locked_here = locked == Some(entity);
-                for (i, sec) in sections.iter().enumerate() {
+                for sec in sections.iter() {
                     let (root, body) =
-                        build_section(&mut commands, &fonts, sec, entity, locked_here, i);
+                        build_section(&mut commands, &fonts, sec, entity, locked_here);
                     commands.entity(container).add_child(root);
-                    if let Some(drawer) = sec.native_drawer {
+                    // Only an OPEN section's drawer runs here; a collapsed one is
+                    // left to `reconcile_section_bodies` to run if it's expanded.
+                    if let (Some(drawer), true) = (sec.native_drawer, sec.open) {
                         native_pending.push((body, drawer, entity));
                     }
                 }
@@ -880,6 +948,17 @@ fn rebuild_inspector(world: &mut World) {
     world.resource_mut::<NativeInspectorState>().sig = Some(sig);
 }
 
+/// Known gap, deliberately not closed: a field's *visibility* depends on its
+/// `get_fn` returning `Some` (see `collect_sections`), and that predicate is not
+/// hashed here — so a field that appears or disappears without any other input
+/// changing leaves a stale row.
+///
+/// Not fixed because the cure is worse: folding it in means calling `get_fn` for
+/// every field of every present component **every frame**, before the early-out,
+/// to guard against something only three `get_fn`s in the entire workspace can
+/// even express (the rest are unconditional). Per-section hashing would make it
+/// cheap — it would only re-read the fields of one section — so this belongs with
+/// that work rather than as a standalone per-frame cost.
 fn inspector_signature(
     world: &World,
     container: Entity,
@@ -958,14 +1037,15 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         .get_resource::<EditorSettings>()
         .map(|s| s.inspector_expand_default)
         .unwrap_or_default();
-    let section_open = |title: &str| -> bool {
-        match expand_policy {
-            InspectorExpandDefault::AllOpen => true,
-            InspectorExpandDefault::AllClosed => false,
-            InspectorExpandDefault::Essentials => {
-                matches!(title, "ID" | "Transform" | "Scripts")
-            }
+    // Remembered per-type collapse state wins over the policy; the policy is
+    // re-asserted (and this map cleared) by `apply_expand_policy_change` whenever
+    // the setting itself changes, so it can never become unreachable.
+    let remembered = world.get_resource::<InspectorSectionsOpen>();
+    let section_open = |type_id: &'static str| -> bool {
+        if let Some(&open) = remembered.and_then(|m| m.0.get(type_id)) {
+            return open;
         }
+        policy_open(expand_policy, type_id)
     };
 
     let mut out = Vec::new();
@@ -1006,7 +1086,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 enabled_now,
                 header_bg,
                 accent,
-                open: section_open(entry.display_name),
+                open: section_open(entry.type_id),
                 fields: Vec::new(),
             });
             continue;
@@ -1023,7 +1103,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 enabled_now,
                 header_bg,
                 accent,
-                open: section_open(entry.display_name),
+                open: section_open(entry.type_id),
                 fields: Vec::new(),
             });
             continue;
@@ -1117,7 +1197,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             enabled_now,
             header_bg,
             accent,
-            open: section_open(entry.display_name),
+            open: section_open(entry.type_id),
             fields,
         });
     }
@@ -1243,13 +1323,139 @@ struct AddKeyframeBtn {
     field: String,
 }
 
+/// The recipe for (re)filling a section body, parked on the body entity itself.
+///
+/// Sections are built collapsed-and-empty and filled on expand, so this has to
+/// survive on the body across collapse/expand cycles — it's the only record of
+/// how to rebuild rows that were thrown away. `filled` tracks whether the body
+/// currently holds its rows, so [`reconcile_section_bodies`] can tell "just
+/// expanded" from "already done" without diffing children every frame.
+#[derive(Component)]
+struct SectionBodySpec {
+    fields: Vec<FieldSpec>,
+    entity: Entity,
+    type_id: &'static str,
+    native_drawer: Option<NativeInspectorDrawer>,
+    custom: bool,
+    filled: bool,
+}
+
+/// Build the declarative field rows for a section body (shared by the initial
+/// build and the fill-on-expand path so the two can't drift — notably the stripe
+/// colour, which is derived from row index).
+fn fill_section_rows(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    fields: &[FieldSpec],
+    entity: Entity,
+    type_id: &'static str,
+    body: Entity,
+) {
+    for (i, field) in fields.iter().enumerate() {
+        let r = build_field_row(commands, fonts, field, entity, type_id);
+        commands
+            .entity(r)
+            .insert(BackgroundColor(renzora_ember::inspector::inspector_stripe(i)));
+        commands.entity(body).add_child(r);
+    }
+}
+
+/// Keep each section body's contents in sync with its header's open flag: fill
+/// on expand, throw the rows away on collapse.
+///
+/// Reconciliation rather than click handling, deliberately — `set_section_open`
+/// (expand/collapse-all, and the expand-default policy) moves sections without
+/// any click, and observing the resulting *state* covers every path at once.
+///
+/// Exclusive because native drawers are `fn(&mut World, Entity) -> Entity`.
+fn reconcile_section_bodies(
+    world: &mut World,
+    // Scoped to inspector headers: `Section` is a shared ember widget, so a bare
+    // `&Section` query would walk every collapsible section in the editor.
+    mut headers: Local<QueryState<&Section, With<InspectorSectionHeader>>>,
+) {
+    let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
+        return;
+    };
+
+    // (body, open) for every section whose body disagrees with its header.
+    let mut todo: Vec<(Entity, bool)> = Vec::new();
+    for sec in headers.iter(world) {
+        let body = sec.body();
+        if let Some(spec) = world.get::<SectionBodySpec>(body) {
+            if spec.filled != sec.is_open() {
+                todo.push((body, sec.is_open()));
+            }
+        }
+    }
+    if todo.is_empty() {
+        return;
+    }
+
+    for (body, open) in todo {
+        let Some(spec) = world.get::<SectionBodySpec>(body) else {
+            continue;
+        };
+        let (fields, ent, type_id, drawer, custom) = (
+            spec.fields.clone(),
+            spec.entity,
+            spec.type_id,
+            spec.native_drawer,
+            spec.custom,
+        );
+        // A despawned inspected entity outlives its rows here (selection can
+        // change in the same frame a section is toggled) — skip rather than
+        // build rows whose accessors would miss.
+        if open && world.get_entity(ent).is_err() {
+            continue;
+        }
+
+        let existing: Vec<Entity> = world
+            .get::<Children>(body)
+            .map(|ch| ch.iter().collect())
+            .unwrap_or_default();
+
+        let mut queue = CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            for child in existing {
+                // try_despawn: a row's own binding may have retired it already.
+                commands.entity(child).try_despawn();
+            }
+            if open {
+                if drawer.is_some() {
+                    // filled below, after the queue applies (needs &mut World)
+                } else if custom {
+                    let note =
+                        empty_label(&mut commands, &fonts, &renzora::lang::t("inspector.custom_pending"));
+                    commands.entity(body).add_child(note);
+                } else {
+                    fill_section_rows(&mut commands, &fonts, &fields, ent, type_id, body);
+                }
+            }
+        }
+        queue.apply(world);
+
+        if open {
+            if let Some(drawer) = drawer {
+                let content = drawer(world, ent);
+                if let Ok(mut em) = world.get_entity_mut(body) {
+                    em.add_child(content);
+                }
+            }
+        }
+        if let Some(mut spec) = world.get_mut::<SectionBodySpec>(body) {
+            spec.filled = open;
+        }
+    }
+}
+
 fn build_section(
     commands: &mut Commands,
     fonts: &EmberFonts,
     sec: &SectionSpec,
     entity: Entity,
     locked_here: bool,
-    index: usize,
 ) -> (Entity, Entity) {
     // Compose the shared ember section (caret · accent icon · title + colored
     // header + ember-owned collapse); override the body padding to the inspector's
@@ -1267,7 +1473,7 @@ fn build_section(
         sec.open,
     );
     commands.entity(header).insert(InspectorSectionHeader {
-        index,
+        type_id: sec.type_id,
         header_bg: sec.header_bg,
     });
     // Compact the shared section for the inspector: kill the widget's 8px
@@ -1299,20 +1505,34 @@ fn build_section(
         display: if sec.open { Display::Flex } else { Display::None },
         ..default()
     });
-    if sec.native_drawer.is_some() {
+    // A COLLAPSED section builds nothing — it records how to fill itself and
+    // `reconcile_section_bodies` does so when (if) the user expands it.
+    //
+    // Collapsing is not enough on its own: `section_with_header_open` sets the
+    // body to `Display::None`, and `bevy_ui` does NOT prune hidden subtrees from
+    // its per-frame walk — `compute_hidden_layout` clears the cache and recurses,
+    // so a hidden row is *never* cached and pays full layout every frame, forever.
+    // An entity with a dozen components and two sections open was laying out every
+    // row of the other ten. Native drawers were worse: `drawer(world, ent)` ran and
+    // built its whole content for a section nobody could see.
+    commands.entity(body).insert(SectionBodySpec {
+        fields: sec.fields.clone(),
+        entity,
+        type_id: sec.type_id,
+        native_drawer: sec.native_drawer,
+        custom: sec.custom,
+        filled: sec.open,
+    });
+    if !sec.open {
+        // nothing built — `reconcile_section_bodies` fills it on expand
+    } else if sec.native_drawer.is_some() {
         // Body is filled by the registered native drawer once the build queue
         // has applied (it needs exclusive &mut World). See `rebuild_inspector`.
     } else if sec.custom {
         let note = empty_label(commands, fonts, &renzora::lang::t("inspector.custom_pending"));
         commands.entity(body).add_child(note);
     } else {
-        for (i, field) in sec.fields.iter().enumerate() {
-            let r = build_field_row(commands, fonts, field, entity, sec.type_id);
-            commands
-                .entity(r)
-                .insert(BackgroundColor(renzora_ember::inspector::inspector_stripe(i)));
-            commands.entity(body).add_child(r);
-        }
+        fill_section_rows(commands, fonts, &sec.fields, entity, sec.type_id, body);
     }
 
     // Header affordances: a spacer pushes the optional lock / enable / trash to
@@ -1332,6 +1552,32 @@ fn build_section(
         commands
             .entity(lock)
             .insert((Interaction::default(), FocusPolicy::Block, LockBtn { entity }));
+        // Bind the glyph rather than leaving it baked. `locked` reaches the UI
+        // *only* through the inspector's global rebuild signature today, so the
+        // baked-in version works purely by accident — and this glyph is the sole
+        // consumer of `locked_here`, so under granular rebuilds nothing about the
+        // panel would change when you click lock: the state would flip and the
+        // icon would sit there, making the button look broken.
+        let locked_now = move |w: &World| {
+            w.get_resource::<NativeInspectorState>()
+                .and_then(|s| s.locked)
+                == Some(entity)
+        };
+        let g = locked_now;
+        bind_text(commands, lock, move |w| {
+            let name = if g(w) { "lock-simple" } else { "lock-simple-open" };
+            renzora_ember::phosphor_map::icon_glyph(name)
+                .unwrap_or('\u{E4C6}')
+                .to_string()
+        });
+        bind_text_color(commands, lock, move |w| {
+            let (r, gg, b) = if locked_now(w) {
+                (120, 170, 255)
+            } else {
+                renzora_ember::theme::text_muted()
+            };
+            c((r, gg, b))
+        });
         extra.push(lock);
     }
     if let Some((_, set_enabled)) = sec.enable {
@@ -1722,7 +1968,7 @@ fn build_field_value(
             // Use the shared ember `dropdown` (position-aware — flips up near a
             // panel/window bottom) rather than a bespoke inspector popup, so enum
             // fields get the same behaviour as every other dropdown.
-            let refs: Vec<&str> = options.iter().copied().collect();
+            let refs: Vec<&str> = options.to_vec();
             let cur = if let FieldInit::Text(ref s) = field.init {
                 s.clone()
             } else {
@@ -1832,6 +2078,24 @@ fn build_field_value(
                     TextColor(c(renzora_ember::theme::text_muted())),
                 ))
                 .id();
+            // `ReadOnly` was the ONE field kind with no binding: its value was
+            // formatted once at `collect_sections` time and baked into the `Text`.
+            // It only *appeared* to stay fresh because the inspector's global
+            // signature rebuilds the whole panel so often — accidental
+            // reactivity, not real. Anything whose displayed value changes without
+            // the component set changing (a mesh's vertex count, a camera's
+            // computed projection, a resolved asset path) was already able to go
+            // stale, and would freeze outright once rebuilds become granular.
+            //
+            // `ReadOnly` is also the catch-all arm of `#[derive(Inspectable)]`
+            // (`renzora_macros/src/inspectable.rs`), so this is the common case for
+            // any field type the derive can't infer — not a corner.
+            //
+            // One-way `bind_text`: there is no editing to conflict with, so unlike
+            // the `bind_2way` fields there's no focus or in-progress drag to
+            // destroy by writing to it.
+            let get = field.get_fn;
+            bind_text(commands, t, move |w| format_value((get)(w, entity).as_ref()));
             commands.entity(value_parent).add_child(t);
         }
     }
@@ -2263,16 +2527,82 @@ fn expand_all_click(
 /// its per-category colour. Runs off the live [`Section`] flag, so it tracks
 /// header clicks and the expand/collapse-all button without a rebuild.
 fn stripe_collapsed_headers(
+    root: Query<&Children, With<InspectorRoot>>,
+    sections: Query<&Children>,
     mut headers: Query<(&Section, &InspectorSectionHeader, &mut BackgroundColor)>,
 ) {
-    for (sec, hdr, mut bg) in &mut headers {
+    // Derive the stripe index from the LIVE child order rather than a baked-in
+    // position. Position is presentation, not identity — storing it on the header
+    // made inserting a section near the top look like a content change for
+    // everything below it, which would force needless rebuilds once the section
+    // list is reconciled rather than rewritten.
+    let Ok(children) = root.single() else {
+        return;
+    };
+    for (i, section_root) in children.iter().enumerate() {
+        // A section's header is its first child (see `build_section`).
+        let Some(header) = sections.get(section_root).ok().and_then(|c| c.iter().next()) else {
+            continue;
+        };
+        let Ok((sec, hdr, mut bg)) = headers.get_mut(header) else {
+            continue;
+        };
         let want = if sec.is_open() {
             renzora_ember::theme::rgb(hdr.header_bg)
         } else {
-            renzora_ember::inspector::inspector_stripe(hdr.index)
+            renzora_ember::inspector::inspector_stripe(i)
         };
         if bg.0 != want {
             bg.0 = want;
+        }
+    }
+}
+
+/// Persist a section's collapse state under its component type whenever the user
+/// toggles it, so it survives rebuilds and follows the user across selections.
+/// Mirrors `scripts.rs`'s `remember_script_sections`, keyed by type rather than
+/// by `(entity, script_id)` — see [`InspectorSectionsOpen`].
+fn remember_inspector_sections(
+    changed: Query<(&Section, &InspectorSectionHeader), Changed<Section>>,
+    mut open: ResMut<InspectorSectionsOpen>,
+) {
+    for (sec, hdr) in &changed {
+        open.0.insert(hdr.type_id, sec.is_open());
+    }
+}
+
+/// Keep the Inspector Expand Default setting authoritative.
+///
+/// Without this the setting is unreachable once the user has toggled anything:
+/// remembered per-type state would always win, and simply clearing the map is not
+/// enough either — a rebuild is not guaranteed, so the live sections would keep
+/// their old state. Wipe the memory *and* drive the live `Section`s, the same way
+/// `expand_all_click` does.
+fn apply_expand_policy_change(
+    settings: Res<EditorSettings>,
+    mut open: ResMut<InspectorSectionsOpen>,
+    mut sections: Query<(&mut Section, &InspectorSectionHeader)>,
+    mut nodes: Query<&mut Node>,
+    mut texts: Query<&mut Text>,
+    mut last: Local<Option<InspectorExpandDefault>>,
+) {
+    let policy = settings.inspector_expand_default;
+    if *last == Some(policy) {
+        return;
+    }
+    // Skip the first observation: that is startup, not a user change, and the
+    // sections built since already honour the policy.
+    let first_run = last.is_none();
+    *last = Some(policy);
+    if first_run {
+        return;
+    }
+
+    open.0.clear();
+    for (mut sec, hdr) in &mut sections {
+        let want = policy_open(policy, hdr.type_id);
+        if sec.is_open() != want {
+            set_section_open(&mut sec, want, &mut nodes, &mut texts);
         }
     }
 }

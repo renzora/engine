@@ -34,6 +34,7 @@ pub fn register_native_viewport(app: &mut App) {
         // `scroll = false`: the camera image fills the panel.
         app.register_panel_content(id, false, move |commands, fonts| build_viewport(commands, fonts, i));
     }
+    // panel-systems-ungated: the 3D viewport itself; camera lifetime is managed by sync_viewport_camera_activation
     app.add_systems(
         Update,
         (report_viewport_geometry, simulate_border).run_if(in_state(SplashState::Editor)),

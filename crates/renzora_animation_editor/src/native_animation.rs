@@ -39,8 +39,8 @@ pub struct NativeAnimationPanel;
 impl Plugin for NativeAnimationPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<NativeAnimPanelClip>();
-        app.register_panel_content("animation", true, build);
-        app.add_systems(
+        app.register_panel_content("animation", true, build)
+            .systems(
             Update,
             (cache_panel_clip, clip_row_click, fire_click).run_if(in_state(SplashState::Editor)),
         );

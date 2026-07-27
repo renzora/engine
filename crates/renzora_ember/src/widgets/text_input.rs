@@ -253,7 +253,11 @@ pub fn bind_text_input(
     get: impl Fn(&World) -> String + Send + Sync + 'static,
     set: impl Fn(&mut World, String) + Send + Sync + 'static,
 ) {
-    crate::reactive::react(commands, move |world: &mut World| {
+    // Anchored to the input: this clones the value, placeholder and the `get`
+    // result every frame, and did so for every text input in every pane the user
+    // had ever opened — including hidden dock tabs, which a bare `react` cannot
+    // skip because it has no entity to locate.
+    crate::reactive::react_anchored(commands, input, move |world: &mut World| {
         if world.get_entity(input).is_err() {
             return false;
         }

@@ -241,8 +241,8 @@ pub(crate) struct UploaderPanel;
 impl Plugin for UploaderPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<Uploader>();
-        app.register_panel_content(PANEL_ID, true, build);
-        app.add_systems(
+        app.register_panel_content(PANEL_ID, true, build)
+            .systems(
             Update,
             (
                 uploader_poll,

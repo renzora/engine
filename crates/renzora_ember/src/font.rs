@@ -98,15 +98,71 @@ pub(crate) fn load_fonts(
     });
 }
 
+/// Rendered font sizes are snapped to these values (in final px, after
+/// [`TEXT_SCALE`] and [`ui_font_scale`]).
+///
+/// **Why this exists — an 8-entry LRU cliff in the text stack.** Rasterizing a
+/// glyph run builds a hinted `swash` scaler, and swash caches those in a
+/// fixed-size table of exactly **8** entries (`MAX_CACHED_HINT_INSTANCES`), keyed
+/// on `(font id, size, variation coords)` and shared across every TrueType
+/// (`glyf`) font — which all three embedded fonts are. On a miss it re-runs the
+/// font's `fpgm` and `prep` bytecode through the TrueType interpreter, tens of µs
+/// each. Bevy also builds that scaler *before* checking the glyph atlas, so a
+/// fully-warm atlas still pays it.
+///
+/// Unsnapped, ember spread text across ~59 distinct `(font, size)` pairs — against
+/// 8 slots, visited in archetype order, that is a ~100% miss rate. Profiling
+/// caught `text_system` at 18.7 ms on a frame that spawned ~1000 text nodes;
+/// without the thrash the same burst is a few ms. Each pair also owns a 512×512
+/// RGBA atlas (1 MiB), so the spread cost ~59 MiB too.
+///
+/// The three dominant authored sizes (11.0 → 297 call sites, 10.0 → 142,
+/// 12.0 → 120; together ~65% of all text) land on just the 9 and 11 rungs.
+///
+/// **Tuning:** fewer rungs = fewer cache misses. Fitting *entirely* inside the 8
+/// slots is not reachable without a visual redesign — three fonts share the table,
+/// so it would mean ~2-3 sizes each — so this is deliberately a large reduction
+/// rather than a complete fix. Removing a rung is a design decision about how the
+/// editor looks; measure `text_system` before and after if you change it.
+const FONT_SIZE_LADDER: [f32; 6] = [9.0, 11.0, 13.0, 16.0, 20.0, 26.0];
+
+/// Snap a final pixel size to the nearest [`FONT_SIZE_LADDER`] rung.
+///
+/// Set `RENZORA_NO_FONT_LADDER=1` to bypass this and get the old
+/// one-atlas-per-authored-size behaviour — there to A/B the change against a
+/// profile, not because unsnapped is ever preferable.
+pub fn snap_font_px(px: f32) -> f32 {
+    if std::env::var_os("RENZORA_NO_FONT_LADDER").is_some() {
+        return px;
+    }
+    // Sizes beyond the top rung are rare and usually deliberate (splash/hero
+    // text); snapping them down would be visible, so let them through.
+    if px > FONT_SIZE_LADDER[FONT_SIZE_LADDER.len() - 1] {
+        return px;
+    }
+    let mut best = FONT_SIZE_LADDER[0];
+    let mut best_d = (px - best).abs();
+    for rung in FONT_SIZE_LADDER.iter().skip(1) {
+        let d = (px - rung).abs();
+        if d < best_d {
+            best = *rung;
+            best_d = d;
+        }
+    }
+    best
+}
+
 /// A `TextFont` in the given font source at the given (pre-scale) size.
 ///
 /// Takes a [`FontSource`] so callers pass `&fonts.ui` / `&fonts.mono` (now
 /// source-typed) and the UI font can be swapped to any family/generic at
 /// runtime. Existing call sites are unchanged — they already passed `&fonts.ui`.
+///
+/// The resulting size is snapped to [`FONT_SIZE_LADDER`]; see there for why.
 pub fn ui_font(font: &FontSource, size: f32) -> TextFont {
     TextFont {
         font: font.clone(),
-        font_size: FontSize::Px(size * TEXT_SCALE * ui_font_scale()),
+        font_size: FontSize::Px(snap_font_px(size * TEXT_SCALE * ui_font_scale())),
         ..default()
     }
 }
@@ -334,7 +390,12 @@ pub fn icon_text(
             Text::new(ch.to_string()),
             TextFont {
                 font: bevy::text::FontSource::Handle(phosphor.clone()),
-                font_size: bevy::text::FontSize::Px(size),
+                // Snapped like `ui_font` — icons were the single biggest source of
+                // size spread (~24 distinct sizes on the Phosphor font alone), and
+                // they share swash's 8-entry hinting table with the text fonts.
+                // Note icons deliberately skip `TEXT_SCALE`/`ui_font_scale`, so the
+                // authored size IS the final px here.
+                font_size: bevy::text::FontSize::Px(snap_font_px(size)),
                 ..default()
             },
             TextColor(rgb(color)),

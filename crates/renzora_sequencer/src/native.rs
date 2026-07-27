@@ -27,6 +27,7 @@ pub struct NativeSequencer;
 impl Plugin for NativeSequencer {
     fn build(&self, app: &mut App) {
         app.register_panel_content("sequencer", false, build);
+        // panel-systems-ungated: seq_sync drives playback that should continue while the tab is hidden
         app.add_systems(
             Update,
             (seq_btn_click, track_btn_click, seq_sync, update_play_icon).run_if(in_state(SplashState::Editor)),

@@ -392,22 +392,32 @@ impl Plugin for AiChatPlugin {
         }
         app.insert_resource(chat);
         app.register_shell_panel("ai_chat", "AI Chat", "robot", "AI");
-        app.register_panel_content("ai_chat", false, build_panel);
+        let mut panel = app.register_panel_content("ai_chat", false, build_panel);
         // Connection config lives in Settings → Plugins, not the chat panel.
-        app.register_settings_section("ai_chat", "AI Chat", "robot", build_settings);
-        app.add_systems(
-            Update,
-            (
-                refresh_click,
-                docs_browse_click,
-                send_prompt,
-                drain_models,
-                drain_stream,
-                animate_thinking,
-                persist_settings,
+        panel
+            .app()
+            .register_settings_section("ai_chat", "AI Chat", "robot", build_settings);
+        // Split deliberately: the panel's own interactions are visibility-gated,
+        // but three of these must keep running with the chat tab hidden.
+        //
+        //  * `drain_models` / `drain_stream` consume in-flight async responses. A
+        //    reply that arrives while you are on another tab has to be drained, or
+        //    the request stalls (and its task is held) until you happen to look.
+        //  * `persist_settings` backs the connection config, which lives in
+        //    **Settings → Plugins**, not this panel (see the note above) — gating
+        //    it on the chat tab would stop settings saving whenever the Settings
+        //    panel is open and the chat one isn't. Which is always.
+        panel
+            .systems(
+                Update,
+                (refresh_click, docs_browse_click, send_prompt, animate_thinking)
+                    .run_if(in_state(renzora::SplashState::Editor)),
             )
-                .run_if(in_state(renzora::SplashState::Editor)),
-        );
+            .always(
+                Update,
+                (drain_models, drain_stream, persist_settings)
+                    .run_if(in_state(renzora::SplashState::Editor)),
+            );
     }
 }
 

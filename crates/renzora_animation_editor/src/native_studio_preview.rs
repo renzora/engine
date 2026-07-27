@@ -23,8 +23,8 @@ pub struct NativeStudioPreview;
 
 impl Plugin for NativeStudioPreview {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("studio_preview", false, build);
-        app.add_systems(
+        app.register_panel_content("studio_preview", false, build)
+            .systems(
             Update,
             (tool_btn_click, orbit_drag, orbit_zoom).run_if(in_state(SplashState::Editor)),
         );

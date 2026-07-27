@@ -50,8 +50,8 @@ pub struct NativeTerrain;
 
 impl Plugin for NativeTerrain {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("terrain_tools", true, build);
-        app.add_systems(
+        app.register_panel_content("terrain_tools", true, build)
+            .systems(
             Update,
             (
                 enable_toggle_click,

@@ -121,10 +121,24 @@ fn sync_inputs(
     mut inputs: Query<(Entity, &mut TextInput)>,
     mut texts: Query<&mut Text>,
 ) {
-    // Name → entity map for `Entity.var` binds.
+    // This system is unconditional in `Update`, and the name map below is a scan
+    // of *every named entity in the world* with a `String` allocation per entry.
+    // Built eagerly it cost ~0.62 ms/frame in a loaded scene — paid in full on the
+    // overwhelmingly common frames where there is no `<input>` on screen at all,
+    // purely to be thrown away. Two gates, cheapest first.
+    if inputs.is_empty() {
+        return;
+    }
+
+    // Only a dotted `Entity.var` bind consults the map (`resolve_bind` uses
+    // `host` otherwise), so a screen of plain inputs shouldn't pay for it either.
+    // An empty map is also *correct* if we're wrong: `resolve_bind` just returns
+    // `None`, the same as an unresolved name.
     let mut names = bevy::platform::collections::HashMap::default();
-    for (e, n) in &names_q {
-        names.insert(n.as_str().to_string(), e);
+    if inputs.iter().any(|(_, i)| i.bind.contains('.')) {
+        for (e, n) in &names_q {
+            names.insert(n.as_str().to_string(), e);
+        }
     }
 
     for (entity, mut input) in &mut inputs {

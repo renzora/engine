@@ -138,7 +138,25 @@ pub(crate) fn register(app: &mut App) {
             native_reopen,
             native_splash_poll.run_if(in_state(SplashState::Splash)),
             update_fps.run_if(in_state(SplashState::Splash)),
-            manage_splash,
+            // `manage_splash` is exclusive (`&mut World`) and ran every frame for
+            // the editor's entire life to rediscover "no splash, nothing to do".
+            //
+            // It costs about the ~18 µs it measures — MEASURED, after an earlier
+            // version of this comment claimed the exclusive-system scheduling
+            // barrier made it "cost far more than it measures". Gating all three
+            // splash pollers moved `main app` 0.147 ms, inside the ±0.36 ms noise
+            // floor, while the splash zones fell by exactly their own measured
+            // total. So don't hunt exclusive systems expecting outsized wins; the
+            // reason to gate this one is that it is 100% waste, not that it is big.
+            //
+            // The condition is an `or`, not a plain `in_state`, because this system
+            // both *builds and tears down*: on leaving `Splash` it must still get
+            // one pass to despawn `SplashRoot`. Gating on state alone would strand
+            // the splash UI in the editor forever. Once torn down, neither arm
+            // holds and it stops for good — self-clearing, no flag needed.
+            manage_splash.run_if(
+                in_state(SplashState::Splash).or_else(any_with_component::<SplashRoot>),
+            ),
             window_btn_click,
             drag_handle,
             resize_zone_click,

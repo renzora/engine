@@ -98,6 +98,27 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("dlopen")
 #     default_no_std / critical-section / libm / web   std + zstd_rust variants
 #   statically-linked-dxc, spirv_shader_passthrough, raw_vulkan_init   per-backend
 #   webgl2/webgpu/x11/wayland/android-*/accesskit_unix   per-target (see wasm/mobile)
+#   ghost_nodes                                   REMOVED 2026-07: it was enabled
+#     but `GhostNode` is used exactly zero times in the workspace, and the feature
+#     is not free to leave on. It swaps `bevy_ui`'s `UiChildren` for a much slower
+#     implementation on the editor's hottest path: `is_changed()` — called once per
+#     UI node per frame by `update_children_recursively` — short-circuits only when
+#     a node's children actually changed, so in steady state every node falls
+#     through to `iter_ghost_nodes()`, which returns a `Box<dyn Iterator>`, i.e. ONE
+#     HEAP ALLOCATION PER UI NODE PER FRAME. `iter_ui_children` likewise builds and
+#     reverses a `SmallVec<[Entity; 8]>` (heap-allocating for any node with >8
+#     children — dock lists, hierarchy rows and asset grids all exceed that) where
+#     the non-ghost path returns a plain slice iterator. With ~5k UI entities that
+#     is the dominant term in `ui_layout_system`.
+#     Re-adding it is an ABI bump AND a perf regression — only do so if something
+#     genuinely needs to park a non-UI entity mid-hierarchy, and measure first.
+#     NOTE the two impls are NOT equivalent beyond cost: the ghost `iter_ui_children`
+#     filters children to `Or<(With<Node>, With<GhostNode>)>`, the non-ghost one
+#     yields the raw `Children` slice unfiltered. That is safe here only because
+#     every `bevy_ui` consumer (stack, update, ui_surface, layout, accessibility)
+#     re-filters on `&Node` itself, and because ghost traversal always required the
+#     explicit `GhostNode` marker — a bare component-less child was never traversed
+#     under either setting.
 #
 # SOURCE: Bevy 0.19 is published on crates.io. The `bevy` umbrella pulls its
 # sub-crates as matching 0.19.x registry deps, so the tree stays internally
@@ -146,7 +167,7 @@ bevy = { version = "0.19", default-features = false, features = [
     # built-in post-process effect stack (vignette, lens distortion, chromatic aberration)
     "bevy_post_process",
     # clipboard / fonts / ui
-    "system_clipboard", "clipboard_image", "system_font_discovery", "ghost_nodes",
+    "system_clipboard", "clipboard_image", "system_font_discovery",
     # asset IO / processing
     "asset_processor", "file_watcher", "http", "https", "web_asset_cache",
     # ── Meshlet config (NOT a shipping feature set) ─────────────────────────────
@@ -218,6 +239,23 @@ dynamic_linking = ["bevy/dynamic_linking"]
 # it, and the lean exporter's `--no-default-features --features runtime` drops
 # it unless a game opts back in.
 xr = ["renzora_runtime?/xr"]
+# Throwaway PROFILING build — re-adds Bevy's Tracy instrumentation for a full
+# flame graph + per-system Statistics in Tracy. `bevy/trace` turns on the
+# per-system and render-node CPU spans (bevy_ecs gates system zones behind it, so
+# WITHOUT this the 200-plugin system breakdown is invisible); `bevy/trace_tracy`
+# installs the Tracy layer (CPU zones + one frame mark/frame) and the GPU-timestamp
+# zones in bevy_render; `renzora_runtime`'s matching feature adds
+# `RenderDiagnosticsPlugin` so those GPU zones actually record. Build+run it with
+# `cargo renzora --features profiling` (native) or `renzora run -- --features profiling`.
+#
+# DELIBERATELY out of `default`: compiling `trace_tracy` recompiles `bevy_dylib`
+# and MOVES the plugin ABI (CLAUDE.md §3), so prebuilt community plugins in
+# `plugins/` won't load against a profiling binary — everything built from source
+# in the same invocation (the editor bundle + all workspace plugins) still matches.
+# Keep the in-app "Tracy Profiler" toggle (Settings → Plugins) OFF in this build:
+# Bevy already frame-marks, and the `renzora_tracy` bridge marking too would
+# double-count every frame.
+profiling = ["bevy/trace", "bevy/trace_tracy", "renzora_runtime?/profiling"]
 wasm = [
     "runtime",
     "bevy/webgpu",

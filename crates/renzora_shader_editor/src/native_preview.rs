@@ -18,8 +18,8 @@ pub struct NativeShaderPreview;
 
 impl Plugin for NativeShaderPreview {
     fn build(&self, app: &mut App) {
-        app.register_panel_content("shader_preview", false, build);
-        app.add_systems(Update, mesh_combo_open.run_if(in_state(SplashState::Editor)));
+        app.register_panel_content("shader_preview", false, build)
+            .systems(Update, mesh_combo_open.run_if(in_state(SplashState::Editor)));
     }
 }
 

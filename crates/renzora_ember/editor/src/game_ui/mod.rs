@@ -98,9 +98,11 @@ impl Plugin for GameUiEditorPlugin {
         // `renzora_game_ui`'s old `#[cfg(feature = "editor")]` block.
         register::register_game_ui_editor(app);
         app.init_resource::<NativeCanvasState>();
+        // panel-systems-ungated: game-UI runtime, not editor chrome — not tied to a panel's visibility
         app.add_systems(Update, sync_active_canvas.run_if(in_state(SplashState::Editor)));
         // The canvas geometry snapshot only runs while the panel is actually
         // mounted (the hit layer exists), so it costs nothing when closed/unwired.
+        // panel-systems-ungated: game-UI runtime, not editor chrome — not tied to a panel's visibility
         app.add_systems(
             Update,
             geometry::snapshot_widgets.run_if(in_state(SplashState::Editor)).run_if(any_with_component::<CanvasHitLayer>),

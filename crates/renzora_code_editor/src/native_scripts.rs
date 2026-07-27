@@ -29,8 +29,8 @@ struct ScriptToggle(Entity, u32);
 struct ScriptDetach(Entity, u32);
 
 pub fn register_native_scripts_on_entity(app: &mut App) {
-    app.register_panel_content("scripts_on_entity", true, build);
-    app.add_systems(
+    app.register_panel_content("scripts_on_entity", true, build)
+        .systems(
         Update,
         (new_script_click, script_open_click, script_toggle_click, script_detach_click)
             .run_if(in_state(SplashState::Editor)),

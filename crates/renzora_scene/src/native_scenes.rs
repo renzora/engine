@@ -22,8 +22,8 @@ pub struct NativeScenesPanel;
 impl Plugin for NativeScenesPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<ScenesState>();
-        app.register_panel_content("scenes", true, build);
-        app.add_systems(
+        app.register_panel_content("scenes", true, build)
+            .systems(
             Update,
             (new_scene_click, scenes_track_hover, scenes_click, scenes_context_menu)
                 .run_if(in_state(SplashState::Editor)),

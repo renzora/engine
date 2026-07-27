@@ -21,8 +21,8 @@ use crate::state::CodeEditorState;
 struct GotoLine(usize);
 
 pub fn register_native_outline(app: &mut App) {
-    app.register_panel_content("outline", true, build);
-    app.add_systems(Update, outline_goto_click.run_if(in_state(SplashState::Editor)));
+    app.register_panel_content("outline", true, build)
+        .systems(Update, outline_goto_click.run_if(in_state(SplashState::Editor)));
 }
 
 fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
