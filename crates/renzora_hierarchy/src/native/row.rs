@@ -429,7 +429,12 @@ pub(crate) fn build_row(
         );
     }
 
-    // Click layer (covers row except suffix zone).
+    // Click layer (covers row except suffix zone). It's spawned after — and so
+    // sits above — the label box, so while this row is being inline-renamed it
+    // would otherwise swallow clicks meant for the rename field (stealing focus →
+    // the edit cancels, and re-selecting the row). Make it ignore picks during
+    // rename so clicks reach the field beneath it (moving the caret); clicks off
+    // the field then just blur-commit as expected.
     let click_layer = commands
         .spawn((
             Node {
@@ -447,6 +452,9 @@ pub(crate) fn build_row(
             Name::new("hier-row-hit"),
         ))
         .id();
+    if s.is_renaming {
+        commands.entity(click_layer).insert(Pickable::IGNORE);
+    }
     // Drop-indicator lines at the row's top/bottom edges (hidden until a drag
     // targets this row Before/After).
     let edge_before = commands

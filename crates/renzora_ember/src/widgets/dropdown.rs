@@ -224,20 +224,60 @@ fn build_dropdown(
 }
 
 pub(crate) fn dropdown_toggle(
-    mut dropdowns: Query<(&Interaction, &mut EmberDropdown), Changed<Interaction>>,
+    mut dropdowns: Query<
+        (
+            &Interaction,
+            &mut EmberDropdown,
+            &bevy::ui::ComputedNode,
+            &bevy::ui::UiGlobalTransform,
+        ),
+        Changed<Interaction>,
+    >,
     mut nodes: Query<&mut Node>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
 ) {
-    for (interaction, mut dd) in &mut dropdowns {
+    for (interaction, mut dd, cn, xf) in &mut dropdowns {
         if *interaction != Interaction::Pressed {
             continue;
         }
         dd.open = !dd.open;
-        if let Ok(mut n) = nodes.get_mut(dd.menu) {
-            n.display = if dd.open {
-                Display::Flex
+        let menu = dd.menu;
+        if !dd.open {
+            if let Ok(mut n) = nodes.get_mut(menu) {
+                n.display = Display::None;
+            }
+            continue;
+        }
+        // Position-aware open: if the estimated menu height doesn't fit below the
+        // box (e.g. the dropdown is near the bottom of a scroll) and there's more
+        // room above, flip it to open upward instead of running off-screen. All
+        // measurements are physical px (ComputedNode/UiGlobalTransform/window) so
+        // they compare directly.
+        let flip_up = windows
+            .single()
+            .ok()
+            .map(|w| {
+                let half_h = cn.size().y * 0.5;
+                let box_bottom = xf.translation.y + half_h;
+                let box_top = xf.translation.y - half_h;
+                // ~24 logical px per row + padding, capped at the scroll height.
+                let est = (dd.options.len() as f32 * 24.0 + 4.0).min(DROPDOWN_MAX_HEIGHT)
+                    * w.scale_factor();
+                let room_below = w.physical_height() as f32 - box_bottom;
+                room_below < est && box_top > room_below
+            })
+            .unwrap_or(false);
+        if let Ok(mut n) = nodes.get_mut(menu) {
+            n.display = Display::Flex;
+            if flip_up {
+                n.top = Val::Auto;
+                n.bottom = Val::Percent(100.0);
+                n.margin = UiRect::bottom(Val::Px(2.0));
             } else {
-                Display::None
-            };
+                n.top = Val::Percent(100.0);
+                n.bottom = Val::Auto;
+                n.margin = UiRect::top(Val::Px(2.0));
+            }
         }
     }
 }

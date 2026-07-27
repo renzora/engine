@@ -873,6 +873,49 @@ pub fn delete_entities_with_undo(world: &mut World, entities: &[Entity]) {
     seal(world, &ctx);
 }
 
+/// Like [`delete_entities_with_undo`], but afterwards moves the editor selection
+/// to the nearest surviving hierarchy neighbour. Without this, deleting the
+/// selected entity leaves the selection pointing at a despawned id, so the
+/// viewport gizmo and the inspector go blank. Prefer this from user-facing delete
+/// actions (Delete key, hierarchy context menu).
+pub fn delete_entities_with_undo_reselect(world: &mut World, entities: &[Entity]) {
+    use renzora_editor_framework::HierarchyOrder;
+
+    // Snapshot the flat hierarchy order *before* deleting, plus where the deleted
+    // block sits in it.
+    let mut order: Vec<(u32, Entity)> = {
+        let mut q = world.query::<(Entity, &HierarchyOrder)>();
+        q.iter(world).map(|(e, o)| (o.0, e)).collect()
+    };
+    order.sort_by_key(|(o, _)| *o);
+    let deleted: std::collections::HashSet<Entity> = entities.iter().copied().collect();
+    let last_pos = order.iter().rposition(|(_, e)| deleted.contains(e));
+
+    delete_entities_with_undo(world, entities);
+
+    // Reselect the nearest survivor: scan forward from just past the deleted
+    // block, then fall back to backward. `get_entity` fails for anything
+    // despawned (including the deleted entities' children), so survivors filter
+    // themselves out.
+    if let Some(pos) = last_pos {
+        let alive = |world: &World, e: Entity| !deleted.contains(&e) && world.get_entity(e).is_ok();
+        let next = order[pos + 1..]
+            .iter()
+            .map(|(_, e)| *e)
+            .find(|&e| alive(world, e))
+            .or_else(|| {
+                order[..=pos]
+                    .iter()
+                    .rev()
+                    .map(|(_, e)| *e)
+                    .find(|&e| alive(world, e))
+            });
+        if let Some(sel) = world.get_resource::<EditorSelection>() {
+            sel.set(next);
+        }
+    }
+}
+
 /// Undo command for [`delete_entities_with_undo`]. `execute` (initial + redo)
 /// despawns the live roots; `undo` respawns them from the snapshot and tracks the
 /// new ids for the next redo (write-to-world assigns fresh ids each restore).

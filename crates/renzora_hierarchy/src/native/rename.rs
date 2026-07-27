@@ -27,9 +27,12 @@ pub(crate) fn build_rename_field(commands: &mut Commands, fonts: &EmberFonts, en
         Node {
             flex_grow: 1.0,
             min_width: Val::Px(0.0),
-            height: Val::Px(20.0),
+            // Match the text-input's natural height so the caret (top 6px, 14px
+            // tall) isn't jammed against the bottom border, which made it read as
+            // an oversized cursor in a too-small box.
+            height: Val::Px(22.0),
             align_items: AlignItems::Center,
-            padding: UiRect::horizontal(Val::Px(4.0)),
+            padding: UiRect::horizontal(Val::Px(6.0)),
             border: UiRect::all(Val::Px(1.0)),
             border_radius: BorderRadius::all(Val::Px(3.0)),
             ..default()
@@ -56,7 +59,12 @@ pub(crate) fn focus_rename_field(mut q: Query<&mut EmberTextInput, Added<HierRen
 pub(crate) fn rename_commit(
     mut rename: ResMut<HierRename>,
     keys: Res<ButtonInput<KeyCode>>,
-    inputs: Query<(&EmberTextInput, &HierRenameInput)>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut inputs: Query<(
+        &mut EmberTextInput,
+        &bevy::ui::RelativeCursorPosition,
+        &HierRenameInput,
+    )>,
     mut commands: Commands,
     mut had_focus: Local<bool>,
 ) {
@@ -72,18 +80,31 @@ pub(crate) fn rename_commit(
     }
 
     // Wait for the rename field to actually spawn (don't cancel in the meantime).
-    let Some((inp, _)) = inputs.iter().find(|(_, r)| r.0 == entity) else {
+    let Some((mut inp, rcp, _)) = inputs.iter_mut().find(|(_, _, r)| r.0 == entity) else {
         return;
     };
+    // Clicking INSIDE the field (to move the caret) must keep it editing. The
+    // row's click layer can otherwise steal focus the instant you click, so
+    // re-assert focus whenever a click lands over the field's own rect — this uses
+    // the field geometry (`RelativeCursorPosition`), not fragile pick order.
+    if mouse.just_pressed(MouseButton::Left) && rcp.cursor_over && !inp.focused {
+        inp.focused = true;
+    }
     if inp.focused {
         *had_focus = true;
     }
+    // Don't let anything commit until the field has actually held focus (auto-focus
+    // runs the frame after it spawns) — otherwise the double-click that started
+    // the rename would immediately commit it.
+    if !*had_focus {
+        return;
+    }
 
     let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
-    // Click-away blur commits, but only after the field has held focus — so it
-    // doesn't fire the frame the field first appears (before auto-focus runs).
-    let blurred = *had_focus && !inp.focused;
-    if !enter && !blurred {
+    // Commit on a click that lands OUTSIDE the field's rect (geometry-based, so
+    // it's immune to the pick-order quirk that was cancelling on inside clicks).
+    let clicked_away = mouse.just_pressed(MouseButton::Left) && !rcp.cursor_over;
+    if !enter && !clicked_away {
         return;
     }
 

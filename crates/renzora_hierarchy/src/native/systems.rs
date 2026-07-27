@@ -241,6 +241,12 @@ pub(crate) fn hierarchy_row_click(
         {
             continue;
         }
+        // While this row is being inline-renamed, its rename field owns clicks —
+        // don't re-select or restart the double-click timer from a click that's
+        // really landing in the edit field.
+        if rename.0 == Some(row.entity) {
+            continue;
+        }
         // Double-click (no modifiers) → inline rename.
         if !ctrl && !shift {
             let now = time.elapsed_secs_f64();

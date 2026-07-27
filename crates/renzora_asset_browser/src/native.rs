@@ -226,9 +226,17 @@ impl Default for NativeAssets {
 
 impl NativeAssets {
     /// Apply a single-tile click with modifiers: ctrl toggles, shift selects the
-    /// range from the anchor (using `visible_order`), plain replaces. `selected`
-    /// tracks the primary item for rename / context-menu targeting.
+    /// range from the anchor (using the grid's `visible_order`), plain replaces.
     fn click_select(&mut self, path: &Path, ctrl: bool, shift: bool) {
+        let order = self.visible_order.clone();
+        self.click_select_in(path, ctrl, shift, &order);
+    }
+
+    /// Same as [`click_select`] but with an explicit visible order for shift-range
+    /// — lets the folder tree multi-select using the tree's flattened order while
+    /// the grid uses its listing order. `selected` tracks the primary item for
+    /// rename / context-menu targeting.
+    fn click_select_in(&mut self, path: &Path, ctrl: bool, shift: bool, order: &[PathBuf]) {
         let p = path.to_path_buf();
         if ctrl {
             if self.selection.contains(&p) {
@@ -241,12 +249,12 @@ impl NativeAssets {
             }
         } else if shift && self.selection_anchor.is_some() {
             let anchor = self.selection_anchor.clone().unwrap();
-            let ai = self.visible_order.iter().position(|q| *q == anchor);
-            let ci = self.visible_order.iter().position(|q| *q == p);
+            let ai = order.iter().position(|q| *q == anchor);
+            let ci = order.iter().position(|q| *q == p);
             if let (Some(a), Some(c)) = (ai, ci) {
                 let (s, e) = if a <= c { (a, c) } else { (c, a) };
                 self.selection.clear();
-                for q in &self.visible_order[s..=e] {
+                for q in &order[s..=e] {
                     self.selection.insert(q.clone());
                 }
                 self.selected = Some(p);
@@ -1070,12 +1078,23 @@ fn crumb_click(
 
 // ── Context menu ─────────────────────────────────────────────────────────────
 
-fn track_hover(tiles: Query<(&Interaction, &AssetTile)>, mut state: ResMut<NativeAssets>) {
-    for (interaction, tile) in &tiles {
-        if matches!(interaction, Interaction::Hovered | Interaction::Pressed)
-            && state.hovered.as_deref() != Some(tile.path.as_path())
-        {
-            state.hovered = Some(tile.path.clone());
+fn track_hover(
+    tiles: Query<(&Interaction, &AssetTile)>,
+    tree: Query<(&Interaction, &TreeNav)>,
+    mut state: ResMut<NativeAssets>,
+) {
+    let over = |i: &Interaction| matches!(i, Interaction::Hovered | Interaction::Pressed);
+    // A hovered grid/list tile takes priority; otherwise a hovered tree folder
+    // row — so right-click targeting (and the context-menu delete) works over the
+    // folder tree too, not just the grid.
+    let hovered = tiles
+        .iter()
+        .find(|(i, _)| over(i))
+        .map(|(_, t)| t.path.clone())
+        .or_else(|| tree.iter().find(|(i, _)| over(i)).map(|(_, n)| n.0.clone()));
+    if let Some(p) = hovered {
+        if state.hovered.as_deref() != Some(p.as_path()) {
+            state.hovered = Some(p);
         }
     }
 }
@@ -1150,7 +1169,23 @@ fn asset_context_menu(
         menu_sep(&mut commands),
         menu_item_styled(&mut commands, &fonts, "trash", &renzora::lang::t("assets.context.delete"), (224, 96, 88), (224, 96, 88), {
             let path = path.clone();
-            move |w| delete_asset(w, &path)
+            move |w| {
+                // Right-clicking an item that's part of the current selection
+                // deletes the whole selection; right-clicking an unselected item
+                // deletes just it (mirrors the hierarchy's delete behaviour).
+                let paths: Vec<PathBuf> = {
+                    let state = w.resource::<NativeAssets>();
+                    if state.is_selected(&path) {
+                        let all: Vec<PathBuf> = state.selection.iter().cloned().collect();
+                        if all.is_empty() { vec![path.clone()] } else { all }
+                    } else {
+                        vec![path.clone()]
+                    }
+                };
+                for p in &paths {
+                    delete_asset(w, p);
+                }
+            }
         }),
     ]);
     commands.entity(menu).add_children(&kids);
@@ -1552,11 +1587,13 @@ fn select_all_shortcut(
 /// the key in an earlier schedule sidesteps the ordering entirely.
 fn asset_delete_shortcut(
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
+    roots: Query<&bevy::ui::RelativeCursorPosition, With<AssetRoot>>,
     state: Res<NativeAssets>,
     mut commands: Commands,
 ) {
-    let claim = grid.iter().any(|r| r.cursor_over)
+    // Claim Delete anywhere over the asset panel (grid *or* folder tree), not just
+    // the grid, so selected tree folders can be deleted with the key too.
+    let claim = roots.iter().any(|r| r.cursor_over)
         && state.renaming.is_none()
         && (!state.selection.is_empty() || state.selected.is_some());
     if !claim || !keys.just_pressed(KeyCode::Delete) {
@@ -2948,15 +2985,22 @@ fn grid_snapshot(world: &World) -> KeyedSnapshot {
 /// The inline rename text field for a grid/list entry, seeded with its current
 /// name and tagged so `asset_rename_commit` can find it.
 fn rename_field(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry) -> Entity {
-    let input = text_input(commands, &fonts.ui, &renzora::lang::t("common.name"), &entry.name);
+    rename_field_for(commands, fonts, &entry.path, &entry.name)
+}
+
+/// The inline rename field from a bare path + name — shared by the grid tiles and
+/// the folder tree so both rename identically.
+fn rename_field_for(commands: &mut Commands, fonts: &EmberFonts, path: &Path, name: &str) -> Entity {
+    let input = text_input(commands, &fonts.ui, &renzora::lang::t("common.name"), name);
     commands.entity(input).insert((
-        AssetRenameInput(entry.path.clone()),
+        AssetRenameInput(path.to_path_buf()),
         Node {
             width: Val::Percent(100.0),
             min_width: Val::Px(0.0),
-            height: Val::Px(20.0),
+            // 22px (not 20) so the text caret isn't jammed against the bottom.
+            height: Val::Px(22.0),
             align_items: AlignItems::Center,
-            padding: UiRect::horizontal(Val::Px(4.0)),
+            padding: UiRect::horizontal(Val::Px(6.0)),
             border: UiRect::all(Val::Px(1.0)),
             border_radius: BorderRadius::all(Val::Px(3.0)),
             ..default()
@@ -3470,6 +3514,7 @@ fn tree_token(world: &World) -> u64 {
         st.narrow.hash(&mut h);
         st.tree_tab.hash(&mut h);
         st.tree_search.hash(&mut h);
+        st.renaming.hash(&mut h);
     }
     if let Some(root) = project_root(world) {
         root.hash(&mut h);
@@ -3493,6 +3538,7 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
     let recent = st.map(|s| s.recent.clone()).unwrap_or_default();
     let narrow = st.map(|s| s.narrow).unwrap_or(false);
     let tree_tab = st.map(|s| s.tree_tab).unwrap_or(TreeTab::Folders);
+    let renaming = st.and_then(|s| s.renaming.clone());
     // The search box only exists in the narrow layout — ignore its (possibly
     // stale) value in the wide sidebar so it can't invisibly filter the tree.
     let query = if narrow {
@@ -3567,6 +3613,8 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
                     (2u8, &r.path).hash(&mut k);
                     (r.depth, r.expanded, r.has_children, &r.name).hash(&mut h);
                     (r.is_last, &r.parent_lines, r.is_file, idx).hash(&mut h);
+                    // Rebuild this row when it enters/leaves inline-rename.
+                    (renaming.as_deref() == Some(r.path.as_path())).hash(&mut h);
                 }
             }
             (k.finish(), h.finish())
@@ -3577,7 +3625,9 @@ fn tree_snapshot(world: &World) -> KeyedSnapshot {
         build: Box::new(move |c, f, i| match &items[i] {
             TreeItem::Header { label } => tree_header(c, f, label),
             TreeItem::Shortcut { name, path, is_dir } => shortcut_row(c, f, name, path, *is_dir, i),
-            TreeItem::Folder(r) => tree_row(c, f, r, i),
+            TreeItem::Folder(r) => {
+                tree_row(c, f, r, i, renaming.as_deref() == Some(r.path.as_path()))
+            }
         }),
     }
 }
@@ -3666,7 +3716,13 @@ fn shortcut_row(
     row
 }
 
-fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index: usize) -> Entity {
+fn tree_row(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    r: &TreeRow,
+    row_index: usize,
+    is_renaming: bool,
+) -> Entity {
     let content_x = TREE_BASE_X + r.depth as f32 * TREE_INDENT;
     let stripe = inspector_stripe(row_index);
 
@@ -3745,20 +3801,58 @@ fn tree_row(commands: &mut Commands, fonts: &EmberFonts, r: &TreeRow, row_index:
             13.0,
         )
     };
-    let name = commands
-        .spawn((
-            Text::new(r.name.clone()),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(rgb(text_primary())),
-            bevy::text::TextLayout::no_wrap(),
-            Pickable::IGNORE,
-            Node {
-                min_width: Val::Px(0.0),
-                overflow: Overflow::clip(),
-                ..default()
-            },
-        ))
-        .id();
+    let name = if is_renaming {
+        // Inline rename field (same widget the grid uses), laid out to grow in
+        // the row rather than force a fixed width.
+        let f = rename_field_for(commands, fonts, &r.path, &r.name);
+        commands.entity(f).insert(Node {
+            flex_grow: 1.0,
+            min_width: Val::Px(0.0),
+            height: Val::Px(22.0),
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(Val::Px(6.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            border_radius: BorderRadius::all(Val::Px(3.0)),
+            ..default()
+        });
+        f
+    } else if r.is_file {
+        // File rows rename with the same gesture as the grid: an interactive
+        // `AssetNameLabel` that passes the click through to the row's `AssetTile`
+        // for selection while still registering the name press that arms rename.
+        commands
+            .spawn((
+                Text::new(r.name.clone()),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(text_primary())),
+                bevy::text::TextLayout::no_wrap(),
+                Node {
+                    flex_grow: 1.0,
+                    min_width: Val::Px(0.0),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+                Interaction::default(),
+                bevy::ui::FocusPolicy::Pass,
+                AssetNameLabel(r.path.clone()),
+            ))
+            .id()
+    } else {
+        commands
+            .spawn((
+                Text::new(r.name.clone()),
+                ui_font(&fonts.ui, 11.0),
+                TextColor(rgb(text_primary())),
+                bevy::text::TextLayout::no_wrap(),
+                Pickable::IGNORE,
+                Node {
+                    min_width: Val::Px(0.0),
+                    overflow: Overflow::clip(),
+                    ..default()
+                },
+            ))
+            .id()
+    };
     commands.entity(nav).add_children(&[folder_icon, name]);
 
     // Full-row background (odd/even stripe + selection + hover), lowest z.
@@ -3852,10 +3946,19 @@ fn tree_toggle_click(
 fn tree_nav_click(
     q: Query<(&Interaction, &TreeNav)>,
     mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
     windows: Query<&Window>,
+    project: Option<Res<renzora::core::CurrentProject>>,
     mut state: ResMut<NativeAssets>,
     mut press: Local<Option<(PathBuf, Vec2)>>,
+    mut last_click: Local<Option<(PathBuf, f64)>>,
 ) {
+    // While a rename field is open, the field owns clicks — don't navigate/re-arm.
+    if state.renaming.is_some() {
+        *press = None;
+        return;
+    }
     let cursor = windows.iter().find_map(|w| w.cursor_position());
     if mouse.just_pressed(MouseButton::Left) {
         if let (Some((_, nav)), Some(c)) =
@@ -3869,13 +3972,68 @@ fn tree_nav_click(
     if mouse.just_released(MouseButton::Left) {
         if let Some((path, origin)) = press.take() {
             let moved = cursor.map(|c| c.distance(origin) > 5.0).unwrap_or(false);
-            if !moved {
-                state.current = Some(path.clone());
-                state.selected = None;
-                if state.expanded.contains(&path) {
-                    state.expanded.remove(&path);
+            if moved {
+                return;
+            }
+            let ctrl = keys.any_pressed([
+                KeyCode::ControlLeft,
+                KeyCode::ControlRight,
+                KeyCode::SuperLeft,
+                KeyCode::SuperRight,
+            ]);
+            let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+            if ctrl || shift {
+                // Ctrl/Shift click multi-selects tree folders (for a batch delete)
+                // instead of navigating. Shift-range walks the tree's flattened
+                // visible order, computed on demand (only on this click, not per
+                // frame).
+                let order: Vec<PathBuf> = project
+                    .as_ref()
+                    .map(|p| {
+                        let mut rows = Vec::new();
+                        flatten_dirs(
+                            &p.path,
+                            0,
+                            &state.expanded,
+                            state.narrow,
+                            &mut Vec::new(),
+                            &mut rows,
+                        );
+                        rows.into_iter().map(|r| r.path).collect()
+                    })
+                    .unwrap_or_default();
+                state.click_select_in(&path, ctrl, shift, &order);
+            } else {
+                let now = time.elapsed_secs_f64();
+                let double = last_click
+                    .as_ref()
+                    .is_some_and(|(p, t)| *p == path && now - t < 0.4);
+                let was_sole = state.selection.len() == 1
+                    && state.selected.as_deref() == Some(path.as_path());
+                if double {
+                    // Double-click = open: (re)navigate, cancel any armed rename.
+                    *last_click = None;
+                    state.rename_arm = None;
+                    state.current = Some(path.clone());
+                } else if was_sole {
+                    // Slow second click on the already-selected folder arms a
+                    // rename (fired by `rename_arm_fire` after the double-click
+                    // window) — the same gesture the grid uses.
+                    state.rename_arm = Some((path.clone(), now));
+                    *last_click = Some((path, now));
                 } else {
-                    state.expanded.insert(path);
+                    // First click: navigate, select this folder, toggle expansion.
+                    state.current = Some(path.clone());
+                    state.selection.clear();
+                    state.selection.insert(path.clone());
+                    state.selected = Some(path.clone());
+                    state.selection_anchor = Some(path.clone());
+                    if state.expanded.contains(&path) {
+                        state.expanded.remove(&path);
+                    } else {
+                        state.expanded.insert(path.clone());
+                    }
+                    *last_click = Some((path, now));
                 }
             }
         }

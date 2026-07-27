@@ -398,5 +398,7 @@ fn instance_scene(world: &mut World, parent: Entity) {
 /// (any components + children) so Ctrl+Z restores lights, cameras, imported
 /// models, 2D nodes and groups, not just default-mesh primitives.
 fn delete_entities(world: &mut World, entities: &[Entity]) {
-    renzora_undo::delete_entities_with_undo(world, entities);
+    // Reselect the nearest surviving neighbour after deleting so the viewport +
+    // inspector don't go blank (shared with the Delete-key path in the gizmo).
+    renzora_undo::delete_entities_with_undo_reselect(world, entities);
 }

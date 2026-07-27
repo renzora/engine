@@ -1669,11 +1669,13 @@ fn handle_selection_shortcuts(
     if keybindings.just_pressed(EditorAction::Delete, &keyboard) && !input_focus.suppress_entity_delete {
         let entities = selection.get_all();
         if !entities.is_empty() {
-            selection.clear();
             // Faithful subtree-snapshot delete (works for lights, cameras, GLB
-            // imports, 2D nodes, groups) — not just default-mesh primitives.
+            // imports, 2D nodes, groups) — not just default-mesh primitives. The
+            // reselect variant moves selection to the nearest survivor afterwards
+            // so the viewport doesn't go blank (don't pre-clear here — that's what
+            // left it blank).
             commands.queue(move |world: &mut World| {
-                renzora_undo::delete_entities_with_undo(world, &entities);
+                renzora_undo::delete_entities_with_undo_reselect(world, &entities);
             });
         }
     }

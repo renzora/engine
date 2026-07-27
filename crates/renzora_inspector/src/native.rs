@@ -30,7 +30,7 @@ use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, dropdown_with_icons, scroll_view, set_section_open,
-    text_input, toggle_switch, DragRange, EmberTextInput, Popup, Section,
+    text_input, toggle_switch, DragRange, EmberTextInput, Section,
 };
 use renzora_theme::ThemeManager;
 
@@ -292,7 +292,6 @@ pub fn register_native_inspector(app: &mut App) {
             reset_click,
             add_keyframe_click,
             lock_click,
-            enum_option_click,
             asset_drop,
             asset_clear_click,
             asset_create_click,
@@ -1720,12 +1719,44 @@ fn build_field_value(
             commands.entity(value_parent).add_child(ti);
         }
         FieldKind::Enum { options } => {
+            // Use the shared ember `dropdown` (position-aware — flips up near a
+            // panel/window bottom) rather than a bespoke inspector popup, so enum
+            // fields get the same behaviour as every other dropdown.
+            let refs: Vec<&str> = options.iter().copied().collect();
             let cur = if let FieldInit::Text(ref s) = field.init {
                 s.clone()
             } else {
                 String::new()
             };
-            let dd = build_enum_dropdown(commands, fonts, entity, field.name, field.get_fn, field.set_fn, options, &cur);
+            let sel = options.iter().position(|o| *o == cur).unwrap_or(0);
+            let dd = dropdown(commands, fonts, &refs, sel);
+            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            // The dropdown works in option indices; the field stores an enum
+            // string, so translate both ways.
+            bind_2way(
+                commands,
+                dd,
+                move |w| {
+                    let cur = match get_fn(w, entity) {
+                        Some(FieldValue::Enum(s)) => s,
+                        _ => String::new(),
+                    };
+                    options.iter().position(|o| *o == cur).unwrap_or(0)
+                },
+                move |w, i: &usize| {
+                    if let Some(opt) = options.get(*i) {
+                        record_field_change(
+                            w,
+                            entity,
+                            name,
+                            get_fn,
+                            set_fn,
+                            FieldValue::Enum((*opt).to_string()),
+                        );
+                    }
+                },
+            );
+            renzora_ember::inspector::fill_control(commands, dd);
             commands.entity(value_parent).add_child(dd);
         }
         FieldKind::DynamicEnum => {
@@ -1809,151 +1840,6 @@ fn build_field_value(
 // ── Color editor (swatch + R/G/B popup) ──────────────────────────────────────
 
 // ── Enum dropdown ────────────────────────────────────────────────────────────
-
-#[derive(Component)]
-struct EnumOption {
-    get_fn: GetFn,
-    set_fn: SetFn,
-    entity: Entity,
-    /// The field name, so the recorded undo step is labelled + merges correctly.
-    field_name: &'static str,
-    label: &'static str,
-    panel: Entity,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_enum_dropdown(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    entity: Entity,
-    field_name: &'static str,
-    get_fn: GetFn,
-    set_fn: SetFn,
-    options: &'static [&'static str],
-    current: &str,
-) -> Entity {
-    // Popup of options.
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                right: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(2.0)),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(2.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(c(renzora_ember::theme::popup_bg())),
-            BorderColor::all(c(renzora_ember::theme::border())),
-            GlobalZIndex(700),
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("enum-panel"),
-        ))
-        .id();
-    let mut rows = Vec::with_capacity(options.len());
-    for opt in options {
-        let txt = commands
-            .spawn((
-                Text::new(*opt),
-                ui_font(&fonts.ui, 11.0),
-                TextColor(c(renzora_ember::theme::value_text())),
-                FocusPolicy::Pass,
-            ))
-            .id();
-        let row = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-                Interaction::default(),
-                EnumOption {
-                    get_fn,
-                    set_fn,
-                    entity,
-                    field_name,
-                    label: opt,
-                    panel,
-                },
-                Name::new("enum-option"),
-            ))
-            .id();
-        commands.entity(row).add_child(txt);
-        rows.push(row);
-    }
-    commands.entity(panel).add_children(&rows);
-
-    // Trigger: current value + caret.
-    let value_text = commands
-        .spawn((
-            Text::new(current),
-            ui_font(&fonts.ui, 11.0),
-            TextColor(c(renzora_ember::theme::value_text())),
-            FocusPolicy::Pass,
-        ))
-        .id();
-    // Keep the trigger label in sync with the live value.
-    bind_with(
-        commands,
-        value_text,
-        move |w| match get_fn(w, entity) {
-            Some(FieldValue::Enum(s)) => s,
-            _ => String::new(),
-        },
-        |w, e, s: &String| {
-            if let Some(mut t) = w.get_mut::<Text>(e) {
-                if t.0 != *s {
-                    t.0 = s.clone();
-                }
-            }
-        },
-    );
-    let caret = phosphor_glyph(commands, fonts, "caret-down", renzora_ember::theme::text_muted(), 9.0);
-    commands.entity(caret).insert(FocusPolicy::Pass);
-    let trigger = commands
-        .spawn((
-            Node {
-                flex_grow: 1.0,
-                min_width: Val::Px(0.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::axes(Val::Px(6.0), Val::Px(3.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(c((28, 28, 34))),
-            BorderColor::all(c((70, 70, 82))),
-            Interaction::default(),
-            Popup::new(panel),
-            Name::new("enum-trigger"),
-        ))
-        .id();
-    commands.entity(trigger).add_children(&[value_text, caret]);
-
-    let wrap = commands
-        .spawn((
-            Node {
-                flex_grow: 1.0,
-                min_width: Val::Px(0.0),
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            Name::new("enum-wrap"),
-        ))
-        .id();
-    commands.entity(wrap).add_children(&[trigger, panel]);
-    wrap
-}
 
 // ── Asset field (drop target from the asset browser) ─────────────────────────
 
@@ -2556,32 +2442,3 @@ fn open_add_component(world: &mut World) {
     queue.apply(world);
 }
 
-// Open/close is handled by ember's generic `Popup` (toggle + click-outside
-// dismiss); this only applies the selection + closes the popup.
-fn enum_option_click(
-    q: Query<(&Interaction, &EnumOption), Changed<Interaction>>,
-    mut popups: Query<&mut Popup>,
-    mut nodes: Query<&mut Node>,
-    cmds: Option<Res<EditorCommands>>,
-) {
-    let Some(cmds) = cmds else { return };
-    for (interaction, opt) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let (get_fn, set_fn, entity, name, label) =
-            (opt.get_fn, opt.set_fn, opt.entity, opt.field_name, opt.label.to_string());
-        cmds.push(move |w: &mut World| {
-            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Enum(label.clone()))
-        });
-        // Close the popup whose panel this option belongs to.
-        for mut p in &mut popups {
-            if p.panel == opt.panel {
-                p.open = false;
-            }
-        }
-        if let Ok(mut n) = nodes.get_mut(opt.panel) {
-            n.display = Display::None;
-        }
-    }
-}
