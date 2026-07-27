@@ -2,8 +2,9 @@
 //!
 //! One identity per entity, stored in its `Name`: unique across the scene and
 //! restricted to `[a-z0-9_-]` (lowercase, no spaces; `_` and `-` allowed as
-//! separators). This replaces the old split of a duplicable `Name` *plus* a
-//! separate unique [`EntityTag`], which two concepts this collapses into one.
+//! separators). This is the entity's one identity. (A separate, many-to-one
+//! [`EntityGroup`](crate::core::components::EntityGroup) exists for CSS-`class`
+//! style grouping — that is explicitly NOT an identity.)
 //!
 //! Why snake_case specifically — this is the load-bearing reason, don't loosen
 //! it: dotted binding / reflection paths (`{{ player.health }}`,
@@ -14,7 +15,6 @@
 //! one, so an entity id is never mistaken for a component. Allowing capitals
 //! would reintroduce that ambiguity (`Camera` the id vs `Camera` the component).
 //!
-//! [`EntityTag`]: crate::core::components::EntityTag
 
 use bevy::prelude::*;
 

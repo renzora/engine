@@ -285,7 +285,7 @@ impl Plugin for RuntimePlugin {
             .register_type::<renzora::core::viewport_types::GraphicsQuality>()
             .register_type::<renzora::CameraPreset>()
             .register_type::<renzora::CameraPresets>()
-            .register_type::<renzora::EntityTag>()
+            .register_type::<renzora::EntityGroup>()
             .register_type::<renzora::Persistent>()
             .register_type::<renzora::core::Node2d>()
             .register_type::<renzora::core::YSort>()

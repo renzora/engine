@@ -351,16 +351,16 @@ fn apply_xnode_to(
         return;
     }
 
-    // `<for tag="...">` — a runtime-reactive list. Stamp a `ForEach` and fall
+    // `<for group="...">` — a runtime-reactive list. Stamp a `ForEach` and fall
     // through to normal node styling so the `<for>` is itself a styled flex
     // container (its `flex_direction`, `row_gap`, etc. apply); the foreach
-    // system fills it with one copy of its children per matching entity.
+    // system fills it with one copy of its children per group member.
     if is_for_node(node) {
-        let tag = node.defs.get("tag").cloned().unwrap_or_default();
+        let group = node.defs.get("group").cloned().unwrap_or_default();
         commands.entity(entity).insert(crate::markup::foreach::ForEach::new(
             ctx.template_handle.clone(),
             node_path.to_vec(),
-            tag,
+            group,
         ));
     } else if is_input_node(node) {
         // `<input bind="Entity.var" placeholder=".." password="true">` — a
@@ -635,10 +635,10 @@ fn apply_xnode_to(
             ec.insert(Interaction::default());
         }
     }
-    // `dropzone drop_tag="basket" on_drop="..."` — a drop target.
+    // `dropzone drop_group="basket" on_drop="..."` — a drop target.
     if defs.contains_key("dropzone") || node.tags.contains_key("dropzone") {
         ec.insert(crate::markup::dnd::DropZone {
-            drop_tag: defs.get("drop_tag").cloned(),
+            drop_group: defs.get("drop_group").cloned(),
             on_drop: defs.get("on_drop").cloned(),
         });
         ec.insert(bevy::ui::RelativeCursorPosition::default());

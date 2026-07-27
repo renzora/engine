@@ -148,7 +148,7 @@ pub struct AutoSelectFirstHierarchyEntity(pub bool);
 
 // `HierarchyExpandRequests` moved into `renzora` core (re-exported at top).
 
-pub use renzora::EntityTag;
+pub use renzora::EntityGroup;
 
 /// Optional extension filter for the asset browser. When set, only files with
 /// these extensions (and folders) appear in the grid/list/tree. Mirrors the

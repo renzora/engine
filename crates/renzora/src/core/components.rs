@@ -12,14 +12,17 @@ use serde::{Deserialize, Serialize};
 
 use super::viewport_types;
 
-/// Unique tag for identifying an entity from scripts and other systems.
+/// A shared **group / class** label for an entity — the CSS-`class` analogue,
+/// deliberately NOT an identity.
 ///
-/// Unlike `Name` (which is a display label and can be duplicated), a tag
-/// is intended to be a unique identifier for lookup via `get_on()` etc.
+/// Many entities can carry the same group (e.g. `"inventory"`), which is exactly
+/// how the `<for group="…">` markup repeat-list finds every member to render one
+/// row each. This is separate from an entity's unique **id** (its [`Name`], see
+/// [`crate::core::entity_id`]) — ids are one-per-entity, groups are many-to-one.
 #[derive(Component, Default, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
-pub struct EntityTag {
-    pub tag: String,
+pub struct EntityGroup {
+    pub group: String,
 }
 
 /// Marker component for the editor's scene-navigation camera.

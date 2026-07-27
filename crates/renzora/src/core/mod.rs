@@ -1739,15 +1739,14 @@ mod tests {
         assert_eq!(n, parsed);
     }
 
-    // ── EntityTag default ─────────────────────────────────────────────────
+    // ── EntityGroup default ───────────────────────────────────────────────
 
     #[test]
-    fn entity_tag_default_is_empty_string() {
-        // The script lookup tables short-circuit on empty tags. If this
-        // ever changed to e.g. "Untagged", every empty-tag entity would
-        // suddenly start getting indexed.
-        let tag = EntityTag::default();
-        assert!(tag.tag.is_empty());
+    fn entity_group_default_is_empty_string() {
+        // The `<for>` matcher short-circuits on empty groups; keep the default
+        // empty so an ungrouped entity is never accidentally a member.
+        let g = EntityGroup::default();
+        assert!(g.group.is_empty());
     }
 
     // ── AssetPathChanged::rewrite ─────────────────────────────────────────

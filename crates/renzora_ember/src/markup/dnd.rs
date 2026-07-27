@@ -1,24 +1,24 @@
 //! Drag & drop between templates.
 //!
 //! - `drag_item` on a node makes it a drag source; its **payload** is the
-//!   binding host (so inside a `<for tag="inventory">` row, the payload is that
+//!   binding host (so inside a `<for group="inventory">` row, the payload is that
 //!   item entity).
-//! - `dropzone drop_tag="basket" on_drop="..."` marks a drop target. On
-//!   release over it, the payload entity's `EntityTag` is set to `drop_tag`
+//! - `dropzone drop_group="basket" on_drop="..."` marks a drop target. On
+//!   release over it, the payload entity's `EntityGroup` is set to `drop_group`
 //!   (moving it between `<for>` lists, which re-render), and the optional
 //!   `on_drop` callback fires to scripts' `on_ui(name, {}, payload_bits)`.
 //!
 //! On pickup the dragged item is **reparented to its `UiCanvas`** so its
 //! `absolute` position is screen-space and it follows the cursor directly (a
 //! deep list item's `absolute` is otherwise parent-relative). On a successful
-//! drop the payload is retagged and the `<for>` rebuilds (despawning the moved
+//! drop the payload is re-grouped and the `<for>` rebuilds (despawning the moved
 //! item and creating fresh ones); on a miss the item is reparented back.
 
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
 use bevy::ui::{GlobalZIndex, RelativeCursorPosition, UiScale};
 use bevy::window::PrimaryWindow;
-use renzora::{EntityTag, ScriptUiInbox, UiCallback};
+use renzora::{EntityGroup, ScriptUiInbox, UiCallback};
 use crate::game_ui::UiCanvas;
 
 /// A drag source. `payload` is the data entity that moves (the binding host).
@@ -27,11 +27,11 @@ pub struct DragItem {
     pub payload: Entity,
 }
 
-/// A drop target. On drop, retag the payload to `drop_tag` and/or fire
+/// A drop target. On drop, re-group the payload to `drop_group` and/or fire
 /// `on_drop`.
 #[derive(Component)]
 pub struct DropZone {
-    pub drop_tag: Option<String>,
+    pub drop_group: Option<String>,
     pub on_drop: Option<String>,
 }
 
@@ -122,8 +122,8 @@ fn dnd_system(
             for (zone, rel) in &zones {
                 if rel.cursor_over {
                     hit = true;
-                    if let (Some(p), Some(tag)) = (payload, zone.drop_tag.as_ref()) {
-                        commands.entity(p).insert(EntityTag { tag: tag.clone() });
+                    if let (Some(p), Some(group)) = (payload, zone.drop_group.as_ref()) {
+                        commands.entity(p).insert(EntityGroup { group: group.clone() });
                     }
                     if let Some(cb) = &zone.on_drop {
                         inbox.pending.push(UiCallback {
