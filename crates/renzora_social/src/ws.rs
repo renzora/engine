@@ -358,10 +358,15 @@ fn spawn_worker(token: String, tx: Sender<SocialWsEvent>, shutdown: Arc<AtomicBo
 /// and comes back as a 403 HTML error page instead of the 401 the route would
 /// return for a bad token. Our `ureq` calls are fine because ureq sends its own
 /// UA by default; tungstenite sends none, so we set one here.
+///
+/// The error is boxed because `tungstenite::Error` is 136 bytes — large enough
+/// that clippy's `result_large_err` (a `-D warnings` failure in CI) rejects
+/// returning it by value. The sole caller only formats it, and `Box<E>` still
+/// `Display`s, so nothing downstream changes.
 #[cfg(not(target_arch = "wasm32"))]
-fn build_request(url: &str) -> Result<tungstenite::http::Request<()>, tungstenite::Error> {
+fn build_request(url: &str) -> Result<tungstenite::http::Request<()>, Box<tungstenite::Error>> {
     use tungstenite::client::IntoClientRequest;
-    let mut request = url.into_client_request()?;
+    let mut request = url.into_client_request().map_err(Box::new)?;
     request.headers_mut().insert(
         tungstenite::http::header::USER_AGENT,
         tungstenite::http::HeaderValue::from_static("renzora-editor"),
