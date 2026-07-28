@@ -322,17 +322,30 @@ pub struct WrappersPending {
 ///
 /// Examples that match: `SceneRoot` (spawned by `model_drop`), `RootNode`,
 /// `RootNode.001` (Blender-exported), `RootNode_2` (some GLTF tooling),
-/// `Scene` (Blender's default scene).
+/// `Scene` (Blender's default scene) — and the canonical-id spellings of all of
+/// those: `sceneroot`, `rootnode`, `rootnode_001`, `rootnode_001_1`.
+///
+/// **Match case-insensitively and strip every trailing `_<digits>` group.** Both
+/// halves are load-bearing, and getting this wrong is silent:
+/// [`renzora::core::entity_id::sanitize_id`] lowercases every `Name` and rewrites
+/// `.` to `_`, so the loader's `RootNode.001` reaches us as `rootnode_001`, and
+/// `unique_id` can append a further `_1` on collision. This function used to
+/// compare against the PascalCase spelling only, so when canonical ids landed it
+/// quietly stopped matching anything — leaving live wrapper nodes that clutter
+/// the hierarchy *and* capture clicks, because `resolve_pick`'s `MeshRoot` target
+/// is the topmost **visible** named ancestor below the `SelectionStop`.
 fn is_gltf_wrapper_name(name: &str) -> bool {
-    if name == "SceneRoot" || name == "RootNode" || name == "Scene" {
-        return true;
+    let lower = name.to_ascii_lowercase();
+    let mut base = lower.as_str();
+    // `rootnode_001_1` → `rootnode_001` → `rootnode`. Loop rather than strip once:
+    // a re-uniquified id can carry more than one numeric group.
+    while let Some((head, tail)) = base.rsplit_once(['_', '.']) {
+        if tail.is_empty() || !tail.bytes().all(|b| b.is_ascii_digit()) {
+            break;
+        }
+        base = head;
     }
-    let suffix_only_digits = |sep: char| {
-        name.split_once(sep).is_some_and(|(prefix, rest)| {
-            prefix == "RootNode" && !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit())
-        })
-    };
-    suffix_only_digits('.') || suffix_only_digits('_')
+    matches!(base, "sceneroot" | "rootnode" | "scene")
 }
 
 /// System: walk each newly-imported model's subtree and tag GLTF wrapper
@@ -399,5 +412,50 @@ pub fn hide_gltf_wrappers(
 
         commands.entity(root).try_insert(WrappersHidden);
         commands.entity(root).remove::<WrappersPending>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_gltf_wrapper_name;
+
+    /// The canonical-id spellings. These are what actually reach the hierarchy —
+    /// `sanitize_id` lowercases and rewrites `.` to `_` — and matching only the
+    /// PascalCase forms is exactly the regression this guards.
+    #[test]
+    fn matches_sanitized_wrapper_names() {
+        for n in [
+            "rootnode",
+            "rootnode_001",
+            "rootnode_1",
+            "rootnode_001_1",
+            "sceneroot",
+            "sceneroot_2",
+            "scene",
+        ] {
+            assert!(is_gltf_wrapper_name(n), "{n} should be a wrapper");
+        }
+    }
+
+    /// The raw loader spellings still match — an entity that hasn't been through
+    /// `sanitize_id` yet (or a scene saved before canonical ids) must not regress.
+    #[test]
+    fn matches_raw_loader_names() {
+        for n in ["RootNode", "RootNode.001", "RootNode_2", "SceneRoot", "Scene"] {
+            assert!(is_gltf_wrapper_name(n), "{n} should be a wrapper");
+        }
+    }
+
+    #[test]
+    fn leaves_user_meshes_alone() {
+        for n in [
+            "player",
+            "rootnode_bone",   // numeric-suffix strip must not eat a word
+            "my_rootnode",     // only the leading segment counts
+            "root",
+            "node_001",
+        ] {
+            assert!(!is_gltf_wrapper_name(n), "{n} should NOT be a wrapper");
+        }
     }
 }
