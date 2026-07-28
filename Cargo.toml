@@ -51,7 +51,14 @@ members = [
 # `workspace = true` resolve here and fail). It's pulled in by path from the
 # physics consumers. (bevy_oxr is the same shape but uses explicit versions, so
 # it doesn't trip the inheritance lookup.)
-exclude = ["crates/avian"]
+# `plugins/` holds first-party `renzora_plugin` cdylibs — the C-ABI mechanism,
+# not the older dylib one in `crates/renzora_*`. They are deliberately NOT
+# workspace members: as members they would inherit the engine's cargo feature
+# unification and link Bevy, destroying the zero-dependency property that makes a
+# plugin build in a second on any machine. Each is its own cargo project with its
+# own lockfile and target dir; `cargo renzora` builds and stages them all, and a
+# dev can `cd plugins/<name> && cargo build` directly.
+exclude = ["crates/avian", "plugins"]
 # (The old egui-based `disabled/renzora_vr_editor` was deleted — the VR editor
 # is being rebuilt from scratch on the ember/bevy_ui shell. Park any future
 # not-yet-compiling crates under `disabled/`, outside the `crates/*` glob.)
@@ -339,6 +346,10 @@ uuid = "1"
 
 # Misc
 dynamic_plugin_loader = { path = "crates/dynamic_plugin_loader" }
+# C-ABI plugin host. One crate for both sides of the boundary: a plugin depends
+# on `renzora_plugin` with default features and gets zero deps; the engine opts
+# into `host` for the interface impl, dispatcher and dlopen loader.
+renzora_plugin = { path = "crates/renzora_plugin", features = ["host"] }
 toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 

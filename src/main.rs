@@ -108,6 +108,12 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
             dynamic_plugin_loader::load_plugins(app, &plugins, is_editor);
         }
     }
+    // C-ABI plugins (`renzora_plugin`) live in the SAME directory and are told
+    // apart by exported symbol, not by filename or location: this loader only
+    // claims libraries exporting `renzora_plugin_init`, and the loader above
+    // only claims those exporting `plugin_create`. Each ignores the other's, so
+    // the two mechanisms coexist during the migration with no staging changes.
+    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin);
 }
 
 // ── WASM runtime ─────────────────────────────────────────────────────────

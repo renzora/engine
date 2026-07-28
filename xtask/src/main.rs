@@ -161,12 +161,49 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         args.push(features.join(","));
     }
     println!("[xtask] cargo {}", args.join(" "));
-    Command::new(cargo())
+    let ok = Command::new(cargo())
         .current_dir(repo)
         .args(&args)
         .status()
         .map(|s| s.success())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    ok && build_source_plugins(repo)
+}
+
+/// Build every `renzora_plugin` cdylib under `plugins/`.
+///
+/// They are excluded from the workspace on purpose — as members they would
+/// inherit the engine's cargo feature unification and link Bevy, destroying the
+/// zero-dependency property that is the whole point. The cost is that
+/// `--workspace` never sees them, so without this step a stale copy from an
+/// earlier ABI lingers in the staged `plugins/` and gets loaded. That failure is
+/// nasty: a plugin built against an older ABI can pass the version handshake and
+/// then be called with a signature it was not compiled for.
+///
+/// Each is its own tiny build — well under a second, since there is nothing but
+/// the plugin itself to compile.
+fn build_source_plugins(repo: &Path) -> bool {
+    let root = repo.join("plugins");
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return true; // no plugins/ is fine
+    };
+    for entry in entries.flatten() {
+        let dir = entry.path();
+        if !dir.join("Cargo.toml").exists() {
+            continue;
+        }
+        println!("[xtask] cargo build --profile dist ({})", file_name(&dir));
+        let ok = Command::new(cargo())
+            .current_dir(&dir)
+            .args(["build", "--profile", "dist"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if !ok {
+            return false;
+        }
+    }
+    true
 }
 
 /// Port of `build-all.sh`'s `copy_shared_libs`: arrange `target/dist/` into a
@@ -247,6 +284,24 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
         }
         copy(&path, &plugins.join(&name))?;
         count += 1;
+    }
+
+    // ── Source plugin cdylibs (plugins/) → plugins/ ──────────────────────────
+    // Separate pass because each is its own cargo project with its own
+    // `target/`, so the workspace sweep above never sees them.
+    if let Ok(entries) = std::fs::read_dir(repo.join("plugins")) {
+        for entry in entries.flatten() {
+            let ex = entry.path().join("target").join("dist");
+            let Ok(files) = std::fs::read_dir(&ex) else { continue };
+            for f in files.flatten() {
+                let path = f.path();
+                let name = file_name(&path);
+                if path.is_file() && name.ends_with(&format!(".{}", plat.ext)) {
+                    copy(&path, &plugins.join(&name))?;
+                    count += 1;
+                }
+            }
+        }
     }
 
     // Native macOS dylibs record their absolute build path as the install name;

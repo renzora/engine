@@ -1,0 +1,14 @@
+[package]
+name = "spinner"
+version = "0.1.0"
+edition = "2021"
+description = "Reference Renzora plugin — the whole manifest a third-party author writes."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# One dependency, and it has none of its own. No bevy, no renzora, no workspace,
+# no pinned toolchain. `rlib` alongside `cdylib` so the engine's round-trip test
+# can link it and call `renzora_plugin_init` without `dlopen` in the picture.
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }

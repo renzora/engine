@@ -189,6 +189,16 @@ mod platform {
             };
 
             if !compatible {
+                // A C-ABI plugin (`renzora_plugin`) is not a broken dylib plugin —
+                // it is a different mechanism that lives in the same directory and
+                // is claimed by `renzora_plugin::host::loader`. Recognise it by its
+                // init symbol and say nothing; warning about an "incompatible bevy
+                // version" for a library that deliberately links no bevy at all is
+                // both wrong and alarming.
+                if unsafe { library.get::<unsafe extern "C" fn()>(b"renzora_plugin_init") }.is_ok()
+                {
+                    continue;
+                }
                 let engine_hash = engine_bevy_hash();
                 let plugin_hash = unsafe {
                     library

@@ -1,0 +1,22 @@
+[package]
+name = "renzora_plugin_derive"
+version = "0.1.0"
+edition = "2021"
+description = "#[derive(Component)] for renzora_plugin. Re-exported by that crate; never depend on this directly."
+license = "MIT OR Apache-2.0"
+
+# A proc macro MUST live in its own crate — that is a hard rustc rule, not a
+# structural choice. It does not undermine `renzora_plugin`'s zero-dependency
+# guarantee: proc macros run at compile time on the host and contribute nothing
+# to the plugin binary, so nothing here crosses the ABI boundary. A plugin author
+# never names this crate; `renzora_plugin` re-exports the derive.
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+
+[lints]
+workspace = true

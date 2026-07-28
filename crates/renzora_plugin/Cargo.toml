@@ -1,0 +1,52 @@
+[package]
+name = "renzora_plugin"
+version = "0.1.0"
+edition = "2021"
+description = "Write Renzora plugins in Rust. Compiles standalone — no engine checkout, no Bevy, no pinned toolchain."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/renzora/engine"
+
+[features]
+# A PLUGIN depends on this crate with default features and gets zero
+# dependencies — that is the whole design, and it is what makes a plugin build
+# in under a second on any machine with any rustc.
+default = []
+
+# The ENGINE opts into `host`, which adds the other side of the boundary: the
+# interface implementation, the dynamic-query dispatcher, and the `dlopen`
+# loader. Split by feature rather than by crate so a plugin author depends on
+# exactly one name.
+host = ["dep:bevy", "dep:libloading"]
+
+# NOTE: there is deliberately no `editor` feature pulling in `renzora`.
+# A crate with a path dependency cannot be published to crates.io, and this one
+# has to be publishable — a third-party plugin author must be able to
+# `cargo add renzora_plugin`. So the dependency runs the other way: editor crates
+# depend on THIS crate and read `host::PluginComponentSchemas`, rather than this
+# crate reaching into the engine.
+
+# ── The guest side must stay dependency-free ──────────────────────────────────
+# `sys` and `ecs` are compiled into BOTH the host and every plugin, potentially
+# by different rustc versions on different machines. The only thing making that
+# safe is that every type crossing the boundary is `#[repr(C)]` and every
+# function is `extern "C"`. A *non-optional* dependency here would put types with
+# unspecified layout on the boundary and silently miscompile plugins built with a
+# different toolchain — corrupted data, not a link error.
+#
+# So: anything added below MUST be `optional = true` and gated behind `host` or
+# `editor`. If a type needs to cross the boundary, define a `#[repr(C)]` mirror
+# in `sys` instead — `sys::Transform` documents why even `bevy::Transform` gets
+# mirrored rather than shared by pointer.
+[dependencies]
+renzora_plugin_derive = { path = "../renzora_plugin_derive" }
+bevy = { workspace = true, optional = true }
+libloading = { version = "0.8", optional = true }
+
+[dev-dependencies]
+# The reference plugin lives OUTSIDE the workspace, at `plugins/spinner`, and is
+# pulled in by path here so the round-trip test can link it as an rlib and call
+# `renzora_plugin_init` without `dlopen` in the picture.
+spinner = { path = "../../plugins/spinner" }
+
+[lints]
+workspace = true
