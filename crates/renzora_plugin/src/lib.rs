@@ -66,14 +66,14 @@ pub mod host;
 /// `#[derive(Component)]`. Re-exported so a plugin depends on exactly one crate
 /// — the proc-macro crate is an implementation detail (a proc macro must live in
 /// its own crate; that is a rustc rule, not a structural choice).
-pub use renzora_plugin_derive::Component;
+pub use renzora_plugin_derive::{Component, Resource};
 
 /// Everything a plugin needs. Mirrors `bevy::prelude`.
 pub mod prelude {
-    pub use renzora_plugin_derive::Component;
+    pub use renzora_plugin_derive::{Component, Resource};
     pub use crate::ecs::{
-        App, Mesh3d, RenderPass, Plugin, Quat, Query, Res, Schedule, Time, Transform, Vec3,
-        Visibility, With, Without,
+        App, Bundle, Commands, Entity, EntityCommands, Mesh3d, Or, Plugin, Quat, Query, RenderPass,
+        Res, ResMut, Resource, Schedule, Time, Transform, Vec3, Visibility, With, Without,
     };
     pub use crate::ecs::Schedule::{First, Last, PostUpdate, PreUpdate, Update};
 }

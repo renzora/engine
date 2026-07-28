@@ -29,7 +29,10 @@ pub mod loader;
 use bevy::ecs::component::{ComponentDescriptor, ComponentId, StorageType};
 use bevy::ecs::query::QueryBuilder;
 use bevy::ecs::schedule::{ScheduleLabel, Schedules};
-use bevy::ecs::system::{ParamBuilder, QueryParamBuilder, SystemParamBuilder};
+use bevy::ecs::system::{
+    FilteredResourcesMutParamBuilder, ParamBuilder, QueryParamBuilder, SystemParamBuilder,
+};
+use bevy::ecs::world::FilteredResourcesMut;
 use bevy::ecs::world::{FilteredEntityMut, FilteredEntityRef};
 use bevy::prelude::*;
 use bevy::render::render_phase::TrackedRenderPass;
@@ -89,6 +92,10 @@ static IFACE: sys::Interface = sys::Interface {
     render_set_pipeline,
     render_draw,
     add_post_process,
+    add_mesh,
+    add_material,
+    register_resource,
+    insert_resource,
 };
 
 
@@ -182,10 +189,120 @@ unsafe extern "C" fn register_component(
             fields,
             size: desc.size,
             default_value,
+            is_resource: false,
         });
 
     sys::ComponentId(id.index() as u32)
     })
+}
+
+/// Register a plugin-owned resource and give it its default value.
+///
+/// A resource in Bevy is a component on a hidden entity — `register_resource` is
+/// deprecated in favour of `register_component` for exactly that reason — so this
+/// reuses the component path wholesale and then performs the one extra step a
+/// resource needs: putting a value in the world, since nothing will ever spawn
+/// an entity carrying it.
+///
+/// Idempotent. Two systems both taking `ResMut<Score>` each drive a registration
+/// during init, and the second must not wipe what the first inserted.
+unsafe extern "C" fn register_resource(
+    host: *mut sys::Host,
+    desc: *const sys::ComponentDesc,
+) -> sys::ComponentId {
+    guard_host("register_resource", sys::ComponentId::INVALID, || {
+        let existing = {
+            let ctx = &mut *(host as *mut HostCtx);
+            lookup_component(ctx.world, (*desc).name.as_str())
+        };
+        let id = match existing {
+            Some(id) => sys::ComponentId(id.index() as u32),
+            None => register_component(host, desc),
+        };
+        if !id.is_valid() {
+            return id;
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let bevy_id = ComponentId::new(id.0 as usize);
+        if let Some(mut schemas) = ctx.world.get_resource_mut::<PluginComponentSchemas>() {
+            if let Some(info) = schemas.0.iter_mut().find(|i| i.id == bevy_id) {
+                info.is_resource = true;
+            }
+        }
+        if ctx.world.get_resource_by_id(bevy_id).is_none() {
+            let size = (*desc).size;
+            let mut bytes = vec![0u8; size];
+            match (*desc).default_init {
+                Some(init) => init(bytes.as_mut_ptr()),
+                // No default constructor is not an error — zeroed is a defensible
+                // starting value for a POD resource, and refusing to register
+                // would break a plugin over something it can fix in a system.
+                None => {}
+            }
+            write_resource_bytes(ctx.world, bevy_id, &bytes);
+        }
+        ctx.world
+            .get_resource_or_insert_with(PluginResources::default)
+            .0
+            .push(bevy_id);
+        id
+    })
+}
+
+unsafe extern "C" fn insert_resource(
+    host: *mut sys::Host,
+    id: sys::ComponentId,
+    value: *const u8,
+    len: usize,
+) {
+    guard_host("insert_resource", (), || {
+        let ctx = &mut *(host as *mut HostCtx);
+        let bevy_id = ComponentId::new(id.0 as usize);
+        let Some(info) = ctx.world.components().get_info(bevy_id) else {
+            error!("plugin inserted an unregistered resource id {}", id.0);
+            return;
+        };
+        // A short write would leave the tail uninitialised and a long one would
+        // scribble past the allocation, so mismatched sizes are refused rather
+        // than truncated. In practice this only fires if a plugin hand-rolls the
+        // ABI call, since the shim always passes `size_of::<T>()`.
+        if info.layout().size() != len {
+            error!(
+                "plugin resource `{}` is {} bytes here but the plugin sent {len}",
+                info.name(),
+                info.layout().size()
+            );
+            return;
+        }
+        let bytes = std::slice::from_raw_parts(value, len);
+        write_resource_bytes(ctx.world, bevy_id, bytes);
+    })
+}
+
+/// Move `bytes` into the world as the value of resource `id`.
+///
+/// Spawns the backing entity rather than calling `insert_resource_by_id`, because
+/// that alone does not make a resource *findable*. In Bevy 0.19 a resource is a
+/// component on an entity that also carries `IsResource`, and it is that marker's
+/// insert hook which records the entity in the world's resource cache. Without
+/// it the value is really in the world and `get_resource_by_id` still returns
+/// `None` — the component is there, nothing knows where.
+///
+/// The allocation handed over must be one Bevy can take over, and the pointer
+/// must address the *bytes* — an `OwningPtr` built from a boxed slice points at
+/// the fat pointer instead, which is how plugin components once arrived holding
+/// `{heap addr, len}` and rendered as nonsense in the inspector.
+unsafe fn write_resource_bytes(world: &mut World, id: ComponentId, bytes: &[u8]) {
+    let entity = match world.resource_entities().get(id) {
+        Some(e) => e,
+        None => world.spawn(bevy::ecs::resource::IsResource::new(id)).id(),
+    };
+    let mut owned = bytes.to_vec();
+    let ptr = owned.as_mut_ptr();
+    std::mem::forget(owned);
+    let owning = bevy::ptr::OwningPtr::new(std::ptr::NonNull::new_unchecked(ptr.cast()));
+    world.entity_mut(entity).insert_by_id(id, owning);
 }
 
 unsafe extern "C" fn component_id_by_name(
@@ -226,12 +343,200 @@ unsafe extern "C" fn add_system(
     let Some(plan) = build_plan(ctx.world, terms) else {
         return;
     };
-    let system = build_dispatcher(ctx.world, plan, entry, user as usize, host as usize);
+    let system = build_dispatcher(ctx.world, plan, entry, user as usize);
     ctx.world
         .resource_mut::<Schedules>()
         .entry(bevy_label(schedule))
         .add_systems(system);
     })
+}
+
+// ── Assets ───────────────────────────────────────────────────────────────────
+
+/// Assets a plugin asked the host to create.
+///
+/// A plugin never holds a real `Handle` — it gets an index into these. That
+/// keeps `Handle`'s layout (and `Assets<T>`'s existence) entirely on this side
+/// of the boundary, and means an unloaded plugin's assets are still reachable
+/// for cleanup.
+#[derive(Resource, Default)]
+pub struct PluginAssets {
+    pub meshes: Vec<Handle<Mesh>>,
+    pub materials: Vec<Handle<StandardMaterial>>,
+}
+
+unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) -> sys::AssetHandle {
+    guard_host("add_mesh", sys::AssetHandle::INVALID, || {
+        let ctx = &mut *(host as *mut HostCtx);
+        let d = &*desc;
+        let s = d.size;
+        let mesh: Mesh = match d.primitive {
+            sys::Primitive::Cuboid => Cuboid::new(s.x, s.y, s.z).into(),
+            sys::Primitive::Sphere => Sphere::new(s.x).into(),
+            sys::Primitive::Plane => {
+                Plane3d::default().mesh().size(s.x, s.z).into()
+            }
+            sys::Primitive::Cylinder => Cylinder::new(s.x, s.y).into(),
+            sys::Primitive::Capsule => Capsule3d::new(s.x, s.y).into(),
+            sys::Primitive::Torus => Torus::new(s.y, s.x).into(),
+        };
+        let Some(mut meshes) = ctx.world.get_resource_mut::<Assets<Mesh>>() else {
+            warn!("[plugin] add_mesh ignored — this build has no renderer");
+            return sys::AssetHandle::INVALID;
+        };
+        let handle = meshes.add(mesh);
+        let mut store = ctx
+            .world
+            .get_resource_or_insert_with(PluginAssets::default);
+        store.meshes.push(handle);
+        sys::AssetHandle((store.meshes.len() - 1) as u64)
+    })
+}
+
+unsafe extern "C" fn add_material(
+    host: *mut sys::Host,
+    desc: *const sys::MaterialDesc,
+) -> sys::AssetHandle {
+    guard_host("add_material", sys::AssetHandle::INVALID, || {
+        let ctx = &mut *(host as *mut HostCtx);
+        let d = &*desc;
+        let material = StandardMaterial {
+            base_color: Color::linear_rgba(d.color[0], d.color[1], d.color[2], d.color[3]),
+            metallic: d.metallic,
+            perceptual_roughness: d.roughness,
+            emissive: LinearRgba::new(d.emissive[0], d.emissive[1], d.emissive[2], d.emissive[3]),
+            ..default()
+        };
+        let Some(mut materials) = ctx.world.get_resource_mut::<Assets<StandardMaterial>>() else {
+            warn!("[plugin] add_material ignored — this build has no renderer");
+            return sys::AssetHandle::INVALID;
+        };
+        let handle = materials.add(material);
+        let mut store = ctx
+            .world
+            .get_resource_or_insert_with(PluginAssets::default);
+        store.materials.push(handle);
+        sys::AssetHandle((store.materials.len() - 1) as u64)
+    })
+}
+
+// ── Commands ─────────────────────────────────────────────────────────────────
+
+/// Backs `sys::CommandSink` for one system invocation.
+///
+/// `sink` must be the FIRST field: the plugin holds a `*mut CommandSink` and the
+/// host casts it back to this, so the two must share an address.
+#[repr(C)]
+struct SinkImpl<'a, 'w, 's> {
+    sink: sys::CommandSink,
+    commands: &'a mut Commands<'w, 's>,
+    queued: Vec<(sys::Command, Vec<u8>)>,
+}
+
+unsafe extern "C" fn sink_reserve(sink: *mut sys::CommandSink) -> sys::Entity {
+    let me = &mut *(sink as *mut SinkImpl);
+    // `spawn_empty` reserves an id that is valid immediately and materialises
+    // when commands are applied — which is what lets a plugin use the id in the
+    // same frame it asked for it.
+    sys::Entity(me.commands.spawn_empty().id().to_bits())
+}
+
+unsafe extern "C" fn sink_push(sink: *mut sys::CommandSink, cmd: *const sys::Command) {
+    let me = &mut *(sink as *mut SinkImpl);
+    let cmd = &*cmd;
+    // Copy the payload NOW. `data` may point at a plugin stack local that is gone
+    // by the time commands are applied.
+    let data = if cmd.data.is_null() || cmd.data_len == 0 {
+        Vec::new()
+    } else {
+        std::slice::from_raw_parts(cmd.data, cmd.data_len).to_vec()
+    };
+    me.queued.push((
+        sys::Command {
+            kind: cmd.kind,
+            entity: cmd.entity,
+            component: cmd.component,
+            data: std::ptr::null(),
+            data_len: 0,
+        },
+        data,
+    ));
+}
+
+/// Apply what a system queued. Runs after the system body, never during it.
+fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
+    for (cmd, data) in queued {
+        let Some(entity) = Entity::try_from_bits(cmd.entity.0) else {
+            continue;
+        };
+        match cmd.kind {
+            sys::CommandKind::Despawn => {
+                commands.entity(entity).try_despawn();
+            }
+            sys::CommandKind::Remove => {
+                if cmd.component.is_valid() {
+                    let id = ComponentId::new(cmd.component.0 as usize);
+                    commands.queue(move |world: &mut World| {
+                        if let Ok(mut e) = world.get_entity_mut(entity) {
+                            e.remove_by_id(id);
+                        }
+                    });
+                }
+            }
+            sys::CommandKind::SpawnMesh => {
+                if data.len() < size_of::<sys::SpawnMeshDesc>() {
+                    continue;
+                }
+                // SAFETY: pushed by `make_renderable`, which writes exactly one.
+                let d = unsafe { *data.as_ptr().cast::<sys::SpawnMeshDesc>() };
+                commands.queue(move |world: &mut World| {
+                    let (mesh, material) = {
+                        let Some(store) = world.get_resource::<PluginAssets>() else {
+                            return;
+                        };
+                        let m = store.meshes.get(d.mesh.0 as usize).cloned();
+                        let mat = store.materials.get(d.material.0 as usize).cloned();
+                        match (m, mat) {
+                            (Some(m), Some(mat)) => (m, mat),
+                            _ => {
+                                error!("[plugin] spawn_mesh used an unknown asset handle");
+                                return;
+                            }
+                        }
+                    };
+                    if let Ok(mut e) = world.get_entity_mut(entity) {
+                        e.insert((
+                            Mesh3d(mesh),
+                            MeshMaterial3d(material),
+                            from_mirror(&d.transform),
+                        ));
+                    }
+                });
+            }
+            sys::CommandKind::Insert => {
+                if !cmd.component.is_valid() || data.is_empty() {
+                    continue;
+                }
+                let id = ComponentId::new(cmd.component.0 as usize);
+                commands.queue(move |world: &mut World| {
+                    let mut bytes = data;
+                    // SAFETY: `bytes` is one instance of this component, copied
+                    // from the plugin at push time. `insert_by_id` moves the
+                    // value out, so the allocation is ours to release but its
+                    // contents must not be dropped again.
+                    unsafe {
+                        let ptr = bevy::ptr::OwningPtr::new(
+                            std::ptr::NonNull::new_unchecked(bytes.as_mut_ptr().cast()),
+                        );
+                        if let Ok(mut e) = world.get_entity_mut(entity) {
+                            e.insert_by_id(id, ptr);
+                        }
+                        std::mem::forget(bytes);
+                    }
+                });
+            }
+        }
+    }
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -415,11 +720,32 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
     let mut plan = Vec::with_capacity(terms.len());
 
     for t in terms {
+        // `Or` brackets name nothing. They survive into the plan so the query
+        // builder can still see the grouping, and are filtered out everywhere
+        // that walks terms for data.
+        if t.access.is_marker() {
+            plan.push(TermPlan {
+                id: ComponentId::new(0),
+                access: t.access,
+                marshal: Marshal::Raw,
+                cell_size: 0,
+            });
+            continue;
+        }
         let id = ComponentId::new(t.component.0 as usize);
         let Some(info) = world.components().get_info(id) else {
             error!("plugin declared an unknown component id {}", t.component.0);
             return None;
         };
+        if t.access.is_resource() {
+            plan.push(TermPlan {
+                id,
+                access: t.access,
+                marshal: Marshal::Raw,
+                cell_size: info.layout().size(),
+            });
+            continue;
+        }
         let (marshal, cell_size) = if Some(id) == transform_id {
             (Marshal::Transform, size_of::<sys::Transform>())
         } else {
@@ -435,6 +761,96 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
     Some(plan)
 }
 
+/// Translate a flat term list into a Bevy query.
+///
+/// Flat rather than nested because the ABI carries one term array: an `Or` is a
+/// bracketed run — `OrBegin`, branches separated by `OrNext`, `OrEnd` — so the
+/// filter grammar can grow without the boundary struct changing shape.
+fn build_query(builder: &mut QueryBuilder<FilteredEntityMut>, terms: &[TermPlan]) {
+    let mut i = 0;
+    while i < terms.len() {
+        let t = &terms[i];
+        i += 1;
+        match t.access {
+            sys::Access::Read => {
+                builder.ref_id(t.id);
+            }
+            sys::Access::Write => {
+                builder.mut_id(t.id);
+            }
+            sys::Access::With => {
+                builder.with_id(t.id);
+            }
+            sys::Access::Without => {
+                builder.without_id(t.id);
+            }
+            // Declares the access without the `with` that `ref_id`/`mut_id` imply,
+            // so the entity matches whether or not it has the component.
+            sys::Access::ReadOptional => {
+                let id = t.id;
+                builder.optional(move |b| {
+                    b.ref_id(id);
+                });
+            }
+            sys::Access::WriteOptional => {
+                let id = t.id;
+                builder.optional(move |b| {
+                    b.mut_id(id);
+                });
+            }
+            // Resources are not part of the entity query at all — they come in
+            // through their own param.
+            sys::Access::ResRead | sys::Access::ResWrite => {}
+            sys::Access::OrBegin => {
+                // Collect the branches up to the matching close, tracking depth so
+                // a nested `Or` inside a branch ends the right group.
+                let mut branches: Vec<Vec<TermPlan>> = vec![Vec::new()];
+                let mut depth = 0usize;
+                while i < terms.len() {
+                    let inner = terms[i].clone();
+                    i += 1;
+                    match inner.access {
+                        sys::Access::OrEnd if depth == 0 => break,
+                        sys::Access::OrNext if depth == 0 => branches.push(Vec::new()),
+                        _ => {
+                            if inner.access == sys::Access::OrBegin {
+                                depth += 1;
+                            } else if inner.access == sys::Access::OrEnd {
+                                depth -= 1;
+                            }
+                            branches.last_mut().unwrap().push(inner);
+                        }
+                    }
+                }
+                builder.or(|b| {
+                    for branch in &branches {
+                        // Each branch is one alternative, so its own terms must
+                        // AND together before being OR-ed with the next.
+                        b.and(|bb| {
+                            for term in branch {
+                                match term.access {
+                                    sys::Access::With => {
+                                        bb.with_id(term.id);
+                                    }
+                                    sys::Access::Without => {
+                                        bb.without_id(term.id);
+                                    }
+                                    // Only filters make sense inside `Or`: data
+                                    // access would have to be conditional on which
+                                    // branch matched, which no cell layout can
+                                    // express.
+                                    _ => {}
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+            sys::Access::OrNext | sys::Access::OrEnd => {}
+        }
+    }
+}
+
 /// Build the Bevy system that services one registered plugin system.
 ///
 /// `user` is carried as `usize` rather than `*mut c_void` so the closure stays
@@ -445,7 +861,6 @@ fn build_dispatcher(
     plan: Vec<TermPlan>,
     entry: sys::SystemEntry,
     user: usize,
-    host: usize,
 ) -> impl System<In = (), Out = ()> {
     let build_terms = plan.clone();
     // Latched off after a panic. Without this a system that panics does so every
@@ -454,24 +869,42 @@ fn build_dispatcher(
     // `Send + Sync`.
     let disabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // One builder per system param: the query needs custom construction, `Res<Time>`
-    // does not. The tuple arity here MUST match the closure's parameter count.
+    // Resources are declared per-system rather than taken as a blanket
+    // `&mut World`, which is what keeps plugin systems scheduling in parallel:
+    // two systems touching different resources still have disjoint access.
+    // Carries whether the plugin asked to write, because that decides which
+    // accessor can reach the value: `get_mut_by_id` refuses an id the system only
+    // declared `add_read_by_id` for, and a refusal here is indistinguishable from
+    // the resource not existing.
+    let mut resource_ids: Vec<(ComponentId, bool)> = Vec::new();
+    for term in plan.iter().filter(|t| t.access.is_resource()) {
+        let write = term.access == sys::Access::ResWrite;
+        match resource_ids.iter_mut().find(|(id, _)| *id == term.id) {
+            // Two params naming the same resource: the stronger access wins, so
+            // `Res` alongside `ResMut` still resolves.
+            Some((_, w)) => *w |= write,
+            None => resource_ids.push((term.id, write)),
+        }
+    }
+    let resource_build = plan.clone();
+
+    // One builder per system param: the query and the resources need custom
+    // construction, `Res<Time>` does not. The tuple arity here MUST match the
+    // closure's parameter count.
     (
         QueryParamBuilder::new(move |builder: &mut QueryBuilder<FilteredEntityMut>| {
-            for t in &build_terms {
+            build_query(builder, &build_terms);
+        }),
+        FilteredResourcesMutParamBuilder::new(move |builder| {
+            for t in &resource_build {
                 match t.access {
-                    sys::Access::Read => {
-                        builder.ref_id(t.id);
+                    sys::Access::ResRead => {
+                        builder.add_read_by_id(t.id);
                     }
-                    sys::Access::Write => {
-                        builder.mut_id(t.id);
+                    sys::Access::ResWrite => {
+                        builder.add_write_by_id(t.id);
                     }
-                    sys::Access::With => {
-                        builder.with_id(t.id);
-                    }
-                    sys::Access::Without => {
-                        builder.without_id(t.id);
-                    }
+                    _ => {}
                 }
             }
         }),
@@ -479,9 +912,15 @@ fn build_dispatcher(
         // `build_state` runs before `build_system`, so nothing has pinned the
         // param type yet and inference stalls on `_: SystemParam`.
         ParamBuilder::resource::<Time>(),
+        // Structural changes go through Bevy's own deferred queue, so a plugin
+        // spawning mid-iteration is exactly as safe as a Rust system doing it.
+        ParamBuilder::of::<Commands>(),
     )
         .build_state(world)
-        .build_system(move |mut q: Query<FilteredEntityMut>, time: Res<Time>| {
+        .build_system(move |mut q: Query<FilteredEntityMut>,
+                            mut resources: FilteredResourcesMut,
+                            time: Res<Time>,
+                            mut commands: Commands| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -501,13 +940,28 @@ fn build_dispatcher(
                 .iter()
                 .map(|t| Vec::<u8>::with_capacity(t.cell_size * 64))
                 .collect();
+            // Only optional terms can be absent, but tracking presence for every
+            // term keeps the row indexing uniform — the alternative is a second
+            // sparse index and an off-by-one waiting to happen.
+            let mut present: Vec<Vec<bool>> = vec![Vec::new(); cells_plan.len()];
             let mut entities: Vec<sys::Entity> = Vec::new();
 
             for e in q.iter() {
                 entities.push(sys::Entity(e.id().to_bits()));
                 for (i, t) in cells_plan.iter().enumerate() {
-                    let bytes = read_cell(&e, t);
-                    staging[i].extend_from_slice(&bytes);
+                    match read_cell(&e, t) {
+                        Some(bytes) => {
+                            staging[i].extend_from_slice(&bytes);
+                            present[i].push(true);
+                        }
+                        // Still reserve the row so offsets stay uniform; the
+                        // plugin sees a null cell and never reads these bytes.
+                        None => {
+                            let len = staging[i].len();
+                            staging[i].resize(len + t.cell_size, 0);
+                            present[i].push(false);
+                        }
+                    }
                 }
             }
 
@@ -520,10 +974,47 @@ fn build_dispatcher(
             let mut cells: Vec<*mut u8> = Vec::with_capacity(entities.len() * cells_plan.len());
             for row in 0..entities.len() {
                 for (i, t) in cells_plan.iter().enumerate() {
-                    cells.push(unsafe { staging[i].as_mut_ptr().add(row * t.cell_size) });
+                    cells.push(if present[i][row] {
+                        unsafe { staging[i].as_mut_ptr().add(row * t.cell_size) }
+                    } else {
+                        std::ptr::null_mut()
+                    });
                 }
             }
 
+            // Resolved once per call rather than per access: a system may read
+            // the same resource from several parameters, and each `get_mut_by_id`
+            // takes a fresh borrow.
+            let mut slots: Vec<sys::ResourceSlot> = Vec::with_capacity(resource_ids.len());
+            for (id, write) in &resource_ids {
+                let ptr = if *write {
+                    resources
+                        .get_mut_by_id(*id)
+                        .map(|mut m| m.as_mut().as_ptr())
+                        .unwrap_or(std::ptr::null_mut())
+                } else {
+                    // Cast away const: the slot is a plain address, and only
+                    // `ResMut` — which requires the write branch above — ever
+                    // hands out a `&mut` to it.
+                    resources
+                        .get_by_id(*id)
+                        .map(|p| p.as_ptr())
+                        .unwrap_or(std::ptr::null_mut())
+                };
+                slots.push(sys::ResourceSlot {
+                    id: sys::ComponentId(id.index() as u32),
+                    ptr,
+                });
+            }
+
+            let mut sink = SinkImpl {
+                sink: sys::CommandSink {
+                    reserve_entity: sink_reserve,
+                    push: sink_push,
+                },
+                commands: &mut commands,
+                queued: Vec::new(),
+            };
             let call = sys::SystemCall {
                 cells: cells.as_mut_ptr(),
                 entities: entities.as_ptr(),
@@ -535,13 +1026,22 @@ fn build_dispatcher(
                 },
                 user: user as *mut c_void,
                 iface: &IFACE,
-                host: host as *mut sys::Host,
+                // Deliberately null: a `Host` handle only means something during
+                // init, when the host holds `&mut World`. While this system runs
+                // the world is borrowed by the query, so the init-time pointer
+                // would be dangling — handing it over was a trap waiting for the
+                // first plugin that called back.
+                host: core::ptr::null_mut(),
+                commands: (&mut sink as *mut SinkImpl).cast(),
+                resources: slots.as_ptr(),
+                resource_count: slots.len(),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps
             // alive for the process lifetime, and every pointer in `call` points
             // at a buffer that outlives this statement.
             let status = unsafe { entry(&call) };
+            let queued = std::mem::take(&mut sink.queued);
             if status == sys::SystemStatus::Panicked {
                 error!("[plugin] system panicked — disabling it for this session");
                 disabled.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -550,10 +1050,16 @@ fn build_dispatcher(
                 return;
             }
 
+            apply_queued(&mut commands, queued);
+
             // Write back only the terms the plugin declared `&mut`.
             for (row, mut e) in q.iter_mut().enumerate() {
                 for (i, t) in cells_plan.iter().enumerate() {
-                    if t.access != sys::Access::Write {
+                    let writable = matches!(
+                        t.access,
+                        sys::Access::Write | sys::Access::WriteOptional
+                    );
+                    if !writable || !present[i][row] {
                         continue;
                     }
                     let start = row * t.cell_size;
@@ -564,31 +1070,29 @@ fn build_dispatcher(
 }
 
 /// Copy one component out of storage into the plugin-facing representation.
-fn read_cell(e: &FilteredEntityRef, t: &TermPlan) -> Vec<u8> {
+///
+/// `None` means the entity does not have it, which only happens for an optional
+/// term — a required one was a precondition of matching the query.
+fn read_cell(e: &FilteredEntityRef, t: &TermPlan) -> Option<Vec<u8>> {
     match t.marshal {
         Marshal::Transform => {
-            let src = e
-                .get::<Transform>()
-                .copied()
-                .unwrap_or(Transform::IDENTITY);
-            let mirror = to_mirror(&src);
+            let src = *e.get::<Transform>()?;
+            let m = to_mirror(&src);
             // SAFETY: `sys::Transform` is `#[repr(C)]` and plain-old-data.
-            unsafe {
+            let bytes = unsafe {
                 std::slice::from_raw_parts(
-                    (&mirror as *const sys::Transform).cast::<u8>(),
+                    (&m as *const sys::Transform).cast::<u8>(),
                     size_of::<sys::Transform>(),
                 )
             }
-            .to_vec()
+            .to_vec();
+            Some(bytes)
         }
-        Marshal::Raw => match e.get_by_id(t.id) {
-            // SAFETY: the query matched, so the component is present and its
-            // storage is `cell_size` bytes.
-            Some(ptr) => unsafe {
-                std::slice::from_raw_parts(ptr.as_ptr(), t.cell_size).to_vec()
-            },
-            None => vec![0u8; t.cell_size],
-        },
+        // SAFETY: presence was just checked, and the component occupies
+        // `cell_size` bytes because that is where the size came from.
+        Marshal::Raw => e
+            .get_by_id(t.id)
+            .map(|ptr| unsafe { std::slice::from_raw_parts(ptr.as_ptr(), t.cell_size).to_vec() }),
     }
 }
 
@@ -656,6 +1160,10 @@ fn from_mirror(m: &sys::Transform) -> Transform {
 #[derive(Resource, Default)]
 pub struct PluginComponents(pub std::collections::HashMap<String, ComponentId>);
 
+/// Every resource a plugin registered, so the editor can list and inspect them.
+#[derive(bevy::prelude::Resource, Default)]
+pub struct PluginResources(pub Vec<ComponentId>);
+
 /// One editable field of a plugin component, copied out of the plugin's
 /// `sys::FieldDesc` at registration.
 ///
@@ -681,6 +1189,13 @@ pub struct PluginComponentInfo {
     /// A default-valued instance, `size` bytes. Empty if the plugin supplied
     /// none, in which case the editor falls back to zeroed memory.
     pub default_value: Vec<u8>,
+    /// Whether this is a resource rather than a component.
+    ///
+    /// Both share this list because they share a registry in Bevy, and the
+    /// schema is what draws editable rows either way. The editor must still tell
+    /// them apart: a resource has no entity to sit on, so offering it in Add
+    /// Component would put a second copy of a global on some arbitrary entity.
+    pub is_resource: bool,
 }
 
 /// Schemas for every registered plugin component.

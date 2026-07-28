@@ -267,6 +267,9 @@ pub fn register_plugin_component_sections(world: &mut World) {
         .get_resource::<PluginComponentSchemas>()
         .map(|s| {
             s.0.iter()
+                // Resources get no per-entity section, and skipping them here
+                // also stops them eating slots from the fixed pool.
+                .filter(|i| !i.is_resource)
                 .map(|i| (i.id, i.type_path.clone(), i.display_name.clone()))
                 .collect()
         })

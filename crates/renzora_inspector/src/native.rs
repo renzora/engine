@@ -145,15 +145,25 @@ struct AddPluginComponentCmd {
 
 impl AddPluginComponentCmd {
     fn insert(&self, world: &mut World) {
-        let bytes = self.default_value.clone();
-        // SAFETY: `bytes` is exactly one instance of this component, as the
-        // plugin described it at registration.
+        let mut bytes = self.default_value.clone();
+        // NOT `OwningPtr::make(bytes.into_boxed_slice(), ..)`. That hands the
+        // closure a pointer to *the value passed in* — for a `Box<[u8]>` that is
+        // the fat pointer itself, so `insert_by_id` copied 16 bytes of
+        // `{ heap address, length }` into the component instead of the bytes it
+        // points at. The symptom was a first field full of garbage and the rest
+        // zero, with single-field components appearing to work by luck.
+        //
+        // SAFETY: `bytes` holds exactly one instance of this component, as the
+        // plugin described it at registration. `insert_by_id` moves the value
+        // out of the pointer, so the allocation is ours to drop afterwards but
+        // its contents must not be dropped again.
         unsafe {
-            bevy::ptr::OwningPtr::make(bytes.into_boxed_slice(), |ptr| {
-                if let Ok(mut e) = world.get_entity_mut(self.entity) {
-                    e.insert_by_id(self.component, ptr);
-                }
-            });
+            let ptr = bevy::ptr::OwningPtr::new(
+                std::ptr::NonNull::new_unchecked(bytes.as_mut_ptr().cast()),
+            );
+            if let Ok(mut e) = world.get_entity_mut(self.entity) {
+                e.insert_by_id(self.component, ptr);
+            }
         }
     }
 }
@@ -2810,6 +2820,8 @@ fn open_add_component(world: &mut World) {
         .get_resource::<renzora_plugin::host::PluginComponentSchemas>()
         .map(|s| {
             s.0.iter()
+                // A resource is global — there is no entity to add it to.
+                .filter(|i| !i.is_resource)
                 .map(|i| (i.display_name.clone(), i.id, i.default_value.clone()))
                 .collect()
         })

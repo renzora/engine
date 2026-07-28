@@ -4,10 +4,10 @@
 [workspace]
 
 [package]
-name = "spinner"
+name = "orbit"
 version = "0.1.0"
 edition = "2021"
-description = "Rotates entities carrying a Spinner. Demonstrates systems + components."
+description = "Orbits entities around a point. Demonstrates a multi-field component."
 
 [lib]
 crate-type = ["cdylib"]

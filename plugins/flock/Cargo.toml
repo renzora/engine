@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "flock"
+version = "0.1.0"
+edition = "2021"
+description = "Boids flocking. Demonstrates a plugin-owned resource shared across systems, and Option<&T> query data."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"

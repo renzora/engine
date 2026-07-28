@@ -60,7 +60,7 @@ pub const VERSION_MAJOR: u32 = 1;
 
 /// Bumped when something is *appended*. Older plugins keep working; a plugin
 /// needing the new function declares this as its minimum.
-pub const VERSION_MINOR: u32 = 2;
+pub const VERSION_MINOR: u32 = 5;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -266,13 +266,45 @@ pub enum Access {
     With = 2,
     /// Filter only — the entity must NOT have this component.
     Without = 3,
+    /// Read-only access to a **resource**, not a component. Contributes no cell
+    /// and no filtering; the host resolves it once per call into
+    /// [`SystemCall::resources`].
+    ResRead = 4,
+    /// Mutable resource access.
+    ResWrite = 5,
+    /// Optional component data. Produces a cell like [`Access::Read`], but the
+    /// cell is **null** when the entity lacks the component, and the entity
+    /// still matches. Mirrors Bevy's `Option<&T>`.
+    ReadOptional = 6,
+    /// Optional mutable component data. Mirrors `Option<&mut T>`.
+    WriteOptional = 7,
+    /// Opens an `Or` group. Carries no component.
+    OrBegin = 8,
+    /// Separates one `Or` branch from the next. Carries no component.
+    OrNext = 9,
+    /// Closes an `Or` group. Carries no component.
+    OrEnd = 10,
 }
 
 impl Access {
-    /// Whether this term contributes a cell to [`SystemCall::cells`]. Filter
-    /// terms do not, which is why cell indices are *not* term indices.
+    /// Whether this term is a grouping marker rather than a component or
+    /// resource reference. Markers carry [`ComponentId::INVALID`].
+    pub const fn is_marker(self) -> bool {
+        matches!(self, Access::OrBegin | Access::OrNext | Access::OrEnd)
+    }
+
+    /// Whether this term contributes a cell to [`SystemCall::cells`]. Filter and
+    /// resource terms do not, which is why cell indices are *not* term indices.
     pub const fn has_cell(self) -> bool {
-        matches!(self, Access::Read | Access::Write)
+        matches!(
+            self,
+            Access::Read | Access::Write | Access::ReadOptional | Access::WriteOptional
+        )
+    }
+
+    /// Whether this term names a resource rather than a component.
+    pub const fn is_resource(self) -> bool {
+        matches!(self, Access::ResRead | Access::ResWrite)
     }
 }
 
@@ -282,6 +314,16 @@ impl Access {
 pub struct Term {
     pub component: ComponentId,
     pub access: Access,
+}
+
+impl Term {
+    /// A grouping marker — an `Or` bracket, which names no component.
+    pub const fn marker(access: Access) -> Self {
+        Self {
+            component: ComponentId::INVALID,
+            access,
+        }
+    }
 }
 
 /// The full access pattern of one system, declared up front at registration.
@@ -332,11 +374,33 @@ pub struct SystemCall {
     /// Opaque value the plugin supplied at [`Interface::add_system`] — how a
     /// generated thunk finds its way back to the right Rust function.
     pub user: *mut c_void,
-    /// The interface, so a running system can call back into the host — to log,
-    /// and later to spawn or queue commands. Appended after `user`, so a plugin
-    /// built before this existed simply never reads it.
+    /// The interface, so a running system can log. Points at the host's
+    /// `'static` table.
     pub iface: *const Interface,
+    /// **Always null while a system runs.** A `Host` handle is only meaningful
+    /// during plugin init, when the host holds `&mut World`; while a system runs
+    /// the world is borrowed by the query and there is nothing valid for it to
+    /// point at. Structural changes go through [`commands`](Self::commands).
     pub host: *mut Host,
+    /// Queue for structural changes. Null if the host could not provide one.
+    pub commands: *mut CommandSink,
+    /// The resources this system declared. Self-describing rather than
+    /// positional: a parameter finds its own slot by id, so parameter order and
+    /// term order need not agree and neither side has to thread an index
+    /// through the other.
+    pub resources: *const ResourceSlot,
+    pub resource_count: usize,
+}
+
+/// One resolved resource for a call.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ResourceSlot {
+    pub id: ComponentId,
+    /// Null when the resource does not exist. A system still runs — it is a
+    /// plugin's own business whether a missing resource is fatal, and skipping
+    /// the system silently would be worse than handing it a `None`.
+    pub ptr: *mut u8,
 }
 
 /// Outcome of one system invocation.
@@ -460,6 +524,117 @@ pub struct PostProcessDesc {
     pub order: f32,
 }
 
+// ── Assets ───────────────────────────────────────────────────────────────────
+
+/// A mesh or material the host created for a plugin. Opaque index into a
+/// host-side table — a plugin never sees a real `Handle`.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct AssetHandle(pub u64);
+
+impl AssetHandle {
+    pub const INVALID: AssetHandle = AssetHandle(u64::MAX);
+    pub const fn is_valid(self) -> bool {
+        self.0 != u64::MAX
+    }
+}
+
+/// Built-in mesh shapes.
+///
+/// A closed set rather than arbitrary vertex data: a plugin handing over raw
+/// buffers needs the whole asset/GPU surface, whereas primitives cover the cases
+/// that actually come up — spawning markers, blockout geometry, particles,
+/// procedural layouts.
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Primitive {
+    Cuboid = 0,
+    Sphere = 1,
+    Plane = 2,
+    Cylinder = 3,
+    Capsule = 4,
+    Torus = 5,
+}
+
+/// `size` is interpreted per primitive: full extents for `Cuboid` and `Plane`,
+/// `x` = radius for `Sphere`, `x` = radius and `y` = height for `Cylinder` and
+/// `Capsule`, `x` = major and `y` = minor radius for `Torus`.
+#[repr(C)]
+pub struct MeshDesc {
+    pub primitive: Primitive,
+    pub size: Vec3,
+}
+
+#[repr(C)]
+pub struct MaterialDesc {
+    /// Linear RGBA.
+    pub color: [f32; 4],
+    pub metallic: f32,
+    pub roughness: f32,
+    pub emissive: [f32; 4],
+}
+
+// ── Commands ─────────────────────────────────────────────────────────────────
+
+/// What a queued command does.
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CommandKind {
+    /// Despawn `entity` and its descendants.
+    Despawn = 0,
+    /// Insert `component` on `entity`, copying `data_len` bytes from `data`.
+    Insert = 1,
+    /// Remove `component` from `entity`.
+    Remove = 2,
+    /// Make `entity` renderable: the host attaches the real `Mesh3d`,
+    /// `MeshMaterial3d` and `Transform`.
+    ///
+    /// A dedicated command rather than exposing `Mesh3d` as a mirrored
+    /// component, because a plugin has no `Handle` type and translating one
+    /// through a raw byte copy would mean teaching the insert path about every
+    /// host type that contains a handle. `data` holds a [`SpawnMeshDesc`].
+    SpawnMesh = 3,
+}
+
+/// Payload for [`CommandKind::SpawnMesh`].
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct SpawnMeshDesc {
+    pub mesh: AssetHandle,
+    pub material: AssetHandle,
+    pub transform: Transform,
+}
+
+/// One queued structural change.
+///
+/// `data` is only read during the [`CommandSink::push`] call — the host copies
+/// what it needs, so a plugin may point at a stack local.
+#[repr(C)]
+pub struct Command {
+    pub kind: CommandKind,
+    pub entity: Entity,
+    pub component: ComponentId,
+    pub data: *const u8,
+    pub data_len: usize,
+}
+
+/// Structural changes for one system invocation.
+///
+/// A separate object rather than more [`Interface`] functions, because those
+/// take a `Host` handle that is only valid during plugin init — the world is
+/// borrowed by the query while a system runs, so there is nothing safe for such
+/// a handle to point at. The sink is created per call and dies with it.
+///
+/// Commands are deferred and applied after the system, exactly like Bevy's:
+/// spawning mid-iteration would invalidate the very rows being walked.
+#[repr(C)]
+pub struct CommandSink {
+    /// Allocate an entity id usable immediately, even though the entity does not
+    /// exist until commands are applied. Mirrors `Commands::spawn_empty`.
+    pub reserve_entity: unsafe extern "C" fn(sink: *mut CommandSink) -> Entity,
+    pub push: unsafe extern "C" fn(sink: *mut CommandSink, cmd: *const Command),
+}
+
 /// Severity for [`Interface::log`].
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -537,6 +712,38 @@ pub struct Interface {
     // ── Added in MINOR 2 ─────────────────────────────────────────────────────
     /// Register a parameterised full-screen effect. See [`PostProcessDesc`].
     pub add_post_process: unsafe extern "C" fn(host: *mut Host, desc: *const PostProcessDesc),
+
+    // ── Added in MINOR 4 ─────────────────────────────────────────────────────
+    /// Create a mesh asset. **Only valid during plugin init** — asset collections
+    /// live behind `&mut World`, which the host holds during `renzora_plugin_init`
+    /// and not while a system runs. Create what you need up front and keep the
+    /// handles; that is also the cheap way round, since a primitive built once
+    /// and spawned a thousand times shares one asset.
+    pub add_mesh: unsafe extern "C" fn(host: *mut Host, desc: *const MeshDesc) -> AssetHandle,
+
+    /// Create a material asset. Same init-only restriction as [`Self::add_mesh`].
+    pub add_material:
+        unsafe extern "C" fn(host: *mut Host, desc: *const MaterialDesc) -> AssetHandle,
+
+    // ── Added in MINOR 5 ─────────────────────────────────────────────────────
+    /// Register a plugin-owned resource and insert its default value.
+    ///
+    /// Takes the same [`ComponentDesc`] as a component — a resource in Bevy is a
+    /// component on a hidden entity, so the layout, field schema and default all
+    /// mean the same thing.
+    pub register_resource:
+        unsafe extern "C" fn(host: *mut Host, desc: *const ComponentDesc) -> ComponentId,
+    /// Overwrite a registered resource with `len` bytes read from `value`.
+    ///
+    /// Separate from registration because registration is idempotent and
+    /// insertion is not: two systems taking the same `ResMut` must not reset it,
+    /// but `insert_resource(Config { .. })` must replace whatever is there.
+    pub insert_resource: unsafe extern "C" fn(
+        host: *mut Host,
+        id: ComponentId,
+        value: *const u8,
+        len: usize,
+    ),
 }
 
 /// Result of [`ExtensionInit`].

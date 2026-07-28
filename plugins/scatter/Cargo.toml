@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "scatter"
+version = "0.1.0"
+edition = "2021"
+description = "Spawns a grid of cubes. Demonstrates assets and spawning renderable entities."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"
