@@ -60,7 +60,7 @@ pub const VERSION_MAJOR: u32 = 1;
 
 /// Bumped when something is *appended*. Older plugins keep working; a plugin
 /// needing the new function declares this as its minimum.
-pub const VERSION_MINOR: u32 = 0;
+pub const VERSION_MINOR: u32 = 1;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -481,6 +481,18 @@ pub struct Interface {
         user: *mut c_void,
     ),
 
+    /// Write a line to the engine log.
+    ///
+    /// A plugin has no stdout worth using and no `tracing` subscriber of its
+    /// own, so without this its only way to report anything is to return an
+    /// error code with no detail. Panic messages come through here too.
+    pub log: unsafe extern "C" fn(host: *mut Host, level: LogLevel, msg: StrRef),
+
+    // ── Added in MINOR 1 ─────────────────────────────────────────────────────
+    // APPENDED, not inserted. These went in above `log` first time round, which
+    // silently repointed every older plugin's `log` call at `add_render_pass`
+    // with mismatched arguments. "Append-only" means the END of the struct — a
+    // new field in the middle is a MAJOR break wearing a MINOR's clothes.
     /// Register a full-screen render pass. See [`RenderPassDesc`].
     pub add_render_pass: unsafe extern "C" fn(host: *mut Host, desc: *const RenderPassDesc),
 
@@ -491,13 +503,6 @@ pub struct Interface {
     /// the engine's fullscreen vertex shader generates a covering triangle from
     /// the vertex index, so there is no vertex buffer to bind.
     pub render_draw: unsafe extern "C" fn(ctx: RenderCtx, vertices: u32, instances: u32),
-
-    /// Write a line to the engine log.
-    ///
-    /// A plugin has no stdout worth using and no `tracing` subscriber of its
-    /// own, so without this its only way to report anything is to return an
-    /// error code with no detail. Panic messages come through here too.
-    pub log: unsafe extern "C" fn(host: *mut Host, level: LogLevel, msg: StrRef),
 }
 
 /// Result of [`ExtensionInit`].

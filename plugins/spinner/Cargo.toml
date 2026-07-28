@@ -1,3 +1,11 @@
+# Declares this its OWN workspace root. Without it, cargo walks up, finds the
+# engine's Cargo.toml and uses that workspace's target dir and profiles — even
+# though `plugins` is in its `exclude` list, which only stops membership. The
+# effect was that `cargo build` here silently wrote to the engine's
+# `target/dist/`, sharing its feature unification: the exact coupling that
+# keeping plugins out of the workspace is meant to prevent.
+[workspace]
+
 [package]
 name = "spinner"
 version = "0.1.0"
@@ -12,3 +20,10 @@ crate-type = ["cdylib", "rlib"]
 # can link it and call `renzora_plugin_init` without `dlopen` in the picture.
 [dependencies]
 renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+# Mirrors the engine's `dist` profile. Needed in full because this is its own
+# workspace root now and inherits nothing from the engine.
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"

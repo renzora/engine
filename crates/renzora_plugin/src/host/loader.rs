@@ -63,7 +63,31 @@ pub fn load_dir(world: &mut World, dir: &Path) -> Vec<(PathBuf, LoadOutcome)> {
     results
 }
 
+/// True if the file is a Rust **proc-macro** dylib.
+///
+/// These compile to a dylib for *rustc* to load, not for us, and `dlopen`ing one
+/// into a process that is not the compiler crashes hard — before the splash,
+/// with no panic and no crash report, because it is the OS loader failing rather
+/// than Rust. We cannot detect that after `Library::new`, so detect it before:
+/// every proc-macro dylib exports a `__rustc_proc_macro_decls_*` symbol, and the
+/// name appears verbatim in the export table, so a plain byte search finds it
+/// with no PE/ELF parsing.
+///
+/// Staging already filters these out (see xtask's `is_not_a_plugin`), but a dll
+/// dropped into `plugins/` by hand must not be able to take the editor down.
+fn is_proc_macro_dylib(path: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    const NEEDLE: &[u8] = b"__rustc_proc_macro_decls";
+    bytes.windows(NEEDLE.len()).any(|w| w == NEEDLE)
+}
+
 fn load_one(world: &mut World, path: &Path) -> LoadOutcome {
+    if is_proc_macro_dylib(path) {
+        return LoadOutcome::NotAPlugin;
+    }
+
     // SAFETY: loading arbitrary native code is inherently unsafe — a plugin can
     // do anything the process can. That is the same trust model as the existing
     // dylib loader; the C ABI buys build-environment independence, not sandboxing.

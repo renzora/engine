@@ -72,7 +72,7 @@ pub use renzora_plugin_derive::Component;
 pub mod prelude {
     pub use renzora_plugin_derive::Component;
     pub use crate::ecs::{
-        App, Mesh3d, Plugin, Quat, Query, Res, Schedule, Time, Transform, Vec3,
+        App, Mesh3d, RenderPass, Plugin, Quat, Query, Res, Schedule, Time, Transform, Vec3,
         Visibility, With, Without,
     };
     pub use crate::ecs::Schedule::{First, Last, PostUpdate, PreUpdate, Update};

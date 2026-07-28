@@ -327,7 +327,21 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
     name.contains("bevy_dylib")
         || name.starts_with("std-")
         || name.starts_with("libstd-")
+        // PROC-MACRO CRATES. These compile to a dylib for *rustc* to load, not for
+        // us. Staging one is not merely useless: the C-ABI loader calls
+        // `Library::new` on every dll in `plugins/`, and `dlopen`ing a proc-macro
+        // dylib into a process that is not the compiler crashes the editor before
+        // it reaches the splash. Any new `proc-macro = true` crate belongs here.
         || name.contains("renzora_macros")
+        || name.contains("renzora_plugin_derive")
+        || name.contains("avian_derive")
+        // `plugins/spinner` is built standalone by `build_source_plugins` and
+        // staged from its own target dir. It ALSO lands in the workspace
+        // `target/dist` because `renzora_plugin` dev-depends on it for the
+        // round-trip test — and that copy is built under the engine's feature
+        // unification, which is the exact thing keeping it out of the workspace
+        // was meant to prevent. Skip it here so only the standalone build ships.
+        || is("spinner")
         || is("renzora")
         || is("renzora_editor")
         || is("renzora_editor_bundle") // pre-rename name, in case it lingers in cache

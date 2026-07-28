@@ -7564,6 +7564,7 @@ dependencies = [
  "getrandom 0.3.4",
  "log",
  "renzora_plugin",
+ "renzora_postprocess",
  "renzora_runtime",
  "renzora_static_plugins",
  "toml 0.8.23",
@@ -9055,7 +9056,6 @@ dependencies = [
  "bevy",
  "libloading 0.8.9",
  "renzora_plugin_derive",
- "spinner",
 ]
 
 [[package]]
@@ -9093,7 +9093,9 @@ dependencies = [
 name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
+ "bevy",
  "renzora",
+ "renzora_plugin",
 ]
 
 [[package]]
@@ -10665,13 +10667,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
 dependencies = [
  "portable-atomic",
-]
-
-[[package]]
-name = "spinner"
-version = "0.1.0"
-dependencies = [
- "renzora_plugin",
 ]
 
 [[package]]

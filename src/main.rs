@@ -114,6 +114,10 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     // only claims those exporting `plugin_create`. Each ignores the other's, so
     // the two mechanisms coexist during the migration with no staging changes.
     app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin);
+    // Installs any render passes those plugins registered. Separate plugin
+    // because the work happens in `finish`, after every `build` has run and the
+    // render sub-app exists.
+    app.add_plugins(renzora_postprocess::plugin_bridge::PluginRenderBridgePlugin);
 }
 
 // ── WASM runtime ─────────────────────────────────────────────────────────

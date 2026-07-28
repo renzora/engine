@@ -84,27 +84,12 @@ static IFACE: sys::Interface = sys::Interface {
     register_component,
     component_id_by_name,
     add_system,
+    log,
     add_render_pass,
     render_set_pipeline,
     render_draw,
-    log,
 };
 
-/// Build the interface table. The function pointers are plain `extern "C"` items
-/// with no captured state — everything they need arrives through `host`.
-fn interface() -> sys::Interface {
-    sys::Interface {
-        version_major: sys::VERSION_MAJOR,
-        version_minor: sys::VERSION_MINOR,
-        register_component,
-        component_id_by_name,
-        add_system,
-        add_render_pass,
-        render_set_pipeline,
-        render_draw,
-        log,
-    }
-}
 
 // ── Interface implementations ────────────────────────────────────────────────
 
@@ -112,6 +97,7 @@ unsafe extern "C" fn register_component(
     host: *mut sys::Host,
     desc: *const sys::ComponentDesc,
 ) -> sys::ComponentId {
+    guard_host("register_component", sys::ComponentId::INVALID, || {
     let ctx = &mut *(host as *mut HostCtx);
     let desc = &*desc;
     let name = desc.name.as_str().to_string();
@@ -198,12 +184,14 @@ unsafe extern "C" fn register_component(
         });
 
     sys::ComponentId(id.index() as u32)
+    })
 }
 
 unsafe extern "C" fn component_id_by_name(
     host: *mut sys::Host,
     name: sys::StrRef,
 ) -> sys::ComponentId {
+    guard_host("component_id_by_name", sys::ComponentId::INVALID, || {
     let ctx = &mut *(host as *mut HostCtx);
     let name = name.as_str();
     match lookup_component(ctx.world, name) {
@@ -219,6 +207,7 @@ unsafe extern "C" fn component_id_by_name(
             sys::ComponentId::INVALID
         }
     }
+    })
 }
 
 unsafe extern "C" fn add_system(
@@ -228,6 +217,7 @@ unsafe extern "C" fn add_system(
     query: *const sys::QueryDesc,
     user: *mut c_void,
 ) {
+    guard_host("add_system", (), || {
     let ctx = &mut *(host as *mut HostCtx);
     let query = &*query;
     let terms = std::slice::from_raw_parts(query.terms, query.term_count);
@@ -240,6 +230,7 @@ unsafe extern "C" fn add_system(
         .resource_mut::<Schedules>()
         .entry(bevy_label(schedule))
         .add_systems(system);
+    })
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -277,6 +268,7 @@ pub struct RenderCallCtx<'a, 'w> {
 }
 
 unsafe extern "C" fn add_render_pass(host: *mut sys::Host, desc: *const sys::RenderPassDesc) {
+    guard_host("add_render_pass", (), || {
     let ctx = &mut *(host as *mut HostCtx);
     let desc = &*desc;
     let id = desc.id.as_str().to_string();
@@ -284,7 +276,13 @@ unsafe extern "C" fn add_render_pass(host: *mut sys::Host, desc: *const sys::Ren
     // `Shader::from_wgsl` takes the source verbatim; a plugin has no AssetServer
     // and no path we could resolve, so the WGSL crosses the boundary as text.
     let shader = Shader::from_wgsl(desc.fragment_wgsl.as_str().to_string(), id.clone());
-    let handle = ctx.world.resource_mut::<Assets<Shader>>().add(shader);
+    let Some(mut shaders) = ctx.world.get_resource_mut::<Assets<Shader>>() else {
+        // No renderer in this build (headless, server, or a test app on
+        // MinimalPlugins). Skipping is correct — the plugin's systems still work.
+        warn!("[plugin] render pass `{id}` ignored — this build has no renderer");
+        return;
+    };
+    let handle = shaders.add(shader);
 
     ctx.world
         .get_resource_or_insert_with(PendingRenderPasses::default)
@@ -296,10 +294,12 @@ unsafe extern "C" fn add_render_pass(host: *mut sys::Host, desc: *const sys::Ren
             order: desc.order,
             callback: desc.callback,
         });
+    })
 }
 
 unsafe extern "C" fn render_set_pipeline(ctx: sys::RenderCtx, _pipeline: sys::PipelineId) {
     if ctx.0.is_null() {
+        error!("[plugin] render_set_pipeline called with a null ctx");
         return;
     }
     let c = &mut *(ctx.0 as *mut RenderCallCtx);
@@ -313,10 +313,29 @@ unsafe extern "C" fn render_set_pipeline(ctx: sys::RenderCtx, _pipeline: sys::Pi
 
 unsafe extern "C" fn render_draw(ctx: sys::RenderCtx, vertices: u32, instances: u32) {
     if ctx.0.is_null() {
+        error!("[plugin] render_draw called with a null ctx");
         return;
     }
     let c = &mut *(ctx.0 as *mut RenderCallCtx);
     c.pass.draw(0..vertices, 0..instances);
+}
+
+/// Run a host interface body, converting a panic into a caller-visible failure.
+///
+/// Every function in [`Interface`] is `extern "C"`, so a panic inside one cannot
+/// unwind and aborts the process instead — the editor dies because a plugin
+/// asked for something in a state we did not anticipate. This is the host-side
+/// counterpart to the guard the ergonomic layer puts around plugin systems; the
+/// boundary is dangerous in both directions and it took a test-suite abort to
+/// notice we had only armed one side.
+fn guard_host<R>(what: &str, fallback: R, body: impl FnOnce() -> R) -> R {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(v) => v,
+        Err(_) => {
+            error!("[plugin] host call `{what}` panicked — returning a failure to the plugin");
+            fallback
+        }
+    }
 }
 
 unsafe extern "C" fn log(_host: *mut sys::Host, level: sys::LogLevel, msg: sys::StrRef) {
@@ -669,9 +688,11 @@ fn bevy_label(s: sys::Schedule) -> impl ScheduleLabel {
 /// holding dangling entries. (Unloading safely needs a registration ledger and
 /// a teardown pass — a separate piece of work.)
 pub fn init_plugin(world: &mut World, init: sys::ExtensionInit) -> sys::InitResult {
-    let iface = interface();
+    // MUST be the `'static` table, not `interface()`. A plugin stores this
+    // pointer so its render callbacks can reach the interface on later frames;
+    // handing it a stack local leaves it dangling the moment this returns, and
+    // the next `render_set_pipeline` reads a garbage function pointer. Systems
+    // were unaffected because they get their interface from `SystemCall::iface`.
     let mut ctx = HostCtx { world };
-    // SAFETY: `ctx` outlives the call, and the plugin may only call back into
-    // the interface while this frame is live.
-    unsafe { init(&iface, (&mut ctx as *mut HostCtx).cast()) }
+    unsafe { init(&IFACE, (&mut ctx as *mut HostCtx).cast()) }
 }

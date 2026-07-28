@@ -15,6 +15,10 @@ crate-type = ["rlib"]
 
 [dependencies]
 renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
+bevy = { workspace = true }
+# The render half of the C-ABI plugin system lives here, not in renzora_plugin:
+# that crate must stay publishable, and a published crate cannot have path deps.
+renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
 
 [lints]
 workspace = true

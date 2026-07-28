@@ -7,4 +7,6 @@
 //! resolving without change. It carries no symbols of its own; the types it
 //! re-exports belong to `renzora`, so every consumer shares one
 //! `PostProcessRegistry` and matching `TypeId`s via `renzora.dll`.
+pub mod plugin_bridge;
+
 pub use renzora::postprocess::*;

@@ -11,7 +11,43 @@
 use bevy::prelude::*;
 use renzora_plugin::host as abi_host;
 use renzora_plugin::sys;
-use spinner::Spinner;
+use renzora_plugin::ecs::{self, Component as _};
+
+/// A plugin-owned component, defined here rather than borrowed from
+/// `plugins/spinner`: linking that would pull it into the engine's workspace and
+/// undo its isolation. Defining it here also means these tests exercise the API
+/// itself rather than one example's use of it.
+#[derive(renzora_plugin::Component)]
+#[repr(C)]
+struct Spinner {
+    speed: f32,
+}
+
+impl Default for Spinner {
+    fn default() -> Self {
+        Self { speed: 1.0 }
+    }
+}
+
+fn spin(mut q: ecs::Query<(&mut ecs::Transform, &Spinner)>, time: ecs::Res<ecs::Time>) {
+    for (t, s) in &mut q {
+        t.rotate_y(s.speed * time.delta_secs());
+    }
+}
+
+/// Stands in for a real plugin's `renzora_plugin_init`.
+unsafe extern "C" fn spinner_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Spinner>()
+        .add_systems(ecs::Schedule::Update, spin);
+    if app.unresolved_component().is_some() {
+        return sys::InitResult::Failed;
+    }
+    sys::InitResult::Ok
+}
 
 /// Minimal app: no rendering, no windowing — just the ECS, the clock, and a
 /// schedule for the plugin to insert into.
@@ -35,7 +71,7 @@ fn test_app() -> App {
 fn plugin_registers_and_mutates_host_components() {
     let mut app = test_app();
 
-    let result = abi_host::init_plugin(app.world_mut(), spinner::renzora_plugin_init);
+    let result = abi_host::init_plugin(app.world_mut(), spinner_init);
     assert_eq!(result, sys::InitResult::Ok, "plugin init failed");
 
     // The host learned about a component it has no Rust type for.
@@ -43,7 +79,7 @@ fn plugin_registers_and_mutates_host_components() {
         .world()
         .resource::<abi_host::PluginComponents>()
         .0
-        .get("spinner::Spinner")
+        .get(<Spinner as renzora_plugin::ecs::Component>::TYPE_PATH)
         .copied()
         .expect("Spinner was not registered");
 
@@ -88,7 +124,7 @@ fn unknown_host_component_fails_loudly() {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins);
 
-    let result = abi_host::init_plugin(app.world_mut(), spinner::renzora_plugin_init);
+    let result = abi_host::init_plugin(app.world_mut(), spinner_init);
     assert_eq!(result, sys::InitResult::Failed);
 }
 
@@ -193,7 +229,7 @@ fn with_and_without_actually_filter() {
 fn schema_reaches_the_host() {
     let mut app = test_app();
     assert_eq!(
-        abi_host::init_plugin(app.world_mut(), spinner::renzora_plugin_init),
+        abi_host::init_plugin(app.world_mut(), spinner_init),
         sys::InitResult::Ok
     );
 
@@ -201,7 +237,7 @@ fn schema_reaches_the_host() {
     let info = schemas
         .0
         .iter()
-        .find(|s| s.type_path == "spinner::Spinner")
+        .find(|s| s.type_path == <Spinner as renzora_plugin::ecs::Component>::TYPE_PATH)
         .expect("no schema recorded for Spinner");
 
     assert_eq!(info.display_name, "Spinner");

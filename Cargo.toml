@@ -350,6 +350,8 @@ dynamic_plugin_loader = { path = "crates/dynamic_plugin_loader" }
 # on `renzora_plugin` with default features and gets zero deps; the engine opts
 # into `host` for the interface impl, dispatcher and dlopen loader.
 renzora_plugin = { path = "crates/renzora_plugin", features = ["host"] }
+# Render half of the plugin ABI — installs plugin-registered render passes.
+renzora_postprocess = { path = "crates/renzora_postprocess" }
 toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 

@@ -42,11 +42,12 @@ renzora_plugin_derive = { path = "../renzora_plugin_derive" }
 bevy = { workspace = true, optional = true }
 libloading = { version = "0.8", optional = true }
 
-[dev-dependencies]
-# The reference plugin lives OUTSIDE the workspace, at `plugins/spinner`, and is
-# pulled in by path here so the round-trip test can link it as an rlib and call
-# `renzora_plugin_init` without `dlopen` in the picture.
-spinner = { path = "../../plugins/spinner" }
+# NOTE: the tests deliberately do NOT link `plugins/spinner`. A path dependency
+# on it would drag it back into the engine's workspace — cargo rejects a path dep
+# on a package that declares itself a workspace root, and without that
+# declaration the plugin silently inherits the engine's feature unification and
+# target dir. The tests define their own minimal plugins inline instead, which
+# also means they exercise the API rather than one example's use of it.
 
 [lints]
 workspace = true

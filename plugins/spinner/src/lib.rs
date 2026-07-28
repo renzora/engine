@@ -12,6 +12,7 @@
 //! build` works standalone.
 
 use renzora_plugin::prelude::*;
+use renzora_plugin::sys::RenderPhase;
 
 /// A plugin-owned component. The engine has no Rust type for this — it learns
 /// the layout, the field schema and the default from `#[derive(Component)]` at
@@ -43,12 +44,38 @@ fn spin(mut q: Query<(&mut Transform, &Spinner)>, time: Res<Time>) {
     }
 }
 
+/// A full-screen pass, to prove plugin code can execute inside the render graph.
+///
+/// Deliberately garish — a subtle effect would be indistinguishable from the
+/// pass silently not running, which is the failure this is meant to catch.
+const TINT_WGSL: &str = r#"
+@group(0) @binding(0) var screen_texture: texture_2d<f32>;
+@group(0) @binding(1) var texture_sampler: sampler;
+
+@fragment
+fn fragment(@builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let c = textureSample(screen_texture, texture_sampler, uv);
+    // Push toward magenta so it is unmistakable.
+    return vec4<f32>(c.r * 1.3, c.g * 0.6, c.b * 1.3, c.a);
+}
+"#;
+
 pub struct SpinPlugin;
 
 impl Plugin for SpinPlugin {
     fn build(&self, app: &mut App) {
         app.register_component::<Spinner>()
-            .add_systems(Update, spin);
+            .add_systems(Update, spin)
+            .add_render_pass(
+                "spinner.tint",
+                TINT_WGSL,
+                RenderPhase::LdrPost,
+                0.0,
+                |pass: &mut renzora_plugin::ecs::RenderPass| {
+                    pass.set_pipeline();
+                    pass.draw(0..3, 0..1);
+                },
+            );
     }
 }
 

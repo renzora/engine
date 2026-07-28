@@ -463,6 +463,61 @@ where
     })
 }
 
+// ── Rendering ────────────────────────────────────────────────────────────────
+
+/// The interface, stashed so a render callback can reach it.
+///
+/// A `sys::RenderCtx` deliberately carries no interface pointer — it is an
+/// opaque handle to host state, and widening it would tie the render ABI to the
+/// system ABI. So the plugin keeps its own copy, set once at init. Plugin-local
+/// state, written before any callback can run and never again.
+static IFACE: core::sync::atomic::AtomicPtr<sys::Interface> =
+    core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// Records draw commands for one view. Mirrors `TrackedRenderPass`.
+pub struct RenderPass {
+    ctx: sys::RenderCtx,
+}
+
+impl RenderPass {
+    /// Bind this pass's pipeline and its bind group (view texture at 0, sampler
+    /// at 1 — the fullscreen contract).
+    pub fn set_pipeline(&mut self) {
+        let iface = IFACE.load(core::sync::atomic::Ordering::Relaxed);
+        if iface.is_null() {
+            return;
+        }
+        unsafe { ((*iface).render_set_pipeline)(self.ctx, sys::PipelineId(0)) };
+    }
+
+    /// Issue a draw. A fullscreen pass is `draw(0..3, 0..1)` — the engine's
+    /// fullscreen vertex shader builds a covering triangle from the vertex
+    /// index, so there is no vertex buffer.
+    pub fn draw(&mut self, vertices: core::ops::Range<u32>, instances: core::ops::Range<u32>) {
+        let iface = IFACE.load(core::sync::atomic::Ordering::Relaxed);
+        if iface.is_null() {
+            return;
+        }
+        unsafe { ((*iface).render_draw)(self.ctx, vertices.end - vertices.start, instances.end - instances.start) };
+    }
+}
+
+unsafe extern "C" fn render_thunk<F>(ctx: sys::RenderCtx, _p: sys::PipelineId) -> sys::SystemStatus
+where
+    F: Fn(&mut RenderPass) + 'static,
+{
+    let mut pass = RenderPass { ctx };
+    // Same reasoning as a system: a panic unwinding out of `extern "C"` aborts
+    // the process, and a panic *inside the render graph* would take the editor
+    // down mid-frame.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        materialize::<F>()(&mut pass)
+    })) {
+        Ok(()) => sys::SystemStatus::Ok,
+        Err(_) => sys::SystemStatus::Panicked,
+    }
+}
+
 // ── App / Plugin ─────────────────────────────────────────────────────────────
 
 /// Which schedule a system runs in. Mirrors Bevy's schedule labels.
@@ -477,6 +532,7 @@ impl App {
     /// # Safety
     /// `iface` and `host` must be the values the host passed to init.
     pub unsafe fn new(iface: *const sys::Interface, host: *mut sys::Host) -> Self {
+        IFACE.store(iface as *mut sys::Interface, core::sync::atomic::Ordering::Relaxed);
         Self {
             ctx: InitCtx {
                 iface,
@@ -507,6 +563,36 @@ impl App {
                 user,
             );
         }
+        self
+    }
+
+    /// Add a full-screen render pass.
+    ///
+    /// `fragment_wgsl` is shader **source**, not a path: a plugin has no
+    /// `AssetServer` and no asset root the engine could resolve against. The
+    /// host compiles it and pairs it with the engine's fullscreen vertex shader.
+    ///
+    /// The callback runs inside the render graph, once per view, in phase +
+    /// `order` sequence.
+    pub fn add_render_pass<F>(
+        &mut self,
+        id: &'static str,
+        fragment_wgsl: &'static str,
+        phase: sys::RenderPhase,
+        order: f32,
+        _callback: F,
+    ) -> &mut Self
+    where
+        F: Fn(&mut RenderPass) + 'static,
+    {
+        let desc = sys::RenderPassDesc {
+            id: sys::StrRef::new(id),
+            fragment_wgsl: sys::StrRef::new(fragment_wgsl),
+            phase,
+            order,
+            callback: render_thunk::<F>,
+        };
+        unsafe { ((*self.ctx.iface).add_render_pass)(self.ctx.host, &desc) };
         self
     }
 
