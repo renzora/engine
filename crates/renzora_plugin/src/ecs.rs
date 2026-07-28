@@ -596,6 +596,56 @@ impl App {
         self
     }
 
+    /// Register a parameterised full-screen effect.
+    ///
+    /// `T` is an ordinary plugin component: put one on a camera to enable the
+    /// effect there, and its fields become the shader's uniform *and* the
+    /// inspector's controls — one declaration, both jobs.
+    ///
+    /// The shader receives:
+    ///
+    /// ```wgsl
+    /// @group(0) @binding(0) var screen_texture: texture_2d<f32>;
+    /// @group(0) @binding(1) var texture_sampler: sampler;
+    /// @group(0) @binding(2) var<uniform> settings: MySettings;
+    /// ```
+    ///
+    /// `T` must be `#[repr(C)]` and its layout must match the shader's struct
+    /// **exactly**. The trap to know about: WGSL aligns `vec3<f32>` to 16 bytes
+    /// and Rust's `[f32; 3]` to 4, so
+    ///
+    /// ```ignore
+    /// struct S { a: f32, pad: [f32; 3] }   // Rust: 16 bytes
+    /// struct S { a: f32, pad: vec3<f32> }  // WGSL: 32 bytes
+    /// ```
+    ///
+    /// disagree. Pad with scalars on both sides. wgpu rejects a mismatch and the
+    /// engine escalates that to an unrecoverable GPU panic — it is not a warning
+    /// you can ignore.
+    ///
+    /// Prefer this over [`App::add_render_pass`] for anything shaped like a
+    /// screen effect: the host does extraction, the uniform upload, the bind
+    /// group and the draw, so the plugin writes no render code at all.
+    pub fn add_post_process<T: Component>(
+        &mut self,
+        id: &'static str,
+        fragment_wgsl: &'static str,
+        phase: sys::RenderPhase,
+        order: f32,
+    ) -> &mut Self {
+        let settings = self.ctx.id_of::<T>();
+        let desc = sys::PostProcessDesc {
+            id: sys::StrRef::new(id),
+            fragment_wgsl: sys::StrRef::new(fragment_wgsl),
+            settings,
+            settings_size: core::mem::size_of::<T>() as u64,
+            phase,
+            order,
+        };
+        unsafe { ((*self.ctx.iface).add_post_process)(self.ctx.host, &desc) };
+        self
+    }
+
     /// Register a plugin-owned component ahead of first use. Optional — a
     /// component named in a query is registered automatically.
     pub fn register_component<T: Component>(&mut self) -> &mut Self {

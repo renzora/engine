@@ -131,6 +131,47 @@ impl renzora_undo::UndoCommand for AddComponentCmd {
     }
 }
 
+/// Add/remove for a **plugin** component.
+///
+/// Separate from [`AddComponentCmd`] because that one carries `fn` pointers with
+/// no per-entry state, and a plugin component's identity is only known at
+/// runtime — there is no way to mint a distinct `fn` for one. Carrying the
+/// `ComponentId` and the default bytes instead is what makes it possible at all.
+struct AddPluginComponentCmd {
+    entity: Entity,
+    component: bevy::ecs::component::ComponentId,
+    default_value: Vec<u8>,
+}
+
+impl AddPluginComponentCmd {
+    fn insert(&self, world: &mut World) {
+        let bytes = self.default_value.clone();
+        // SAFETY: `bytes` is exactly one instance of this component, as the
+        // plugin described it at registration.
+        unsafe {
+            bevy::ptr::OwningPtr::make(bytes.into_boxed_slice(), |ptr| {
+                if let Ok(mut e) = world.get_entity_mut(self.entity) {
+                    e.insert_by_id(self.component, ptr);
+                }
+            });
+        }
+    }
+}
+
+impl renzora_undo::UndoCommand for AddPluginComponentCmd {
+    fn label(&self) -> &str {
+        "Add component"
+    }
+    fn execute(&mut self, world: &mut World) {
+        self.insert(world);
+    }
+    fn undo(&mut self, world: &mut World) {
+        if let Ok(mut e) = world.get_entity_mut(self.entity) {
+            e.remove_by_id(self.component);
+        }
+    }
+}
+
 /// Undo for removing a component: captures the component's reflected value before
 /// removing, so `undo` restores it *with its edited fields* (not a default). Redo
 /// (`execute`) re-captures the current value and removes again.
@@ -2755,6 +2796,55 @@ fn open_add_component(world: &mut World) {
                         entity,
                         add_fn,
                         remove_fn,
+                    }),
+                );
+            },
+        ));
+    }
+
+    // Plugin components. Injected here rather than through `InspectorRegistry`
+    // because `SearchEntry` takes a CLOSURE — so the component id can be captured
+    // — whereas `InspectorEntry` is built from bare `fn` pointers that have
+    // nowhere to put it.
+    let plugin_specs: Vec<(String, bevy::ecs::component::ComponentId, Vec<u8>)> = world
+        .get_resource::<renzora_plugin::host::PluginComponentSchemas>()
+        .map(|s| {
+            s.0.iter()
+                .map(|i| (i.display_name.clone(), i.id, i.default_value.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    for (label, component, default_value) in plugin_specs {
+        // Already present — nothing to add.
+        if world.get_entity(entity).is_ok_and(|e| e.contains_id(component)) {
+            continue;
+        }
+        let default_value = if default_value.is_empty() {
+            // The plugin supplied no default. Zeroed is the only option left, and
+            // is at least a valid instance for any POD component.
+            let size = world
+                .components()
+                .get_info(component)
+                .map(|i| i.layout().size())
+                .unwrap_or(0);
+            vec![0u8; size]
+        } else {
+            default_value
+        };
+        entries.push(renzora_ember::widgets::SearchEntry::new(
+            "puzzle-piece",
+            &label,
+            "plugin",
+            move |w: &mut World| {
+                let ctx = renzora_undo::active_context(w);
+                renzora_undo::execute(
+                    w,
+                    ctx,
+                    Box::new(AddPluginComponentCmd {
+                        entity,
+                        component,
+                        default_value: default_value.clone(),
                     }),
                 );
             },

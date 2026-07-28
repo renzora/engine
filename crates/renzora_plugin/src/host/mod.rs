@@ -88,6 +88,7 @@ static IFACE: sys::Interface = sys::Interface {
     add_render_pass,
     render_set_pipeline,
     render_draw,
+    add_post_process,
 };
 
 
@@ -254,6 +255,28 @@ pub struct PendingRenderPass {
 #[derive(Resource, Default)]
 pub struct PendingRenderPasses(pub Vec<PendingRenderPass>);
 
+/// A parameterised effect a plugin registered.
+///
+/// Unlike [`PendingRenderPass`] the host owns the whole draw, so it needs the
+/// settings component's id and size to build the bind group layout and to copy
+/// the bytes out of the world each frame.
+pub struct PendingPostProcess {
+    pub id: String,
+    pub shader: Handle<Shader>,
+    /// Kept alongside the handle so the bridge can validate the shader against
+    /// `settings_size` before wgpu sees it — a mismatch there is a fatal GPU
+    /// error, not a recoverable one.
+    pub wgsl: String,
+    pub settings: ComponentId,
+    pub settings_size: u64,
+    pub phase: sys::RenderPhase,
+    pub order: f32,
+}
+
+/// Registered-but-not-yet-built plugin effects.
+#[derive(Resource, Default)]
+pub struct PendingPostProcesses(pub Vec<PendingPostProcess>);
+
 /// What `sys::RenderCtx` actually points at, for the duration of one callback.
 ///
 /// Lifetimes are erased across the FFI boundary, which is sound only because the
@@ -294,6 +317,39 @@ unsafe extern "C" fn add_render_pass(host: *mut sys::Host, desc: *const sys::Ren
             order: desc.order,
             callback: desc.callback,
         });
+    })
+}
+
+unsafe extern "C" fn add_post_process(host: *mut sys::Host, desc: *const sys::PostProcessDesc) {
+    guard_host("add_post_process", (), || {
+        let ctx = &mut *(host as *mut HostCtx);
+        let desc = &*desc;
+        let id = desc.id.as_str().to_string();
+
+        if !desc.settings.is_valid() {
+            error!("[plugin] effect `{id}` has no settings component — refusing to register");
+            return;
+        }
+
+        let shader = Shader::from_wgsl(desc.fragment_wgsl.as_str().to_string(), id.clone());
+        let Some(mut shaders) = ctx.world.get_resource_mut::<Assets<Shader>>() else {
+            warn!("[plugin] effect `{id}` ignored — this build has no renderer");
+            return;
+        };
+        let handle = shaders.add(shader);
+
+        ctx.world
+            .get_resource_or_insert_with(PendingPostProcesses::default)
+            .0
+            .push(PendingPostProcess {
+                id,
+                shader: handle,
+                wgsl: desc.fragment_wgsl.as_str().to_string(),
+                settings: ComponentId::new(desc.settings.0 as usize),
+                settings_size: desc.settings_size,
+                phase: desc.phase,
+                order: desc.order,
+            });
     })
 }
 

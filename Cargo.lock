@@ -8580,6 +8580,7 @@ dependencies = [
  "renzora_camera",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_plugin",
  "renzora_scripting",
  "renzora_theme",
  "renzora_ui",
@@ -9094,6 +9095,7 @@ name = "renzora_postprocess"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "naga 27.0.3",
  "renzora",
  "renzora_plugin",
 ]

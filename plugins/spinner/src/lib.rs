@@ -44,19 +44,56 @@ fn spin(mut q: Query<(&mut Transform, &Spinner)>, time: Res<Time>) {
     }
 }
 
-/// A full-screen pass, to prove plugin code can execute inside the render graph.
+/// Settings for [`TINT_WGSL`], and the thing that turns "a plugin can draw" into
+/// "a plugin can ship an effect".
 ///
-/// Deliberately garish — a subtle effect would be indistinguishable from the
-/// pass silently not running, which is the failure this is meant to catch.
+/// One declaration does three jobs: it is the shader's uniform, it is the
+/// inspector's controls (via the derived field schema), and putting it on an
+/// entity is what switches the effect on.
+///
+/// `#[repr(C)]` and padded to 16 bytes because a uniform binding is std140.
+///
+/// The padding must lay out identically on BOTH sides. `[f32; 3]` here pairs with
+/// three scalar `f32`s in the shader, not `vec3<f32>` — see the note on
+/// [`TINT_WGSL`]. Getting this wrong is not a soft failure: wgpu rejects the
+/// pipeline and the engine escalates it to an unrecoverable GPU panic.
+#[derive(Component)]
+#[repr(C)]
+pub struct Tint {
+    pub strength: f32,
+    _pad: [f32; 3],
+}
+
+impl Default for Tint {
+    fn default() -> Self {
+        Self { strength: 0.5, _pad: [0.0; 3] }
+    }
+}
+
+/// Bindings 0 and 1 are the screen texture and sampler; binding 2 is whatever
+/// component was named in `add_post_process`.
 const TINT_WGSL: &str = r#"
 @group(0) @binding(0) var screen_texture: texture_2d<f32>;
 @group(0) @binding(1) var texture_sampler: sampler;
 
+// Scalar pads, NOT `vec3<f32>`: WGSL aligns a vec3 to 16 bytes, so
+// `strength: f32` followed by `_pad: vec3<f32>` puts the vec3 at offset 16 and
+// makes the struct 32 bytes — while the Rust `[f32; 3]` has no such alignment
+// and keeps it at 16. wgpu rejects the mismatch and this engine turns that into
+// an unrecoverable GPU panic. Three scalars lay out identically on both sides.
+struct Tint {
+    strength: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
+};
+@group(0) @binding(2) var<uniform> settings: Tint;
+
 @fragment
 fn fragment(@builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let c = textureSample(screen_texture, texture_sampler, uv);
-    // Push toward magenta so it is unmistakable.
-    return vec4<f32>(c.r * 1.3, c.g * 0.6, c.b * 1.3, c.a);
+    let tinted = vec3<f32>(c.r * 1.3, c.g * 0.6, c.b * 1.3);
+    return vec4<f32>(mix(c.rgb, tinted, settings.strength), c.a);
 }
 "#;
 
@@ -66,16 +103,10 @@ impl Plugin for SpinPlugin {
     fn build(&self, app: &mut App) {
         app.register_component::<Spinner>()
             .add_systems(Update, spin)
-            .add_render_pass(
-                "spinner.tint",
-                TINT_WGSL,
-                RenderPhase::LdrPost,
-                0.0,
-                |pass: &mut renzora_plugin::ecs::RenderPass| {
-                    pass.set_pipeline();
-                    pass.draw(0..3, 0..1);
-                },
-            );
+            // No render code at all: the host does extraction, the uniform
+            // upload, the bind group and the draw. Add a `Tint` to any entity to
+            // switch it on.
+            .add_post_process::<Tint>("spinner.tint", TINT_WGSL, RenderPhase::LdrPost, 0.0);
     }
 }
 

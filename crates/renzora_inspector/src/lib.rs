@@ -37,7 +37,16 @@ impl Plugin for InspectorPanelPlugin {
         camera_presets::register(app);
         textfont::register(app);
         richtext::register(app);
+        // Plugin components only exist after `load_global_plugins` has run, so
+        // their sections cannot be registered at plugin-build time. A startup
+        // system picks them up once everything is loaded.
+        app.add_systems(
+            Startup,
+            |world: &mut World| plugin_fields::register_plugin_component_sections(world),
+        );
     }
 }
 
 renzora::add!(InspectorPanelPlugin, Editor);
+
+pub mod plugin_fields;

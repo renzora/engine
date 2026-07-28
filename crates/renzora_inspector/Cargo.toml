@@ -14,5 +14,11 @@ renzora_camera = { path = "../renzora_camera" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 
+# Plugin components have no Rust type and no `TypeRegistration`, so the
+# reflection-driven inspector cannot see them. Their schemas come from the plugin
+# host instead. Dependency points this way on purpose — `renzora_plugin` must
+# stay publishable, so it never depends on engine crates.
+renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
+
 [lints]
 workspace = true

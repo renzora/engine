@@ -18,6 +18,7 @@
 //! `load_global_plugins` has loaded the cdylibs and the render sub-app exists.
 
 use bevy::core_pipeline::FullscreenShader;
+use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use bevy::render::render_resource::binding_types::{sampler, texture_2d};
 use bevy::render::render_resource::{
@@ -38,19 +39,56 @@ use renzora_plugin::sys;
 pub struct PluginRenderBridgePlugin;
 
 impl Plugin for PluginRenderBridgePlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        // Settings live on main-world entities but are read in the render world.
+        // A main-world system copies the raw bytes into a resource each frame and
+        // `ExtractResourcePlugin` carries it across — the untyped equivalent of
+        // `ExtractComponentPlugin<T>`, which needs a concrete type a plugin
+        // component does not have.
+        app.init_resource::<PluginEffectSettings>()
+            .init_resource::<PluginEffectComponents>()
+            .add_plugins(ExtractResourcePlugin::<PluginEffectSettings>::default())
+            .add_systems(PostUpdate, collect_effect_settings);
+    }
 
     fn finish(&self, app: &mut App) {
-        let Some(pending) = app.world_mut().remove_resource::<PendingRenderPasses>() else {
-            return;
-        };
-        if pending.0.is_empty() {
-            return;
+        let pending = app
+            .world_mut()
+            .remove_resource::<PendingRenderPasses>()
+            .unwrap_or_default();
+        let effects = app
+            .world_mut()
+            .remove_resource::<renzora_plugin::host::PendingPostProcesses>()
+            .map(|p| p.0)
+            .unwrap_or_default();
+
+        // Tell the main-world copier which components to collect.
+        if !effects.is_empty() {
+            let wanted: Vec<_> = effects
+                .iter()
+                .map(|e| (e.settings, e.settings_size as usize))
+                .collect();
+            app.world_mut().insert_resource(PluginEffectComponents(wanted));
         }
+
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            warn!("[plugin] no render sub-app — plugin render passes will not run");
+            if !pending.0.is_empty() || !effects.is_empty() {
+                warn!("[plugin] no render sub-app — plugin render passes will not run");
+            }
             return;
         };
+
+        for e in effects {
+            let Ok(Some(built)) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                build_effect(render_app.world_mut(), &e, &e.wgsl)
+            })) else {
+                error!("[plugin] could not build effect `{}` — skipping it", e.id);
+                continue;
+            };
+            let id: &'static str = Box::leak(e.id.clone().into_boxed_str());
+            render_app.add_render_pass(id, phase(e.phase), e.order, built);
+            info!("[plugin] registered effect `{id}` (phase {:?}, order {})", e.phase, e.order);
+        }
 
         for p in pending.0 {
             // Pipeline construction touches render-world resources whose presence
@@ -249,4 +287,252 @@ impl RenderPass for PluginPass {
             error!("[plugin] render callback panicked");
         }
     }
+}
+
+// ── Parameterised effects ────────────────────────────────────────────────────
+//
+// The difference from a raw pass is that the host owns the whole draw: the
+// plugin supplies a shader and a settings component and writes no render code.
+// That means the host has to solve the problem the plugin would otherwise solve
+// itself — getting main-world component data into the render world.
+//
+// Bevy's answer is `ExtractComponentPlugin<T>`, which is generic over a concrete
+// type. A plugin component has no Rust type here, so instead a main-world system
+// copies the raw bytes into a resource and `ExtractResourcePlugin` carries that
+// across. One indirection more than the typed path, and no monomorphisation.
+
+use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
+use bevy::render::render_resource::{Buffer, BufferDescriptor, BufferUsages};
+use bevy::render::renderer::RenderQueue;
+
+/// Latest settings bytes per effect, refreshed each frame in the main world and
+/// extracted wholesale.
+///
+/// Keyed by the settings component. Values are the raw component bytes — the
+/// host never interprets them; the shader does.
+#[derive(Resource, Clone, Default, ExtractResource)]
+pub struct PluginEffectSettings(pub bevy::platform::collections::HashMap<ComponentId, Vec<u8>>);
+
+/// Which components to collect, so the copier does not walk the world blindly.
+#[derive(Resource, Clone, Default)]
+pub struct PluginEffectComponents(pub Vec<(ComponentId, usize)>);
+
+/// Copy each effect's settings out of the world.
+///
+/// Takes the FIRST entity carrying the component. Per-camera effects would need
+/// this keyed by view entity and the uniform made dynamic-offset — worth doing,
+/// but it is a strictly larger change and a single global value is enough to
+/// prove the parameter path.
+fn collect_effect_settings(world: &mut World) {
+    let Some(wanted) = world.get_resource::<PluginEffectComponents>().cloned() else {
+        return;
+    };
+    let mut out = bevy::platform::collections::HashMap::default();
+    for (id, size) in wanted.0 {
+        let found = world
+            .iter_entities()
+            .find_map(|e| e.get_by_id(id).ok().map(|p| unsafe {
+                // SAFETY: `size` is the size this component was registered with.
+                std::slice::from_raw_parts(p.as_ptr(), size).to_vec()
+            }));
+        if let Some(bytes) = found {
+            out.insert(id, bytes);
+        }
+    }
+    world.insert_resource(PluginEffectSettings(out));
+}
+
+struct PluginEffect {
+    id: String,
+    layout: BindGroupLayoutDescriptor,
+    sampler: Sampler,
+    shader: Handle<Shader>,
+    vertex: bevy::render::render_resource::VertexState,
+    settings: ComponentId,
+    /// Sized to the settings component, written every frame it is present.
+    uniform: Buffer,
+    pipelines: std::sync::Mutex<
+        bevy::platform::collections::HashMap<TextureFormat, CachedRenderPipelineId>,
+    >,
+}
+
+impl RenderPass for PluginEffect {
+    fn run(
+        &self,
+        world: &World,
+        render_context: &mut RenderContext,
+        view_target: &ViewTarget,
+        _view_entity: Entity,
+    ) {
+        // No settings on any entity = the effect is off. This is how a plugin
+        // effect is enabled: put its component on something.
+        let Some(settings) = world
+            .get_resource::<PluginEffectSettings>()
+            .and_then(|s| s.0.get(&self.settings))
+        else {
+            return;
+        };
+
+        let cache = world.resource::<PipelineCache>();
+        let id = {
+            let mut map = self.pipelines.lock().unwrap();
+            let fmt = view_target.main_texture_format();
+            *map.entry(fmt).or_insert_with(|| {
+                cache.queue_render_pipeline(RenderPipelineDescriptor {
+                    label: Some(format!("plugin_effect_{}", self.id).into()),
+                    layout: vec![self.layout.clone()],
+                    vertex: self.vertex.clone(),
+                    fragment: Some(FragmentState {
+                        shader: self.shader.clone(),
+                        targets: vec![Some(ColorTargetState {
+                            format: fmt,
+                            blend: None,
+                            write_mask: ColorWrites::ALL,
+                        })],
+                        ..default()
+                    }),
+                    ..default()
+                })
+            })
+        };
+        let Some(pipeline) = cache.get_render_pipeline(id) else {
+            if let bevy::render::render_resource::CachedPipelineState::Err(e) =
+                cache.get_render_pipeline_state(id)
+            {
+                bevy::log::error_once!("[plugin] effect `{}` pipeline FAILED: {e}", self.id);
+            }
+            return;
+        };
+
+        world
+            .resource::<RenderQueue>()
+            .write_buffer(&self.uniform, 0, settings);
+
+        let post_process = view_target.post_process_write();
+        let bind_group = render_context.render_device().create_bind_group(
+            "plugin_effect_bind_group",
+            &cache.get_bind_group_layout(&self.layout),
+            &BindGroupEntries::sequential((
+                post_process.source,
+                &self.sampler,
+                self.uniform.as_entire_binding(),
+            )),
+        );
+
+        let mut pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
+            label: Some("plugin_effect_pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: post_process.destination,
+                depth_slice: None,
+                resolve_target: None,
+                ops: Operations::default(),
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_render_pipeline(pipeline);
+        pass.set_bind_group(0, &bind_group, &[]);
+        pass.draw(0..3, 0..1);
+    }
+}
+
+/// Build a parameterised effect. Same shape as `build_pipeline` plus the uniform
+/// binding at slot 2 and a buffer sized to the settings component.
+fn build_effect(
+    world: &mut World,
+    e: &renzora_plugin::host::PendingPostProcess,
+    wgsl: &str,
+) -> Option<PluginEffect> {
+    if let Err(why) = validate_effect_shader(wgsl, e.settings_size) {
+        error!("[plugin] effect `{}` rejected: {why}", e.id);
+        return None;
+    }
+    // `uniform_buffer_sized` rather than `uniform_buffer::<T>` — we know the
+    // size but have no type, which is the whole situation.
+    let layout = BindGroupLayoutDescriptor::new(
+        "plugin_effect_bind_group_layout",
+        &BindGroupLayoutEntries::sequential(
+            ShaderStages::FRAGMENT,
+            (
+                texture_2d(TextureSampleType::Float { filterable: true }),
+                sampler(SamplerBindingType::Filtering),
+                bevy::render::render_resource::binding_types::uniform_buffer_sized(
+                    false,
+                    std::num::NonZeroU64::new(e.settings_size.max(16)),
+                ),
+            ),
+        ),
+    );
+    let device = world.get_resource::<RenderDevice>()?;
+    let sampler = device.create_sampler(&SamplerDescriptor::default());
+    let uniform = device.create_buffer(&BufferDescriptor {
+        label: Some("plugin_effect_settings"),
+        // Uniform buffers are 16-byte aligned; a smaller settings struct is legal
+        // in Rust and illegal as a binding.
+        size: e.settings_size.max(16).next_multiple_of(16),
+        usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let vertex = world.get_resource::<FullscreenShader>()?.to_vertex_state();
+
+    Some(PluginEffect {
+        id: e.id.clone(),
+        layout,
+        sampler,
+        shader: e.shader.clone(),
+        vertex,
+        settings: e.settings,
+        uniform,
+        pipelines: std::sync::Mutex::new(Default::default()),
+    })
+}
+
+/// Check a plugin's shader against the settings component it declared.
+///
+/// This exists because the failure it catches is fatal. wgpu validates the
+/// binding size when the pipeline is created, and this engine turns a device
+/// validation error into an unrecoverable panic — so a third-party plugin whose
+/// WGSL struct disagrees with its Rust struct takes the whole editor down before
+/// anyone can read a log line.
+///
+/// The mismatch is easy to write by accident: WGSL aligns `vec3<f32>` to 16
+/// bytes and Rust's `[f32; 3]` to 4, so the "same" padded struct is 32 bytes on
+/// one side and 16 on the other.
+///
+/// Returns `Err` with a message meant for the plugin author, not for us.
+fn validate_effect_shader(wgsl: &str, expected: u64) -> Result<(), String> {
+    let module = naga::front::wgsl::parse_str(wgsl)
+        .map_err(|e| format!("shader does not parse: {}", e.message()))?;
+    let mut layouter = naga::proc::Layouter::default();
+    layouter
+        .update(module.to_ctx())
+        .map_err(|e| format!("shader types could not be laid out: {e:?}"))?;
+
+    let binding = naga::ResourceBinding { group: 0, binding: 2 };
+    let Some((_, var)) = module
+        .global_variables
+        .iter()
+        .find(|(_, v)| v.binding.as_ref() == Some(&binding))
+    else {
+        return Err(
+            "shader declares no `@group(0) @binding(2)` uniform — an effect's settings \
+             component is bound there"
+                .to_string(),
+        );
+    };
+
+    let actual = u64::from(layouter[var.ty].size);
+    // The buffer is rounded up to a 16-byte multiple, so accept anything that
+    // fits in the allocation rather than demanding an exact match.
+    let allocated = expected.max(16).next_multiple_of(16);
+    if actual > allocated {
+        return Err(format!(
+            "shader's uniform is {actual} bytes but the settings component is {expected}. \
+             Most often this is `vec3<f32>` padding: WGSL aligns it to 16 bytes and Rust's \
+             `[f32; 3]` to 4, so pad with scalar `f32`s on both sides instead."
+        ));
+    }
+    Ok(())
 }

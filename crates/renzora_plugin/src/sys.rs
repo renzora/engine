@@ -60,7 +60,7 @@ pub const VERSION_MAJOR: u32 = 1;
 
 /// Bumped when something is *appended*. Older plugins keep working; a plugin
 /// needing the new function declares this as its minimum.
-pub const VERSION_MINOR: u32 = 1;
+pub const VERSION_MINOR: u32 = 2;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -430,6 +430,36 @@ pub struct RenderPassDesc {
     pub callback: RenderCallback,
 }
 
+/// A parameterised full-screen effect.
+///
+/// The difference from [`RenderPassDesc`] is `settings`: a plugin component
+/// whose bytes are uploaded to a uniform buffer each frame and bound at
+/// `@group(0) @binding(2)`, so the shader can be *controlled* rather than fixed.
+/// That is the whole gap between "a plugin can draw" and "a plugin can ship an
+/// effect" — a pass with no parameters can only ever be a constant.
+///
+/// The host does extraction, the uniform buffer, the bind group and the draw.
+/// A plugin describing an effect this way writes no render code at all; use
+/// [`RenderPassDesc`] when you need to record commands yourself.
+///
+/// The settings component must be `#[repr(C)]` and laid out for std140 —
+/// `vec3` fields need padding to 16 bytes, same as any Bevy uniform.
+#[repr(C)]
+pub struct PostProcessDesc {
+    /// Stable id, e.g. `"my_plugin.bloom"`. Shown in the editor's render-pass
+    /// list and used to reorder effects.
+    pub id: StrRef,
+    pub fragment_wgsl: StrRef,
+    /// Plugin component carrying the uniform payload. Registered normally, so
+    /// its field schema also drives the inspector.
+    pub settings: ComponentId,
+    /// Size of one settings instance, for the bind group layout.
+    pub settings_size: u64,
+    pub phase: RenderPhase,
+    /// Sort key within the phase — lower runs first.
+    pub order: f32,
+}
+
 /// Severity for [`Interface::log`].
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -503,6 +533,10 @@ pub struct Interface {
     /// the engine's fullscreen vertex shader generates a covering triangle from
     /// the vertex index, so there is no vertex buffer to bind.
     pub render_draw: unsafe extern "C" fn(ctx: RenderCtx, vertices: u32, instances: u32),
+
+    // ── Added in MINOR 2 ─────────────────────────────────────────────────────
+    /// Register a parameterised full-screen effect. See [`PostProcessDesc`].
+    pub add_post_process: unsafe extern "C" fn(host: *mut Host, desc: *const PostProcessDesc),
 }
 
 /// Result of [`ExtensionInit`].
