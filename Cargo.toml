@@ -141,21 +141,55 @@ bevy = { version = "0.19", default-features = false, features = [
     # (bevy_remote / BRP deliberately omitted — nothing in the editor or the
     # exported game uses the Bevy Remote Protocol, and it was the sole puller of
     # bevy_dev_tools, which would otherwise re-introduce bevy_pbr into a 2D build.)
-    "bevy_feathers", "bevy_settings", "sysinfo_plugin",
-    "bevy_camera_controller", "free_camera", "pan_camera",
-    # reflection extras
-    "reflect_functions", "reflect_documentation",
-    # all shader languages
-    "shader_format_glsl", "shader_format_spirv", "shader_format_wesl",
-    # all image formats
-    "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "pnm", "qoi", "tga",
-    "tiff", "webp", "zlib", "basis-universal", "compressed_image_saver",
+    #
+    # DROPPED (2026-07 slim pass) — each had ZERO references in the workspace, and
+    # the "a plugin might want it" argument that justified them is going away with
+    # the C-ABI extension interface (plugins won't link bevy at all):
+    #   bevy_feathers            Renzora's UI is `renzora_ember`. The only mention
+    #                              left is a colour constant copied by hand in
+    #                              `renzora_grid/src/infinite_grid.rs`.
+    #   bevy_settings            unused.
+    #   sysinfo_plugin           unused — `renzora_debug` owns diagnostics.
+    #   bevy_camera_controller   unused — the editor has its own camera rig
+    #     free_camera, pan_camera  (`renzora_camera`).
+    #   reflect_functions        unused.
+    # `reflect_documentation` is KEPT pending a check on whether inspector
+    # tooltips read reflected doc strings.
+    "reflect_documentation",
+    # Shader languages: WGSL only. There are 186 `.wgsl` files in the tree and
+    # ZERO `.glsl`/`.vert`/`.frag`/`.spv`/`.wesl`, so `shader_format_glsl`,
+    # `shader_format_spirv` and `shader_format_wesl` were all dead weight —
+    # each pulls its own translation stack (naga backends) into every build.
+    # Image formats — ONLY the ones `renzora_import` actually sniffs/handles.
+    # Dropped `ff`, `ico`, `pnm`, `qoi`, `tiff`: no importer path recognises those
+    # extensions, so the codec could never be reached. Everything below IS reached
+    # (see `renzora_import/{gltf_pass,fbx_ufbx,obj}.rs` + the asset browser), so do
+    # not trim this list further without re-checking those sniffers — a
+    # stripped codec means the importer accepts a file the engine then can't decode.
+    # NOTE: `capabilities.rs` groups gif/bmp/tga as strippable `image_extra`; that
+    # is correct for a LEAN EXPORT (a shipped game with no such assets) but not for
+    # this base build, which is also the editor.
+    "bmp", "dds", "exr", "gif", "hdr", "jpeg", "tga",
+    "webp", "zlib", "basis-universal",
     # (audio formats intentionally dropped — Renzora uses kira, not bevy_audio)
-    # PBR / rendering detail
-    "pbr_transmission_textures", "pbr_clustered_decals", "pbr_light_textures",
+    # (`compressed_image_saver` + `asset_processor` dropped below — unused.)
+    # PBR / rendering detail — the texture-slot features below are all live in the
+    # material system (`renzora_material`): transmission, clearcoat/multi-layer,
+    # anisotropy and specular maps each have inspector fields and importer paths.
+    # DROPPED: `pbr_clustered_decals`, `pbr_light_textures`, `experimental_pbr_pcss`
+    # — zero references outside `capabilities.rs`'s strip list.
+    "pbr_transmission_textures",
     "pbr_multi_layer_material_textures", "pbr_anisotropy_texture",
-    "pbr_specular_textures", "experimental_pbr_pcss",
+    "pbr_specular_textures",
+    # `morph`/`morph_animation` KEPT pending a check on whether the GLTF/FBX
+    # importers pass blend shapes through — no code names `MorphWeights`, but the
+    # feature gates an import capability, not an API surface.
     "morph", "morph_animation",
+    # LUT/data features — NOT code-referenced by design; they gate embedded data
+    # bevy_pbr samples at runtime, so grep can never justify them. `bluenoise_texture`
+    # backs `crates/renzora_bluenoise`; `area_light_luts` interacts with the deferred
+    # bind-group layout (see `renzora_engine/src/scene_io.rs`); `dfg_lut` is the
+    # specular BRDF table and changes PBR output if removed.
     "bluenoise_texture", "dfg_lut", "area_light_luts",
     # Experimental hardware-raytraced lighting — backs the `renzora_solari`
     # distribution plugin (Bevy's `SolariPlugins`). Enabling it recompiles
@@ -168,8 +202,15 @@ bevy = { version = "0.19", default-features = false, features = [
     # clipboard / fonts / ui
     "system_clipboard", "clipboard_image", "system_font_discovery",
     # asset IO / processing
-    "asset_processor", "file_watcher", "http", "https", "web_asset_cache",
-    # ── Meshlet config (NOT a shipping feature set) ─────────────────────────────
+    # DROPPED: `asset_processor` + `compressed_image_saver` (Bevy's offline asset
+    # pipeline — Renzora has its own `.rmip` texture pipeline and never enabled
+    # Bevy's processor at runtime) and `web_asset_cache` (nothing reads it).
+    # `http`/`https` are KEPT pending a check on whether any `AssetServer` load
+    # uses a URL path — the 29 `https://` hits in the tree are reqwest/marketplace
+    # calls, not `AssetSource`, so these may well be droppable too.
+    # `file_watcher` KEPT pending the same check: the theme/shader hot-reload uses
+    # its own mtime polling, so Bevy's watcher may be unused.
+    "file_watcher", "http", "https",
     # NOTE: `trace_tracy` is deliberately NOT enabled. Bevy installs its Tracy
     # tracing layer inside `LogPlugin` at boot whenever that feature is compiled
     # in, with no runtime off-switch — so it would arm Tracy on every launch and
@@ -178,10 +219,11 @@ bevy = { version = "0.19", default-features = false, features = [
     # diagnostic plots, started only on its toggle). Per-system CPU zones need a
     # dedicated profiling build that re-adds `trace_tracy` — which MOVES the ABI
     # hash (CLAUDE.md §3) and so is kept out of the normal build.
-    # Experimental virtual-geometry (meshlet) + its offline asset processor. The
-    # processor pulls `metis-sys`, whose vendored C needs the cross-compile
-    # workaround in docker/windows/Dockerfile to build for windows-msvc.
-    "meshlet", "meshlet_processor",
+    # DROPPED: `meshlet` + `meshlet_processor` (experimental virtual geometry).
+    # Nothing in the workspace referenced them, and `meshlet_processor` was the
+    # sole consumer of `metis-sys`, whose vendored C is the only reason
+    # `docker/windows/Dockerfile` carries a cross-compile workaround — that hack
+    # can go with it.
 ] }
 # Individual Bevy sub-crates that some vendored ecosystem crates depend on
 # directly (not via the `bevy` umbrella). Same 0.19 line as `bevy` above so they

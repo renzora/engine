@@ -6,7 +6,7 @@
 //! touched — only the disposable copy — so this is safe.
 //!
 //! Two kinds:
-//! * **Safe-leaf** (Solari, meshlets, Feathers, uncommon codecs): Bevy
+//! * **Safe-leaf** (Solari, gizmos, remote assets, optional codecs): Bevy
 //!   features no core crate hard-depends on. Default OFF (auto-stripped), since
 //!   they're confidently unneeded.
 //! * **Structural subsystems** (audio, navmesh, networking, post-FX, sky, …):
@@ -41,53 +41,20 @@ pub const CAPABILITIES: &[Capability] = &[
         runtime_features: &["solari"],
         default_on: false,
     },
-    Capability {
-        id: "meshlets",
-        label: "Virtual geometry (meshlets)",
-        help: "Experimental meshlet rendering + its metis-based processor. Rarely used; large.",
-        bevy_features: &["meshlet", "meshlet_processor"],
-        runtime_features: &[],
-        default_on: false,
-    },
-    Capability {
-        id: "feathers",
-        label: "Bevy Feathers widgets",
-        help: "Bevy's widget toolkit — unused by Renzora's own UI.",
-        bevy_features: &["bevy_feathers"],
-        runtime_features: &[],
-        default_on: false,
-    },
+    // NOTE (2026-07 slim pass): the `meshlets`, `feathers`, `asset_pipeline`,
+    // `extra_shader_langs` and `editor_helpers` capabilities were REMOVED from this
+    // list. They existed to strip Bevy features the base build no longer enables at
+    // all — meshlet/meshlet_processor, bevy_feathers, asset_processor/
+    // compressed_image_saver, shader_format_glsl/spirv, and the camera-controller +
+    // sysinfo_plugin set. See the root `Cargo.toml` bevy feature list for why each
+    // went. A capability whose features aren't in the manifest is a no-op toggle
+    // that still costs the user a decision, so it doesn't belong here.
     Capability {
         id: "remote_assets",
         label: "Remote asset loading (HTTP)",
         help: "Loading assets over http/https at runtime — pulls in the whole rustls/ring/ureq \
                TLS stack (several MB). Off for a game shipping local (rpak) assets.",
-        bevy_features: &["http", "https", "web_asset_cache"],
-        runtime_features: &[],
-        default_on: false,
-    },
-    Capability {
-        id: "asset_pipeline",
-        label: "Asset processor / compressed-image saver",
-        help: "Offline asset processing and compressed-image saving — editor/dev tools, not \
-               needed in a shipped game.",
-        bevy_features: &["asset_processor", "compressed_image_saver"],
-        runtime_features: &[],
-        default_on: false,
-    },
-    Capability {
-        id: "extra_shader_langs",
-        label: "Extra shader languages (GLSL/SPIR-V)",
-        help: "GLSL and SPIR-V shader support. Renzora's shaders are WGSL/WESL, so these are unused.",
-        bevy_features: &["shader_format_glsl", "shader_format_spirv"],
-        runtime_features: &[],
-        default_on: false,
-    },
-    Capability {
-        id: "editor_helpers",
-        label: "Editor camera & diagnostics",
-        help: "Free/pan camera controllers and system-info diagnostics — editor/dev only.",
-        bevy_features: &["bevy_camera_controller", "free_camera", "pan_camera", "sysinfo_plugin"],
+        bevy_features: &["http", "https"],
         runtime_features: &[],
         default_on: false,
     },
@@ -104,7 +71,6 @@ pub const CAPABILITIES: &[Capability] = &[
             "system_clipboard",
             "clipboard_image",
             "system_font_discovery",
-            "bevy_settings",
         ],
         runtime_features: &[],
         default_on: false,
@@ -123,13 +89,16 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         id: "image_extra",
         label: "Image-format decoders",
-        help: "Every optional texture decoder — DDS, JPEG, WebP, basis-universal, EXR/HDR, TIFF, \
-               GIF, BMP, TGA, PNM, QOI. PNG (+ its zlib) and KTX2 are always kept (window icon / \
-               compressed textures). Auto-enabled per the image files actually in the project, so \
-               a textureless or single-format game drops the decoders it never uses.",
+        help: "Every optional texture decoder — DDS, JPEG, WebP, basis-universal, EXR, HDR, GIF, \
+               BMP, TGA. PNG (+ its zlib) and KTX2 are always kept (window icon / compressed \
+               textures). Auto-enabled per the image files actually in the project, so a \
+               textureless or single-format game drops the decoders it never uses.",
+        // Kept in lockstep with the root manifest's image list: TIFF/PNM/QOI/FF/ICO
+        // were dropped there (no `renzora_import` sniffer recognises them), so they
+        // can't be stripped from an export that never enabled them.
         bevy_features: &[
             "dds", "jpeg", "webp", "basis-universal",
-            "exr", "tiff", "gif", "bmp", "tga", "pnm", "qoi", "ff", "ico",
+            "exr", "hdr", "gif", "bmp", "tga",
         ],
         runtime_features: &[],
         default_on: false,
@@ -219,8 +188,8 @@ pub const CAPABILITIES: &[Capability] = &[
                (bevy_light is kept). Requires the 3D subsystems (Terrain/Water/Sky/Post-FX) \
                to also be off — they build on bevy_pbr.",
         // Dropping the `3d` meta also requires dropping every pbr_* sub-feature: each
-        // would otherwise re-enable bevy_pbr on its own. (bevy_solari/meshlet need pbr
-        // too — they're separate caps but also stripped here.)
+        // would otherwise re-enable bevy_pbr on its own. (bevy_solari needs pbr too —
+        // it's a separate cap but also stripped here.)
         bevy_features: &[
             // The explicit 3D-render features (we own the manifest now — no `3d` meta).
             "bevy_pbr",
@@ -228,18 +197,13 @@ pub const CAPABILITIES: &[Capability] = &[
             "gltf_animation",
             "bevy_mikktspace",
             "pbr_transmission_textures",
-            "pbr_clustered_decals",
-            "pbr_light_textures",
             "pbr_multi_layer_material_textures",
             "pbr_anisotropy_texture",
             "pbr_specular_textures",
-            "experimental_pbr_pcss",
             "bluenoise_texture",
             "dfg_lut",
             "area_light_luts",
             "bevy_solari",
-            "meshlet",
-            "meshlet_processor",
             // 3D mesh morph targets (skinned/blend-shape) — irrelevant to 2D.
             "morph",
             "morph_animation",
@@ -317,9 +281,11 @@ pub const CAPABILITIES: &[Capability] = &[
 /// File extensions that imply a detectable capability is needed.
 fn detection_extensions(id: &str) -> &'static [&'static str] {
     match id {
+        // Mirrors `image_extra`'s `bevy_features` — an extension listed here that has
+        // no decoder behind it would flip the capability on for nothing.
         "image_extra" => &[
             "dds", "jpg", "jpeg", "jpe", "webp", "basis",
-            "exr", "hdr", "tif", "tiff", "gif", "bmp", "tga", "pnm", "qoi", "ico",
+            "exr", "hdr", "gif", "bmp", "tga",
         ],
         // Rhai backend only when the project ships .rhai scripts (Lua is always in).
         "rhai" => &["rhai"],
