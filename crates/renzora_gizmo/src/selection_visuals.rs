@@ -1,8 +1,17 @@
-//! Selection outline (bevy_mod_outline) and bounding box gizmo.
+//! Selection highlight: a wireframe bounding box drawn with Bevy gizmos.
 //!
-//! Two highlight modes controlled by `EditorSettings::selection_highlight_mode`:
-//! - **Outline**: Mesh-based outline via bevy_mod_outline (orange stroke around selected meshes)
-//! - **Gizmo**: Wireframe bounding box drawn with Bevy gizmos
+//! There used to be a second mode here — a mesh-hugging stroke via
+//! `bevy_mod_outline`, picked by an `EditorSettings::selection_highlight_mode`
+//! toggle. Both are gone. The outline had to insert `OutlineVolume`/
+//! `OutlineStencil`/`OutlineMode` onto every selected mesh **and its whole child
+//! subtree**, so selecting a model with many child meshes moved all of them
+//! between archetypes twice; the change-signature cache below the fold existed
+//! only to blunt that cost. The bounding box needs no components at all — it is
+//! pure immediate-mode gizmo drawing — so the setting was a choice between "fast"
+//! and "slow with more archetype churn", which is not a choice worth offering.
+//!
+//! `selection_boundary_on_top` survives and still applies: it moves the gizmo to
+//! render layer 1 with a negative depth bias (see `update_selection_gizmo_depth`).
 //!
 //! Terrain types are detected via reflection (component name checks) so this
 //! crate does not depend on renzora_terrain.
@@ -11,15 +20,10 @@ use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::RenderLayers;
 use bevy::gizmos::config::GizmoConfigStore;
 use bevy::prelude::*;
-use bevy_mod_outline::{OutlineMode, OutlineStencil, OutlineVolume};
 
 use crate::modal_transform::ModalTransformState;
 use crate::OverlayGizmoGroup;
-use renzora_editor_framework::{EditorSelection, EditorSettings, HideInHierarchy, SelectionHighlightMode};
-
-/// Marker component for entities that currently have a selection outline.
-#[derive(Component)]
-pub struct SelectionOutline;
+use renzora_editor_framework::{EditorSelection, EditorSettings, HideInHierarchy};
 
 /// Check if an entity has a component whose type name contains the given substring.
 fn has_component_by_name(world: &World, entity: Entity, name: &str) -> bool {
@@ -66,184 +70,14 @@ fn get_reflected_f32(world: &World, entity: Entity, type_substr: &str, field: &s
     }
 }
 
-/// Add/remove outline components based on selection state.
-pub fn update_selection_outlines(
-    mut commands: Commands,
-    selection: Res<EditorSelection>,
-    modal: Res<ModalTransformState>,
-    settings: Res<EditorSettings>,
-    play_mode: Option<Res<renzora::core::PlayModeState>>,
-    collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
-    mesh_entities: Query<Entity, With<Mesh3d>>,
-    children_query: Query<&Children>,
-    outlined_entities: Query<Entity, With<SelectionOutline>>,
-    hidden: Query<(), With<HideInHierarchy>>,
-    mut last_sig: Local<Option<u64>>,
-    world: &World,
-) {
-    let primary_color = Color::srgb(1.0, 0.5, 0.0);
-    let secondary_color = Color::srgba(1.0, 0.5, 0.0, 0.8);
-    let outline_width = 3.0;
-
-    let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
-    let editing_collider = collider_edit.map(|c| c.active).unwrap_or(false);
-
-    let should_show = !modal.active
-        && !in_play
-        && !editing_collider
-        && settings.selection_highlight_mode != SelectionHighlightMode::Gizmo;
-
-    let all_selected = selection.get_all();
-    let primary = selection.get();
-
-    // Re-applying the outline components every frame moves every selected mesh
-    // (and its whole child-mesh subtree) between archetypes twice — a real cost
-    // when the selection is a model with many child meshes. Nothing about the
-    // outline set changes unless the selection or these settings change, and
-    // `EditorSelection` is interior-mutable (its change-tick doesn't fire), so
-    // compare a cheap signature of the inputs and skip when it's unchanged.
-    let sig = {
-        use std::hash::{Hash, Hasher};
-        // Order-independent fold so selection-set ordering doesn't matter.
-        let mut set: u64 = 0;
-        for &e in &all_selected {
-            let mut eh = std::collections::hash_map::DefaultHasher::new();
-            e.hash(&mut eh);
-            set ^= eh.finish();
-        }
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        (
-            set,
-            all_selected.len(),
-            primary,
-            should_show,
-            settings.selection_boundary_on_top,
-        )
-            .hash(&mut h);
-        h.finish()
-    };
-    if *last_sig == Some(sig) {
-        return;
-    }
-    *last_sig = Some(sig);
-
-    // Remove all existing outlines
-    for entity in outlined_entities.iter() {
-        if let Ok(mut ec) = commands.get_entity(entity) {
-            ec.remove::<(OutlineVolume, OutlineStencil, OutlineMode, SelectionOutline)>();
-        }
-    }
-
-    if !should_show {
-        return;
-    }
-
-    let outline_mode = if settings.selection_boundary_on_top {
-        OutlineMode::ExtrudeFlat
-    } else {
-        OutlineMode::ExtrudeReal
-    };
-
-    for &entity in &all_selected {
-        if hidden.get(entity).is_ok() {
-            continue;
-        }
-
-        // Skip terrain chunks and terrain parents — they use border highlight instead
-        if is_terrain_chunk(world, entity) || is_terrain_parent(world, entity) {
-            continue;
-        }
-
-        let is_primary = primary == Some(entity);
-        let color = if is_primary {
-            primary_color
-        } else {
-            secondary_color
-        };
-
-        // Add outline to the entity itself if it has a mesh
-        if mesh_entities.get(entity).is_ok() {
-            if let Ok(mut ec) = commands.get_entity(entity) {
-                ec.insert((
-                    OutlineVolume {
-                        visible: true,
-                        width: outline_width,
-                        colour: color,
-                    },
-                    OutlineStencil::default(),
-                    outline_mode.clone(),
-                    SelectionOutline,
-                ));
-            }
-        }
-
-        // Also add outlines to child meshes
-        add_outline_to_children(
-            &mut commands,
-            entity,
-            color,
-            outline_width,
-            outline_mode.clone(),
-            &mesh_entities,
-            &children_query,
-            &hidden,
-        );
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn add_outline_to_children(
-    commands: &mut Commands,
-    entity: Entity,
-    color: Color,
-    width: f32,
-    outline_mode: OutlineMode,
-    mesh_entities: &Query<Entity, With<Mesh3d>>,
-    children_query: &Query<&Children>,
-    hidden: &Query<(), With<HideInHierarchy>>,
-) {
-    let Ok(children) = children_query.get(entity) else {
-        return;
-    };
-    for child in children.iter() {
-        // Skip hierarchy-hidden chrome (e.g. the mesh geometry a world-UI panel
-        // emits for its own text) — outlining it traces every glyph as stray
-        // dotted lines. Matches the top-level loop's `hidden` skip.
-        if hidden.get(child).is_ok() {
-            continue;
-        }
-        if mesh_entities.get(child).is_ok() {
-            if let Ok(mut ec) = commands.get_entity(child) {
-                ec.insert((
-                    OutlineVolume {
-                        visible: true,
-                        width,
-                        colour: color,
-                    },
-                    OutlineStencil::default(),
-                    outline_mode.clone(),
-                    SelectionOutline,
-                ));
-            }
-        }
-        add_outline_to_children(
-            commands,
-            child,
-            color,
-            width,
-            outline_mode.clone(),
-            mesh_entities,
-            children_query,
-            hidden,
-        );
-    }
-}
-
-/// Draw wireframe bounding box around selected entities when in Gizmo highlight mode.
+/// Draw the wireframe bounding box around selected entities.
+///
+/// Unconditional now that the outline mode is gone — the only reasons to skip are
+/// a modal transform in progress, collider editing, or play mode, all of which
+/// draw their own affordances and would otherwise double up.
 pub fn draw_selection_bounding_box(
     selection: Res<EditorSelection>,
     modal: Res<ModalTransformState>,
-    settings: Res<EditorSettings>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
     mut gizmos: Gizmos<OverlayGizmoGroup>,
@@ -261,10 +95,6 @@ pub fn draw_selection_bounding_box(
 
     let in_play = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
     if in_play {
-        return;
-    }
-
-    if settings.selection_highlight_mode != SelectionHighlightMode::Gizmo {
         return;
     }
 

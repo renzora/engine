@@ -356,6 +356,9 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
             entity.components.retain(|component| {
                 // Filter editor-only types by name (not available as deps in runtime)
                 let type_name = component.reflect_type_path();
+                // Legacy: `bevy_mod_outline` was removed (selection highlight is
+                // now the bounding-box gizmo only). Kept as a cheap string check so
+                // a scene saved before that still loads without unknown-type noise.
                 if type_name.starts_with("bevy_mod_outline::") {
                     return false;
                 }

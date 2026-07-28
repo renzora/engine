@@ -1772,18 +1772,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_mod_outline"
-version = "0.10.3"
-dependencies = [
- "bevy",
- "bitfield",
- "indexmap",
- "nonmax",
- "thiserror 2.0.18",
- "wgpu-types 29.0.3",
-]
-
-[[package]]
 name = "bevy_mod_xr"
 version = "0.5.0"
 dependencies = [
@@ -2664,12 +2652,6 @@ name = "bit_field"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e4b40c7323adcfc0a41c4b88143ed58346ff65a288fc144329c5c45e05d70c6"
-
-[[package]]
-name = "bitfield"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c821a6e124197eb56d907ccc2188eab1038fb919c914f47976e64dd8dbc855d1"
 
 [[package]]
 name = "bitflags"
@@ -8680,7 +8662,6 @@ name = "renzora_gizmo"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "bevy_mod_outline",
  "renzora",
  "renzora_editor_framework",
  "renzora_lighting",

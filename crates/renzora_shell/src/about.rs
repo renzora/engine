@@ -85,12 +85,6 @@ const CREDITS: &[Credit] = &[
         url: "https://github.com/Lommix/bevy_hui",
     },
     Credit {
-        name: "bevy_mod_outline",
-        by: "komadori",
-        desc: "Mesh outlining plugin",
-        url: "https://github.com/komadori/bevy_mod_outline",
-    },
-    Credit {
         name: "bevy_oxr",
         by: "awtterpip & the Bevy XR community",
         desc: "OpenXR / WebXR support",

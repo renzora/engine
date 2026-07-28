@@ -126,7 +126,7 @@ pub struct OpenAddComponentMenuRequest {
 }
 pub use settings::{
     CustomFonts, EditorSettings, InspectorComponentFilterStyle, InspectorExpandDefault, MonoFont,
-    SelectionGranularity, SelectionHighlightMode, SettingsTab, UiFont,
+    SelectionGranularity, SettingsTab, UiFont,
 };
 
 // Re-export core marker components so downstream crates can use `renzora_editor_framework::HideInHierarchy` etc.

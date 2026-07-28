@@ -415,9 +415,6 @@ impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         info!("[editor] GizmoPlugin");
         bevy::asset::embedded_asset!(app, "shaders/gizmo_material.wgsl");
-        if !app.is_plugin_added::<bevy_mod_outline::OutlinePlugin>() {
-            app.add_plugins(bevy_mod_outline::OutlinePlugin);
-        }
         app.add_plugins(MaterialPlugin::<GizmoMaterial>::default())
             .insert_gizmo_config(
                 OverlayGizmoGroup,
@@ -529,7 +526,6 @@ impl Plugin for GizmoPlugin {
                     gizmo_hover_detect,
                     gizmo_drag,
                     draw_line_gizmos,
-                    selection_visuals::update_selection_outlines,
                     selection_visuals::draw_selection_bounding_box,
                     selection_visuals::update_selection_gizmo_depth,
                     camera_gizmo::draw_camera_gizmo,

@@ -16,14 +16,6 @@ pub enum SettingsTab {
     Plugins,
 }
 
-/// Selection highlight mode when using the Select tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SelectionHighlightMode {
-    #[default]
-    Outline,
-    Gizmo,
-}
-
 /// What a viewport click resolves to when the raycast hits a mesh inside a
 /// larger imported hierarchy. The picker walks up from the hit mesh toward the
 /// scene root; this decides where it stops.
@@ -202,8 +194,6 @@ pub struct CustomFonts {
 pub struct EditorSettings {
     /// Currently selected settings tab
     pub settings_tab: SettingsTab,
-    /// Selection highlight mode (outline or gizmo)
-    pub selection_highlight_mode: SelectionHighlightMode,
     /// What a viewport click selects within an imported model hierarchy
     pub selection_granularity: SelectionGranularity,
     /// Render the selection boundary on top of all geometry
@@ -298,7 +288,6 @@ impl Default for EditorSettings {
     fn default() -> Self {
         Self {
             settings_tab: SettingsTab::default(),
-            selection_highlight_mode: SelectionHighlightMode::default(),
             selection_granularity: SelectionGranularity::default(),
             selection_boundary_on_top: false,
             font_size: 17.0,

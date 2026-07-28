@@ -15,7 +15,7 @@ use renzora::{
 };
 use renzora_editor_framework::{
     EditorSettings, InspectorComponentFilterStyle, InspectorExpandDefault, MonoFont,
-    SelectionGranularity, SelectionHighlightMode, SettingsTab, UiFont,
+    SelectionGranularity, SettingsTab, UiFont,
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
@@ -2305,24 +2305,9 @@ fn tab_viewport(
         },
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.colliders"), dd);
-    let sel_hl_opts = [tr("settings.opt.outline"), tr("settings.opt.gizmo")];
-    let sel_hl_refs: Vec<&str> = sel_hl_opts.iter().map(|s| s.as_str()).collect();
-    let dd = ctl_dropdown(
-        commands, fonts, &sel_hl_refs,
-        1, // Gizmo default; reseeded by bind_2way
-        |w| match w.resource::<EditorSettings>().selection_highlight_mode {
-            SelectionHighlightMode::Outline => 0,
-            SelectionHighlightMode::Gizmo => 1,
-        },
-        |w, &i| {
-            w.resource_mut::<EditorSettings>().selection_highlight_mode = if i == 1 {
-                SelectionHighlightMode::Gizmo
-            } else {
-                SelectionHighlightMode::Outline
-            };
-        },
-    );
-    settings_row(commands, fonts, body, 1, &tr("settings.row.selection"), dd);
+    // (The "Selection highlight" row was removed with `bevy_mod_outline` — the
+    // wireframe bounding box is now the only highlight, so there is nothing to
+    // choose. `settings.row.boundary_on_top` below still applies to it.)
     let gran_strs: Vec<String> = SelectionGranularity::ALL.iter().map(|g| loc_opt(g.label())).collect();
     let gran_labels: Vec<&str> = gran_strs.iter().map(|g| g.as_str()).collect();
     let dd = ctl_dropdown(
