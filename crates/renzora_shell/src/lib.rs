@@ -1730,6 +1730,8 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("lumen_diag", "Lumen Diag", "lightbulb", "Debug"),
     ("scripting_diag", "Scripting Diag", "bug", "Debug"),
     ("ui_reactivity", "UI Reactivity", "lightning", "Debug"),
+    // Plugins
+    ("plugin_resources", "Plugin Resources", "puzzle-piece", "Tools"),
 ];
 
 /// Seed [`renzora::ShellPanelRegistry`] from [`PANEL_META`] (as defaults — a
