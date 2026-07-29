@@ -24,7 +24,7 @@ The price is that a standalone plugin reaches Bevy through a curated surface rat
 | Links Bevy | yes, shares the host's `bevy_dylib` | no |
 | Toolchain | must match the canonical build env | any |
 | Bevy surface | all of it | the ABI surface |
-| Binary size | small (Bevy is shared) | ~20 KB typical |
+| Binary size | small (Bevy is shared) | ~210 KB (std linked statically) |
 | Registers with | `renzora::add!` | `renzora_plugin::add!` |
 | Breaks when | the editor's ABI moves | only on a MAJOR ABI bump |
 
@@ -94,6 +94,35 @@ strip = "symbols"
 ```
 
 Build with `cargo build --release` and copy `target/release/my_plugin.dll` (`.so` / `.dylib` elsewhere) into `<exe-dir>/plugins/`. The editor loads everything in that directory at startup.
+
+### Link std statically
+
+Rust does this by default, so a plugin built anywhere outside an engine checkout is already correct and you can skip this section.
+
+It matters because of what ends up in the plugin's **import table** — the list of libraries the OS must find before any Renzora code runs. Built correctly, a plugin's import table names nothing but the operating system:
+
+```
+KERNEL32.dll                        82 symbols
+ntdll.dll                            2 symbols
+api-ms-win-core-synch-l1-2-0.dll     3 symbols
+```
+
+With `-C prefer-dynamic`, it instead names `std-0cebe7c42cd80226.dll` — and that hash identifies one exact toolchain build. A plugin compiled with a different rustc names a different file, which isn't beside the executable, and the OS refuses to load it. That is the same trap as `bevy_dylib-<metadata>`, arriving by a different route, and it defeats the entire point of building without Bevy.
+
+It's an easy one to miss because it fails late. Inside an engine checkout with the pinned toolchain, the matching `std` library is already staged beside the exe, so the plugin loads and everything looks fine — right up until someone with a different rustc tries the same binary.
+
+If your plugin **does** live inside an engine checkout, you need to override it. Cargo discovers config by walking up from the working directory and does not stop at a workspace root, so your plugin inherits the engine's `.cargo/config.toml` even though it declares `[workspace]`. The engine sets `prefer-dynamic` so the executable, the editor bundle and distribution plugins can share one `bevy_dylib` — correct for them, wrong for you.
+
+`plugins/.cargo/config.toml` in the engine repo already does this for the bundled examples:
+
+```toml
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "prefer-dynamic=no", "-C", "target-feature=+crt-static"]
+```
+
+Note the explicit `=no`. Cargo **merges** `rustflags` arrays across config files rather than replacing them, so omitting the flag achieves nothing — it has to be contradicted by a later entry. `crt-static` additionally drops `VCRUNTIME140.dll` and the `api-ms-win-crt-*` set; the engine itself can't use it (it moves crate disambiguators, which shifts the `TypeId`s the shared-dylib plugin ABI depends on) but a standalone plugin shares no types with anyone, so nothing there applies.
+
+The cost is size: roughly 20 KB dynamically linked against ~210 KB statically. Take the 210 KB.
 
 ### Keep it out of the workspace
 
@@ -324,7 +353,7 @@ The engine ships several, each under `plugins/`:
 | `scatter` | assets and spawning renderable entities |
 | `flock` | a resource shared across systems, and `Option<&T>` |
 
-Every one is under 100 lines and around 20 KB compiled, with no Bevy anywhere in its dependency tree.
+Every one is under 100 lines, with no Bevy anywhere in its dependency tree and nothing but the OS in its import table.
 
 ## Current limits
 
