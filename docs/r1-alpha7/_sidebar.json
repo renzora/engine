@@ -1,5 +1,5 @@
 {
-  "version": "r1-alpha6",
+  "version": "r1-alpha7",
   "label": "Renzora Documentation",
   "description": "Start with the basics for making games. Flip on Advanced for engine internals and the full API.",
   "groups": [
@@ -133,6 +133,7 @@
           "category": "Extending",
           "pages": [
             { "slug": "extending/plugins", "title": "Building Plugins" },
+            { "slug": "extending/standalone-plugins", "title": "Standalone Plugins (C ABI)" },
             { "slug": "extending/localization", "title": "Localization" },
             { "slug": "extending/custom-nodes", "title": "Custom Blueprint Nodes" },
             { "slug": "extending/script-bindings", "title": "Script API Bindings" },
