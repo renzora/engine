@@ -7876,18 +7876,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_edge_glow"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_editor"
 version = "0.1.0"
 dependencies = [
@@ -8158,18 +8146,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_gaussian_blur"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_gaussian_splatting"
 version = "0.1.0"
 dependencies = [
@@ -8201,18 +8177,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
-]
-
-[[package]]
-name = "renzora_god_rays"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8627,30 +8591,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_oit",
-]
-
-[[package]]
-name = "renzora_outline"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_palette_quantization"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9303,18 +9243,6 @@ dependencies = [
  "dirs 5.0.1",
  "serde",
  "toml 0.8.23",
-]
-
-[[package]]
-name = "renzora_underwater"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]

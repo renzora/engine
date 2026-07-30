@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "edge_glow"
+version = "0.1.0"
+edition = "2021"
+description = "Edge Glow post-process effect."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"
