@@ -1702,3 +1702,55 @@ fn a_reload_that_changes_a_layout_is_refused() {
         "a refused reload still retired the running build"
     );
 }
+
+/// A resource-only system: no `Query`, so nothing to iterate.
+fn bump(mut score: ecs::ResMut<Score>) {
+    score.total += 1;
+}
+
+unsafe extern "C" fn resource_only_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.init_resource::<Score>()
+        .add_systems(ecs::Schedule::Update, bump);
+    sys::InitResult::Ok
+}
+
+#[test]
+fn a_system_with_no_queries_still_runs() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), resource_only_init),
+        sys::InitResult::Ok
+    );
+
+    let id = app
+        .world()
+        .resource::<abi_host::PluginComponents>()
+        .0
+        .get(<Score as renzora_plugin::ecs::Resource>::TYPE_PATH)
+        .copied()
+        .expect("Score was not registered");
+
+    app.update();
+    app.update();
+
+    // `add_system` used to require at least one query, so a system touching only
+    // resources was refused — the plugin loaded and the system simply never ran.
+    // Nothing reported it except one line at startup.
+    let total = {
+        let ptr = app
+            .world()
+            .get_resource_by_id(id)
+            .expect("Score resource is missing");
+        unsafe { ptr.as_ptr().cast::<i32>().read_unaligned() }
+    };
+    assert!(
+        total >= 2,
+        "a resource-only system did not run (total {total})"
+    );
+}

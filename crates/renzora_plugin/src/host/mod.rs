@@ -638,13 +638,28 @@ unsafe extern "C" fn add_system(
             return sys::RegisterStatus::Invalid;
         }
         let desc = &*desc;
-        if desc.queries.is_null() || desc.query_count == 0 || desc.flags != 0 {
-            error!("plugin sent a malformed SystemDesc");
+        // A system with NO queries is legal and normal: `fn tick(mut s:
+        // ResMut<Settings>, time: Res<Time>)` touches no entities at all. This
+        // used to require `query_count > 0`, which silently refused every
+        // resource-only system a plugin declared — the plugin loaded fine and one
+        // of its systems just never ran.
+        if desc.flags != 0 || (desc.query_count > 0 && desc.queries.is_null()) {
+            error!(
+                "plugin sent a malformed SystemDesc (flags {}, {} queries, {} null)",
+                desc.flags,
+                desc.query_count,
+                if desc.queries.is_null() { "ptr" } else { "no ptr" }
+            );
             return sys::RegisterStatus::Invalid;
         }
 
         let mut plans = Vec::with_capacity(desc.query_count);
-        for q in std::slice::from_raw_parts(desc.queries, desc.query_count) {
+        let declared = if desc.query_count == 0 {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(desc.queries, desc.query_count)
+        };
+        for q in declared {
             let terms = std::slice::from_raw_parts(q.terms, q.term_count);
             let Some(plan) = build_plan(ctx.world, terms) else {
                 return sys::RegisterStatus::UnknownComponent;
