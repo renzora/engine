@@ -47,8 +47,9 @@ impl Plugin for PluginRenderBridgePlugin {
         // component does not have.
         app.init_resource::<PluginEffectSettings>()
             .init_resource::<PluginEffectComponents>()
+            .init_resource::<PluginShaders>()
             .add_plugins(ExtractResourcePlugin::<PluginEffectSettings>::default())
-            .add_systems(PostUpdate, collect_effect_settings);
+            .add_systems(PostUpdate, (collect_effect_settings, reload_plugin_shaders));
     }
 
     fn finish(&self, app: &mut App) {
@@ -61,6 +62,22 @@ impl Plugin for PluginRenderBridgePlugin {
             .remove_resource::<renzora_plugin::host::PendingPostProcesses>()
             .map(|p| p.0)
             .unwrap_or_default();
+
+        // Remember which shader handle each id was built against, so a reload can
+        // overwrite the asset rather than register a second pass. Recorded here
+        // because this is the only place that knows the handle a pipeline actually
+        // captured.
+        {
+            let mut known = app
+                .world_mut()
+                .get_resource_or_insert_with(PluginShaders::default);
+            for e in &effects {
+                known.0.insert(e.id.clone(), (e.shader.clone(), e.wgsl.clone()));
+            }
+            for p in &pending.0 {
+                known.0.insert(p.id.clone(), (p.shader.clone(), p.wgsl.clone()));
+            }
+        }
 
         // Tell the main-world copier which components to collect.
         if !effects.is_empty() {
@@ -125,6 +142,80 @@ impl Plugin for PluginRenderBridgePlugin {
             );
             info!("[plugin] registered render pass `{id}` (phase {:?}, order {})", p.phase, p.order);
         }
+    }
+}
+
+/// The shader handle each registered pass or effect is actually built against,
+/// with the source it was built from.
+///
+/// Recorded so a reload can swap a shader in place. The pass keeps this handle
+/// inside a pipeline it built once, so a reloaded plugin's *fresh* handle is
+/// invisible to it — the only thing that reaches the GPU is rewriting the asset
+/// this handle points at, which makes Bevy's pipeline cache recompile.
+#[derive(Resource, Default)]
+struct PluginShaders(std::collections::HashMap<String, (Handle<Shader>, String)>);
+
+/// Swap in a plugin's recompiled shader without rebuilding its pipeline.
+///
+/// `finish` runs once, and it *removes* `PendingRenderPasses` /
+/// `PendingPostProcesses`. A reloaded plugin re-registers into fresh copies of
+/// those resources, and before this nothing looked at them again: the effect kept
+/// running the WGSL from the build that had been replaced.
+///
+/// What makes this cheap is that a shader is an asset. Overwriting it invalidates
+/// every pipeline depending on it and Bevy recompiles on its own, so there is no
+/// pipeline to rebuild, no bind group layout to re-derive, and nothing to
+/// re-register with the render graph. Which is also why this can live in a
+/// main-world system with no access to the render sub-app.
+fn reload_plugin_shaders(
+    mut effects: Option<ResMut<renzora_plugin::host::PendingPostProcesses>>,
+    mut passes: Option<ResMut<PendingRenderPasses>>,
+    mut known: ResMut<PluginShaders>,
+    mut shaders: ResMut<Assets<Shader>>,
+) {
+    // `(id, wgsl, settings_size)` — `None` for a render pass, which has no
+    // uniform to validate against.
+    let mut incoming: Vec<(String, String, Option<u64>)> = Vec::new();
+    if let Some(effects) = effects.as_mut() {
+        for e in std::mem::take(&mut effects.0) {
+            incoming.push((e.id, e.wgsl, Some(e.settings_size)));
+        }
+    }
+    if let Some(passes) = passes.as_mut() {
+        for p in std::mem::take(&mut passes.0) {
+            incoming.push((p.id, p.wgsl, None));
+        }
+    }
+    if incoming.is_empty() {
+        return;
+    }
+
+    for (id, wgsl, settings_size) in incoming {
+        let Some((handle, current)) = known.0.get(&id) else {
+            // An effect or pass that did not exist at startup. Registering one
+            // needs the render sub-app, which a main-world system cannot reach.
+            warn!(
+                "[plugin] `{id}` is a new render pass or effect — adding one needs a \
+                 restart; editing an existing one does not."
+            );
+            continue;
+        };
+        if *current == wgsl {
+            continue;
+        }
+        // Validate BEFORE swapping. A shader whose uniform no longer matches the
+        // settings struct is a fatal GPU error rather than a recoverable one, and
+        // the whole point of a live reload is that a mistake costs you nothing.
+        if let Some(expected) = settings_size {
+            if let Err(why) = validate_effect_shader(&wgsl, expected) {
+                error!("[plugin] `{id}` shader rejected, keeping the running one: {why}");
+                continue;
+            }
+        }
+        let handle = handle.clone();
+        shaders.insert(handle.id(), Shader::from_wgsl(wgsl.clone(), id.clone()));
+        known.0.insert(id.clone(), (handle, wgsl));
+        info!("[plugin] `{id}` shader reloaded");
     }
 }
 

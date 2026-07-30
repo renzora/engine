@@ -1074,6 +1074,11 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
 pub struct PendingRenderPass {
     pub id: String,
     pub shader: Handle<Shader>,
+    /// The source the handle was built from, kept so a reload can tell whether the
+    /// shader actually changed and swap it into the ALREADY-REGISTERED handle. The
+    /// pass holds that handle inside a built pipeline, so replacing the asset is
+    /// what makes the pipeline cache recompile — a fresh handle would be ignored.
+    pub wgsl: String,
     pub phase: sys::RenderPhase,
     pub order: f32,
     pub callback: sys::RenderCallback,
@@ -1184,6 +1189,7 @@ unsafe extern "C" fn add_render_pass(host: *mut sys::Host, desc: *const sys::Ren
             owner: ctx.slot,
             id,
             shader: handle,
+            wgsl: desc.fragment_wgsl.as_str().to_string(),
             phase: desc.phase,
             order: desc.order,
             callback: desc.callback,
