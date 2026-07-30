@@ -45,15 +45,19 @@ struct ResourcePanelRoot {
 // the offset came from `offset_of!` in the plugin, which is correct for that
 // type's layout, but it is applied here to a `*const u8` that carries no
 // alignment guarantee of its own.
+//
+// `pub(crate)` so `plugin_panels` binds a panel widget to a resource field
+// through the same accessors the inspector rows use. Two implementations of
+// "poke this offset" would be two chances to get the `bool` case wrong.
 
-fn read_f32(world: &World, cid: ComponentId, offset: usize) -> f32 {
+pub(crate) fn read_f32(world: &World, cid: ComponentId, offset: usize) -> f32 {
     world
         .get_resource_by_id(cid)
         .map(|p| unsafe { p.as_ptr().add(offset).cast::<f32>().read_unaligned() })
         .unwrap_or(0.0)
 }
 
-fn write_f32(world: &mut World, cid: ComponentId, offset: usize, v: f32) {
+pub(crate) fn write_f32(world: &mut World, cid: ComponentId, offset: usize, v: f32) {
     if let Some(mut ptr) = world.get_resource_mut_by_id(cid) {
         // `as_mut()` marks the resource changed, which is what makes a plugin
         // system taking `ResMut` see the edit.
@@ -72,27 +76,27 @@ fn write_f32(world: &mut World, cid: ComponentId, offset: usize, v: f32) {
 /// align 1, so a 4-byte write at offset 0 scribbles over `b` and two bytes of
 /// whatever the allocator put next — which surfaces as an unrelated component
 /// changing when you toggle a checkbox.
-fn read_bool(world: &World, cid: ComponentId, offset: usize) -> bool {
+pub(crate) fn read_bool(world: &World, cid: ComponentId, offset: usize) -> bool {
     world
         .get_resource_by_id(cid)
         .map(|p| unsafe { p.as_ptr().add(offset).read() != 0 })
         .unwrap_or(false)
 }
 
-fn write_bool(world: &mut World, cid: ComponentId, offset: usize, v: bool) {
+pub(crate) fn write_bool(world: &mut World, cid: ComponentId, offset: usize, v: bool) {
     if let Some(mut ptr) = world.get_resource_mut_by_id(cid) {
         unsafe { ptr.as_mut().as_ptr().add(offset).write(v as u8) };
     }
 }
 
-fn read_i32(world: &World, cid: ComponentId, offset: usize) -> i32 {
+pub(crate) fn read_i32(world: &World, cid: ComponentId, offset: usize) -> i32 {
     world
         .get_resource_by_id(cid)
         .map(|p| unsafe { p.as_ptr().add(offset).cast::<i32>().read_unaligned() })
         .unwrap_or(0)
 }
 
-fn write_i32(world: &mut World, cid: ComponentId, offset: usize, v: i32) {
+pub(crate) fn write_i32(world: &mut World, cid: ComponentId, offset: usize, v: i32) {
     if let Some(mut ptr) = world.get_resource_mut_by_id(cid) {
         unsafe {
             ptr.as_mut()

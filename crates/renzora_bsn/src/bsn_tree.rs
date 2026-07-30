@@ -59,7 +59,29 @@ pub struct BsnTree {
     pub key: Option<String>,
     /// `(component name, RON body)`. The body is `()` for a bare marker.
     pub components: Vec<(String, String)>,
+    /// Fields written as `bind(Something.field)` rather than a literal. Lifted
+    /// out of the body during parse — see [`BsnBinding`].
+    pub bindings: Vec<BsnBinding>,
     pub children: Vec<BsnTree>,
+}
+
+/// A field whose value comes from somewhere else, live, in both directions.
+///
+/// `EmberSliderWidget { value: bind(FlockSettings.cohesion) }` yields
+/// `{ component: "EmberSliderWidget", field: "value", target:
+/// "FlockSettings.cohesion" }`, and `value` is *removed* from the RON body so
+/// reflection defaults it. The literal would be thrown away a frame later
+/// anyway, and leaving it in would mean two sources of truth for one field.
+///
+/// The target stays an unresolved string here on purpose. This crate parses
+/// scenes and knows nothing about plugin resources; whoever spawns the tree
+/// resolves the name in its own namespace — which is also what keeps one
+/// plugin's binding from reaching another's state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BsnBinding {
+    pub component: String,
+    pub field: String,
+    pub target: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -250,7 +272,15 @@ impl<'a> Parser<'a> {
             }
             Some('{') | Some('(') => {
                 let raw = self.balanced()?;
-                tree.components.push((name, to_ron(raw)));
+                let (body, bound) = extract_bindings(&to_ron(raw));
+                for (field, target) in bound {
+                    tree.bindings.push(BsnBinding {
+                        component: name.clone(),
+                        field,
+                        target,
+                    });
+                }
+                tree.components.push((name, body));
             }
             // A bare marker: `Button`, `Camera3d`, `Sword`. Reflection wants a
             // unit struct's body spelled as an empty tuple.
@@ -258,6 +288,86 @@ impl<'a> Parser<'a> {
         }
         Ok(())
     }
+}
+
+/// Pull `field: bind(Target.path)` entries out of a RON-shaped component body.
+///
+/// Returns the body with those entries removed, plus the `(field, target)` pairs.
+/// Removal is what makes this work at all: reflection has no idea what `bind(…)`
+/// means and would reject the body, whereas an *absent* field is already handled
+/// — the partial-fill path defaults it.
+///
+/// Only top-level fields are considered. `bind` nested inside a struct value
+/// (`tracks: [ ( name: bind(…) ) ]`) is left alone rather than half-supported,
+/// because the binding would have nowhere sensible to write: the widget rebuilds
+/// its whole subtree from the component, so a live value has to be a field the
+/// binding can address on its own.
+fn extract_bindings(body: &str) -> (String, Vec<(String, String)>) {
+    // Fast path, and it is the common one — most bodies have no bindings.
+    if !body.contains("bind(") || !body.starts_with('(') || !body.ends_with(')') {
+        return (body.to_string(), Vec::new());
+    }
+    let inner = &body[1..body.len() - 1];
+
+    let mut kept: Vec<&str> = Vec::new();
+    let mut found: Vec<(String, String)> = Vec::new();
+    for item in split_top_level(inner) {
+        match parse_bind(item.trim()) {
+            Some((field, target)) => found.push((field, target)),
+            None => kept.push(item),
+        }
+    }
+    if found.is_empty() {
+        return (body.to_string(), found);
+    }
+    (format!("({})", kept.join(",")), found)
+}
+
+/// Split a comma-separated body at nesting depth zero, ignoring commas inside
+/// nested brackets and string literals.
+fn split_top_level(inner: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut start = 0usize;
+    for (i, c) in inner.char_indices() {
+        if in_string {
+            if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                items.push(&inner[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    if !inner[start..].trim().is_empty() {
+        items.push(&inner[start..]);
+    }
+    items
+}
+
+/// Match `field: bind(target)` exactly, or return `None` to leave the item be.
+fn parse_bind(item: &str) -> Option<(String, String)> {
+    let (field, value) = item.split_once(':')?;
+    let field = field.trim();
+    if field.is_empty() || !field.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return None;
+    }
+    let value = value.trim();
+    let target = value.strip_prefix("bind")?.trim_start().strip_prefix('(')?.strip_suffix(')')?;
+    let target = target.trim();
+    if target.is_empty() {
+        return None;
+    }
+    Some((field.to_string(), target.to_string()))
 }
 
 /// Translate a BSN component body into the RON `bevy_reflect` expects.
@@ -326,6 +436,22 @@ pub fn parse(text: &str) -> Result<BsnTree, BsnError> {
 
 // ── Spawning ─────────────────────────────────────────────────────────────────
 
+/// Bindings the spawner found but could not resolve, left on the entity for
+/// whoever owns the namespace they name.
+///
+/// This crate deliberately does not resolve them. A binding target like
+/// `FlockSettings.cohesion` only means anything relative to a particular
+/// plugin's registered resources, and resolving it here would either mean this
+/// crate learning about the plugin host, or a global lookup — which is the shape
+/// of bug that had every plugin's panel buttons dispatching into the first
+/// plugin to register. So the resolver is whoever spawned the tree, and it looks
+/// only in its own namespace.
+///
+/// The consumer removes the component once it has wired the binding up, so an
+/// entity still carrying one after that frame is an unresolved target.
+#[derive(Component, Clone, Debug)]
+pub struct PendingBindings(pub Vec<BsnBinding>);
+
 /// Spawn a parsed tree into the world, returning the root.
 ///
 /// Components resolve by name against whichever registry knows them, and a name
@@ -343,6 +469,9 @@ pub fn spawn(world: &mut World, tree: &BsnTree, parent: Option<Entity>) -> Entit
 
     for (name, body) in &tree.components {
         insert_component(world, entity, name, body);
+    }
+    if !tree.bindings.is_empty() {
+        world.entity_mut(entity).insert(PendingBindings(tree.bindings.clone()));
     }
 
     // Depth-first, so a child's `ChildOf` lands on a parent that exists.
@@ -368,6 +497,9 @@ pub fn spawn_into(world: &mut World, tree: &BsnTree, entity: Entity) {
     }
     for (name, body) in &tree.components {
         insert_component(world, entity, name, body);
+    }
+    if !tree.bindings.is_empty() {
+        world.entity_mut(entity).insert(PendingBindings(tree.bindings.clone()));
     }
     for child in &tree.children {
         spawn(world, child, Some(entity));

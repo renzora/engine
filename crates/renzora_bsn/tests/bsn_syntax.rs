@@ -319,3 +319,46 @@ fn an_unterminated_entity_is_an_error_not_a_panic() {
     let err = parse(r#"Health { current: 1.0 "#).unwrap_err();
     assert!(err.message.contains("unterminated"), "{err}");
 }
+
+#[test]
+fn a_bound_field_leaves_the_body_and_is_recorded() {
+    let tree = parse("EmberSliderWidget { value: bind(FlockSettings.cohesion) }").expect("parse");
+    assert_eq!(
+        tree.components[0].1, "()",
+        "the bound field must be REMOVED, not left for reflection to choke on"
+    );
+    assert_eq!(tree.bindings.len(), 1);
+    assert_eq!(tree.bindings[0].component, "EmberSliderWidget");
+    assert_eq!(tree.bindings[0].field, "value");
+    assert_eq!(tree.bindings[0].target, "FlockSettings.cohesion");
+}
+
+#[test]
+fn a_bound_field_does_not_take_its_neighbours_with_it() {
+    let tree = parse(
+        "EmberInput { placeholder: \"name\", value: bind(Settings.title), max: 32 }",
+    )
+    .expect("parse");
+    let body = &tree.components[0].1;
+    assert!(body.contains("placeholder"), "{body}");
+    assert!(body.contains("max"), "{body}");
+    assert!(!body.contains("bind"), "{body}");
+    assert_eq!(tree.bindings.len(), 1);
+    assert_eq!(tree.bindings[0].field, "value");
+}
+
+#[test]
+fn bind_inside_a_string_is_just_text() {
+    let tree = parse(r#"Name("bind(NotAThing.x)")"#).expect("parse");
+    assert!(tree.bindings.is_empty(), "{:?}", tree.bindings);
+    assert_eq!(tree.components[0].1, r#"("bind(NotAThing.x)")"#);
+}
+
+#[test]
+fn a_nested_bind_is_left_alone_rather_than_half_supported() {
+    // Only top-level fields bind. A nested one stays in the body, where
+    // reflection will reject it loudly — better than silently doing nothing.
+    let tree = parse("EmberTimeline { tracks: [ ( name: bind(A.b) ) ] }").expect("parse");
+    assert!(tree.bindings.is_empty(), "{:?}", tree.bindings);
+    assert!(tree.components[0].1.contains("bind(A.b)"));
+}

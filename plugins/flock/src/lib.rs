@@ -98,9 +98,9 @@ fn flock(
 
 /// The panel, as markup.
 ///
-/// `-> Type.field` binds straight to a field of the resource — the editor
-/// already knows its layout, so dragging a slider never calls into this plugin.
-/// `-> name` on a button is the only thing that does.
+/// Only buttons reach here. A `bind(Type.field)` widget talks to the resource
+/// directly — the host knows its layout, so dragging a slider never calls into
+/// this plugin at all.
 fn on_action(action: Action) {
     // No captures — the handler is a plain fn, same rule a system follows, and
     // for the same reason: the host has nowhere to put a capture. The name is
@@ -134,6 +134,21 @@ impl Plugin for FlockPlugin {
                         }
                         Children [
                             Text("Flocking"),
+                            // Two-way bound to the resource. Dragging one writes
+                            // the field and the flocking system reads the new
+                            // value next frame; changing it from anywhere else
+                            // moves the thumb. Neither direction calls into this
+                            // plugin — the resource lives host-side, so the host
+                            // syncs both ends itself.
+                            //
+                            // `min`/`max` are in the field's own units, so nothing
+                            // here normalises: `radius` really is 0..10.
+                            Text("Cohesion"),
+                            ( EmberSliderWidget { value: bind(FlockSettings.cohesion), min: 0.0, max: 2.0 } ),
+                            Text("Separation"),
+                            ( EmberSliderWidget { value: bind(FlockSettings.separation), min: 0.0, max: 4.0 } ),
+                            Text("Radius"),
+                            ( EmberSliderWidget { value: bind(FlockSettings.radius), min: 0.5, max: 10.0 } ),
                             ( Node { flex_direction: Row, column_gap: Px(6.0) }
                               Children [
                                 ( EmberButtonWidget { label: "Reset" }

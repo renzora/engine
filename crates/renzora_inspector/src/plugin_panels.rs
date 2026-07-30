@@ -28,6 +28,7 @@
 //! `EmberTable`, `EmberTimeline` and friends, each of which builds itself when
 //! inserted.
 
+use bevy::ecs::component::ComponentId;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::panel::RegisterPanelContent;
@@ -146,7 +147,164 @@ pub fn register_plugin_panels(app: &mut App) {
         info!("[plugin] panel `{id}`");
     }
 
-    app.add_systems(Update, dispatch_actions);
+    app.add_systems(Update, (dispatch_actions, apply_bindings));
+}
+
+/// Wire up every `bind(Resource.field)` a freshly-spawned panel declared.
+///
+/// Runs as its own system rather than inside [`fill`] because of a one-frame
+/// ordering fact: a widget component's insert hook builds its subtree through the
+/// command queue, so at the moment `spawn_into` returns, the entity carrying
+/// `Bound<T>` does not exist yet. Binding has to wait for the frame after the
+/// spawn, which is exactly what a system polling for `PendingBindings` does. The
+/// delay is invisible — `bind_2way` seeds the widget from state on its first run.
+fn apply_bindings(world: &mut World) {
+    let pending: Vec<(Entity, Vec<renzora_bsn::bsn_tree::BsnBinding>)> = world
+        .query::<(Entity, &renzora_bsn::bsn_tree::PendingBindings)>()
+        .iter(world)
+        .map(|(e, b)| (e, b.0.clone()))
+        .collect();
+    if pending.is_empty() {
+        return;
+    }
+
+    for (entity, bindings) in pending {
+        // The hook adds exactly one child — the real widget, which is where
+        // `Bound<T>` lives. Wait for it rather than binding the wrong entity.
+        let Some(widget) = world.get::<Children>(entity).and_then(|c| c.iter().next()) else {
+            continue;
+        };
+
+        let mut queue = CommandQueue::default();
+        {
+            let mut commands = Commands::new(&mut queue, world);
+            for binding in &bindings {
+                match resolve(world, &binding.target) {
+                    Ok(field) => bind_field(&mut commands, widget, field),
+                    Err(why) => error!(
+                        "[plugin] panel binding `{}` on {}.{}: {why}",
+                        binding.target, binding.component, binding.field
+                    ),
+                }
+            }
+        }
+        queue.apply(world);
+        world.entity_mut(entity).remove::<renzora_bsn::bsn_tree::PendingBindings>();
+    }
+}
+
+/// A resolved binding target: where the bytes are and how to read them.
+#[derive(Clone, Copy)]
+struct BoundField {
+    resource: ComponentId,
+    offset: usize,
+    kind: sys::FieldKind,
+}
+
+/// Resolve `Resource.field` against the registered plugin resources.
+///
+/// Ambiguity is an **error**, not a guess. Two plugins can each register a
+/// `Settings`, and picking one would give a panel live control over another
+/// plugin's state — the same failure the panel-index bug had. The message names
+/// the candidates, and qualifying with the crate (`bind(flock::FlockSettings.x)`)
+/// resolves it, since the full type path is matched too.
+fn resolve(world: &World, target: &str) -> Result<BoundField, String> {
+    let (type_name, field_name) = target
+        .rsplit_once('.')
+        .ok_or_else(|| "expected `Resource.field`".to_string())?;
+
+    let schemas = world
+        .get_resource::<renzora_plugin::host::PluginComponentSchemas>()
+        .ok_or_else(|| "no plugin schemas registered".to_string())?;
+
+    let matches: Vec<_> = schemas
+        .0
+        .iter()
+        .filter(|info| info.is_resource)
+        .filter(|info| {
+            info.type_path == type_name
+                || info.type_path.rsplit("::").next() == Some(type_name)
+        })
+        .collect();
+
+    let info = match matches.as_slice() {
+        [] => {
+            return Err(format!(
+                "no plugin resource named `{type_name}` — a resource must be \
+                 `register_resource`d before a panel can bind to it"
+            ))
+        }
+        [one] => one,
+        many => {
+            let names: Vec<&str> = many.iter().map(|i| i.type_path.as_str()).collect();
+            return Err(format!(
+                "`{type_name}` is ambiguous between {} — qualify it with the crate",
+                names.join(", ")
+            ));
+        }
+    };
+
+    let field = info
+        .fields
+        .iter()
+        .find(|f| f.name == field_name)
+        .ok_or_else(|| {
+            let known: Vec<&str> = info.fields.iter().map(|f| f.name.as_str()).collect();
+            format!(
+                "`{}` has no field `{field_name}` (has: {})",
+                info.type_path,
+                known.join(", ")
+            )
+        })?;
+
+    Ok(BoundField {
+        resource: info.id,
+        offset: field.offset,
+        kind: field.kind,
+    })
+}
+
+/// Two-way-bind the widget's `Bound<T>` to the resource field.
+///
+/// One `bind_2way` per field kind because `Bound<T>` is generic over the model
+/// type: a slider carries `Bound<f32>` and a toggle `Bound<bool>`, so the pair of
+/// closures has to be typed. The `I32` case models as `f32` because that is what
+/// the numeric widgets carry — the rounding lives in the setter, so the resource
+/// still holds an integer.
+fn bind_field(commands: &mut Commands, widget: Entity, field: BoundField) {
+    let BoundField { resource, offset, kind } = field;
+    match kind {
+        sys::FieldKind::F32 => renzora_ember::reactive::bind_2way(
+            commands,
+            widget,
+            move |w: &World| super::plugin_resources::read_f32(w, resource, offset),
+            move |w: &mut World, v: &f32| {
+                super::plugin_resources::write_f32(w, resource, offset, *v)
+            },
+        ),
+        sys::FieldKind::Bool => renzora_ember::reactive::bind_2way(
+            commands,
+            widget,
+            move |w: &World| super::plugin_resources::read_bool(w, resource, offset),
+            move |w: &mut World, v: &bool| {
+                super::plugin_resources::write_bool(w, resource, offset, *v)
+            },
+        ),
+        sys::FieldKind::I32 => renzora_ember::reactive::bind_2way(
+            commands,
+            widget,
+            move |w: &World| super::plugin_resources::read_i32(w, resource, offset) as f32,
+            move |w: &mut World, v: &f32| {
+                super::plugin_resources::write_i32(w, resource, offset, v.round() as i32)
+            },
+        ),
+        // Vec3/Quat have no single-value widget to bind, and an unknown kind came
+        // from a newer ABI. Neither is worth guessing at.
+        other => error!(
+            "[plugin] panel binding: field kind {} cannot drive a widget yet",
+            other.name()
+        ),
+    }
 }
 
 /// Spawn a panel's BSN the first time it is opened.
