@@ -37,6 +37,14 @@ use renzora_plugin::sys;
 
 /// One panel's parsed BSN, kept for the builder to spawn from.
 struct Registered {
+    /// The panel id, which is its identity ACROSS reloads. A slot's index cannot
+    /// be — `PanelRoot` and every stamped `PanelActionId` hold that index, so a
+    /// reloaded panel has to land back in the same slot, found by id.
+    id: String,
+    /// The BSN this tree was parsed from, kept solely to answer "did it change?".
+    /// Comparing source beats tracking a revision through
+    /// `PluginPanels`, which `retire_slot` reorders on every reload.
+    source: String,
     tree: renzora_bsn::BsnTree,
     action_entry: Option<sys::PanelActionEntry>,
     user: usize,
@@ -97,6 +105,8 @@ pub fn register_plugin_panels(app: &mut App) {
         let index = {
             let mut reg = app.world_mut().resource_mut::<RegisteredPanels>();
             reg.0.push(Registered {
+                id: id.clone(),
+                source,
                 tree,
                 action_entry: on_action,
                 user,
@@ -147,7 +157,134 @@ pub fn register_plugin_panels(app: &mut App) {
         info!("[plugin] panel `{id}`");
     }
 
-    app.add_systems(Update, (dispatch_actions, apply_bindings));
+    app.add_systems(Update, (dispatch_actions, apply_bindings, refresh_reloaded_panels));
+}
+
+/// Pick up a panel whose plugin has been reloaded, and redraw it.
+///
+/// `register_plugin_panels` runs once, from `Plugin::finish`, because
+/// `register_panel_content` is an `App` extension and a system has no `&mut App`.
+/// So a reloaded plugin re-registered its panel into `PluginPanels` and nothing
+/// looked again — the panel kept rendering the BSN from the build that had been
+/// replaced. This is the part of hot reload that panels were missing.
+///
+/// Matching is by **id**, and the slot is overwritten in place. A slot's index is
+/// held by every live `PanelRoot` and by every `PanelActionId` the host stamped, so
+/// a reloaded panel that landed in a new slot would leave both pointing at the old
+/// tree — clicks dispatching into a stale thunk.
+fn refresh_reloaded_panels(world: &mut World) {
+    // What the host currently believes, which a reload has just rewritten.
+    let live: Vec<(String, String, Option<sys::PanelActionEntry>, usize, String, String)> = {
+        let Some(panels) = world.get_resource::<PluginPanels>() else {
+            return;
+        };
+        panels
+            .0
+            .iter()
+            .map(|p| {
+                (
+                    p.id.clone(),
+                    p.markup.clone(),
+                    p.on_action,
+                    p.user,
+                    p.title.clone(),
+                    p.icon.clone(),
+                )
+            })
+            .collect()
+    };
+    if live.is_empty() {
+        return;
+    }
+
+    let mut changed: Vec<usize> = Vec::new();
+    let mut retitled: Vec<(String, String, String)> = Vec::new();
+    for (id, source, on_action, user, title, icon) in live {
+        let Some(mut reg) = world.get_resource_mut::<RegisteredPanels>() else {
+            return;
+        };
+        let Some(index) = reg.0.iter().position(|r| r.id == id) else {
+            // A panel id that did not exist at startup. Adding one needs
+            // `register_panel_content`, which needs `&mut App` — so this is the one
+            // panel change a reload genuinely cannot apply.
+            warn_new_panel(&id);
+            continue;
+        };
+        if reg.0[index].source == source {
+            continue;
+        }
+        match renzora_bsn::bsn_tree::parse(&source) {
+            Ok(tree) => {
+                info!("[plugin] panel `{id}` changed, redrawing");
+                let slot = &mut reg.0[index];
+                slot.source = source;
+                slot.tree = tree;
+                // The new build's thunk. Keeping the old one would call into the
+                // previous library on the next click.
+                slot.action_entry = on_action;
+                slot.user = user;
+                changed.push(index);
+                // The dock holds title and icon separately from the contents, so a
+                // renamed panel would otherwise redraw under its old tab label.
+                retitled.push((id.clone(), title, icon));
+            }
+            // Keep the panel that is on screen. A half-edited BSN is a normal
+            // intermediate state when someone is typing, and blanking the panel
+            // for every keystroke that does not parse would be worse than showing
+            // a stale one until it does.
+            Err(e) => error!("[plugin] panel `{id}` has malformed BSN, keeping the old one: {e}"),
+        }
+    }
+    if changed.is_empty() {
+        return;
+    }
+
+    if let Some(mut shell) = world.get_resource_mut::<renzora::ShellPanelRegistry>() {
+        for (id, title, icon) in retitled {
+            if let Some(info) = shell.panels.get_mut(&id) {
+                info.title = title;
+                if !icon.is_empty() {
+                    info.icon = icon;
+                }
+            }
+        }
+    }
+
+    // Clear each affected panel and let `fill` build it again next frame, rather
+    // than spawning the new tree here: `fill` already owns that, including the
+    // index stamping and the binding hand-off.
+    let roots: Vec<Entity> = world
+        .query::<(Entity, &PanelRoot)>()
+        .iter(world)
+        .filter(|(_, r)| changed.contains(&r.index))
+        .map(|(e, _)| e)
+        .collect();
+    for root in roots {
+        let index = world.get::<PanelRoot>(root).map(|r| r.index).unwrap_or(0);
+        // `try_despawn` on the children: a reactive list may already have removed
+        // one, and a plain despawn of a missing entity is a panic.
+        if let Ok(mut entity) = world.get_entity_mut(root) {
+            entity.despawn_related::<Children>();
+        }
+        world.entity_mut(root).insert(PanelRoot { index, drawn: false });
+    }
+}
+
+/// Log an unaddable panel once per id, not once per frame.
+fn warn_new_panel(id: &str) {
+    use std::sync::Mutex;
+    static WARNED: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+    let mut guard = match WARNED.lock() {
+        Ok(g) => g,
+        Err(e) => e.into_inner(),
+    };
+    let seen = guard.get_or_insert_with(Default::default);
+    if seen.insert(id.to_string()) {
+        warn!(
+            "[plugin] panel `{id}` is new — a panel added by a reload cannot be \
+             registered with the dock yet. Restart to pick it up."
+        );
+    }
 }
 
 /// Wire up every `bind(Resource.field)` a freshly-spawned panel declared.
