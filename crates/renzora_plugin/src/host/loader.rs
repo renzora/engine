@@ -115,11 +115,33 @@ pub fn load_dir(world: &mut World, dir: &Path, is_editor: bool) -> Vec<(PathBuf,
 /// Staging already filters these out (see xtask's `is_not_a_plugin`), but a dll
 /// dropped into `plugins/` by hand must not be able to take the editor down.
 fn is_proc_macro_dylib(path: &Path) -> bool {
+    contains_symbol(path, b"__rustc_proc_macro_decls")
+}
+
+/// Whether this file is a C-ABI plugin, decided WITHOUT loading it.
+///
+/// Load-bearing, not an optimisation. `plugins/` also holds the older
+/// Bevy-linking cdylibs, and those are already mapped by `dynamic_plugin_loader`.
+/// Asking the OS to load one *by its original path* was harmless — same path, same
+/// module, refcount++. But a plugin is now loaded from a **copy** under a fresh
+/// filename (see [`shadow_copy`]), and the OS treats that as a different library:
+/// it maps a whole second instance and re-runs its initialisers, including the
+/// `inventory::submit!` ctors that register plugins. Doing that to seventy
+/// Bevy-linking dylibs at boot is not a slow path, it is a broken one.
+///
+/// So the question "is this mine?" has to be answered from the bytes, before any
+/// copy or load happens. Every C-ABI plugin exports [`sys::INIT_SYMBOL`], and an
+/// exported name appears verbatim in the export table, so a byte search settles it
+/// with no PE/ELF parsing — the same trick [`is_proc_macro_dylib`] uses.
+fn exports_plugin_init(path: &Path) -> bool {
+    contains_symbol(path, sys::INIT_SYMBOL.as_bytes())
+}
+
+fn contains_symbol(path: &Path, needle: &[u8]) -> bool {
     let Ok(bytes) = std::fs::read(path) else {
         return false;
     };
-    const NEEDLE: &[u8] = b"__rustc_proc_macro_decls";
-    bytes.windows(NEEDLE.len()).any(|w| w == NEEDLE)
+    bytes.windows(needle.len()).any(|w| w == needle)
 }
 
 /// Copy a plugin image somewhere private before loading it, and return where.
@@ -163,6 +185,12 @@ fn clear_shadow_dir(dir: &Path) {
 
 fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
     if is_proc_macro_dylib(path) {
+        return LoadOutcome::NotAPlugin;
+    }
+    // BEFORE any copy or load: `plugins/` is shared with the older Bevy-linking
+    // dylibs, and copying one to a new filename would make the OS map a second
+    // instance of it. See `exports_plugin_init`.
+    if !exports_plugin_init(path) {
         return LoadOutcome::NotAPlugin;
     }
 

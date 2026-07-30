@@ -62,6 +62,53 @@ struct HostCtx<'w> {
     layout_conflict: bool,
 }
 
+/// Refuse the reload if `desc` is not byte-compatible with what is already
+/// registered under this name; otherwise refresh the names the editor reads.
+///
+/// Bevy fixes a `ComponentId`'s layout permanently at registration, so a reload
+/// that moved or added a field would have the plugin writing at new offsets into
+/// storage sized for the old struct. Every live instance would be misread, and
+/// nothing would say so.
+///
+/// Called from BOTH `register_component` and `register_resource`. That is the
+/// whole reason it is a function: `register_resource` short-circuits on a known
+/// name and never reaches `register_component`, so a guard living only in the
+/// latter covered components and quietly missed every resource — which is the
+/// worse case, since a resource's storage is a single allocation that a
+/// grown struct writes straight off the end of.
+///
+/// Migrating instead — a second `ComponentId` plus a field-name remap, the way
+/// `renzora_bsn::raw_registry` does it for scenes — is the real fix and is worth
+/// doing. It is just much larger than making the hazard impossible.
+///
+/// # Safety
+///
+/// `desc.fields` must be valid for `desc.field_count` entries.
+unsafe fn verify_same_layout(
+    ctx: &mut HostCtx,
+    existing: ComponentId,
+    desc: &sys::ComponentDesc,
+    name: &str,
+) {
+    let Some(stored) = component_info(ctx.world, existing) else {
+        return;
+    };
+    match layout_change(&stored, desc) {
+        Some(reason) => {
+            let kind = if stored.is_resource { "resource" } else { "component" };
+            error!(
+                "plugin {kind} `{name}` changed layout on reload ({reason}) — refusing \
+                 the reload, since what already holds it was allocated for the old \
+                 layout. Restart to pick this up."
+            );
+            ctx.layout_conflict = true;
+        }
+        // Byte-compatible, so the data is still valid — but a field may have been
+        // renamed or the display name changed, and the editor reads those.
+        None => refresh_component_schema(ctx.world, existing, desc),
+    }
+}
+
 /// The stored schema for a component id, if the host has one.
 fn component_info(world: &World, id: ComponentId) -> Option<PluginComponentInfo> {
     world
@@ -241,17 +288,26 @@ struct GenGate {
 }
 
 impl GenGate {
-    /// Stale once the counter has moved PAST this system's generation — not merely
-    /// differs from it.
+    /// Live only while this system's generation IS the slot's current one.
     ///
-    /// That asymmetry is what makes a failed reload harmless. The loader bumps the
-    /// counter only after init succeeds, so a system registered by a build that
-    /// then failed keeps a generation the counter never reaches and simply never
-    /// runs, while the previous build's systems — sitting exactly at the counter —
-    /// carry on. An equality test would have made the two states
-    /// indistinguishable.
+    /// The counter is bumped only after init succeeds, so:
+    ///
+    /// - **Reload succeeded** — counter moves to N. The previous build's systems
+    ///   (N-1) go stale, the new build's (N) are live.
+    /// - **Reload failed** — counter stays at N-1. The previous build's systems are
+    ///   still live and the new build's, which registered at N before the failure
+    ///   was known, are stale. That is what keeps a bad reload from running two
+    ///   builds at once.
+    ///
+    /// This was `at < counter` — "stale once the counter moves PAST you" — on the
+    /// reasoning that a system registered during init must not be stale before the
+    /// bump. It cannot run during init: the whole reload happens inside one
+    /// exclusive system, so no frame elapses between registration and the bump. The
+    /// asymmetry solved nothing and broke the failure case, leaving a refused
+    /// build's systems live alongside the previous build's — two sets of systems,
+    /// one of them reading a struct whose layout the host had just rejected.
     fn stale(&self) -> bool {
-        self.at < self.counter.load(std::sync::atomic::Ordering::Relaxed)
+        self.at != self.counter.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -317,32 +373,7 @@ unsafe extern "C" fn register_component(
     // mid-session would otherwise get a second component and silently stop
     // matching the entities carrying the first.
     if let Some(existing) = lookup_component(ctx.world, &name) {
-        // ...but only if it is still the same type. Bevy fixes a `ComponentId`'s
-        // layout permanently at registration, so a reload that moved a field
-        // would have the plugin writing at new offsets into storage sized for the
-        // old struct. Every live instance would be misread, silently.
-        //
-        // So a layout change refuses the reload rather than corrupting the world.
-        // The previous build keeps running and the developer restarts to pick the
-        // change up. Migrating instead — a second `ComponentId` plus a field-name
-        // remap of every entity, the way `renzora_bsn::raw_registry` does it for
-        // scenes — is the real fix and is worth doing; it is just much larger than
-        // making the hazard impossible.
-        if let Some(stored) = component_info(ctx.world, existing) {
-            if let Some(reason) = layout_change(&stored, desc) {
-                error!(
-                    "plugin component `{name}` changed layout on reload ({reason}) — \
-                     refusing the reload, since the entities already carrying it \
-                     were built for the old layout. Restart to pick this up."
-                );
-                ctx.layout_conflict = true;
-            } else {
-                // Byte-compatible, so the data is still valid — but a field may
-                // have been renamed or the display name changed, and the editor
-                // reads those. Refresh them.
-                refresh_component_schema(ctx.world, existing, desc);
-            }
-        }
+        verify_same_layout(ctx, existing, desc, &name);
         return sys::ComponentId(existing.index() as u32);
     }
 
@@ -455,7 +486,15 @@ unsafe extern "C" fn register_resource(
             lookup_component(ctx.world, (*desc).name.as_str())
         };
         let id = match existing {
-            Some(id) => sys::ComponentId(id.index() as u32),
+            Some(id) => {
+                // The layout check lives in `register_component`, which this
+                // branch skips — so do it here too, or a resource that grew a
+                // field reloads happily and every write past the old size lands
+                // outside its allocation.
+                let ctx = &mut *(host as *mut HostCtx);
+                verify_same_layout(ctx, id, &*desc, (*desc).name.as_str());
+                sys::ComponentId(id.index() as u32)
+            }
             None => register_component(host, desc),
         };
         if !id.is_valid() {

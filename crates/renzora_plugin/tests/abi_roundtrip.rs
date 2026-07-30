@@ -1754,3 +1754,90 @@ fn a_system_with_no_queries_still_runs() {
         "a resource-only system did not run (total {total})"
     );
 }
+
+/// A `Score` that grew a field, presented under the same name — what a plugin
+/// recompiled with an extra field on its resource looks like to the host.
+unsafe extern "C" fn score_init_relayout(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let fields = [
+        sys::FieldDesc {
+            name: sys::StrRef::new("total"),
+            kind: sys::FieldKind::I32,
+            offset: 0,
+        },
+        sys::FieldDesc {
+            name: sys::StrRef::new("streak"),
+            kind: sys::FieldKind::I32,
+            offset: 4,
+        },
+    ];
+    let desc = sys::ComponentDesc {
+        name: sys::StrRef::new(<Score as renzora_plugin::ecs::Resource>::TYPE_PATH),
+        size: 8,
+        align: 4,
+        drop: None,
+        display_name: sys::StrRef::new(""),
+        fields: fields.as_ptr(),
+        field_count: fields.len(),
+        default_init: None,
+    };
+    ((*iface).register_resource)(host, &desc);
+    sys::InitResult::Ok
+}
+
+#[test]
+fn a_resource_that_grew_a_field_is_refused_too() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    let counter = abi_host::PluginGeneration::default();
+
+    abi_host::init_plugin_gen(app.world_mut(), resource_only_init, counter.clone(), 0, 0);
+
+    // `register_resource` short-circuits on a known name and never reaches
+    // `register_component`, so the layout guard living only in the latter covered
+    // components and missed every resource. That is the worse half: a resource is
+    // one allocation, and a grown struct writes straight off the end of it.
+    let result =
+        abi_host::init_plugin_gen(app.world_mut(), score_init_relayout, counter.clone(), 1, 0);
+    assert_eq!(
+        result,
+        sys::InitResult::Failed,
+        "a resource that grew a field was accepted — writes now land outside its allocation"
+    );
+    assert_eq!(
+        counter.load(std::sync::atomic::Ordering::Relaxed),
+        0,
+        "a refused reload still retired the running build"
+    );
+
+    // The part the return value does not cover, and the part that was actually
+    // broken: a refused build's systems registered at generation 1 while the
+    // counter stayed at 0, and the staleness test let them run anyway. Both builds
+    // then ticked, the new one reading a layout the host had just rejected.
+    //
+    // `bump` increments by exactly 1 per update, so two live copies show up as a
+    // count that outruns the number of frames.
+    let id = app
+        .world()
+        .resource::<abi_host::PluginComponents>()
+        .0
+        .get(<Score as renzora_plugin::ecs::Resource>::TYPE_PATH)
+        .copied()
+        .expect("Score was not registered");
+    let read = |app: &App| {
+        let ptr = app.world().get_resource_by_id(id).expect("Score is missing");
+        unsafe { ptr.as_ptr().cast::<i32>().read_unaligned() }
+    };
+
+    let before = read(&app);
+    app.update();
+    let after = read(&app);
+    assert_eq!(
+        after - before,
+        1,
+        "expected exactly one live build after a refused reload, saw {} increments",
+        after - before
+    );
+}
