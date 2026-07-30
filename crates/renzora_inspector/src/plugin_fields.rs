@@ -178,24 +178,25 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
 
     // Snapshot schema AND current values before `Commands` borrows the world
     // mutably — widgets need a seed at construction time.
-    let fields: Vec<(String, FieldKind, usize, f32)> = world
+    type Row = (String, FieldKind, usize, f32, Option<renzora_plugin::sys::FieldRange>);
+    let fields: Vec<Row> = world
         .get_resource::<PluginComponentSchemas>()
         .and_then(|s| s.0.iter().find(|i| i.id == cid))
         .map(|i| {
             i.fields
                 .iter()
-                .map(|f| (f.name.clone(), f.kind, f.offset))
+                .map(|f| (f.name.clone(), f.kind, f.offset, f.range))
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
         .into_iter()
-        .map(|(name, kind, offset)| {
+        .map(|(name, kind, offset, range)| {
             let v = match kind {
                 FieldKind::Bool => read_bool(world, entity, cid, offset) as i32 as f32,
                 FieldKind::I32 => read_i32(world, entity, cid, offset) as f32,
                 _ => read_f32(world, entity, cid, offset),
             };
-            (name, kind, offset, v)
+            (name, kind, offset, v, range)
         })
         .collect();
 
@@ -211,8 +212,28 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
             })
             .id();
 
-        for (i, (name, kind, offset, seed)) in fields.into_iter().enumerate() {
+        for (i, (name, kind, offset, seed, range)) in fields.into_iter().enumerate() {
             let control = match kind {
+                // A ranged field gets a real slider. That is the whole reason
+                // `set_field_range` exists: a post-process effect whose curvature
+                // runs 0..1 is unusable as an unbounded drag, and every one of
+                // those effects already declared its range for the old inspector.
+                FieldKind::F32 if range.is_some() => {
+                    let r = range.expect("checked by the guard");
+                    let e = renzora_ember::widgets::slider_ranged(
+                        &mut commands,
+                        seed,
+                        r.min,
+                        r.max,
+                    );
+                    renzora_ember::reactive::bind_2way(
+                        &mut commands,
+                        e,
+                        move |w: &World| read_f32(w, entity, cid, offset),
+                        move |w: &mut World, v: &f32| write_f32(w, entity, cid, offset, *v),
+                    );
+                    e
+                }
                 FieldKind::F32 => {
                     let e = renzora_ember::widgets::drag_value(
                         &mut commands,
@@ -220,7 +241,9 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                         "",
                         (150, 150, 150),
                         seed,
-                        0.01,
+                        // The plugin's speed if it gave one; otherwise the old
+                        // fixed step.
+                        range.map_or(0.01, |r| r.speed),
                     );
                     renzora_ember::reactive::bind_2way(
                         &mut commands,

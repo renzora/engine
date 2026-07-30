@@ -127,6 +127,55 @@ fn render_into(stream: TokenStream2, out: &mut String) {
 /// may legitimately hold data the inspector cannot edit, and refusing to compile
 /// would force authors to split their types for the UI's benefit. Skipped fields
 /// still exist and still round-trip — they are simply not editable.
+/// Parse `#[field(min = 0.0, max = 2.0, speed = 0.01)]` into a `sys::FieldRange`.
+///
+/// Mirrors the attribute the older `#[post_process]` macro already understood, so
+/// converting an effect to the C ABI keeps its tuned inspector ranges instead of
+/// silently demoting every slider to an unbounded drag.
+///
+/// `speed` is optional and defaults to 0, which the host reads as "pick one from
+/// the range". `min`/`max` are both required if either appears — a half-specified
+/// range has no sensible completion, and guessing one end is how a slider ends up
+/// tuned to something nobody chose.
+fn field_range(f: &syn::Field) -> syn::Result<Option<proc_macro2::TokenStream>> {
+    let Some(attr) = f.attrs.iter().find(|a| a.path().is_ident("field")) else {
+        return Ok(None);
+    };
+    let (mut min, mut max, mut speed) = (None, None, None);
+    attr.parse_nested_meta(|meta| {
+        let value: syn::LitFloat = meta.value()?.parse()?;
+        let v: f32 = value.base10_parse()?;
+        if meta.path.is_ident("min") {
+            min = Some(v);
+        } else if meta.path.is_ident("max") {
+            max = Some(v);
+        } else if meta.path.is_ident("speed") {
+            speed = Some(v);
+        } else {
+            // `default` is accepted and ignored: the old macro used it, and the
+            // C ABI gets defaults from `Default::default` via `default_init`
+            // instead, so rejecting it would break a copy-paste conversion for no
+            // benefit.
+            let _ = meta.path.get_ident();
+        }
+        Ok(())
+    })?;
+
+    match (min, max) {
+        (None, None) => Ok(None),
+        (Some(min), Some(max)) => {
+            let speed = speed.unwrap_or(0.0);
+            Ok(Some(quote! {
+                ::renzora_plugin::sys::FieldRange { min: #min, max: #max, speed: #speed }
+            }))
+        }
+        _ => Err(syn::Error::new_spanned(
+            attr,
+            "#[field(..)] needs both `min` and `max`, or neither",
+        )),
+    }
+}
+
 fn field_kind(ty: &Type) -> Option<proc_macro2::TokenStream> {
     let Type::Path(p) = ty else { return None };
     let ident = p.path.segments.last()?.ident.to_string();
@@ -168,6 +217,7 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
     };
 
     let mut entries = Vec::new();
+    let mut ranges = Vec::new();
     if let Fields::Named(named) = &data.fields {
         for f in &named.named {
             let Some(kind) = field_kind(&f.ty) else { continue };
@@ -179,6 +229,8 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
             if fname.starts_with('_') {
                 continue;
             }
+            // The index into `fields()`, which is what `set_field_range` addresses.
+            let index = entries.len();
             entries.push(quote! {
                 FieldDesc {
                     name: StrRef::new(#fname),
@@ -186,6 +238,11 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
                     offset: ::core::mem::offset_of!(#name, #ident),
                 }
             });
+            match field_range(f) {
+                Ok(Some(range)) => ranges.push(quote! { (#index, #range) }),
+                Ok(None) => {}
+                Err(e) => return e.to_compile_error().into(),
+            }
         }
     }
 
@@ -237,6 +294,12 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
                 fn fields() -> &'static [FieldDesc] {
                     static FIELDS: &[FieldDesc] = &[#(#entries),*];
                     FIELDS
+                }
+
+                fn field_ranges() -> &'static [(usize, ::renzora_plugin::sys::FieldRange)] {
+                    static RANGES: &[(usize, ::renzora_plugin::sys::FieldRange)] =
+                        &[#(#ranges),*];
+                    RANGES
                 }
 
                 fn descriptor() -> #desc_ret {

@@ -357,6 +357,7 @@ static IFACE: sys::Interface = sys::Interface {
     register_resource,
     insert_resource,
     add_panel,
+    set_field_range,
 };
 
 
@@ -432,6 +433,10 @@ unsafe extern "C" fn register_component(
                 name: f.name.as_str().to_string(),
                 kind: f.kind,
                 offset: f.offset,
+                // Filled in afterwards by `set_field_range`, if the plugin calls
+                // it — a field's range cannot ride in `FieldDesc` without changing
+                // the array stride. See `sys::Interface::set_field_range`.
+                range: None,
             })
             .collect()
     };
@@ -531,6 +536,48 @@ unsafe extern "C" fn register_resource(
             listed.0.push(bevy_id);
         }
         id
+    })
+}
+
+unsafe extern "C" fn set_field_range(
+    host: *mut sys::Host,
+    component: sys::ComponentId,
+    field: usize,
+    range: *const sys::FieldRange,
+) -> sys::RegisterStatus {
+    guard_host("set_field_range", sys::RegisterStatus::Invalid, || {
+        if range.is_null() || !component.is_valid() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let mut range = *range;
+        // A range the wrong way round would make every clamp reject everything and
+        // every slider sit dead at one end. Swapping is friendlier than refusing,
+        // and unambiguous.
+        if range.max < range.min {
+            core::mem::swap(&mut range.min, &mut range.max);
+        }
+        // `0.0` asks the host to choose. A thousandth of the span keeps a 0..1
+        // field and a 0..1000 field equally draggable, where a fixed step makes one
+        // of them unusable.
+        if range.speed <= 0.0 {
+            range.speed = ((range.max - range.min).abs() / 1000.0).max(f32::EPSILON);
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let id = ComponentId::new(component.0 as usize);
+        let Some(mut schemas) = ctx.world.get_resource_mut::<PluginComponentSchemas>() else {
+            return sys::RegisterStatus::Invalid;
+        };
+        let Some(info) = schemas.0.iter_mut().find(|i| i.id == id) else {
+            return sys::RegisterStatus::UnknownComponent;
+        };
+        match info.fields.get_mut(field) {
+            Some(f) => {
+                f.range = Some(range);
+                sys::RegisterStatus::Ok
+            }
+            None => sys::RegisterStatus::Invalid,
+        }
     })
 }
 
@@ -1935,6 +1982,9 @@ pub struct PluginField {
     pub name: String,
     pub kind: sys::FieldKind,
     pub offset: usize,
+    /// Editing range, if the plugin gave one. `None` means an unbounded drag,
+    /// which is what every field had before ranges existed.
+    pub range: Option<sys::FieldRange>,
 }
 
 /// Everything the editor needs to show a plugin component it has no Rust type

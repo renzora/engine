@@ -71,6 +71,16 @@ pub trait Component: Sized + 'static {
     fn fields() -> &'static [sys::FieldDesc] {
         &[]
     }
+
+    /// Editing ranges, as `(index into `fields()`, range)`.
+    ///
+    /// Separate from [`fields`](Self::fields) because a range cannot ride in
+    /// `FieldDesc` — that crosses as an array the host walks at its own stride, so
+    /// widening it would misread every plugin built before the change. Sent through
+    /// `set_field_range` after registration instead.
+    fn field_ranges() -> &'static [(usize, sys::FieldRange)] {
+        &[]
+    }
 }
 
 /// Declares a host component the engine already owns.
@@ -376,6 +386,7 @@ impl InitCtx {
         if !id.is_valid() && self.unresolved.is_none() {
             self.unresolved = Some(T::TYPE_PATH);
         }
+        self.send_ranges(id, T::field_ranges());
         T::id_cell().store(id.0, core::sync::atomic::Ordering::Relaxed);
         self.cache.push((T::TYPE_PATH, id));
         id
@@ -398,10 +409,34 @@ impl InitCtx {
         if !id.is_valid() && self.unresolved.is_none() {
             self.unresolved = Some(T::TYPE_PATH);
         }
+        self.send_ranges(id, T::field_ranges());
         // Cache on the type itself, so systems can reach it later.
         T::id_cell().store(id.0, core::sync::atomic::Ordering::Relaxed);
         self.cache.push((T::TYPE_PATH, id));
         id
+    }
+
+    /// Send each field's editing range, one call per ranged field.
+    ///
+    /// Silently skipped on a host older than MINOR 3, which has no
+    /// `set_field_range` in its table — reading past the end of the interface a
+    /// host actually published would be exactly the bug the version handshake
+    /// exists to prevent. A plugin on an old host gets unbounded drags, which is
+    /// what that host did for everything anyway.
+    fn send_ranges(&mut self, id: sys::ComponentId, ranges: &'static [(usize, sys::FieldRange)]) {
+        if ranges.is_empty() || !id.is_valid() {
+            return;
+        }
+        // SAFETY: `iface` points at the host's table, valid for the init call.
+        let minor = unsafe { (*self.iface).version_minor };
+        if minor < 3 {
+            return;
+        }
+        for (index, range) in ranges {
+            // SAFETY: same lifetime as every other init-time call; `range` outlives
+            // it, being a `'static`.
+            unsafe { ((*self.iface).set_field_range)(self.host, id, *index, range) };
+        }
     }
 }
 
@@ -748,6 +783,10 @@ pub trait Resource: Sized + 'static {
     fn display_name() -> &'static str;
     fn id_cell() -> &'static core::sync::atomic::AtomicU32;
     fn fields() -> &'static [sys::FieldDesc];
+    /// See [`Component::field_ranges`].
+    fn field_ranges() -> &'static [(usize, sys::FieldRange)] {
+        &[]
+    }
     fn descriptor() -> sys::ComponentDesc;
 }
 

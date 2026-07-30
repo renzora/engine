@@ -102,7 +102,8 @@ pub const VERSION_MAJOR: u32 = 2;
 ///
 /// 0 -> 1 appended `add_panel`.
 /// 1 -> 2 appended `SystemCall::input`.
-pub const VERSION_MINOR: u32 = 2;
+/// 2 -> 3 appended `set_field_range`.
+pub const VERSION_MINOR: u32 = 3;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1522,6 +1523,39 @@ pub struct Interface {
     // ── Added in MINOR 1 ─────────────────────────────────────────────────────
     /// Register an editor panel. See [`PanelDesc`].
     pub add_panel: unsafe extern "C" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus,
+
+    // ── Added in MINOR 3 ─────────────────────────────────────────────────────
+    /// Give a registered field an editing range, so the inspector draws a bounded
+    /// slider instead of an unbounded drag.
+    ///
+    /// A separate call rather than fields on [`FieldDesc`], and that is forced
+    /// rather than chosen: `FieldDesc` crosses as an ARRAY, which the host walks
+    /// using its own `size_of`. Widening it would make the host read a plugin's
+    /// array at the wrong stride from element 1 onward — garbage offsets, garbage
+    /// kinds, silently. Appending a function to this table has no such problem,
+    /// because a plugin only ever reads the prefix it was built against.
+    ///
+    /// `field` is the index into the `fields` array the component was registered
+    /// with. Out of range is ignored.
+    pub set_field_range: unsafe extern "C" fn(
+        host: *mut Host,
+        component: ComponentId,
+        field: usize,
+        range: *const FieldRange,
+    ) -> RegisterStatus,
+}
+
+/// How the inspector should edit one numeric field.
+///
+/// Absent means "unbounded drag", which is what every field got before this
+/// existed and remains the default for a plugin that says nothing.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FieldRange {
+    pub min: f32,
+    pub max: f32,
+    /// Units per pixel of drag. `0.0` asks the host to pick from the range.
+    pub speed: f32,
 }
 
 // ── Editor panels ────────────────────────────────────────────────────────────
