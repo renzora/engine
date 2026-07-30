@@ -21,7 +21,7 @@ use renzora_plugin::prelude::*;
 
 /// Change this, rebuild, and watch the log. Any short string will do — it exists
 /// purely to make "is the new code live?" answerable at a glance.
-const BUILD: &str = "first";
+const BUILD: &str = "third";
 
 /// Survives reloads. The host owns the bytes; this plugin only describes them.
 #[derive(Resource)]

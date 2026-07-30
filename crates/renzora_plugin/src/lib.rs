@@ -72,11 +72,14 @@ pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
 pub mod prelude {
     pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
     pub use crate::ecs::{
-        Action, App, Bundle, Commands, Entity, EntityCommands, Mesh3d, Or, Panel, Plugin, Quat,
-        Query, RenderPass, Res, ResMut, Resource, Scene, Schedule, Time, Transform, Vec3,
+        Action, App, Bundle, Commands, Entity, EntityCommands, Input, Mesh3d, Or, Panel, Plugin,
+        Quat, Query, RenderPass, Res, ResMut, Resource, Scene, Schedule, Time, Transform, Vec3,
         Visibility,
         With, Without,
     };
+    // `Key::W` and `MouseButton::Left` read like the Bevy names they map to, and a
+    // plugin writing input handling wants both without reaching into `sys`.
+    pub use crate::sys::{Key, MouseButton};
     pub use crate::ecs::{error, info, warn};
     pub use crate::ecs::{First, Last, PostUpdate, PreUpdate, Update};
 }

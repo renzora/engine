@@ -1841,3 +1841,92 @@ fn a_resource_that_grew_a_field_is_refused_too() {
         after - before
     );
 }
+
+// ── Input ────────────────────────────────────────────────────────────────────
+
+/// Writes `1.0` into `Score.total` when W is held, so the test can see whether the
+/// snapshot reached the plugin.
+fn read_input(input: ecs::Res<ecs::Input>, mut score: ecs::ResMut<Score>) {
+    if input.pressed(sys::Key::W) {
+        score.total = 1;
+    }
+    if input.just_pressed(sys::Key::Space) {
+        score.total = 2;
+    }
+}
+
+unsafe extern "C" fn input_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.init_resource::<Score>()
+        .add_systems(ecs::Schedule::Update, read_input);
+    sys::InitResult::Ok
+}
+
+#[test]
+fn a_plugin_reads_the_keyboard() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    // The host normally installs this from `RenzoraPluginHostPlugin`; a
+    // `MinimalPlugins` test app has no input plugins at all, which is also the
+    // headless-server case.
+    app.init_resource::<abi_host::input::PluginInput>();
+
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), input_init),
+        sys::InitResult::Ok
+    );
+    let id = app
+        .world()
+        .resource::<abi_host::PluginComponents>()
+        .0
+        .get(<Score as renzora_plugin::ecs::Resource>::TYPE_PATH)
+        .copied()
+        .expect("Score was not registered");
+    let read = |app: &App| {
+        let ptr = app.world().get_resource_by_id(id).expect("Score is missing");
+        unsafe { ptr.as_ptr().cast::<i32>().read_unaligned() }
+    };
+
+    // Nothing pressed: the plugin must see an absent key as up, not as garbage.
+    // `Score::default()` is deliberately 7, so an untouched resource is
+    // distinguishable from one a system wrote 0 into.
+    app.update();
+    assert_eq!(read(&app), 7, "input was reported as pressed with nothing set");
+
+    // Press W by writing the snapshot directly. Driving `ButtonInput<KeyCode>`
+    // would test Bevy's input plugin; what matters here is that the flattened
+    // bitset crosses the boundary and is read at the right bit.
+    {
+        let mut state = app.world_mut().resource_mut::<abi_host::input::PluginInput>();
+        sys::InputState::set_key(&mut state.0.keys_down, sys::Key::W);
+    }
+    app.update();
+    assert_eq!(read(&app), 1, "a held key did not reach the plugin");
+
+    // And `just_pressed` is a separate set, not inferred from `down`.
+    {
+        let mut state = app.world_mut().resource_mut::<abi_host::input::PluginInput>();
+        state.0 = Default::default();
+        sys::InputState::set_key(&mut state.0.keys_just_pressed, sys::Key::Space);
+    }
+    app.update();
+    assert_eq!(read(&app), 2, "just_pressed did not reach the plugin");
+}
+
+#[test]
+fn a_key_from_a_newer_abi_reads_as_up_rather_than_aliasing() {
+    // The bitset is 256 bits and `Key::COUNT` is well under that, so an unknown
+    // value has a bit position — testing it unchecked would return some other
+    // key's state. A plugin built against a newer ABI must see `false`.
+    let mut state = sys::InputState::default();
+    sys::InputState::set_key(&mut state.keys_down, sys::Key::W);
+    let future = sys::Key(sys::Key::COUNT + 40);
+    assert!(!future.is_known());
+    assert!(!state.pressed(future), "an unknown key aliased onto a known one");
+    // And setting one is ignored rather than corrupting a neighbour.
+    sys::InputState::set_key(&mut state.keys_down, future);
+    assert!(state.pressed(sys::Key::W));
+}

@@ -80,7 +80,7 @@ impl Plugin for WidgetsPlugin {
                             ],
                           } ),
 
-                        Text("Timeline"),
+                        Text("iuggbyui"),
                         ( EmberTimeline {
                             duration: 6.0,
                             tracks: [

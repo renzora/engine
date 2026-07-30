@@ -503,6 +503,13 @@ impl Plugin for RenzoraPluginHostPlugin {
 
         // Reload machinery, before the initial load so a plugin that somehow
         // requests a reload during its own init is queued rather than lost.
+        // Input is snapshotted in `PreUpdate`, before any plugin system in `First`
+        // could read a stale one, and unconditionally — a system declaring
+        // `Res<PluginInput>` must find it even on a headless server, where the
+        // snapshot stays zeroed and every key reads as up.
+        app.init_resource::<super::input::PluginInput>()
+            .add_systems(PreUpdate, super::input::collect_input);
+
         app.insert_resource(PluginHostConfig { is_editor: self.is_editor })
             .init_resource::<PluginReloadQueue>()
             .init_schedule(PluginReload)

@@ -25,6 +25,7 @@
 //! serialise the whole schedule.
 
 pub mod dev;
+pub mod input;
 pub mod loader;
 
 use bevy::ecs::component::{ComponentDescriptor, ComponentId, StorageType};
@@ -1683,12 +1684,24 @@ fn build_dispatcher(
         // Structural changes go through Bevy's own deferred queue, so a plugin
         // spawning mid-iteration is exactly as safe as a Rust system doing it.
         ParamBuilder::of::<Commands>(),
+        // Read-only, and declared by every plugin system whether it reads input or
+        // not. That costs nothing to schedule — a shared borrow never conflicts —
+        // and it avoids the alternative, which is knowing at build time whether the
+        // plugin's signature mentions `Input`.
+        //
+        // `Option`, because a host is not obliged to have input at all: a headless
+        // server installs no input plugins, and a test app on `MinimalPlugins` has
+        // none either. Requiring it made every plugin system panic wherever it was
+        // absent, which is a lot of blast radius for a parameter most systems
+        // ignore.
+        ParamBuilder::of::<Option<Res<input::PluginInput>>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
                             mut resources: FilteredResourcesMut,
                             time: Res<Time>,
-                            mut commands: Commands| {
+                            mut commands: Commands,
+                            plugin_input: Option<Res<input::PluginInput>>| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -1786,6 +1799,13 @@ fn build_dispatcher(
                 commands: (&mut sink as *mut SinkImpl).cast(),
                 resources: slots.as_ptr(),
                 resource_count: slots.len(),
+                // Borrowed from the resource, which lives in the world and so
+                // outlives the call. Never a temporary: a pointer to one would
+                // dangle the moment this struct was built. Null when the host has
+                // no input, which the guest turns into "nothing is pressed".
+                input: plugin_input
+                    .as_ref()
+                    .map_or(core::ptr::null(), |i| &i.0 as *const sys::InputState),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps
