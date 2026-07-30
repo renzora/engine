@@ -1,5 +1,3 @@
-#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
-
 @group(0) @binding(0) var screen_texture: texture_2d<f32>;
 @group(0) @binding(1) var texture_sampler: sampler;
 
@@ -8,10 +6,6 @@ struct CrtSettings {
     curvature: f32,
     chromatic_amount: f32,
     vignette_amount: f32,
-    _padding0: f32,
-    _padding1: f32,
-    _padding2: f32,
-    enabled: f32,
 };
 @group(0) @binding(2) var<uniform> settings: CrtSettings;
 
@@ -23,13 +17,10 @@ fn curve_uv(uv: vec2<f32>, curvature: f32) -> vec2<f32> {
 }
 
 @fragment
-fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(screen_texture, texture_sampler, in.uv);
-    if settings.enabled < 0.5 {
-        return color;
-    }
+fn fragment(@builtin(position) pos: vec4<f32>, @location(0) in_uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let color = textureSample(screen_texture, texture_sampler, in_uv);
     let dims = vec2<f32>(textureDimensions(screen_texture));
-    let uv = curve_uv(in.uv, settings.curvature * 10.0);
+    let uv = curve_uv(in_uv, settings.curvature * 10.0);
 
     // Out of bounds check
     if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {

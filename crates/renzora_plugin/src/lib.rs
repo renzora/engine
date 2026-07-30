@@ -80,6 +80,9 @@ pub mod prelude {
     // `Key::W` and `MouseButton::Left` read like the Bevy names they map to, and a
     // plugin writing input handling wants both without reaching into `sys`.
     pub use crate::sys::{Key, MouseButton};
+    // A post-process effect names the phase it runs in; without this every one of
+    // them starts with a `use renzora_plugin::sys::RenderPhase`.
+    pub use crate::sys::RenderPhase;
     pub use crate::ecs::{error, info, warn};
     pub use crate::ecs::{First, Last, PostUpdate, PreUpdate, Update};
 }

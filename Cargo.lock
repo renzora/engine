@@ -7574,18 +7574,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_ascii"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_asset_browser"
 version = "0.1.0"
 dependencies = [
@@ -7874,18 +7862,6 @@ dependencies = [
 
 [[package]]
 name = "renzora_cross_hatch"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_crt"
 version = "0.1.0"
 dependencies = [
  "bevy",
@@ -9337,18 +9313,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_scripting",
-]
-
-[[package]]
-name = "renzora_sepia"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]

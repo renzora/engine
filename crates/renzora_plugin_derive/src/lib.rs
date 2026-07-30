@@ -137,12 +137,18 @@ fn render_into(stream: TokenStream2, out: &mut String) {
 /// the range". `min`/`max` are both required if either appears — a half-specified
 /// range has no sensible completion, and guessing one end is how a slider ends up
 /// tuned to something nobody chose.
-fn field_range(f: &syn::Field) -> syn::Result<Option<proc_macro2::TokenStream>> {
+fn field_attr(f: &syn::Field) -> syn::Result<(bool, Option<proc_macro2::TokenStream>)> {
     let Some(attr) = f.attrs.iter().find(|a| a.path().is_ident("field")) else {
-        return Ok(None);
+        return Ok((false, None));
     };
-    let (mut min, mut max, mut speed) = (None, None, None);
+    let (mut min, mut max, mut speed, mut skip) = (None, None, None, false);
     attr.parse_nested_meta(|meta| {
+        // `skip` is a bare word, not `name = value`, so it has to be handled
+        // before anything tries to parse a value.
+        if meta.path.is_ident("skip") {
+            skip = true;
+            return Ok(());
+        }
         let value: syn::LitFloat = meta.value()?.parse()?;
         let v: f32 = value.base10_parse()?;
         if meta.path.is_ident("min") {
@@ -161,13 +167,21 @@ fn field_range(f: &syn::Field) -> syn::Result<Option<proc_macro2::TokenStream>> 
         Ok(())
     })?;
 
+    // A skipped field keeps its place in the struct — the layout has to match the
+    // shader's uniform — it just gets no inspector row and no range.
+    if skip {
+        return Ok((true, None));
+    }
     match (min, max) {
-        (None, None) => Ok(None),
+        (None, None) => Ok((false, None)),
         (Some(min), Some(max)) => {
             let speed = speed.unwrap_or(0.0);
-            Ok(Some(quote! {
-                ::renzora_plugin::sys::FieldRange { min: #min, max: #max, speed: #speed }
-            }))
+            Ok((
+                false,
+                Some(quote! {
+                    ::renzora_plugin::sys::FieldRange { min: #min, max: #max, speed: #speed }
+                }),
+            ))
         }
         _ => Err(syn::Error::new_spanned(
             attr,
@@ -192,12 +206,12 @@ fn field_kind(ty: &Type) -> Option<proc_macro2::TokenStream> {
 /// A resource is registered from the same descriptor a component is — in Bevy a
 /// resource is a component on a hidden entity — so the two derives differ only
 /// in which trait they land on and whether the type is spawnable.
-#[proc_macro_derive(Resource, attributes(resource))]
+#[proc_macro_derive(Resource, attributes(resource, field))]
 pub fn derive_resource(input: TokenStream) -> TokenStream {
     expand(parse_macro_input!(input as DeriveInput), true)
 }
 
-#[proc_macro_derive(Component, attributes(component))]
+#[proc_macro_derive(Component, attributes(component, field))]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     expand(parse_macro_input!(input as DeriveInput), false)
 }
@@ -229,6 +243,15 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
             if fname.starts_with('_') {
                 continue;
             }
+            let (skip, range) = match field_attr(f) {
+                Ok(v) => v,
+                Err(e) => return e.to_compile_error().into(),
+            };
+            // Skipped fields still occupy their place in the struct — the layout
+            // has to match the shader's uniform — they simply get no row.
+            if skip {
+                continue;
+            }
             // The index into `fields()`, which is what `set_field_range` addresses.
             let index = entries.len();
             entries.push(quote! {
@@ -238,10 +261,8 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
                     offset: ::core::mem::offset_of!(#name, #ident),
                 }
             });
-            match field_range(f) {
-                Ok(Some(range)) => ranges.push(quote! { (#index, #range) }),
-                Ok(None) => {}
-                Err(e) => return e.to_compile_error().into(),
+            if let Some(range) = range {
+                ranges.push(quote! { (#index, #range) });
             }
         }
     }
