@@ -432,22 +432,22 @@ The engine ships several, each under `plugins/`:
 
 | Plugin | Demonstrates |
 |---|---|
-| `spinner` | the minimum viable plugin |
-| `orbit` | reading and writing a plugin component each frame |
-| `tint` | a post-process effect with no systems |
+| `drift` | **hot reload you can see** — change a constant, rebuild, watch entities change course |
+| `ticker` | **hot reload state** — a resource that survives a swap, and proof only one build runs after |
+| `flock` | a resource shared across systems, `Option<&T>`, and a panel with bound sliders |
+| `magnet` | `Or` filters and optional write access |
+| `forge` | assets, and spawning renderable entities from a panel |
 | `pulse` | a post-process effect driven by a system |
 | `wobble` | pulling in a third-party crate (`noise`) |
-| `scatter` | assets and spawning renderable entities |
-| `flock` | a resource shared across systems, and `Option<&T>` |
-| `widgets` | every panel widget, and nothing else — see below |
-| `bench` | a panel driving real work, with several actions |
-| `forge` | spawning meshes from a panel |
-| `magnet` | `Or` filters and optional write access |
-| `tether` | two components queried together |
+| `widgets` | every panel widget, and nothing else |
 
 Most are under 100 lines, with no Bevy anywhere in their dependency tree and nothing but the OS in their import table.
 
-`widgets` is worth singling out: it deliberately has no systems, no assets and nothing to spawn. It is one panel containing every widget the BSN path can reach, so if something in it renders wrong the fault is in the parser, the widget's component front-end, or the widget — there is nothing else it could be. Open it from the add-panel menu after a build.
+Two are worth singling out.
+
+**`drift` and `ticker` exist to be broken.** Rebuild either while the editor runs and the change takes effect without a restart. Then try to break the reload: introduce a compile error and nothing happens, because the previous build keeps running; add a field to `Drift` and the reload is refused with the reason, because entities already carrying it were allocated for the old layout. Both are the intended behaviour, not bugs to report.
+
+**`widgets` has no systems, no assets and nothing to spawn.** It is one panel containing every widget the BSN path can reach, so if something in it renders wrong the fault is in the parser, the widget's component front-end, or the widget — there is nothing else it could be. Open it from the add-panel menu after a build.
 
 ## Scene serialization
 

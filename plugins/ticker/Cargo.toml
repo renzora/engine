@@ -1,10 +1,10 @@
 [workspace]
 
 [package]
-name = "tether"
+name = "ticker"
 version = "0.1.0"
 edition = "2021"
-description = "Snaps drifting entities home. Demonstrates inserting a HOST component through Commands."
+description = "Hot-reload probe: proves a plugin's resource survives a swap, and that exactly one build runs after it."
 
 [lib]
 crate-type = ["cdylib"]

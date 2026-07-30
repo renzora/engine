@@ -1,10 +1,10 @@
 [workspace]
 
 [package]
-name = "bench"
+name = "drift"
 version = "0.1.0"
 edition = "2021"
-description = "A spawn workbench. Demonstrates an editor panel built from markup: bound sliders and toggles, live value readouts, and buttons that call back into the plugin."
+description = "Hot-reload probe you can see: change the motion constants, rebuild, watch entities change course without restarting."
 
 [lib]
 crate-type = ["cdylib"]

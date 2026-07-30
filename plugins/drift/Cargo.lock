@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "drift"
+version = "0.1.0"
+dependencies = [
+ "renzora_plugin",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -34,13 +41,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "spinner"
-version = "0.1.0"
-dependencies = [
- "renzora_plugin",
 ]
 
 [[package]]

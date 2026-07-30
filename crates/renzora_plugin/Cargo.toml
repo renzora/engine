@@ -42,8 +42,8 @@ renzora_plugin_derive = { path = "../renzora_plugin_derive" }
 bevy = { workspace = true, optional = true }
 libloading = { version = "0.8", optional = true }
 
-# NOTE: the tests deliberately do NOT link `plugins/spinner`. A path dependency
-# on it would drag it back into the engine's workspace — cargo rejects a path dep
+# NOTE: the tests deliberately link NO plugin from `plugins/`. A path dependency
+# on one would drag it back into the engine's workspace — cargo rejects a path dep
 # on a package that declares itself a workspace root, and without that
 # declaration the plugin silently inherits the engine's feature unification and
 # target dir. The tests define their own minimal plugins inline instead, which
