@@ -53,7 +53,12 @@ impl Plugin for WidgetsPlugin {
                           ] ),
 
                         Text("Input"),
+                        // No range named — reads as 0..1, which is what it did
+                        // before ranges existed.
                         ( EmberSliderWidget { value: 0.35 } ),
+                        // A range in the field's own units. The thumb should sit
+                        // at three quarters, not off the right-hand end.
+                        ( EmberSliderWidget { value: 30.0, min: 0.0, max: 40.0 } ),
                         ( EmberToggle { on: true } ),
                         ( EmberCheckbox { checked: false } ),
                         ( EmberInput { placeholder: "type here", value: "" } ),

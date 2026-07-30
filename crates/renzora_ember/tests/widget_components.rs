@@ -92,3 +92,56 @@ fn a_widget_component_brings_its_own_node() {
         "no `Node` — the widget would build children that never lay out"
     );
 }
+
+#[test]
+fn a_ranged_slider_keeps_the_value_in_its_own_units() {
+    use renzora_ember::reactive::Bound;
+    use renzora_ember::widgets::EmberSliderWidget;
+
+    let mut app = test_app();
+    let e = app
+        .world_mut()
+        .spawn(EmberSliderWidget { value: 30.0, min: 0.0, max: 40.0 })
+        .id();
+    app.update();
+
+    let child = *app
+        .world()
+        .entity(e)
+        .get::<Children>()
+        .expect("no children — the hook never built the slider")
+        .iter()
+        .next()
+        .expect("empty children");
+
+    // The whole point of the range living on the widget: `Bound` holds 30.0, not
+    // the 0.75 track fraction. A binding reads and writes the field directly.
+    let bound = app.world().entity(child).get::<Bound<f32>>().expect("no Bound<f32>");
+    assert_eq!(bound.0, 30.0, "the slider normalised the value instead of keeping its units");
+}
+
+#[test]
+fn a_slider_with_no_range_is_still_zero_to_one() {
+    use renzora_ember::reactive::Bound;
+    use renzora_ember::widgets::EmberSliderWidget;
+
+    // A BSN body naming neither bound reflects min/max as 0.0 — a zero-width
+    // range, which would pin the track dead at 0 if it were taken literally.
+    let mut app = test_app();
+    let e = app
+        .world_mut()
+        .spawn(EmberSliderWidget { value: 0.35, min: 0.0, max: 0.0 })
+        .id();
+    app.update();
+
+    let child = *app
+        .world()
+        .entity(e)
+        .get::<Children>()
+        .expect("no children")
+        .iter()
+        .next()
+        .expect("empty children");
+    let bound = app.world().entity(child).get::<Bound<f32>>().expect("no Bound<f32>");
+    assert_eq!(bound.0, 0.35);
+}

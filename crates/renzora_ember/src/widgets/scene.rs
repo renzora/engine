@@ -280,7 +280,10 @@ fn build_progress(
     commands.entity(entity).add_child(child);
 }
 
-#[derive(Component, Reflect, Clone, Default, Debug)]
+// `Default` is hand-written below (max must be 1.0, not 0.0), so it is NOT in the
+// derive list — but `#[reflect(Default)]` stays, because that is what lets the BSN
+// partial-fill path default the fields a body leaves out.
+#[derive(Component, Reflect, Clone, Debug)]
 #[reflect(Component, Default)]
 // A UI entity without a `Node` does not participate in layout, and takes its
 // children out with it — the widget builds correctly and renders nothing. Bevy's
@@ -288,9 +291,36 @@ fn build_progress(
 #[require(Node)]
 #[component(on_insert =slider_inserted)]
 pub struct EmberSliderWidget {
-    /// 0..1. The declared range belongs to whatever binds the slider, not to the
-    /// widget — the widget is a normalised track.
+    /// In `min..=max`, NOT 0..1.
     pub value: f32,
+    /// Track ends. Both default to 0.0, which `Default` then has to fix up —
+    /// see [`slider_range`]. Inverted (`max < min`) is allowed and runs the track
+    /// right-to-left.
+    pub min: f32,
+    pub max: f32,
+}
+
+impl Default for EmberSliderWidget {
+    /// `max: 1.0`, so an `EmberSliderWidget { value: 0.5 }` with no range behaves
+    /// the way it did before ranges existed.
+    fn default() -> Self {
+        Self { value: 0.0, min: 0.0, max: 1.0 }
+    }
+}
+
+/// The range to build with, treating `min == max` as "unset".
+///
+/// A BSN body that names neither bound reflects as `0.0`/`0.0` rather than picking
+/// up this component's `Default` — the partial-fill path only defaults *absent*
+/// fields when it has a `ReflectDefault` for the whole struct, and a zero-width
+/// range would make the slider a dead 0-fraction track. Reading it as 0..1 is what
+/// keeps `EmberSliderWidget { value: 0.35 }` working.
+fn slider_range(cfg: &EmberSliderWidget) -> (f32, f32) {
+    if (cfg.max - cfg.min).abs() < f32::EPSILON {
+        (0.0, 1.0)
+    } else {
+        (cfg.min, cfg.max)
+    }
 }
 
 fn slider_inserted(world: DeferredWorld, ctx: HookContext) {
@@ -303,7 +333,8 @@ fn build_slider(
     entity: Entity,
     cfg: &EmberSliderWidget,
 ) {
-    let child = super::slider(commands, cfg.value);
+    let (min, max) = slider_range(cfg);
+    let child = super::slider_ranged(commands, cfg.value, min, max);
     commands.entity(entity).add_child(child);
 }
 

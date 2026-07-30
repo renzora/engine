@@ -6,17 +6,60 @@ use bevy::window::SystemCursorIcon;
 use crate::reactive::Bound;
 use crate::theme::*;
 
-/// Fill/thumb refs; the value lives in `Bound<f32>` (so `bind_2way` can drive it).
+/// Fill/thumb refs and the value range; the value itself lives in `Bound<f32>`
+/// (so `bind_2way` can drive it).
+///
+/// The range lives HERE, not in whoever binds the slider. `Bound<f32>` then holds
+/// the real value in the caller's units rather than a 0..1 fraction, so a binding
+/// reads and writes a field directly with no mapping of its own — and a widget
+/// swap can't silently change what a bound field means.
 #[derive(Component)]
 pub(crate) struct EmberSlider {
     fill: Entity,
     thumb: Entity,
+    min: f32,
+    max: f32,
+}
+
+impl EmberSlider {
+    /// Value → 0..1 track fraction. A zero-width range would divide by zero;
+    /// pinning it to 0 keeps a mis-specified slider harmless instead of NaN,
+    /// which would propagate into the layout and blank the panel.
+    fn fraction(&self, value: f32) -> f32 {
+        let span = self.max - self.min;
+        if span.abs() < f32::EPSILON {
+            return 0.0;
+        }
+        ((value - self.min) / span).clamp(0.0, 1.0)
+    }
+
+    /// 0..1 track fraction → value.
+    fn value(&self, fraction: f32) -> f32 {
+        self.min + (self.max - self.min) * fraction.clamp(0.0, 1.0)
+    }
 }
 
 /// A draggable slider with `value` in 0..1. Click/drag anywhere on it to set
 /// the value.
 pub fn slider(commands: &mut Commands, value: f32) -> Entity {
-    let v = value.clamp(0.0, 1.0);
+    slider_ranged(commands, value, 0.0, 1.0)
+}
+
+/// A draggable slider over an arbitrary range.
+///
+/// `value` is in `min..=max`, not 0..1 — which is what lets it drive a field like
+/// a radius of 3.0 or a speed of 40 without the caller pre-normalising and
+/// un-normalising on the way back. Inverted ranges (`max < min`) work, so a
+/// slider can run right-to-left.
+pub fn slider_ranged(commands: &mut Commands, value: f32, min: f32, max: f32) -> Entity {
+    // The visual fraction, computed before the component exists to place the
+    // fill/thumb on the first frame rather than waiting for `slider_apply`.
+    let span = max - min;
+    let v = if span.abs() < f32::EPSILON {
+        0.0
+    } else {
+        ((value - min) / span).clamp(0.0, 1.0)
+    };
     // 18px-tall hit area so it's easy to grab; the visual track is 6px.
     let row = commands
         .spawn((
@@ -77,26 +120,37 @@ pub fn slider(commands: &mut Commands, value: f32) -> Entity {
         .id();
     commands.entity(track).add_child(fill);
     commands.entity(row).add_children(&[track, thumb]);
+    // `Bound` carries the caller's value, not the fraction `v` used for layout.
     commands
         .entity(row)
-        .insert((EmberSlider { fill, thumb }, Bound::<f32>(v)));
+        .insert((EmberSlider { fill, thumb, min, max }, Bound::<f32>(value)));
     row
 }
 
 /// User drag → write the model (`Bound<f32>`); visuals follow via [`slider_apply`].
 pub(crate) fn slider_drag(
-    mut sliders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut Bound<f32>), With<EmberSlider>>,
+    mut sliders: Query<(
+        &EmberSlider,
+        &Interaction,
+        &bevy::ui::RelativeCursorPosition,
+        &mut Bound<f32>,
+    )>,
 ) {
-    for (interaction, rcp, mut b) in &mut sliders {
+    for (slider, interaction, rcp, mut b) in &mut sliders {
         if *interaction != Interaction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {
             continue;
         };
-        // `normalized` is centered (-0.5..0.5); shift to 0..1.
-        let v = (n.x + 0.5).clamp(0.0, 1.0);
-        if (v - b.0).abs() >= 0.001 {
+        // `normalized` is centered (-0.5..0.5); shift to 0..1, then out to the
+        // slider's own range.
+        let v = slider.value(n.x + 0.5);
+        // Deadband scaled to the range, not a flat 0.001 — on a 0..1000 slider a
+        // fixed epsilon makes every mouse jitter a write, and on a 0..0.01 one it
+        // makes the slider unusable.
+        let epsilon = ((slider.max - slider.min).abs() * 0.001).max(f32::EPSILON);
+        if (v - b.0).abs() >= epsilon {
             b.0 = v;
         }
     }
@@ -108,7 +162,7 @@ pub(crate) fn slider_apply(
     mut nodes: Query<&mut Node>,
 ) {
     for (s, b) in &sliders {
-        let v = b.0.clamp(0.0, 1.0);
+        let v = s.fraction(b.0);
         if let Ok(mut fnode) = nodes.get_mut(s.fill) {
             fnode.width = Val::Percent(v * 100.0);
         }
