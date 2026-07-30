@@ -157,12 +157,12 @@ impl Plugin for BenchPlugin {
                             ( Node { flex_direction: Row, column_gap: Px(6.0) }
                               Children [
                                 ( EmberButtonWidget { label: "Spawn" }
-                                  PanelActionId { panel: 0, action: 1 } ),
+                                  PanelActionId { action: 1 } ),
                                 ( EmberButtonWidget { label: "Clear" }
-                                  PanelActionId { panel: 0, action: 2 } ),
+                                  PanelActionId { action: 2 } ),
                               ] ),
                             ( EmberButtonWidget { label: "Add light" }
-                              PanelActionId { panel: 0, action: 3 } ),
+                              PanelActionId { action: 3 } ),
                         ]
                     },
                 )

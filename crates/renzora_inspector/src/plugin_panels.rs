@@ -172,7 +172,39 @@ fn fill(world: &mut World) {
         // The same spawner scene loading uses, so a panel gets real components
         // and this module never learns a widget's name.
         renzora_bsn::bsn_tree::spawn_into(world, &tree, root);
+        stamp_panel_index(world, root, index);
         world.entity_mut(root).insert(PanelRoot { index, drawn: true });
+    }
+}
+
+/// Point every `PanelActionId` in a freshly-spawned panel at the panel it is
+/// actually in.
+///
+/// A plugin cannot know its own panel index: [`RegisteredPanels`] is one list
+/// across every loaded plugin, so the index depends on load order — which depends
+/// on what else is in `plugins/`. Writing it plugin-side is guessing. So the
+/// plugin supplies only `action`, and the panel is stamped here, where the index
+/// is known for certain.
+///
+/// This is a fix, not a nicety. Every example plugin wrote `panel: 0`, so with
+/// more than one panel plugin loaded, all of their clicks dispatched into
+/// whichever plugin happened to register first — a button in one panel silently
+/// running another plugin's handler.
+fn stamp_panel_index(world: &mut World, root: Entity, index: usize) {
+    let mut stack = vec![root];
+    let mut found = Vec::new();
+    while let Some(entity) = stack.pop() {
+        if world.get::<PanelActionId>(entity).is_some() {
+            found.push(entity);
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter());
+        }
+    }
+    for entity in found {
+        if let Some(mut action) = world.get_mut::<PanelActionId>(entity) {
+            action.panel = index;
+        }
     }
 }
 
@@ -246,14 +278,20 @@ fn dispatch_actions(world: &mut World) {
 }
 
 /// Put one of these on a `Button` in a panel's BSN to have clicks reach the
-/// plugin's action handler.
-///
-/// A number rather than a name because a plugin component's fields are the
-/// closed set the ABI can describe, and an `i32` is in it while a `String` is
-/// not. The plugin matches on the same number it wrote.
+/// plugin's action handler: `PanelActionId { action: 1 }`.
 #[derive(Component, Reflect, Clone, Copy, Default, Debug)]
 #[reflect(Component, Default)]
 pub struct PanelActionId {
+    /// Which panel this widget belongs to. **Host-assigned — a plugin should
+    /// leave it at the default.** It indexes [`RegisteredPanels`], which is one
+    /// list across every loaded plugin, so the correct value depends on load
+    /// order and only the host knows it. [`stamp_panel_index`] overwrites
+    /// whatever was in the BSN.
     pub panel: usize,
+    /// Which action fired, chosen by the plugin. A number rather than a name
+    /// because a plugin component's fields are the closed set the ABI can
+    /// describe, and an `i32` is in it while a `String` is not. The plugin
+    /// matches on the same number it wrote — it arrives as
+    /// `Action::name()`, stringified.
     pub action: u32,
 }

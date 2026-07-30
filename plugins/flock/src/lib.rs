@@ -137,9 +137,9 @@ impl Plugin for FlockPlugin {
                             ( Node { flex_direction: Row, column_gap: Px(6.0) }
                               Children [
                                 ( EmberButtonWidget { label: "Reset" }
-                                  PanelActionId { panel: 0, action: 1 } ),
+                                  PanelActionId { action: 1 } ),
                                 ( EmberButtonWidget { label: "Calm" }
-                                  PanelActionId { panel: 0, action: 2 } ),
+                                  PanelActionId { action: 2 } ),
                               ] ),
                         ]
                     },

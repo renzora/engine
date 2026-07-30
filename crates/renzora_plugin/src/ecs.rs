@@ -1798,7 +1798,10 @@ pub struct Action<'a> {
 }
 
 impl Action<'_> {
-    /// The name after `->` on the widget that fired.
+    /// Which action fired — the `action` number from the widget's
+    /// `PanelActionId`, as a string. A number because the ABI's field kinds can
+    /// describe an `i32` and not a `String`; a string here because that is what
+    /// the wire format carries and a future named form would slot straight in.
     pub fn name(&self) -> &str {
         self.name
     }
