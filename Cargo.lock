@@ -7742,30 +7742,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_chromatic_aberration"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_chromatic_ring"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_cloth"
 version = "0.1.0"
 dependencies = [
@@ -7806,30 +7782,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_color_grading"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_color_split"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_command_palette"
 version = "0.1.0"
 dependencies = [
@@ -7858,18 +7810,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_editor_framework",
-]
-
-[[package]]
-name = "renzora_cross_hatch"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -7917,30 +7857,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_distortion"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_dithering"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_dof"
 version = "0.1.0"
 dependencies = [
@@ -7957,18 +7873,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_dof",
-]
-
-[[package]]
-name = "renzora_dream"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8138,18 +8042,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_emboss"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_engine"
 version = "0.1.0"
 dependencies = [
@@ -8236,30 +8128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_film_grain"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_fog_overlay"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_foliage_editor"
 version = "0.1.0"
 dependencies = [
@@ -8277,18 +8145,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_editor_framework",
- "serde",
-]
-
-[[package]]
-name = "renzora_frosted_glass"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
  "serde",
 ]
 
@@ -8340,18 +8196,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_glitch"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_globals"
 version = "0.1.0"
 dependencies = [
@@ -8361,18 +8205,6 @@ dependencies = [
 
 [[package]]
 name = "renzora_god_rays"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_grayscale"
 version = "0.1.0"
 dependencies = [
  "bevy",
@@ -8403,18 +8235,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_halftone"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_hanabi"
 version = "0.1.0"
 dependencies = [
@@ -8424,30 +8244,6 @@ dependencies = [
  "ron 0.8.1",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "renzora_heat_haze"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_hex_pixelate"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8566,47 +8362,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_invert"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_kaleidoscope"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_keybindings"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
-]
-
-[[package]]
-name = "renzora_kuwahara"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8636,18 +8396,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_lens_distortion",
-]
-
-[[package]]
-name = "renzora_letterbox"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8684,18 +8432,6 @@ dependencies = [
  "bevy",
  "bevy_firefly",
  "renzora",
-]
-
-[[package]]
-name = "renzora_light_streaks"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8756,18 +8492,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_matrix"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_mesh_draw"
 version = "0.1.0"
 dependencies = [
@@ -8797,18 +8521,6 @@ dependencies = [
  "renzora_audio",
  "renzora_ember",
  "renzora_inspector",
-]
-
-[[package]]
-name = "renzora_mosaic"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -8900,30 +8612,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_night_vision"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_oil_painting"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_oit"
 version = "0.1.0"
 dependencies = [
@@ -9005,30 +8693,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_pillowbox"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_pixelation"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_plugin"
 version = "0.1.0"
 dependencies = [
@@ -9053,18 +8717,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_editor_framework",
- "serde",
-]
-
-[[package]]
-name = "renzora_posterize"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
  "serde",
 ]
 
@@ -9120,18 +8772,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_radial_blur"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_ragdoll"
 version = "0.1.0"
 dependencies = [
@@ -9142,18 +8782,6 @@ dependencies = [
  "renzora_animation",
  "renzora_macros",
  "renzora_scripting",
-]
-
-[[package]]
-name = "renzora_rain"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9236,18 +8864,6 @@ dependencies = [
  "toml 0.8.23",
  "wgpu",
  "winit",
-]
-
-[[package]]
-name = "renzora_scanlines"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9377,18 +8993,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_sharpen"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_shell"
 version = "0.1.0"
 dependencies = [
@@ -9402,18 +9006,6 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "renzora_sketch"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9435,18 +9027,6 @@ dependencies = [
  "renzora_inspector",
  "renzora_skybox",
  "rfd",
-]
-
-[[package]]
-name = "renzora_sobel_edge"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9564,18 +9144,6 @@ name = "renzora_static_plugins"
 version = "0.1.0"
 
 [[package]]
-name = "renzora_swirl"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_system_monitor"
 version = "0.1.0"
 dependencies = [
@@ -9661,30 +9229,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_thermal"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
-name = "renzora_threshold"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_tilemap"
 version = "0.1.0"
 dependencies = [
@@ -9708,18 +9252,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_tilt_shift"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
-]
-
-[[package]]
 name = "renzora_tonemapping"
 version = "0.1.0"
 dependencies = [
@@ -9735,18 +9267,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_tonemapping",
-]
-
-[[package]]
-name = "renzora_toon"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9808,18 +9328,6 @@ dependencies = [
  "renzora_ember",
  "renzora_engine",
  "renzora_ui",
-]
-
-[[package]]
-name = "renzora_vibrance"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]
@@ -9892,18 +9400,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_water",
-]
-
-[[package]]
-name = "renzora_wave"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_macros",
- "renzora_postprocess",
- "serde",
 ]
 
 [[package]]

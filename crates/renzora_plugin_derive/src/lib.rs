@@ -137,6 +137,26 @@ fn render_into(stream: TokenStream2, out: &mut String) {
 /// the range". `min`/`max` are both required if either appears — a half-specified
 /// range has no sensible completion, and guessing one end is how a slider ends up
 /// tuned to something nobody chose.
+/// The `name = ".."` from `#[component(..)]` / `#[resource(..)]`, if given.
+fn component_display_name(input: &DeriveInput) -> syn::Result<Option<String>> {
+    let Some(attr) = input
+        .attrs
+        .iter()
+        .find(|a| a.path().is_ident("component") || a.path().is_ident("resource"))
+    else {
+        return Ok(None);
+    };
+    let mut display = None;
+    attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("name") {
+            let lit: syn::LitStr = meta.value()?.parse()?;
+            display = Some(lit.value());
+        }
+        Ok(())
+    })?;
+    Ok(display)
+}
+
 fn field_attr(f: &syn::Field) -> syn::Result<(bool, Option<proc_macro2::TokenStream>)> {
     let Some(attr) = f.attrs.iter().find(|a| a.path().is_ident("field")) else {
         return Ok((false, None));
@@ -218,7 +238,14 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
 
 fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
     let name = &input.ident;
-    let display = name.to_string();
+    // `#[component(name = "CRT")]` overrides the inspector label. The ident is a
+    // poor default for an acronym — `Crt`, `Ascii`, `Oit` — and these labels are
+    // user-facing, so a conversion that silently retitled forty effects would be a
+    // visible regression.
+    let display = match component_display_name(&input) {
+        Ok(n) => n.unwrap_or_else(|| name.to_string()),
+        Err(e) => return e.to_compile_error().into(),
+    };
 
     let Data::Struct(data) = &input.data else {
         return syn::Error::new_spanned(
