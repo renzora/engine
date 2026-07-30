@@ -300,7 +300,11 @@ fn apply_reload_requests(world: &mut World) {
                     .and_then(|l| l.0.iter().find(|s| s.path == path))
                     .map(|s| s.loaded_at)
                     .unwrap_or(0);
-                info!("[plugin] reloaded {name} (generation {generation})");
+                if generation == 0 {
+                    info!("[plugin] loaded {name} (added while running)");
+                } else {
+                    info!("[plugin] reloaded {name} (generation {generation})");
+                }
             }
             // Every failure leaves the previous build running — the generation
             // counter only moves on success — so these are warnings, not errors
@@ -345,6 +349,27 @@ pub struct PluginWatcher {
 /// so this is half the reload latency.
 const POLL_INTERVAL: f32 = 0.25;
 
+/// `(mtime, size)` for every plugin-shaped file in `dir`.
+fn stamp_dir(dir: &Path) -> std::collections::HashMap<PathBuf, (std::time::SystemTime, u64)> {
+    let mut out = std::collections::HashMap::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    let ext = std::env::consts::DLL_EXTENSION;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if let Ok(mtime) = meta.modified() {
+                out.insert(path, (mtime, meta.len()));
+            }
+        }
+    }
+    out
+}
+
 fn poll_plugin_dir(
     time: Res<Time>,
     mut watcher: ResMut<PluginWatcher>,
@@ -373,11 +398,18 @@ fn poll_plugin_dir(
         // `watcher`, and holding a borrow of `seen` across them does not compile.
         let previous = watcher.seen.get(&path).copied();
         match previous {
-            // First sighting. The startup load already took this one, so record
-            // the stamp and do NOT treat it as a change — otherwise every plugin
-            // would reload once, pointlessly, a quarter-second after boot.
+            // A file that was not present at boot. `seen` is seeded from the
+            // startup scan, so this can only be a plugin dropped in mid-session —
+            // pick it up. Recording it and doing nothing (which is what this arm
+            // used to do) meant a newly added plugin sat there until the next
+            // restart, and "I put a dll in plugins/, why is nothing happening" is
+            // the one question that behaviour guarantees.
+            //
+            // Still goes through the settle check: a file being copied in is
+            // exactly as half-written as one being rebuilt.
             None => {
-                watcher.seen.insert(path, stamp);
+                watcher.seen.insert(path.clone(), stamp);
+                watcher.settling.insert(path);
             }
             Some(prev) if prev != stamp => {
                 watcher.seen.insert(path.clone(), stamp);
@@ -457,7 +489,11 @@ impl Plugin for RenzoraPluginHostPlugin {
         if self.is_editor {
             app.insert_resource(PluginWatcher {
                 dir: dir.clone(),
-                seen: Default::default(),
+                // Seeded with what is on disk right now, which is what lets the
+                // poll treat an unseen path as "added since boot" and load it. An
+                // empty map would make every plugin look new a quarter-second
+                // after startup and reload the lot.
+                seen: stamp_dir(&dir),
                 settling: Default::default(),
                 countdown: POLL_INTERVAL,
             })

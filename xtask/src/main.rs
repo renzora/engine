@@ -111,11 +111,84 @@ fn main() -> ExitCode {
             };
             launch(&repo, &out, &plat, true)
         }
+        // Build ONE standalone plugin and stage just its library — the hot-reload
+        // loop.
+        //
+        // Separate from `dist` because `dist` copies `renzora.exe`, and a running
+        // editor holds that file open on Windows: a full stage always requires
+        // closing the editor, which is exactly what hot reload exists to avoid.
+        // Staging one plugin touches nothing the editor has locked, because the
+        // loader maps a copy under `plugins/.reload/` and leaves the original free.
+        "plugin" => {
+            let Some(name) = std::env::args().nth(2) else {
+                eprintln!("[xtask] usage: cargo renzora plugin <name>");
+                return ExitCode::from(2);
+            };
+            stage_one_plugin(&repo, &plat, &name)
+        }
         other => {
-            eprintln!("[xtask] unknown command '{other}' (expected: run | dist | profile)");
+            eprintln!(
+                "[xtask] unknown command '{other}' \
+                 (expected: run | dist | plugin <name> | profile)"
+            );
             ExitCode::from(2)
         }
     }
+}
+
+/// Build `plugins/<name>` and copy its library into the staged `plugins/`.
+///
+/// The editor's watcher notices the changed file and reloads it, so this is the
+/// whole edit-build-see loop — no relaunch, and no contention with the running
+/// process.
+fn stage_one_plugin(repo: &Path, plat: &Platform, name: &str) -> ExitCode {
+    let dir = repo.join("plugins").join(name);
+    if !dir.join("Cargo.toml").exists() {
+        eprintln!("[xtask] no plugin at {}", dir.display());
+        return ExitCode::FAILURE;
+    }
+    println!("[xtask] cargo build --profile dist ({name})");
+    let built = Command::new(cargo())
+        .current_dir(&dir)
+        .args(["build", "--profile", "dist"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !built {
+        return ExitCode::FAILURE;
+    }
+
+    let out = repo.join("dist").join(plat.dir).join("plugins");
+    if let Err(e) = std::fs::create_dir_all(&out) {
+        eprintln!("[xtask] could not create {}: {e}", out.display());
+        return ExitCode::FAILURE;
+    }
+    // Sweep the plugin's own target dir rather than guessing the filename: a
+    // crate's library name is not always its directory name.
+    let from = dir.join("target").join("dist");
+    let Ok(entries) = std::fs::read_dir(&from) else {
+        eprintln!("[xtask] nothing built at {}", from.display());
+        return ExitCode::FAILURE;
+    };
+    let suffix = format!(".{}", plat.ext);
+    let mut staged = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !file_name(&path).ends_with(&suffix) {
+            continue;
+        }
+        if let Err(e) = copy(&path, &out.join(file_name(&path))) {
+            eprintln!("[xtask] {e}");
+            return ExitCode::FAILURE;
+        }
+        println!("[xtask] staged {}", out.join(file_name(&path)).display());
+        staged += 1;
+    }
+    if staged == 0 {
+        eprintln!("[xtask] {name} built but produced no {suffix} — is it a cdylib?");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
 }
 
 fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<PathBuf, ExitCode> {
@@ -127,6 +200,19 @@ fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<Pa
         Ok(out) => Ok(out),
         Err(e) => {
             eprintln!("[xtask] staging failed: {e}");
+            // On Windows this is almost always one thing, and the OS error says
+            // nothing about which process. Guessing costs minutes; saying so costs
+            // a line.
+            if e.kind() == std::io::ErrorKind::PermissionDenied
+                || e.raw_os_error() == Some(32)
+            {
+                eprintln!(
+                    "[xtask] a file in dist/ is open in another process — usually a \
+                     running editor holding renzora.exe. Close it and re-run.\n\
+                     [xtask] to reload just a plugin WITHOUT closing the editor: \
+                     cargo renzora plugin <name>"
+                );
+            }
             Err(ExitCode::FAILURE)
         }
     }
@@ -438,8 +524,20 @@ fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+/// Copy, naming the destination on failure.
+///
+/// `std::io::Error` from `fs::copy` carries no path, so a locked file surfaced as
+/// a bare "The process cannot access the file because it is being used by another
+/// process. (os error 32)" with nothing to act on. On Windows that error almost
+/// always means the editor is still running and holding `renzora.exe`, which is
+/// worth being told rather than guessing.
 fn copy(src: &Path, dst: &Path) -> std::io::Result<()> {
-    std::fs::copy(src, dst).map(|_| ())
+    std::fs::copy(src, dst).map(|_| ()).map_err(|e| {
+        std::io::Error::new(
+            e.kind(),
+            format!("{} -> {}: {e}", src.display(), dst.display()),
+        )
+    })
 }
 
 /// Remove only exe + shared-lib artifacts from a dir (keep everything else).
