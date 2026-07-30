@@ -15,7 +15,7 @@ A standalone plugin sidesteps that entirely:
 
 There is no dynamic symbol to resolve against `renzora.exe`, so there is no filename to match, no `bevy_dylib-<hash>` to find, and no `TypeId` to line up. The only thing both sides must agree on is the layout of a handful of `#[repr(C)]` structs. That means a plugin built with rustc 1.90 loads into an editor built with rustc 1.95, and a plugin built in 2026 keeps loading into editors released later.
 
-The price is that a standalone plugin reaches Bevy through a curated surface rather than all of it. That surface is designed to read *identically* to Bevy source — see [What it looks like](#what-it-looks-like).
+The price is that a standalone plugin reaches Bevy through a curated surface rather than all of it. That surface is designed to read *identically* to Bevy source — see [What it looks like](#what-it-looks-like). It covers components, resources, queries, systems, commands, assets, render passes, post-process effects, scene serialization, and [editor panels](#editor-panels).
 
 ## Which one to use
 
@@ -24,6 +24,7 @@ The price is that a standalone plugin reaches Bevy through a curated surface rat
 | Links Bevy | yes, shares the host's `bevy_dylib` | no |
 | Toolchain | must match the canonical build env | any |
 | Bevy surface | all of it | the ABI surface |
+| Editor panels | bevy_ui, in Rust | BSN + ember widgets |
 | Binary size | small (Bevy is shared) | ~210 KB (std linked statically) |
 | Registers with | `renzora::add!` | `renzora_plugin::add!` |
 | Breaks when | the editor's ABI moves | only on a MAJOR ABI bump |
@@ -318,6 +319,87 @@ Add the component to a camera and the effect runs; every field is an inspector s
 
 > **`#[repr(C)]` and scalar padding are mandatory here.** WGSL aligns `vec3<f32>` to 16 bytes and Rust aligns `[f32; 3]` to 4, so the "same" struct is 32 bytes in the shader and 16 in Rust — which shows up as a GPU validation panic, not a compile error. Pad with scalar `f32`s on both sides. The engine validates the shader with naga at load and names this cause explicitly if it catches it.
 
+## Runtime or editor
+
+A plugin declares which it is as the second argument to `add!`:
+
+```rust
+renzora_plugin::add!(SpinnerPlugin);          // Runtime — the default
+renzora_plugin::add!(WidgetsPlugin, Editor);  // Editor only
+```
+
+`Runtime` plugins load in the editor viewport **and** the shipped game. `Editor` plugins load only when the editor is present, so a panel-only plugin should say `Editor` — otherwise it defaults to `Runtime` and gets loaded alongside a game that has no editor for it to attach to.
+
+The host reads this from a separate exported symbol before calling your init, so an out-of-scope plugin is never initialised at all.
+
+## Editor panels
+
+A plugin can add its own docked panel to the editor. The panel is described in BSN — the same syntax and the same parser a scene uses — and the host spawns it with real `renzora_ember` widgets:
+
+```rust
+impl Plugin for FlockPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_panel(
+            Panel::new("flock", "Flock", bsn! {
+                Node { flex_direction: Column, row_gap: Px(6.0) }
+                Children [
+                    Text("Flocking"),
+                    ( EmberButtonWidget { label: "Scatter" }
+                      PanelActionId { action: 1 } ),
+                ]
+            })
+            .icon("bird")
+            .on_action(on_action),
+        );
+    }
+}
+
+fn on_action(action: Action) {
+    if action.is("1") {
+        info("scatter");
+    }
+}
+```
+
+`Panel::new` takes the id (used for the dock tab and layout persistence), the title shown on the tab, and the contents. `.icon()` takes a Phosphor icon name and defaults to `puzzle-piece`; `.category()` groups the panel in the add-panel menu; `.on_action()` attaches the click handler and can be omitted for a display-only panel.
+
+Write the BSN inline with `bsn!` rather than parking it in a `const`. Combining the description with the registration is the point of the macro — a panel body in a `&str` constant somewhere else is the thing it replaces.
+
+### Panel content is not limited by the field kinds
+
+Worth being precise about, because it is easy to assume otherwise. The panel body crosses the boundary as a **string**, and is parsed host-side. So it can contain anything BSN can express — nested lists, tuple structs, strings — regardless of the closed [`FieldKind`](#components) set that governs plugin *component* data.
+
+What the field kinds still constrain is data a plugin's own systems read and write each frame. That is why `PanelActionId` carries a number instead of a name.
+
+### Widgets
+
+Ember widgets are components, so BSN can name them like any other. Fields are the same ones the underlying builder takes:
+
+| Component | Fields |
+|---|---|
+| `EmberButtonWidget` | `label: String` |
+| `EmberSliderWidget` | `value: f32` |
+| `EmberToggle` | `on: bool` |
+| `EmberCheckbox` | `checked: bool` |
+| `EmberInput` | `placeholder: String`, `value: String` |
+| `EmberDropdown` | `options: Vec<String>`, `selected: usize` |
+| `EmberTabs` | `labels: Vec<String>` |
+| `EmberProgress` | `value: f32` |
+| `EmberTable` | `headers: Vec<String>`, `rows: Vec<Vec<String>>` (row-major) |
+| `EmberTimeline` | `duration: f32`, `tracks: Vec<EmberTrack>` |
+
+An `EmberTrack` is `name: String`, `color: (u8, u8, u8)`, `clips: Vec<EmberClip>`; an `EmberClip` is `start: f32`, `length: f32`, `label: String`. A track whose colour is left at `(0, 0, 0)` is assigned one from a cycling palette, so a handful of tracks read apart without you picking colours.
+
+A ragged `EmberTable` row is drawn as-is rather than padded — the widget lays out what it is given, because silently inventing cells would hide a mistake in whatever produced the data.
+
+Anything Bevy's own UI offers works alongside them: `Node`, `Text`, `Children`, and any registered component. A partial `Node { flex_direction: Column }` means "default the rest".
+
+### Actions
+
+Put `PanelActionId { action: N }` on a widget and clicks reach `on_action`, where `Action::name()` is that number as a string and `Action::is("N")` is the usual test. `Action` also carries `value` (a toggle's 0 or 1, a slider's position, 0 for a button) and a `commands` queue — the same one a system gets, so a handler can spawn and despawn.
+
+Do **not** set `PanelActionId`'s `panel` field. It indexes a list that spans every loaded plugin, so its correct value depends on what else is in `plugins/`; the host stamps it when the panel is spawned.
+
 ## Third-party crates
 
 A standalone plugin is an ordinary Rust crate, so it can depend on anything on crates.io:
@@ -339,6 +421,11 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
+**The current ABI is 2.1.** MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
+
+- Scope moved to its own exported symbol, `renzora_plugin_scope`, so the host can read whether a plugin is `Runtime` or `Editor` **before** running its init. An editor-only panel is now never initialised inside a shipped game, rather than being initialised and then ignored.
+- Every enum a plugin writes is `#[repr(transparent)]` with associated constants where it previously had variants. Wire-identical, and your `Schedule::Update` still compiles — but a value outside the known range, read out of plugin memory, is no longer undefined behaviour. Values from a newer ABI now arrive as an unknown number the host can reject.
+
 ## Worked examples
 
 The engine ships several, each under `plugins/`:
@@ -352,8 +439,23 @@ The engine ships several, each under `plugins/`:
 | `wobble` | pulling in a third-party crate (`noise`) |
 | `scatter` | assets and spawning renderable entities |
 | `flock` | a resource shared across systems, and `Option<&T>` |
+| `widgets` | every panel widget, and nothing else — see below |
+| `bench` | a panel driving real work, with several actions |
+| `forge` | spawning meshes from a panel |
+| `magnet` | `Or` filters and optional write access |
+| `tether` | two components queried together |
 
-Every one is under 100 lines, with no Bevy anywhere in its dependency tree and nothing but the OS in its import table.
+Most are under 100 lines, with no Bevy anywhere in their dependency tree and nothing but the OS in their import table.
+
+`widgets` is worth singling out: it deliberately has no systems, no assets and nothing to spawn. It is one panel containing every widget the BSN path can reach, so if something in it renders wrong the fault is in the parser, the widget's component front-end, or the widget — there is nothing else it could be. Open it from the add-panel menu after a build.
+
+## Scene serialization
+
+Plugin components survive save and load, even though they have no Rust type and no `TypeRegistration` for reflection to work from. The host mirrors each plugin's registered component schemas into a plain-data registry, and the scene format reads that instead of the type registry.
+
+The interesting case is a scene saved with a plugin that is no longer loaded. Those components are **not** dropped — they are kept as raw data and re-attached by field name if the plugin comes back. So removing a plugin, opening a scene and saving it does not silently destroy the data it owned.
+
+Field *names* are what re-attach, so renaming a field in a plugin orphans that field's saved values while the rest of the component still loads. Adding and removing fields is safe.
 
 ## Current limits
 
@@ -361,12 +463,10 @@ The surface is deliberately incremental. Not yet available:
 
 - `Startup` and `FixedUpdate` schedules — systems run in the five main-loop schedules only
 - Input (`ButtonInput<KeyCode>`, mouse, gamepad)
-- Hierarchy (`ChildOf` / `Children`, `with_children`)
+- Hierarchy (`ChildOf` / `Children`, `with_children`) from a system — panel BSN can nest freely
 - Change detection (`Added<T>`, `Changed<T>`, `Ref<T>`)
 - Messages, observers, and component hooks
 - `Local<T>`, `ParamSet`, run conditions, system ordering
 - The `Assets<T>` / `AssetServer` idiom, and loading assets by path
 - Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name` and `Mesh3d`
-- **Scene serialization** — plugin components do not yet survive save and load
-
-That last one is the significant one for shipping a real project, and it's the next thing being built.
+- **Reactive panels** — a panel's BSN is spawned once. There is no binding or `Changed<T>` mechanism yet, so a plugin cannot push new values into widgets it already created; a panel's live state is the significant gap, and it is the next thing being built.
