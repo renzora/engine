@@ -1497,3 +1497,208 @@ fn a_string_literal_survives_with_its_quotes() {
     };
     assert!(text.contains(r#""Hello, world""#), "{text}");
 }
+
+// ── Hot reload ───────────────────────────────────────────────────────────────
+//
+// Driven through `init_plugin_gen` directly rather than by loading two real
+// `.dll`s. What matters is the generation logic — that old systems retire, that a
+// failed reload leaves the previous build running, and that state survives — and
+// none of that needs a second compiled artifact to exercise.
+
+/// A second "build" of the spinner: same component layout, but the system spins
+/// the other way. Which build is live is then observable from the sign of the
+/// rotation rather than from a counter.
+fn spin_backwards(mut q: ecs::Query<(&mut ecs::Transform, &Spinner)>, time: ecs::Res<ecs::Time>) {
+    for (t, s) in &mut q {
+        t.rotate_y(-s.speed * time.delta_secs());
+    }
+}
+
+unsafe extern "C" fn spinner_init_v2(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Spinner>()
+        .add_systems(ecs::Schedule::Update, spin_backwards);
+    if app.unresolved_component().is_some() {
+        return sys::InitResult::Failed;
+    }
+    sys::InitResult::Ok
+}
+
+/// A build whose component grew a field — the case that must be refused, because
+/// entities already carrying `Spinner` were allocated for the old layout.
+///
+/// Built as a raw `ComponentDesc` rather than through `ecs::App`, because the
+/// derive necessarily reports the layout of a real Rust type and the point here is
+/// to present the host with the SAME NAME at a DIFFERENT size. That is what a
+/// recompiled plugin looks like from the host's side, and the host is what is
+/// under test.
+unsafe extern "C" fn spinner_init_relayout(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    const NAME: &str = "abi_roundtrip::Spinner";
+    let fields = [
+        sys::FieldDesc {
+            name: sys::StrRef::new("speed"),
+            kind: sys::FieldKind::F32,
+            offset: 0,
+        },
+        sys::FieldDesc {
+            name: sys::StrRef::new("wobble"),
+            kind: sys::FieldKind::F32,
+            offset: 4,
+        },
+    ];
+    let desc = sys::ComponentDesc {
+        name: sys::StrRef::new(NAME),
+        size: 8,
+        align: 4,
+        drop: None,
+        display_name: sys::StrRef::new(""),
+        fields: fields.as_ptr(),
+        field_count: fields.len(),
+        default_init: None,
+    };
+    ((*iface).register_component)(host, &desc);
+    sys::InitResult::Ok
+}
+
+/// Spawn an entity with a `Transform` and a raw `Spinner`, the way a scene loader
+/// or the inspector has to — a plugin component has no Rust-side Bevy identity.
+fn spawn_spinner(app: &mut App, speed: f32) -> Entity {
+    let id = app
+        .world()
+        .resource::<abi_host::PluginComponents>()
+        .0
+        .get(<Spinner as renzora_plugin::ecs::Component>::TYPE_PATH)
+        .copied()
+        .expect("Spinner was not registered");
+    let spinner = Spinner { speed };
+    let entity = app.world_mut().spawn(Transform::IDENTITY).id();
+    // SAFETY: `id` was registered with this exact layout.
+    unsafe {
+        let mut bytes = std::slice::from_raw_parts(
+            (&spinner as *const Spinner).cast::<u8>(),
+            size_of::<Spinner>(),
+        )
+        .to_vec();
+        let ptr =
+            bevy::ptr::OwningPtr::new(std::ptr::NonNull::new_unchecked(bytes.as_mut_ptr().cast()));
+        app.world_mut().entity_mut(entity).insert_by_id(id, ptr);
+        std::mem::forget(bytes);
+    }
+    entity
+}
+
+/// Read a raw `Spinner`'s `speed` back out of host storage.
+fn spinner_speed(app: &App, entity: Entity) -> f32 {
+    let id = app
+        .world()
+        .resource::<abi_host::PluginComponents>()
+        .0
+        .get(<Spinner as renzora_plugin::ecs::Component>::TYPE_PATH)
+        .copied()
+        .expect("Spinner was not registered");
+    let ptr = app
+        .world()
+        .entity(entity)
+        .get_by_id(id)
+        .expect("entity is not carrying Spinner");
+    // SAFETY: `speed` is at offset 0 of the layout this id was registered with.
+    unsafe { ptr.as_ptr().cast::<f32>().read_unaligned() }
+}
+
+#[test]
+fn a_reload_retires_the_previous_builds_systems() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    let counter = abi_host::PluginGeneration::default();
+
+    assert_eq!(
+        abi_host::init_plugin_gen(app.world_mut(), spinner_init, counter.clone(), 0, 0),
+        sys::InitResult::Ok
+    );
+    let e = spawn_spinner(&mut app, 1.0);
+    // Two updates so the clock has a non-zero delta on the second.
+    app.update();
+    app.update();
+    assert_ne!(
+        app.world().entity(e).get::<Transform>().unwrap().rotation,
+        Quat::IDENTITY,
+        "the first build never ran"
+    );
+
+    // Reload: register v2, then bump the counter exactly as the loader does.
+    assert_eq!(
+        abi_host::init_plugin_gen(app.world_mut(), spinner_init_v2, counter.clone(), 1, 0),
+        sys::InitResult::Ok
+    );
+    counter.store(1, std::sync::atomic::Ordering::Relaxed);
+
+    let before = app.world().entity(e).get::<Transform>().unwrap().rotation;
+    app.update();
+    let after = app.world().entity(e).get::<Transform>().unwrap().rotation;
+    assert_ne!(before, after, "neither build ran after the reload");
+
+    // v2 spins the opposite way at the same speed, so if BOTH builds were live the
+    // two rotations would cancel and `after` would equal `before`. A net change in
+    // the negative direction is only possible with v1 retired.
+    let (_, angle, _) = after.to_euler(EulerRot::XYZ);
+    let (_, before_angle, _) = before.to_euler(EulerRot::XYZ);
+    assert!(
+        angle < before_angle,
+        "expected the reloaded build to spin backwards; the old system is still running \
+         (before {before_angle}, after {angle})"
+    );
+}
+
+#[test]
+fn a_reload_keeps_the_component_data_entities_already_have() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    let counter = abi_host::PluginGeneration::default();
+
+    abi_host::init_plugin_gen(app.world_mut(), spinner_init, counter.clone(), 0, 0);
+    let e = spawn_spinner(&mut app, 7.5);
+
+    abi_host::init_plugin_gen(app.world_mut(), spinner_init_v2, counter.clone(), 1, 0);
+    counter.store(1, std::sync::atomic::Ordering::Relaxed);
+    app.update();
+
+    // The whole reason hot-reload is tractable: plugin component data lives in the
+    // host's ECS, so a swap never touches it. Nothing serialises or restores.
+    assert_eq!(
+        spinner_speed(&app, e),
+        7.5,
+        "the reload lost the entity's component data"
+    );
+}
+
+#[test]
+fn a_reload_that_changes_a_layout_is_refused() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    let counter = abi_host::PluginGeneration::default();
+
+    abi_host::init_plugin_gen(app.world_mut(), spinner_init, counter.clone(), 0, 0);
+
+    // Adding a field moves nothing for the plugin but invalidates every live
+    // instance, so the host must refuse rather than let it register.
+    let result = abi_host::init_plugin_gen(app.world_mut(), spinner_init_relayout, counter.clone(), 1, 0);
+    assert_eq!(
+        result,
+        sys::InitResult::Failed,
+        "a component that grew a field was accepted — live entities are now misread"
+    );
+
+    // And the refusal must leave the counter alone, or the previous build's
+    // systems would retire with nothing replacing them.
+    assert_eq!(
+        counter.load(std::sync::atomic::Ordering::Relaxed),
+        0,
+        "a refused reload still retired the running build"
+    );
+}

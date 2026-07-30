@@ -6,27 +6,57 @@
 //! `dynamic_plugin_loader` dylibs during the migration — each loader recognises
 //! its own and ignores the rest.
 
-use super::init_plugin;
 use bevy::prelude::*;
 use libloading::{Library, Symbol};
 use crate::sys;
 use std::path::{Path, PathBuf};
 
-/// Loaded libraries, kept alive for the process lifetime.
+/// One plugin path, across every load of it.
 ///
-/// **Never drop these.** Every function pointer a plugin registered — system
-/// entry points, component destructors — points into its library, and the
-/// schedule holds those pointers for as long as the app runs. Unloading safely
-/// needs a registration ledger and a teardown pass that strips the plugin's
-/// systems and components first; until that exists, leaking is the correct
-/// behaviour rather than a shortcut.
-#[derive(Resource, Default)]
-pub struct LoadedPlugins(pub Vec<LoadedPlugin>);
-
-pub struct LoadedPlugin {
+/// A slot's index in [`LoadedPlugins`] is its permanent identity: entries are
+/// never removed, so an index stamped on a registration stays valid for the life
+/// of the process. That is what the ownership tags on panels, render passes and
+/// component schemas refer to.
+pub struct PluginSlot {
     pub path: PathBuf,
-    /// Held purely to keep the library mapped. Never dropped.
-    _library: Library,
+    /// Shared with every system this slot's plugins registered. Bumping it
+    /// retires the previous load's systems — see `host::GenGate`.
+    pub generation: super::PluginGeneration,
+    /// The generation of the newest load that succeeded.
+    pub loaded_at: u32,
+    /// **Every** library ever loaded for this path, and none of them is ever
+    /// dropped.
+    ///
+    /// Deliberate. Every function pointer a plugin registered — system entries,
+    /// panel action thunks, render callbacks — points into its library, and a
+    /// retired system is still *in* the schedule, merely returning early. Freeing
+    /// the library would turn those into dangling pointers. Dropping a
+    /// `libloading::Library` has also deadlocked in `FreeLibrary` here before.
+    ///
+    /// So a reload leaks one library image. A few MB per reload across a dev
+    /// session is a fair price for never unmapping code that something might
+    /// still call, and a restart reclaims all of it.
+    _libraries: Vec<Library>,
+}
+
+/// Every plugin path the loader has seen, indexed by slot.
+#[derive(Resource, Default)]
+pub struct LoadedPlugins(pub Vec<PluginSlot>);
+
+impl LoadedPlugins {
+    /// The slot for `path`, creating one if this is the first sighting.
+    fn slot_for(&mut self, path: &Path) -> usize {
+        if let Some(i) = self.0.iter().position(|s| s.path.as_path() == path) {
+            return i;
+        }
+        self.0.push(PluginSlot {
+            path: path.to_path_buf(),
+            generation: super::PluginGeneration::default(),
+            loaded_at: 0,
+            _libraries: Vec::new(),
+        });
+        self.0.len() - 1
+    }
 }
 
 /// Outcome for one candidate file, for logging and the editor's plugin panel.
@@ -125,20 +155,123 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         return LoadOutcome::WrongScope(scope);
     }
 
-    match init_plugin(world, init) {
+    // The counter is bumped only AFTER init succeeds, which is what makes a failed
+    // reload harmless: a system is stale when the counter has moved *past* it, so
+    // during init the new systems (higher generation) are already live while the
+    // old ones (equal to the counter) still are too — and if init fails, the
+    // counter never moves, the new systems stay permanently stale, and the
+    // previous build keeps running. Bumping first would have retired the working
+    // version before knowing whether a replacement existed.
+    let (slot, counter, generation) = {
+        let mut loaded = world.get_resource_or_insert_with(LoadedPlugins::default);
+        let slot = loaded.slot_for(path);
+        let s = &loaded.0[slot];
+        let first = s._libraries.is_empty();
+        (
+            slot,
+            s.generation.clone(),
+            if first { 0 } else { s.loaded_at + 1 },
+        )
+    };
+
+    // Take the slot's previous registrations back before the new build adds its
+    // own, so a panel or a render pass is replaced rather than duplicated. Systems
+    // are NOT in here — they retire themselves via the generation counter, because
+    // Bevy cannot remove one from a schedule.
+    if generation > 0 {
+        super::retire_slot(world, slot);
+    }
+
+    match super::init_plugin_gen(world, init, counter.clone(), generation, slot) {
         sys::InitResult::Ok => {
-            world
-                .get_resource_or_insert_with(LoadedPlugins::default)
-                .0
-                .push(LoadedPlugin {
-                    path: path.to_path_buf(),
-                    _library: library,
-                });
+            counter.store(generation, std::sync::atomic::Ordering::Relaxed);
+            let mut loaded = world.resource_mut::<LoadedPlugins>();
+            let s = &mut loaded.0[slot];
+            s.loaded_at = generation;
+            s._libraries.push(library);
             LoadOutcome::Loaded
         }
         sys::InitResult::VersionTooOld => LoadOutcome::VersionTooOld,
         sys::InitResult::Failed => {
             LoadOutcome::Failed("plugin init returned Failed".to_string())
+        }
+    }
+}
+
+/// Runs immediately before [`First`], and exists purely so a reload never mutates
+/// a schedule that is mid-run.
+///
+/// A plugin's systems go into the five main-loop schedules, and `Schedules` hands
+/// a schedule *out* while it runs — so a reload triggered from inside `Update`
+/// would add the new build's systems to a fresh, empty `Update` that is discarded
+/// the moment the real one is put back. The systems would vanish with no error.
+/// Registration at `build` time avoided this by happening before any schedule ran;
+/// this schedule is the same trick for a running app.
+#[derive(bevy::ecs::schedule::ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PluginReload;
+
+/// Plugin paths to reload at the next frame boundary.
+///
+/// A queue rather than an immediate call because the caller is usually a file
+/// watcher or a UI button, neither of which holds `&mut World` at a safe moment.
+#[derive(Resource, Default)]
+pub struct PluginReloadQueue(pub Vec<PathBuf>);
+
+/// Ask for `path` to be reloaded before the next frame.
+///
+/// Duplicates collapse: an editor save often produces several filesystem events
+/// for one write, and rebuilding the same plugin three times in a frame would be
+/// three sets of dead systems for no reason.
+pub fn request_reload(world: &mut World, path: impl Into<PathBuf>) {
+    let path = path.into();
+    let mut queue = world.get_resource_or_insert_with(PluginReloadQueue::default);
+    if !queue.0.contains(&path) {
+        queue.0.push(path);
+    }
+}
+
+/// Whether this binary is the editor, kept so a reload can apply the same scope
+/// filter the initial load did.
+#[derive(Resource)]
+pub struct PluginHostConfig {
+    pub is_editor: bool,
+}
+
+fn apply_reload_requests(world: &mut World) {
+    let pending = match world.get_resource_mut::<PluginReloadQueue>() {
+        Some(mut q) if !q.0.is_empty() => std::mem::take(&mut q.0),
+        _ => return,
+    };
+    let is_editor = world
+        .get_resource::<PluginHostConfig>()
+        .is_some_and(|c| c.is_editor);
+
+    for path in pending {
+        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        match load_one(world, &path, is_editor) {
+            LoadOutcome::Loaded => {
+                let generation = world
+                    .get_resource::<LoadedPlugins>()
+                    .and_then(|l| l.0.iter().find(|s| s.path == path))
+                    .map(|s| s.loaded_at)
+                    .unwrap_or(0);
+                info!("[plugin] reloaded {name} (generation {generation})");
+            }
+            // Every failure leaves the previous build running — the generation
+            // counter only moves on success — so these are warnings, not errors
+            // that need the app to do anything about them.
+            LoadOutcome::Failed(why) => {
+                warn!("[plugin] reload of {name} failed, keeping the running build: {why}")
+            }
+            LoadOutcome::VersionTooOld => {
+                warn!("[plugin] reload of {name} needs a newer ABI; keeping the running build")
+            }
+            LoadOutcome::WrongScope(scope) => {
+                warn!("[plugin] reload of {name} declares {scope:?} scope, which this binary is not")
+            }
+            LoadOutcome::NotAPlugin => {
+                warn!("[plugin] reload of {name}: no `{}` export", sys::INIT_SYMBOL)
+            }
         }
     }
 }
@@ -183,6 +316,16 @@ impl Plugin for RenzoraPluginHostPlugin {
             .unwrap_or_else(|| PathBuf::from("plugins"));
 
         register_exposed_components(app.world_mut());
+
+        // Reload machinery, before the initial load so a plugin that somehow
+        // requests a reload during its own init is queued rather than lost.
+        app.insert_resource(PluginHostConfig { is_editor: self.is_editor })
+            .init_resource::<PluginReloadQueue>()
+            .init_schedule(PluginReload)
+            .add_systems(PluginReload, apply_reload_requests);
+        app.world_mut()
+            .resource_mut::<bevy::app::MainScheduleOrder>()
+            .insert_before(First, PluginReload);
 
         for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor) {
             let name = path.file_name().unwrap_or_default().to_string_lossy();

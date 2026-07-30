@@ -51,6 +51,208 @@ use std::ffi::c_void;
 /// API.
 struct HostCtx<'w> {
     world: &'w mut World,
+    /// Which reload of which plugin is registering. Handed to every system this
+    /// init call creates, so a later reload can retire them.
+    gate: GenGate,
+    /// The plugin's slot index, stamped on everything it registers so
+    /// [`retire_slot`] can take it back on the next reload.
+    slot: usize,
+    /// Set when a reload re-registers a component with a different memory layout
+    /// than the live one. Fails the whole init — see [`init_plugin_gen`].
+    layout_conflict: bool,
+}
+
+/// The stored schema for a component id, if the host has one.
+fn component_info(world: &World, id: ComponentId) -> Option<PluginComponentInfo> {
+    world
+        .get_resource::<PluginComponentSchemas>()?
+        .0
+        .iter()
+        .find(|i| i.id == id)
+        .cloned()
+}
+
+/// Why `desc` is not byte-compatible with the live registration, or `None` if it
+/// is.
+///
+/// Compares what actually decides whether existing bytes are still readable:
+/// total size, and each field's offset and kind. Field *names* are deliberately
+/// not part of this — a rename leaves every byte where it was, so it is a schema
+/// refresh rather than a layout change.
+///
+/// # Safety
+///
+/// `desc.fields` must be valid for `desc.field_count` entries.
+unsafe fn layout_change(
+    stored: &PluginComponentInfo,
+    desc: &sys::ComponentDesc,
+) -> Option<String> {
+    if stored.size != desc.size {
+        return Some(format!("size {} → {}", stored.size, desc.size));
+    }
+    let fields = if desc.fields.is_null() {
+        &[][..]
+    } else {
+        std::slice::from_raw_parts(desc.fields, desc.field_count)
+    };
+    if stored.fields.len() != fields.len() {
+        return Some(format!(
+            "{} field(s) → {}",
+            stored.fields.len(),
+            fields.len()
+        ));
+    }
+    for (old, new) in stored.fields.iter().zip(fields) {
+        if old.offset != new.offset {
+            return Some(format!(
+                "field `{}` moved from offset {} to {}",
+                old.name, old.offset, new.offset
+            ));
+        }
+        if old.kind != new.kind {
+            return Some(format!(
+                "field `{}` changed from {} to {}",
+                old.name,
+                old.kind.name(),
+                new.kind.name()
+            ));
+        }
+    }
+    None
+}
+
+/// Update the names and default of a component whose layout did not change.
+///
+/// # Safety
+///
+/// `desc.fields` must be valid for `desc.field_count` entries, and
+/// `desc.default_init` (if set) must write `desc.size` bytes.
+unsafe fn refresh_component_schema(
+    world: &mut World,
+    id: ComponentId,
+    desc: &sys::ComponentDesc,
+) {
+    let names: Vec<String> = if desc.fields.is_null() {
+        Vec::new()
+    } else {
+        std::slice::from_raw_parts(desc.fields, desc.field_count)
+            .iter()
+            .map(|f| f.name.as_str().to_string())
+            .collect()
+    };
+    let display = desc.display_name.as_str().to_string();
+    let Some(mut schemas) = world.get_resource_mut::<PluginComponentSchemas>() else {
+        return;
+    };
+    let Some(info) = schemas.0.iter_mut().find(|i| i.id == id) else {
+        return;
+    };
+    for (field, name) in info.fields.iter_mut().zip(names) {
+        field.name = name;
+    }
+    if !display.is_empty() {
+        info.display_name = display;
+    }
+}
+
+/// Drop everything slot `slot` registered, except the things a reload must keep.
+///
+/// **Kept:** components and resources. Their `ComponentId`s are name-keyed and
+/// reload-stable by design, and the data lives in the host's ECS — which is the
+/// whole reason hot-reload is tractable here. Retiring them would delete the state
+/// the reload exists to preserve.
+///
+/// **Taken back:** panels, render passes and post-process effects, all of which the
+/// new build re-registers. Without this a reload would duplicate them.
+///
+/// **Not here:** systems. Bevy cannot remove one from a schedule, so they retire
+/// themselves by generation instead — see [`GenGate`].
+pub fn retire_slot(world: &mut World, slot: usize) {
+    if let Some(mut panels) = world.get_resource_mut::<PluginPanels>() {
+        panels.0.retain(|p| p.owner != slot);
+    }
+    if let Some(mut passes) = world.get_resource_mut::<PendingRenderPasses>() {
+        passes.0.retain(|p| p.owner != slot);
+    }
+    if let Some(mut effects) = world.get_resource_mut::<PendingPostProcesses>() {
+        effects.0.retain(|e| e.owner != slot);
+    }
+
+    // GPU assets are the one thing that leaks visibly if this is skipped: a
+    // reloaded plugin creates a fresh mesh and material every cycle, and
+    // `sys.rs` notes the VRAM growth that follows. Dropping the strong handle is
+    // enough — `Assets<T>` frees the underlying resource once nothing holds it.
+    let assets = world
+        .get_resource_mut::<PluginAssets>()
+        .map(|mut a| {
+            let meshes = std::mem::take(&mut a.meshes);
+            let materials = std::mem::take(&mut a.materials);
+            (meshes, materials)
+        })
+        .unwrap_or_default();
+    let (meshes, materials) = assets;
+    let mut kept_meshes = Vec::new();
+    for (owner, handle) in meshes {
+        if owner == slot {
+            drop(handle);
+        } else {
+            kept_meshes.push((owner, handle));
+        }
+    }
+    let mut kept_materials = Vec::new();
+    for (owner, handle) in materials {
+        if owner == slot {
+            drop(handle);
+        } else {
+            kept_materials.push((owner, handle));
+        }
+    }
+    if let Some(mut a) = world.get_resource_mut::<PluginAssets>() {
+        a.meshes = kept_meshes;
+        a.materials = kept_materials;
+    }
+}
+
+/// A plugin slot's reload counter, shared between the slot and every system the
+/// plugin registered.
+///
+/// One `Arc` per slot rather than a `World` lookup because a dispatcher checks it
+/// on every run: reading an atomic it already owns costs nothing, whereas a
+/// resource lookup would mean declaring access the system does not otherwise need
+/// and would serialise plugin systems against each other.
+pub type PluginGeneration = std::sync::Arc<std::sync::atomic::AtomicU32>;
+
+/// Lets a system tell whether the plugin that registered it has since reloaded.
+///
+/// Bevy cannot remove a system from a schedule, so a reloaded plugin's old
+/// systems stay in it forever. Rather than restructure every registration to live
+/// in a swappable sub-schedule — which would force the runner to be exclusive and
+/// stop plugin systems parallelising with engine systems in *every* build,
+/// reloading or not — a retired system stays scheduled and returns immediately.
+///
+/// The cost is that a long dev session accumulates no-op systems, each still
+/// paying its param fetch. That is a dev-only cost, cleared by a restart, and a
+/// shipped game never reloads so it never has one.
+#[derive(Clone)]
+struct GenGate {
+    counter: PluginGeneration,
+    /// The counter's value when the capturing system registered.
+    at: u32,
+}
+
+impl GenGate {
+    /// Stale once the counter has moved PAST this system's generation — not merely
+    /// differs from it.
+    ///
+    /// That asymmetry is what makes a failed reload harmless. The loader bumps the
+    /// counter only after init succeeds, so a system registered by a build that
+    /// then failed keeps a generation the counter never reaches and simply never
+    /// runs, while the previous build's systems — sitting exactly at the counter —
+    /// carry on. An equality test would have made the two states
+    /// indistinguishable.
+    fn stale(&self) -> bool {
+        self.at < self.counter.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 /// How one query term crosses the boundary.
@@ -115,6 +317,32 @@ unsafe extern "C" fn register_component(
     // mid-session would otherwise get a second component and silently stop
     // matching the entities carrying the first.
     if let Some(existing) = lookup_component(ctx.world, &name) {
+        // ...but only if it is still the same type. Bevy fixes a `ComponentId`'s
+        // layout permanently at registration, so a reload that moved a field
+        // would have the plugin writing at new offsets into storage sized for the
+        // old struct. Every live instance would be misread, silently.
+        //
+        // So a layout change refuses the reload rather than corrupting the world.
+        // The previous build keeps running and the developer restarts to pick the
+        // change up. Migrating instead — a second `ComponentId` plus a field-name
+        // remap of every entity, the way `renzora_bsn::raw_registry` does it for
+        // scenes — is the real fix and is worth doing; it is just much larger than
+        // making the hazard impossible.
+        if let Some(stored) = component_info(ctx.world, existing) {
+            if let Some(reason) = layout_change(&stored, desc) {
+                error!(
+                    "plugin component `{name}` changed layout on reload ({reason}) — \
+                     refusing the reload, since the entities already carrying it \
+                     were built for the old layout. Restart to pick this up."
+                );
+                ctx.layout_conflict = true;
+            } else {
+                // Byte-compatible, so the data is still valid — but a field may
+                // have been renamed or the display name changed, and the editor
+                // reads those. Refresh them.
+                refresh_component_schema(ctx.world, existing, desc);
+            }
+        }
         return sys::ComponentId(existing.index() as u32);
     }
 
@@ -281,6 +509,7 @@ unsafe extern "C" fn add_panel(
         }
 
         let ctx = &mut *(host as *mut HostCtx);
+        let owner = ctx.slot;
         let mut panels = ctx
             .world
             .get_resource_or_insert_with(PluginPanels::default);
@@ -291,6 +520,7 @@ unsafe extern "C" fn add_panel(
             return sys::RegisterStatus::Invalid;
         }
         panels.0.push(PluginPanel {
+            owner,
             title: {
                 let t = desc.title.as_str();
                 if t.is_empty() { id.clone() } else { t.to_string() }
@@ -431,7 +661,9 @@ unsafe extern "C" fn add_system(
             return sys::RegisterStatus::UnknownComponent;
         };
 
-        let system = build_dispatcher(ctx.world, plans, res_plan, desc.entry, desc.user as usize);
+        let gate = ctx.gate.clone();
+        let system =
+            build_dispatcher(ctx.world, plans, res_plan, desc.entry, desc.user as usize, gate);
         ctx.world
             .resource_mut::<Schedules>()
             .entry(bevy_label(desc.schedule))
@@ -450,8 +682,11 @@ unsafe extern "C" fn add_system(
 /// for cleanup.
 #[derive(Resource, Default)]
 pub struct PluginAssets {
-    pub meshes: Vec<Handle<Mesh>>,
-    pub materials: Vec<Handle<StandardMaterial>>,
+    /// `(owning slot, handle)`. The owner is what lets a reload drop only its own
+    /// meshes — the strong handle here is usually the only one, so dropping it is
+    /// what actually frees the GPU memory.
+    pub meshes: Vec<(usize, Handle<Mesh>)>,
+    pub materials: Vec<(usize, Handle<StandardMaterial>)>,
 }
 
 unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) -> sys::AssetHandle {
@@ -485,10 +720,11 @@ unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) 
             return sys::AssetHandle::INVALID;
         };
         let handle = meshes.add(mesh);
+        let owner = ctx.slot;
         let mut store = ctx
             .world
             .get_resource_or_insert_with(PluginAssets::default);
-        store.meshes.push(handle);
+        store.meshes.push((owner, handle));
         sys::AssetHandle((store.meshes.len() - 1) as u64)
     })
 }
@@ -512,10 +748,11 @@ unsafe extern "C" fn add_material(
             return sys::AssetHandle::INVALID;
         };
         let handle = materials.add(material);
+        let owner = ctx.slot;
         let mut store = ctx
             .world
             .get_resource_or_insert_with(PluginAssets::default);
-        store.materials.push(handle);
+        store.materials.push((owner, handle));
         sys::AssetHandle((store.materials.len() - 1) as u64)
     })
 }
@@ -637,8 +874,13 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
                         let Some(store) = world.get_resource::<PluginAssets>() else {
                             return;
                         };
-                        let m = store.meshes.get(d.mesh.0 as usize).cloned();
-                        let mat = store.materials.get(d.material.0 as usize).cloned();
+                        // `.1` — the store keys each handle by owning slot so a
+                        // reload can free its own; a spawn only wants the handle.
+                        let m = store.meshes.get(d.mesh.0 as usize).map(|(_, h)| h.clone());
+                        let mat = store
+                            .materials
+                            .get(d.material.0 as usize)
+                            .map(|(_, h)| h.clone());
                         match (m, mat) {
                             (Some(m), Some(mat)) => (m, mat),
                             _ => {
@@ -780,6 +1022,9 @@ pub struct PendingRenderPass {
     pub phase: sys::RenderPhase,
     pub order: f32,
     pub callback: sys::RenderCallback,
+    /// Registering plugin slot, so a reload replaces this rather than adding a
+    /// second copy. See [`retire_slot`].
+    pub owner: usize,
 }
 
 /// Registered-but-not-yet-built plugin render passes.
@@ -802,6 +1047,8 @@ pub struct PluginPanel {
     /// The plugin's opaque token, as `usize` so this stays `Send + Sync` — it is
     /// handed straight back and never dereferenced here.
     pub user: usize,
+    /// Registering plugin slot — see [`retire_slot`].
+    pub owner: usize,
 }
 
 /// Every panel registered by every loaded plugin.
@@ -837,6 +1084,8 @@ pub struct PendingPostProcess {
     pub settings_size: u64,
     pub phase: sys::RenderPhase,
     pub order: f32,
+    /// Registering plugin slot — see [`retire_slot`].
+    pub owner: usize,
 }
 
 /// Registered-but-not-yet-built plugin effects.
@@ -877,6 +1126,7 @@ unsafe extern "C" fn add_render_pass(host: *mut sys::Host, desc: *const sys::Ren
         .get_resource_or_insert_with(PendingRenderPasses::default)
         .0
         .push(PendingRenderPass {
+            owner: ctx.slot,
             id,
             shader: handle,
             phase: desc.phase,
@@ -908,6 +1158,7 @@ unsafe extern "C" fn add_post_process(host: *mut sys::Host, desc: *const sys::Po
             .get_resource_or_insert_with(PendingPostProcesses::default)
             .0
             .push(PendingPostProcess {
+                owner: ctx.slot,
                 id,
                 shader: handle,
                 wgsl: desc.fragment_wgsl.as_str().to_string(),
@@ -1306,6 +1557,7 @@ fn build_dispatcher(
     resource_plan: Vec<TermPlan>,
     entry: sys::SystemEntry,
     user: usize,
+    gate: GenGate,
 ) -> impl System<In = (), Out = ()> {
     let build_terms = plans.clone();
     // Latched off after a panic. Without this a system that panics does so every
@@ -1377,6 +1629,17 @@ fn build_dispatcher(
                             time: Res<Time>,
                             mut commands: Commands| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            // The plugin that registered this has been reloaded, and a newer
+            // build has already registered its replacement. Retiring here rather
+            // than unregistering is what keeps hot-reload from costing every
+            // build a swappable sub-schedule — see `GenGate`.
+            //
+            // Checked before the staging buffers are built, so a retired system
+            // costs an atomic load and nothing else. It still pays the param
+            // fetch Bevy did to call it; that is the accumulating cost.
+            if gate.stale() {
                 return;
             }
             // Everything the plugin sees lives in staging buffers we own. That
@@ -1685,11 +1948,42 @@ fn bevy_label(s: sys::Schedule) -> impl ScheduleLabel {
 /// holding dangling entries. (Unloading safely needs a registration ledger and
 /// a teardown pass — a separate piece of work.)
 pub fn init_plugin(world: &mut World, init: sys::ExtensionInit) -> sys::InitResult {
+    init_plugin_gen(world, init, PluginGeneration::default(), 0, usize::MAX)
+}
+
+/// Initialise a plugin as a numbered reload of a slot.
+///
+/// `counter`/`generation` are the slot's shared reload counter and the value it
+/// holds for this load. Every system registered during this call captures them and
+/// retires itself once the counter moves on — see [`GenGate`].
+pub fn init_plugin_gen(
+    world: &mut World,
+    init: sys::ExtensionInit,
+    counter: PluginGeneration,
+    generation: u32,
+    slot: usize,
+) -> sys::InitResult {
     // MUST be the `'static` table, not `interface()`. A plugin stores this
     // pointer so its render callbacks can reach the interface on later frames;
     // handing it a stack local leaves it dangling the moment this returns, and
     // the next `render_set_pipeline` reads a garbage function pointer. Systems
     // were unaffected because they get their interface from `SystemCall::iface`.
-    let mut ctx = HostCtx { world };
-    unsafe { init(&IFACE, (&mut ctx as *mut HostCtx).cast()) }
+    let mut ctx = HostCtx {
+        world,
+        gate: GenGate {
+            counter,
+            at: generation,
+        },
+        slot,
+        layout_conflict: false,
+    };
+    let result = unsafe { init(&IFACE, (&mut ctx as *mut HostCtx).cast()) };
+    // A layout change is only discoverable once the plugin registers, i.e. part
+    // way through init. Reporting failure here is what makes it a no-op: the
+    // loader leaves the generation counter alone, so this build's systems are
+    // permanently stale and the previous build carries on running.
+    if ctx.layout_conflict {
+        return sys::InitResult::Failed;
+    }
+    result
 }
