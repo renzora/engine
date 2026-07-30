@@ -66,16 +66,19 @@ pub mod host;
 /// `#[derive(Component)]`. Re-exported so a plugin depends on exactly one crate
 /// — the proc-macro crate is an implementation detail (a proc macro must live in
 /// its own crate; that is a rustc rule, not a structural choice).
-pub use renzora_plugin_derive::{Component, Resource};
+pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
 
 /// Everything a plugin needs. Mirrors `bevy::prelude`.
 pub mod prelude {
-    pub use renzora_plugin_derive::{Component, Resource};
+    pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
     pub use crate::ecs::{
-        App, Bundle, Commands, Entity, EntityCommands, Mesh3d, Or, Plugin, Quat, Query, RenderPass,
-        Res, ResMut, Resource, Schedule, Time, Transform, Vec3, Visibility, With, Without,
+        Action, App, Bundle, Commands, Entity, EntityCommands, Mesh3d, Or, Panel, Plugin, Quat,
+        Query, RenderPass, Res, ResMut, Resource, Scene, Schedule, Time, Transform, Vec3,
+        Visibility,
+        With, Without,
     };
-    pub use crate::ecs::Schedule::{First, Last, PostUpdate, PreUpdate, Update};
+    pub use crate::ecs::{error, info, warn};
+    pub use crate::ecs::{First, Last, PostUpdate, PreUpdate, Update};
 }
 
 /// Emit the plugin's sole export.
@@ -86,6 +89,15 @@ pub mod prelude {
 /// would collide at link time.
 #[macro_export]
 macro_rules! add {
+    // `add!(MyPlugin, Editor)` — an editor-only plugin. Absent from the shipped
+    // runtime binary entirely, rather than present and inactive.
+    ($plugin:expr, $scope:ident) => {
+        #[unsafe(no_mangle)]
+        pub extern "C" fn renzora_plugin_scope() -> $crate::sys::PluginScope {
+            $crate::sys::PluginScope::$scope
+        }
+        $crate::add!($plugin);
+    };
     ($plugin:expr) => {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn renzora_plugin_init(
@@ -112,6 +124,12 @@ macro_rules! add {
             // Refuse rather than install systems whose queries can never match.
             // The host logs which component was missing.
             if app.unresolved_component().is_some() {
+                return $crate::sys::InitResult::Failed;
+            }
+            // Likewise for a system the host declined — an access conflict, or a
+            // term it could not resolve. Loading anyway would give a plugin that
+            // reports success and then quietly does less than it says.
+            if app.rejected_system().is_some() {
                 return $crate::sys::InitResult::Failed;
             }
             $crate::sys::InitResult::Ok

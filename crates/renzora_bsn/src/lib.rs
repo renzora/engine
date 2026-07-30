@@ -28,14 +28,22 @@
 
 mod dynamic_scene;
 mod dynamic_scene_builder;
+mod raw_registry;
 mod reflect_utils;
 mod scene_filter;
 
 pub mod bsn;
+pub mod bsn_tree;
+
+pub use bsn_tree::{BsnError, BsnTree};
 
 pub use bsn::register_component_alias;
-pub use dynamic_scene::{DynamicEntity, DynamicScene};
+pub use dynamic_scene::{DynamicEntity, DynamicScene, RawComponent, RawField, RawSchema};
 pub use dynamic_scene_builder::DynamicSceneBuilder;
+pub use raw_registry::{
+    migrate, OrphanedRawComponents, OrphanedRawScene, RawComponentRegistry, RawTypeInfo,
+    RawTypeTable,
+};
 pub use scene_filter::SceneFilter;
 
 /// Errors that can occur when writing a [`DynamicScene`] back into a `World`.

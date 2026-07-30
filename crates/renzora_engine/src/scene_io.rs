@@ -310,6 +310,11 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         return Ok(());
     }
 
+    // Cheap and idempotent. Called here rather than relying on the Startup
+    // system alone, so a plugin that registered a type after boot — a reload, a
+    // late load — is still described by the time its bytes are written.
+    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
+
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -347,6 +352,11 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         // causes duplicate-reflect-type errors during deserialization.
         .deny_physics_components()
         .extract_entities(entities.into_iter())
+        // Plugin-owned globals. Opt-in per call site, because `deny_all_resources`
+        // above cannot express this — it filters by `TypeId`, which a
+        // layout-registered type does not have. A full scene save wants them; a
+        // subtree snapshot or a prefab does not, and neither calls this.
+        .extract_raw_resources()
         .build();
 
     // Strip components that can't be serialized or are editor-only.
@@ -472,6 +482,11 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         return Ok("(entities: {}, resources: {})".to_string());
     }
 
+    // Cheap and idempotent. Called here rather than relying on the Startup
+    // system alone, so a plugin that registered a type after boot — a reload, a
+    // late load — is still described by the time its bytes are written.
+    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
+
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()
         .deny_render_3d_materials()
@@ -507,6 +522,11 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         // causes duplicate-reflect-type errors during deserialization.
         .deny_physics_components()
         .extract_entities(entities.into_iter())
+        // Plugin-owned globals. Opt-in per call site, because `deny_all_resources`
+        // above cannot express this — it filters by `TypeId`, which a
+        // layout-registered type does not have. A full scene save wants them; a
+        // subtree snapshot or a prefab does not, and neither calls this.
+        .extract_raw_resources()
         .build();
 
     // Strip components that can't be serialized or are editor-only.
@@ -593,7 +613,12 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
         );
     }
 
+    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
+    // Globals, not per-entity data — so this is a whole-scene load only. The
+    // undo-restore path deliberately does not call it: restoring a deleted
+    // subtree must not reach out and reset the world's plugin settings.
+    scene.write_raw_resources(world);
     match scene.write_to_world(world, &mut entity_map) {
         Ok(()) => {
             // Re-insert ChildOf to trigger hierarchy hooks
@@ -1200,7 +1225,9 @@ pub fn load_scene(world: &mut World, path: &Path) {
         );
     }
 
+    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
+    scene.write_raw_resources(world);
     match scene.write_to_world(world, &mut entity_map) {
         Ok(()) => {
             console_info(
@@ -1646,6 +1673,11 @@ pub fn save_prefab_source(
         );
         return Ok(());
     }
+
+    // Cheap and idempotent. Called here rather than relying on the Startup
+    // system alone, so a plugin that registered a type after boot — a reload, a
+    // late load — is still described by the time its bytes are written.
+    crate::plugin_scene_bridge::refresh_raw_component_registry(world);
 
     let mut scene = DynamicSceneBuilder::from_world(world)
         .deny_all_resources()

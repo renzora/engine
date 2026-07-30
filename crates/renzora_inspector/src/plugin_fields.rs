@@ -30,7 +30,7 @@ use bevy::ecs::component::ComponentId;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use core::sync::atomic::{AtomicU32, Ordering};
-use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::font::EmberFonts;
 use renzora_plugin::host::PluginComponentSchemas;
 use renzora_plugin::sys::FieldKind;
 
@@ -125,6 +125,28 @@ fn write_f32(world: &mut World, entity: Entity, cid: ComponentId, offset: usize,
     }
 }
 
+/// A `bool` is ONE byte, and reading it as an `i32` reads three bytes that are
+/// not part of the field. `struct Flags { a: bool, b: bool }` is two bytes with
+/// align 1, so a 4-byte write at offset 0 scribbles over `b` and two bytes of
+/// whatever the allocator put next — which surfaces as an unrelated component
+/// changing when you toggle a checkbox.
+fn read_bool(world: &World, entity: Entity, cid: ComponentId, offset: usize) -> bool {
+    world
+        .get_entity(entity)
+        .ok()
+        .and_then(|e| e.get_by_id(cid).ok())
+        .map(|p| unsafe { p.as_ptr().add(offset).read() != 0 })
+        .unwrap_or(false)
+}
+
+fn write_bool(world: &mut World, entity: Entity, cid: ComponentId, offset: usize, v: bool) {
+    if let Ok(mut e) = world.get_entity_mut(entity) {
+        if let Ok(mut ptr) = e.get_mut_by_id(cid) {
+            unsafe { ptr.as_mut().as_ptr().add(offset).write(v as u8) };
+        }
+    }
+}
+
 fn read_i32(world: &World, entity: Entity, cid: ComponentId, offset: usize) -> i32 {
     world
         .get_entity(entity)
@@ -169,7 +191,8 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
         .into_iter()
         .map(|(name, kind, offset)| {
             let v = match kind {
-                FieldKind::I32 | FieldKind::Bool => read_i32(world, entity, cid, offset) as f32,
+                FieldKind::Bool => read_bool(world, entity, cid, offset) as i32 as f32,
+                FieldKind::I32 => read_i32(world, entity, cid, offset) as f32,
                 _ => read_f32(world, entity, cid, offset),
             };
             (name, kind, offset, v)
@@ -231,13 +254,15 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                     renzora_ember::reactive::bind_2way(
                         &mut commands,
                         e,
-                        move |w: &World| read_i32(w, entity, cid, offset) != 0,
-                        move |w: &mut World, v: &bool| write_i32(w, entity, cid, offset, *v as i32),
+                        move |w: &World| read_bool(w, entity, cid, offset),
+                        move |w: &mut World, v: &bool| write_bool(w, entity, cid, offset, *v),
                     );
                     e
                 }
-                // Vec3/Quat need three or four sub-rows. Skipped rather than
-                // drawn wrong, so a component carrying one is still usable.
+                // Vec3/Quat need three or four sub-rows, and a kind from a newer
+                // ABI is one this build cannot draw at all. Both are skipped
+                // rather than drawn wrong, so the rest of the component stays
+                // usable.
                 _ => continue,
             };
             let row =

@@ -47,6 +47,35 @@
 //! function and read a return value nothing had written. The process died with
 //! no useful diagnostic. When in doubt, bump MAJOR — the cost is rebuilding
 //! plugins, and the alternative is memory corruption.
+//!
+//! ### Adding a value to a plugin-written enum
+//!
+//! [`Schedule`], [`FieldKind`], [`Access`], [`RenderPhase`], [`Primitive`],
+//! [`CommandKind`] and [`LogLevel`] are all written by the plugin and read by
+//! the host. They are **newtypes over `u32`, not `#[repr(u32)]` enums**, and
+//! that is load-bearing rather than stylistic.
+//!
+//! A plugin built against a newer ABI writes a value this build has no name for.
+//! With a real `enum` that is undefined behaviour at the moment the host reads
+//! it — and not the harmless kind, because rustc attaches `!range` metadata to
+//! the load, so LLVM may assume the impossible and a `match` can take an
+//! arbitrary arm. The read happens inside `from_raw_parts` over plugin memory
+//! for the ones that live in structs, and straight off the boundary for the ones
+//! passed by value, so there is no point at which the host could check first.
+//!
+//! The version handshake is *supposed* to refuse such a plugin, and it does.
+//! But building on that means the soundness of every appended value rests on the
+//! handshake staying bug-free forever, and the handshake has been wrong before —
+//! see the [`SystemEntry`] story above. A newtype removes the question: every
+//! `u32` is a valid value, unknown ones fall to a `_` arm, and "appending a
+//! value is MINOR" is *true* rather than usually true.
+//!
+//! So: append a constant, bump MINOR in the same commit, and make sure every
+//! `match` on it does something defensible with an unrecognised value. The host
+//! generally warns and degrades — an unknown [`Schedule`] runs in `Update`, an
+//! unknown [`Primitive`] draws a cube — except for [`Access`], where a term the
+//! host cannot interpret would shift every later cell index and hand the plugin
+//! its own data at the wrong offsets. That one refuses the system outright.
 
 use core::ffi::c_void;
 
@@ -56,14 +85,83 @@ use core::ffi::c_void;
 ///
 /// Went 0 -> 1 when `SystemEntry` gained a return value; see the module docs for
 /// why that had to be MAJOR.
-pub const VERSION_MAJOR: u32 = 1;
+///
+/// Went 1 -> 2 when a system stopped being limited to one query. `SystemCall`
+/// swapped its single cell array for a [`QueryView`] per query, and `add_system`
+/// took a [`SystemDesc`] and started returning [`RegisterStatus`]. Both are
+/// deliberate MAJOR changes made while the ABI is still unpublished: a MAJOR
+/// bump today costs rebuilding the example plugins, and after the first release
+/// it costs every plugin every user has installed.
+pub const VERSION_MAJOR: u32 = 2;
 
 /// Bumped when something is *appended*. Older plugins keep working; a plugin
 /// needing the new function declares this as its minimum.
-pub const VERSION_MINOR: u32 = 5;
+///
+/// Reset to 0 by the MAJOR bump above — a MINOR only means anything relative to
+/// one MAJOR.
+///
+/// 0 -> 1 appended `add_panel`.
+pub const VERSION_MINOR: u32 = 1;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
+
+/// Optional symbol declaring which binary a plugin belongs in. See
+/// [`PluginScope`].
+pub const SCOPE_SYMBOL: &str = "renzora_plugin_scope";
+
+/// Where a plugin runs.
+///
+/// The engine ships two binaries: the editor, which contains the runtime, and a
+/// standalone runtime that ships with a game. A plugin belongs to exactly one
+/// scope — there is deliberately no "both". A feature needing editor tooling on
+/// top of runtime behaviour is two plugins, so the editor half can be absent
+/// from a shipped game rather than merely inactive in it.
+///
+/// A plugin that exports no [`SCOPE_SYMBOL`] is treated as [`Runtime`]. That
+/// matches `renzora::add!`'s default and fails in the direction that is easy to
+/// notice: an editor plugin that forgot to declare itself turns up in a game,
+/// which is visible, whereas the other default would make a gameplay plugin
+/// silently do nothing in the shipped build.
+///
+/// [`Runtime`]: PluginScope::Runtime
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PluginScope(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl PluginScope {
+    /// Runs in the editor viewport **and** the shipped game.
+    pub const Runtime: Self = Self(0);
+    /// Runs only in the editor. Never linked into, or loaded by, a game.
+    pub const Editor: Self = Self(1);
+
+    pub const fn is_known(self) -> bool {
+        self.0 < 2
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Runtime",
+            1 => "Editor",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for PluginScope {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "PluginScope({})", self.0)
+        }
+    }
+}
+
+/// Reports a plugin's [`PluginScope`]. Read before `init` is called, so a plugin
+/// for the wrong binary is never given the chance to register anything.
+pub type ScopeEntry = unsafe extern "C" fn() -> PluginScope;
 
 // ── Primitives ───────────────────────────────────────────────────────────────
 
@@ -127,14 +225,65 @@ impl StrRef {
 
 /// Which of the host's schedules a system runs in. `#[repr(u32)]` so the value
 /// is a stable part of the ABI — append new variants, never renumber.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Schedule {
-    First = 0,
-    PreUpdate = 1,
-    Update = 2,
-    PostUpdate = 3,
-    Last = 4,
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Schedule(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl Schedule {
+    pub const First: Self = Self(0);
+    pub const PreUpdate: Self = Self(1);
+    pub const Update: Self = Self(2);
+    pub const PostUpdate: Self = Self(3);
+    pub const Last: Self = Self(4);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 5
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "First",
+            1 => "PreUpdate",
+            2 => "Update",
+            3 => "PostUpdate",
+            4 => "Last",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for Schedule {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "Schedule({})", self.0)
+        }
+    }
 }
 
 // ── Frozen host-type mirrors ─────────────────────────────────────────────────
@@ -182,14 +331,65 @@ pub struct Transform {
 /// Append-only `#[repr(u32)]`. Deliberately a small closed set rather than
 /// anything reflection-shaped: the editor has to render a widget for each, so a
 /// kind nobody can draw is worse than no kind at all.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum FieldKind {
-    F32 = 0,
-    I32 = 1,
-    Bool = 2,
-    Vec3 = 3,
-    Quat = 4,
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FieldKind(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl FieldKind {
+    pub const F32: Self = Self(0);
+    pub const I32: Self = Self(1);
+    pub const Bool: Self = Self(2);
+    pub const Vec3: Self = Self(3);
+    pub const Quat: Self = Self(4);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 5
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "F32",
+            1 => "I32",
+            2 => "Bool",
+            3 => "Vec3",
+            4 => "Quat",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for FieldKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "FieldKind({})", self.0)
+        }
+    }
 }
 
 /// One editable field of a plugin component.
@@ -253,37 +453,94 @@ pub struct ComponentDesc {
 /// entity that has a Transform", which in a real scene includes the editor
 /// camera and every light. Filtering is how a plugin scopes itself to the
 /// entities it actually owns.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Access {
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Access(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl Access {
     /// Read-only data access. Produces a cell; never written back.
-    Read = 0,
+    pub const Read: Self = Self(0);
     /// Mutable data access. Produces a cell, and the host copies it back after
     /// the call.
-    Write = 1,
+    pub const Write: Self = Self(1);
     /// Filter only — the entity must have this component. No cell is produced,
     /// so the plugin must not count it when indexing [`SystemCall::cells`].
-    With = 2,
+    pub const With: Self = Self(2);
     /// Filter only — the entity must NOT have this component.
-    Without = 3,
+    pub const Without: Self = Self(3);
     /// Read-only access to a **resource**, not a component. Contributes no cell
     /// and no filtering; the host resolves it once per call into
     /// [`SystemCall::resources`].
-    ResRead = 4,
+    pub const ResRead: Self = Self(4);
     /// Mutable resource access.
-    ResWrite = 5,
+    pub const ResWrite: Self = Self(5);
     /// Optional component data. Produces a cell like [`Access::Read`], but the
     /// cell is **null** when the entity lacks the component, and the entity
     /// still matches. Mirrors Bevy's `Option<&T>`.
-    ReadOptional = 6,
+    pub const ReadOptional: Self = Self(6);
     /// Optional mutable component data. Mirrors `Option<&mut T>`.
-    WriteOptional = 7,
+    pub const WriteOptional: Self = Self(7);
     /// Opens an `Or` group. Carries no component.
-    OrBegin = 8,
+    pub const OrBegin: Self = Self(8);
     /// Separates one `Or` branch from the next. Carries no component.
-    OrNext = 9,
+    pub const OrNext: Self = Self(9);
     /// Closes an `Or` group. Carries no component.
-    OrEnd = 10,
+    pub const OrEnd: Self = Self(10);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 11
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Read",
+            1 => "Write",
+            2 => "With",
+            3 => "Without",
+            4 => "ResRead",
+            5 => "ResWrite",
+            6 => "ReadOptional",
+            7 => "WriteOptional",
+            8 => "OrBegin",
+            9 => "OrNext",
+            10 => "OrEnd",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for Access {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "Access({})", self.0)
+        }
+    }
 }
 
 impl Access {
@@ -339,6 +596,66 @@ pub struct QueryDesc {
     pub term_count: usize,
 }
 
+/// One query's matched rows, for one call.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct QueryView {
+    /// Row-major `entity_count × cell_count`.
+    pub cells: *mut *mut u8,
+    pub entities: *const Entity,
+    pub entity_count: usize,
+    /// Cells per row — the count of [`Access::has_cell`] terms, which is NOT the
+    /// number of terms once filters are involved.
+    pub cell_count: usize,
+}
+
+/// Everything about one system, registered in a single call.
+///
+/// A struct rather than a parameter list because this is the part of the ABI
+/// most likely to grow — run conditions, ordering labels and system sets all
+/// land here — and a struct the plugin *writes* can only grow at the end. That
+/// is also why [`flags`](Self::flags) exists now while nothing sets it: a
+/// reserved word costs four bytes today and saves a MAJOR bump later.
+#[repr(C)]
+pub struct SystemDesc {
+    pub entry: SystemEntry,
+    pub schedule: Schedule,
+    /// Queries, in the order the system's parameters declare them. The host
+    /// hands back one [`QueryView`] per entry, in the same order.
+    pub queries: *const QueryDesc,
+    pub query_count: usize,
+    /// Resources the system touches, as [`Access::ResRead`] / [`Access::ResWrite`]
+    /// terms. Separate from the queries because a resource is per-system, not
+    /// per-query.
+    pub resources: *const Term,
+    pub resource_count: usize,
+    /// Opaque value handed back in [`SystemCall::user`].
+    pub user: *mut c_void,
+    /// Reserved. Must be zero.
+    pub flags: u32,
+}
+
+/// Why [`Interface::add_system`] refused a system.
+///
+/// `add_system` used to return nothing, and it runs inside the host's panic
+/// guard — so Bevy's access-conflict panic and a failed term resolution were
+/// both caught, logged, and swallowed. The plugin's `init` returned `Ok` with a
+/// system silently missing, which presents as "my plugin loaded and does
+/// nothing": the single hardest failure to diagnose from the outside.
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RegisterStatus {
+    Ok = 0,
+    /// A term named a component id the host does not have.
+    UnknownComponent = 1,
+    /// Bevy refused the access pattern — usually `&mut T` and `&T` on the same
+    /// component in one system.
+    AccessConflict = 2,
+    /// The descriptor was malformed: a null pointer, no queries, or a non-zero
+    /// `flags`.
+    Invalid = 3,
+}
+
 // ── The per-frame call ───────────────────────────────────────────────────────
 
 /// Frame-global values a system might want, passed by value so that reading the
@@ -364,12 +681,15 @@ pub struct FrameCtx {
 /// components). The plugin cannot tell the difference and does not need to.
 #[repr(C)]
 pub struct SystemCall {
-    pub cells: *mut *mut u8,
-    pub entities: *const Entity,
-    pub entity_count: usize,
-    /// Number of cells per row — the count of [`Access::has_cell`] terms, which
-    /// is NOT the same as the number of terms once filters are involved.
-    pub cell_count: usize,
+    /// One entry per [`Query`](QueryDesc) the system declared, in declaration
+    /// order.
+    ///
+    /// A system used to carry exactly one query, because the boundary carried
+    /// one flat term list. Two `Query` parameters therefore merged into a single
+    /// builder and silently AND-ed together — `fn(Query<&A>, Query<&B>)` matched
+    /// only entities with both, and each parameter read the other's cells.
+    pub views: *const QueryView,
+    pub view_count: usize,
     pub frame: FrameCtx,
     /// Opaque value the plugin supplied at [`Interface::add_system`] — how a
     /// generated thunk finds its way back to the right Rust function.
@@ -457,17 +777,67 @@ pub struct RenderCtx(pub *mut c_void);
 
 /// Where in the frame a plugin's pass runs. Mirrors the engine's own phase
 /// ordering; `#[repr(u32)]` and append-only.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RenderPhase {
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RenderPhase(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl RenderPhase {
     /// HDR, after the main 3D pass, before temporal AA — GI, reflections.
-    Gi = 0,
+    pub const Gi: Self = Self(0);
     /// HDR, after temporal AA — bloom, depth of field, motion blur.
-    HdrPost = 1,
+    pub const HdrPost: Self = Self(1);
     /// LDR, after tonemapping — colour grading, vignette.
-    LdrPost = 2,
+    pub const LdrPost: Self = Self(2);
     /// Final overlays, after AA.
-    Overlay = 3,
+    pub const Overlay: Self = Self(3);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 4
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Gi",
+            1 => "HdrPost",
+            2 => "LdrPost",
+            3 => "Overlay",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for RenderPhase {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "RenderPhase({})", self.0)
+        }
+    }
 }
 
 /// Records draw commands for one view. Runs inside the host's render graph.
@@ -545,15 +915,67 @@ impl AssetHandle {
 /// buffers needs the whole asset/GPU surface, whereas primitives cover the cases
 /// that actually come up — spawning markers, blockout geometry, particles,
 /// procedural layouts.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Primitive {
-    Cuboid = 0,
-    Sphere = 1,
-    Plane = 2,
-    Cylinder = 3,
-    Capsule = 4,
-    Torus = 5,
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Primitive(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl Primitive {
+    pub const Cuboid: Self = Self(0);
+    pub const Sphere: Self = Self(1);
+    pub const Plane: Self = Self(2);
+    pub const Cylinder: Self = Self(3);
+    pub const Capsule: Self = Self(4);
+    pub const Torus: Self = Self(5);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 6
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Cuboid",
+            1 => "Sphere",
+            2 => "Plane",
+            3 => "Cylinder",
+            4 => "Capsule",
+            5 => "Torus",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for Primitive {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "Primitive({})", self.0)
+        }
+    }
 }
 
 /// `size` is interpreted per primitive: full extents for `Cuboid` and `Plane`,
@@ -577,15 +999,38 @@ pub struct MaterialDesc {
 // ── Commands ─────────────────────────────────────────────────────────────────
 
 /// What a queued command does.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CommandKind {
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CommandKind(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl CommandKind {
     /// Despawn `entity` and its descendants.
-    Despawn = 0,
+    pub const Despawn: Self = Self(0);
     /// Insert `component` on `entity`, copying `data_len` bytes from `data`.
-    Insert = 1,
+    pub const Insert: Self = Self(1);
     /// Remove `component` from `entity`.
-    Remove = 2,
+    pub const Remove: Self = Self(2);
     /// Make `entity` renderable: the host attaches the real `Mesh3d`,
     /// `MeshMaterial3d` and `Transform`.
     ///
@@ -593,7 +1038,47 @@ pub enum CommandKind {
     /// component, because a plugin has no `Handle` type and translating one
     /// through a raw byte copy would mean teaching the insert path about every
     /// host type that contains a handle. `data` holds a [`SpawnMeshDesc`].
-    SpawnMesh = 3,
+    pub const SpawnMesh: Self = Self(3);
+    /// Spawn an entity tree described in BSN. `data` is the UTF-8 source.
+    ///
+    /// The text names components rather than carrying their bytes, which is what
+    /// lets one command construct **both** engine components (resolved through
+    /// reflection) and the plugin's own (resolved through the field schema the
+    /// host already holds for them). A plugin therefore needs no mirror for
+    /// `Node`, `PointLight` or anything else it only ever constructs.
+    ///
+    /// `entity` is a reserved id used as the root of the **first** tree in the
+    /// source; any further top-level entries spawn fresh. That is what lets
+    /// `spawn_bsn` hand back a usable id in the same frame.
+    pub const SpawnBsn: Self = Self(4);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 5
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Despawn",
+            1 => "Insert",
+            2 => "Remove",
+            3 => "SpawnMesh",
+            4 => "SpawnBsn",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for CommandKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "CommandKind({})", self.0)
+        }
+    }
 }
 
 /// Payload for [`CommandKind::SpawnMesh`].
@@ -636,14 +1121,65 @@ pub struct CommandSink {
 }
 
 /// Severity for [`Interface::log`].
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum LogLevel {
-    Trace = 0,
-    Debug = 1,
-    Info = 2,
-    Warn = 3,
-    Error = 4,
+/// Newtype rather than an `enum`, and that is a soundness requirement rather
+/// than a style choice.
+///
+/// The **plugin writes this value and the host reads it** — out of plugin memory
+/// for the ones that live in structs, and straight off the FFI boundary for the
+/// ones passed by value. Materialising an out-of-range discriminant into a Rust
+/// enum is undefined behaviour, and not the harmless kind: rustc attaches
+/// `!range` metadata to the load, so LLVM may legally assume the impossible and
+/// a `match` can take an arbitrary arm.
+///
+/// That is exactly what a MINOR bump would cause. A plugin built against a newer
+/// ABI writes a discriminant the older host has no variant for. The version
+/// handshake is supposed to refuse that plugin — but then the soundness of every
+/// appended variant rests on the handshake being bug-free, forever. A newtype
+/// removes the question: any `u32` is a valid value, unknown ones fall to the
+/// `_` arm, and "appending a variant is a MINOR change" is true rather than
+/// merely usually true.
+///
+/// The constants below keep the variant names, so this is a source-compatible
+/// change at every call site.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LogLevel(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl LogLevel {
+    pub const Trace: Self = Self(0);
+    pub const Debug: Self = Self(1);
+    pub const Info: Self = Self(2);
+    pub const Warn: Self = Self(3);
+    pub const Error: Self = Self(4);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI.
+    pub const fn is_known(self) -> bool {
+        self.0 < 5
+    }
+
+    /// The variant name, or `"?"` for a value from a newer ABI.
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Trace",
+            1 => "Debug",
+            2 => "Info",
+            3 => "Warn",
+            4 => "Error",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for LogLevel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_known() {
+            f.write_str(self.name())
+        } else {
+            write!(f, "LogLevel({})", self.0)
+        }
+    }
 }
 
 // ── The interface ────────────────────────────────────────────────────────────
@@ -678,13 +1214,9 @@ pub struct Interface {
 
     /// Register a system. The host builds a matching Bevy query and inserts a
     /// dispatcher into `schedule`.
-    pub add_system: unsafe extern "C" fn(
-        host: *mut Host,
-        schedule: Schedule,
-        entry: SystemEntry,
-        query: *const QueryDesc,
-        user: *mut c_void,
-    ),
+    /// Register a system. Returns why it was refused, if it was.
+    pub add_system:
+        unsafe extern "C" fn(host: *mut Host, desc: *const SystemDesc) -> RegisterStatus,
 
     /// Write a line to the engine log.
     ///
@@ -744,7 +1276,84 @@ pub struct Interface {
         value: *const u8,
         len: usize,
     ),
+
+    // ── Added in MINOR 1 ─────────────────────────────────────────────────────
+    /// Register an editor panel. See [`PanelDesc`].
+    pub add_panel: unsafe extern "C" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus,
 }
+
+// ── Editor panels ────────────────────────────────────────────────────────────
+
+/// An editor panel, described as markup rather than built by calls.
+///
+/// The engine's UI is `bevy_ui` — which is exactly what this ABI hides, so a
+/// plugin cannot be handed widget entities to assemble. It could be given an
+/// immediate-mode call surface instead (`ui.label()`, `ui.button()`), but that
+/// means one FFI call per widget per frame against a retained-mode UI that does
+/// not want rebuilding, and it puts the engine's layout model into the ABI
+/// permanently.
+///
+/// So a panel crosses as **text**, in the same block-structured shape scenes
+/// use, naming widgets rather than components:
+///
+/// ```text
+/// column {
+///     label "Flock",
+///     slider "Cohesion" 0.0 2.0 -> flock::FlockSettings.cohesion,
+///     toggle "Enabled"          -> flock::FlockSettings.enabled,
+///     row {
+///         label "Boids",
+///         value                 -> flock::FlockSettings.count,
+///     },
+///     button "Reset"            -> reset,
+/// }
+/// ```
+///
+/// `-> Type.field` **binds** a widget to a field of a plugin resource. The host
+/// already knows that resource's schema — name, kind, byte offset — so it reads
+/// and writes the field directly and no call into the plugin is needed for an
+/// ordinary edit. `-> name` on a `button` is an **action**, and that is the only
+/// thing that calls back.
+///
+/// The split matters: a slider dragged across a frame would otherwise be a call
+/// per pixel.
+#[repr(C)]
+pub struct PanelDesc {
+    /// Stable id, used for docking and layout persistence. Prefix it with the
+    /// plugin name — two plugins claiming `settings` would fight over one dock
+    /// slot and one layout entry.
+    pub id: StrRef,
+    pub title: StrRef,
+    /// Kebab-case Phosphor icon name. Empty for the default.
+    pub icon: StrRef,
+    /// Section in the panel picker. Empty means "Plugins".
+    pub category: StrRef,
+    /// The markup above. Copied at registration; the plugin may free it after.
+    pub markup: StrRef,
+    /// Invoked when an action widget fires. May be null for a display-only
+    /// panel.
+    pub on_action: Option<PanelActionEntry>,
+    /// Handed back in [`PanelAction::user`].
+    pub user: *mut c_void,
+}
+
+/// One action, delivered synchronously while the click is being handled.
+#[repr(C)]
+pub struct PanelAction {
+    /// The name after `->` on the widget that fired.
+    pub name: StrRef,
+    /// The widget's current value: a toggle's 0 or 1, a slider's position, 0 for
+    /// a button.
+    pub value: f32,
+    pub user: *mut c_void,
+    pub iface: *const Interface,
+    /// Structural changes, same queue a system gets. Null if unavailable.
+    pub commands: *mut CommandSink,
+}
+
+/// A panel's action handler. Returns [`SystemStatus::Panicked`] if the plugin
+/// caught a panic, exactly like a system.
+pub type PanelActionEntry = unsafe extern "C" fn(action: *const PanelAction) -> SystemStatus;
 
 /// Result of [`ExtensionInit`].
 #[repr(i32)]

@@ -49,6 +49,24 @@ unsafe extern "C" fn spinner_init(
     sys::InitResult::Ok
 }
 
+/// Serialises every test that loads a plugin.
+///
+/// A component's id is cached on a per-type `static`, and a system reads that
+/// cache at run time to find its resource slot. That is correct for the real
+/// engine, where there is exactly one host world per process — but this binary
+/// runs many worlds concurrently, and two tests sharing a type also share its
+/// cell while registering into different worlds. They usually agree, because a
+/// fresh `MinimalPlugins` world assigns ids in the same order, which is what
+/// makes the resulting failure an occasional flake rather than an honest error.
+///
+/// The lock is poison-tolerant: a test that panics while holding it has already
+/// reported its own failure, and turning that into a cascade of unrelated
+/// failures would bury the real one.
+fn plugin_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Minimal app: no rendering, no windowing — just the ECS, the clock, and a
 /// schedule for the plugin to insert into.
 fn test_app() -> App {
@@ -70,6 +88,7 @@ fn test_app() -> App {
 #[test]
 fn plugin_registers_and_mutates_host_components() {
     let mut app = test_app();
+    let _guard = plugin_lock();
 
     let result = abi_host::init_plugin(app.world_mut(), spinner_init);
     assert_eq!(result, sys::InitResult::Ok, "plugin init failed");
@@ -142,8 +161,9 @@ const EXCLUDED: &str = "test::Excluded";
 /// entities the query matched.
 unsafe extern "C" fn stamp(call: *const sys::SystemCall) -> sys::SystemStatus {
     let call = &*call;
-    for row in 0..call.entity_count {
-        let t = &mut *(*call.cells.add(row * call.cell_count) as *mut sys::Transform);
+    let view = &*call.views;
+    for row in 0..view.entity_count {
+        let t = &mut *(*view.cells.add(row * view.cell_count) as *mut sys::Transform);
         t.translation.x = 1.0;
     }
     // Raw `sys` systems own their own panic discipline; this one cannot panic.
@@ -185,12 +205,22 @@ unsafe extern "C" fn filter_init(
         sys::Term { component: marker, access: sys::Access::With },
         sys::Term { component: excluded, access: sys::Access::Without },
     ];
+    let query = sys::QueryDesc {
+        terms: terms.as_ptr(),
+        term_count: terms.len(),
+    };
     (i.add_system)(
         host,
-        sys::Schedule::Update,
-        stamp,
-        &sys::QueryDesc { terms: terms.as_ptr(), term_count: terms.len() },
-        std::ptr::null_mut(),
+        &sys::SystemDesc {
+            entry: stamp,
+            schedule: sys::Schedule::Update,
+            queries: &query,
+            query_count: 1,
+            resources: std::ptr::null(),
+            resource_count: 0,
+            user: std::ptr::null_mut(),
+            flags: 0,
+        },
     );
     sys::InitResult::Ok
 }
@@ -198,6 +228,7 @@ unsafe extern "C" fn filter_init(
 #[test]
 fn with_and_without_actually_filter() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(abi_host::init_plugin(app.world_mut(), filter_init), sys::InitResult::Ok);
 
     let ids = app.world().resource::<abi_host::PluginComponents>().0.clone();
@@ -229,6 +260,7 @@ fn with_and_without_actually_filter() {
 #[test]
 fn schema_reaches_the_host() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(
         abi_host::init_plugin(app.world_mut(), spinner_init),
         sys::InitResult::Ok
@@ -328,6 +360,7 @@ unsafe extern "C" fn multi_init(
 #[test]
 fn multi_field_schema_and_default() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(abi_host::init_plugin(app.world_mut(), multi_init), sys::InitResult::Ok);
 
     let schemas = app.world().resource::<abi_host::PluginComponentSchemas>();
@@ -362,6 +395,7 @@ fn multi_field_schema_and_default() {
 #[test]
 fn insert_by_id_writes_the_actual_bytes() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(abi_host::init_plugin(app.world_mut(), multi_init), sys::InitResult::Ok);
 
     let (cid, default_value) = {
@@ -417,6 +451,7 @@ unsafe extern "C" fn spawner_init(
 #[test]
 fn a_plugin_can_spawn_and_insert() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(abi_host::init_plugin(app.world_mut(), spawner_init), sys::InitResult::Ok);
 
     let cid = {
@@ -453,6 +488,7 @@ fn a_plugin_can_spawn_and_insert() {
 #[test]
 fn reserved_ids_are_not_reused_across_frames() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(abi_host::init_plugin(app.world_mut(), spawner_init), sys::InitResult::Ok);
     let cid = {
         let s = app.world().resource::<abi_host::PluginComponentSchemas>();
@@ -571,6 +607,7 @@ fn plugin_id(world: &World, type_path: &str) -> bevy::ecs::component::ComponentI
 #[test]
 fn a_plugin_owns_a_resource_and_it_survives_registration() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(
         abi_host::init_plugin(app.world_mut(), resource_init),
         sys::InitResult::Ok
@@ -606,6 +643,7 @@ fn a_plugin_owns_a_resource_and_it_survives_registration() {
 #[test]
 fn a_system_writes_through_res_mut() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(
         abi_host::init_plugin(app.world_mut(), resource_init),
         sys::InitResult::Ok
@@ -669,6 +707,7 @@ unsafe extern "C" fn optional_init(
 #[test]
 fn optional_data_matches_entities_that_lack_it() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(
         abi_host::init_plugin(app.world_mut(), optional_init),
         sys::InitResult::Ok
@@ -745,6 +784,7 @@ unsafe extern "C" fn or_init(
 #[test]
 fn or_matches_either_branch() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(
         abi_host::init_plugin(app.world_mut(), or_init),
         sys::InitResult::Ok
@@ -826,6 +866,7 @@ unsafe extern "C" fn read_only_init(
 #[test]
 fn a_system_reads_a_resource_it_does_not_write() {
     let mut app = test_app();
+    let _guard = plugin_lock();
     assert_eq!(
         abi_host::init_plugin(app.world_mut(), read_only_init),
         sys::InitResult::Ok
@@ -852,4 +893,607 @@ fn a_system_reads_a_resource_it_does_not_write() {
         "`Res<T>` handed the system a null pointer — a read-only declaration \
          cannot be resolved with the mutable accessor"
     );
+}
+
+// ── Correctness regressions ──────────────────────────────────────────────────
+
+/// Inserting a HOST component from a plugin sends the frozen mirror, which is a
+/// different size and a different layout from the real thing —
+/// `sys::Transform` is 40 bytes with rotation at offset 12, `bevy::Transform` is
+/// 48 with rotation at 16. Passing the bytes through unmarshalled read 8 bytes
+/// past the buffer and produced a scrambled transform.
+#[derive(renzora_plugin::Component, Default)]
+#[repr(C)]
+struct Placer {
+    _v: f32,
+}
+
+fn place(q: ecs::Query<ecs::Entity, ecs::With<Placer>>, mut cmds: ecs::Commands) {
+    for e in &q {
+        cmds.entity(e).insert(ecs::Transform {
+            translation: ecs::Vec3 { x: 1.0, y: 2.0, z: 3.0 },
+            rotation: ecs::Quat { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
+            scale: ecs::Vec3 { x: 4.0, y: 5.0, z: 6.0 },
+        });
+    }
+}
+
+unsafe extern "C" fn placer_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Placer>()
+        // Required: `insert` resolves the id the host assigned at init, and a
+        // type the plugin only ever inserts never gets one.
+        .register_component::<ecs::Transform>()
+        .add_systems(ecs::Schedule::Update, place);
+    if app.unresolved_component().is_some() {
+        return sys::InitResult::Failed;
+    }
+    sys::InitResult::Ok
+}
+
+#[test]
+fn inserting_a_host_transform_marshals_rather_than_memcpy() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), placer_init),
+        sys::InitResult::Ok
+    );
+    let placer_id = plugin_id(
+        app.world(),
+        <Placer as renzora_plugin::ecs::Component>::TYPE_PATH,
+    );
+    let e = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), e, placer_id, &Placer::default());
+
+    app.update();
+    // The insert is a Command, so it lands during the next apply.
+    app.update();
+
+    let t = *app
+        .world()
+        .entity(e)
+        .get::<Transform>()
+        .expect("Transform was never inserted");
+    assert_eq!(t.translation, Vec3::new(1.0, 2.0, 3.0));
+    assert_eq!(t.scale, Vec3::new(4.0, 5.0, 6.0));
+    assert!(
+        t.rotation.is_normalized(),
+        "rotation came through as {:?} — the 40-byte mirror was memcpy'd into a \
+         48-byte type instead of being marshalled",
+        t.rotation
+    );
+}
+
+/// `Or<T>` is itself a `QueryFilter`, so nesting one is ordinary code. A flat
+/// branch walk drops the inner brackets while still emitting the inner terms,
+/// which silently turns the inner `Or` into an `AND`.
+#[derive(renzora_plugin::Resource, Clone, Copy)]
+#[repr(C)]
+struct NestedTally {
+    total: i32,
+}
+
+impl Default for NestedTally {
+    fn default() -> Self {
+        Self { total: -1 }
+    }
+}
+
+fn count_nested(
+    q: ecs::Query<
+        ecs::Entity,
+        ecs::Or<(ecs::With<Tag>, ecs::Or<(ecs::With<Boost>, ecs::With<Scaled>)>)>,
+    >,
+    mut tally: ecs::ResMut<NestedTally>,
+) {
+    tally.total = q.len() as i32;
+}
+
+unsafe extern "C" fn nested_or_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Tag>()
+        .register_component::<Boost>()
+        .register_component::<Scaled>()
+        .init_resource::<NestedTally>()
+        .add_systems(ecs::Schedule::Update, count_nested);
+    if app.unresolved_component().is_some() {
+        return sys::InitResult::Failed;
+    }
+    sys::InitResult::Ok
+}
+
+#[test]
+fn a_nested_or_still_matches_either_inner_branch() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), nested_or_init),
+        sys::InitResult::Ok
+    );
+    let tag = plugin_id(app.world(), <Tag as renzora_plugin::ecs::Component>::TYPE_PATH);
+    let boost = plugin_id(app.world(), <Boost as renzora_plugin::ecs::Component>::TYPE_PATH);
+    let scaled = plugin_id(app.world(), <Scaled as renzora_plugin::ecs::Component>::TYPE_PATH);
+    let tally = plugin_id(
+        app.world(),
+        <NestedTally as renzora_plugin::ecs::Resource>::TYPE_PATH,
+    );
+
+    // One per branch. Collapsing the inner `Or` to an AND would need Boost AND
+    // Scaled together and would match only the third.
+    let a = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), a, tag, &Tag::default());
+    let b = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), b, boost, &Boost { amount: 1 });
+    let c = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), c, scaled, &Scaled { factor: 1.0 });
+    app.world_mut().spawn(Transform::IDENTITY);
+
+    app.update();
+
+    assert_eq!(
+        read_resource::<NestedTally>(app.world(), tally).total,
+        3,
+        "a nested `Or` collapsed into an `AND`"
+    );
+}
+
+#[test]
+fn a_resource_is_listed_once_however_many_systems_take_it() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    // `resource_init` registers Tally once; two systems both naming it would
+    // each drive a registration, and an unguarded push listed it per system.
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), resource_init),
+        sys::InitResult::Ok
+    );
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), resource_init),
+        sys::InitResult::Ok
+    );
+    let id = plugin_id(
+        app.world(),
+        <Tally as renzora_plugin::ecs::Resource>::TYPE_PATH,
+    );
+    let listed = app.world().resource::<abi_host::PluginResources>();
+    assert_eq!(
+        listed.0.iter().filter(|i| **i == id).count(),
+        1,
+        "the same resource was listed once per referencing system"
+    );
+}
+
+/// A destructor cannot be honoured across the boundary yet, so it must be
+/// refused with a message that says so. This used to be
+/// `desc.drop.map(|_| unimplemented!(..))`, which reads like a guard but is not
+/// one — `Option::map` evaluates its body, so it panicked and `guard_host`
+/// reported only "host call 'register_component' panicked".
+/// Registers a component that declares a destructor, by hand — the derive never
+/// emits one, so this is the shape a plugin author reaches for deliberately.
+unsafe extern "C" fn droppy_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    unsafe extern "C" fn nop_drop(_: *mut u8) {}
+    static FIELDS: &[sys::FieldDesc] = &[];
+    let desc = sys::ComponentDesc {
+        name: sys::StrRef::new("test::Droppy"),
+        size: 4,
+        align: 4,
+        drop: Some(nop_drop),
+        display_name: sys::StrRef::new("Droppy"),
+        fields: FIELDS.as_ptr(),
+        field_count: 0,
+        default_init: None,
+    };
+    let id = ((*iface).register_component)(host, &desc);
+    if id.is_valid() {
+        // Reaching here means the host accepted a component whose destructor it
+        // can never run.
+        return sys::InitResult::Ok;
+    }
+    sys::InitResult::Failed
+}
+
+#[test]
+fn a_component_declaring_a_destructor_is_refused_not_panicked() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    let result = abi_host::init_plugin(app.world_mut(), droppy_init);
+    assert_eq!(
+        result,
+        sys::InitResult::Failed,
+        "a component with a destructor was accepted; its drop would never run"
+    );
+    // The refusal must be a refusal, not a caught panic — `guard_host` turns a
+    // panic into the same INVALID id, so the distinguishing evidence is that the
+    // component really was not registered.
+    // `get_resource`, not `resource`: a world where nothing registered
+    // successfully has no `PluginComponents` at all, and that is the pass case.
+    assert!(
+        app.world()
+            .get_resource::<abi_host::PluginComponents>()
+            .is_none_or(|c| !c.0.contains_key("test::Droppy")),
+        "the component was registered despite being refused"
+    );
+}
+
+// ── ABI hygiene ──────────────────────────────────────────────────────────────
+
+/// Registers a component whose field claims a kind this build has never heard
+/// of — exactly what a plugin built against a newer ABI writes.
+///
+/// The seven plugin-written enums are newtypes over `u32` rather than
+/// `#[repr(u32)]` enums for this case alone. Materialising an out-of-range
+/// discriminant into a Rust enum is undefined behaviour, and `register_component`
+/// reads this schema straight out of plugin memory with `from_raw_parts`, so the
+/// enum would be constructed before anything had a chance to check it.
+unsafe extern "C" fn future_kind_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    static FIELDS: &[sys::FieldDesc] = &[
+        sys::FieldDesc {
+            name: sys::StrRef::new("known"),
+            kind: sys::FieldKind::F32,
+            offset: 0,
+        },
+        sys::FieldDesc {
+            name: sys::StrRef::new("from_the_future"),
+            // Deliberately out of range for this build.
+            kind: sys::FieldKind(9999),
+            offset: 4,
+        },
+    ];
+    let desc = sys::ComponentDesc {
+        name: sys::StrRef::new("test::FutureKind"),
+        size: 8,
+        align: 4,
+        drop: None,
+        display_name: sys::StrRef::new("FutureKind"),
+        fields: FIELDS.as_ptr(),
+        field_count: FIELDS.len(),
+        default_init: None,
+    };
+    let id = ((*iface).register_component)(host, &desc);
+    if id.is_valid() {
+        sys::InitResult::Ok
+    } else {
+        sys::InitResult::Failed
+    }
+}
+
+#[test]
+fn a_field_kind_from_a_newer_abi_does_not_poison_the_host() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), future_kind_init),
+        sys::InitResult::Ok,
+        "one unrecognised field kind rejected the whole component"
+    );
+
+    let schemas = app.world().resource::<abi_host::PluginComponentSchemas>();
+    let info = schemas
+        .0
+        .iter()
+        .find(|i| i.type_path == "test::FutureKind")
+        .expect("component was not registered");
+
+    // Both fields survive: the schema is data, and forgetting the one it cannot
+    // draw would silently change the component's shape.
+    assert_eq!(info.fields.len(), 2);
+    assert!(info.fields[0].kind.is_known());
+    assert!(
+        !info.fields[1].kind.is_known(),
+        "an out-of-range kind was silently normalised — the inspector would then \
+         draw it as whatever it collapsed to"
+    );
+    assert_eq!(info.fields[1].kind.0, 9999);
+}
+
+#[test]
+fn an_access_kind_from_a_newer_abi_refuses_the_system() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+
+    unsafe extern "C" fn entry(_: *const sys::SystemCall) -> sys::SystemStatus {
+        sys::SystemStatus::Ok
+    }
+    unsafe extern "C" fn init(
+        iface: *const sys::Interface,
+        host: *mut sys::Host,
+    ) -> sys::InitResult {
+        let transform = ((*iface).component_id_by_name)(
+            host,
+            sys::StrRef::new("bevy_transform::components::transform::Transform"),
+        );
+        // A term this build cannot interpret. Skipping it would shift every
+        // later cell index, so the system must be refused outright rather than
+        // registered with data the plugin will read at the wrong offsets.
+        let terms = [
+            sys::Term {
+                component: transform,
+                access: sys::Access(200),
+            },
+            sys::Term {
+                component: transform,
+                access: sys::Access::Read,
+            },
+        ];
+        let query = sys::QueryDesc {
+            terms: terms.as_ptr(),
+            term_count: terms.len(),
+        };
+        let status = ((*iface).add_system)(
+            host,
+            &sys::SystemDesc {
+                entry,
+                schedule: sys::Schedule::Update,
+                queries: &query,
+                query_count: 1,
+                resources: core::ptr::null(),
+                resource_count: 0,
+                user: core::ptr::null_mut(),
+                flags: 0,
+            },
+        );
+        // Refused, and it says so — the point of the return value.
+        if status == sys::RegisterStatus::UnknownComponent {
+            sys::InitResult::Ok
+        } else {
+            sys::InitResult::Failed
+        }
+    }
+
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), init),
+        sys::InitResult::Ok,
+        "`add_system` did not report the unknown access kind — it used to return \
+         nothing, so a refusal was indistinguishable from success"
+    );
+    // And nothing was left half-registered.
+    app.update();
+    app.update();
+}
+
+// ── Multiple queries per system ──────────────────────────────────────────────
+
+#[derive(renzora_plugin::Component, Default)]
+#[repr(C)]
+struct Source {
+    value: f32,
+}
+
+#[derive(renzora_plugin::Component, Default)]
+#[repr(C)]
+struct Sink {
+    value: f32,
+}
+
+#[derive(renzora_plugin::Resource, Clone, Copy, Default)]
+#[repr(C)]
+struct Totals {
+    sources: i32,
+    sinks: i32,
+}
+
+/// Two queries in one system, over **disjoint** component sets.
+///
+/// A single flat term list could not express this: both queries' terms merged
+/// into one builder and AND-ed, so this matched only entities carrying `Source`
+/// AND `Sink` — and both parameters then read the same cells, so `sinks` saw
+/// `Source` bytes.
+fn pump(
+    sources: ecs::Query<&Source>,
+    mut sinks: ecs::Query<&mut Sink>,
+    mut totals: ecs::ResMut<Totals>,
+) {
+    let mut sum = 0.0;
+    for s in &sources {
+        sum += s.value;
+    }
+    totals.sources = sources.len() as i32;
+    totals.sinks = sinks.len() as i32;
+    for s in &mut sinks {
+        s.value = sum;
+    }
+}
+
+unsafe extern "C" fn pump_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Source>()
+        .register_component::<Sink>()
+        .init_resource::<Totals>()
+        .add_systems(ecs::Schedule::Update, pump);
+    if app.unresolved_component().is_some() || app.rejected_system().is_some() {
+        return sys::InitResult::Failed;
+    }
+    sys::InitResult::Ok
+}
+
+#[test]
+fn two_queries_in_one_system_stay_separate() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), pump_init),
+        sys::InitResult::Ok
+    );
+    let source_id = plugin_id(
+        app.world(),
+        <Source as renzora_plugin::ecs::Component>::TYPE_PATH,
+    );
+    let sink_id = plugin_id(
+        app.world(),
+        <Sink as renzora_plugin::ecs::Component>::TYPE_PATH,
+    );
+    let totals_id = plugin_id(
+        app.world(),
+        <Totals as renzora_plugin::ecs::Resource>::TYPE_PATH,
+    );
+
+    // Deliberately disjoint: no entity carries both.
+    for v in [1.0f32, 2.0, 4.0] {
+        let e = app.world_mut().spawn_empty().id();
+        insert_raw(app.world_mut(), e, source_id, &Source { value: v });
+    }
+    let sink_a = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), sink_a, sink_id, &Sink { value: 0.0 });
+    let sink_b = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), sink_b, sink_id, &Sink { value: 0.0 });
+
+    app.update();
+
+    let totals = read_resource::<Totals>(app.world(), totals_id);
+    assert_eq!(
+        (totals.sources, totals.sinks),
+        (3, 2),
+        "the two queries merged — an AND of disjoint sets matches nothing"
+    );
+
+    for e in [sink_a, sink_b] {
+        let ptr = app.world().entity(e).get_by_id(sink_id).unwrap();
+        let got = unsafe { ptr.deref::<Sink>().value };
+        assert_eq!(got, 7.0, "the second query wrote the wrong cells");
+    }
+}
+
+/// The write-back used to be unconditional, so a system that merely *read*
+/// through `&mut` marked every matched component changed every frame. That is
+/// not a plugin-local cost: `Changed<Transform>` anywhere in the engine becomes
+/// true whenever any plugin looks at a transform.
+fn looks_but_does_not_touch(mut q: ecs::Query<&mut Spinner>) {
+    for s in &mut q {
+        // Read it, write the same value back. Nothing has changed.
+        let v = s.speed;
+        s.speed = v;
+    }
+}
+
+unsafe extern "C" fn passive_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Spinner>()
+        .add_systems(ecs::Schedule::Update, looks_but_does_not_touch);
+    if app.unresolved_component().is_some() {
+        return sys::InitResult::Failed;
+    }
+    sys::InitResult::Ok
+}
+
+#[test]
+fn an_unchanged_component_is_not_marked_changed() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), passive_init),
+        sys::InitResult::Ok
+    );
+    let spinner_id = plugin_id(
+        app.world(),
+        <Spinner as renzora_plugin::ecs::Component>::TYPE_PATH,
+    );
+    let e = app.world_mut().spawn_empty().id();
+    insert_raw(app.world_mut(), e, spinner_id, &Spinner { speed: 1.0 });
+
+    // Two updates: the first clears the insert's own change tick.
+    app.update();
+    app.update();
+    let ticks_after_quiet_frame = app
+        .world()
+        .entity(e)
+        .get_change_ticks_by_id(spinner_id)
+        .expect("component present")
+        .changed;
+
+    app.update();
+    let ticks_now = app
+        .world()
+        .entity(e)
+        .get_change_ticks_by_id(spinner_id)
+        .expect("component present")
+        .changed;
+
+    assert_eq!(
+        ticks_after_quiet_frame, ticks_now,
+        "a system that wrote back an identical value still bumped the change \
+         tick — every `&mut` cell was written unconditionally"
+    );
+}
+
+// ── The bsn! macro ───────────────────────────────────────────────────────────
+
+/// The macro's whole job is turning tokens back into source text. Getting the
+/// spacing wrong is invisible at the call site and fatal at parse time, so the
+/// output is asserted directly rather than only through a round trip.
+#[test]
+fn bsn_renders_tokens_back_to_parseable_source() {
+    let renzora_plugin::ecs::Scene(text) = renzora_plugin::bsn! {
+        #Cube
+        Transform { translation: Vec3(0.0, 0.5, 0.0) }
+        PointLight { intensity: 4000.0, shadows_enabled: true }
+    };
+    assert!(text.contains("#Cube"), "{text}");
+    assert!(
+        text.replace(' ', "").contains("Transform{translation:Vec3(0.0,0.5,0.0)}"),
+        "{text}"
+    );
+    // Two components in a row must stay two words.
+    assert!(
+        !text.contains("}PointLight") && text.contains("} PointLight"),
+        "adjacent components ran together: {text}"
+    );
+}
+
+#[test]
+fn a_negative_literal_survives_rendering() {
+    // `TokenStream::to_string` renders this as `- 2.5`, which RON then refuses
+    // to read as a number. The renderer exists because of this case.
+    let renzora_plugin::ecs::Scene(text) = renzora_plugin::bsn! {
+        Transform { translation: Vec3(-2.5, 4.5, 9.0) }
+    };
+    assert!(text.contains("-2.5"), "negative literal was split: {text}");
+    assert!(!text.contains("- 2.5"), "{text}");
+}
+
+#[test]
+fn a_path_keeps_its_colons() {
+    let renzora_plugin::ecs::Scene(text) = renzora_plugin::bsn! {
+        myplugin::Spinner { speed: 1.0 }
+    };
+    assert!(text.contains("myplugin::Spinner"), "{text}");
+}
+
+#[test]
+fn children_and_lists_render_their_brackets() {
+    let renzora_plugin::ecs::Scene(text) = renzora_plugin::bsn_list! {
+        ( Marker Children [ Marker, Marker ] ),
+        ( Marker )
+    };
+    assert!(text.contains('['), "{text}");
+    assert!(text.contains(']'), "{text}");
+    // A comma between entities needs the space that keeps `),(` readable, and
+    // more importantly must survive at all.
+    assert_eq!(text.matches("Marker").count(), 4, "{text}");
+}
+
+#[test]
+fn a_string_literal_survives_with_its_quotes() {
+    let renzora_plugin::ecs::Scene(text) = renzora_plugin::bsn! {
+        Name("Hello, world")
+    };
+    assert!(text.contains(r#""Hello, world""#), "{text}");
 }

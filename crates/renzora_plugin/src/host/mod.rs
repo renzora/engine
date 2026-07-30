@@ -96,6 +96,7 @@ static IFACE: sys::Interface = sys::Interface {
     add_material,
     register_resource,
     insert_resource,
+    add_panel,
 };
 
 
@@ -117,6 +118,16 @@ unsafe extern "C" fn register_component(
         return sys::ComponentId(existing.index() as u32);
     }
 
+    // Refused rather than ignored: a component with a destructor whose drop is
+    // never run leaks whatever it owns, silently, for the life of the process.
+    if desc.drop.is_some() {
+        error!(
+            "plugin component `{name}` declares a destructor, which is not supported yet — \
+             keep plugin components plain data (no String, Vec or Box fields)"
+        );
+        return sys::ComponentId::INVALID;
+    }
+
     let Ok(layout) = Layout::from_size_align(desc.size, desc.align) else {
         error!("plugin component `{name}` has an invalid layout ({} / {})", desc.size, desc.align);
         return sys::ComponentId::INVALID;
@@ -130,13 +141,13 @@ unsafe extern "C" fn register_component(
             name,
             StorageType::Table,
             layout.pad_to_align(),
-            desc.drop.map(|f| {
-                // The plugin's drop takes a plain `*mut u8`; Bevy hands an
-                // `OwningPtr`. The shim is why `drop` can stay a boring C
-                // signature the plugin can write without knowing Bevy exists.
-                let _ = f;
-                unimplemented!("component destructors are not supported yet — keep plugin components POD")
-            }),
+            // Deliberately `None`, having already refused a non-`None` drop
+            // above. This used to be `desc.drop.map(|_| unimplemented!(..))`,
+            // which reads like a guard and is not one: `Option::map` evaluates
+            // its body, so any component declaring a destructor panicked here,
+            // and `guard_host` swallowed the explanatory message and reported
+            // only "host call 'register_component' panicked".
+            None,
             true,
             bevy::ecs::component::ComponentCloneBehavior::Default,
             None,
@@ -233,20 +244,68 @@ unsafe extern "C" fn register_resource(
         if ctx.world.get_resource_by_id(bevy_id).is_none() {
             let size = (*desc).size;
             let mut bytes = vec![0u8; size];
-            match (*desc).default_init {
-                Some(init) => init(bytes.as_mut_ptr()),
-                // No default constructor is not an error — zeroed is a defensible
-                // starting value for a POD resource, and refusing to register
-                // would break a plugin over something it can fix in a system.
-                None => {}
+            // No default constructor is not an error — zeroed is a defensible
+            // starting value for a POD resource, and refusing to register would
+            // break a plugin over something it can fix in a system.
+            if let Some(init) = (*desc).default_init {
+                init(bytes.as_mut_ptr());
             }
             write_resource_bytes(ctx.world, bevy_id, &bytes);
         }
-        ctx.world
-            .get_resource_or_insert_with(PluginResources::default)
-            .0
-            .push(bevy_id);
+        // Guarded, not unconditional: registration is idempotent and two
+        // systems both taking `ResMut<Score>` each drive one, so an unguarded
+        // push listed the same resource once per referencing system.
+        let mut listed = ctx
+            .world
+            .get_resource_or_insert_with(PluginResources::default);
+        if !listed.0.contains(&bevy_id) {
+            listed.0.push(bevy_id);
+        }
         id
+    })
+}
+
+unsafe extern "C" fn add_panel(
+    host: *mut sys::Host,
+    desc: *const sys::PanelDesc,
+) -> sys::RegisterStatus {
+    guard_host("add_panel", sys::RegisterStatus::Invalid, || {
+        if desc.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let desc = &*desc;
+        let id = desc.id.as_str().to_string();
+        if id.is_empty() || desc.markup.as_str().is_empty() {
+            error!("plugin registered a panel with no id or no markup");
+            return sys::RegisterStatus::Invalid;
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let mut panels = ctx
+            .world
+            .get_resource_or_insert_with(PluginPanels::default);
+        // A duplicate id would produce two panels fighting over one dock slot
+        // and one layout entry, which reads as a panel that will not stay put.
+        if panels.0.iter().any(|p| p.id == id) {
+            error!("two plugins registered a panel called `{id}` — the second is ignored");
+            return sys::RegisterStatus::Invalid;
+        }
+        panels.0.push(PluginPanel {
+            title: {
+                let t = desc.title.as_str();
+                if t.is_empty() { id.clone() } else { t.to_string() }
+            },
+            id,
+            icon: desc.icon.as_str().to_string(),
+            category: {
+                let c = desc.category.as_str();
+                if c.is_empty() { "Plugins".to_string() } else { c.to_string() }
+            },
+            markup: desc.markup.as_str().to_string(),
+            on_action: desc.on_action,
+            user: desc.user as usize,
+        });
+        sys::RegisterStatus::Ok
     })
 }
 
@@ -299,10 +358,16 @@ unsafe fn write_resource_bytes(world: &mut World, id: ComponentId, bytes: &[u8])
         None => world.spawn(bevy::ecs::resource::IsResource::new(id)).id(),
     };
     let mut owned = bytes.to_vec();
-    let ptr = owned.as_mut_ptr();
-    std::mem::forget(owned);
-    let owning = bevy::ptr::OwningPtr::new(std::ptr::NonNull::new_unchecked(ptr.cast()));
+    let owning = bevy::ptr::OwningPtr::new(std::ptr::NonNull::new_unchecked(
+        owned.as_mut_ptr().cast(),
+    ));
     world.entity_mut(entity).insert_by_id(id, owning);
+    // `owned` drops here, which is correct and NOT a double free. `insert_by_id`
+    // copies the value into column storage — it never adopts the caller's
+    // allocation — so the buffer is still ours to release. Forgetting it, as this
+    // did, leaked `size_of::<T>()` bytes on every single insert. Dropping a
+    // `Vec<u8>` runs no element destructors, so the moved-out value is not
+    // dropped twice either.
 }
 
 unsafe extern "C" fn component_id_by_name(
@@ -330,24 +395,48 @@ unsafe extern "C" fn component_id_by_name(
 
 unsafe extern "C" fn add_system(
     host: *mut sys::Host,
-    schedule: sys::Schedule,
-    entry: sys::SystemEntry,
-    query: *const sys::QueryDesc,
-    user: *mut c_void,
-) {
-    guard_host("add_system", (), || {
-    let ctx = &mut *(host as *mut HostCtx);
-    let query = &*query;
-    let terms = std::slice::from_raw_parts(query.terms, query.term_count);
+    desc: *const sys::SystemDesc,
+) -> sys::RegisterStatus {
+    // The fallback is `AccessConflict` rather than `Ok`, because the one thing
+    // that realistically panics in here is Bevy's B0001 check on a conflicting
+    // access pattern. Reporting `Ok` from the guard would put the plugin back in
+    // the state this return value exists to end: loaded, and silently short a
+    // system.
+    guard_host("add_system", sys::RegisterStatus::AccessConflict, || {
+        let ctx = &mut *(host as *mut HostCtx);
+        if desc.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let desc = &*desc;
+        if desc.queries.is_null() || desc.query_count == 0 || desc.flags != 0 {
+            error!("plugin sent a malformed SystemDesc");
+            return sys::RegisterStatus::Invalid;
+        }
 
-    let Some(plan) = build_plan(ctx.world, terms) else {
-        return;
-    };
-    let system = build_dispatcher(ctx.world, plan, entry, user as usize);
-    ctx.world
-        .resource_mut::<Schedules>()
-        .entry(bevy_label(schedule))
-        .add_systems(system);
+        let mut plans = Vec::with_capacity(desc.query_count);
+        for q in std::slice::from_raw_parts(desc.queries, desc.query_count) {
+            let terms = std::slice::from_raw_parts(q.terms, q.term_count);
+            let Some(plan) = build_plan(ctx.world, terms) else {
+                return sys::RegisterStatus::UnknownComponent;
+            };
+            plans.push(plan);
+        }
+
+        let resources = if desc.resources.is_null() {
+            &[][..]
+        } else {
+            std::slice::from_raw_parts(desc.resources, desc.resource_count)
+        };
+        let Some(res_plan) = build_plan(ctx.world, resources) else {
+            return sys::RegisterStatus::UnknownComponent;
+        };
+
+        let system = build_dispatcher(ctx.world, plans, res_plan, desc.entry, desc.user as usize);
+        ctx.world
+            .resource_mut::<Schedules>()
+            .entry(bevy_label(desc.schedule))
+            .add_systems(system);
+        sys::RegisterStatus::Ok
     })
 }
 
@@ -378,7 +467,18 @@ unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) 
             }
             sys::Primitive::Cylinder => Cylinder::new(s.x, s.y).into(),
             sys::Primitive::Capsule => Capsule3d::new(s.x, s.y).into(),
-            sys::Primitive::Torus => Torus::new(s.y, s.x).into(),
+            // The ABI documents `x` = major radius and `y` = minor radius, but
+            // `Torus::new` takes (inner, outer). Passing (y, x) made bevy derive
+            // major = (x+y)/2 and minor = (x-y)/2, so a plugin got a different
+            // torus from the one it asked for. inner = major - minor and
+            // outer = major + minor invert bevy's arithmetic exactly.
+            sys::Primitive::Torus => Torus::new(s.x - s.y, s.x + s.y).into(),
+            // A shape this build cannot make. A visible cube beats a missing
+            // mesh, which reads as "the spawn silently failed".
+            other => {
+                warn!("plugin asked for primitive {} which this build does not have", other.0);
+                Cuboid::new(s.x, s.y, s.z).into()
+            }
         };
         let Some(mut meshes) = ctx.world.get_resource_mut::<Assets<Mesh>>() else {
             warn!("[plugin] add_mesh ignored — this build has no renderer");
@@ -431,6 +531,49 @@ struct SinkImpl<'a, 'w, 's> {
     sink: sys::CommandSink,
     commands: &'a mut Commands<'w, 's>,
     queued: Vec<(sys::Command, Vec<u8>)>,
+}
+
+/// The host's interface table.
+///
+/// A `'static` pointer, so a caller outside the system dispatch — a panel
+/// action, say — can hand it to a plugin without owning one.
+pub fn interface() -> *const sys::Interface {
+    &IFACE
+}
+
+/// A command sink for a call that is not a system dispatch.
+///
+/// A plugin invoked from the editor's UI still needs to be able to spawn and
+/// despawn, and structural changes must go through Bevy's deferred queue there
+/// for the same reason they do in a system.
+pub struct HostCommandSink<'a, 'w, 's>(SinkImpl<'a, 'w, 's>);
+
+impl<'a, 'w, 's> HostCommandSink<'a, 'w, 's> {
+    pub fn new(commands: &'a mut Commands<'w, 's>) -> Self {
+        Self(SinkImpl {
+            sink: sys::CommandSink {
+                reserve_entity: sink_reserve,
+                push: sink_push,
+            },
+            commands,
+            queued: Vec::new(),
+        })
+    }
+
+    /// The pointer to hand across the ABI. Valid until this is dropped.
+    pub fn as_ptr(&mut self) -> *mut sys::CommandSink {
+        (&mut self.0 as *mut SinkImpl).cast()
+    }
+
+    /// Apply whatever the plugin queued.
+    ///
+    /// Takes `self` and applies through the borrow it already holds — asking the
+    /// caller for `&mut Commands` again would be a second mutable borrow of the
+    /// one this sink is built on.
+    pub fn drain(mut self) {
+        let queued = std::mem::take(&mut self.0.queued);
+        apply_queued(self.0.commands, queued);
+    }
 }
 
 unsafe extern "C" fn sink_reserve(sink: *mut sys::CommandSink) -> sys::Entity {
@@ -514,16 +657,76 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
                 });
             }
             sys::CommandKind::Insert => {
-                if !cmd.component.is_valid() || data.is_empty() {
+                // An invalid id here means the plugin inserted a component it
+                // never registered or queried. `component_id_of` reads the id
+                // the host assigned at init, and nothing assigns one for a type
+                // the plugin only ever inserts — so this was a silent no-op, the
+                // worst possible outcome for "my component never appears".
+                if !cmd.component.is_valid() {
+                    error!(
+                        "plugin queued an insert for a component it never registered —                          call `app.register_component::<T>()` in `build()` for every type                          you insert, including host types like `Transform`"
+                    );
+                    continue;
+                }
+                if data.is_empty() {
                     continue;
                 }
                 let id = ComponentId::new(cmd.component.0 as usize);
                 commands.queue(move |world: &mut World| {
+                    // The plugin sent bytes in ITS representation. For a
+                    // plugin-owned component that is also the host's, so the
+                    // bytes go in verbatim. For a host component it is the frozen
+                    // mirror, which is a different size AND a different field
+                    // layout — `sys::Transform` is 40 bytes with rotation at
+                    // offset 12, `bevy::Transform` is 48 with rotation at 16 —
+                    // so it must be marshalled exactly as the query write-back
+                    // marshals it.
+                    if Some(id) == world.component_id::<Transform>() {
+                        if data.len() != size_of::<sys::Transform>() {
+                            error!(
+                                "plugin sent {} bytes for a Transform; expected {}",
+                                data.len(),
+                                size_of::<sys::Transform>()
+                            );
+                            return;
+                        }
+                        // SAFETY: length checked, and `sys::Transform` is
+                        // `#[repr(C)]` plain-old-data.
+                        let mirror =
+                            unsafe { data.as_ptr().cast::<sys::Transform>().read_unaligned() };
+                        if let Ok(mut e) = world.get_entity_mut(entity) {
+                            e.insert(from_mirror(&mirror));
+                        }
+                        return;
+                    }
+
+                    // Size is checked against the LIVE layout, not against what
+                    // the plugin claimed. `insert_by_id` copies `layout.size()`
+                    // bytes from the pointer regardless of how many the plugin
+                    // actually sent, so a short buffer is a heap over-read that
+                    // lands in component storage and surfaces later as garbage in
+                    // an unrelated field.
+                    let Some(size) = world
+                        .components()
+                        .get_info(id)
+                        .map(|i| i.layout().size())
+                    else {
+                        error!("plugin inserted an unregistered component id {}", id.index());
+                        return;
+                    };
+                    if data.len() != size {
+                        error!(
+                            "plugin sent {} bytes for component id {}; it is {size} bytes here",
+                            data.len(),
+                            id.index()
+                        );
+                        return;
+                    }
+
                     let mut bytes = data;
                     // SAFETY: `bytes` is one instance of this component, copied
-                    // from the plugin at push time. `insert_by_id` moves the
-                    // value out, so the allocation is ours to release but its
-                    // contents must not be dropped again.
+                    // from the plugin at push time, and its length now matches
+                    // the registered layout.
                     unsafe {
                         let ptr = bevy::ptr::OwningPtr::new(
                             std::ptr::NonNull::new_unchecked(bytes.as_mut_ptr().cast()),
@@ -531,9 +734,32 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
                         if let Ok(mut e) = world.get_entity_mut(entity) {
                             e.insert_by_id(id, ptr);
                         }
-                        std::mem::forget(bytes);
                     }
+                    // `bytes` drops here — see `write_resource_bytes` for why
+                    // that is correct rather than a double free.
                 });
+            }
+            sys::CommandKind::SpawnBsn => {
+                let Ok(source) = String::from_utf8(data) else {
+                    error!("plugin sent BSN that is not valid UTF-8");
+                    continue;
+                };
+                commands.queue(move |world: &mut World| {
+                    let Some(spawner) = world.get_resource::<BsnSpawner>().copied() else {
+                        error!(
+                            "a plugin spawned BSN but nothing installed a `BsnSpawner` — \
+                             the tree was dropped"
+                        );
+                        return;
+                    };
+                    (spawner.0)(world, entity, &source);
+                });
+            }
+            // A command kind from a newer ABI. Dropping it is the only
+            // option: what the payload means is exactly the thing this build
+            // does not know.
+            other => {
+                warn!("plugin queued command kind {} which this build does not have", other.0);
             }
         }
     }
@@ -559,6 +785,41 @@ pub struct PendingRenderPass {
 /// Registered-but-not-yet-built plugin render passes.
 #[derive(Resource, Default)]
 pub struct PendingRenderPasses(pub Vec<PendingRenderPass>);
+
+/// An editor panel a plugin registered.
+///
+/// Held rather than acted on, because `renzora_plugin` must not depend on the
+/// editor — it has to stay publishable, and a plugin author's build should not
+/// pull in `bevy_ui`. `renzora_inspector` drains this and does the work.
+pub struct PluginPanel {
+    pub id: String,
+    pub title: String,
+    pub icon: String,
+    pub category: String,
+    /// The markup, copied out of plugin memory at registration.
+    pub markup: String,
+    pub on_action: Option<sys::PanelActionEntry>,
+    /// The plugin's opaque token, as `usize` so this stays `Send + Sync` — it is
+    /// handed straight back and never dereferenced here.
+    pub user: usize,
+}
+
+/// Every panel registered by every loaded plugin.
+#[derive(Resource, Default)]
+pub struct PluginPanels(pub Vec<PluginPanel>);
+
+/// Turns BSN source into entities.
+///
+/// A function pointer rather than a direct call because this crate publishes to
+/// crates.io and cannot take a path dependency on `renzora_bsn` — the same
+/// reason the render bridge lives in `renzora_postprocess`. Something that
+/// depends on both installs this; without it a `SpawnBsn` command is refused
+/// with a message rather than silently doing nothing.
+///
+/// `root` is a reserved entity the spawner must use for the first tree in the
+/// source, so the plugin's id is valid in the frame it asked for it.
+#[derive(Resource, Clone, Copy)]
+pub struct BsnSpawner(pub fn(&mut World, Entity, &str));
 
 /// A parameterised effect a plugin registered.
 ///
@@ -707,6 +968,8 @@ unsafe extern "C" fn log(_host: *mut sys::Host, level: sys::LogLevel, msg: sys::
         sys::LogLevel::Info => info!("[plugin] {msg}"),
         sys::LogLevel::Warn => warn!("[plugin] {msg}"),
         sys::LogLevel::Error => error!("[plugin] {msg}"),
+        // A level from a newer ABI. Logging it at all beats dropping it.
+        _ => info!("[plugin] {msg}"),
     }
 }
 
@@ -720,6 +983,18 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
     let mut plan = Vec::with_capacity(terms.len());
 
     for t in terms {
+        // Refuse the whole system rather than skip the term. An unknown access
+        // kind may have wanted a cell, and dropping it silently would shift
+        // every later cell index — the plugin would then read its own data at
+        // the wrong offsets, which presents as garbage values rather than as a
+        // version problem.
+        if !t.access.is_known() {
+            error!(
+                "plugin used access kind {} which this build does not have —                  refusing the system rather than mis-indexing its data",
+                t.access.0
+            );
+            return None;
+        }
         // `Or` brackets name nothing. They survive into the plan so the query
         // builder can still see the grouping, and are filtered out everywhere
         // that walks terms for data.
@@ -766,6 +1041,71 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
 /// Flat rather than nested because the ABI carries one term array: an `Or` is a
 /// bracketed run — `OrBegin`, branches separated by `OrNext`, `OrEnd` — so the
 /// filter grammar can grow without the boundary struct changing shape.
+/// Split the bracketed run that follows an `OrBegin` at `start` into its
+/// branches, returning them and the index just past the matching `OrEnd`.
+///
+/// Depth-tracked so a nested `Or` inside a branch does not close the outer
+/// group.
+fn split_or_branches(terms: &[TermPlan], start: usize) -> (Vec<Vec<TermPlan>>, usize) {
+    let mut branches: Vec<Vec<TermPlan>> = vec![Vec::new()];
+    let mut depth = 0usize;
+    let mut i = start;
+    while i < terms.len() {
+        let inner = terms[i].clone();
+        i += 1;
+        match inner.access {
+            sys::Access::OrEnd if depth == 0 => break,
+            sys::Access::OrNext if depth == 0 => branches.push(Vec::new()),
+            _ => {
+                if inner.access == sys::Access::OrBegin {
+                    depth += 1;
+                } else if inner.access == sys::Access::OrEnd {
+                    depth -= 1;
+                }
+                branches.last_mut().unwrap().push(inner);
+            }
+        }
+    }
+    (branches, i)
+}
+
+/// Apply a run of filter terms to `builder`.
+///
+/// Recursive, because an `Or` branch may itself contain an `Or` — `Or<T>` is a
+/// `QueryFilter` like any other, so `Or<(With<A>, Or<(With<B>, With<C>)>)>` is
+/// ordinary code to write. A flat walk drops the inner brackets while still
+/// emitting the inner `with_id`s, which silently turns the inner `Or` into an
+/// `AND` and matches strictly fewer entities than asked for.
+fn apply_filters(builder: &mut QueryBuilder, terms: &[TermPlan]) {
+    let mut i = 0;
+    while i < terms.len() {
+        let t = &terms[i];
+        i += 1;
+        match t.access {
+            sys::Access::With => {
+                builder.with_id(t.id);
+            }
+            sys::Access::Without => {
+                builder.without_id(t.id);
+            }
+            sys::Access::OrBegin => {
+                let (branches, next) = split_or_branches(terms, i);
+                i = next;
+                builder.or(|b| {
+                    for branch in &branches {
+                        b.and(|bb| apply_filters(bb, branch));
+                    }
+                });
+            }
+            // Only filters make sense inside a group: data access would have to
+            // be conditional on which branch matched, which no cell layout can
+            // express. An unknown kind lands here too, harmlessly — a group is
+            // pure filtering, so skipping a term only widens the match.
+            _ => {}
+        }
+    }
+}
+
 fn build_query(builder: &mut QueryBuilder<FilteredEntityMut>, terms: &[TermPlan]) {
     let mut i = 0;
     while i < terms.len() {
@@ -802,51 +1142,155 @@ fn build_query(builder: &mut QueryBuilder<FilteredEntityMut>, terms: &[TermPlan]
             // through their own param.
             sys::Access::ResRead | sys::Access::ResWrite => {}
             sys::Access::OrBegin => {
-                // Collect the branches up to the matching close, tracking depth so
-                // a nested `Or` inside a branch ends the right group.
-                let mut branches: Vec<Vec<TermPlan>> = vec![Vec::new()];
-                let mut depth = 0usize;
-                while i < terms.len() {
-                    let inner = terms[i].clone();
-                    i += 1;
-                    match inner.access {
-                        sys::Access::OrEnd if depth == 0 => break,
-                        sys::Access::OrNext if depth == 0 => branches.push(Vec::new()),
-                        _ => {
-                            if inner.access == sys::Access::OrBegin {
-                                depth += 1;
-                            } else if inner.access == sys::Access::OrEnd {
-                                depth -= 1;
-                            }
-                            branches.last_mut().unwrap().push(inner);
-                        }
-                    }
-                }
+                let (branches, next) = split_or_branches(terms, i);
+                i = next;
                 builder.or(|b| {
                     for branch in &branches {
                         // Each branch is one alternative, so its own terms must
                         // AND together before being OR-ed with the next.
-                        b.and(|bb| {
-                            for term in branch {
-                                match term.access {
-                                    sys::Access::With => {
-                                        bb.with_id(term.id);
-                                    }
-                                    sys::Access::Without => {
-                                        bb.without_id(term.id);
-                                    }
-                                    // Only filters make sense inside `Or`: data
-                                    // access would have to be conditional on which
-                                    // branch matched, which no cell layout can
-                                    // express.
-                                    _ => {}
-                                }
-                            }
-                        });
+                        b.and(|bb| apply_filters(bb, branch));
                     }
                 });
             }
             sys::Access::OrNext | sys::Access::OrEnd => {}
+            // An access kind from a newer ABI. Ignoring it is the only safe
+            // move — the term may have wanted a cell, and inventing one would
+            // shift every later cell index and hand the plugin the wrong data.
+            // `build_plan` refuses the system outright for the same reason;
+            // this arm exists so the match is total.
+            other => {
+                warn!("plugin used access kind {} which this build does not have", other.0);
+            }
+        }
+    }
+}
+
+/// One query's staging buffers, rebuilt each call.
+///
+/// Split out per query because a system now has as many of these as it declared
+/// `Query` parameters, and the plugin indexes cells within a view rather than
+/// across the whole call.
+struct ViewState {
+    /// The plan's data terms only — filters contribute no cell, so a cell index
+    /// is not a term index.
+    cells_plan: Vec<TermPlan>,
+    /// Column-major: `staging[term]` holds every row's bytes for that term.
+    staging: Vec<Vec<u8>>,
+    /// A copy taken before the plugin ran, for the terms it can write.
+    ///
+    /// Write-back used to be unconditional, which marked every matched component
+    /// changed every frame — that does not just cost time, it destroys change
+    /// detection for the whole engine, since `Changed<Transform>` anywhere
+    /// becomes true whenever any plugin merely *looks* at a transform.
+    baseline: Vec<Vec<u8>>,
+    /// Only optional terms can be absent, but tracking presence for every term
+    /// keeps row indexing uniform.
+    present: Vec<Vec<bool>>,
+    entities: Vec<sys::Entity>,
+    cells: Vec<*mut u8>,
+}
+
+impl ViewState {
+    fn new(cells_plan: Vec<TermPlan>) -> Self {
+        let n = cells_plan.len();
+        Self {
+            staging: cells_plan
+                .iter()
+                .map(|t| Vec::<u8>::with_capacity(t.cell_size * 64))
+                .collect(),
+            baseline: vec![Vec::new(); n],
+            present: vec![Vec::new(); n],
+            cells_plan,
+            entities: Vec::new(),
+            cells: Vec::new(),
+        }
+    }
+
+    fn is_writable(t: &TermPlan) -> bool {
+        matches!(
+            t.access,
+            sys::Access::Write | sys::Access::WriteOptional
+        )
+    }
+
+    /// Copy every matched row into the staging buffers.
+    fn gather(&mut self, q: &mut Query<FilteredEntityMut>) {
+        for e in q.iter() {
+            self.entities.push(sys::Entity(e.id().to_bits()));
+            for (i, t) in self.cells_plan.iter().enumerate() {
+                match read_cell(&e, t) {
+                    Some(bytes) => {
+                        self.staging[i].extend_from_slice(&bytes);
+                        self.present[i].push(true);
+                    }
+                    // Still reserve the row so offsets stay uniform; the plugin
+                    // sees a null cell and never reads these bytes.
+                    None => {
+                        let len = self.staging[i].len();
+                        self.staging[i].resize(len + t.cell_size, 0);
+                        self.present[i].push(false);
+                    }
+                }
+            }
+        }
+
+        for (i, t) in self.cells_plan.iter().enumerate() {
+            if Self::is_writable(t) {
+                self.baseline[i] = self.staging[i].clone();
+            }
+        }
+
+        // Row-major `entity_count × cell_count`, matching what `sys::QueryView`
+        // documents. `present` is indexed [term][row] while this walks
+        // row-major, so the range loop is the transpose, not something to
+        // iterate away.
+        self.cells
+            .reserve(self.entities.len() * self.cells_plan.len());
+        #[allow(clippy::needless_range_loop)]
+        for row in 0..self.entities.len() {
+            for (i, t) in self.cells_plan.iter().enumerate() {
+                self.cells.push(if self.present[i][row] {
+                    unsafe { self.staging[i].as_mut_ptr().add(row * t.cell_size) }
+                } else {
+                    std::ptr::null_mut()
+                });
+            }
+        }
+    }
+
+    fn view(&mut self) -> sys::QueryView {
+        sys::QueryView {
+            cells: self.cells.as_mut_ptr(),
+            entities: self.entities.as_ptr(),
+            entity_count: self.entities.len(),
+            cell_count: self.cells_plan.len(),
+        }
+    }
+
+    /// Push back only the cells the plugin declared `&mut` **and** actually
+    /// changed.
+    fn scatter(&self, q: &mut Query<FilteredEntityMut>) {
+        // Nothing writable: skip the iteration entirely rather than pay for a
+        // second pass over every matched entity.
+        if !self.cells_plan.iter().any(Self::is_writable) {
+            return;
+        }
+        for (row, mut e) in q.iter_mut().enumerate() {
+            for (i, t) in self.cells_plan.iter().enumerate() {
+                if !Self::is_writable(t) || !self.present[i][row] {
+                    continue;
+                }
+                let start = row * t.cell_size;
+                let end = start + t.cell_size;
+                // The comparison is what keeps change detection meaningful. It
+                // costs a memcmp per writable cell and saves a write plus a
+                // change-tick bump on every cell the plugin left alone, which is
+                // most of them in most frames.
+                if self.baseline[i][start..end] == self.staging[i][start..end] {
+                    continue;
+                }
+                write_cell(&mut e, t, &self.staging[i][start..end]);
+            }
         }
     }
 }
@@ -858,11 +1302,12 @@ fn build_query(builder: &mut QueryBuilder<FilteredEntityMut>, terms: &[TermPlan]
 /// it.
 fn build_dispatcher(
     world: &mut World,
-    plan: Vec<TermPlan>,
+    plans: Vec<Vec<TermPlan>>,
+    resource_plan: Vec<TermPlan>,
     entry: sys::SystemEntry,
     user: usize,
 ) -> impl System<In = (), Out = ()> {
-    let build_terms = plan.clone();
+    let build_terms = plans.clone();
     // Latched off after a panic. Without this a system that panics does so every
     // frame forever — thousands of identical errors, and the real first one
     // scrolls away. `AtomicBool` rather than `Cell` because a Bevy system must be
@@ -877,7 +1322,7 @@ fn build_dispatcher(
     // declared `add_read_by_id` for, and a refusal here is indistinguishable from
     // the resource not existing.
     let mut resource_ids: Vec<(ComponentId, bool)> = Vec::new();
-    for term in plan.iter().filter(|t| t.access.is_resource()) {
+    for term in resource_plan.iter().filter(|t| t.access.is_resource()) {
         let write = term.access == sys::Access::ResWrite;
         match resource_ids.iter_mut().find(|(id, _)| *id == term.id) {
             // Two params naming the same resource: the stronger access wins, so
@@ -886,15 +1331,25 @@ fn build_dispatcher(
             None => resource_ids.push((term.id, write)),
         }
     }
-    let resource_build = plan.clone();
+    let resource_build = resource_plan.clone();
 
-    // One builder per system param: the query and the resources need custom
-    // construction, `Res<Time>` does not. The tuple arity here MUST match the
+    // A `Vec` of builders produces a `Vec` of params, which is what lifts the
+    // old one-query-per-system limit: `SystemParamBuilder` tuples are fixed at
+    // compile time, so an arity-N tuple would have meant capping N and
+    // generating an impl per arity.
+    let query_builders: Vec<_> = build_terms
+        .into_iter()
+        .map(|terms| {
+            QueryParamBuilder::new(move |builder: &mut QueryBuilder<FilteredEntityMut>| {
+                build_query(builder, &terms);
+            })
+        })
+        .collect();
+
+    // One builder per system param. The tuple arity here MUST match the
     // closure's parameter count.
     (
-        QueryParamBuilder::new(move |builder: &mut QueryBuilder<FilteredEntityMut>| {
-            build_query(builder, &build_terms);
-        }),
+        query_builders,
         FilteredResourcesMutParamBuilder::new(move |builder| {
             for t in &resource_build {
                 match t.access {
@@ -917,7 +1372,7 @@ fn build_dispatcher(
         ParamBuilder::of::<Commands>(),
     )
         .build_state(world)
-        .build_system(move |mut q: Query<FilteredEntityMut>,
+        .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
                             mut resources: FilteredResourcesMut,
                             time: Res<Time>,
                             mut commands: Commands| {
@@ -931,56 +1386,30 @@ fn build_dispatcher(
             // a direct pointer is possible later — those layouts ARE the
             // plugin's own — but it needs a careful aliasing argument, so
             // correctness first.
-            // Filter terms contribute no cell, so the plugin indexes by
-            // data-term position. Collapse the plan to just those, once.
-            let cells_plan: Vec<&TermPlan> =
-                plan.iter().filter(|t| t.access.has_cell()).collect();
-
-            let mut staging: Vec<Vec<u8>> = cells_plan
+            let mut states: Vec<ViewState> = plans
                 .iter()
-                .map(|t| Vec::<u8>::with_capacity(t.cell_size * 64))
+                .map(|plan| {
+                    ViewState::new(
+                        plan.iter()
+                            .filter(|t| t.access.has_cell())
+                            .cloned()
+                            .collect(),
+                    )
+                })
                 .collect();
-            // Only optional terms can be absent, but tracking presence for every
-            // term keeps the row indexing uniform — the alternative is a second
-            // sparse index and an off-by-one waiting to happen.
-            let mut present: Vec<Vec<bool>> = vec![Vec::new(); cells_plan.len()];
-            let mut entities: Vec<sys::Entity> = Vec::new();
 
-            for e in q.iter() {
-                entities.push(sys::Entity(e.id().to_bits()));
-                for (i, t) in cells_plan.iter().enumerate() {
-                    match read_cell(&e, t) {
-                        Some(bytes) => {
-                            staging[i].extend_from_slice(&bytes);
-                            present[i].push(true);
-                        }
-                        // Still reserve the row so offsets stay uniform; the
-                        // plugin sees a null cell and never reads these bytes.
-                        None => {
-                            let len = staging[i].len();
-                            staging[i].resize(len + t.cell_size, 0);
-                            present[i].push(false);
-                        }
-                    }
-                }
+            for (state, q) in states.iter_mut().zip(queries.iter_mut()) {
+                state.gather(q);
             }
 
-            if entities.is_empty() {
+            // A system with queries but no rows has nothing to say. One with no
+            // queries at all — `fn(Commands)` — still runs, because its whole
+            // job is the side effect.
+            if !states.is_empty() && states.iter().all(|s| s.entities.is_empty()) {
                 return;
             }
 
-            // Cells are row-major `entity_count × term_count`, matching what
-            // `sys::SystemCall` documents.
-            let mut cells: Vec<*mut u8> = Vec::with_capacity(entities.len() * cells_plan.len());
-            for row in 0..entities.len() {
-                for (i, t) in cells_plan.iter().enumerate() {
-                    cells.push(if present[i][row] {
-                        unsafe { staging[i].as_mut_ptr().add(row * t.cell_size) }
-                    } else {
-                        std::ptr::null_mut()
-                    });
-                }
-            }
+            let views: Vec<sys::QueryView> = states.iter_mut().map(ViewState::view).collect();
 
             // Resolved once per call rather than per access: a system may read
             // the same resource from several parameters, and each `get_mut_by_id`
@@ -1016,10 +1445,8 @@ fn build_dispatcher(
                 queued: Vec::new(),
             };
             let call = sys::SystemCall {
-                cells: cells.as_mut_ptr(),
-                entities: entities.as_ptr(),
-                entity_count: entities.len(),
-                cell_count: cells_plan.len(),
+                views: views.as_ptr(),
+                view_count: views.len(),
                 frame: sys::FrameCtx {
                     delta_secs: time.delta_secs(),
                     elapsed_secs: time.elapsed_secs(),
@@ -1052,19 +1479,8 @@ fn build_dispatcher(
 
             apply_queued(&mut commands, queued);
 
-            // Write back only the terms the plugin declared `&mut`.
-            for (row, mut e) in q.iter_mut().enumerate() {
-                for (i, t) in cells_plan.iter().enumerate() {
-                    let writable = matches!(
-                        t.access,
-                        sys::Access::Write | sys::Access::WriteOptional
-                    );
-                    if !writable || !present[i][row] {
-                        continue;
-                    }
-                    let start = row * t.cell_size;
-                    write_cell(&mut e, t, &staging[i][start..start + t.cell_size]);
-                }
+            for (state, q) in states.iter().zip(queries.iter_mut()) {
+                state.scatter(q);
             }
         })
 }
@@ -1239,14 +1655,24 @@ fn lookup_component(world: &World, name: &str) -> Option<ComponentId> {
 }
 
 fn bevy_label(s: sys::Schedule) -> impl ScheduleLabel {
-    // `sys::Schedule` is a closed `#[repr(u32)]` set precisely so this mapping
-    // is total and the plugin cannot name a schedule we do not run.
     match s {
         sys::Schedule::First => First.intern(),
         sys::Schedule::PreUpdate => PreUpdate.intern(),
         sys::Schedule::Update => Update.intern(),
         sys::Schedule::PostUpdate => PostUpdate.intern(),
         sys::Schedule::Last => Last.intern(),
+        // A schedule this build does not run, from a plugin built against a
+        // newer ABI. `Update` is the least surprising home: the system runs at
+        // the wrong time rather than not at all, and the warning says so.
+        // Silently dropping it would present as "my plugin loaded and does
+        // nothing", which is the hardest failure to diagnose.
+        other => {
+            warn!(
+                "plugin asked for schedule {} which this build does not have —                  running it in Update instead",
+                other.0
+            );
+            Update.intern()
+        }
     }
 }
 

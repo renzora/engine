@@ -67,6 +67,24 @@ fn write_f32(world: &mut World, cid: ComponentId, offset: usize, v: f32) {
     }
 }
 
+/// A `bool` is ONE byte, and reading it as an `i32` reads three bytes that are
+/// not part of the field. `struct Flags { a: bool, b: bool }` is two bytes with
+/// align 1, so a 4-byte write at offset 0 scribbles over `b` and two bytes of
+/// whatever the allocator put next — which surfaces as an unrelated component
+/// changing when you toggle a checkbox.
+fn read_bool(world: &World, cid: ComponentId, offset: usize) -> bool {
+    world
+        .get_resource_by_id(cid)
+        .map(|p| unsafe { p.as_ptr().add(offset).read() != 0 })
+        .unwrap_or(false)
+}
+
+fn write_bool(world: &mut World, cid: ComponentId, offset: usize, v: bool) {
+    if let Some(mut ptr) = world.get_resource_mut_by_id(cid) {
+        unsafe { ptr.as_mut().as_ptr().add(offset).write(v as u8) };
+    }
+}
+
 fn read_i32(world: &World, cid: ComponentId, offset: usize) -> i32 {
     world
         .get_resource_by_id(cid)
@@ -119,7 +137,7 @@ fn draw_resource(
 
     for (i, (name, kind, offset, seed)) in fields.iter().enumerate() {
         let (offset, seed) = (*offset, *seed);
-        let control = match kind {
+        let control = match *kind {
             FieldKind::F32 => {
                 let e = renzora_ember::widgets::drag_value(
                     commands,
@@ -159,13 +177,14 @@ fn draw_resource(
                 renzora_ember::reactive::bind_2way(
                     commands,
                     e,
-                    move |w: &World| read_i32(w, cid, offset) != 0,
-                    move |w: &mut World, v: &bool| write_i32(w, cid, offset, *v as i32),
+                    move |w: &World| read_bool(w, cid, offset),
+                    move |w: &mut World, v: &bool| write_bool(w, cid, offset, *v),
                 );
                 e
             }
-            // Vec3/Quat want three or four sub-rows. Skipped rather than drawn
-            // wrong, so a resource carrying one is still usable for its scalars.
+            // Vec3/Quat want three or four sub-rows, and a kind from a newer
+            // ABI is one this build cannot draw at all. Both are skipped rather
+            // than drawn wrong, so the rest of the resource stays usable.
             _ => continue,
         };
         let row = renzora_ember::inspector::inspector_row(commands, &fonts.ui, name, control);
@@ -227,7 +246,8 @@ fn fill(world: &mut World) {
                 .into_iter()
                 .map(|(n, kind, offset)| {
                     let v = match kind {
-                        FieldKind::I32 | FieldKind::Bool => read_i32(world, cid, offset) as f32,
+                        FieldKind::Bool => read_bool(world, cid, offset) as i32 as f32,
+                        FieldKind::I32 => read_i32(world, cid, offset) as f32,
                         _ => read_f32(world, cid, offset),
                     };
                     (n, kind, offset, v)

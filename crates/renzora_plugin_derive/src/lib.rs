@@ -7,8 +7,119 @@
 //! Never depend on this crate directly — `renzora_plugin` re-exports the derive.
 
 use proc_macro::TokenStream;
+use proc_macro2::{Delimiter, Spacing, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
 use syn::{Data, DeriveInput, Fields, Type, parse_macro_input};
+
+/// Write BSN source as Rust tokens rather than as a string literal.
+///
+/// ```ignore
+/// commands.spawn_scene(bsn! {
+///     #Panel
+///     Node { flex_direction: Column, row_gap: Px(8.0) }
+///     BackgroundColor(Srgba(0.1, 0.1, 0.12, 1.0))
+///     Children [
+///         Text("Grid"),
+///         ( Button Node { padding: Axes(Px(8.0), Px(3.0)) }
+///           Children [ Text("Spawn") ] ),
+///     ]
+/// });
+/// ```
+///
+/// The syntax is `bevy_scene`'s: components are space-separated, `#Name` names
+/// the entity, and children hang off the relationship that owns them —
+/// `Children [ … ]` — rather than off bare brackets. Parentheses group a
+/// multi-component entity inside a list, where they are what says which
+/// components belong to which entity.
+///
+/// The expansion is a `&'static str` — the same text you would have written by
+/// hand, without the `r#"…"#`. What that buys is real tokens: an editor
+/// highlights and indents it, unbalanced brackets are a compile error rather
+/// than a runtime parse failure, and there is no escaping to get wrong.
+///
+/// Component *names* are still resolved at run time, by the host, against both
+/// the type registry and the plugin schema registry. That is deliberate and is
+/// what lets one syntax construct `Node` and your own components alike — but it
+/// does mean a misspelled component name is a logged warning, not a compile
+/// error. Bevy's own `bsn!` can check them because it expands to code that
+/// constructs the types; this one cannot, because the types are on the other
+/// side of an ABI boundary.
+#[proc_macro]
+pub fn bsn(input: TokenStream) -> TokenStream {
+    let text = render(TokenStream2::from(input));
+    // A `Scene`, not a bare `&str`, so the call site reads
+    // `commands.spawn_scene(bsn! { … })` exactly as it does in Bevy.
+    quote!(::renzora_plugin::ecs::Scene(#text)).into()
+}
+
+/// [`bsn!`] for a comma-separated list of entities.
+#[proc_macro]
+pub fn bsn_list(input: TokenStream) -> TokenStream {
+    let text = render(TokenStream2::from(input));
+    quote!(::renzora_plugin::ecs::Scene(#text)).into()
+}
+
+/// Reconstruct source text from tokens.
+///
+/// `TokenStream::to_string` would be shorter, but it separates every token with
+/// a space — `-2.5` comes back as `- 2.5`, which RON then refuses to read as a
+/// negative number. So spacing is decided here: joint punctuation stays joined,
+/// and a space is emitted only where two tokens would otherwise merge into one.
+fn render(stream: TokenStream2) -> String {
+    let mut out = String::new();
+    render_into(stream, &mut out);
+    out
+}
+
+fn render_into(stream: TokenStream2, out: &mut String) {
+    let mut prev_word = false;
+    for tree in stream {
+        match tree {
+            TokenTree::Group(g) => {
+                let (open, close) = match g.delimiter() {
+                    Delimiter::Parenthesis => ("(", ")"),
+                    Delimiter::Brace => ("{", "}"),
+                    Delimiter::Bracket => ("[", "]"),
+                    // `None`-delimited groups come from macro expansion and have
+                    // no source spelling; splice their contents.
+                    Delimiter::None => ("", ""),
+                };
+                out.push_str(open);
+                render_into(g.stream(), out);
+                out.push_str(close);
+                // A component's body is followed by the next component, and
+                // `Transform{..}PointLight{..}` would read as one name.
+                prev_word = true;
+            }
+            TokenTree::Ident(i) => {
+                // Two idents in a row are separate components — `Button Node` —
+                // and running them together would make one name.
+                if prev_word {
+                    out.push(' ');
+                }
+                out.push_str(&i.to_string());
+                prev_word = true;
+            }
+            TokenTree::Literal(l) => {
+                if prev_word {
+                    out.push(' ');
+                }
+                out.push_str(&l.to_string());
+                prev_word = true;
+            }
+            TokenTree::Punct(p) => {
+                out.push(p.as_char());
+                // `Joint` means the next token was adjacent in the source, which
+                // is how `::` and `->` survive as one operator.
+                prev_word = p.spacing() == Spacing::Alone && p.as_char() == ',';
+                if prev_word {
+                    out.push(' ');
+                    prev_word = false;
+                }
+            }
+        }
+    }
+}
 
 /// Map a Rust field type to the closed set of kinds the editor can draw.
 ///

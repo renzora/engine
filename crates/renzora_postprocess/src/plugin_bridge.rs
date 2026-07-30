@@ -179,6 +179,17 @@ fn phase(p: sys::RenderPhase) -> RenderPhase {
         sys::RenderPhase::HdrPost => RenderPhase::HdrPost,
         sys::RenderPhase::LdrPost => RenderPhase::LdrPost,
         sys::RenderPhase::Overlay => RenderPhase::Overlay,
+        // A phase from a newer ABI. `LdrPost` is the safest home — it runs after
+        // tonemapping, where an effect written for a phase this build lacks is
+        // at worst in the wrong colour space rather than sampling a target that
+        // does not exist yet.
+        other => {
+            bevy::log::warn!(
+                "plugin asked for render phase {} which this build does not have —                  running it in LdrPost instead",
+                other.0
+            );
+            RenderPhase::LdrPost
+        }
     }
 }
 

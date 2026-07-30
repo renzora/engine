@@ -46,9 +46,18 @@ impl Plugin for InspectorPanelPlugin {
             |world: &mut World| plugin_fields::register_plugin_component_sections(world),
         );
     }
+
+    /// Panels need `&mut App` — `register_panel_content` is an `App` extension —
+    /// so they cannot wait for a startup system the way component sections do.
+    /// `finish` runs after every plugin's `build`, including the loader's, which
+    /// is the one hook that satisfies both constraints.
+    fn finish(&self, app: &mut App) {
+        plugin_panels::register_plugin_panels(app);
+    }
 }
 
 renzora::add!(InspectorPanelPlugin, Editor);
 
 pub mod plugin_fields;
+pub mod plugin_panels;
 pub mod plugin_resources;

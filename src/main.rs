@@ -113,7 +113,11 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     // claims libraries exporting `renzora_plugin_init`, and the loader above
     // only claims those exporting `plugin_create`. Each ignores the other's, so
     // the two mechanisms coexist during the migration with no staging changes.
-    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin);
+    //
+    // `is_editor` is the scope gate: a C-ABI plugin declares Runtime or Editor via
+    // `renzora_plugin_scope`, read BEFORE its init is called, so an editor-only
+    // panel plugin never activates in a shipped game and vice versa.
+    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin { is_editor });
     // Installs any render passes those plugins registered. Separate plugin
     // because the work happens in `finish`, after every `build` has run and the
     // render sub-app exists.

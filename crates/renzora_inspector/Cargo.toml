@@ -19,6 +19,8 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 # host instead. Dependency points this way on purpose — `renzora_plugin` must
 # stay publishable, so it never depends on engine crates.
 renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
+# Plugin panels are described in BSN and spawned by the same parser scenes use.
+renzora_bsn = { path = "../renzora_bsn" }
 
 [lints]
 workspace = true

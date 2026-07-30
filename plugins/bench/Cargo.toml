@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "bench"
+version = "0.1.0"
+edition = "2021"
+description = "A spawn workbench. Demonstrates an editor panel built from markup: bound sliders and toggles, live value readouts, and buttons that call back into the plugin."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"

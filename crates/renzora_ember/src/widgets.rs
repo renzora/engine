@@ -119,6 +119,7 @@ mod search;
 mod sortable;
 mod spinner;
 mod submenu;
+mod scene;
 mod timeline;
 mod timeline_view;
 
@@ -225,6 +226,10 @@ pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
 pub use submenu::{menu_submenu, menu_submenu_styled};
+pub use scene::{
+    EmberButtonWidget, EmberCheckbox, EmberClip, EmberDropdown, EmberInput, EmberProgress,
+    EmberSliderWidget, EmberTable, EmberTabs, EmberTimeline, EmberToggle, EmberTrack,
+};
 pub use timeline::*;
 pub use timeline_view::{timeline_view, TimelineHandle, TimelineView, LANE_INSET};
 
@@ -235,6 +240,9 @@ pub struct WidgetsPlugin;
 
 impl Plugin for WidgetsPlugin {
     fn build(&self, app: &mut App) {
+        // Component front-ends for the builder widgets, so BSN and scenes can
+        // name a widget rather than having to call a function.
+        scene::register_types(app);
         app.init_resource::<popup::PointerOverOverlay>();
         app.init_resource::<drag_value::WheelOverDragValue>();
         app.init_resource::<drag_value::WheelGesture>();

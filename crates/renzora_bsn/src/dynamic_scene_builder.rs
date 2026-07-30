@@ -1,11 +1,14 @@
 use crate::reflect_utils::clone_reflect_value;
-use crate::{DynamicEntity, DynamicScene, SceneFilter};
+use crate::{
+    DynamicEntity, DynamicScene, OrphanedRawComponents, OrphanedRawScene, RawComponent,
+    RawComponentRegistry, RawSchema, SceneFilter,
+};
 use bevy::ecs::{
     component::{Component, ComponentId},
     prelude::Entity,
     reflect::{AppTypeRegistry, ReflectComponent},
     resource::Resource,
-    world::World,
+    world::{EntityRef, World},
 };
 use bevy::prelude::default;
 use bevy::reflect::PartialReflect;
@@ -58,6 +61,7 @@ use std::collections::BTreeMap;
 pub struct DynamicSceneBuilder<'w> {
     extracted_resources: BTreeMap<ComponentId, Box<dyn PartialReflect>>,
     extracted_scene: BTreeMap<Entity, DynamicEntity>,
+    extracted_raw_resources: Vec<RawComponent>,
     component_filter: SceneFilter,
     resource_filter: SceneFilter,
     original_world: &'w World,
@@ -69,6 +73,7 @@ impl<'w> DynamicSceneBuilder<'w> {
         Self {
             extracted_resources: default(),
             extracted_scene: default(),
+            extracted_raw_resources: Vec::new(),
             component_filter: SceneFilter::default(),
             resource_filter: SceneFilter::default(),
             original_world: world,
@@ -207,9 +212,46 @@ impl<'w> DynamicSceneBuilder<'w> {
     /// [`Self::remove_empty_entities`] before building the scene.
     #[must_use]
     pub fn build(self) -> DynamicScene {
+        let entities: Vec<DynamicEntity> = self.extracted_scene.into_values().collect();
+
+        // One schema per distinct raw type actually used, not one per instance:
+        // the schema is the expensive part of the payload and the bytes are the
+        // cheap part, so a scene with 500 plugin components carries one schema
+        // and 500 short hex lines.
+        let mut used: Vec<&str> = entities
+            .iter()
+            .flat_map(|e| e.raw.iter())
+            .chain(self.extracted_raw_resources.iter())
+            .map(|r| r.type_path.as_str())
+            .collect();
+        used.sort_unstable();
+        used.dedup();
+
+        let live = self.original_world.get_resource::<RawComponentRegistry>();
+        let orphaned = self.original_world.get_resource::<OrphanedRawScene>();
+        let mut raw_schemas: Vec<RawSchema> = Vec::new();
+        for path in used {
+            // Prefer the live layout; fall back to the schema the scene was
+            // loaded with, which is the only description available for a type
+            // whose plugin is not present this session.
+            if let Some(info) = live.and_then(|r| r.0.by_path.get(path)) {
+                raw_schemas.push(RawSchema {
+                    type_path: info.type_path.clone(),
+                    size: info.size,
+                    fields: info.fields.clone(),
+                });
+            } else if let Some(s) = orphaned
+                .and_then(|o| o.schemas.iter().find(|s| s.type_path == path))
+            {
+                raw_schemas.push(s.clone());
+            }
+        }
+
         DynamicScene {
             resources: self.extracted_resources.into_values().collect(),
-            entities: self.extracted_scene.into_values().collect(),
+            entities,
+            raw_resources: self.extracted_raw_resources,
+            raw_schemas,
         }
     }
 
@@ -226,8 +268,11 @@ impl<'w> DynamicSceneBuilder<'w> {
     /// These were likely created because none of their components were present in the provided type registry upon extraction.
     #[must_use]
     pub fn remove_empty_entities(mut self) -> Self {
+        // An entity whose only content is a plugin component is not empty. The
+        // reflected list alone would call it empty and drop it, taking the raw
+        // component with it.
         self.extracted_scene
-            .retain(|_, entity| !entity.components.is_empty());
+            .retain(|_, entity| !(entity.components.is_empty() && entity.raw.is_empty()));
 
         self
     }
@@ -277,16 +322,30 @@ impl<'w> DynamicSceneBuilder<'w> {
             let mut entry = DynamicEntity {
                 entity,
                 components: Vec::new(),
+                raw: Vec::new(),
             };
 
             let original_entity = self.original_world.entity(entity);
             for &component_id in original_entity.archetype().components().iter() {
                 let mut extract_and_push = || {
-                    let type_id = self
+                    let type_id = match self
                         .original_world
                         .components()
-                        .get_info(component_id)?
-                        .type_id()?;
+                        .get_info(component_id)
+                        .and_then(|i| i.type_id())
+                    {
+                        Some(id) => id,
+                        // No `TypeId` means the component was registered by
+                        // layout rather than from a Rust type — the only way a
+                        // C-ABI plugin component can be registered, since
+                        // `ComponentDescriptor::new_with_layout` hard-codes
+                        // `type_id: None`. This early return is where every
+                        // plugin component used to disappear on save.
+                        None => {
+                            self.extract_raw(&mut entry, original_entity, component_id);
+                            return None;
+                        }
+                    };
 
                     let is_denied = self.component_filter.is_denied_by_id(type_id);
 
@@ -309,9 +368,104 @@ impl<'w> DynamicSceneBuilder<'w> {
                 };
                 extract_and_push();
             }
+
+            // Blobs carried over from a load that had no plugin for them. The
+            // reflected pass above skipped them because `OrphanedRawComponents`
+            // is deliberately not `register_type`'d, so there is no double-emit.
+            if let Some(orphans) = original_entity.get::<OrphanedRawComponents>() {
+                for blob in &orphans.0 {
+                    if !entry.raw.iter().any(|r| r.type_path == blob.type_path) {
+                        entry.raw.push(blob.clone());
+                    }
+                }
+            }
+
+            // `Archetype::components()` yields insertion order, which is not
+            // stable between sessions — without this, saving an unchanged scene
+            // twice produces two different files.
+            entry.raw.sort_by(|a, b| a.type_path.cmp(&b.type_path));
+
             self.extracted_scene.insert(entity, entry);
         }
 
+        self
+    }
+
+    /// Copy one layout-registered component out of storage, by name.
+    fn extract_raw(
+        &self,
+        entry: &mut DynamicEntity,
+        original_entity: EntityRef,
+        component_id: ComponentId,
+    ) {
+        let Some(registry) = self.original_world.get_resource::<RawComponentRegistry>() else {
+            return;
+        };
+        let Some(path) = registry.0.by_component.get(&component_id) else {
+            return;
+        };
+        let Some(info) = registry.0.by_path.get(path) else {
+            return;
+        };
+        // A resource's bytes come from the resource pass. It lives on a hidden
+        // entity, and that entity is a real one an `extract_entities` sweep will
+        // walk right past.
+        if info.transient || info.is_resource {
+            return;
+        }
+        let Ok(ptr) = original_entity.get_by_id(component_id) else {
+            return;
+        };
+        // SAFETY: the component is present on this entity, and `info.size` is
+        // the live layout size read from `Components`, not the plugin's claim.
+        let bytes =
+            unsafe { core::slice::from_raw_parts(ptr.as_ptr(), info.size) }.to_vec();
+        entry.raw.push(RawComponent {
+            type_path: info.type_path.clone(),
+            bytes,
+        });
+    }
+
+    /// Extract plugin-owned resources.
+    ///
+    /// Opt-in and separate from [`Self::extract_resources`] because the callers
+    /// differ: a full scene save wants them, but a delete-undo snapshot or a
+    /// prefab is a *subtree* and must not carry globals along with it. The
+    /// existing `deny_all_resources()` guard cannot help — it filters by
+    /// `TypeId`, which these do not have.
+    #[must_use]
+    pub fn extract_raw_resources(mut self) -> Self {
+        let Some(registry) = self.original_world.get_resource::<RawComponentRegistry>() else {
+            return self;
+        };
+        let registry = registry.clone();
+        for info in registry.0.by_path.values() {
+            if !info.is_resource || info.transient {
+                continue;
+            }
+            let Some(ptr) = self.original_world.get_resource_by_id(info.component_id) else {
+                continue;
+            };
+            // SAFETY: `info.size` is this world's layout size for the resource.
+            let bytes = unsafe { core::slice::from_raw_parts(ptr.as_ptr(), info.size) }.to_vec();
+            self.extracted_raw_resources.push(RawComponent {
+                type_path: info.type_path.clone(),
+                bytes,
+            });
+        }
+        if let Some(orphans) = self.original_world.get_resource::<OrphanedRawScene>() {
+            for blob in &orphans.resources {
+                if !self
+                    .extracted_raw_resources
+                    .iter()
+                    .any(|r| r.type_path == blob.type_path)
+                {
+                    self.extracted_raw_resources.push(blob.clone());
+                }
+            }
+        }
+        self.extracted_raw_resources
+            .sort_by(|a, b| a.type_path.cmp(&b.type_path));
         self
     }
 

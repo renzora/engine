@@ -39,13 +39,17 @@ pub enum LoadOutcome {
     VersionTooOld,
     /// The plugin's own init returned a failure, or the library would not open.
     Failed(String),
+    /// The plugin belongs in the other binary. Not an error — an editor plugin
+    /// sitting in a game's `plugins/` directory is expected when both were
+    /// staged from one build.
+    WrongScope(sys::PluginScope),
 }
 
 /// Load every `renzora_plugin` cdylib in `dir`.
 ///
 /// Missing or unreadable directories are not an error — a build with no plugins
 /// is normal.
-pub fn load_dir(world: &mut World, dir: &Path) -> Vec<(PathBuf, LoadOutcome)> {
+pub fn load_dir(world: &mut World, dir: &Path, is_editor: bool) -> Vec<(PathBuf, LoadOutcome)> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -57,7 +61,7 @@ pub fn load_dir(world: &mut World, dir: &Path) -> Vec<(PathBuf, LoadOutcome)> {
         if path.extension().and_then(|e| e.to_str()) != Some(ext) {
             continue;
         }
-        let outcome = load_one(world, &path);
+        let outcome = load_one(world, &path, is_editor);
         results.push((path, outcome));
     }
     results
@@ -83,7 +87,7 @@ fn is_proc_macro_dylib(path: &Path) -> bool {
     bytes.windows(NEEDLE.len()).any(|w| w == NEEDLE)
 }
 
-fn load_one(world: &mut World, path: &Path) -> LoadOutcome {
+fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
     if is_proc_macro_dylib(path) {
         return LoadOutcome::NotAPlugin;
     }
@@ -102,6 +106,24 @@ fn load_one(world: &mut World, path: &Path) -> LoadOutcome {
             Err(_) => return LoadOutcome::NotAPlugin,
         };
     let init = *init;
+
+    // Read the scope BEFORE calling init, so a plugin for the other binary never
+    // gets the chance to register a system, a component or a panel. Checking
+    // afterwards would mean unwinding registrations that already happened.
+    let scope = match unsafe { library.get::<sys::ScopeEntry>(sys::SCOPE_SYMBOL.as_bytes()) } {
+        Ok(f) => unsafe { f() },
+        // No declaration means Runtime, matching `renzora::add!`'s default.
+        Err(_) => sys::PluginScope::Runtime,
+    };
+    if !scope.is_known() {
+        return LoadOutcome::Failed(format!(
+            "declares scope {} which this build does not have",
+            scope.0
+        ));
+    }
+    if scope == sys::PluginScope::Editor && !is_editor {
+        return LoadOutcome::WrongScope(scope);
+    }
 
     match init_plugin(world, init) {
         sys::InitResult::Ok => {
@@ -147,7 +169,11 @@ fn register_exposed_components(world: &mut World) {
 /// Runs at `build` time rather than in a startup system because plugins insert
 /// systems into schedules, and doing that before the first frame avoids any
 /// question about mutating a schedule that is mid-run.
-pub struct RenzoraPluginHostPlugin;
+pub struct RenzoraPluginHostPlugin {
+    /// Whether this binary is the editor. Editor-scope plugins load only when
+    /// it is; runtime-scope plugins load either way.
+    pub is_editor: bool,
+}
 
 impl Plugin for RenzoraPluginHostPlugin {
     fn build(&self, app: &mut App) {
@@ -158,7 +184,7 @@ impl Plugin for RenzoraPluginHostPlugin {
 
         register_exposed_components(app.world_mut());
 
-        for (path, outcome) in load_dir(app.world_mut(), &dir) {
+        for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor) {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             match outcome {
                 LoadOutcome::Loaded => info!("[plugin] loaded {name}"),
@@ -169,6 +195,13 @@ impl Plugin for RenzoraPluginHostPlugin {
                     sys::VERSION_MAJOR,
                     sys::VERSION_MINOR
                 ),
+                // Debug, not warn: a game staged alongside the editor sees every
+                // editor plugin in its `plugins/` directory, and saying so at
+                // warn level once per plugin per launch is noise about something
+                // working correctly.
+                LoadOutcome::WrongScope(scope) => {
+                    debug!("[plugin] skipping {name} — {scope:?} scope")
+                }
                 LoadOutcome::Failed(why) => error!("[plugin] {name} failed: {why}"),
             }
         }

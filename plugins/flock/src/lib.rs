@@ -96,6 +96,22 @@ fn flock(
     }
 }
 
+/// The panel, as markup.
+///
+/// `-> Type.field` binds straight to a field of the resource — the editor
+/// already knows its layout, so dragging a slider never calls into this plugin.
+/// `-> name` on a button is the only thing that does.
+fn on_action(action: Action) {
+    // No captures — the handler is a plain fn, same rule a system follows, and
+    // for the same reason: the host has nowhere to put a capture. The name is
+    // the `action` number the button's `PanelActionId` carried.
+    match action.name() {
+        "1" => info("flock: reset"),
+        "2" => info("flock: calm"),
+        other => warn(&format!("flock: unknown action {other}")),
+    }
+}
+
 pub struct FlockPlugin;
 
 impl Plugin for FlockPlugin {
@@ -103,6 +119,34 @@ impl Plugin for FlockPlugin {
         app.init_resource::<FlockSettings>()
             .register_component::<Boid>()
             .register_component::<Leader>()
+            .add_panel(
+                Panel::new(
+                    "flock",
+                    "Flock",
+                    bsn! {
+                        // `UiRect` is a struct, not an enum — there is no
+                        // `All(..)` variant, and naming one silently drops the
+                        // padding rather than failing.
+                        Node {
+                            flex_direction: Column,
+                            row_gap: Px(6.0),
+                            padding: { left: Px(4.0), right: Px(4.0), top: Px(4.0), bottom: Px(4.0) },
+                        }
+                        Children [
+                            Text("Flocking"),
+                            ( Node { flex_direction: Row, column_gap: Px(6.0) }
+                              Children [
+                                ( EmberButtonWidget { label: "Reset" }
+                                  PanelActionId { panel: 0, action: 1 } ),
+                                ( EmberButtonWidget { label: "Calm" }
+                                  PanelActionId { panel: 0, action: 2 } ),
+                              ] ),
+                        ]
+                    },
+                )
+                .icon("bird")
+                .on_action(on_action),
+            )
             .add_systems(Update, breathe)
             .add_systems(Update, flock);
     }

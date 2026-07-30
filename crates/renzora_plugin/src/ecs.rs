@@ -428,9 +428,13 @@ pub unsafe trait QueryData {
     const CELLS: usize;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>);
     /// # Safety
-    /// `cells` points at this item's first cell in the row `row`.
+    /// `cells` points at this item's first cell in the row `row`, and `view` is
+    /// live. `'a` is unbounded: the item borrows the host's staging buffers,
+    /// which outlive the call but are not reachable from any argument, so
+    /// nothing in the types can express the real bound. The caller is
+    /// responsible for not letting an item escape the system body.
     unsafe fn fetch<'a>(
-        call: &'a sys::SystemCall,
+        view: *const sys::QueryView,
         row: usize,
         cells: *mut *mut u8,
     ) -> Self::Item<'a>;
@@ -447,14 +451,14 @@ unsafe impl QueryData for sys::Entity {
     const CELLS: usize = 0;
     fn terms(_: &mut InitCtx, _: &mut alloc::vec::Vec<sys::Term>) {}
     unsafe fn fetch<'a>(
-        call: &'a sys::SystemCall,
+        view: *const sys::QueryView,
         row: usize,
         _cells: *mut *mut u8,
-    ) -> sys::Entity {
-        if call.entities.is_null() {
+    ) -> Self::Item<'a> {
+        if (*view).entities.is_null() {
             return sys::Entity(u64::MAX);
         }
-        *call.entities.add(row)
+        *(*view).entities.add(row)
     }
 }
 
@@ -464,7 +468,7 @@ unsafe impl<T: Component> QueryData for &T {
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::Read });
     }
-    unsafe fn fetch<'a>(_: &'a sys::SystemCall, _: usize, cells: *mut *mut u8) -> &'a T {
+    unsafe fn fetch<'a>(_: *const sys::QueryView, _: usize, cells: *mut *mut u8) -> &'a T {
         &*(*cells as *const T)
     }
 }
@@ -475,7 +479,7 @@ unsafe impl<T: Component> QueryData for &mut T {
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::Write });
     }
-    unsafe fn fetch<'a>(_: &'a sys::SystemCall, _: usize, cells: *mut *mut u8) -> &'a mut T {
+    unsafe fn fetch<'a>(_: *const sys::QueryView, _: usize, cells: *mut *mut u8) -> &'a mut T {
         &mut *(*cells as *mut T)
     }
 }
@@ -491,11 +495,7 @@ unsafe impl<T: Component> QueryData for Option<&T> {
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::ReadOptional });
     }
-    unsafe fn fetch<'a>(
-        _: &'a sys::SystemCall,
-        _: usize,
-        cells: *mut *mut u8,
-    ) -> Option<&'a T> {
+    unsafe fn fetch<'a>(_: *const sys::QueryView, _: usize, cells: *mut *mut u8) -> Option<&'a T> {
         (*cells).cast::<T>().as_ref()
     }
 }
@@ -507,7 +507,7 @@ unsafe impl<T: Component> QueryData for Option<&mut T> {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::WriteOptional });
     }
     unsafe fn fetch<'a>(
-        _: &'a sys::SystemCall,
+        _: *const sys::QueryView,
         _: usize,
         cells: *mut *mut u8,
     ) -> Option<&'a mut T> {
@@ -524,14 +524,14 @@ unsafe impl<A: QueryData, B: QueryData, C: QueryData> QueryData for (A, B, C) {
         C::terms(ctx, out);
     }
     unsafe fn fetch<'a>(
-        call: &'a sys::SystemCall,
+        view: *const sys::QueryView,
         row: usize,
         cells: *mut *mut u8,
     ) -> Self::Item<'a> {
         (
-            A::fetch(call, row, cells),
-            B::fetch(call, row, cells.add(A::CELLS)),
-            C::fetch(call, row, cells.add(A::CELLS + B::CELLS)),
+            A::fetch(view, row, cells),
+            B::fetch(view, row, cells.add(A::CELLS)),
+            C::fetch(view, row, cells.add(A::CELLS + B::CELLS)),
         )
     }
 }
@@ -544,13 +544,13 @@ unsafe impl<A: QueryData, B: QueryData> QueryData for (A, B) {
         B::terms(ctx, out);
     }
     unsafe fn fetch<'a>(
-        call: &'a sys::SystemCall,
+        view: *const sys::QueryView,
         row: usize,
         cells: *mut *mut u8,
     ) -> Self::Item<'a> {
         (
-            A::fetch(call, row, cells),
-            B::fetch(call, row, cells.add(A::CELLS)),
+            A::fetch(view, row, cells),
+            B::fetch(view, row, cells.add(A::CELLS)),
         )
     }
 }
@@ -637,17 +637,38 @@ or_filters! {
 
 /// A view over the entities this system matched. Mirrors `bevy_ecs::Query`.
 pub struct Query<'a, D: QueryData, F: QueryFilter = ()> {
-    call: &'a sys::SystemCall,
-    _p: PhantomData<(D, F)>,
+    view: sys::QueryView,
+    _p: PhantomData<(&'a (), D, F)>,
 }
 
 impl<'a, D: QueryData, F: QueryFilter> Query<'a, D, F> {
-    fn new(call: &'a sys::SystemCall) -> Self {
-        Self { call, _p: PhantomData }
+    /// # Safety
+    /// `view` must index a live [`sys::QueryView`] whose terms were declared by
+    /// this exact `D`/`F` pair.
+    unsafe fn new(call: *const sys::SystemCall, view: usize) -> Self {
+        // Copied, not borrowed. A `QueryView` is four words and `Copy`, so this
+        // is free — and it keeps the whole lifetime and `Sync` question out of
+        // the type, which a `&'static` fallback for the out-of-range case would
+        // otherwise drag in.
+        let view = if view < (*call).view_count {
+            *(*call).views.add(view)
+        } else {
+            // Unreachable if the host honoured the descriptor. A query that
+            // yields nothing still beats one that reads a wild pointer.
+            EMPTY_VIEW
+        };
+        Self {
+            view,
+            _p: PhantomData,
+        }
     }
 
     pub fn iter(&self) -> QueryIter<'_, D, F> {
-        QueryIter { call: self.call, row: 0, _p: PhantomData }
+        QueryIter {
+            view: self.view,
+            row: 0,
+            _p: PhantomData,
+        }
     }
 
     pub fn iter_mut(&mut self) -> QueryIter<'_, D, F> {
@@ -655,34 +676,43 @@ impl<'a, D: QueryData, F: QueryFilter> Query<'a, D, F> {
     }
 
     pub fn len(&self) -> usize {
-        self.call.entity_count
+        self.view.entity_count
     }
 
     pub fn is_empty(&self) -> bool {
-        self.call.entity_count == 0
+        self.view.entity_count == 0
     }
 }
 
+/// Stands in when a view index is out of range. Empty, so iterating it is a
+/// no-op rather than a fault.
+const EMPTY_VIEW: sys::QueryView = sys::QueryView {
+    cells: core::ptr::null_mut(),
+    entities: core::ptr::null(),
+    entity_count: 0,
+    cell_count: 0,
+};
+
 pub struct QueryIter<'a, D: QueryData, F: QueryFilter> {
-    call: &'a sys::SystemCall,
+    view: sys::QueryView,
     row: usize,
-    _p: PhantomData<(D, F)>,
+    _p: PhantomData<(&'a (), D, F)>,
 }
 
 impl<'a, D: QueryData, F: QueryFilter> Iterator for QueryIter<'a, D, F> {
     type Item = D::Item<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.row >= self.call.entity_count {
+        if self.row >= self.view.entity_count {
             return None;
         }
         // SAFETY: row < entity_count, and the host laid out `cell_count` cells
         // per row in declaration order.
         let item = unsafe {
             D::fetch(
-                self.call,
+                &self.view as *const sys::QueryView,
                 self.row,
-                self.call.cells.add(self.row * self.call.cell_count),
+                self.view.cells.add(self.row * self.view.cell_count),
             )
         };
         self.row += 1;
@@ -850,6 +880,39 @@ pub trait Bundle {
     fn write(self, e: &mut EntityCommands);
 }
 
+/// A scene, ready to spawn. Produced by the [`bsn!`](crate::bsn) macro.
+///
+/// Named to match `bevy_scene::Scene`, and spawned the same way — through
+/// [`Commands::spawn_scene`], not `spawn`. Bevy keeps them separate because a
+/// scene is not a bundle: it describes a whole tree, and `spawn` takes the
+/// components of one entity.
+///
+/// The source names components rather than carrying their bytes, which is why
+/// one syntax reaches both the engine's components and the plugin's own: the
+/// host resolves a name against the type registry first and the plugin schema
+/// registry second, and the author never has to know which side a component is
+/// on.
+#[derive(Clone, Copy)]
+pub struct Scene(pub &'static str);
+
+impl Bundle for Scene {
+    fn write(self, e: &mut EntityCommands) {
+        if e.sink.is_null() {
+            return;
+        }
+        let cmd = sys::Command {
+            kind: sys::CommandKind::SpawnBsn,
+            entity: e.id,
+            component: sys::ComponentId::INVALID,
+            data: self.0.as_ptr(),
+            data_len: self.0.len(),
+        };
+        // SAFETY: the sink copies the bytes before returning, and the source is
+        // `'static` regardless.
+        unsafe { ((*e.sink).push)(e.sink, &cmd) };
+    }
+}
+
 macro_rules! bundle_tuples {
     ($(($($p:ident),+))+) => {
         $(
@@ -905,6 +968,26 @@ impl<'a> Commands<'a> {
         let mut e = self.spawn_empty();
         e.make_renderable(mesh, material, transform);
         e
+    }
+
+    /// Spawn a scene. Mirrors `bevy::Commands::spawn_scene`.
+    ///
+    /// ```ignore
+    /// commands.spawn_scene(bsn! {
+    ///     #Light
+    ///     Transform { translation: Vec3(0.0, 6.0, 0.0) }
+    ///     PointLight { intensity: 400000.0 }
+    ///     Children [
+    ///         Marker,
+    ///     ]
+    /// });
+    /// ```
+    ///
+    /// The returned id is the scene's root. It is valid immediately, even though
+    /// the tree materialises when commands are applied — the same reservation
+    /// `spawn_empty` uses.
+    pub fn spawn_scene(&mut self, scene: Scene) -> EntityCommands<'_> {
+        self.spawn(scene)
     }
 
     /// Reserve an entity with nothing on it. The id is usable immediately — for
@@ -1062,50 +1145,66 @@ impl<'a> EntityCommands<'a> {
 /// query that does not match what the system touches. `fetch` must not retain
 /// anything past the call.
 pub unsafe trait SystemParam: Sized {
-    /// Cells consumed per row. Only query data contributes any.
-    const CELLS: usize;
-    /// Declare access. Non-query params declare nothing.
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>);
+    /// Declare what this parameter needs.
+    ///
+    /// A `Query` pushes its own term list as a **separate** query; everything
+    /// else pushes resource terms, which are per-system rather than per-query. A
+    /// single merged list was what limited a system to one query: two `Query`
+    /// parameters had nowhere to be separate, so their terms AND-ed together and
+    /// both read the same cells.
+    fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder);
+
     /// # Safety
     /// `call` must be live for at least as long as the returned value is used.
-    unsafe fn fetch(call: *const sys::SystemCall) -> Self;
+    /// `views` is the running index of query parameters seen so far, and must be
+    /// advanced by exactly the number this parameter declared — the host returns
+    /// one view per declared query, in declaration order, and the two walks have
+    /// to stay in step.
+    unsafe fn fetch(call: *const sys::SystemCall, views: &mut usize) -> Self;
+}
+
+/// Collects what a system's parameters declare, before it is registered.
+#[derive(Default)]
+pub struct SystemBuilder {
+    pub(crate) queries: alloc::vec::Vec<alloc::vec::Vec<sys::Term>>,
+    pub(crate) resources: alloc::vec::Vec<sys::Term>,
 }
 
 unsafe impl<D: QueryData, F: QueryFilter> SystemParam for Query<'_, D, F> {
-    const CELLS: usize = D::CELLS;
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        D::terms(ctx, out);
-        F::terms(ctx, out);
+    fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder) {
+        let mut terms = alloc::vec::Vec::new();
+        D::terms(ctx, &mut terms);
+        F::terms(ctx, &mut terms);
+        out.queries.push(terms);
     }
-    unsafe fn fetch(call: *const sys::SystemCall) -> Self {
-        Query::new(&*call)
+    unsafe fn fetch(call: *const sys::SystemCall, views: &mut usize) -> Self {
+        let index = *views;
+        *views += 1;
+        Query::new(call, index)
     }
 }
 
 unsafe impl<T: ResourceParam> SystemParam for Res<'_, T> {
-    const CELLS: usize = 0;
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        T::res_term(ctx, out, sys::Access::ResRead);
+    fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder) {
+        T::res_term(ctx, &mut out.resources, sys::Access::ResRead);
     }
-    unsafe fn fetch(call: *const sys::SystemCall) -> Self {
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
         Res(T::res_ptr(call), PhantomData)
     }
 }
 
 unsafe impl<T: ResourceParam> SystemParam for ResMut<'_, T> {
-    const CELLS: usize = 0;
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        T::res_term(ctx, out, sys::Access::ResWrite);
+    fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder) {
+        T::res_term(ctx, &mut out.resources, sys::Access::ResWrite);
     }
-    unsafe fn fetch(call: *const sys::SystemCall) -> Self {
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
         ResMut(T::res_ptr(call), PhantomData)
     }
 }
 
 unsafe impl SystemParam for Commands<'_> {
-    const CELLS: usize = 0;
-    fn terms(_: &mut InitCtx, _: &mut alloc::vec::Vec<sys::Term>) {}
-    unsafe fn fetch(call: *const sys::SystemCall) -> Self {
+    fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
         Commands {
             sink: (*call).commands,
             _p: PhantomData,
@@ -1117,12 +1216,13 @@ macro_rules! param_tuples {
     ($(($($p:ident),+))+) => {
         $(
             unsafe impl<$($p: SystemParam),+> SystemParam for ($($p,)+) {
-                const CELLS: usize = 0 $(+ $p::CELLS)+;
-                fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-                    $($p::terms(ctx, out);)+
+                fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder) {
+                    $($p::declare(ctx, out);)+
                 }
-                unsafe fn fetch(call: *const sys::SystemCall) -> Self {
-                    ($($p::fetch(call),)+)
+                unsafe fn fetch(call: *const sys::SystemCall, views: &mut usize) -> Self {
+                    // Declaration order and fetch order are the same walk over
+                    // the same tuple, which is what keeps view indices aligned.
+                    ($($p::fetch(call, views),)+)
                 }
             }
         )+
@@ -1151,10 +1251,7 @@ param_tuples! {
 /// [`materialize`]; a capturing closure would need storage the host has no way
 /// to own, so rejecting it is correct rather than a limitation to lift later.
 pub trait IntoSystem<Marker> {
-    fn build(
-        self,
-        ctx: &mut InitCtx,
-    ) -> (alloc::vec::Vec<sys::Term>, sys::SystemEntry, *mut core::ffi::c_void);
+    fn build(self, ctx: &mut InitCtx) -> (SystemBuilder, sys::SystemEntry, *mut core::ffi::c_void);
 }
 
 /// Reconstruct a zero-sized callable from nothing.
@@ -1170,7 +1267,12 @@ unsafe fn materialize<T>() -> T {
             "a system must be a plain fn or a non-capturing closure — a capturing              closure has state the host cannot own",
         );
     }
-    core::mem::MaybeUninit::<T>::uninit().assume_init()
+    // Reading a zero-sized value through a dangling-but-aligned, non-null
+    // pointer is the sanctioned way to materialise a ZST — it touches no memory,
+    // because there is none to touch. `MaybeUninit::assume_init` would express
+    // the same thing but is deny-by-default under clippy, which cannot see the
+    // const assertion above that makes it sound.
+    core::ptr::NonNull::<T>::dangling().as_ptr().read()
 }
 
 /// Marker distinguishing one parameter-tuple impl from another, so they don't
@@ -1191,7 +1293,7 @@ unsafe fn guard(call: &sys::SystemCall, body: impl FnOnce()) -> sys::SystemStatu
         Err(e) => {
             let msg = e
                 .downcast_ref::<&str>()
-                .map(|s| alloc::string::ToString::to_string(s))
+                .map(alloc::string::ToString::to_string)
                 .or_else(|| e.downcast_ref::<alloc::string::String>().cloned())
                 .unwrap_or_else(|| alloc::string::String::from("panic"));
             if !call.iface.is_null() {
@@ -1212,9 +1314,6 @@ unsafe fn guard(call: &sys::SystemCall, body: impl FnOnce()) -> sys::SystemStatu
 /// One `IntoSystem` impl per arity. The thunk lives inside the expansion because
 /// calling the function needs the parameters spread, not tupled — there is no
 /// variadic form to write it once.
-/// One `IntoSystem` impl per arity. The thunk lives inside the expansion because
-/// calling the function needs the parameters spread, not tupled — there is no
-/// variadic form to write it once.
 ///
 /// The bound is `Fn($($p),+)` over the *parameter* types rather than over fetched
 /// item types, so inference runs the right way: the compiler matches `spin`'s
@@ -1231,7 +1330,7 @@ macro_rules! into_system {
                 fn build(
                     self,
                     ctx: &mut InitCtx,
-                ) -> (alloc::vec::Vec<sys::Term>, sys::SystemEntry, *mut core::ffi::c_void) {
+                ) -> (SystemBuilder, sys::SystemEntry, *mut core::ffi::c_void) {
                     unsafe extern "C" fn thunk<$($p,)+ Fun>(
                         call: *const sys::SystemCall,
                     ) -> sys::SystemStatus
@@ -1239,12 +1338,19 @@ macro_rules! into_system {
                         $($p: SystemParam,)+
                         Fun: Fn($($p),+) + 'static,
                     {
-                        guard(&*call, || materialize::<Fun>()($($p::fetch(call)),+))
+                        // Rust does not order argument evaluation across a call,
+                        // so the view counter is advanced in a `let` chain first
+                        // and the results handed over already fetched. Left to
+                        // the call site, two `Query` params could take each
+                        // other's view.
+                        let mut views = 0usize;
+                        $(#[allow(non_snake_case)] let $p = $p::fetch(call, &mut views);)+
+                        guard(&*call, move || materialize::<Fun>()($($p),+))
                     }
 
-                    let mut terms = alloc::vec::Vec::new();
-                    $($p::terms(ctx, &mut terms);)+
-                    (terms, thunk::<$($p,)+ Func>, core::ptr::null_mut())
+                    let mut builder = SystemBuilder::default();
+                    $($p::declare(ctx, &mut builder);)+
+                    (builder, thunk::<$($p,)+ Func>, core::ptr::null_mut())
                 }
             }
         )+
@@ -1269,6 +1375,41 @@ into_system! {
 /// system ABI. So the plugin keeps its own copy, set once at init.
 static IFACE: core::sync::atomic::AtomicPtr<sys::Interface> =
     core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
+
+/// Write a line to the engine log.
+///
+/// A plugin has no stdout worth using and no `tracing` subscriber of its own, so
+/// this is the only way its output reaches the console panel. Silently a no-op
+/// before `Plugin::build` has been entered — there is no host to log to yet.
+pub fn log(level: sys::LogLevel, msg: &str) {
+    let iface = IFACE.load(core::sync::atomic::Ordering::Relaxed);
+    if iface.is_null() {
+        return;
+    }
+    // SAFETY: set once at init from the host's `'static` table.
+    unsafe {
+        ((*iface).log)(
+            core::ptr::null_mut(),
+            level,
+            sys::StrRef {
+                ptr: msg.as_ptr(),
+                len: msg.len(),
+            },
+        );
+    }
+}
+
+pub fn info(msg: &str) {
+    log(sys::LogLevel::Info, msg);
+}
+
+pub fn warn(msg: &str) {
+    log(sys::LogLevel::Warn, msg);
+}
+
+pub fn error(msg: &str) {
+    log(sys::LogLevel::Error, msg);
+}
 
 /// Records draw commands for one view. Mirrors `TrackedRenderPass`.
 pub struct RenderPass {
@@ -1321,11 +1462,30 @@ where
 // ── App / Plugin ─────────────────────────────────────────────────────────────
 
 /// Which schedule a system runs in. Mirrors Bevy's schedule labels.
-pub use crate::sys::Schedule::{self, First, Last, PostUpdate, PreUpdate, Update};
+pub use crate::sys::Schedule;
+
+// Bevy spells its schedule labels `Update`, `PostUpdate` and so on, and that
+// spelling is the point of this whole layer — so they are re-exported as
+// constants under exactly those names. They used to be enum variants, which
+// `use` could import directly; associated constants cannot be, hence the
+// explicit list.
+#[allow(non_upper_case_globals)]
+pub const First: Schedule = Schedule::First;
+#[allow(non_upper_case_globals)]
+pub const PreUpdate: Schedule = Schedule::PreUpdate;
+#[allow(non_upper_case_globals)]
+pub const Update: Schedule = Schedule::Update;
+#[allow(non_upper_case_globals)]
+pub const PostUpdate: Schedule = Schedule::PostUpdate;
+#[allow(non_upper_case_globals)]
+pub const Last: Schedule = Schedule::Last;
 
 /// Mirrors `bevy::App` for the surface a plugin can reach.
 pub struct App {
     ctx: InitCtx,
+    /// The first system the host refused, if any. Kept so `add!` can fail the
+    /// whole load rather than let a plugin come up half-wired.
+    rejected: Option<sys::RegisterStatus>,
 }
 
 impl App {
@@ -1340,6 +1500,7 @@ impl App {
                 cache: alloc::vec::Vec::new(),
                 unresolved: None,
             },
+            rejected: None,
         }
     }
 
@@ -1352,18 +1513,41 @@ impl App {
     }
 
     pub fn add_systems<M, S: IntoSystem<M>>(&mut self, schedule: Schedule, system: S) -> &mut Self {
-        let (terms, entry, user) = system.build(&mut self.ctx);
-        // SAFETY: `terms` outlives the call; the host copies it into its own plan.
-        unsafe {
-            ((*self.ctx.iface).add_system)(
-                self.ctx.host,
-                schedule,
-                entry,
-                &sys::QueryDesc { terms: terms.as_ptr(), term_count: terms.len() },
-                user,
-            );
+        let (builder, entry, user) = system.build(&mut self.ctx);
+        let descs: alloc::vec::Vec<sys::QueryDesc> = builder
+            .queries
+            .iter()
+            .map(|terms| sys::QueryDesc {
+                terms: terms.as_ptr(),
+                term_count: terms.len(),
+            })
+            .collect();
+        let desc = sys::SystemDesc {
+            entry,
+            schedule,
+            queries: descs.as_ptr(),
+            query_count: descs.len(),
+            resources: builder.resources.as_ptr(),
+            resource_count: builder.resources.len(),
+            user,
+            flags: 0,
+        };
+        // SAFETY: every pointer in `desc` outlives the call; the host copies
+        // what it needs into its own plan.
+        let status = unsafe { ((*self.ctx.iface).add_system)(self.ctx.host, &desc) };
+        if status != sys::RegisterStatus::Ok && self.rejected.is_none() {
+            self.rejected = Some(status);
         }
         self
+    }
+
+    /// Why the first refused system was refused, if any was.
+    ///
+    /// Worth checking in `build` alongside
+    /// [`unresolved_component`](Self::unresolved_component): a system the host
+    /// declined is a plugin that loads and silently does less than it says.
+    pub fn rejected_system(&self) -> Option<sys::RegisterStatus> {
+        self.rejected
     }
 
     /// Add a full-screen render pass.
@@ -1513,6 +1697,172 @@ impl App {
             }
         }
         self
+    }
+
+    /// Register an editor panel from markup. See [`sys::PanelDesc`] for the
+    /// grammar.
+    ///
+    /// `handler` runs when an action widget fires and may be a plain fn or a
+    /// non-capturing closure, the same rule systems follow and for the same
+    /// reason: the host has nowhere to put a capture.
+    pub fn add_panel<H: PanelHandler>(&mut self, panel: Panel<H>) -> &mut Self {
+        let desc = sys::PanelDesc {
+            id: sys::StrRef::new(panel.id),
+            title: sys::StrRef::new(panel.title),
+            icon: sys::StrRef::new(panel.icon),
+            category: sys::StrRef::new(panel.category),
+            markup: sys::StrRef::new(panel.scene.0),
+            on_action: H::ENTRY,
+            user: core::ptr::null_mut(),
+        };
+        // SAFETY: every `StrRef` points at a `'static` str, and the host copies
+        // the markup before returning.
+        let status = unsafe { ((*self.ctx.iface).add_panel)(self.ctx.host, &desc) };
+        if status != sys::RegisterStatus::Ok && self.rejected.is_none() {
+            self.rejected = Some(status);
+        }
+        self
+    }
+}
+
+/// An editor panel, before registration.
+///
+/// A struct rather than seven positional arguments — a call site reading
+/// `add_panel("flock", "Flock", "wind", "Plugins", MARKUP, on_action)` is a
+/// puzzle at every future edit.
+pub struct Panel<H> {
+    pub id: &'static str,
+    pub title: &'static str,
+    pub icon: &'static str,
+    pub category: &'static str,
+    /// The panel's contents, as a [`Scene`] — write it inline with
+    /// [`bsn!`](crate::bsn) rather than parking it in a `const`.
+    pub scene: Scene,
+    pub on_action: H,
+}
+
+impl Panel<()> {
+    /// A panel with no action widgets.
+    ///
+    /// ```ignore
+    /// app.add_panel(Panel::new("flock", "Flock", bsn! {
+    ///     Node { flex_direction: Column, row_gap: Px(6.0) }
+    ///     Children [
+    ///         Text("Flocking"),
+    ///     ]
+    /// }));
+    /// ```
+    pub fn new(id: &'static str, title: &'static str, scene: Scene) -> Self {
+        Self {
+            id,
+            title,
+            icon: "",
+            category: "",
+            scene,
+            on_action: (),
+        }
+    }
+}
+
+impl<H> Panel<H> {
+    pub fn icon(mut self, icon: &'static str) -> Self {
+        self.icon = icon;
+        self
+    }
+
+    pub fn category(mut self, category: &'static str) -> Self {
+        self.category = category;
+        self
+    }
+
+    /// Attach the handler for clicks on this panel's `PanelActionId` widgets.
+    pub fn on_action<F: Fn(Action)>(self, handler: F) -> Panel<F> {
+        Panel {
+            id: self.id,
+            title: self.title,
+            icon: self.icon,
+            category: self.category,
+            scene: self.scene,
+            on_action: handler,
+        }
+    }
+}
+
+/// What a fired action tells the plugin.
+pub struct Action<'a> {
+    name: &'a str,
+    /// A toggle's 0 or 1, a slider's position, 0 for a button.
+    pub value: f32,
+    /// Structural changes, same queue a system gets.
+    pub commands: Commands<'a>,
+}
+
+impl Action<'_> {
+    /// The name after `->` on the widget that fired.
+    pub fn name(&self) -> &str {
+        self.name
+    }
+
+    /// Convenience for the usual `match`-free single-action panel.
+    pub fn is(&self, name: &str) -> bool {
+        self.name == name
+    }
+}
+
+/// Supplies the `extern "C"` entry point for a panel's actions.
+///
+/// Implemented for `()` — no handler — and for any zero-sized `Fn(Action)`. The
+/// ZST bound is the same one systems carry: the thunk reconstructs the callable
+/// from nothing, so there is nothing for the host to own or free.
+pub trait PanelHandler {
+    const ENTRY: Option<sys::PanelActionEntry>;
+}
+
+impl PanelHandler for () {
+    const ENTRY: Option<sys::PanelActionEntry> = None;
+}
+
+impl<F: Fn(Action) + 'static> PanelHandler for F {
+    const ENTRY: Option<sys::PanelActionEntry> = Some(panel_thunk::<F>);
+}
+
+unsafe extern "C" fn panel_thunk<F: Fn(Action) + 'static>(
+    action: *const sys::PanelAction,
+) -> sys::SystemStatus {
+    let a = &*action;
+    let payload = Action {
+        name: a.name.as_str(),
+        value: a.value,
+        commands: Commands {
+            sink: a.commands,
+            _p: PhantomData,
+        },
+    };
+    // A panic here would unwind out of an `extern "C"` call made from inside the
+    // editor's own UI systems, which aborts the process — a bad button taking
+    // the editor down with it.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        materialize::<F>()(payload)
+    })) {
+        Ok(()) => sys::SystemStatus::Ok,
+        Err(e) => {
+            let msg = e
+                .downcast_ref::<&str>()
+                .map(alloc::string::ToString::to_string)
+                .or_else(|| e.downcast_ref::<alloc::string::String>().cloned())
+                .unwrap_or_else(|| alloc::string::String::from("panic"));
+            if !a.iface.is_null() {
+                ((*a.iface).log)(
+                    core::ptr::null_mut(),
+                    sys::LogLevel::Error,
+                    sys::StrRef {
+                        ptr: msg.as_ptr(),
+                        len: msg.len(),
+                    },
+                );
+            }
+            sys::SystemStatus::Panicked
+        }
     }
 }
 

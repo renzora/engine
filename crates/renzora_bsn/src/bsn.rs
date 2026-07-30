@@ -22,7 +22,7 @@
 //! reliable, type-complete part). When a first-party runtime BSN loader lands
 //! (bevy#23576), only the [`SceneSerializer`] impl swaps; callers are unchanged.
 
-use crate::{DynamicEntity, DynamicScene};
+use crate::{DynamicEntity, DynamicScene, RawComponent, RawField, RawSchema};
 use bevy::reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
 use bevy::reflect::{PartialReflect, TypeRegistration, TypeRegistry};
 use bevy::ecs::entity::Entity;
@@ -97,6 +97,17 @@ impl SceneSerializer for BsnSerializer {
         let mut out = String::new();
         let _ = writeln!(out, "{HEADER}");
 
+        // Schemas first so a reader meets a type's layout before its bytes, and
+        // once per file rather than once per instance.
+        for schema in &scene.raw_schemas {
+            out.push('\n');
+            let _ = writeln!(out, "raw_schema {} size {} {{", schema.type_path, schema.size);
+            for f in &schema.fields {
+                let _ = writeln!(out, "    {} {} {},", f.name, f.kind, f.offset);
+            }
+            let _ = writeln!(out, "}}");
+        }
+
         for entity in &scene.entities {
             // A blank line + the entity's `Name` (if any) as a comment make the
             // opaque numeric id navigable. Both are trivia the parser skips.
@@ -108,6 +119,9 @@ impl SceneSerializer for BsnSerializer {
             for component in &entity.components {
                 write_value(&mut out, "    ", component.as_ref(), registry)?;
             }
+            for raw in &entity.raw {
+                let _ = writeln!(out, "    raw {} {},", raw.type_path, hex(&raw.bytes));
+            }
             let _ = writeln!(out, "}}");
         }
 
@@ -115,6 +129,11 @@ impl SceneSerializer for BsnSerializer {
             out.push('\n');
             out.push_str("resource ");
             write_value(&mut out, "", resource.as_ref(), registry)?;
+        }
+
+        for raw in &scene.raw_resources {
+            out.push('\n');
+            let _ = writeln!(out, "raw_resource {} {},", raw.type_path, hex(&raw.bytes));
         }
 
         Ok(out)
@@ -162,6 +181,7 @@ fn parse(
                 .ok_or_else(|| parser.err("invalid entity id bits"))?;
             parser.expect('{')?;
             let mut components = Vec::new();
+            let mut raw = Vec::new();
             loop {
                 parser.skip_trivia();
                 if parser.eat('}') {
@@ -170,21 +190,59 @@ fn parse(
                 if parser.at_end() {
                     return Err(parser.err("unterminated `entity` block (missing `}`)"));
                 }
+                // Checked before `parse_component`, which would otherwise read
+                // `raw` as the start of a type path and then fail looking for a
+                // `:`.
+                if parser.eat_keyword("raw") {
+                    raw.push(parser.parse_raw()?);
+                    continue;
+                }
                 if let Some(component) = parser.parse_component(registry, skipped)? {
                     components.push(component);
                 }
             }
-            scene.entities.push(DynamicEntity { entity, components });
+            scene.entities.push(DynamicEntity {
+                entity,
+                components,
+                raw,
+            });
+        } else if parser.eat_keyword("raw_schema") {
+            scene.raw_schemas.push(parser.parse_raw_schema()?);
+        } else if parser.eat_keyword("raw_resource") {
+            scene.raw_resources.push(parser.parse_raw()?);
         } else if parser.eat_keyword("resource") {
             if let Some(resource) = parser.parse_component(registry, skipped)? {
                 scene.resources.push(resource);
             }
         } else {
-            return Err(parser.err("expected `entity` or `resource`"));
+            return Err(parser.err("expected `entity`, `resource`, `raw_schema` or `raw_resource`"));
         }
     }
 
     Ok(scene)
+}
+
+/// Lowercase hex, no separators.
+///
+/// Hex rather than base64 so a scene file stays diffable and greppable — a
+/// changed `f32` shows as a changed run of eight characters at a predictable
+/// offset, which matters because these blobs are otherwise opaque.
+fn hex(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
 }
 
 /// Best-effort `Name` of an entity, for the serialization comment above its
@@ -412,6 +470,73 @@ impl<'a> Parser<'a> {
         self.src[start..self.pos]
             .parse::<u64>()
             .map_err(|e| self.err(format!("invalid entity id: {e}")))
+    }
+
+    /// Read a bare token — anything up to whitespace or a delimiter.
+    fn parse_token(&mut self) -> Result<String, BsnError> {
+        self.skip_trivia();
+        let start = self.pos;
+        while let Some(b) = self.bytes.get(self.pos) {
+            if b.is_ascii_whitespace() || *b == b',' || *b == b'{' || *b == b'}' {
+                break;
+            }
+            self.pos += 1;
+        }
+        if self.pos == start {
+            return Err(self.err("expected a token"));
+        }
+        Ok(self.src[start..self.pos].to_string())
+    }
+
+    fn parse_usize(&mut self) -> Result<usize, BsnError> {
+        let tok = self.parse_token()?;
+        tok.parse::<usize>()
+            .map_err(|e| self.err(format!("expected a number, got `{tok}`: {e}")))
+    }
+
+    /// `raw <type_path> <hex>,`
+    fn parse_raw(&mut self) -> Result<RawComponent, BsnError> {
+        let type_path = self.parse_token()?;
+        let hex = self.parse_token()?;
+        let bytes = unhex(&hex)
+            .ok_or_else(|| self.err(format!("`{type_path}` has a malformed hex payload")))?;
+        self.skip_trivia();
+        self.eat(',');
+        Ok(RawComponent { type_path, bytes })
+    }
+
+    /// `raw_schema <type_path> size <n> { <name> <kind> <offset>, … }`
+    fn parse_raw_schema(&mut self) -> Result<RawSchema, BsnError> {
+        let type_path = self.parse_token()?;
+        // `eat_keyword` matches at the cursor and does not skip leading trivia,
+        // so the separating space has to go first.
+        self.skip_trivia();
+        if !self.eat_keyword("size") {
+            return Err(self.err("expected `size` after a raw_schema type path"));
+        }
+        let size = self.parse_usize()?;
+        self.expect('{')?;
+        let mut fields = Vec::new();
+        loop {
+            self.skip_trivia();
+            if self.eat('}') {
+                break;
+            }
+            if self.at_end() {
+                return Err(self.err("unterminated `raw_schema` block (missing `}`)"));
+            }
+            let name = self.parse_token()?;
+            let kind = self.parse_token()?;
+            let offset = self.parse_usize()?;
+            self.skip_trivia();
+            self.eat(',');
+            fields.push(RawField { name, kind, offset });
+        }
+        Ok(RawSchema {
+            type_path,
+            size,
+            fields,
+        })
     }
 
     /// Parse one `type_path: <ron value>,` slot and reflect-deserialize it.

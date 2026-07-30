@@ -54,6 +54,12 @@ renzora_shader = { path = "../renzora_shader", optional = true }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 renzora_network = { path = "../renzora_network" }
 renzora_bsn = { path = "../renzora_bsn" }
+# For `plugin_scene_bridge`: mirrors the C-ABI plugin host's component schemas
+# into `renzora_bsn`'s plain-data registry, so the scene format can serialize
+# types it has no Rust definition for without depending on the plugin system
+# itself. Same direction `renzora_inspector` and `renzora_postprocess` already
+# take; no cycle, since `renzora_plugin[host]` depends only on bevy + libloading.
+renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
 renzora_rpak = { path = "../renzora_rpak" }
 renzora_audio = { path = "../renzora_audio", optional = true }
 # `default-features = false`: engine uses only core scripting types; backends/
