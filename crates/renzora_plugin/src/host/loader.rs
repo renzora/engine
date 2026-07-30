@@ -24,6 +24,10 @@ pub struct PluginSlot {
     pub generation: super::PluginGeneration,
     /// The generation of the newest load that succeeded.
     pub loaded_at: u32,
+    /// How many images have been loaded for this path. Zero means the next load is
+    /// the first, which is what distinguishes "generation 0" from "reload to
+    /// generation 1" — `loaded_at` alone cannot, since it starts at 0 too.
+    pub images: usize,
     /// **Every** library ever loaded for this path, and none of them is ever
     /// dropped.
     ///
@@ -53,6 +57,7 @@ impl LoadedPlugins {
             path: path.to_path_buf(),
             generation: super::PluginGeneration::default(),
             loaded_at: 0,
+            images: 0,
             _libraries: Vec::new(),
         });
         self.0.len() - 1
@@ -117,15 +122,73 @@ fn is_proc_macro_dylib(path: &Path) -> bool {
     bytes.windows(NEEDLE.len()).any(|w| w == NEEDLE)
 }
 
+/// Copy a plugin image somewhere private before loading it, and return where.
+///
+/// **This is what makes reload possible on Windows at all.** A mapped DLL is
+/// locked, and the loader never unmaps one (retired systems still point into it),
+/// so loading `plugins/drift.dll` directly would leave that file permanently
+/// unwritable — `cargo build` could not overwrite it and the staging copy would
+/// fail with "file in use". Loading a copy leaves the original free.
+///
+/// The generation is in the filename because the previous copy is *also* still
+/// mapped and locked. Copies accumulate, one per reload, alongside the leaked
+/// library images they belong to; the directory is cleared at startup.
+///
+/// `.reload` has no file extension, so [`load_dir`]'s extension filter skips it
+/// and the copies are never mistaken for plugins to load.
+fn shadow_copy(path: &Path, generation: u32) -> std::io::Result<PathBuf> {
+    let dir = path.parent().unwrap_or_else(|| Path::new(".")).join(".reload");
+    std::fs::create_dir_all(&dir)?;
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let ext = std::env::consts::DLL_EXTENSION;
+    let dst = dir.join(format!("{stem}-{generation}.{ext}"));
+    std::fs::copy(path, &dst)?;
+    Ok(dst)
+}
+
+/// Remove shadow copies left by earlier sessions.
+///
+/// Safe here and nowhere else: at `build` time nothing is mapped yet, so no copy
+/// is locked. Skipping a file that refuses to delete is deliberate — a stale
+/// image is harmless (nothing scans this directory), and failing the whole boot
+/// over it would not be.
+fn clear_shadow_dir(dir: &Path) {
+    let shadow = dir.join(".reload");
+    if let Ok(entries) = std::fs::read_dir(&shadow) {
+        for entry in entries.flatten() {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
     if is_proc_macro_dylib(path) {
         return LoadOutcome::NotAPlugin;
     }
 
+    // Resolved before the image is opened, because the generation is part of the
+    // shadow copy's filename.
+    let (slot, counter, generation) = {
+        let mut loaded = world.get_resource_or_insert_with(LoadedPlugins::default);
+        let slot = loaded.slot_for(path);
+        let s = &loaded.0[slot];
+        let first = s.images == 0;
+        (
+            slot,
+            s.generation.clone(),
+            if first { 0 } else { s.loaded_at + 1 },
+        )
+    };
+
+    let image = match shadow_copy(path, generation) {
+        Ok(p) => p,
+        Err(e) => return LoadOutcome::Failed(format!("could not stage a copy to load: {e}")),
+    };
+
     // SAFETY: loading arbitrary native code is inherently unsafe — a plugin can
     // do anything the process can. That is the same trust model as the existing
     // dylib loader; the C ABI buys build-environment independence, not sandboxing.
-    let library = match unsafe { Library::new(path) } {
+    let library = match unsafe { Library::new(&image) } {
         Ok(l) => l,
         Err(e) => return LoadOutcome::Failed(format!("could not open: {e}")),
     };
@@ -155,25 +218,6 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         return LoadOutcome::WrongScope(scope);
     }
 
-    // The counter is bumped only AFTER init succeeds, which is what makes a failed
-    // reload harmless: a system is stale when the counter has moved *past* it, so
-    // during init the new systems (higher generation) are already live while the
-    // old ones (equal to the counter) still are too — and if init fails, the
-    // counter never moves, the new systems stay permanently stale, and the
-    // previous build keeps running. Bumping first would have retired the working
-    // version before knowing whether a replacement existed.
-    let (slot, counter, generation) = {
-        let mut loaded = world.get_resource_or_insert_with(LoadedPlugins::default);
-        let slot = loaded.slot_for(path);
-        let s = &loaded.0[slot];
-        let first = s._libraries.is_empty();
-        (
-            slot,
-            s.generation.clone(),
-            if first { 0 } else { s.loaded_at + 1 },
-        )
-    };
-
     // Take the slot's previous registrations back before the new build adds its
     // own, so a panel or a render pass is replaced rather than duplicated. Systems
     // are NOT in here — they retire themselves via the generation counter, because
@@ -188,6 +232,7 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
             let mut loaded = world.resource_mut::<LoadedPlugins>();
             let s = &mut loaded.0[slot];
             s.loaded_at = generation;
+            s.images += 1;
             s._libraries.push(library);
             LoadOutcome::Loaded
         }
@@ -276,6 +321,82 @@ fn apply_reload_requests(world: &mut World) {
     }
 }
 
+/// Notices a rebuilt plugin and queues it for reload.
+///
+/// Polls `mtime` + `size` rather than subscribing to filesystem events. Not for
+/// lack of a watcher crate — `notify` is already in the tree behind `bevy_asset` —
+/// but because polling answers the question that actually matters more directly.
+/// A build writes a DLL in pieces, and loading a half-written one is the failure
+/// mode to avoid; "the stamp has not changed since the last poll" is a settle test,
+/// whereas an event stream needs debouncing to become one. It also keeps a crate
+/// that publishes to crates.io from gaining a dependency to stat eight files.
+#[derive(Resource)]
+pub struct PluginWatcher {
+    dir: PathBuf,
+    /// Last-seen `(mtime, size)` per file.
+    seen: std::collections::HashMap<PathBuf, (std::time::SystemTime, u64)>,
+    /// Files whose stamp moved on the previous poll, waiting to stop moving.
+    settling: std::collections::HashSet<PathBuf>,
+    /// Seconds until the next poll.
+    countdown: f32,
+}
+
+/// How often to stat the plugin directory. Two polls are needed to settle a file,
+/// so this is half the reload latency.
+const POLL_INTERVAL: f32 = 0.25;
+
+fn poll_plugin_dir(
+    time: Res<Time>,
+    mut watcher: ResMut<PluginWatcher>,
+    mut queue: ResMut<PluginReloadQueue>,
+) {
+    watcher.countdown -= time.delta_secs();
+    if watcher.countdown > 0.0 {
+        return;
+    }
+    watcher.countdown = POLL_INTERVAL;
+
+    let Ok(entries) = std::fs::read_dir(&watcher.dir) else {
+        return;
+    };
+    let ext = std::env::consts::DLL_EXTENSION;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        let Ok(mtime) = meta.modified() else { continue };
+        let stamp = (mtime, meta.len());
+
+        // Copied out rather than matched on in place: the arms below mutate
+        // `watcher`, and holding a borrow of `seen` across them does not compile.
+        let previous = watcher.seen.get(&path).copied();
+        match previous {
+            // First sighting. The startup load already took this one, so record
+            // the stamp and do NOT treat it as a change — otherwise every plugin
+            // would reload once, pointlessly, a quarter-second after boot.
+            None => {
+                watcher.seen.insert(path, stamp);
+            }
+            Some(prev) if prev != stamp => {
+                watcher.seen.insert(path.clone(), stamp);
+                watcher.settling.insert(path);
+            }
+            // Unchanged. If it moved last poll, the write has finished.
+            Some(_) => {
+                if watcher.settling.remove(&path) && !queue.0.contains(&path) {
+                    info!(
+                        "[plugin] {} changed on disk, reloading",
+                        path.file_name().unwrap_or_default().to_string_lossy()
+                    );
+                    queue.0.push(path);
+                }
+            }
+        }
+    }
+}
+
 /// Host components a plugin is allowed to resolve by type path.
 ///
 /// This exists because Bevy registers components **lazily** — adding
@@ -316,6 +437,9 @@ impl Plugin for RenzoraPluginHostPlugin {
             .unwrap_or_else(|| PathBuf::from("plugins"));
 
         register_exposed_components(app.world_mut());
+        // Nothing is mapped yet, so last session's shadow copies are still
+        // deletable. After this they are not.
+        clear_shadow_dir(&dir);
 
         // Reload machinery, before the initial load so a plugin that somehow
         // requests a reload during its own init is queued rather than lost.
@@ -326,6 +450,19 @@ impl Plugin for RenzoraPluginHostPlugin {
         app.world_mut()
             .resource_mut::<bevy::app::MainScheduleOrder>()
             .insert_before(First, PluginReload);
+
+        // Watching is editor-only. A shipped game has no reason to restat its
+        // plugin directory forever, and swapping code under a player is not a
+        // feature — it is how a save file gets corrupted by a half-written build.
+        if self.is_editor {
+            app.insert_resource(PluginWatcher {
+                dir: dir.clone(),
+                seen: Default::default(),
+                settling: Default::default(),
+                countdown: POLL_INTERVAL,
+            })
+            .add_systems(Last, poll_plugin_dir);
+        }
 
         for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor) {
             let name = path.file_name().unwrap_or_default().to_string_lossy();

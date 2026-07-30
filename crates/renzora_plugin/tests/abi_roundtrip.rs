@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 use renzora_plugin::host as abi_host;
 use renzora_plugin::sys;
-use renzora_plugin::ecs::{self, Component as _};
+use renzora_plugin::ecs;
 
 /// A plugin-owned component, defined here rather than borrowed from
 /// `plugins/spinner`: linking that would pull it into the engine's workspace and
