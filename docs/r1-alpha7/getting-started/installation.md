@@ -9,9 +9,9 @@ Here's what you're installing — the Renzora editor, where you'll build your ga
 The two ways to get Renzora:
 
 - **Download a prebuilt build** — the easiest start. No tools to set up; just download, extract, and run.
-- **Install the `renzora` CLI** — the way to scaffold and build your own projects. Every build runs inside the engine's Docker toolchain.
+- **Build from source with `cargo renzora`** — the way to work on your own projects. Rust and a checkout, nothing else.
 
-> Renzora's canonical build is its pinned Docker toolchain — the container guarantees your `bevy_dylib` and engine build hash match everyone else's, which keeps community plugins ABI-compatible across machines, and it's required for cross-platform builds. A native (no-Docker) build of your own platform is also supported via `cargo renzora`. The editor and game run natively on your GPU either way.
+> **You don't need Docker to install Renzora.** Building from source is an ordinary `cargo` build of your own platform. Docker enters the picture only when you want to ship — producing export templates for platforms you don't own, like building a macOS or Android bundle from a Windows machine. That's covered under [cross-compiling](#cross-compiling-for-other-platforms).
 
 ## System requirements
 
@@ -53,39 +53,44 @@ cd renzora
 ./renzora
 ```
 
-## Install the CLI (to build your own projects)
+## Build from source (recommended)
 
-The `renzora` CLI scaffolds projects and runs **every** build inside the pinned `ghcr.io/renzora/*` Docker toolchain images (a shared `base` plus one per platform), so your build environment matches everyone else's — and the plugin ABI. Install it with Cargo:
-
-```bash
-cargo install renzora
-```
-
-It needs [Docker](https://docs.docker.com/get-docker/) (the toolchain runs in a container) and `git` (for `renzora new`). Rust/Cargo is needed only to install the CLI itself — not to build the engine. Then scaffold and run a project:
-
-```bash
-renzora new my-game     # clone the engine into ./my-game
-cd my-game
-renzora init            # build/pull the toolchain image + container (first run is slow)
-renzora run             # build the editor in the container and launch it
-```
-
-`renzora run` launches the editor (`renzora run runtime` runs the game shape). Other commands include `renzora build [platforms]`, `renzora test`, `renzora add <name>`, `renzora shell`, and `renzora destroy`. Only the build runs in the container — the GPU editor and game run natively.
-
-> The CLI is the published [`renzora` crate](https://crates.io/crates/renzora). The crate *named* `renzora` inside the engine repo is a different thing (the SDK library), so `cargo install renzora` installs the CLI — not that library.
-
-## Working from a checkout
-
-Contributors and anyone who wants to hack on the engine itself can clone the repo directly and drive it with the same CLI — the build still happens in the container, so the plugin ABI stays consistent:
+Clone the repo and build it. That's the whole thing:
 
 ```bash
 git clone https://github.com/renzora/engine.git
 cd engine
-renzora init            # build/pull the toolchain image + container (first run is slow)
-renzora run             # build the editor in the container and launch it
+cargo renzora           # build, stage, and launch the editor
 ```
 
-The first build takes several minutes (Bevy is large); subsequent builds are incremental. `renzora run runtime` runs the shipped-game shape, `renzora run` (no args) the editor, and `renzora test` / `renzora check` reproduce CI — all inside the container.
+You need [Rust](https://rustup.rs/) — `rust-toolchain.toml` pins the version, so rustup fetches the right one on first build. Nothing else.
+
+`cargo renzora` compiles the workspace, arranges `dist/<platform>/` the way a shipped build is arranged, and launches it. The first build takes several minutes because Bevy is large; after that it's incremental. `cargo renzora dist` stages without launching.
+
+### Scaffolding a new project
+
+To start a game rather than hack on the engine, the `renzora` CLI clones the engine for you:
+
+```bash
+cargo install renzora
+renzora new my-game
+cd my-game
+cargo renzora
+```
+
+> The CLI is the published [`renzora` crate](https://crates.io/crates/renzora). The crate *named* `renzora` inside the engine repo is a different thing (the SDK library), so `cargo install renzora` installs the CLI — not that library.
+
+### Why not Docker?
+
+Renzora used to tell you to build in a container, and there was a real reason: the plugin ABI depended on the build environment.
+
+A plugin that shares the engine's compiled Bevy has to import it by an exact filename — `bevy_dylib-<hash>`, where the hash covers the feature set, profile, flags, target and compiler version. Build the engine differently and a downloaded plugin looks for a file that isn't there. "Match everyone else's environment" meant "use the container", and so the container was the install path.
+
+[Standalone plugins](/docs/r1-alpha7/extending/standalone-plugins) don't link Bevy at all. They export one symbol and import nothing — the engine passes its interface *in* — so there's no filename to match and no environment to be canonical about. A plugin built with any Rust version on any machine loads into an engine built with any other.
+
+That removed the last reason to containerise an ordinary build. Docker is still how you cross-compile for platforms you don't own, and still what CI runs, but it isn't how you install the engine.
+
+One caveat if you're contributing: `cargo test` can't link the full workspace natively on Windows (the test harness blows past the PE format's 65,535-symbol export limit). Run the suite with `renzora test`, which uses the container. `cargo check` and `cargo clippy` work natively everywhere.
 
 ### Good to know: one binary, editor as a removable bundle
 
@@ -98,13 +103,19 @@ You don't need the deeper details to get started — the cross-compile toolchain
 
 ### Cross-compiling for other platforms
 
-Cross-platform builds run inside the `ghcr.io/renzora/<platform>` toolchain images — the host only needs Docker, and the CLI pulls just the platform(s) you build. The CLI drives it:
+**This is what Docker is for.** Shipping a game means producing builds for machines you don't have — a macOS bundle from Windows, an Android APK from Linux. Each platform needs its own compiler, linker and system libraries, and the toolchain images carry them so you don't have to install six SDKs by hand.
+
+Install [Docker](https://docs.docker.com/get-docker/) and the CLI, then:
 
 ```bash
-renzora build windows linux
+cargo install renzora
+renzora init                    # pull the toolchain images (first run is slow)
+renzora build windows linux     # export templates land in dist/<platform>/
 ```
 
-`renzora build [platforms...]` (no args = every platform the container can produce) accepts these platform tokens: `windows`, `linux`, `macos`, `wasm` (Web), `android`, and `ios`. Builds land in `dist/<platform>/`.
+`renzora build [platforms...]` (no args = every platform) accepts `windows`, `linux`, `macos`, `wasm` (Web), `android`, and `ios`. The CLI pulls only the images for the platforms you name.
+
+You do **not** need any of this to build and run Renzora on your own machine — `cargo renzora` already does that.
 
 > The web build is **game-runtime only** — there is no WebAssembly editor. tvOS is **not** a supported target.
 

@@ -14,8 +14,10 @@ present beside it, and as the shipped game/server when it isn't.
 
 ## 1. The `renzora` CLI
 
-All real work goes through the `renzora` CLI, which drives a pinned Docker
-container. It is a **separately published tool**, not part of this workspace.
+The `renzora` CLI drives a pinned Docker container, and its job is
+**cross-compilation** — building for platforms you do not own. To build and run
+on the machine you are sitting at, use `cargo renzora` (§2); you do not need any
+of this. It is a **separately published tool**, not part of this workspace.
 
 - Install: `cargo install renzora`
 - crates.io: <https://crates.io/crates/renzora>
@@ -52,46 +54,73 @@ with `!` in the prompt so its output lands in the session.
 
 ---
 
-## 2. Building & testing — Docker preferred, native supported
+## 2. Building & testing — native first, Docker for cross-compilation
 
-**Prefer Docker via the `renzora` CLI for building and testing.** It's the
-canonical environment, the only path for cross-platform/release builds, and what
-CI runs — so it's the ground truth when verifying. A **native** (no-Docker) build
-of the host platform is also supported via `cargo renzora` (see below), for local
-convenience; reach for it when a contributor wants to build/run on their own
-machine without Docker, but fall back to Docker whenever results must match the
-canonical env or another platform is involved.
+**`cargo renzora` is how you install and run Renzora on your own machine.**
+It builds the workspace natively, stages `dist/<platform>/` exactly the way the
+container's `build-all.sh` does, and launches it. No Docker, no image pull, no
+container. `rust-toolchain.toml` pins rustc so a native build matches the images.
 
-A note on the old "native can't link" claim: the shared `renzora` dylib plus the
-full plugin set exceeds the **65,535 exported-symbol cap** of the Windows PE
-format, which MSVC `link.exe` refuses. That is *not* a blocker, because
-`.cargo/config.toml` already pins the linker to **`rust-lld`** for
-`x86_64-pc-windows-msvc` (host and container alike), which raises the cap far
-enough for the normal build. So native links succeed; we simply never use
-`link.exe`. So:
+**Docker is a cross-compiler, not the install path.** Its job is producing
+**export templates for platforms you do not own** — building a macOS or Android
+or wasm bundle from a Windows box, or a Windows one from Linux. That is a real
+need and the reason the images exist, but it is a *shipping* concern. Reaching
+for a container to run the editor on the machine you are sitting at is paying
+for cross-compilation you are not doing.
 
-- ✅ `cargo check` natively / via the editor — the fast local gate while editing
+### Why the C-ABI plugin system settles this
+
+This used to be a genuinely hard call, because the plugin ABI depended on the
+build environment. A distribution plugin shares one compiled `bevy_dylib` with
+the host, and cargo names it `bevy_dylib-<metadata>` from a hash of the whole
+build — feature set, profile, `RUSTFLAGS`, target, rustc. Build the engine in a
+different environment and a prebuilt plugin imports a filename that is not there,
+so "canonical env" meant "the env in which plugins were built", and Docker was
+the only way to guarantee it.
+
+**Standalone C-ABI plugins (§3) do not link Bevy at all.** They export one symbol
+and import nothing — the interface is passed *in* as a function table — so there
+is no filename to match, no `TypeId` to line up, and no environment to be
+canonical about. A plugin built with any rustc on any machine loads into an
+engine built with any other. That removed the last reason an ordinary user needed
+the container, and it is why this section now reads the way it does.
+
+The `bevy_dylib` sharing still applies to *distribution* plugins, which is why
+§3 still exists and why the marketplace still builds against a canonical release.
+
+### What runs where
+
+- ✅ **`cargo renzora`** — native build + stage + run on the host platform. The
+  normal way to work.
+- ✅ `cargo check` natively / via the editor — the fast gate while editing
   (doesn't link).
-- ✅ `cargo clippy` natively — links nothing, so it reproduces the CI gate exactly.
-  Mirror CI's exclude list from `.github/workflows/test.yml` (notably `polyanya`),
-  and don't add `--all-targets` — CI doesn't, and the extra test targets pull in
-  vendored crates CI never lints.
-- ✅ `cargo renzora` — native build + stage + run on the **host platform** (an
-  `xtask` that mirrors the container's `build-all.sh` staging; `rust-toolchain.toml`
-  pins rustc so it matches the images). Convenient, but host-only.
-- ❌ **`cargo test` does NOT link natively on Windows**, even with rust-lld. The
-  test harness pushes the `renzora` dylib's export count to ~875k against PE's
-  65,535 ceiling and rust-lld hard-errors (`too many exported symbols`). Verified
-  2026-07 on the pinned 1.95.0 toolchain — it is not a stale claim and not fixable
-  by tweaking flags. **Run tests with `renzora test`** (the Linux container has no
-  PE export table, so the cap doesn't exist there). A native `cargo clippy` plus
-  `renzora test` is the full local gate.
-- ✅ `renzora check`, `renzora test`, `renzora build`, `renzora run` — the
-  canonical builds inside the container; **required** for cross-platform/release
-  and for reproducing CI. **Prefer these when verifying.**
+- ✅ `cargo clippy` natively — links nothing, so it reproduces the CI gate
+  exactly. Mirror CI's exclude list from `.github/workflows/test.yml` (notably
+  `polyanya`), and don't add `--all-targets` — CI doesn't, and the extra test
+  targets pull in vendored crates CI never lints.
+- ❌ **`cargo test` does NOT link natively on Windows.** The test harness pushes
+  the `renzora` dylib's export count to ~875k against the PE format's 65,535
+  ceiling and rust-lld hard-errors (`too many exported symbols`). Verified
+  2026-07 on the pinned 1.95.0 toolchain — not a stale claim, and not fixable by
+  tweaking flags. **Run tests with `renzora test`** (the Linux container has no
+  PE export table, so the cap does not exist there). This is the one everyday
+  task that still wants a container on Windows.
+- ✅ `renzora build [platform]` — **cross-compilation, the reason Docker is
+  here.** Required for export templates and release artefacts.
+- ✅ `renzora check` / `renzora test` — reproduce CI exactly. Use when a result
+  must match what CI will say, not as the default way to build.
 - ❌ Don't "fix" a perceived link error by stripping the `dylib` crate-type or
   disabling `prefer-dynamic` — the shared `bevy_dylib`/`renzora` dylib is
-  load-bearing for the plugin ABI (§3).
+  load-bearing for the distribution-plugin ABI (§3). Note that a *standalone*
+  plugin must not inherit `prefer-dynamic`; `plugins/.cargo/config.toml` turns it
+  off for exactly that reason.
+
+A note on the old "native can't link" claim: the shared `renzora` dylib plus the
+full plugin set exceeds the PE 65,535 exported-symbol cap, which MSVC `link.exe`
+refuses. That is not a blocker, because `.cargo/config.toml` pins the linker to
+**`rust-lld`** for `x86_64-pc-windows-msvc` (host and container alike), which
+raises the cap far enough for the normal build. Native links succeed; we simply
+never use `link.exe`.
 
 Pinned toolchain — **Rust 1.95.0**, **Bevy 0.19**. The Rust version lives in TWO
 files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.95.0`, the
@@ -312,11 +341,12 @@ Domain functions belong in that domain crate's extension.
 
 ## 9. Best practices (audit summary)
 
-- **Trust the constraints.** Docker-only builds, the single shared `bevy_dylib`,
-  the one-`TypeId` contract crate, and the frozen-vs-current docs split are all
-  load-bearing. Work *with* them.
-- **`cargo check` to iterate, `renzora test`/`renzora check` to verify.** Never
-  claim something builds/passes based on a native build — it can't link natively.
+- **Trust the constraints.** The single shared `bevy_dylib`, the one-`TypeId`
+  contract crate, and the frozen-vs-current docs split are all load-bearing. Work
+  *with* them.
+- **`cargo renzora` to build and run, `cargo check`/`cargo clippy` to iterate,
+  `renzora test` to verify.** Docker is for cross-compiling export templates, not
+  for installing the engine on your own machine.
 - **Put shared types in `renzora`.** Any type two crates (or a plugin and the
   host) both need crosses the dylib boundary and must have one definition.
 - **Two plugins, not one "both" plugin,** when a feature needs editor tooling +

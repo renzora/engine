@@ -1,8 +1,12 @@
 # Building from a Checkout
 
-Clone the Renzora engine workspace and build the editor, the game runtime, or every export target. There are two supported paths: the `renzora` CLI (Docker — the canonical path, and the only one for **cross-platform** builds), and a **native** `cargo renzora` for building on your own machine for your own platform.
+Clone the Renzora engine workspace and build the editor, the game runtime, or every export target.
 
-> **Docker vs native.** Renzora's dynamic-plugin system needs the host binary, the editor bundle, and every plugin to share **one** compiled copy of Bevy and the `renzora` SDK. Docker guarantees that by building everyone in the pinned `ghcr.io/renzora/*` images, which is why it's canonical and required for cross-platform/release builds. But the same guarantee holds **natively** as long as you build the host and its plugins from source in one environment — which `cargo renzora` does — and `rust-toolchain.toml` pins the same rustc the images use. So a native build is supported for **your host platform**; it produces its own `bevy_dylib`, which is fine because the host and every plugin in that build share it. (Don't mix a Docker-built host with native-built plugins, or vice versa.) See [Building natively](#building-natively-without-docker) below.
+**Build for your own machine with `cargo renzora`.** It's an ordinary Cargo build — no Docker, no images, no container. **Use Docker when you need to cross-compile**: producing export templates for platforms you don't own is the job those toolchain images exist to do.
+
+> **Why the split.** Renzora's *dynamic-plugin* system needs the host binary, the editor bundle, and every distribution plugin to share **one** compiled copy of Bevy and the `renzora` SDK. Building everything from source in a single environment gives you that by construction, which is exactly what `cargo renzora` does — and `rust-toolchain.toml` pins the same rustc the images use. Docker guarantees the same thing across *different* machines, which is what makes it the right tool for release artefacts and for the marketplace, and the wrong one for a local build.
+>
+> [Standalone plugins](/docs/r1-alpha7/extending/standalone-plugins) sidestep the question completely: they never link Bevy, so their compatibility does not depend on your build environment at all.
 
 ## What you're building
 
@@ -15,26 +19,15 @@ Renzora is a single Bevy 0.19 Cargo workspace with exactly **one binary**: `renz
 
 ## Prerequisites
 
-- **Docker** — the toolchain runs in a container. Install [Docker](https://docs.docker.com/get-docker/) and make sure the daemon is running.
 - **Git** — to clone the engine.
-- **Rust** — only to install the CLI (`cargo install renzora`); it is **not** used to build the engine. Install via [rustup](https://rustup.rs) if you don't have it.
+- **Rust** — via [rustup](https://rustup.rs). `rust-toolchain.toml` pins the version, so rustup installs and selects the right one on first build.
+- Your platform's usual native build dependencies: a C/C++ toolchain, and on Linux the X11/Wayland/ALSA/udev dev headers. The full list mirrors `docker/base/Dockerfile`.
 
-> For the **container** build you do **not** install a Rust toolchain, a C/C++ toolchain, or any Bevy system libraries — they're all baked into the Docker image. (A native `cargo renzora` build does need them on your machine; see [Building natively](#building-natively-without-docker).) The pinned Rust version lives in two lockstep files: `docker/base/Dockerfile` (`FROM rust:1.95.0-bookworm`, container) and `rust-toolchain.toml` (native).
+**Docker** is needed only for [cross-compiling](#cross-compiling-for-other-platforms) and for running the test suite on Windows.
+
+> The pinned Rust version lives in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.95.0-bookworm`, container). They must move together.
 
 ## Clone and run
-
-```bash
-git clone https://github.com/renzora/engine.git
-cd engine
-renzora init         # build/pull the toolchain image + container (first run is slow)
-renzora run          # build the workspace in the container and run the editor
-```
-
-The first build takes several minutes (Bevy is large); subsequent builds are incremental.
-
-## Building natively (without Docker)
-
-If you'd rather build and run on your own machine for your own platform — no Docker — use `cargo renzora`. It's the local mirror of what the container does:
 
 ```bash
 git clone https://github.com/renzora/engine.git
@@ -42,7 +35,21 @@ cd engine
 cargo renzora           # build the workspace, stage dist/, and launch the editor
 ```
 
-That's the whole flow. You need only **Git** and **rustup** — no Docker, no `cargo install`. On first run, `rust-toolchain.toml` makes rustup auto-install and select the exact pinned Rust version (the same one the images use), so you compile with the same compiler everyone else does. You will need your platform's usual native build dependencies (a C/C++ toolchain; on Linux also the X11/Wayland/ALSA/udev dev headers — the list mirrors `docker/base/Dockerfile`).
+That's the whole flow. `cargo renzora` is an `xtask` that compiles the workspace, arranges `dist/<platform>/` exactly the way the container's `build-all.sh` does — `bevy_dylib` and `renzora` beside the exe, the editor bundle beside them, plugins in `plugins/` — and then launches it. `cargo renzora dist` stages without launching.
+
+The first build takes several minutes (Bevy is large); subsequent builds are incremental.
+
+### Everyday commands
+
+| | |
+|---|---|
+| `cargo renzora` | build, stage, run the editor |
+| `cargo renzora dist` | build and stage without launching |
+| `cargo check` | fast compile check while editing — doesn't link |
+| `cargo clippy` | reproduces the CI lint gate exactly |
+| `renzora test` | the test suite (see the caveat below) |
+
+> **`cargo test` does not link natively on Windows.** The test harness pushes the `renzora` dylib past the PE format's 65,535 exported-symbol ceiling and the linker refuses. It's a limit of the executable format, not something to configure around. Run `renzora test`, which builds in the Linux container where no such table exists. `cargo check` and `cargo clippy` are unaffected and run natively everywhere.
 
 | Command | What it does |
 |---|---|
@@ -106,6 +113,13 @@ The root `build.rs` emits two environment values used by the dynamic-plugin ABI 
 It also embeds the Windows icon/version resource (via `winres` on a Windows host, or a hand-written `.rc` + `llvm-rc` when cross-compiling Linux→Windows-MSVC) and re-emits the static `zstd` link directive.
 
 ## Cross-compiling for other platforms
+
+**This is what Docker is for.** Shipping a game means producing builds for machines you don't have — a macOS bundle from a Windows box, an Android APK from Linux. Each target needs its own compiler, linker and SDK, and installing six of those by hand is exactly the problem a container solves. Nothing on this page before this point needed Docker; everything after it does.
+
+```bash
+cargo install renzora     # the CLI that drives the images
+renzora init              # pull the toolchain images
+```
 
 Every cross-platform target builds inside the engine's Docker toolchain, split into a shared base plus one image per platform (all under **`ghcr.io/renzora/*`**). The base (`docker/base/Dockerfile`, `FROM rust:1.95.0-bookworm`) is the single source of truth for the Rust version and carries the linux-gnu targets + `mold`/`clang`/`lld` linkers + LLVM-19; each platform image builds `FROM` it and adds its cross toolchain — `windows` (xwin/MSVC), `macos` & `ios` (osxcross + SDKs), `android` (NDK r27c), `wasm` (`wasm-bindgen` + `binaryen`), `linux` (dual-arch cross-gcc + `appimagetool` + UPX). The host only needs Docker, and the CLI pulls just the images a command needs — the GPU editor/game still runs natively from `dist/`.
 

@@ -31,22 +31,25 @@ If you're looking for a first contribution, check for issues labeled `good first
 
 ## Development setup
 
-The full build story — the one-binary / editor-as-removable-cdylib model and the Docker toolchain image — is documented in [Building from a Checkout](/docs/r1-alpha5/setup/building-from-source). Every build runs in the container; the short version:
+The full build story — the one-binary / editor-as-removable-cdylib model and the cross-compile images — is documented in [Building from a Checkout](/docs/r1-alpha7/setup/building-from-source). The short version:
 
 ```bash
-renzora run              # build the workspace and run the EDITOR
-renzora run runtime      # run the shipped-game shape (same binary, --no-editor)
-renzora run -- --server  # run a headless dedicated server (--server)
+cargo renzora            # build the workspace and run the EDITOR
+cargo renzora dist       # build and stage without launching
+cargo check              # fast gate while editing
+cargo clippy             # reproduces the CI lint job
+renzora test             # the test suite (container)
 ```
 
-> Renzora's canonical build is the container — it guarantees your `bevy_dylib` and engine build hash match everyone else's, which is what keeps the plugin ABI compatible, and it's required for cross-platform/release builds. A native (no-Docker) build of your host platform is also supported via `cargo renzora` (source-first, so the host and its plugins share one `bevy_dylib`); prefer the container when results must match the canonical env. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
+> You do not need Docker to develop on Renzora. `cargo renzora` builds the host and every in-workspace plugin from source in one environment, which is what the shared-`bevy_dylib` plugin ABI actually requires — the container guarantees the same thing *across machines*, which is why it is right for release artefacts and cross-compilation and unnecessary locally. [Standalone plugins](/docs/r1-alpha7/extending/standalone-plugins) do not link Bevy at all, so they are unaffected either way. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
 
 ### Toolchain
 
-- The build runs in the pinned `ghcr.io/renzora/*` images (a shared `base` plus one per platform) — you only need **Docker** and **Git**. The Rust version, C/C++ toolchain, linkers (`clang`/`mold`/`rust-lld`), and the Bevy system libraries are all baked into the images; you install none of them locally. The CLI pulls only the images a command needs.
-- Rust/Cargo is needed only to install the CLI (`cargo install renzora`), not to build the engine.
-- The Rust version is pinned in two lockstep files: `docker/base/Dockerfile` (`FROM rust:1.95.0-bookworm`, the container) and `rust-toolchain.toml` (native `cargo renzora` builds). The project does **not** require nightly.
-- Linux uses `mold` and Windows uses `rust-lld` inside the image (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`) — that linker setup is fixed in the container, another reason the build is container-only.
+- You need **Git** and **rustup**. `rust-toolchain.toml` pins the Rust version and rustup selects it automatically; the project does **not** require nightly. You will also need your platform's usual native build dependencies — a C/C++ toolchain, and on Linux the X11/Wayland/ALSA/udev dev headers (the list mirrors `docker/base/Dockerfile`).
+- The Rust version is pinned in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.95.0-bookworm`, container). A bump must edit both.
+- **Docker** is needed for two things only: cross-compiling export templates (`renzora build <platform>`) and running the test suite on Windows.
+- Linux uses `mold` and Windows uses `rust-lld` (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`). `.cargo/config.toml` sets that up for native builds as well as the container, so a native link succeeds.
+- **`cargo test` does not link natively on Windows**: the test harness pushes the `renzora` dylib past the PE format's 65,535 exported-symbol ceiling, which is a limit of the executable format rather than something to configure around. Use `renzora test`.
 
 > Heads-up: hardware ray-traced GI ships via the optional **`renzora_solari`** plugin (Bevy Solari), enabled by the `bevy_solari` Bevy feature in the workspace `Cargo.toml` and activated at runtime only on RT-capable GPUs — see [Solari ray-traced GI](../rendering/solari.md). There is still no `--features solari` *build* flag; Solari is a drop-in plugin, not a build variant. Lumen's separate `LumenQuality::Hwrt` tier remains an unimplemented placeholder and renders nothing.
 
