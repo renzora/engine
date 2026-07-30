@@ -150,63 +150,50 @@ RuntimePlugin → GlobalsPlugin → InputPlugin → ScriptingPlugin → PhysicsP
 
 Renzora builds on Bevy's PBR/HDR pipeline plus a large family of plugin crates. Camera effects fall into three structural families:
 
-1. **The unified post-process family** — a single `UnifiedPostProcessNode` (`crates/renzora/src/postprocess.rs`) that runs every active effect as a fullscreen fragment pass between `Node3d::Tonemapping` and `Node3d::EndMainPassPostProcessing`.
+1. **The unified post-process family** — one `RenderComposition` registry (`crates/renzora/src/postprocess.rs`) that runs every active effect as a fullscreen fragment pass, dispatched in one of four phases positioned around Bevy's own tonemapping and anti-aliasing.
 2. **Bevy built-in wrappers** that author user-facing settings and route a stock Bevy component onto the camera (bloom → `Bloom`, dof → `DepthOfField`, ssao → `ScreenSpaceAmbientOcclusion`, ssr → `ScreenSpaceReflections`, motion blur, auto-exposure, fog, atmosphere → `Atmosphere`, skybox → `Skybox`, etc.).
 3. **Custom multi-pass render-graph crates** for global illumination and transparency (`renzora_lumen`, `renzora_rt`, `renzora_oit`) and for material/mesh sky & water (clouds, night stars, water, lighting).
 
 ### The unified post-process pipeline
 
-Each effect registers a type-erased handler and **only runs when its settings component is present on the camera**, so inactive effects have zero render-graph overhead. Settings authored on any entity are proxied onto the active cameras through the `EffectRouting` table (`renzora/src/core/mod.rs`).
+Each effect registers a type-erased pass into `RenderComposition` under a `(phase, order)` key, and **only runs when its settings component is present**, so inactive effects have zero render-graph overhead.
 
-The public trait is small — only `fragment_shader()` is required:
-
-```rust
-pub trait PostProcessEffect:
-    Component + ExtractComponent + Clone + Copy + ShaderType + WriteInto + Default + 'static
-{
-    fn fragment_shader() -> ShaderRef;
-    // has_extra_texture / extra_texture_is_snapshot / freeze_snapshot have defaults
-}
-```
-
-Most effects don't implement it by hand — they use the **`#[post_process]`** attribute macro. Here is the complete `renzora_ascii` crate:
+All **53** of these effects are now [standalone C-ABI plugins](../extending/standalone-plugins.md) under `plugins/`, not engine crates. That is the significant structural change in alpha7: an effect links no Bevy, builds with any toolchain in about a second, and hot-reloads with its shader while the editor runs. Here is the complete `plugins/ascii`:
 
 ```rust
-use bevy::prelude::*;
-#[cfg(feature = "editor")]
-use renzora_editor_framework::AppEditorExt;
+use renzora_plugin::prelude::*;
 
-#[renzora_macros::post_process(shader = "ascii.wgsl", name = "ASCII", icon = "TEXT_AA")]
-pub struct AsciiSettings {
-    #[field(speed = 0.5, min = 2.0, max = 32.0, default = 8.0)]
+const WGSL: &str = include_str!("ascii.wgsl");
+
+#[derive(Component)]
+#[repr(C)]
+pub struct Ascii {
+    #[field(min = 2.0, max = 32.0, speed = 0.5)]
     pub char_size: f32,
-    #[field(speed = 0.01, min = 0.0, max = 1.0, default = 0.5)]
+    #[field(min = 0.0, max = 1.0, speed = 0.01)]
     pub color_mix: f32,
-    #[field(speed = 0.01, min = 0.5, max = 3.0, default = 1.2)]
+    #[field(min = 0.5, max = 3.0, speed = 0.01)]
     pub contrast: f32,
 }
 
-#[derive(Default)]
+// + a Default impl
+
 pub struct AsciiPlugin;
 
 impl Plugin for AsciiPlugin {
     fn build(&self, app: &mut App) {
-        bevy::asset::embedded_asset!(app, "ascii.wgsl");
-        app.register_type::<AsciiSettings>();
-        app.add_plugins(renzora_postprocess::PostProcessPlugin::<AsciiSettings>::default());
-        #[cfg(feature = "editor")]
-        app.register_inspectable::<AsciiSettings>();
+        app.add_post_process::<Ascii>("ascii", WGSL, RenderPhase::LdrPost, 0.0);
     }
 }
 
-renzora::add!(AsciiPlugin);
+renzora_plugin::add!(AsciiPlugin);
 ```
 
-The macro auto-adds an `enabled: f32` field plus serde-skipped padding to a 16-byte / two-`vec4` alignment, derives `Component`/`Reflect`/`Serialize`/`ShaderType`/`ExtractComponent` (filtered `With<Camera3d>`), implements `PostProcessEffect::fragment_shader()`, and generates the editor `InspectorEntry`.
+`renzora_postprocess::plugin_bridge` is the engine side of that call: it turns the registration into a real `RenderPassEntry`, sizes the uniform buffer from the component, and uploads its bytes each frame. The `#[field]` ranges become the inspector controls. There is no padding to count and no `enabled` flag — removing the component is what switches an effect off.
 
-> `renzora_postprocess` is now just a re-export shim (`pub use renzora::postprocess::*`). The framework lives **inside `renzora.dll`**, so all of the effect crates share one `PostProcessRegistry` and matching `TypeId`s across the dlopen boundary.
+> `renzora_postprocess` is otherwise a re-export shim (`pub use renzora::postprocess::*`). The framework lives **inside `renzora.dll`**, so in-tree effects share one `RenderComposition` and matching `TypeId`s across the dlopen boundary.
 
-Around **53 effect crates** flow through this pipeline: ~45 use the `#[post_process]` macro, and 8 implement `PostProcessEffect` by hand because they need a custom bind-group layout, an extra texture, or a two-frame snapshot (vignette, outline, gaussian_blur, god_rays, edge_glow, palette_quantization, underwater, screen_transition).
+What stays in-tree, compiled against real Bevy: the **built-in wrappers** (bloom, DOF, SSAO, SSR, vignette, motion blur, …), which route a stock Bevy component the ABI cannot express, and the **multi-pass graph crates** (`renzora_lumen`, `renzora_rt`, `renzora_oit`, `renzora_solari`). `renzora_macros::post_process` and the `PostProcessEffect` trait still exist for that path but no longer have any users.
 
 ## Scene serialization
 

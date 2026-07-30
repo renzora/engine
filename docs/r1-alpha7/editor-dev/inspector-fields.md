@@ -81,7 +81,7 @@ All optional; each has a sensible default derived from the struct name.
 | `readonly` | any field | Force a non-editable `{:?}` debug display |
 | `default = <num>` | (see note) | Parsed but **ignored** by `#[derive(Inspectable)]` |
 
-> ⚠️ `#[field(default = ...)]` is recognised by the attribute parser but **has no effect under `#[derive(Inspectable)]`** — initial values come from your type's own `Default` impl (the generated "Add Component" action inserts `T::default()`). `default` is only consumed by the `#[post_process]` attribute macro, which uses it to build the effect's `Default`. Don't rely on it to seed inspector fields.
+> ⚠️ `#[field(default = ...)]` is recognised by the attribute parser but **has no effect under `#[derive(Inspectable)]`** — initial values come from your type's own `Default` impl (the generated "Add Component" action inserts `T::default()`). `default` is only consumed by the `#[post_process]` attribute macro, which no longer has any users in the tree. Don't rely on it to seed inspector fields.
 
 ### Supported field types
 
@@ -112,7 +112,7 @@ Fields named `enabled` or starting with `_p` are skipped automatically (a conven
 
 The `TestComponentPlugin` above is **editor-scope** (`add!(_, Editor)`), so its whole crate is always built with the `editor` feature and the `register_inspectable` call needs no guard.
 
-A plugin that must run in **both** the editor and the shipped game (for example, a post-process effect or any runtime component that also wants an inspector) is different: its `register_inspectable` call must be compiled out when the `editor` feature is off. The crate declares its own `editor` feature that forwards to `renzora/editor`, and gates the call. This is exactly what every effect crate (e.g. `renzora_ascii`) does:
+A plugin that must run in **both** the editor and the shipped game (any runtime component that also wants an inspector) is different: its `register_inspectable` call must be compiled out when the `editor` feature is off. The crate declares its own `editor` feature that forwards to `renzora/editor`, and gates the call. This is what a dual-mode distribution plugin like `renzora_vignette` or `renzora_lumen` does:
 
 ```toml
 [features]

@@ -251,4 +251,4 @@ pub struct Health {
 }
 ```
 
-See **Script API Bindings** for exposing functions to Lua/Rhai, **Post-Processing Effects** for the `#[renzora::post_process]` workflow, and **Custom Blueprint Nodes** / **Custom Material Nodes** for those subsystems — each has its own registration path layered on the same `add!` model described here.
+See **Script API Bindings** for exposing functions to Lua/Rhai, **[Post-Processing Effects](./post-processing.md)** for camera effects (which are [standalone plugins](./standalone-plugins.md) now, not distribution plugins), and **Custom Blueprint Nodes** / **Custom Material Nodes** for those subsystems — each has its own registration path layered on the same `add!` model described here.

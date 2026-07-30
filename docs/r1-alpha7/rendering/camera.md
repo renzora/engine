@@ -159,7 +159,7 @@ How routing works:
 - For Bevy built-in effects, a per-effect sync system inserts/removes the stock component (`BloomSettings` → `Bloom`, and similarly for DoF, SSAO, SSR, tonemapping, fog, atmosphere, skybox, etc.).
 - All the custom shader effects run inside a **single unified fullscreen pass** placed between tonemapping and the end of main-pass post-processing. Each effect only runs when its component is present, so an inactive effect costs nothing.
 
-See the [Post-Processing](/docs/r1-alpha5/rendering/post-processing) page for the full effect catalog (~53 effects) and their fields.
+See [Post-Processing Effects](../extending/post-processing.md) for how the 53 shipped effects are authored, and [Render Pipeline](./pipeline.md) for how they compose.
 
 ## Auto Exposure (keeping night dark)
 

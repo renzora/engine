@@ -33,34 +33,40 @@ Not everything called a "camera effect" is the same kind of thing. There are thr
 
 | Family | Example crates | How it renders |
 |---|---|---|
-| **Unified post-process** | ~53 effect crates (`renzora_ascii`, `renzora_vignette`, `renzora_crt`, …) | A fullscreen fragment pass inside the single `UnifiedPostProcessNode`. Built with `#[post_process]` / `PostProcessEffect`. |
-| **Bevy built-in wrappers** | `renzora_bloom_effect`, `renzora_dof`, `renzora_ssao`, `renzora_ssr`, `renzora_motion_blur`, `renzora_auto_exposure`, `renzora_atmosphere`, `renzora_skybox`, `renzora_environment_map`, `renzora_forward_decal`, `renzora_distance_fog`, `renzora_volumetric_fog`, `renzora_antialiasing` | Author user-facing settings, then route a **stock Bevy component** onto the camera (`Bloom`, `DepthOfField`, `ScreenSpaceAmbientOcclusion`, `ScreenSpaceReflections`, `Atmosphere`, `Skybox`, `EnvironmentMapLight`, `ForwardDecal`, FXAA/SMAA/TAA/CAS, …). No custom WGSL pass of their own. |
+| **Unified post-process** | 53 [standalone plugins](../extending/standalone-plugins.md) under `plugins/` (`ascii`, `crt`, `sepia`, …) | A fullscreen fragment pass, registered through the C ABI with `add_post_process`. These link no Bevy and hot-reload, shader included. |
+| **Bevy built-in wrappers** | `renzora_bloom_effect`, `renzora_dof`, `renzora_ssao`, `renzora_ssr`, `renzora_vignette`, `renzora_motion_blur`, `renzora_auto_exposure`, `renzora_atmosphere`, `renzora_skybox`, `renzora_environment_map`, `renzora_forward_decal`, `renzora_distance_fog`, `renzora_volumetric_fog`, `renzora_antialiasing` | Author user-facing settings, then route a **stock Bevy component** onto the camera (`Bloom`, `DepthOfField`, `ScreenSpaceAmbientOcclusion`, `ScreenSpaceReflections`, `Atmosphere`, `Skybox`, `EnvironmentMapLight`, `ForwardDecal`, FXAA/SMAA/TAA/CAS, …). No custom WGSL pass of their own. |
 | **Custom multi-pass render-graph crates** | `renzora_lumen` + `renzora_rt` (GI), `renzora_oit` (transparency); plus material/mesh sky & water (`renzora_clouds`, `renzora_night_stars`, `renzora_water`, `renzora_pool_water`, `renzora_lighting`) | Their own render-graph nodes/passes, outside the unified node. |
 
-The first two families both get their settings onto the camera the same way — through `EffectRouting` (below). The third family wires up its own graph nodes.
+The **wrappers** get their settings onto the camera through `EffectRouting` (below). The third family wires up its own graph nodes. Plugin effects need neither: their settings component sits on any entity and the bridge uploads its bytes each frame.
 
-For authoring a unified effect (the `#[post_process]` macro, the WGSL contract, and the hand-written trait path), see **[Post-Processing Effects](/docs/r1-alpha5/extending/post-processing)**. This page covers the pipeline-level picture.
+For authoring a unified effect (the three files, the WGSL contract, and where the line falls between a plugin effect and an in-tree one), see **[Post-Processing Effects](../extending/post-processing.md)**. This page covers the pipeline-level picture.
 
-### The unified post-process node
+### Render composition — one registry, four phases
 
-All unified effects share **one** render-graph node. Each effect registers a type-erased `TypedEffectHandler<T>` into a `PostProcessRegistry`, and a handler runs only when its settings component is present on the view:
+Effects do not each get a render-graph node. They register a type-erased pass into a single `RenderComposition` resource, tagged with a **phase** and an **order**, and the registry keeps itself sorted by `(phase, order)`:
 
 ```rust
 // crates/renzora/src/postprocess.rs (abridged)
-impl ViewNode for UnifiedPostProcessNode {
-    type ViewQuery = (Entity, &'static ViewTarget);
-
-    fn run(/* … */) -> Result<(), NodeRunError> {
-        let registry = world.resource::<PostProcessRegistry>();
-        for handler in &registry.handlers {
-            handler.execute(world, render_context, view_target, entity)?; // no component → returns early
-        }
-        Ok(())
-    }
+#[derive(Resource, Default)]
+pub struct RenderComposition {
+    passes: Vec<RenderPassEntry>,   // kept sorted by (phase, order)
 }
 ```
 
-This means **inactive effects cost nothing** — there is no per-effect node and nothing executes for effects you didn't add. Effects run in the order their `PostProcessPlugin::<T>` registered (i.e. plugin registration order, which you can nudge with the `add!` priority). The framework itself lives inside `renzora.dll` (`renzora::postprocess`, re-exported through the `renzora_postprocess` shim) so all effect crates share one registry and matching `TypeId`s across the dynamic-plugin boundary.
+Four dispatcher systems drain it, one per phase, each pinned into `Core3d` relative to Bevy's own post-process anchors:
+
+| Phase | Runs | Image |
+|---|---|---|
+| `Gi` | `EarlyPostProcess`, before temporal AA | HDR |
+| `HdrPost` | `EarlyPostProcess`, after temporal AA | HDR |
+| `LdrPost` | `PostProcess`, after tonemapping, before FXAA/SMAA | LDR |
+| `Overlay` | `PostProcess`, after FXAA/SMAA and after `LdrPost` | final |
+
+This file is the **only** place that imports `tonemapping`, `temporal_anti_alias`, `fxaa` and `smaa`. An effect never orders against them; it names a phase and the framework positions it. Ordering against an anchor that isn't in the schedule — a 2D lean export with no anti-alias plugin — is a harmless no-op, which is why the anti-alias anchors are `render_3d`-gated and the phases still work without them.
+
+A pass runs only when its settings component is present, so **inactive effects cost nothing** — no pipeline bind, no pass. Within a phase, `order` decides; there is no per-effect priority API and the `add!` priority does not affect render order.
+
+The framework lives inside `renzora.dll` (`renzora::postprocess`, re-exported through the `renzora_postprocess` shim) so every in-tree effect shares one registry and matching `TypeId`s across the dlopen boundary. Standalone plugin effects reach the same registry through `renzora_postprocess::plugin_bridge`, which turns an `add_post_process` call from the C ABI into a `RenderPassEntry` — so a plugin effect and an engine pass sort against each other in one list.
 
 ## EffectRouting — getting settings onto the camera
 
@@ -259,9 +265,10 @@ Wireframe visualization relies on the `POLYGON_MODE_LINE` feature noted above (s
 
 ## What's next
 
-- **[Post-Processing Effects](/docs/r1-alpha5/extending/post-processing)** — author a unified effect end to end (`#[post_process]`, the WGSL contract, hand-written effects).
-- **[WGSL Shaders](/docs/r1-alpha5/rendering/shaders)** — writing shaders and materials for Renzora.
-- **[Camera System](/docs/r1-alpha5/rendering/camera)** — cameras, viewports, and prepasses.
-- **[Architecture](/docs/r1-alpha5/setup/architecture)** — where the render crates sit in the one-binary / plugin model.
+- **[Post-Processing Effects](../extending/post-processing.md)** — author an effect end to end: the three files, the WGSL contract, and what stays in-tree.
+- **[Standalone Plugins](../extending/standalone-plugins.md)** — the C ABI the effect plugins are built on.
+- **[WGSL Shaders](./shaders.md)** — writing shaders and materials for Renzora.
+- **[Camera System](./camera.md)** — cameras, viewports, and prepasses.
+- **[Architecture](../setup/architecture.md)** — where the render crates sit in the one-binary / plugin model.
 </content>
 </invoke>

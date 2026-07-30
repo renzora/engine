@@ -25,6 +25,7 @@ The price is that a standalone plugin reaches Bevy through a curated surface rat
 | Toolchain | must match the canonical build env | any |
 | Bevy surface | all of it | the ABI surface |
 | Editor panels | bevy_ui, in Rust | BSN + ember widgets |
+| [Hot reload](#hot-reload) | no — restart the editor | yes, while it runs |
 | Binary size | small (Bevy is shared) | ~210 KB (std linked statically) |
 | Registers with | `renzora::add!` | `renzora_plugin::add!` |
 | Breaks when | the editor's ABI moves | only on a MAJOR ABI bump |
@@ -129,6 +130,48 @@ The cost is size: roughly 20 KB dynamically linked against ~210 KB statically. T
 
 The empty `[workspace]` table is not optional if your plugin lives inside a checkout of the engine. Cargo's `exclude` key stops a directory being a workspace *member*, but it does not stop it resolving against the workspace — the plugin would still inherit the workspace's lockfile and feature unification, which quietly undoes the isolation the whole mechanism depends on. `[workspace]` makes the plugin its own workspace root.
 
+## Hot reload
+
+**Edit a `.rs` or `.wgsl` file under `plugins/` and save. The change is live in about a second, without restarting the editor.**
+
+The editor watches plugin source, runs `cargo build` when it changes, stages the result, and swaps the new library in. Nothing to run, no second terminal:
+
+```text
+edit a file  →  cargo build  →  the new dll is staged  →  the running editor swaps it
+```
+
+That loop is only possible because a standalone plugin links no Bevy. One changed file rebuilds in well under a second; a plugin that shared the engine's Bevy would spend half a minute linking and the loop wouldn't be worth having.
+
+### What survives a reload
+
+**Your data.** Components and resources live in the host's ECS, keyed by name, so a swap never touches them — a counter keeps counting, entities keep their values, and nothing is serialised or restored. That is the whole reason this is tractable rather than a save-and-reload cycle.
+
+Also reloaded: your **systems**, your **panel's BSN**, its title and icon, and your **shaders**. A shader is an asset, so replacing its source invalidates the pipeline and Bevy recompiles — no pipeline rebuild, no visible hitch.
+
+### What a failure does: nothing
+
+Every way a reload can fail leaves the running build untouched, and this is by design rather than luck.
+
+- **Compile error** — nothing is staged, the editor never sees a change, cargo's full output goes to the log.
+- **Init fails, wrong scope, ABI too old** — the previous build keeps running.
+- **A component or resource changed layout** — refused, with the reason (`size 12 → 16`), because everything already holding that type was allocated for the old layout. **This is the one change that needs a restart.** Adding a field to a component is a restart; changing what a system does is not.
+
+A shader whose uniform outgrew its settings struct is refused too, before it reaches the GPU — that particular mismatch is a device validation error, which is fatal rather than recoverable.
+
+### Two things a reload cannot do yet
+
+Adding a **new panel**, or a **new render pass / post-process effect**. Both need registration hooks that only exist while the app is being built. Editing an existing one is fine; adding one needs a restart, and the log says so.
+
+### Doing it by hand
+
+If you'd rather drive the build yourself — or the editor isn't running:
+
+```bash
+cargo renzora plugin <name>     # build one plugin and stage it
+```
+
+Use that rather than `cargo renzora`, which also stages `renzora.exe` and so needs the editor closed.
+
 ## Components
 
 `#[derive(Component)]` generates everything the engine needs to store and edit a type it has no Rust definition for:
@@ -151,6 +194,33 @@ pub struct Orbit {
 Keep components plain data. Destructors are not supported yet, so no `String`, `Vec`, or `Box` fields.
 
 `#[repr(C)]` is only strictly required when the struct is also a GPU uniform (see [Post-process effects](#post-process-effects)), but it costs nothing and makes the layout explicit.
+
+### Tuning how a field is edited
+
+By default a numeric field gets an unbounded drag. `#[field(..)]` makes it a slider:
+
+```rust
+#[derive(Component, Default)]
+#[component(name = "CRT")]
+#[repr(C)]
+pub struct Crt {
+    #[field(min = 0.0, max = 2.0, speed = 0.01)]
+    pub scanline_intensity: f32,
+    #[field(min = 0.0, max = 1.0)]
+    pub curvature: f32,
+    #[field(skip)]
+    pub internal_tuning: f32,
+}
+```
+
+| | |
+|---|---|
+| `min` / `max` | Both or neither. Half a range has no sensible completion, and guessing one end quietly tunes a slider to something you didn't choose. |
+| `speed` | Units per pixel of drag. Omit it and the engine uses a thousandth of the range, which keeps a `0..1` field and a `0..1000` field equally draggable. |
+| `skip` | Keeps the field in the struct and out of the inspector — right for a value the code reads but nobody should drag, and required when the struct is a GPU uniform whose layout must not change. |
+| `#[component(name = "..")]` | The inspector label. Without it the label is the type name, which turns `CRT` into `Crt`. |
+
+An inverted range (`max` below `min`) is swapped rather than refused — a slider tuned backwards would sit dead at one end, and swapping is unambiguous where rejecting is a puzzle.
 
 ## Resources
 
@@ -236,6 +306,45 @@ The function must be a plain `fn` or a non-capturing closure. A capturing closur
 
 A panic cannot unwind across an `extern "C"` boundary without aborting the process, so every system body is wrapped. If yours panics, the message is logged and **that system is disabled for the session** — the editor keeps running. A system that panics on frame one would otherwise emit thousands of identical errors and scroll the real one away.
 
+## Input
+
+```rust
+fn walk(input: Res<Input>, mut q: Query<&mut Transform>) {
+    for t in &mut q {
+        if input.pressed(Key::W) {
+            t.translation.z -= 0.1;
+        }
+        if input.just_pressed(Key::Space) {
+            info("jump");
+        }
+        if input.mouse_pressed(MouseButton::Left) {
+            let (dx, dy) = input.cursor_delta();
+            t.rotate_y(dx * 0.01);
+        }
+    }
+}
+```
+
+| | |
+|---|---|
+| `pressed` / `just_pressed` / `just_released` | Keyboard, by [`Key`](#keys) |
+| `mouse_pressed` / `mouse_just_pressed` / `mouse_just_released` | `MouseButton::Left`, `Right`, `Middle`, `Back`, `Forward` |
+| `cursor()` | Position in the primary window, `None` when the cursor is outside it |
+| `cursor_delta()` | Movement since last frame — still reported while the cursor is locked, which is what a first-person camera needs |
+| `scroll()` | Wheel movement this frame, in lines |
+
+Reading input costs nothing across the boundary. The host flattens the whole frame into a bitset and sends it with the call, so `pressed` is a shift and a mask inside your plugin — not a call back into the engine.
+
+`Res<Input>` is never absent. A host with no input at all (a dedicated server) reports everything as up rather than making you check.
+
+### Keys
+
+`Key::A`–`Key::Z`, `Key::Digit0`–`Digit9`, `Space`, `Enter`, `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`, `PageDown`, the four `Arrow*`, the left/right `Shift`/`Control`/`Alt`/`Super`, `F1`–`F12`, and the punctuation row (`Minus`, `Equal`, `BracketLeft`/`Right`, `Backslash`, `Semicolon`, `Quote`, `Comma`, `Period`, `Slash`, `Backquote`, `CapsLock`).
+
+Numpad, media and IME keys have no value yet. They read as never pressed rather than being given a number now that couldn't be changed later.
+
+These are **not** Bevy's `KeyCode` discriminants, deliberately. That enum is `#[non_exhaustive]` and its values are an implementation detail, so a Bevy upgrade that inserted a variant would silently remap every plugin's key handling — W becomes E, and nothing fails to compile. These values are frozen.
+
 ## Commands
 
 ```rust
@@ -315,9 +424,41 @@ pub struct Tint {
 app.add_post_process::<Tint>("tint", WGSL, RenderPhase::LdrPost, 0.0);
 ```
 
-Add the component to a camera and the effect runs; every field is an inspector slider.
+Add the component to **any** entity — it need not be the camera, and there is no routing table to configure — and the effect runs. Every field is an inspector row, with a slider wherever you gave a [range](#tuning-how-a-field-is-edited). Removing the component turns the effect off; there is no `enabled` flag to maintain. The effect is global, so a second entity carrying the same component does nothing.
 
-> **`#[repr(C)]` and scalar padding are mandatory here.** WGSL aligns `vec3<f32>` to 16 bytes and Rust aligns `[f32; 3]` to 4, so the "same" struct is 32 bytes in the shader and 16 in Rust — which shows up as a GPU validation panic, not a compile error. Pad with scalar `f32`s on both sides. The engine validates the shader with naga at load and names this cause explicitly if it catches it.
+Write **whatever fields the effect needs**, in any number. The engine rounds the uniform buffer to a 16-byte multiple for you, so no padding to a fixed size and no counting slots. Every one of the engine's 53 built-in effects is written this way.
+
+`RenderPhase` picks where in the frame the pass runs — `Gi`, `HdrPost`, `LdrPost` or `Overlay` — and the `f32` sorts within it. [Post-Processing Effects](./post-processing.md) covers the phases and where the line falls between an effect you can write here and one that needs a Bevy-linked crate.
+
+### The shader must be self-contained
+
+The WGSL goes straight to naga, so `#import` — a naga_oil directive — is not available. Declare what you use, and take the fragment inputs explicitly:
+
+```wgsl
+@group(0) @binding(0) var screen_texture: texture_2d<f32>;
+@group(0) @binding(1) var texture_sampler: sampler;
+
+struct Tint {
+    red: f32,
+    green: f32,
+    blue: f32,
+    strength: f32,
+};
+@group(0) @binding(2) var<uniform> settings: Tint;
+
+@fragment
+fn fragment(@builtin(position) pos: vec4<f32>, @location(0) in_uv: vec2<f32>)
+    -> @location(0) vec4<f32> {
+    let c = textureSample(screen_texture, texture_sampler, in_uv);
+    return vec4<f32>(c.rgb * vec3(settings.red, settings.green, settings.blue), c.a);
+}
+```
+
+Name the UV parameter something that can't collide with a local — `in_uv` rather than `uv`. A shader that computes its own `uv` (a curved CRT coordinate, say) will otherwise fail with `redefinition of uv`.
+
+`include_str!("effect.wgsl")` keeps the shader in its own file, and editing it is a source change the [hot reload](#hot-reload) watcher already sees.
+
+> **`#[repr(C)]` is mandatory here, and mind `vec3`.** WGSL aligns `vec3<f32>` to 16 bytes and Rust aligns `[f32; 3]` to 4, so the "same" struct is 32 bytes in the shader and 16 in Rust — a GPU validation panic, not a compile error. Pad with scalar `f32`s on both sides. The engine validates the shader with naga before it reaches wgpu and names this cause explicitly, so a mistake costs you a log line rather than the session.
 
 ## Runtime or editor
 
@@ -378,7 +519,7 @@ Ember widgets are components, so BSN can name them like any other. Fields are th
 | Component | Fields |
 |---|---|
 | `EmberButtonWidget` | `label: String` |
-| `EmberSliderWidget` | `value: f32` |
+| `EmberSliderWidget` | `value: f32`, `min: f32`, `max: f32` (default `0.0..1.0`) |
 | `EmberToggle` | `on: bool` |
 | `EmberCheckbox` | `checked: bool` |
 | `EmberInput` | `placeholder: String`, `value: String` |
@@ -390,9 +531,27 @@ Ember widgets are components, so BSN can name them like any other. Fields are th
 
 An `EmberTrack` is `name: String`, `color: (u8, u8, u8)`, `clips: Vec<EmberClip>`; an `EmberClip` is `start: f32`, `length: f32`, `label: String`. A track whose colour is left at `(0, 0, 0)` is assigned one from a cycling palette, so a handful of tracks read apart without you picking colours.
 
+`EmberSliderWidget`'s `value` is in `min..=max`, not 0..1, and an inverted range (`max < min`) is allowed — it runs the track right-to-left.
+
 A ragged `EmberTable` row is drawn as-is rather than padded — the widget lays out what it is given, because silently inventing cells would hide a mistake in whatever produced the data.
 
 Anything Bevy's own UI offers works alongside them: `Node`, `Text`, `Children`, and any registered component. A partial `Node { flex_direction: Column }` means "default the rest".
+
+### Binding a widget to a resource
+
+A widget field written as `bind(Resource.field)` instead of a literal is wired **two-way** to that plugin resource: the widget shows the resource's current value, dragging it writes back, and a system that changes the value moves the widget.
+
+```rust
+( EmberSliderWidget { value: bind(FlockSettings.cohesion), min: 0.0, max: 2.0 } )
+```
+
+The point of this is what it *doesn't* do. Dragging that slider never calls into the plugin — the host already knows the resource's layout from `register_resource`, so it reads and writes the bytes itself. There is no per-frame FFI, no action handler, and no polling on either side.
+
+- The target must be a **resource** the plugin registered. Components are not addressable this way; a panel has no entity to mean.
+- `f32`, `i32` and `bool` fields can bind. `Vec3` and `Quat` cannot — there is no single-value widget for them, and the binding is refused with that reason rather than half-wired.
+- `min`/`max` on the widget are in the **field's own units**, not normalised. `radius: 0.5..10.0` is written as `min: 0.5, max: 10.0`.
+- Only top-level fields of a component body can bind. `bind` nested inside a value (`tracks: [ ( name: bind(…) ) ]`) is left as literal text, because a rebuilt list has nowhere stable to write back to.
+- An unresolvable target — no such resource, no such field, or a name two loaded plugins both claim — is an error naming the candidates, not a silent no-op. Qualify an ambiguous one with the crate: `bind(flock::FlockSettings.cohesion)`.
 
 ### Actions
 
@@ -421,7 +580,13 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 2.1.** MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
+**The current ABI is 2.3.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
+
+- **2.1** — editor panels
+- **2.2** — [input](#input)
+- **2.3** — [field editing ranges](#tuning-how-a-field-is-edited)
+
+MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
 
 - Scope moved to its own exported symbol, `renzora_plugin_scope`, so the host can read whether a plugin is `Runtime` or `Editor` **before** running its init. An editor-only panel is now never initialised inside a shipped game, rather than being initialised and then ignored.
 - Every enum a plugin writes is `#[repr(transparent)]` with associated constants where it previously had variants. Wire-identical, and your `Schedule::Update` still compiles — but a value outside the known range, read out of plugin memory, is no longer undefined behaviour. Values from a newer ABI now arrive as an unknown number the host can reject.
@@ -443,7 +608,9 @@ The engine ships several, each under `plugins/`:
 
 Most are under 100 lines, with no Bevy anywhere in their dependency tree and nothing but the OS in their import table.
 
-Two are worth singling out.
+Alongside them sit the **post-process effects** — every screen-space effect the engine ships except the handful wired into the render graph itself (bloom, SSAO, motion blur, the tonemapper). Each is a struct, a `Default`, one `add_post_process` line and a `.wgsl` file, which makes them the best set to read before writing your own: pick the one closest to what you want and follow its shape. `plugins/crt` is the one to open first — its module doc is where the reasoning about padding and `enabled` flags lives.
+
+Two of the examples are worth singling out.
 
 **`drift` and `ticker` exist to be broken.** Rebuild either while the editor runs and the change takes effect without a restart. Then try to break the reload: introduce a compile error and nothing happens, because the previous build keeps running; add a field to `Drift` and the reload is refused with the reason, because entities already carrying it were allocated for the old layout. Both are the intended behaviour, not bugs to report.
 
@@ -462,11 +629,13 @@ Field *names* are what re-attach, so renaming a field in a plugin orphans that f
 The surface is deliberately incremental. Not yet available:
 
 - `Startup` and `FixedUpdate` schedules — systems run in the five main-loop schedules only
-- Input (`ButtonInput<KeyCode>`, mouse, gamepad)
+- **Gamepad.** Keyboard, mouse and cursor are covered; gamepad is not.
+- **Text.** A component field can be `f32`, `i32`, `bool`, `Vec3` or `Quat` — there is no `String`, so a plugin's live state cannot hold names or labels. Panel *content* is unaffected, since BSN crosses as text and is parsed host-side.
 - Hierarchy (`ChildOf` / `Children`, `with_children`) from a system — panel BSN can nest freely
 - Change detection (`Added<T>`, `Changed<T>`, `Ref<T>`)
 - Messages, observers, and component hooks
 - `Local<T>`, `ParamSet`, run conditions, system ordering
 - The `Assets<T>` / `AssetServer` idiom, and loading assets by path
-- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name` and `Mesh3d`
-- **Reactive panels** — a panel's BSN is spawned once. There is no binding or `Changed<T>` mechanism yet, so a plugin cannot push new values into widgets it already created; a panel's live state is the significant gap, and it is the next thing being built.
+- **Meshes from your own vertex data.** `add_mesh` builds the built-in primitives; there is no way to hand the engine arbitrary positions and indices, so a plugin cannot generate geometry.
+- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name` and `Mesh3d`. In particular a plugin cannot configure Bevy's own rendering — bloom, SSAO, decals, depth prepass — since those components have no `#[repr(C)]` mirror to cross on.
+- **Adding** a panel, render pass or post-process effect during a [reload](#hot-reload). Editing an existing one works; adding one needs a restart.
