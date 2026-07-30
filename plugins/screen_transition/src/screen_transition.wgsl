@@ -1,6 +1,5 @@
 // Screen transition: blends a frozen "outgoing" frame (extra_texture) into the
 // live "incoming" frame (screen_texture) as `progress` goes 0 → 1.
-#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 
 // Binding 0/1: the LIVE incoming frame (shot B).
 @group(0) @binding(0) var screen_texture: texture_2d<f32>;
@@ -14,7 +13,6 @@ struct ScreenTransitionSettings {
     color_r: f32,
     color_g: f32,
     color_b: f32,
-    _padding: f32,
 };
 @group(0) @binding(2) var<uniform> settings: ScreenTransitionSettings;
 
@@ -48,8 +46,8 @@ fn axis_offset(direction: f32, amount: f32) -> vec2<f32> {
 }
 
 @fragment
-fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
-    let uv = in.uv;
+fn fragment(@builtin(position) pos: vec4<f32>, @location(0) in_uv: vec2<f32>) -> @location(0) vec4<f32> {
+    let uv = in_uv;
     let p = clamp(settings.progress, 0.0, 1.0);
     let a = textureSample(extra_texture, extra_sampler, uv);   // outgoing (frozen)
     let b = textureSample(screen_texture, texture_sampler, uv); // incoming (live)
