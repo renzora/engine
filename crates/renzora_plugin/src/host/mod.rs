@@ -24,6 +24,7 @@
 //! World` access — would force every plugin system to be exclusive and
 //! serialise the whole schedule.
 
+pub mod dev;
 pub mod loader;
 
 use bevy::ecs::component::{ComponentDescriptor, ComponentId, StorageType};

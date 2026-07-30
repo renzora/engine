@@ -526,6 +526,11 @@ impl Plugin for RenzoraPluginHostPlugin {
                 countdown: POLL_INTERVAL,
             })
             .add_systems(Last, poll_plugin_dir);
+
+            // The other half of the loop: watch plugin SOURCE, rebuild it, and drop
+            // the artifact here — where the watcher above then picks it up. Only
+            // this ordering works, so the two are installed together.
+            super::dev::install(app, dir.clone());
         }
 
         for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor) {
