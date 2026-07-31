@@ -938,6 +938,7 @@ The engine ships several, each under `plugins/`:
 | `pulse` | a post-process effect driven by a system |
 | `wobble` | pulling in a third-party crate (`noise`) |
 | `widgets` | every panel widget, and nothing else |
+| `ripple` | a [custom material](#custom-materials) and a [texture](#textures) regenerated each frame |
 | `text3d` | [text fields](#text-fields), generated [geometry](#geometry), and a mesh pool |
 | `hair` | [reading a mesh](#reading-geometry-already-in-the-world) and rewriting one each frame |
 
@@ -950,6 +951,10 @@ Alongside them sit the **post-process effects** — every screen-space effect th
 Two of the examples are worth singling out.
 
 **`drift` and `ticker` exist to be broken.** Rebuild either while the editor runs and the change takes effect without a restart. Then try to break the reload: introduce a compile error and nothing happens, because the previous build keeps running; add a field to `Drift` and the reload is refused with the reason, because entities already carrying it were allocated for the old layout. Both are the intended behaviour, not bugs to report.
+
+**`ripple` is built to fail legibly.** A material is the one part of the surface where a mistake gives you a black quad rather than a compile error — the uniform bound at the wrong group, a texture that never uploaded, a per-frame refresh that isn't running. So it puts all four in one entity and makes each failure a *different* picture; its module doc has the table. Add **Ripple** to any entity and read what you get.
+
+It also shows the one thing about material components that reads oddly. `Ripple` carries two `_pad` fields, and one of them holds plugin state — because the component *is* the uniform block, byte for byte, so a field added for bookkeeping would shift every member after it and quietly hand the shader the wrong bytes. Padding the WGSL side already demands is the only space there is.
 
 **`widgets` has no systems, no assets and nothing to spawn.** It is one panel containing every widget the BSN path can reach, so if something in it renders wrong the fault is in the parser, the widget's component front-end, or the widget — there is nothing else it could be. Open it from the add-panel menu after a build.
 
