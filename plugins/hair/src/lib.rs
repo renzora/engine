@@ -90,6 +90,22 @@ pub struct Hair {
     /// Gravity multiplier for the sim. 0 floats.
     #[field(min = 0.0, max = 3.0, speed = 0.01)]
     pub gravity: f32,
+
+    /// The groom's render entity, split across two `i32`s because that is the
+    /// widest the field kinds go and an `Entity` is 64 bits.
+    ///
+    /// Kept here rather than in plugin memory so it survives a hot reload:
+    /// `GROOMS` is wiped when the plugin is replaced, and anything remembered
+    /// only there strands its render entity with nothing left that knows it
+    /// exists. Component data outlives the plugin that wrote it.
+    ///
+    /// `skip` keeps both out of the inspector. The alternative — a marker
+    /// component — cannot be hidden at all, since every registered component
+    /// lands in the Add Component list.
+    #[field(skip)]
+    pub render_lo: i32,
+    #[field(skip)]
+    pub render_hi: i32,
 }
 
 impl Default for Hair {
@@ -107,6 +123,8 @@ impl Default for Hair {
             stiffness: 0.12,
             damping: 0.7,
             gravity: 1.0,
+            render_lo: 0,
+            render_hi: 0,
         }
     }
 }
@@ -128,35 +146,6 @@ impl Hair {
             h = h.wrapping_mul(0x0000_0100_0000_01b3);
         }
         h
-    }
-}
-
-/// Marks a groom's hidden render entity.
-///
-/// Exists so an orphan can be found again. The plugin's tracking lives in
-/// `GROOMS`, which is wiped whenever the plugin reloads — and every hot reload
-/// would otherwise strand the render entities the previous build spawned, with
-/// nothing left that knows they exist. A marker turns "untracked" into
-/// "queryable", which is the only way back from that.
-#[derive(Component)]
-#[component(name = "Hair Ribbons")]
-#[repr(C)]
-pub struct HairRibbons {
-    /// Non-zero only on an entity this plugin spawned.
-    ///
-    /// Every registered component shows up in the editor's Add Component list —
-    /// there is no way to mark one internal — so this component can be put on
-    /// any entity by hand. The collector below despawns unclaimed ribbons, which
-    /// without this check makes adding it a self-destruct button.
-    ///
-    /// `Default` leaves it zero, which is exactly what a hand-added one gets, so
-    /// only entities the plugin stamped are ever collected.
-    pub plugin_owned: f32,
-}
-
-impl Default for HairRibbons {
-    fn default() -> Self {
-        Self { plugin_owned: 0.0 }
     }
 }
 
@@ -227,8 +216,7 @@ static GROOMS: std::sync::Mutex<Option<Grooms>> = std::sync::Mutex::new(None);
 /// Grow strands for any entity that needs them, and rebuild every groom's
 /// ribbons for this frame's camera.
 fn update_grooms(
-    q: Query<(Entity, &Hair, &Transform)>,
-    ribbons: Query<(Entity, &HairRibbons)>,
+    mut q: Query<(Entity, &mut Hair, &Transform)>,
     meshes: Meshes,
     time: Res<Time>,
     mut cmds: Commands,
@@ -245,7 +233,7 @@ fn update_grooms(
         return;
     };
 
-    for (entity, hair, transform) in &q {
+    for (entity, hair, transform) in &mut q {
         let key = entity.0;
         let signature = hair.shape_signature();
         live.push(key);
@@ -274,9 +262,20 @@ fn update_grooms(
                     };
                     // Geometry is already in world space (see `build_ribbons`),
                     // so the render entity sits at the origin.
-                    let mut e = cmds.spawn_mesh(handle, grooms.material, Transform::IDENTITY);
-                    e.insert(HairRibbons { plugin_owned: 1.0 });
-                    let render = e.id();
+                    // Whatever the component still points at is from a previous
+                    // plugin build — a reload wiped the tracking but not the
+                    // entity. Reclaim it before spawning, or every reload leaves
+                    // another groom standing in the scene. `try_despawn`
+                    // semantics make a stale or never-set id a no-op.
+                    let stored = stored_render(&hair);
+                    if stored.0 != 0 {
+                        cmds.entity(stored).despawn();
+                    }
+                    let render = cmds
+                        .spawn_mesh(handle, grooms.material, Transform::IDENTITY)
+                        .id();
+                    hair.render_lo = render.0 as u32 as i32;
+                    hair.render_hi = (render.0 >> 32) as u32 as i32;
                     (handle, render)
                 }
             };
@@ -321,37 +320,6 @@ fn update_grooms(
     }
 
     retire_dead_grooms(grooms, &live, &mut cmds);
-    collect_orphan_ribbons(grooms, &ribbons, &mut cmds);
-}
-
-/// Despawn ribbon entities no live groom claims.
-///
-/// `retire_dead_grooms` handles the grooms this build knows about. This handles
-/// the ones it does not: a hot reload replaces the plugin and starts with an
-/// empty `GROOMS`, so every render entity the previous build spawned is
-/// instantly unowned, and nothing in plugin memory remembers it. The marker is
-/// what makes them findable again.
-///
-/// Runs after the retire pass so a groom torn down this frame is already out of
-/// the map, and its ribbon is collected here in the same frame rather than
-/// lingering for one.
-fn collect_orphan_ribbons(
-    grooms: &Grooms,
-    ribbons: &Query<(Entity, &HairRibbons)>,
-    cmds: &mut Commands,
-) {
-    for (entity, marker) in ribbons {
-        // Only ever touch entities this plugin stamped. The component is
-        // addable by hand from the inspector like any other, and despawning
-        // one of those would delete whatever the user put it on.
-        if marker.plugin_owned == 0.0 {
-            continue;
-        }
-        let claimed = grooms.by_entity.values().any(|g| g.render.0 == entity.0);
-        if !claimed {
-            cmds.entity(entity).despawn();
-        }
-    }
 }
 
 /// Tear down grooms whose owner is gone.
@@ -380,6 +348,11 @@ fn retire_dead_grooms(grooms: &mut Grooms, live: &[u64], cmds: &mut Commands) {
             grooms.free.push(groom.mesh);
         }
     }
+}
+
+/// The render entity a `Hair` remembers, or `Entity(0)` if it has none.
+fn stored_render(hair: &Hair) -> Entity {
+    Entity(((hair.render_hi as u32 as u64) << 32) | hair.render_lo as u32 as u64)
 }
 
 impl Grooms {
@@ -722,7 +695,6 @@ impl Plugin for HairPlugin {
 
 
         app.register_component::<Hair>()
-            .register_component::<HairRibbons>()
             .add_systems(Update, update_grooms);
 
         if let Ok(mut g) = GROOMS.lock() {
