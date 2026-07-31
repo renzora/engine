@@ -68,6 +68,13 @@ pub mod sys;
 #[cfg(feature = "anim")]
 pub mod anim;
 
+/// Physics: forces, impulses, velocity, and reading a body's state.
+///
+/// Opt in with `features = ["physics"]`. Same shape as [`anim`] — a user of the
+/// boundary, not part of it.
+#[cfg(feature = "physics")]
+pub mod physics;
+
 #[cfg(feature = "host")]
 pub mod host;
 

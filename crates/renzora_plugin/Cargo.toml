@@ -27,6 +27,7 @@ default = []
 # Adding one is a module here plus a `plugin_bridge` in the engine crate that
 # owns the domain. Neither touches `sys`.
 anim = []
+physics = []
 
 # The ENGINE opts into `host`, which adds the other side of the boundary: the
 # interface implementation, the dynamic-query dispatcher, and the `dlopen`
