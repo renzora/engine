@@ -149,6 +149,10 @@ struct Groom {
     strands: Vec<Strand>,
     /// The mesh slot the ribbons are written into each frame.
     mesh: renzora_plugin::sys::AssetHandle,
+    /// The hidden entity carrying the ribbon mesh. Kept so the groom can be
+    /// torn down when its owner goes away — the ABI has no `RemovedComponents`,
+    /// so nothing else would ever despawn it.
+    render: Entity,
     /// The `Hair::shape_signature` the current strands were grown from.
     signature: u64,
     /// False until the sim has seeded world/prev from the rest pose.
@@ -174,8 +178,10 @@ struct Grooms {
     /// One mesh handle per groom, allocated at init. Handles cannot be created
     /// from a system, so a fixed pool is reserved up front and handed out as
     /// grooms appear.
-    pool: Vec<renzora_plugin::sys::AssetHandle>,
-    next_free: usize,
+    /// Mesh slots not currently in use. A stack rather than a cursor, so a
+    /// slot returns to it when its groom is torn down — without that, adding
+    /// and deleting hair sixteen times would exhaust the pool for the session.
+    free: Vec<renzora_plugin::sys::AssetHandle>,
     material: renzora_plugin::sys::AssetHandle,
 }
 
@@ -198,6 +204,10 @@ fn update_grooms(
     mut cmds: Commands,
 ) {
     let dt = time.delta_secs().min(MAX_DT);
+    // Every entity that still has `Hair` this frame. Anything tracked but not
+    // in here has lost its component or been despawned, and its groom has to go
+    // with it — see `retire_dead_grooms`.
+    let mut live: Vec<u64> = Vec::new();
     let Ok(mut guard) = GROOMS.lock() else {
         return;
     };
@@ -208,6 +218,7 @@ fn update_grooms(
     for (entity, hair, transform) in &q {
         let key = entity.0;
         let signature = hair.shape_signature();
+        live.push(key);
 
         // Grow, or regrow if a shape field moved. The mesh may not have loaded
         // yet, which is the normal state for the first few frames — `read`
@@ -224,18 +235,19 @@ fn update_grooms(
             if strands.is_empty() {
                 continue;
             }
-            let mesh = match grooms.by_entity.get(&key) {
-                Some(existing) => existing.mesh,
+            let (mesh, render) = match grooms.by_entity.get(&key) {
+                Some(existing) => (existing.mesh, existing.render),
                 None => {
                     let Some(handle) = grooms.take_slot() else {
                         error("hair: no free groom slots left");
                         continue;
                     };
-                    // The render entity is a child so the ribbons inherit the
-                    // model's transform for culling, but the geometry itself is
-                    // already in world space — see `build_ribbons`.
-                    cmds.spawn_mesh(handle, grooms.material, Transform::IDENTITY);
-                    handle
+                    // Geometry is already in world space (see `build_ribbons`),
+                    // so the render entity sits at the origin.
+                    let render = cmds
+                        .spawn_mesh(handle, grooms.material, Transform::IDENTITY)
+                        .id();
+                    (handle, render)
                 }
             };
             grooms.by_entity.insert(
@@ -243,6 +255,7 @@ fn update_grooms(
                 Groom {
                     strands,
                     mesh,
+                    render,
                     signature,
                     seeded: false,
                 },
@@ -276,13 +289,41 @@ fn update_grooms(
             Some(&colors),
         );
     }
+
+    retire_dead_grooms(grooms, &live, &mut cmds);
+}
+
+/// Tear down grooms whose owner is gone.
+///
+/// The boundary has no `RemovedComponents` and no despawn hook, so absence is
+/// the only signal available: anything tracked that did not appear in this
+/// frame's query has lost its `Hair` or been despawned. Without this the ribbon
+/// entity outlives its owner — hair left standing in the scene after the model
+/// is deleted — and its mesh slot is never reusable again.
+fn retire_dead_grooms(grooms: &mut Grooms, live: &[u64], cmds: &mut Commands) {
+    if grooms.by_entity.len() == live.len() {
+        return;
+    }
+    let dead: Vec<u64> = grooms
+        .by_entity
+        .keys()
+        .copied()
+        .filter(|k| !live.contains(k))
+        .collect();
+    for key in dead {
+        if let Some(groom) = grooms.by_entity.remove(&key) {
+            cmds.entity(groom.render).despawn();
+            // Back on the free stack, so add/delete cycles do not exhaust the
+            // pool. The mesh asset itself stays allocated and is overwritten by
+            // whichever groom claims the slot next.
+            grooms.free.push(groom.mesh);
+        }
+    }
 }
 
 impl Grooms {
     fn take_slot(&mut self) -> Option<renzora_plugin::sys::AssetHandle> {
-        let handle = self.pool.get(self.next_free).copied()?;
-        self.next_free += 1;
-        Some(handle)
+        self.free.pop()
     }
 }
 
@@ -618,14 +659,14 @@ impl Plugin for HairPlugin {
         // White, so the per-vertex colours carry the hair colour unmodified.
         let material = app.add_material([1.0, 1.0, 1.0, 1.0]);
 
+
         app.register_component::<Hair>()
             .add_systems(Update, update_grooms);
 
         if let Ok(mut g) = GROOMS.lock() {
             *g = Some(Grooms {
                 by_entity: HashMap::new(),
-                pool,
-                next_free: 0,
+                free: pool,
                 material,
             });
         }
