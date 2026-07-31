@@ -35,27 +35,35 @@
 # hand the .dll to someone running a different editor release — and it stops
 # loading, for a reason nothing in the plugin points to.
 #
-# ## Why `crt-static`
+# ## Why NOT `crt-static` (it used to be here)
 #
-# The engine cannot use it: it changes crate disambiguators, which moves the
-# `TypeId`s that the shared-dylib plugin ABI depends on. A standalone plugin
-# shares no types with anyone — the boundary is `#[repr(C)]` structs and function
-# pointers — so nothing there applies, and static linking the MSVC runtime drops
-# VCRUNTIME140.dll and the api-ms-win-crt-* set from the import table. What is
-# left is the OS itself, which is the goal: the import table should hold nothing
-# that can be the wrong version.
+# The reasoning was that statically linking the MSVC runtime drops
+# VCRUNTIME140.dll and the api-ms-win-crt-* set from the import table, leaving
+# nothing but the OS. That is true and it is not worth it — measured on a
+# minimal plugin, release, symbols stripped:
+#
+#   inherits engine `prefer-dynamic`    16 KB   imports std-<hash>.dll  ← broken
+#   `prefer-dynamic=no`                113 KB   imports VCRUNTIME140 + crt
+#   `prefer-dynamic=no` + `crt-static` 219 KB   imports KERNEL32 only
+#
+# 105 KB — about half the binary — to remove imports the host already has.
+# `renzora.exe` is itself an MSVC build and imports VCRUNTIME140.dll and the
+# whole api-ms-win-crt-* set, so every one of them is already loaded in the
+# process before a plugin is ever mapped. The dependency a plugin "avoids" is
+# one the thing loading it already took.
+#
+# The heap question is the only real consideration, and it settles the same way:
+# without `crt-static` the plugin shares the host's CRT heap instead of getting
+# its own. That is fine — and marginally safer — because the boundary never
+# transfers ownership of an allocation. Plugin components are refused outright
+# if they declare a destructor, and command payloads are copied by the host.
 
 [target.x86_64-pc-windows-msvc]
-# rust-lld is kept from the engine config. link.exe's 65535-export cap is not a
-# concern at this size, but rust-lld is what the toolchain is set up around and
-# is the one that is definitely present.
-linker = "rust-lld"
-rustflags = ["-C", "prefer-dynamic=no", "-C", "target-feature=+crt-static"]
+rustflags = ["-C", "prefer-dynamic=no"]
 
 # The Unix targets keep their linker settings from the engine config (mold,
 # rpath) — those are harmless for a plugin — and only switch off the dynamic
-# std. `crt-static` is Windows-specific and has no equivalent here; glibc is
-# already a stable system ABI in the way VCRUNTIME140.dll is not.
+# std.
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "prefer-dynamic=no"]
 
