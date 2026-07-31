@@ -930,36 +930,65 @@ fn install_command_error_backtraces(app: &mut App) {
     );
 }
 
-/// `"278v1"` -> the `Name` that entity had while it was alive.
+/// `"278v1"` -> (that entity's `Name`, its parent's id).
 ///
 /// Keyed by the id as Bevy *renders* it, so nothing has to reconstruct an
 /// `Entity` from an index and a generation — the error message and this map
 /// agree because both go through the same `Display`.
-static ENTITY_LABELS: std::sync::Mutex<Option<bevy::platform::collections::HashMap<String, String>>> =
-    std::sync::Mutex::new(None);
+///
+/// The parent is recorded too, because the name alone is often not enough to say
+/// which subsystem owned the entity. A GLTF node is called
+/// `Bistro_..._paris_building_0.058` whether it was spawned by a plain scene load
+/// or by a LOD variant subtree; its *ancestry* is what tells them apart.
+type LabelMap = bevy::platform::collections::HashMap<String, (String, Option<String>)>;
+static ENTITY_LABELS: std::sync::Mutex<Option<LabelMap>> = std::sync::Mutex::new(None);
 
-/// Remember every named entity, so a despawned one can still be identified.
+/// Remember every named entity and its parent, so a despawned one stays
+/// identifiable.
 ///
 /// Deliberately never cleared: the whole point is to answer a question about an
 /// entity that no longer exists. Bounded by how many distinct named entities a
 /// session creates, which is fine for something you turn on to chase one bug.
-fn record_entity_labels(q: Query<(Entity, &Name)>) {
+fn record_entity_labels(q: Query<(Entity, &Name, Option<&ChildOf>)>) {
     let Ok(mut guard) = ENTITY_LABELS.lock() else {
         return;
     };
     let map = guard.get_or_insert_with(Default::default);
-    for (entity, name) in &q {
-        map.entry(entity.to_string()).or_insert_with(|| name.as_str().to_string());
+    for (entity, name, parent) in &q {
+        map.entry(entity.to_string()).or_insert_with(|| {
+            (
+                name.as_str().to_string(),
+                parent.map(|p| p.parent().to_string()),
+            )
+        });
     }
 }
 
-/// Pull `278v1` out of "The entity with ID 278v1 is invalid" and look it up.
+/// Pull `278v1` out of "The entity with ID 278v1 is invalid" and describe it,
+/// walking up the ancestry that was recorded while it was alive.
 fn entity_label_from_message(msg: &str) -> Option<String> {
     let rest = msg.split("ID ").nth(1)?;
     let id: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == 'v').collect();
     let guard = ENTITY_LABELS.lock().ok()?;
-    let label = guard.as_ref()?.get(&id)?;
-    Some(format!("`{label}`"))
+    let map = guard.as_ref()?;
+
+    let mut chain = Vec::new();
+    let mut cursor = Some(id);
+    // Bounded: an ancestry cycle should be impossible, but this runs inside an
+    // error handler and must not be the thing that hangs the editor.
+    for _ in 0..8 {
+        let Some(at) = cursor.take() else { break };
+        let Some((name, parent)) = map.get(&at) else {
+            chain.push(format!("<{at}: never had a Name>"));
+            break;
+        };
+        chain.push(format!("`{name}`"));
+        cursor = parent.clone();
+    }
+    if chain.is_empty() {
+        return None;
+    }
+    Some(chain.join(" <- child of "))
 }
 
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
