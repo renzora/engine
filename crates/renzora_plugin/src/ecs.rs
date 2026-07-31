@@ -86,15 +86,40 @@ pub trait Component: Sized + 'static {
 /// Declares a host component the engine already owns.
 ///
 /// The path must match the engine's registered type path exactly — it is the
-/// only thing tying the two sides together.
+/// only thing tying the two sides together. Nothing links: the host resolves the
+/// string through its reflection registry, so a typo is silent on both sides and
+/// presents as a query that matches nothing, forever.
+///
+/// **Exported, because the pattern is not ours alone.** The engine's own
+/// components use it below, but so does any in-tree Bevy plugin that wants
+/// standalone plugins to read its state: make the component `#[repr(C)]` plain
+/// data, register it, and give plugin authors its type path.
+///
+/// ```ignore
+/// // Mirrors an engine component. Field order and types must match the
+/// // engine-side struct exactly — a mismatch is a wrong-offset read, not a
+/// // compile error.
+/// #[repr(C)]
+/// #[derive(Clone, Copy, Default)]
+/// pub struct Health { pub current: f32, pub max: f32 }
+///
+/// renzora_plugin::host_component!(Health, "my_game::health::Health");
+/// ```
+///
+/// The type must be `#[repr(C)]` and plain data. Query cells for a host
+/// component are a byte copy of the engine's own value, so a mirror containing a
+/// `String`, `Vec` or `Handle` would hand the plugin a pointer into the engine's
+/// heap — which is why the engine's own `Transform` is a hand-written
+/// [`sys::Transform`] rather than a memcpy of `bevy::Transform`.
+#[macro_export]
 macro_rules! host_component {
     ($ty:ty, $path:literal) => {
-        impl Bundle for $ty {
-            fn write(self, e: &mut EntityCommands) {
+        impl $crate::ecs::Bundle for $ty {
+            fn write(self, e: &mut $crate::ecs::EntityCommands) {
                 e.insert_one(self);
             }
         }
-        impl Component for $ty {
+        impl $crate::ecs::Component for $ty {
             const TYPE_PATH: &'static str = $path;
             fn id_cell() -> &'static core::sync::atomic::AtomicU32 {
                 static CELL: core::sync::atomic::AtomicU32 =
@@ -105,9 +130,13 @@ macro_rules! host_component {
     };
 }
 
-host_component!(Transform, "bevy_transform::components::transform::Transform");
-host_component!(Mesh3d, "bevy_mesh::components::Mesh3d");
-host_component!(Visibility, "bevy_camera::visibility::Visibility");
+crate::host_component!(Transform, "bevy_transform::components::transform::Transform");
+crate::host_component!(Mesh3d, "bevy_mesh::components::Mesh3d");
+crate::host_component!(Visibility, "bevy_camera::visibility::Visibility");
+// Nothing else belongs here. A domain's mirror — `renzora_anim`'s `AnimState`,
+// say — declares itself with the same exported macro from its own crate, so this
+// file never learns an engine crate's name. It used to, and that was backwards:
+// the frozen mechanism does not get to know that animation exists.
 
 /// Marker for the host's `Mesh3d`. Opaque: the handle inside it is not a layout
 /// a plugin may depend on, so this is filter-only — usable in [`With`] but never
@@ -1252,6 +1281,56 @@ impl<'a> EntityCommands<'a> {
             data_len: 0,
         };
         unsafe { ((*self.sink).push)(self.sink, &cmd) };
+    }
+
+    /// Call a host service — animation, audio, physics — with an opaque payload.
+    ///
+    /// The mechanism knows no service by name. `service` comes from
+    /// [`sys::service_id`], `op` is that service's own numbering, and `payload`
+    /// is whatever layout it and the draining engine crate agreed on. A service
+    /// nothing drains is not an error: the call is discarded at end of frame.
+    ///
+    /// You normally do not call this directly — a domain crate wraps it in named
+    /// methods (`renzora_anim` gives you `play_animation`). It is public because
+    /// a domain crate is an ordinary dependency with no privileged access, which
+    /// is the whole point: adding one changes nothing here.
+    ///
+    /// The payload must be plain-old-data. The sink copies `data` as bytes, so a
+    /// pointer inside it would survive the copy as a pointer and be read after
+    /// this system returned, pointing at a stack frame that is gone.
+    pub fn call_service(&mut self, service: u64, op: u32, payload: &[u8]) -> &mut Self {
+        if self.sink.is_null() {
+            return self;
+        }
+        // Header and payload have to be one contiguous buffer, because the sink
+        // copies exactly one `data` pointer. 128 bytes covers every service
+        // argument list so far without putting an allocator on this path.
+        const INLINE: usize = 128;
+        let header = sys::ServiceCall { service, op, _pad: 0 };
+        let hdr_len = core::mem::size_of::<sys::ServiceCall>();
+        if payload.len() > INLINE - hdr_len {
+            error("service payload is too large and was dropped");
+            return self;
+        }
+        let mut buf = [0u8; INLINE];
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                (&header as *const sys::ServiceCall).cast::<u8>(),
+                buf.as_mut_ptr(),
+                hdr_len,
+            );
+        }
+        buf[hdr_len..hdr_len + payload.len()].copy_from_slice(payload);
+
+        let cmd = sys::Command {
+            kind: sys::CommandKind::Service,
+            entity: self.id,
+            component: sys::ComponentId::INVALID,
+            data: buf.as_ptr(),
+            data_len: hdr_len + payload.len(),
+        };
+        unsafe { ((*self.sink).push)(self.sink, &cmd) };
+        self
     }
 }
 

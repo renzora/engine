@@ -13,6 +13,14 @@ serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
+# The engine side of the C ABI's animation surface (`plugin_bridge`). The
+# dependency only runs this way: `renzora_plugin` must stay publishable to
+# crates.io, so it cannot depend on any engine crate.
+# `anim` is the animation *vocabulary* — `AnimCommand`, `AnimState`, the op
+# numbering — which is dependency-free precisely so the same definitions compile
+# into every plugin that drives an animator. One definition, both sides of the
+# boundary. `host` is the engine half of the mechanism.
+renzora_plugin = { path = "../renzora_plugin", features = ["host", "anim"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 mlua = { version = "0.10", features = ["lua54"], optional = true }

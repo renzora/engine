@@ -60,6 +60,14 @@
 pub mod ecs;
 pub mod sys;
 
+/// Animation: play clips, drive state machines, read animator state.
+///
+/// Opt in with `features = ["anim"]`. It is a *user* of the boundary, not part
+/// of it — see the module doc for why a domain lives here rather than in [`sys`],
+/// and why adding one does not move the ABI version.
+#[cfg(feature = "anim")]
+pub mod anim;
+
 #[cfg(feature = "host")]
 pub mod host;
 

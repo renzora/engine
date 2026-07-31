@@ -510,6 +510,13 @@ impl Plugin for RenzoraPluginHostPlugin {
         app.init_resource::<super::input::PluginInput>()
             .add_systems(PreUpdate, super::input::collect_input);
 
+        // Service calls are parked for whichever engine crate claims them. The
+        // sweep runs at the very end of the frame so a build missing a bridge —
+        // a dedicated server, a lean 2D export — clears those calls rather than
+        // growing the queue every frame a plugin makes one.
+        app.init_resource::<super::PluginServiceCalls>()
+            .add_systems(Last, super::discard_unhandled_service_calls);
+
         app.insert_resource(PluginHostConfig { is_editor: self.is_editor })
             .init_resource::<PluginReloadQueue>()
             .init_schedule(PluginReload)

@@ -345,6 +345,131 @@ Numpad, media and IME keys have no value yet. They read as never pressed rather 
 
 These are **not** Bevy's `KeyCode` discriminants, deliberately. That enum is `#[non_exhaustive]` and its values are an implementation detail, so a Bevy upgrade that inserted a variant would silently remap every plugin's key handling — W becomes E, and nothing fails to compile. These values are frozen.
 
+## Animation
+
+Animation is **not part of the ABI**. It is a feature-gated domain module you opt into:
+
+```toml
+renzora_plugin = { version = "0.1", features = ["anim"] }
+```
+
+```rust
+use renzora_plugin::prelude::*;
+use renzora_plugin::anim::{AnimCommands, AnimState};
+
+fn drive_gait(q: Query<(Entity, &Locomotion, &AnimState)>, mut cmds: Commands) {
+    for (entity, loco, anim) in &q {
+        let want = if loco.speed >= loco.run_at { "run" } else { "idle" };
+        // Only switch when it actually changes — see below.
+        if !anim.is_clip(want) {
+            cmds.entity(entity).crossfade_animation(want, 0.2);
+        }
+    }
+}
+```
+
+`AnimCommands` is an extension trait and has to be in scope — the boundary owns `EntityCommands` and has never heard of animation. That is the point: see [Domain modules](#domain-modules) for why, and for what adding audio or physics would look like.
+
+### Driving it
+
+Every operation hangs off `commands.entity(e)` and is deferred like any other command.
+
+| | |
+|---|---|
+| `play_animation(name)` | Play looping at normal speed |
+| `play_animation_with(name, speed, looping)` | The full form |
+| `crossfade_animation(name, seconds)` | Blend into a clip |
+| `stop_animation()` / `pause_animation()` / `resume_animation()` | |
+| `set_animation_speed(mult)` / `seek_animation(seconds)` | |
+| `set_anim_param(name, f32)` / `set_anim_bool(name, bool)` / `set_anim_trigger(name)` | State-machine parameters |
+| `set_layer_weight(name, weight)` | Layer blend weight |
+| `tween_position` / `tween_rotation` / `tween_scale` `(target, seconds, easing)` | Procedural tweens; rotation takes Euler degrees |
+
+Easings are `Easing::Linear`, `In`, `Out`, `InOut`, and the `Quad`/`Cubic`/`Back`/`Elastic`/`Bounce` families (`Easing::OutBounce`, …).
+
+Names cross **inline**, capped at 48 bytes. A longer one is dropped with a log line rather than truncated, because a shortened name matches no clip and reads as the animation system being broken.
+
+### Reading it back
+
+`AnimState` is a host component — `renzora_animation` maintains it — so query it like any other, and register it in `build()`:
+
+```rust
+app.register_component::<AnimState>();
+```
+
+| | |
+|---|---|
+| `is_clip(name)` / `is_state(name)` | Whether that clip / state-machine state is current |
+| `is_playing()` | False while paused or stopped |
+| `state_time` | Seconds in the current state |
+| `time` | Property-animation playback time |
+
+**Reading makes no FFI calls.** It arrives as an ordinary query cell, so a system checking animation state every frame does not call back into the engine — there is one call per system per frame regardless of how much it reads. It is not free, though; see [Cost](#cost).
+
+**Read before you crossfade.** The mistake this exists to prevent is re-issuing a crossfade every frame the condition holds, which restarts the blend sixty times a second and never finishes. The fix is not for the plugin to remember what it last asked for — that goes wrong as soon as anything else drives the same animator — it is to ask the animator, as above. `plugins/locomotion` is the worked example.
+
+### Why names are hashes
+
+A plugin has no `String`, so `is_clip` compares a 64-bit FNV-1a of the name, folded at the call site. Two consequences worth knowing:
+
+- A plugin can only ask *is it this one?* — it cannot enumerate or discover a clip name it wasn't already looking for.
+- Nothing playing reads as `0`, which is deliberately not the hash of `""`, so an idle animator does not match `is_clip("")`.
+
+### What is missing
+
+Reading a **parameter** back. `set_anim_param` works, but params are an unbounded name→value map and don't fit a fixed-size mirror, so there is no `get_anim_param` yet. A plugin that needs the value can keep it in its own resource, which is where it usually came from.
+
+A build with no animation crate — a dedicated server, a lean 2D export — accepts these commands and discards them each frame rather than growing a queue forever.
+
+## Domain modules
+
+Animation is the first of these, and the shape matters more than the feature.
+
+`sys` — the commands, queries and interface table everything else rests on — deliberately does **not** know that animation exists. Instead it carries one generic command:
+
+```rust
+CommandKind::Service   // { service: u64, op: u32 } + opaque payload bytes
+```
+
+The host copies those bytes into a queue without reading them. `renzora_plugin::anim` is an ordinary *user* of that mechanism with no privileged access: it defines its own op numbering, encodes a plain-data payload, and tags it with `service_id("renzora.animation")`. On the engine side, `renzora_animation::plugin_bridge` takes the calls bearing that tag — and only those, so one domain can never eat another's — and turns them into real animation commands.
+
+Two things follow, and they are why it is built this way:
+
+- **Adding a domain does not move the ABI.** `sys::VERSION_MINOR` describes the boundary; a new module bumps the crate's own semver instead. A plugin that wants audio should not end up declaring a minimum ABI that also encodes animation history.
+- **A plugin that doesn't use a domain pays nothing.** The module is behind a feature, and its types are plain data with no statics — measured, a plugin using animation is *smaller* than one that doesn't, because the difference is its own code, not the vocabulary.
+
+Adding audio would be `src/audio.rs` behind an `audio` feature, plus a `plugin_bridge` module in whichever engine crate owns audio. Neither touches `sys`, and neither needs a new crate.
+
+### What the plugin can and cannot reach
+
+Worth being exact, because "shares data with Bevy without linking Bevy" invites the wrong conclusion.
+
+A plugin never gets the `World` — the `host` pointer is null while a system runs, because the world is borrowed by the query. What it gets is three narrow things:
+
+| | |
+|---|---|
+| **Query cells** | Pointers to just the components it *declared*, for just the entities that matched, valid only for that one call |
+| **A command sink** | Write-only; applied after the system returns |
+| **Service calls** | Opaque bytes parked for a bridge |
+
+So it is a window the host opens per system per frame, not access. A plugin cannot iterate arbitrary entities, reach a resource it did not declare, or retain anything past the call.
+
+The two paths are also asymmetric, deliberately. **Reads** go through the generic dispatcher — a real Bevy query, flattened into cells — and never touch the bridge. **Actions** go through the queue and the bridge; they are rare, so they can afford a translation step.
+
+Both sides work from the same `#[repr(C)]` definitions compiled into each independently. Nothing is shared at link time: the layout is pinned by the C ABI, not by two rustc versions happening to agree.
+
+### Cost
+
+A plugin system is not free relative to a linked one, and it is worth knowing where the difference is before putting one on a hot path.
+
+The FFI is **one call per system per frame**, not per entity and not per read — the host flattens every matching row into a pointer array first, and the plugin's loop then runs at native speed inside its own address space. That part scales fine.
+
+What costs more than a linked system is getting the data there. The host copies every matched cell into a staging buffer it owns, and writable terms are copied a second time to form a change-detection baseline. A native Bevy system reads component storage in place and does neither. So a query over N entities with T terms pays on the order of 2–3×N×T copies, plus allocation, that a linked system would not.
+
+The reason is soundness, not oversight: a pointer straight into component storage would require the plugin to assume a layout the host cannot guarantee. Handing out direct pointers for plugin-owned components — whose layouts *are* the plugin's own — is a known optimisation that needs an aliasing argument first.
+
+Practically: at hundreds of entities this is noise. At tens of thousands, on a per-frame system, measure it. Cheap mitigations that need nothing from the engine — narrow the query with `With`/`Without` filters so fewer rows are gathered, and keep frequently-read state in a resource rather than on every entity.
+
 ## Commands
 
 ```rust
@@ -580,11 +705,14 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 2.3.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
+**The current ABI is 2.4.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)
 - **2.3** — [field editing ranges](#tuning-how-a-field-is-edited)
+- **2.4** — `CommandKind::Service`, the generic channel [domain modules](#domain-modules) ride on
+
+Note what is *not* in that list: animation. It ships in the same release but is a [domain module](#domain-modules), not boundary surface, so it moved the crate's version and not the ABI's. Audio and physics will do the same.
 
 MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
 
@@ -602,6 +730,7 @@ The engine ships several, each under `plugins/`:
 | `flock` | a resource shared across systems, `Option<&T>`, and a panel with bound sliders |
 | `magnet` | `Or` filters and optional write access |
 | `forge` | assets, and spawning renderable entities from a panel |
+| `locomotion` | **reading animation state**, and why that beats tracking it plugin-side |
 | `pulse` | a post-process effect driven by a system |
 | `wobble` | pulling in a third-party crate (`noise`) |
 | `widgets` | every panel widget, and nothing else |
@@ -624,6 +753,52 @@ The interesting case is a scene saved with a plugin that is no longer loaded. Th
 
 Field *names* are what re-attach, so renaming a field in a plugin orphans that field's saved values while the rest of the component still loads. Adding and removing fields is safe.
 
+## Exposing an engine crate to plugins
+
+*For engine developers.* If you write an in-tree Bevy plugin and want standalone plugins to drive it, you add a `plugin_bridge` module to **your own crate** — there is no separate bridge crate, and `renzora_plugin` never learns your name. `renzora_animation::plugin_bridge` and `renzora_postprocess::plugin_bridge` are the two working examples.
+
+How much you have to write depends on what you are exposing.
+
+**Reading your state — nothing but a type path.** If the component is `#[repr(C)]` plain data, a plugin can query it directly: host components marshal as a straight byte copy, so the plugin declares a matching mirror and names your type.
+
+```rust
+// In the plugin:
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct Health { pub current: f32, pub max: f32 }
+
+renzora_plugin::host_component!(Health, "my_game::health::Health");
+```
+
+Field order and types must match exactly — a mismatch is a wrong-offset read, not a compile error. And the component must be plain data: a `String`, `Vec` or `Handle` in the mirror would hand the plugin a pointer into the engine's heap.
+
+If your real component *can't* be plain data (`AnimatorReadState` is `String` + `HashMap`), synthesize a second numeric-only mirror and keep it in sync each frame. That is the bulk of what `renzora_animation::plugin_bridge` does.
+
+**Constructing your components — already free.** `spawn_bsn` sends text that names components, resolved host-side through the reflection registry, so a plugin can construct any registered engine component — including yours — with neither side knowing the other exists.
+
+**Triggering behaviour — needs an op in the contract.** "Play this clip" isn't a field write. There is no generic "call this function" across the boundary: the host has to know what the bytes mean. So the op is defined in `renzora_plugin::sys`, the host parks it in a queue resource it owns, and your bridge drains that queue. This is the one case that touches the shared contract and so costs a [MINOR bump](#versioning).
+
+### How they find each other
+
+Reads are resolved **by string, at runtime** — `AppTypeRegistry::get_with_type_path` → `TypeId` → `ComponentId`. Nothing links. This is Bevy's own late binding, the same mechanism that lets a scene file name a component it doesn't import; the ABI just uses it from the far side of a `dlopen`.
+
+The cost is that it's untyped. Rename your component and both sides still compile, the plugin gets `INVALID`, and its queries match nothing — silently, forever. So assert it at startup, where a mismatch is a panic naming both halves:
+
+```rust
+assert_eq!(
+    <PluginAnimState as bevy::reflect::TypePath>::type_path(),
+    <renzora_plugin::ecs::AnimState as renzora_plugin::ecs::Component>::TYPE_PATH,
+);
+```
+
+Your crate can import `renzora_plugin`, so it can compare the two strings directly. Do this — it is the only thing standing between a rename and a class of bug with no error message.
+
+### Where the module goes
+
+In the crate that owns the domain, as long as that crate may depend on `renzora_plugin` (with the `host` feature). The dependency only ever runs that way: `renzora_plugin` must stay publishable to crates.io so a third-party author can `cargo add` it, and a published crate cannot have path dependencies.
+
+The one exception is `renzora` itself, which is capped at Bevy + serialization by policy so a feature crate can never introduce a cycle. That is why the render bridge lives in `renzora_postprocess` rather than beside `RenderComposition` in `renzora` — one crate out, in an existing neighbour that owns the same domain.
+
 ## Current limits
 
 The surface is deliberately incremental. Not yet available:
@@ -637,5 +812,7 @@ The surface is deliberately incremental. Not yet available:
 - `Local<T>`, `ParamSet`, run conditions, system ordering
 - The `Assets<T>` / `AssetServer` idiom, and loading assets by path
 - **Meshes from your own vertex data.** `add_mesh` builds the built-in primitives; there is no way to hand the engine arbitrary positions and indices, so a plugin cannot generate geometry.
-- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name` and `Mesh3d`. In particular a plugin cannot configure Bevy's own rendering — bloom, SSAO, decals, depth prepass — since those components have no `#[repr(C)]` mirror to cross on.
+- **Reading an animation parameter back** — see [Animation](#what-is-missing). Setting one works.
+- Audio, physics and navigation have no surface yet. Animation is the first domain service; the others follow the same shape.
+- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name`, `Mesh3d` and [`AnimState`](#reading-it-back). In particular a plugin cannot configure Bevy's own rendering — bloom, SSAO, decals, depth prepass — since those components have no `#[repr(C)]` mirror to cross on. An **in-tree** plugin can expose its own, though: make the component `#[repr(C)]` plain data and hand out its type path with `renzora_plugin::host_component!`.
 - **Adding** a panel, render pass or post-process effect during a [reload](#hot-reload). Editing an existing one works; adding one needs a restart.

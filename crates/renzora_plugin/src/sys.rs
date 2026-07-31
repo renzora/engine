@@ -103,7 +103,15 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 0 -> 1 appended `add_panel`.
 /// 1 -> 2 appended `SystemCall::input`.
 /// 2 -> 3 appended `set_field_range`.
-pub const VERSION_MINOR: u32 = 3;
+/// 3 -> 4 appended `CommandKind::Service`.
+///
+/// Note what is NOT in that list: animation. It shipped in the same release, as
+/// `crate::anim` — a domain module riding on the generic service command above,
+/// not boundary surface. That is the point of the split: a domain moves the
+/// crate's own semver, and only a change to the *mechanism* moves this. A plugin
+/// that wants audio some day should not have to declare a minimum ABI that also
+/// encodes animation's history.
+pub const VERSION_MINOR: u32 = 4;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1294,11 +1302,37 @@ impl CommandKind {
     /// source; any further top-level entries spawn fresh. That is what lets
     /// `spawn_bsn` hand back a usable id in the same frame.
     pub const SpawnBsn: Self = Self(4);
+    /// Hand an opaque payload to whichever engine crate claims a service.
+    /// `data` is a [`ServiceCall`] header followed by the payload bytes.
+    ///
+    /// **This is how a domain reaches plugins without this crate learning the
+    /// domain.** Animation, audio, physics and navigation are all things a
+    /// plugin wants to *do*, and none of them can be a field write — "play this
+    /// clip" retargets an animation graph. The obvious design gives each one its
+    /// own command kind and its own structs here, and it is the wrong one: this
+    /// module is the frozen mechanism, and it would accumulate a vocabulary per
+    /// domain, with every domain addition bumping the ABI for plugins that use
+    /// none of them.
+    ///
+    /// So the host carries bytes it does not interpret. A service names itself
+    /// with [`service_id`], the payload layout is an agreement between the
+    /// plugin and whoever drains the queue, and adding a whole new domain
+    /// touches nothing here.
+    ///
+    /// A command rather than an [`Interface`] function because these are
+    /// **structural** in the same sense a spawn is, and because deferring lets a
+    /// plugin call one from inside a loop over its own query — which is where
+    /// you actually decide to play something.
+    ///
+    /// Nothing draining a service is a valid configuration: the calls are
+    /// discarded each frame, which is the right outcome for a dedicated server
+    /// or a lean export that dropped the crate in question.
+    pub const Service: Self = Self(5);
 
     /// Whether this is a value this build knows. Anything else came from a
     /// plugin built against a newer ABI.
     pub const fn is_known(self) -> bool {
-        self.0 < 5
+        self.0 < 6
     }
 
     /// The variant name, or `"?"` for a value from a newer ABI.
@@ -1309,9 +1343,54 @@ impl CommandKind {
             2 => "Remove",
             3 => "SpawnMesh",
             4 => "SpawnBsn",
+            5 => "Service",
             _ => "?",
         }
     }
+}
+
+// ── Services ─────────────────────────────────────────────────────────────────
+
+/// FNV-1a over a string, `const` so an id folds to a literal at the call site.
+///
+/// Generic on purpose — this is a hashing primitive, not a service registry.
+/// The mechanism here never enumerates services, and adding one is not a change
+/// to this file.
+pub const fn fnv1a(s: &str) -> u64 {
+    let bytes = s.as_bytes();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut i = 0;
+    while i < bytes.len() {
+        h ^= bytes[i] as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        i += 1;
+    }
+    h
+}
+
+/// Names a service. Use a dotted, owner-qualified string —
+/// `service_id("renzora.animation")` — so two crates cannot collide by both
+/// picking `"audio"`.
+pub const fn service_id(name: &str) -> u64 {
+    fnv1a(name)
+}
+
+/// Header for a [`CommandKind::Service`] payload.
+///
+/// The payload follows this struct in the same `data` buffer, so a service
+/// defines its own argument layout without this module knowing any of them. The
+/// sink deep-copies `data`, which means a payload must be plain-old-data: a
+/// pointer inside it would survive the copy as a pointer and be read after the
+/// system returned.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct ServiceCall {
+    /// From [`service_id`].
+    pub service: u64,
+    /// Which operation, in the service's own numbering.
+    pub op: u32,
+    /// Keeps the payload that follows 8-byte aligned.
+    pub _pad: u32,
 }
 
 impl core::fmt::Debug for CommandKind {

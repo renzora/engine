@@ -1930,3 +1930,153 @@ fn a_key_from_a_newer_abi_reads_as_up_rather_than_aliasing() {
     sys::InputState::set_key(&mut state.keys_down, future);
     assert!(state.pressed(sys::Key::W));
 }
+
+
+// ── Services ─────────────────────────────────────────────────────────────────
+
+/// Plays a clip on every entity it can see, so the test can inspect what the
+/// host parked. `renzora_animation` is not linked here, and that is the point:
+/// the mechanism carries these bytes without knowing what they mean.
+fn play_something(q: ecs::Query<ecs::Entity, ecs::With<Spinner>>, mut cmds: ecs::Commands) {
+    use renzora_plugin::anim::AnimCommands;
+    for e in &q {
+        cmds.entity(e).play_animation_with("run", 2.0, false);
+    }
+}
+
+unsafe extern "C" fn anim_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Spinner>()
+        .add_systems(ecs::Schedule::Update, play_something);
+    sys::InitResult::Ok
+}
+
+#[test]
+fn a_service_call_reaches_the_host_queue_untouched() {
+    use renzora_plugin::anim;
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), anim_init),
+        sys::InitResult::Ok
+    );
+    let entity = spawn_spinner(&mut app, 1.0);
+    app.update();
+
+    let queue = app.world().resource::<abi_host::PluginServiceCalls>();
+    assert_eq!(queue.0.len(), 1, "expected exactly one parked call");
+    let call = &queue.0[0];
+    assert_eq!(call.entity, entity);
+    assert_eq!(call.service, anim::SERVICE);
+    assert_eq!(call.op, anim::AnimOp::Play.0);
+
+    // The host stored bytes it never interpreted; decoding is the consumer's job.
+    assert_eq!(call.payload.len(), core::mem::size_of::<anim::AnimCommand>());
+    let cmd = unsafe { call.payload.as_ptr().cast::<anim::AnimCommand>().read_unaligned() };
+    // The name crossed inline, so it survived the sink's byte copy — a pointer
+    // here would have dangled into a plugin stack frame that is gone.
+    assert_eq!(cmd.name.as_str(), "run");
+    assert_eq!(cmd.value, 2.0);
+    assert_eq!(cmd.flag, 0, "looping = false did not cross");
+}
+
+/// A consumer must take only its own service, or a second bridge silently loses
+/// its calls whenever an unrelated crate is linked.
+#[test]
+fn taking_one_service_leaves_the_others_alone() {
+    use renzora_plugin::host::ServiceCall;
+    let other = sys::service_id("renzora.audio");
+    // The entity is irrelevant here — what is under test is that `take` splits
+    // the queue by service and leaves the rest intact.
+    let e = Entity::PLACEHOLDER;
+    let mut queue = abi_host::PluginServiceCalls(vec![
+        ServiceCall { entity: e, service: renzora_plugin::anim::SERVICE, op: 0, payload: vec![] },
+        ServiceCall { entity: e, service: other, op: 7, payload: vec![9] },
+        ServiceCall { entity: e, service: renzora_plugin::anim::SERVICE, op: 1, payload: vec![] },
+    ]);
+
+    let mine = queue.take(renzora_plugin::anim::SERVICE);
+    assert_eq!(mine.len(), 2);
+    assert_eq!(queue.0.len(), 1, "another service's call was eaten");
+    assert_eq!(queue.0[0].service, other);
+    assert_eq!(queue.0[0].op, 7);
+}
+
+/// Two services must not collide, and an id must be stable across builds — it is
+/// baked into every plugin binary that ever shipped.
+#[test]
+fn service_ids_are_distinct_and_stable() {
+    assert_ne!(sys::service_id("renzora.animation"), sys::service_id("renzora.audio"));
+    assert_eq!(renzora_plugin::anim::SERVICE, sys::service_id("renzora.animation"));
+    // FNV-1a offset basis, i.e. the hash of nothing. Pinned so a change to the
+    // hash function shows up here rather than as every plugin silently missing.
+    assert_eq!(sys::fnv1a(""), 0xcbf2_9ce4_8422_2325);
+}
+
+// ── Animation vocabulary ─────────────────────────────────────────────────────
+
+/// A name over the cap must be dropped, not truncated: a shortened name resolves
+/// to no clip, which presents as "animation is broken" rather than as a limit.
+#[test]
+fn an_over_long_animation_name_is_refused_rather_than_truncated() {
+    use renzora_plugin::anim::{AnimName, NAME_CAP};
+    assert!(AnimName::new(&"a".repeat(NAME_CAP + 1)).is_none());
+    let exact = "b".repeat(NAME_CAP);
+    assert_eq!(AnimName::new(&exact).expect("exactly the cap must fit").as_str(), exact);
+}
+
+/// A `len` past the buffer must clamp rather than read off the end — the engine
+/// reads this out of plugin memory and cannot trust the length.
+#[test]
+fn an_animation_name_with_a_bogus_length_is_clamped() {
+    use renzora_plugin::anim::{AnimName, NAME_CAP};
+    let mut name = AnimName::new("run").unwrap();
+    name.len = 255;
+    assert_eq!(name.as_bytes().len(), NAME_CAP);
+}
+
+/// Non-UTF-8 bytes must read as empty rather than panicking the engine.
+#[test]
+fn an_animation_name_that_is_not_utf8_reads_as_empty() {
+    use renzora_plugin::anim::AnimName;
+    let mut name = AnimName::EMPTY;
+    name.bytes[0] = 0xff;
+    name.len = 1;
+    assert_eq!(name.as_str(), "");
+}
+
+#[test]
+fn an_animation_op_from_a_newer_build_is_recognisable_as_unknown() {
+    use renzora_plugin::anim::AnimOp;
+    let future = AnimOp(99);
+    assert!(!future.is_known());
+    assert_eq!(future.name(), "?");
+}
+
+/// `is_clip` compares hashes, so it must distinguish names and must not treat
+/// "nothing playing" as a match for the empty string.
+#[test]
+fn anim_state_name_comparison_distinguishes_clips() {
+    use renzora_plugin::anim::{name_hash, AnimState};
+    let mut state = AnimState { clip: name_hash("run"), ..Default::default() };
+    assert!(state.is_clip("run"));
+    assert!(!state.is_clip("walk"));
+
+    // The bridge writes 0 rather than `name_hash("")` when nothing is playing,
+    // precisely so this stays false — the empty name has a real hash.
+    state.clip = 0;
+    assert!(!state.is_clip(""), "an idle animator matched the empty clip name");
+    assert_ne!(name_hash(""), 0);
+}
+
+/// The mirror is read straight out of a query cell and wrapped
+/// `#[repr(transparent)]` engine-side, so its size is part of the contract.
+#[test]
+fn the_anim_state_mirror_has_a_stable_layout() {
+    use renzora_plugin::anim::AnimState;
+    assert_eq!(core::mem::size_of::<AnimState>(), 32);
+    assert_eq!(core::mem::align_of::<AnimState>(), 8);
+}

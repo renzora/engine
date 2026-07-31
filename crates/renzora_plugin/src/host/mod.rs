@@ -1100,12 +1100,102 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
                     (spawner.0)(world, entity, &source);
                 });
             }
+            sys::CommandKind::Service => {
+                let hdr_len = size_of::<sys::ServiceCall>();
+                if data.len() < hdr_len {
+                    error!(
+                        "plugin sent {} bytes for a service call; the header alone is {hdr_len}",
+                        data.len()
+                    );
+                    continue;
+                }
+                // SAFETY: length checked, and `sys::ServiceCall` is `#[repr(C)]`
+                // plain-old-data.
+                let hdr = unsafe { data.as_ptr().cast::<sys::ServiceCall>().read_unaligned() };
+                let payload = data[hdr_len..].to_vec();
+                // Parked, not applied, and deliberately not inspected: what these
+                // bytes mean is the consumer's business. This crate cannot depend
+                // on any engine crate — see the module doc — so it does not know
+                // and must not guess.
+                commands.queue(move |world: &mut World| {
+                    world
+                        .get_resource_or_insert_with(PluginServiceCalls::default)
+                        .0
+                        .push(ServiceCall {
+                            entity,
+                            service: hdr.service,
+                            op: hdr.op,
+                            payload,
+                        });
+                });
+            }
             // A command kind from a newer ABI. Dropping it is the only
             // option: what the payload means is exactly the thing this build
             // does not know.
             other => {
                 warn!("plugin queued command kind {} which this build does not have", other.0);
             }
+        }
+    }
+}
+
+// ── Services ─────────────────────────────────────────────────────────────────
+
+/// One [`sys::CommandKind::Service`] call, as parked for its consumer.
+pub struct ServiceCall {
+    pub entity: Entity,
+    /// From `sys::service_id`. Which crate this is for.
+    pub service: u64,
+    /// The operation, in that service's own numbering.
+    pub op: u32,
+    /// The payload, exactly as the plugin wrote it. **Not** interpreted here —
+    /// this crate has no idea what any of it means, which is the point.
+    pub payload: Vec<u8>,
+}
+
+/// Service calls plugins queued this frame, waiting for whoever claims them.
+///
+/// Held rather than acted on, for the same reason [`PluginPanel`] is: this crate
+/// must stay publishable to crates.io, so it cannot depend on `renzora_animation`
+/// — or on anything else in the engine. It carries bytes it does not read.
+///
+/// **Nothing draining a service is a valid configuration.** A dedicated server or
+/// a lean export that dropped the crate in question simply discards those calls;
+/// see [`discard_unhandled_service_calls`].
+#[derive(Resource, Default)]
+pub struct PluginServiceCalls(pub Vec<ServiceCall>);
+
+impl PluginServiceCalls {
+    /// Take every call for one service, leaving the rest for other consumers.
+    ///
+    /// Per-service rather than "drain everything", because more than one bridge
+    /// reads this queue and a consumer that took the lot would silently eat
+    /// another domain's calls — a failure with no symptom except a feature that
+    /// quietly stops working when an unrelated crate is present.
+    pub fn take(&mut self, service: u64) -> Vec<ServiceCall> {
+        let mut taken = Vec::new();
+        let mut i = 0;
+        while i < self.0.len() {
+            if self.0[i].service == service {
+                taken.push(self.0.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        taken
+    }
+}
+
+/// Discards service calls nothing claimed, at the end of the frame.
+///
+/// Registered by the host, and it has to be: without a consumer the queue is
+/// append-only, and a plugin calling into a service every frame in a build that
+/// lacks its bridge would grow it until the process died. Real consumers drain
+/// their own service earlier in the frame and this sees only what is left.
+pub fn discard_unhandled_service_calls(queue: Option<ResMut<PluginServiceCalls>>) {
+    if let Some(mut queue) = queue {
+        if !queue.0.is_empty() {
+            queue.0.clear();
         }
     }
 }

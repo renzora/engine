@@ -7516,6 +7516,7 @@ dependencies = [
  "bevy",
  "mlua",
  "renzora",
+ "renzora_plugin",
  "renzora_scripting",
  "ron 0.8.1",
  "serde",
