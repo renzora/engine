@@ -15,7 +15,7 @@ A standalone plugin sidesteps that entirely:
 
 There is no dynamic symbol to resolve against `renzora.exe`, so there is no filename to match, no `bevy_dylib-<hash>` to find, and no `TypeId` to line up. The only thing both sides must agree on is the layout of a handful of `#[repr(C)]` structs. That means a plugin built with rustc 1.90 loads into an editor built with rustc 1.95, and a plugin built in 2026 keeps loading into editors released later.
 
-The price is that a standalone plugin reaches Bevy through a curated surface rather than all of it. That surface is designed to read *identically* to Bevy source — see [What it looks like](#what-it-looks-like). It covers components, resources, queries, systems, commands, assets, render passes, post-process effects, scene serialization, and [editor panels](#editor-panels).
+The price is that a standalone plugin reaches Bevy through a curated surface rather than all of it. That surface is designed to read *identically* to Bevy source — see [What it looks like](#what-it-looks-like). It covers components, resources, queries, systems, commands, assets, [generated geometry](#geometry) and [textures](#textures), [custom materials](#custom-materials), render passes, post-process effects, [animation](#animation), [physics](#physics), [HTTP](#http), scene serialization, and [editor panels](#editor-panels).
 
 ## Which one to use
 
@@ -31,6 +31,8 @@ The price is that a standalone plugin reaches Bevy through a curated surface rat
 | Breaks when | the editor's ABI moves | only on a MAJOR ABI bump |
 
 Reach for a standalone plugin when you want to ship a prebuilt binary to people running editor versions you don't control, or when you'd rather not maintain a Docker toolchain to build a plugin. Reach for a distribution plugin when you need a part of Bevy the ABI doesn't expose yet.
+
+In practice that line falls in a consistent place, and it is more useful than the table: **gameplay and geometry are well covered; rendering *integration* is not.** A plugin can simulate anything, generate any mesh, and put its own shader on it. As soon as it needs to know where the camera is, which way the light points, or what another pass wrote, it wants to be in-tree. See [Current limits](#current-limits).
 
 ## What it looks like
 
@@ -194,6 +196,31 @@ pub struct Orbit {
 Keep components plain data. Destructors are not supported yet, so no `String`, `Vec`, or `Box` fields.
 
 `#[repr(C)]` is only strictly required when the struct is also a GPU uniform (see [Post-process effects](#post-process-effects)), but it costs nothing and makes the layout explicit.
+
+### Text fields
+
+A component can hold text with `Str256` — 252 bytes of inline UTF-8 plus a length:
+
+```rust
+use renzora_plugin::prelude::*;
+
+#[derive(Component)]
+#[repr(C)]
+pub struct Label {
+    pub text: Str256,
+    pub font: Str256,
+}
+
+impl Default for Label {
+    fn default() -> Self {
+        Self { text: Str256::new("Label").unwrap_or(Str256::EMPTY), font: Str256::EMPTY }
+    }
+}
+```
+
+It draws as a text row in the inspector and round-trips through scenes like any other field. Read it with `as_str()`, write it with `Str256::new` (returns `None` if it does not fit) or `Str256::new_truncating`.
+
+The fixed size is the whole point rather than a limitation to be lifted. Component storage is allocated by the host from a layout the plugin declares, and anything with a destructor is refused outright — a `String` would hand the host a pointer into the plugin's heap to free. 252 bytes covers a name, a label, or a path; a plugin needing more keeps it in its own memory keyed by entity, which is what `plugins/text3d` does for font *files* while the path itself lives on the component.
 
 ### Tuning how a field is edited
 
@@ -421,9 +448,62 @@ Reading a **parameter** back. `set_anim_param` works, but params are an unbounde
 
 A build with no animation crate — a dedicated server, a lean 2D export — accepts these commands and discards them each frame rather than growing a queue forever.
 
+## Physics
+
+Behind `features = ["physics"]`. Forces and impulses go out as commands; the body's state comes back as an ordinary query.
+
+```rust
+use renzora_plugin::physics::{PhysicsCommands, PhysicsState};
+
+fn jump(mut q: Query<(Entity, &PhysicsState, &Jumper)>, input: Input, mut commands: Commands) {
+    for (entity, state, jumper) in &mut q {
+        if state.is_grounded() && input.just_pressed(Key::Space) {
+            commands.entity(entity).apply_impulse(Vec3::new(0.0, jumper.power, 0.0));
+        }
+    }
+}
+```
+
+| | |
+|---|---|
+| `apply_force(v)` | Continuous. Set it every frame for sustained thrust. |
+| `apply_impulse(v)` | One-shot — a jump, a knockback, a launch. |
+| `set_velocity(v)` | Outright, ignoring whatever it was. |
+| `kinematic_slide(delta, max_slope_degrees)` | Move a kinematic body, sliding along anything steeper instead of walking up it. |
+
+`PhysicsState` mirrors linear and angular velocity plus contact flags — `is_grounded()`, `is_colliding()`, `just_entered()`, `just_exited()`. Like `AnimState` it is a numeric-only mirror the bridge refreshes each frame, so it reads as a normal component with no service call involved.
+
+What a plugin **cannot** do is create a body. `RigidBody`, `Collider` and the joint types are engine components with no plain-data mirror, so a plugin drives physics that something else set up — authored in the editor, or spawned as [BSN](#spawning-something-visible), which names host components as text and so can construct them.
+
+## HTTP
+
+Behind `features = ["http"]`. A request is fired by tag and collected later:
+
+```rust
+use renzora_plugin::http::{Http, HttpCommands};
+
+const SCORES: u64 = 1;
+
+fn fetch(mut commands: Commands) {
+    commands.http_get(SCORES, "https://example.com/scores");
+}
+
+fn collect(http: Http) {
+    if let Some(response) = http.poll(SCORES) {
+        if response.is_ok() {
+            info(&format!("got {}", response.body));
+        }
+    }
+}
+```
+
+`poll` returning `None` is the normal state — a request takes many frames — and a response is delivered exactly once. The tag is yours to choose; it is how a plugin with several requests in flight tells them apart.
+
+This exists because a plugin genuinely cannot do it itself. Nothing stops it from linking `reqwest`, but it would then own a runtime, a thread pool and a TLS stack per plugin, all of which the engine already has. Riding the engine's client also means a request goes through the same proxy and certificate configuration as everything else.
+
 ## Domain modules
 
-Animation is the first of these, and the shape matters more than the feature.
+Animation, physics and HTTP all ride the same mechanism, and the shape matters more than any one of them.
 
 `sys` — the commands, queries and interface table everything else rests on — deliberately does **not** know that animation exists. Instead it carries one generic command:
 
@@ -435,10 +515,12 @@ The host copies those bytes into a queue without reading them. `renzora_plugin::
 
 Two things follow, and they are why it is built this way:
 
-- **Adding a domain does not move the ABI.** `sys::VERSION_MINOR` describes the boundary; a new module bumps the crate's own semver instead. A plugin that wants audio should not end up declaring a minimum ABI that also encodes animation history.
+- **Adding a domain does not move the ABI.** `sys::VERSION_MINOR` describes the boundary; a new module bumps the crate's own semver instead. A plugin that wants audio should not end up declaring a minimum ABI that also encodes animation history. Animation, physics and HTTP have all landed since 2.4 without moving it.
 - **A plugin that doesn't use a domain pays nothing.** The module is behind a feature, and its types are plain data with no statics — measured, a plugin using animation is *smaller* than one that doesn't, because the difference is its own code, not the vocabulary.
 
 Adding audio would be `src/audio.rs` behind an `audio` feature, plus a `plugin_bridge` module in whichever engine crate owns audio. Neither touches `sys`, and neither needs a new crate.
+
+Two of the three needed one thing the generic channel doesn't provide, and it is worth knowing which: **a reply**. Commands are write-only, so `Http::poll` and `Meshes::read` are *system params* backed by their own pointer in the call struct, not service calls. Anything that answers a question rather than issuing an order takes that route, and that route does touch the ABI.
 
 ### What the plugin can and cannot reach
 
@@ -515,6 +597,117 @@ fn scatter(q: Query<&Scatter>, mut commands: Commands) {
 
 The `static` is the one genuinely un-Bevy-like thing here, and it follows from systems having to be zero-sized: a handle created in `build` can't be captured by a closure the host has to own, so it's parked somewhere the system can read it. `Primitive` is `Cuboid`, `Sphere`, `Plane`, `Cylinder`, `Capsule` or `Torus`; `add_material_pbr` takes metallic and roughness alongside the colour.
 
+## Geometry
+
+Beyond the built-in primitives, a plugin can hand the engine its own vertices — which is what makes text meshes, procedural foliage, hair ribbons and water surfaces possible at all.
+
+```rust
+// A quad. Normals and UVs derived by the host.
+let quad = app.add_mesh_data(
+    &[Vec3::new(-1.0, 0.0, -1.0), Vec3::new(1.0, 0.0, -1.0),
+      Vec3::new(1.0, 0.0, 1.0),   Vec3::new(-1.0, 0.0, 1.0)],
+    None, None,
+    Some(&[0, 1, 2, 0, 2, 3]),
+);
+```
+
+`normals` and `uvs` may be `None` — the host computes normals from the faces and zeroes the UVs. `indices` may be `None` for an unindexed triangle list, where every three positions form one face. Everything is copied before the call returns, so the slices can be locals.
+
+Anything inconsistent — an index past the end, a normal count that doesn't match the vertices, a position count that isn't a whole number of triangles — is **refused**, returning an invalid handle and logging why. Padding or clamping it would produce a mesh that renders subtly wrong with nothing to point at.
+
+### Rewriting a mesh each frame
+
+`add_mesh_data` is init-only, like every asset constructor. Geometry that changes — a simulated strand, an edited string — is rewritten through the `Meshes` system param:
+
+```rust
+fn update(q: Query<&Ribbon>, meshes: Meshes) {
+    for ribbon in &q {
+        meshes.write(ribbon.handle(), &positions, Some(&normals), Some(&uvs), Some(&indices), None);
+    }
+}
+```
+
+The last argument is optional per-vertex colours. Vertex count and topology can change freely between writes — only the handle is fixed.
+
+The practical consequence of init-only creation is a **pool**: every mesh the plugin will ever write has to exist by the end of `build`, so a plugin decides its own ceiling and hands slots out. `plugins/text3d` keeps 64 and `plugins/hair` keeps 16, both as a free stack. Seed each one with a degenerate triangle — a mesh with no positions is refused.
+
+### Reading geometry already in the world
+
+The counterpart: consuming what is already there, for scattering over a surface, growing from a scalp, or fitting to a wall.
+
+```rust
+fn scatter(q: Query<Entity, With<Scatter>>, meshes: Meshes) {
+    for e in &q {
+        let Some(mesh) = meshes.read(e) else { continue };  // still loading
+        for [a, b, c] in mesh.triangles() { /* … */ }
+    }
+}
+```
+
+`read` copies into memory the plugin owns — the host never hands back a pointer into asset storage, which can move or be freed the moment the call returns. `None` means the entity has no mesh **or its asset hasn't loaded yet**, which is the normal state for the first few frames after a spawn, so poll rather than treating it as failure.
+
+`triangles()` yields index triples whether or not the mesh was indexed, since almost nothing that walks a surface cares how the faces were stored.
+
+## Textures
+
+A plugin can upload its own pixels:
+
+```rust
+use renzora_plugin::sys::ImageFormat;
+
+let tex = app.add_image(256, 256, ImageFormat::Rgba8UnormSrgb, &pixels);
+```
+
+`data` must be exactly `width * height * bytes_per_pixel`. A short buffer is refused rather than padded — uploading one as a full texture reads past the plugin's heap into a GPU transfer.
+
+Init-only again, and rewritten from a system through `Images`:
+
+```rust
+fn step(images: Images) {
+    images.write(handle, &pixels);
+}
+```
+
+Dimensions and format are fixed at creation; only the contents change. A `data` length that doesn't match is refused and the previous pixels are left alone, so a bad frame shows the last good texture instead of garbage. The main reason a plugin wants a texture at all is a simulation it steps every frame — a heightfield, a flow map, a generated atlas — and that is exactly the shape this supports.
+
+## Custom materials
+
+A plugin can supply its own WGSL and drive it from one of its own components:
+
+```rust
+#[derive(Component, Default)]
+#[repr(C)]
+pub struct Ripple {
+    #[field(min = 0.0, max = 8.0)]
+    pub speed: f32,
+    #[field(min = 0.0, max = 1.0)]
+    pub amplitude: f32,
+}
+
+let mat = app.add_material_shader::<Ripple>("ripple", WGSL, AlphaMode::Blend, &[tex]);
+```
+
+`Ripple`'s bytes are uploaded as the uniform at `@group(3) @binding(0)`, so the parameters are described **once** — editable in the inspector, saved into scenes, readable by the plugin's own systems — rather than duplicated into a GPU-only struct that has to be kept in sync by hand. Any textures passed bind from `@binding(1)` upward, each as a texture/sampler pair.
+
+The shader supplies a **fragment entry point only**; the vertex stage stays Bevy's, so skinning, morph targets and the instance-indexed model transform are handled for you.
+
+```wgsl
+#import bevy_pbr::forward_io::VertexOutput
+
+struct Ripple { speed: f32, amplitude: f32 };
+@group(3) @binding(0) var<uniform> ripple: Ripple;
+
+@fragment
+fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+    let w = sin(in.world_position.x * 8.0) * ripple.amplitude;
+    return vec4(0.1, 0.4 + w, 0.8, 1.0);
+}
+```
+
+Note `@group(3)`, not `2` — Bevy 0.19 binds view data at 0, mesh data at 1 and 2. And note the import: unlike a [post-process shader](#the-shader-must-be-self-contained), a material is compiled through Bevy's normal pipeline, so **naga_oil imports work here**. `#import bevy_pbr::forward_io::VertexOutput` is in fact required, since that struct is what the vertex stage hands the fragment.
+
+The component must be no larger than 256 bytes (`sys::MATERIAL_UNIFORM_CAP`). Over that is refused with a log line rather than clamped: the bind-group layout is fixed for the shared material type, and a uniform read past the end of its buffer is undefined on the GPU, not merely wrong.
+
 ## Render passes
 
 A plugin can put its own code inside Bevy's render graph:
@@ -557,7 +750,9 @@ Write **whatever fields the effect needs**, in any number. The engine rounds the
 
 ### The shader must be self-contained
 
-The WGSL goes straight to naga, so `#import` — a naga_oil directive — is not available. Declare what you use, and take the fragment inputs explicitly:
+The WGSL goes straight to naga, so `#import` — a naga_oil directive — is not available. Declare what you use, and take the fragment inputs explicitly.
+
+This is specific to post-process, and worth not over-generalizing: a [custom material](#custom-materials) is compiled through Bevy's own pipeline, where imports do work. The difference is that a post-process effect is validated and handed to wgpu directly, with no preprocessor in the path.
 
 ```wgsl
 @group(0) @binding(0) var screen_texture: texture_2d<f32>;
@@ -705,14 +900,23 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 2.4.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
+**The current ABI is 2.11.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)
 - **2.3** — [field editing ranges](#tuning-how-a-field-is-edited)
 - **2.4** — `CommandKind::Service`, the generic channel [domain modules](#domain-modules) ride on
+- **2.5** — [`add_mesh_data`](#geometry): geometry from the plugin's own vertices
+- **2.6** — [`Str256`](#text-fields), and the `Str` field kind that draws it
+- **2.7** — [`Meshes::read`](#reading-geometry-already-in-the-world)
+- **2.8** — the [`Http`](#http) system param
+- **2.9** — [`add_material_shader`](#custom-materials)
+- **2.10** — [`Meshes::write`](#rewriting-a-mesh-each-frame)
+- **2.11** — [`add_image`](#textures), `Images::write`, and material textures
 
-Note what is *not* in that list: animation. It ships in the same release but is a [domain module](#domain-modules), not boundary surface, so it moved the crate's version and not the ABI's. Audio and physics will do the same.
+Note what is *not* in that list: animation, physics and HTTP *commands*. They ship alongside but are [domain modules](#domain-modules), not boundary surface, so they moved the crate's version and not the ABI's. What did land as MINORs — `Http::poll`, `Meshes::read` — are the parts that hand data *back*, which the generic channel cannot do. Audio will follow the same split.
+
+The run from 2.5 to 2.11 is what porting real plugins cost. Each one was a capability an actual plugin was blocked on and nothing else would substitute for: `plugins/text3d` needed strings and then mesh writes; `plugins/hair` needed to read a scalp mesh before it could grow anything from it. None of them was foreseeable from the outside, which is the argument for porting a plugin before declaring the surface complete.
 
 MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
 
@@ -734,8 +938,12 @@ The engine ships several, each under `plugins/`:
 | `pulse` | a post-process effect driven by a system |
 | `wobble` | pulling in a third-party crate (`noise`) |
 | `widgets` | every panel widget, and nothing else |
+| `text3d` | [text fields](#text-fields), generated [geometry](#geometry), and a mesh pool |
+| `hair` | [reading a mesh](#reading-geometry-already-in-the-world) and rewriting one each frame |
 
 Most are under 100 lines, with no Bevy anywhere in their dependency tree and nothing but the OS in their import table.
+
+`text3d` and `hair` are the exceptions at ~430 and ~710 lines, and they are the two to read if you are porting something real rather than starting fresh. Both are ports of engine crates that previously linked Bevy directly, so the diff against `crates/renzora_text3d` and `crates/renzora_hair` shows exactly what the boundary costs: mostly the loss of `Assets<T>` and `RemovedComponents`, worked around with a pool and a liveness sweep respectively.
 
 Alongside them sit the **post-process effects** — every screen-space effect the engine ships except the handful wired into the render graph itself (bloom, SSAO, motion blur, the tonemapper). Each is a struct, a `Default`, one `add_post_process` line and a `.wgsl` file, which makes them the best set to read before writing your own: pick the one closest to what you want and follow its shape. `plugins/crt` is the one to open first — its module doc is where the reasoning about padding and `enabled` flags lives.
 
@@ -755,7 +963,7 @@ Field *names* are what re-attach, so renaming a field in a plugin orphans that f
 
 ## Exposing an engine crate to plugins
 
-*For engine developers.* If you write an in-tree Bevy plugin and want standalone plugins to drive it, you add a `plugin_bridge` module to **your own crate** — there is no separate bridge crate, and `renzora_plugin` never learns your name. `renzora_animation::plugin_bridge` and `renzora_postprocess::plugin_bridge` are the two working examples.
+*For engine developers.* If you write an in-tree Bevy plugin and want standalone plugins to drive it, you add a `plugin_bridge` module to **your own crate** — there is no separate bridge crate, and `renzora_plugin` never learns your name. The working examples are `renzora_animation`, `renzora_physics`, `renzora_scripting` (which owns HTTP) and `renzora_postprocess`.
 
 How much you have to write depends on what you are exposing.
 
@@ -776,7 +984,9 @@ If your real component *can't* be plain data (`AnimatorReadState` is `String` + 
 
 **Constructing your components — already free.** `spawn_bsn` sends text that names components, resolved host-side through the reflection registry, so a plugin can construct any registered engine component — including yours — with neither side knowing the other exists.
 
-**Triggering behaviour — needs an op in the contract.** "Play this clip" isn't a field write. There is no generic "call this function" across the boundary: the host has to know what the bytes mean. So the op is defined in `renzora_plugin::sys`, the host parks it in a queue resource it owns, and your bridge drains that queue. This is the one case that touches the shared contract and so costs a [MINOR bump](#versioning).
+**Triggering behaviour — a domain module, and nothing in the contract.** "Play this clip" isn't a field write, and there is no generic "call this function" across the boundary. But since 2.4 there is a generic *channel*: you write `src/<domain>.rs` in `renzora_plugin` behind a feature, defining your own ops and payload structs and tagging them with `service_id("renzora.<domain>")`. The host parks the bytes without reading them and your bridge drains the ones bearing your tag. `sys` never learns your domain exists, so this costs **no** [MINOR bump](#versioning) — see [Domain modules](#domain-modules).
+
+**Answering a question — this one does touch the contract.** Commands are write-only, so anything that hands data *back* on demand needs a pointer in `SystemCall` and a system param to read it through. `Http::poll` and `Meshes::read` both took a MINOR for exactly this reason. Before reaching for one, check whether a numeric mirror the bridge refreshes each frame would do instead — `AnimState` and `PhysicsState` answer their questions that way and cost nothing.
 
 ### How they find each other
 
@@ -805,14 +1015,16 @@ The surface is deliberately incremental. Not yet available:
 
 - `Startup` and `FixedUpdate` schedules — systems run in the five main-loop schedules only
 - **Gamepad.** Keyboard, mouse and cursor are covered; gamepad is not.
-- **Text.** A component field can be `f32`, `i32`, `bool`, `Vec3` or `Quat` — there is no `String`, so a plugin's live state cannot hold names or labels. Panel *content* is unaffected, since BSN crosses as text and is parsed host-side.
 - Hierarchy (`ChildOf` / `Children`, `with_children`) from a system — panel BSN can nest freely
 - Change detection (`Added<T>`, `Changed<T>`, `Ref<T>`)
 - Messages, observers, and component hooks
 - `Local<T>`, `ParamSet`, run conditions, system ordering
-- The `Assets<T>` / `AssetServer` idiom, and loading assets by path
-- **Meshes from your own vertex data.** `add_mesh` builds the built-in primitives; there is no way to hand the engine arbitrary positions and indices, so a plugin cannot generate geometry.
+- The `Assets<T>` / `AssetServer` idiom, and loading assets by path. Meshes and images can be [created](#geometry) and [rewritten](#textures), but only ones the plugin made — there is no handle to an asset on disk.
+- **Cameras and lights.** A plugin cannot read where the camera is or which way the sun points, and cannot add a component (`DepthPrepass`, say) to a camera. This is the gap that keeps `pool_water` in-tree: screen-space refraction needs both.
+- **Creating physics bodies.** [Driving](#physics) one works; `RigidBody`, `Collider` and joints have no mirror to cross on, so the body has to exist already.
 - **Reading an animation parameter back** — see [Animation](#what-is-missing). Setting one works.
-- Audio, physics and navigation have no surface yet. Animation is the first domain service; the others follow the same shape.
-- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name`, `Mesh3d` and [`AnimState`](#reading-it-back). In particular a plugin cannot configure Bevy's own rendering — bloom, SSAO, decals, depth prepass — since those components have no `#[repr(C)]` mirror to cross on. An **in-tree** plugin can expose its own, though: make the component `#[repr(C)]` plain data and hand out its type path with `renzora_plugin::host_component!`.
+- Audio and navigation have no surface yet. They follow the same shape as [animation, physics and HTTP](#domain-modules) when they land.
+- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name`, `Mesh3d`, [`AnimState`](#reading-it-back) and [`PhysicsState`](#physics). In particular a plugin cannot configure Bevy's own rendering — bloom, SSAO, decals, depth prepass — since those components have no `#[repr(C)]` mirror to cross on. An **in-tree** plugin can expose its own, though: make the component `#[repr(C)]` plain data and hand out its type path with `renzora_plugin::host_component!`.
 - **Adding** a panel, render pass or post-process effect during a [reload](#hot-reload). Editing an existing one works; adding one needs a restart.
+
+The shape of what's left is worth naming: the boundary covers **gameplay and geometry** well, and **rendering integration** badly. A plugin can simulate anything, generate any mesh, and put its own shader on it — but the moment it needs to know about the camera, the lights, or another pass's output, it belongs in-tree. That is why the engine still ships `crates/renzora_text3d` (its flat mode rasterizes an SDF atlas) and `crates/renzora_pool_water`, and it is a real division rather than a queue of things to get round to.
