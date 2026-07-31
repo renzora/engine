@@ -30,7 +30,6 @@
 //! once — inspector-editable, scene-serialised, readable by the plugin's own
 //! systems — instead of duplicated into a GPU-only struct.
 
-use bevy::asset::uuid_handle;
 use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use bevy::render::render_resource::{
@@ -63,7 +62,7 @@ pub struct PluginMaterial {
     /// Component the bytes come from — read by `collect_material_settings`,
     /// never by the GPU.
     pub settings: ComponentId,
-    /// Bound from `@group(2) @binding(1)` upward, each followed by its sampler.
+    /// Bound from `@group(3) @binding(1)` upward, each followed by its sampler.
     pub textures: Vec<Handle<Image>>,
 }
 
@@ -179,16 +178,21 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
 }
 
 impl Material for PluginMaterial {
+    /// Bevy's own mesh vertex shader, deliberately.
+    ///
+    /// A plugin supplies a fragment shader only. Writing a vertex stage would
+    /// mean hand-rolling the skinning, morph targets and instance-indexed model
+    /// transform out of `@group(0)`/`@group(1)` — version-fragile work that has
+    /// nothing to do with the material's own look, and that every plugin would
+    /// have to redo. Almost every custom material is a fragment.
     fn vertex_shader() -> ShaderRef {
-        // Replaced per instance in `specialize`. A placeholder rather than
-        // `Default`, because `Default` would silently fall back to Bevy's own
-        // mesh shader and render the plugin's material as plain PBR — which
-        // looks like the shader "not working" rather than like a broken handle.
-        ShaderRef::Handle(uuid_handle!("00000000-0000-0000-0000-000000000000"))
+        ShaderRef::Default
     }
 
+    /// Replaced per instance in `specialize`, which is what lets one Rust type
+    /// serve every plugin's shader.
     fn fragment_shader() -> ShaderRef {
-        ShaderRef::Handle(uuid_handle!("00000000-0000-0000-0000-000000000000"))
+        ShaderRef::Default
     }
 
     fn alpha_mode(&self) -> AlphaMode {
@@ -201,10 +205,14 @@ impl Material for PluginMaterial {
         _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        // The per-instance shader, applied to both stages. A plugin ships one
-        // module defining `vertex` and `fragment`, which keeps a material to a
-        // single file.
-        descriptor.vertex.shader = key.bind_group_data.shader.clone();
+        // Fragment only — the vertex stage stays Bevy's, so a plugin's shader
+        // is just its `@fragment fn fragment(in: VertexOutput)`.
+        //
+        // Unlike a post-process shader, this one is compiled through Bevy's
+        // normal pipeline, so naga_oil is available and
+        // `#import bevy_pbr::forward_io::VertexOutput` works. That import is in
+        // fact required: `VertexOutput` is what the vertex stage above hands
+        // over, and its layout is Bevy's to define.
         if let Some(fragment) = descriptor.fragment.as_mut() {
             fragment.shader = key.bind_group_data.shader.clone();
         }

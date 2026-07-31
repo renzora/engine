@@ -2119,11 +2119,15 @@ impl App {
     /// let mat = app.add_material_shader::<Ripple>("ripple", WGSL, sys::AlphaMode::Blend);
     /// ```
     ///
-    /// `T`'s bytes are uploaded as the uniform at `@group(2) @binding(0)`, so
+    /// `T`'s bytes are uploaded as the uniform at `@group(3) @binding(0)`, so
     /// the parameters are described once — editable in the inspector, saved
     /// into scenes, readable by the plugin's own systems — rather than
-    /// duplicated into a GPU-only struct. The shader must define both a
-    /// `vertex` and a `fragment` entry point.
+    /// duplicated into a GPU-only struct.
+    ///
+    /// The shader supplies a `fragment` entry point only; the vertex stage is
+    /// Bevy's. It is compiled through Bevy's pipeline, so naga_oil imports work
+    /// — and `#import bevy_pbr::forward_io::VertexOutput` is required, since
+    /// that is what the vertex stage hands over.
     ///
     /// Refused, with a log line, if `T` is larger than
     /// [`sys::MATERIAL_UNIFORM_CAP`]: the bind-group layout is fixed for the

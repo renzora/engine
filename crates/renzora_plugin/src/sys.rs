@@ -1644,7 +1644,7 @@ pub struct ImageSource {
 
 /// Textures a material binds, beyond its uniform block.
 ///
-/// Bound from `@group(2) @binding(1)` upward, each texture followed by its
+/// Bound from `@group(3) @binding(1)` upward, each texture followed by its
 /// sampler — so the first is `1`/`2`, the second `3`/`4`, and so on.
 pub const MAX_MATERIAL_TEXTURES: usize = 4;
 
@@ -1693,14 +1693,21 @@ pub const MATERIAL_UNIFORM_CAP: u64 = 256;
 pub struct MaterialShaderDesc {
     /// Stable name, used for the shader asset and for hot-reload.
     pub id: StrRef,
-    /// WGSL source. Must define both a `vertex` and a `fragment` entry point.
+    /// WGSL source. Needs a `fragment` entry point only — the vertex stage is
+    /// Bevy's, so skinning, morph targets and the instance-indexed model
+    /// transform come for free.
+    ///
+    /// Compiled through Bevy's normal pipeline rather than validated directly
+    /// the way a post-process shader is, so naga_oil imports work here.
+    /// `#import bevy_pbr::forward_io::VertexOutput` is required, since that is
+    /// what the vertex stage hands the fragment.
     pub wgsl: StrRef,
-    /// Component whose bytes become the uniform at `@group(2) @binding(0)`.
+    /// Component whose bytes become the uniform at `@group(3) @binding(0)`.
     pub settings: ComponentId,
     /// Size of that component. Refused above [`MATERIAL_UNIFORM_CAP`].
     pub settings_size: u64,
     pub alpha_mode: AlphaMode,
-    /// Handles from [`Interface::add_image`], bound from `@group(2) @binding(1)`
+    /// Handles from [`Interface::add_image`], bound from `@group(3) @binding(1)`
     /// upward with each texture followed by its sampler. Null for none.
     ///
     /// Fixed at registration rather than per-instance, because the bind-group
