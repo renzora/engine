@@ -131,6 +131,28 @@ impl Hair {
     }
 }
 
+/// Marks a groom's hidden render entity.
+///
+/// Exists so an orphan can be found again. The plugin's tracking lives in
+/// `GROOMS`, which is wiped whenever the plugin reloads — and every hot reload
+/// would otherwise strand the render entities the previous build spawned, with
+/// nothing left that knows they exist. A marker turns "untracked" into
+/// "queryable", which is the only way back from that.
+#[derive(Component)]
+#[component(name = "Hair Ribbons")]
+#[repr(C)]
+pub struct HairRibbons {
+    /// The groom's owner, so an orphan can be told from a live ribbon without
+    /// consulting plugin memory at all.
+    pub owner_bits: f32,
+}
+
+impl Default for HairRibbons {
+    fn default() -> Self {
+        Self { owner_bits: 0.0 }
+    }
+}
+
 /// One grown strand.
 struct Strand {
     /// Grown rest shape, root → tip, in the source mesh's local space.
@@ -199,6 +221,7 @@ static GROOMS: std::sync::Mutex<Option<Grooms>> = std::sync::Mutex::new(None);
 /// ribbons for this frame's camera.
 fn update_grooms(
     q: Query<(Entity, &Hair, &Transform)>,
+    ribbons: Query<Entity, With<HairRibbons>>,
     meshes: Meshes,
     time: Res<Time>,
     mut cmds: Commands,
@@ -244,9 +267,9 @@ fn update_grooms(
                     };
                     // Geometry is already in world space (see `build_ribbons`),
                     // so the render entity sits at the origin.
-                    let render = cmds
-                        .spawn_mesh(handle, grooms.material, Transform::IDENTITY)
-                        .id();
+                    let mut e = cmds.spawn_mesh(handle, grooms.material, Transform::IDENTITY);
+                    e.insert(HairRibbons { owner_bits: 0.0 });
+                    let render = e.id();
                     (handle, render)
                 }
             };
@@ -291,6 +314,31 @@ fn update_grooms(
     }
 
     retire_dead_grooms(grooms, &live, &mut cmds);
+    collect_orphan_ribbons(grooms, &ribbons, &mut cmds);
+}
+
+/// Despawn ribbon entities no live groom claims.
+///
+/// `retire_dead_grooms` handles the grooms this build knows about. This handles
+/// the ones it does not: a hot reload replaces the plugin and starts with an
+/// empty `GROOMS`, so every render entity the previous build spawned is
+/// instantly unowned, and nothing in plugin memory remembers it. The marker is
+/// what makes them findable again.
+///
+/// Runs after the retire pass so a groom torn down this frame is already out of
+/// the map, and its ribbon is collected here in the same frame rather than
+/// lingering for one.
+fn collect_orphan_ribbons(
+    grooms: &Grooms,
+    ribbons: &Query<Entity, With<HairRibbons>>,
+    cmds: &mut Commands,
+) {
+    for entity in ribbons {
+        let claimed = grooms.by_entity.values().any(|g| g.render.0 == entity.0);
+        if !claimed {
+            cmds.entity(entity).despawn();
+        }
+    }
 }
 
 /// Tear down grooms whose owner is gone.
@@ -661,6 +709,7 @@ impl Plugin for HairPlugin {
 
 
         app.register_component::<Hair>()
+            .register_component::<HairRibbons>()
             .add_systems(Update, update_grooms);
 
         if let Ok(mut g) = GROOMS.lock() {
