@@ -8,5 +8,6 @@
 //! re-exports belong to `renzora`, so every consumer shares one
 //! `PostProcessRegistry` and matching `TypeId`s via `renzora.dll`.
 pub mod plugin_bridge;
+pub mod plugin_material;
 
 pub use renzora::postprocess::*;

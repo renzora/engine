@@ -226,6 +226,9 @@ pub fn retire_slot(world: &mut World, slot: usize) {
     if let Some(mut effects) = world.get_resource_mut::<PendingPostProcesses>() {
         effects.0.retain(|e| e.owner != slot);
     }
+    if let Some(mut mats) = world.get_resource_mut::<PendingMaterials>() {
+        mats.0.retain(|m| m.owner != slot);
+    }
 
     // GPU assets are the one thing that leaks visibly if this is skipped: a
     // reloaded plugin creates a fresh mesh and material every cycle, and
@@ -359,6 +362,7 @@ static IFACE: sys::Interface = sys::Interface {
     add_panel,
     set_field_range,
     add_mesh_data,
+    add_material_shader,
 };
 
 
@@ -790,8 +794,30 @@ pub struct PluginAssets {
     /// meshes — the strong handle here is usually the only one, so dropping it is
     /// what actually frees the GPU memory.
     pub meshes: Vec<(usize, Handle<Mesh>)>,
-    pub materials: Vec<(usize, Handle<StandardMaterial>)>,
+    pub materials: Vec<(usize, MaterialSlot)>,
 }
+
+/// What a plugin's material handle actually refers to.
+///
+/// Two kinds share one index space so a plugin can pass a handle to `spawn_mesh`
+/// without caring which it holds.
+#[derive(Clone)]
+pub enum MaterialSlot {
+    /// Built by `add_material` — a plain PBR material this crate can name.
+    Standard(Handle<StandardMaterial>),
+    /// Built by `add_material_shader`. The asset type lives in the render
+    /// bridge, which this crate cannot depend on, so applying it goes through
+    /// [`CustomMaterialApplier`] — the same indirection `BsnSpawner` uses.
+    Custom,
+}
+
+/// Attaches a custom plugin material to an entity.
+///
+/// Registered by the render bridge, because the material's Rust type lives
+/// there. Absent in a build with no renderer, in which case a spawn naming a
+/// custom material gets no material rather than the wrong one.
+#[derive(Resource, Clone, Copy)]
+pub struct CustomMaterialApplier(pub fn(&mut World, Entity, usize));
 
 unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) -> sys::AssetHandle {
     guard_host("add_mesh", sys::AssetHandle::INVALID, || {
@@ -981,7 +1007,7 @@ unsafe extern "C" fn add_material(
         let mut store = ctx
             .world
             .get_resource_or_insert_with(PluginAssets::default);
-        store.materials.push((owner, handle));
+        store.materials.push((owner, MaterialSlot::Standard(handle)));
         sys::AssetHandle((store.materials.len() - 1) as u64)
     })
 }
@@ -1272,11 +1298,28 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
                         }
                     };
                     if let Ok(mut e) = world.get_entity_mut(entity) {
-                        e.insert((
-                            Mesh3d(mesh),
-                            MeshMaterial3d(material),
-                            from_mirror(&d.transform),
-                        ));
+                        e.insert((Mesh3d(mesh), from_mirror(&d.transform)));
+                    }
+                    match material {
+                        MaterialSlot::Standard(handle) => {
+                            if let Ok(mut e) = world.get_entity_mut(entity) {
+                                e.insert(MeshMaterial3d(handle));
+                            }
+                        }
+                        // The asset's Rust type lives in the render bridge, so
+                        // attaching it goes back out through the applier the
+                        // bridge registered. Absent in a build with no renderer,
+                        // where the mesh spawns unmaterialed rather than wrong.
+                        MaterialSlot::Custom => {
+                            let slot = d.material.0 as usize;
+                            match world.get_resource::<CustomMaterialApplier>().copied() {
+                                Some(apply) => (apply.0)(world, entity, slot),
+                                None => error!(
+                                    "[plugin] spawn_mesh used a custom material but nothing \
+                                     registered a `CustomMaterialApplier`"
+                                ),
+                            }
+                        }
                     }
                 });
             }
@@ -1645,6 +1688,93 @@ unsafe extern "C" fn add_post_process(host: *mut sys::Host, desc: *const sys::Po
                 phase: desc.phase,
                 order: desc.order,
             });
+    })
+}
+
+/// A custom shaded material a plugin registered, waiting for the render bridge.
+pub struct PendingMaterial {
+    pub id: String,
+    pub shader: Handle<Shader>,
+    /// Kept alongside the handle so the bridge can validate the shader's
+    /// declared uniform against `settings_size` before wgpu sees it.
+    pub wgsl: String,
+    pub settings: ComponentId,
+    pub settings_size: u64,
+    pub alpha_mode: sys::AlphaMode,
+    /// Index into `PluginAssets::materials`, so a spawn can name it like any
+    /// other material handle.
+    pub slot: usize,
+    /// Registering plugin slot — see [`retire_slot`].
+    pub owner: usize,
+}
+
+/// Registered-but-not-yet-built plugin materials.
+#[derive(Resource, Default)]
+pub struct PendingMaterials(pub Vec<PendingMaterial>);
+
+unsafe extern "C" fn add_material_shader(
+    host: *mut sys::Host,
+    desc: *const sys::MaterialShaderDesc,
+) -> sys::AssetHandle {
+    guard_host("add_material_shader", sys::AssetHandle::INVALID, || {
+        let ctx = &mut *(host as *mut HostCtx);
+        let desc = &*desc;
+        let id = desc.id.as_str().to_string();
+
+        if !desc.settings.is_valid() {
+            error!("[plugin] material `{id}` has no settings component — refusing to register");
+            return sys::AssetHandle::INVALID;
+        }
+        // The bind-group layout is decided once for the shared material type, so
+        // a plugin cannot be given more room than it reserves. Refused rather
+        // than truncated: a uniform read past its buffer is undefined on the GPU.
+        if desc.settings_size > sys::MATERIAL_UNIFORM_CAP {
+            error!(
+                "[plugin] material `{id}` wants a {}-byte uniform; the cap is {}",
+                desc.settings_size,
+                sys::MATERIAL_UNIFORM_CAP
+            );
+            return sys::AssetHandle::INVALID;
+        }
+        if !desc.alpha_mode.is_known() {
+            warn!(
+                "[plugin] material `{id}` used alpha mode {}, which this build does not have",
+                desc.alpha_mode.0
+            );
+            return sys::AssetHandle::INVALID;
+        }
+
+        let shader = Shader::from_wgsl(desc.wgsl.as_str().to_string(), id.clone());
+        let Some(mut shaders) = ctx.world.get_resource_mut::<Assets<Shader>>() else {
+            warn!("[plugin] material `{id}` ignored — this build has no renderer");
+            return sys::AssetHandle::INVALID;
+        };
+        let shader = shaders.add(shader);
+
+        // A slot is reserved in the same store `add_material` uses, so a plugin
+        // spawning a mesh does not have to know which kind of material it holds.
+        // The bridge fills it in once it can build the real asset.
+        let owner = ctx.slot;
+        let slot = {
+            let mut store = ctx.world.get_resource_or_insert_with(PluginAssets::default);
+            store.materials.push((owner, MaterialSlot::Custom));
+            store.materials.len() - 1
+        };
+
+        ctx.world
+            .get_resource_or_insert_with(PendingMaterials::default)
+            .0
+            .push(PendingMaterial {
+                owner,
+                id,
+                shader,
+                wgsl: desc.wgsl.as_str().to_string(),
+                settings: ComponentId::new(desc.settings.0 as usize),
+                settings_size: desc.settings_size,
+                alpha_mode: desc.alpha_mode,
+                slot,
+            });
+        sys::AssetHandle(slot as u64)
     })
 }
 

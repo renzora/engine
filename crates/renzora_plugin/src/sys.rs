@@ -108,6 +108,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 5 -> 6 appended `FieldKind::Str` and [`Str256`].
 /// 6 -> 7 appended `SystemCall::meshes`.
 /// 7 -> 8 appended `SystemCall::http`.
+/// 8 -> 9 appended `add_material_shader`.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -115,7 +116,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 8;
+pub const VERSION_MINOR: u32 = 9;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1517,6 +1518,60 @@ pub struct MeshDataDesc {
     pub index_count: usize,
 }
 
+/// How a custom material blends.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AlphaMode(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl AlphaMode {
+    pub const Opaque: Self = Self(0);
+    /// Alpha-tested: a fragment is drawn or discarded, never blended.
+    pub const Mask: Self = Self(1);
+    /// Sorted and blended, drawn after opaques — which is also what makes the
+    /// scene's colour available for screen-space refraction.
+    pub const Blend: Self = Self(2);
+
+    pub const fn is_known(self) -> bool {
+        self.0 < 3
+    }
+}
+
+impl Default for AlphaMode {
+    fn default() -> Self {
+        Self::Opaque
+    }
+}
+
+/// Bytes a plugin material's uniform block may occupy.
+///
+/// Fixed, and it has to be: a material's bind-group layout is decided once per
+/// *type* in Bevy, not per instance, and every plugin material shares one type
+/// on the host. So the layout reserves this much and a plugin uses what it
+/// needs — 256 bytes is comfortably more than a material's worth of parameters
+/// and still one small uniform buffer per instance.
+pub const MATERIAL_UNIFORM_CAP: u64 = 256;
+
+/// A custom shaded material: WGSL plus a component whose bytes are its uniform.
+///
+/// The settings component is the same idea [`PostProcessDesc`] uses — the
+/// plugin declares an ordinary component, and its bytes are uploaded as the
+/// uniform block. That keeps one description of the parameters, editable in the
+/// inspector, serialised into scenes, and readable by the plugin's own systems,
+/// instead of a second parallel struct that exists only for the GPU.
+#[repr(C)]
+pub struct MaterialShaderDesc {
+    /// Stable name, used for the shader asset and for hot-reload.
+    pub id: StrRef,
+    /// WGSL source. Must define both a `vertex` and a `fragment` entry point.
+    pub wgsl: StrRef,
+    /// Component whose bytes become the uniform at `@group(2) @binding(0)`.
+    pub settings: ComponentId,
+    /// Size of that component. Refused above [`MATERIAL_UNIFORM_CAP`].
+    pub settings_size: u64,
+    pub alpha_mode: AlphaMode,
+}
+
 #[repr(C)]
 pub struct MaterialDesc {
     /// Linear RGBA.
@@ -1901,6 +1956,15 @@ pub struct Interface {
         field: usize,
         range: *const FieldRange,
     ) -> RegisterStatus,
+
+    /// Register a custom shaded material. See [`MaterialShaderDesc`].
+    ///
+    /// The returned handle is used exactly like [`add_material`](Self::add_material)'s,
+    /// so a plugin can hand it to `spawn_mesh` without caring which kind it is.
+    pub add_material_shader: unsafe extern "C" fn(
+        host: *mut Host,
+        desc: *const MaterialShaderDesc,
+    ) -> AssetHandle,
 
     /// Upload geometry a plugin generated itself. See [`MeshDataDesc`].
     ///

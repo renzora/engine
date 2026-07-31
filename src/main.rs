@@ -122,6 +122,10 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     // because the work happens in `finish`, after every `build` has run and the
     // render sub-app exists.
     app.add_plugins(renzora_postprocess::plugin_bridge::PluginRenderBridgePlugin);
+    // Custom shaded materials registered by those plugins. Separate plugin: it
+    // owns an asset type and a `MaterialPlugin`, and builds its assets in
+    // `finish` for the same reason the render bridge does.
+    app.add_plugins(renzora_postprocess::plugin_material::PluginMaterialPlugin);
 }
 
 // ── WASM runtime ─────────────────────────────────────────────────────────

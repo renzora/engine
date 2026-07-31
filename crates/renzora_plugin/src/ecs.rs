@@ -2003,6 +2003,44 @@ impl App {
         unsafe { ((*self.ctx.iface).add_mesh)(self.ctx.host, &desc) }
     }
 
+    /// Register a custom shaded material, driven by one of the plugin's own
+    /// components.
+    ///
+    /// ```ignore
+    /// #[derive(Component)]
+    /// #[repr(C)]
+    /// pub struct Ripple { pub speed: f32, pub amplitude: f32 }
+    ///
+    /// let mat = app.add_material_shader::<Ripple>("ripple", WGSL, sys::AlphaMode::Blend);
+    /// ```
+    ///
+    /// `T`'s bytes are uploaded as the uniform at `@group(2) @binding(0)`, so
+    /// the parameters are described once — editable in the inspector, saved
+    /// into scenes, readable by the plugin's own systems — rather than
+    /// duplicated into a GPU-only struct. The shader must define both a
+    /// `vertex` and a `fragment` entry point.
+    ///
+    /// Refused, with a log line, if `T` is larger than
+    /// [`sys::MATERIAL_UNIFORM_CAP`]: the bind-group layout is fixed for the
+    /// shared material type, and a uniform read past its buffer is undefined on
+    /// the GPU rather than merely wrong.
+    pub fn add_material_shader<T: Component>(
+        &mut self,
+        id: &'static str,
+        wgsl: &'static str,
+        alpha_mode: sys::AlphaMode,
+    ) -> sys::AssetHandle {
+        let settings = self.ctx.id_of::<T>();
+        let desc = sys::MaterialShaderDesc {
+            id: sys::StrRef::new(id),
+            wgsl: sys::StrRef::new(wgsl),
+            settings,
+            settings_size: core::mem::size_of::<T>() as u64,
+            alpha_mode,
+        };
+        unsafe { ((*self.ctx.iface).add_material_shader)(self.ctx.host, &desc) }
+    }
+
     /// Create a mesh from geometry the plugin generated itself.
     ///
     /// This is what lets a plugin be more than a consumer of built-in shapes —
