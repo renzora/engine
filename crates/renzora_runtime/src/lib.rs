@@ -901,20 +901,65 @@ fn apply_window_icon(
 /// Set `RENZORA_COMMAND_BACKTRACE=1` to enable. Off by default: capturing a
 /// backtrace is expensive enough to matter if something errors every frame,
 /// which is exactly when you would turn this on.
+///
+/// ## Naming the entity, not just the command
+///
+/// The backtrace turned out to be less useful than hoped — the engine ships as a
+/// dylib and its frames symbolicate to nearby exported symbols, so a stack full
+/// of `foldhash::seed::gen_per_hasher_seed` is what you get. What *is* reliable
+/// is the entity id in the message, so this also keeps a rolling map of
+/// `"<id>" -> Name` and looks the dead entity up. "entity 278v1 is invalid"
+/// becomes "entity 278v1 (`pane:console`) is invalid", which says which
+/// subsystem owned it without any symbolication at all.
 fn install_command_error_backtraces(app: &mut App) {
     if std::env::var("RENZORA_COMMAND_BACKTRACE").as_deref() != Ok("1") {
         return;
     }
     app.insert_resource(bevy::ecs::error::FallbackErrorHandler(|err, ctx| {
+        let msg = err.to_string();
         warn!(
-            "[cmd-error] {err}\n  context: {ctx:?}\n{}",
+            "[cmd-error] {msg}\n  entity was: {}\n  context: {ctx:?}\n{}",
+            entity_label_from_message(&msg).unwrap_or_else(|| "<never had a Name>".into()),
             std::backtrace::Backtrace::force_capture()
         );
     }));
+    app.add_systems(Last, record_entity_labels);
     warn!(
         "[cmd-error] RENZORA_COMMAND_BACKTRACE is on — failed commands will log a \
-         backtrace. This is a diagnostic; unset it when you are done."
+         backtrace and the dead entity's Name. This is a diagnostic; unset it when done."
     );
+}
+
+/// `"278v1"` -> the `Name` that entity had while it was alive.
+///
+/// Keyed by the id as Bevy *renders* it, so nothing has to reconstruct an
+/// `Entity` from an index and a generation — the error message and this map
+/// agree because both go through the same `Display`.
+static ENTITY_LABELS: std::sync::Mutex<Option<bevy::platform::collections::HashMap<String, String>>> =
+    std::sync::Mutex::new(None);
+
+/// Remember every named entity, so a despawned one can still be identified.
+///
+/// Deliberately never cleared: the whole point is to answer a question about an
+/// entity that no longer exists. Bounded by how many distinct named entities a
+/// session creates, which is fine for something you turn on to chase one bug.
+fn record_entity_labels(q: Query<(Entity, &Name)>) {
+    let Ok(mut guard) = ENTITY_LABELS.lock() else {
+        return;
+    };
+    let map = guard.get_or_insert_with(Default::default);
+    for (entity, name) in &q {
+        map.entry(entity.to_string()).or_insert_with(|| name.as_str().to_string());
+    }
+}
+
+/// Pull `278v1` out of "The entity with ID 278v1 is invalid" and look it up.
+fn entity_label_from_message(msg: &str) -> Option<String> {
+    let rest = msg.split("ID ").nth(1)?;
+    let id: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == 'v').collect();
+    let guard = ENTITY_LABELS.lock().ok()?;
+    let label = guard.as_ref()?.get(&id)?;
+    Some(format!("`{label}`"))
 }
 
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
