@@ -2208,3 +2208,91 @@ fn omitted_normals_and_uvs_are_filled_in_by_the_host() {
         "UVs were neither supplied nor defaulted"
     );
 }
+
+// ── Reading meshes ───────────────────────────────────────────────────────────
+
+static MESH_READ_TRIS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static MESH_READ_RAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Reads the mesh off every entity it can see and records the triangle count.
+fn read_meshes(q: ecs::Query<ecs::Entity, ecs::With<Spinner>>, meshes: ecs::Meshes) {
+    MESH_READ_RAN.store(true, std::sync::atomic::Ordering::Relaxed);
+    for e in &q {
+        if let Some(data) = meshes.read(e) {
+            MESH_READ_TRIS.store(data.triangles().len(), std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+unsafe extern "C" fn mesh_read_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.register_component::<Spinner>()
+        .add_systems(ecs::Schedule::Update, read_meshes);
+    sys::InitResult::Ok
+}
+
+/// The dispatcher gained `Res<Assets<Mesh>>` and `Query<&Mesh3d>` to serve
+/// `Meshes`. Bevy validates system-param access when the system is built, so a
+/// conflict with the dynamic `FilteredEntityMut` queries would panic here — the
+/// point of this test is that building and running it does not.
+#[test]
+fn a_system_can_take_meshes_without_conflicting_with_its_queries() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    MESH_READ_RAN.store(false, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), mesh_read_init),
+        sys::InitResult::Ok
+    );
+    spawn_spinner(&mut app, 1.0);
+    app.update();
+    assert!(
+        MESH_READ_RAN.load(std::sync::atomic::Ordering::Relaxed),
+        "the system never ran — its params were rejected"
+    );
+}
+
+/// An entity with no mesh reads as `None`, not as an empty mesh. The difference
+/// matters: a plugin polls until the asset loads, and "no mesh at all" and "a
+/// mesh with zero triangles" would otherwise be indistinguishable.
+#[test]
+fn reading_an_entity_with_no_mesh_yields_nothing() {
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    MESH_READ_TRIS.store(usize::MAX, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), mesh_read_init),
+        sys::InitResult::Ok
+    );
+    spawn_spinner(&mut app, 1.0);
+    app.update();
+    assert_eq!(
+        MESH_READ_TRIS.load(std::sync::atomic::Ordering::Relaxed),
+        usize::MAX,
+        "a meshless entity produced mesh data"
+    );
+}
+
+/// Unindexed geometry still yields triangles — `triangles()` exists so callers
+/// do not each reimplement that branch.
+#[test]
+fn triangles_are_derived_for_unindexed_geometry() {
+    let data = ecs::MeshData {
+        positions: vec![
+            ecs::Vec3 { x: 0.0, y: 0.0, z: 0.0 },
+            ecs::Vec3 { x: 1.0, y: 0.0, z: 0.0 },
+            ecs::Vec3 { x: 0.0, y: 0.0, z: 1.0 },
+        ],
+        ..Default::default()
+    };
+    assert_eq!(data.triangles(), vec![[0, 1, 2]]);
+
+    let indexed = ecs::MeshData {
+        indices: vec![2, 1, 0],
+        ..data
+    };
+    assert_eq!(indexed.triangles(), vec![[2, 1, 0]]);
+}

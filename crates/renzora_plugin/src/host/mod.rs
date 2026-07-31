@@ -993,6 +993,89 @@ unsafe extern "C" fn add_material(
 /// `sink` must be the FIRST field: the plugin holds a `*mut CommandSink` and the
 /// host casts it back to this, so the two must share an address.
 #[repr(C)]
+/// Backs [`sys::MeshSource`] for one system call.
+///
+/// `src` is first so a `*mut MeshSourceImpl` can be handed over as a
+/// `*mut sys::MeshSource` — the same layout trick [`SinkImpl`] uses, which is
+/// what lets the plugin call a plain function pointer and get back here.
+#[repr(C)]
+struct MeshSourceImpl<'a, 'w, 's> {
+    src: sys::MeshSource,
+    assets: Option<&'a Assets<Mesh>>,
+    handles: &'a Query<'w, 's, &'static Mesh3d>,
+}
+
+/// Copy one mesh's geometry into the plugin's buffers.
+///
+/// Counts are always reported in full, whatever the capacity, so the two-pass
+/// probe works: the first call passes zero capacity and reads the sizes back.
+unsafe extern "C" fn mesh_read(
+    src: *mut sys::MeshSource,
+    entity: sys::Entity,
+    out: *mut sys::MeshRead,
+) -> bool {
+    let me = &*(src as *mut MeshSourceImpl);
+    let out = &mut *out;
+    out.position_count = 0;
+    out.normal_count = 0;
+    out.uv_count = 0;
+    out.index_count = 0;
+
+    let Some(assets) = me.assets else {
+        return false;
+    };
+    let Some(entity) = Entity::try_from_bits(entity.0) else {
+        return false;
+    };
+    let Ok(handle) = me.handles.get(entity) else {
+        return false;
+    };
+    // A miss here is the normal early-frame state, not an error: mesh assets
+    // load asynchronously, so a plugin polls until this succeeds.
+    let Some(mesh) = assets.get(&handle.0) else {
+        return false;
+    };
+
+    /// Copy up to `cap` items into `dst`, and report how many exist.
+    unsafe fn fill<T: Copy>(dst: *mut T, cap: usize, src: &[T]) -> usize {
+        if !dst.is_null() && cap > 0 {
+            let n = cap.min(src.len());
+            std::ptr::copy_nonoverlapping(src.as_ptr(), dst, n);
+        }
+        src.len()
+    }
+
+    if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(p)) =
+        mesh.attribute(Mesh::ATTRIBUTE_POSITION)
+    {
+        // `sys::Vec3` is three `f32`s in order, so `[f32; 3]` is the same bytes.
+        out.position_count = fill(out.positions.cast::<[f32; 3]>(), out.position_capacity, p);
+    }
+    if let Some(bevy::render::mesh::VertexAttributeValues::Float32x3(n)) =
+        mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
+    {
+        out.normal_count = fill(out.normals.cast::<[f32; 3]>(), out.normal_capacity, n);
+    }
+    if let Some(bevy::render::mesh::VertexAttributeValues::Float32x2(u)) =
+        mesh.attribute(Mesh::ATTRIBUTE_UV_0)
+    {
+        out.uv_count = fill(out.uvs, out.uv_capacity, u);
+    }
+    // Widened to u32 rather than refused: a 16-bit index buffer is the common
+    // case for small meshes, and a plugin should not have to handle both.
+    match mesh.indices() {
+        Some(bevy::render::mesh::Indices::U32(i)) => {
+            out.index_count = fill(out.indices, out.index_capacity, i);
+        }
+        Some(bevy::render::mesh::Indices::U16(i)) => {
+            let widened: Vec<u32> = i.iter().map(|&x| x as u32).collect();
+            out.index_count = fill(out.indices, out.index_capacity, &widened);
+        }
+        None => {}
+    }
+    true
+}
+
 struct SinkImpl<'a, 'w, 's> {
     sink: sys::CommandSink,
     commands: &'a mut Commands<'w, 's>,
@@ -1958,13 +2041,22 @@ fn build_dispatcher(
         // absent, which is a lot of blast radius for a parameter most systems
         // ignore.
         ParamBuilder::of::<Option<Res<input::PluginInput>>>(),
+        // Mesh reading. `Option`, because a headless host has no renderer and so
+        // no `Assets<Mesh>` — a plugin there simply never gets geometry back.
+        ParamBuilder::of::<Option<Res<Assets<Mesh>>>>(),
+        // Read-only, and `Mesh3d` is filter-only across the ABI (a plugin can
+        // name it in `With` but never get a data cell for it), so this cannot
+        // conflict with the dynamic queries above.
+        ParamBuilder::of::<Query<&'static Mesh3d>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
                             mut resources: FilteredResourcesMut,
                             time: Res<Time>,
                             mut commands: Commands,
-                            plugin_input: Option<Res<input::PluginInput>>| {
+                            plugin_input: Option<Res<input::PluginInput>>,
+                            mesh_assets: Option<Res<Assets<Mesh>>>,
+                            mesh_handles: Query<&Mesh3d>| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -2036,6 +2128,11 @@ fn build_dispatcher(
                 });
             }
 
+            let mut mesh_src = MeshSourceImpl {
+                src: sys::MeshSource { read: mesh_read },
+                assets: mesh_assets.as_deref(),
+                handles: &mesh_handles,
+            };
             let mut sink = SinkImpl {
                 sink: sys::CommandSink {
                     reserve_entity: sink_reserve,
@@ -2069,6 +2166,7 @@ fn build_dispatcher(
                 input: plugin_input
                     .as_ref()
                     .map_or(core::ptr::null(), |i| &i.0 as *const sys::InputState),
+                meshes: (&mut mesh_src as *mut MeshSourceImpl).cast(),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps

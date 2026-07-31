@@ -1426,6 +1426,122 @@ unsafe impl SystemParam for Commands<'_> {
     }
 }
 
+/// Geometry copied out of a host mesh.
+///
+/// Owned by the plugin — the host never hands back a pointer into its asset
+/// storage, which can move or be freed the moment the call returns.
+#[derive(Clone, Debug, Default)]
+pub struct MeshData {
+    pub positions: Vec<Vec3>,
+    /// Empty if the mesh has none.
+    pub normals: Vec<Vec3>,
+    /// Empty if the mesh has none.
+    pub uvs: Vec<[f32; 2]>,
+    /// Empty for an unindexed mesh, where every three positions are one face.
+    pub indices: Vec<u32>,
+}
+
+impl MeshData {
+    /// Triangles as index triples, whether or not the mesh was indexed.
+    ///
+    /// Saves every caller writing the same branch — scattering points over a
+    /// surface does not care how the mesh stored its faces.
+    pub fn triangles(&self) -> Vec<[usize; 3]> {
+        if self.indices.is_empty() {
+            (0..self.positions.len() / 3)
+                .map(|t| [t * 3, t * 3 + 1, t * 3 + 2])
+                .collect()
+        } else {
+            self.indices
+                .chunks_exact(3)
+                .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+                .collect()
+        }
+    }
+}
+
+/// Reads the geometry of meshes already in the world.
+///
+/// The counterpart to [`App::add_mesh_data`]: that emits geometry, this one
+/// consumes what is already there — scattering over a surface, growing from a
+/// scalp, fitting a decal to a wall.
+///
+/// ```ignore
+/// fn scatter(q: Query<Entity, With<Scatter>>, meshes: Meshes) {
+///     for e in &q {
+///         let Some(mesh) = meshes.read(e) else { continue };  // still loading
+///         for [a, b, c] in mesh.triangles() { /* … */ }
+///     }
+/// }
+/// ```
+pub struct Meshes<'a> {
+    src: *mut sys::MeshSource,
+    _p: PhantomData<&'a ()>,
+}
+
+impl Meshes<'_> {
+    /// Copy the geometry of `entity`'s mesh.
+    ///
+    /// `None` if the entity has no mesh, or its asset has not loaded yet —
+    /// which is the normal state for the first few frames after a spawn, so
+    /// poll rather than treating it as failure.
+    pub fn read(&self, entity: sys::Entity) -> Option<MeshData> {
+        if self.src.is_null() {
+            return None;
+        }
+        // Two passes: the first learns the sizes, the second fills buffers we
+        // own. The host cannot allocate for us — it does not share our
+        // allocator — so this is the only shape that works.
+        let mut probe = sys::MeshRead::COUNTS_ONLY;
+        unsafe {
+            if !((*self.src).read)(self.src, entity, &mut probe) {
+                return None;
+            }
+        }
+        let mut out = MeshData {
+            positions: vec![Vec3 { x: 0.0, y: 0.0, z: 0.0 }; probe.position_count],
+            normals: vec![Vec3 { x: 0.0, y: 0.0, z: 0.0 }; probe.normal_count],
+            uvs: vec![[0.0, 0.0]; probe.uv_count],
+            indices: vec![0; probe.index_count],
+        };
+        let mut fill = sys::MeshRead {
+            position_capacity: out.positions.len(),
+            positions: out.positions.as_mut_ptr(),
+            normal_capacity: out.normals.len(),
+            normals: out.normals.as_mut_ptr(),
+            uv_capacity: out.uvs.len(),
+            uvs: out.uvs.as_mut_ptr(),
+            index_capacity: out.indices.len(),
+            indices: out.indices.as_mut_ptr(),
+            ..sys::MeshRead::COUNTS_ONLY
+        };
+        unsafe {
+            if !((*self.src).read)(self.src, entity, &mut fill) {
+                return None;
+            }
+        }
+        // The mesh can change between the two passes — an asset reload lands
+        // between frames, not mid-call, but a shrink would still leave the tail
+        // of our buffers holding the zeroes we allocated. Truncate to what the
+        // second pass actually reported.
+        out.positions.truncate(fill.position_count);
+        out.normals.truncate(fill.normal_count);
+        out.uvs.truncate(fill.uv_count);
+        out.indices.truncate(fill.index_count);
+        Some(out)
+    }
+}
+
+unsafe impl SystemParam for Meshes<'_> {
+    fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
+        Meshes {
+            src: (*call).meshes,
+            _p: PhantomData,
+        }
+    }
+}
+
 macro_rules! param_tuples {
     ($(($($p:ident),+))+) => {
         $(

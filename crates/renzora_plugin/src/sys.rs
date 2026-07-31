@@ -106,6 +106,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 3 -> 4 appended `CommandKind::Service`.
 /// 4 -> 5 appended `add_mesh_data`.
 /// 5 -> 6 appended `FieldKind::Str` and [`Str256`].
+/// 6 -> 7 appended `SystemCall::meshes`.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -113,7 +114,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 6;
+pub const VERSION_MINOR: u32 = 7;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -845,6 +846,83 @@ pub struct SystemCall {
     /// five FFI calls per frame per system to answer questions the host already
     /// has in a bitset is the wrong trade.
     pub input: *const InputState,
+    /// Reads the geometry of a mesh already in the world. Null if the host
+    /// could not provide one (no renderer).
+    ///
+    /// Appended at the END, like [`input`](Self::input), and for the same
+    /// reason — anything earlier shifts every field after it and an old plugin
+    /// reads the wrong offsets.
+    ///
+    /// A per-call object rather than an [`Interface`] function, because reading
+    /// a mesh needs the world and [`host`](Self::host) is null while a system
+    /// runs. Same shape as [`commands`](Self::commands): created for the call,
+    /// dead when it returns.
+    pub meshes: *mut MeshSource,
+}
+
+/// Geometry copied out of a host mesh, for [`MeshSource::read`].
+///
+/// Two-pass by design. Call once with every capacity at 0 to learn the counts,
+/// allocate, then call again with the buffers — the plugin owns its allocations
+/// and the host never hands back a pointer into `Assets<Mesh>`, whose contents
+/// can move or be freed the moment the call returns.
+///
+/// A buffer smaller than its count is filled to capacity and the count still
+/// reports the true size, so a caller can detect the shortfall.
+#[repr(C)]
+pub struct MeshRead {
+    /// In: how many the buffer holds. Out: unchanged.
+    pub position_capacity: usize,
+    pub positions: *mut Vec3,
+    pub normal_capacity: usize,
+    pub normals: *mut Vec3,
+    pub uv_capacity: usize,
+    pub uvs: *mut [f32; 2],
+    pub index_capacity: usize,
+    pub indices: *mut u32,
+    /// Out: how many the mesh actually has, whatever the capacity was.
+    pub position_count: usize,
+    pub normal_count: usize,
+    pub uv_count: usize,
+    /// Out: 0 for an unindexed mesh, where every three positions are a face.
+    pub index_count: usize,
+}
+
+impl MeshRead {
+    /// A counts-only probe — the first of the two passes.
+    pub const COUNTS_ONLY: Self = Self {
+        position_capacity: 0,
+        positions: core::ptr::null_mut(),
+        normal_capacity: 0,
+        normals: core::ptr::null_mut(),
+        uv_capacity: 0,
+        uvs: core::ptr::null_mut(),
+        index_capacity: 0,
+        indices: core::ptr::null_mut(),
+        position_count: 0,
+        normal_count: 0,
+        uv_count: 0,
+        index_count: 0,
+    };
+}
+
+/// Reads geometry out of the world during one system call.
+///
+/// This is what lets a plugin do more than *emit* geometry — scattering points
+/// over a surface, growing hair from a scalp, fitting a decal to a wall all
+/// need the mesh that is already there.
+#[repr(C)]
+pub struct MeshSource {
+    /// Fill `out` from the mesh on `entity`.
+    ///
+    /// Returns `false` if the entity is gone, has no mesh, or its mesh asset
+    /// has not finished loading — which is a normal early-frame state, not an
+    /// error, so a plugin should poll rather than give up.
+    pub read: unsafe extern "C" fn(
+        src: *mut MeshSource,
+        entity: Entity,
+        out: *mut MeshRead,
+    ) -> bool,
 }
 
 /// One frame of input, as the host saw it.
