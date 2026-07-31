@@ -883,11 +883,46 @@ fn apply_window_icon(
 /// plugins are auto-discovered via the `inventory` registry — those
 /// don't care about ordering and just self-register through
 /// `renzora::add!(MyPlugin)` in their crate.
+/// Opt-in: make a failed command say *which* command it was.
+///
+/// Bevy's default handler logs `Encountered an error in command
+/// <Enable the debug feature to see the name>` — the name is a `DebugName`,
+/// which is compiled out unless `bevy_ecs/debug` is on. Turning that feature on
+/// is not a cheap diagnostic here: it recompiles `bevy_dylib`, which moves the
+/// plugin ABI (CLAUDE.md §3) and forces every prebuilt plugin to be rebuilt.
+///
+/// The handler is a plain resource, though, so it can be swapped at runtime for
+/// one that captures a backtrace. The trace is taken while the command is being
+/// *applied*, not where it was queued — deferred commands are applied by the
+/// schedule, so the queuing system is long gone — but the frames still name the
+/// command's own type (`entity_command::insert`, `replace_children`, …), which
+/// is the part the log is missing.
+///
+/// Set `RENZORA_COMMAND_BACKTRACE=1` to enable. Off by default: capturing a
+/// backtrace is expensive enough to matter if something errors every frame,
+/// which is exactly when you would turn this on.
+fn install_command_error_backtraces(app: &mut App) {
+    if std::env::var("RENZORA_COMMAND_BACKTRACE").as_deref() != Ok("1") {
+        return;
+    }
+    app.insert_resource(bevy::ecs::error::FallbackErrorHandler(|err, ctx| {
+        warn!(
+            "[cmd-error] {err}\n  context: {ctx:?}\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
+    }));
+    warn!(
+        "[cmd-error] RENZORA_COMMAND_BACKTRACE is on — failed commands will log a \
+         backtrace. This is a diagnostic; unset it when you are done."
+    );
+}
+
 pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     // Runtime editor-vs-game signal for the dual-mode crates (they're compiled
     // without an `editor` cargo feature now, so they branch on this at runtime).
     // Must exist BEFORE the foundation plugins build — RuntimePlugin reads it.
     app.insert_resource(renzora::EditorSession(is_editor));
+    install_command_error_backtraces(app);
 
     // ── Foundation (explicit, ordered) ─────────────────────────────────
     info!("[runtime] foundation: RuntimePlugin");
