@@ -218,6 +218,18 @@ bevy = { version = "0.19", default-features = false, features = [
     # `file_watcher` KEPT pending the same check: the theme/shader hot-reload uses
     # its own mtime polling, so Bevy's watcher may be unused.
     "file_watcher", "http", "https",
+    # TEMPORARY DIAGNOSTIC — remove once the scene-load `add_child` warning is
+    # tracked down. Forwards to `bevy_ecs/debug`, which is what populates
+    # `DebugName`: without it every failed command logs as
+    # `Encountered an error in command <Enable the debug feature to see the name>`,
+    # and the backtrace is useless here because the engine ships as a dylib and
+    # its frames symbolicate to whatever exported symbol is nearest.
+    #
+    # Cost is one full rebuild, and that is all: this recompiles `bevy_dylib` and
+    # so moves the plugin ABI, but standalone C-ABI plugins link no Bevy and are
+    # unaffected, and distribution plugins are built from source alongside the
+    # engine anyway. Pair with `RENZORA_COMMAND_BACKTRACE=1`.
+    "debug",
     # NOTE: `trace_tracy` is deliberately NOT enabled. Bevy installs its Tracy
     # tracing layer inside `LogPlugin` at boot whenever that feature is compiled
     # in, with no runtime off-switch — so it would arm Tracy on every launch and
