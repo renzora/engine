@@ -944,7 +944,7 @@ The engine ships several, each under `plugins/`:
 
 Most are under 100 lines, with no Bevy anywhere in their dependency tree and nothing but the OS in their import table.
 
-`text3d` and `hair` are the exceptions at ~430 and ~710 lines, and they are the two to read if you are porting something real rather than starting fresh. Both are ports of engine crates that previously linked Bevy directly, so the diff against `crates/renzora_text3d` and `crates/renzora_hair` shows exactly what the boundary costs: mostly the loss of `Assets<T>` and `RemovedComponents`, worked around with a pool and a liveness sweep respectively.
+`text3d` and `hair` are the exceptions at ~430 and ~710 lines, and they are the two to read if you are porting something real rather than starting fresh. Both were engine crates that linked Bevy directly, and what the boundary cost them is mostly two things: `Assets<T>`, worked around with a mesh pool, and `RemovedComponents`, worked around with a liveness sweep each frame. `crates/renzora_text3d` is still there to compare against, since its flat mode did not port. `renzora_hair` ported completely and its crate is gone.
 
 Alongside them sit the **post-process effects** — every screen-space effect the engine ships except the handful wired into the render graph itself (bloom, SSAO, motion blur, the tonemapper). Each is a struct, a `Default`, one `add_post_process` line and a `.wgsl` file, which makes them the best set to read before writing your own: pick the one closest to what you want and follow its shape. `plugins/crt` is the one to open first — its module doc is where the reasoning about padding and `enabled` flags lives.
 
