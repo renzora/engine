@@ -736,6 +736,42 @@ pub(crate) fn text_input_sync(
     }
 }
 
+/// Close the `Bound<String>` loop so a text input can be `bind_2way`'d.
+///
+/// Every other interactive widget stores its model in `Bound<T>` and treats the
+/// component as presentation, but `EmberTextInput` predates that and owns its
+/// `value` outright — too much reads and writes it directly to invert now. So
+/// this reconciles the two, which is what lets a plugin's `Str256` field get a
+/// text box in the inspector on the same binding machinery as its sliders.
+///
+/// **Typing wins over the model.** When the field is focused the user is the
+/// source of truth, and pulling the model in would fight every keystroke — the
+/// binding's setter has already been handed the new text by then anyway. When
+/// it is not focused, the model wins, so an external change shows up.
+///
+/// Neither write bypasses change detection, and it still settles: the equality
+/// guard means a write only happens while the two actually differ, and one
+/// update makes them agree. Marking the widget dirty is in fact required —
+/// [`text_input_sync`] redraws off `Changed<EmberTextInput>`, so a bypassed
+/// write here would update the model and leave the box showing the old text.
+pub(crate) fn text_input_bound_sync(
+    mut inputs: Query<(&mut EmberTextInput, &mut crate::reactive::Bound<String>)>,
+) {
+    for (mut inp, mut bound) in &mut inputs {
+        if inp.value == bound.0 {
+            continue;
+        }
+        if inp.focused {
+            bound.0 = inp.value.clone();
+        } else {
+            let next = bound.0.clone();
+            inp.caret_index = inp.caret_index.min(next.chars().count());
+            inp.sel_anchor = None;
+            inp.value = next;
+        }
+    }
+}
+
 /// Measure per-char caret boundaries from the text node's shaped parley layout
 /// (via [`bevy::text::ComputedTextBlock`]). Each cluster's advance yields the
 /// exact x of every caret slot, so the caret sits between the right glyphs and

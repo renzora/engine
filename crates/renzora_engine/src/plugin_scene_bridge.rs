@@ -30,6 +30,7 @@ fn kind_name(kind: FieldKind) -> String {
         FieldKind::Bool => "bool".into(),
         FieldKind::Vec3 => "vec3".into(),
         FieldKind::Quat => "quat".into(),
+        FieldKind::Str => "str".into(),
         other => format!("k{}", other.0),
     }
 }

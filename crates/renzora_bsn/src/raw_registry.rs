@@ -160,6 +160,8 @@ fn field_width(kind: &str) -> usize {
         "bool" => 1,
         "vec3" => 12,
         "quat" => 16,
+        // `sys::Str256`: 252 payload bytes + a u32 length.
+        "str" => 256,
         "entity" => 8,
         _ => 0,
     }

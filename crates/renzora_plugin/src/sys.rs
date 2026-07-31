@@ -105,6 +105,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 2 -> 3 appended `set_field_range`.
 /// 3 -> 4 appended `CommandKind::Service`.
 /// 4 -> 5 appended `add_mesh_data`.
+/// 5 -> 6 appended `FieldKind::Str` and [`Str256`].
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -112,7 +113,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 5;
+pub const VERSION_MINOR: u32 = 6;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -373,11 +374,13 @@ impl FieldKind {
     pub const Bool: Self = Self(2);
     pub const Vec3: Self = Self(3);
     pub const Quat: Self = Self(4);
+    /// A [`Str256`] — fixed-capacity inline UTF-8.
+    pub const Str: Self = Self(5);
 
     /// Whether this is a value this build knows. Anything else came from a
     /// plugin built against a newer ABI.
     pub const fn is_known(self) -> bool {
-        self.0 < 5
+        self.0 < 6
     }
 
     /// The variant name, or `"?"` for a value from a newer ABI.
@@ -388,10 +391,118 @@ impl FieldKind {
             2 => "Bool",
             3 => "Vec3",
             4 => "Quat",
+            5 => "Str",
             _ => "?",
         }
     }
 }
+
+/// Payload bytes in a [`Str256`]. The `+ 4` for the length makes the whole
+/// thing 256 bytes.
+pub const STR_CAP: usize = 252;
+
+/// A fixed-capacity, inline UTF-8 string a plugin component can hold.
+///
+/// ## Why not just `String`
+///
+/// Component storage is allocated by the host from a layout the plugin
+/// declares, and a plugin component is refused outright if it declares a
+/// destructor — a `String` whose drop never runs leaks its buffer silently for
+/// the life of the process. Storage is also read as raw bytes by the query
+/// path, the scene serializer and the inspector, none of which can chase a
+/// pointer into the plugin's heap and none of which could free it.
+///
+/// So the bytes live in the component. That costs 256 bytes per field whatever
+/// the content, which is the trade: a name, a path or a line of 3D text fits
+/// comfortably, and anything genuinely large belongs in an asset rather than a
+/// component.
+///
+/// A single capacity rather than a family of sizes, deliberately. The size has
+/// to be recoverable from [`FieldKind`] alone — [`FieldDesc`] is walked as an
+/// array at a fixed stride, so growing it to carry a per-field length would be
+/// a MAJOR break.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Str256 {
+    pub bytes: [u8; STR_CAP],
+    /// Bytes used. Always `<= STR_CAP`; every reader clamps rather than
+    /// trusting it, because this crosses from another compilation unit.
+    pub len: u32,
+}
+
+impl Str256 {
+    pub const EMPTY: Self = Self { bytes: [0; STR_CAP], len: 0 };
+
+    /// Copy `s` in, or `None` if it does not fit.
+    ///
+    /// `None` rather than truncating: a silently cut path or name fails to
+    /// resolve later, somewhere with no memory of where the string came from.
+    pub const fn new(s: &str) -> Option<Self> {
+        let src = s.as_bytes();
+        if src.len() > STR_CAP {
+            return None;
+        }
+        let mut out = Self::EMPTY;
+        let mut i = 0;
+        while i < src.len() {
+            out.bytes[i] = src[i];
+            i += 1;
+        }
+        out.len = src.len() as u32;
+        Some(out)
+    }
+
+    /// Copy `s` in, truncating at the last character boundary that fits.
+    ///
+    /// For the inspector and other interactive paths, where refusing a keystroke
+    /// is worse than not accepting the tail of an over-long paste.
+    pub fn new_truncating(s: &str) -> Self {
+        let mut end = s.len().min(STR_CAP);
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        Self::new(&s[..end]).unwrap_or(Self::EMPTY)
+    }
+
+    /// The bytes in use, clamped to the capacity.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes[..(self.len as usize).min(STR_CAP)]
+    }
+
+    /// The contents, or `""` if a plugin wrote bytes that are not UTF-8.
+    pub fn as_str(&self) -> &str {
+        core::str::from_utf8(self.as_bytes()).unwrap_or_default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.as_bytes().is_empty()
+    }
+}
+
+impl Default for Str256 {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl core::fmt::Debug for Str256 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Debug::fmt(self.as_str(), f)
+    }
+}
+
+impl core::fmt::Display for Str256 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq for Str256 {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_bytes() == other.as_bytes()
+    }
+}
+impl Eq for Str256 {}
 
 impl core::fmt::Debug for FieldKind {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {

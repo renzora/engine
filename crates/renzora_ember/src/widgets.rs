@@ -396,6 +396,9 @@ impl Plugin for WidgetsPlugin {
                 // just placed.
                 text_input::text_input_drag_select.after(text_input::text_input_focus),
                 text_input::text_input_selection_pos,
+                // Before `text_input_sync`, so a model-driven value change is
+                // redrawn in the same frame rather than the next one.
+                text_input::text_input_bound_sync.before(text_input::text_input_sync),
                 text_input::text_input_sync,
                 form::form_tab_focus,
             ),

@@ -852,6 +852,25 @@ fn write_field(bytes: &mut [u8], field: &RawField, value: &str) -> bool {
             }
             _ => false,
         },
+        // `sys::Str256`: 252 payload bytes then a `u32` length, written as one
+        // 256-byte block. The whole block is zeroed first — a shorter string
+        // over a longer one would otherwise leave the old tail in place, which
+        // is invisible until the length field is ever trusted over the content.
+        "str" => {
+            const CAP: usize = 252;
+            let text = value.trim_matches('"');
+            let mut end = text.len().min(CAP);
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            if at + CAP + 4 > bytes.len() {
+                return false;
+            }
+            bytes[at..at + CAP + 4].fill(0);
+            bytes[at..at + end].copy_from_slice(&text.as_bytes()[..end]);
+            bytes[at + CAP..at + CAP + 4].copy_from_slice(&(end as u32).to_ne_bytes());
+            true
+        }
         _ => false,
     }
 }

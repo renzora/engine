@@ -146,7 +146,7 @@ pub struct Mesh3d(());
 /// Marker for the host's `Visibility`. Filter-only for the same reason.
 pub struct Visibility(());
 
-pub use crate::sys::{Entity, Quat, Transform, Vec3};
+pub use crate::sys::{Entity, Quat, Str256, Transform, Vec3};
 
 impl Vec3 {
     pub const ZERO: Vec3 = Vec3 { x: 0.0, y: 0.0, z: 0.0 };

@@ -219,6 +219,7 @@ fn field_kind(ty: &Type) -> Option<proc_macro2::TokenStream> {
         "bool" => quote!(FieldKind::Bool),
         "Vec3" => quote!(FieldKind::Vec3),
         "Quat" => quote!(FieldKind::Quat),
+        "Str256" => quote!(FieldKind::Str),
         _ => return None,
     })
 }

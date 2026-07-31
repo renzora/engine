@@ -154,6 +154,53 @@ fn write_bool(world: &mut World, entity: Entity, cid: ComponentId, offset: usize
     }
 }
 
+/// Read a `sys::Str256` out of component storage.
+///
+/// The length is clamped rather than trusted: it was written by a plugin, and
+/// an over-long one would slice past the field into whatever the plugin
+/// declared next.
+fn read_str(world: &World, entity: Entity, cid: ComponentId, offset: usize) -> String {
+    world
+        .get_entity(entity)
+        .ok()
+        .and_then(|e| e.get_by_id(cid).ok())
+        .map(|p| unsafe {
+            let base = p.as_ptr().add(offset);
+            let len = base
+                .add(renzora_plugin::sys::STR_CAP)
+                .cast::<u32>()
+                .read_unaligned() as usize;
+            let len = len.min(renzora_plugin::sys::STR_CAP);
+            let bytes = std::slice::from_raw_parts(base, len);
+            String::from_utf8_lossy(bytes).into_owned()
+        })
+        .unwrap_or_default()
+}
+
+/// Write a `sys::Str256`, truncating at a character boundary.
+///
+/// Truncating rather than refusing, unlike the plugin-side constructor: this is
+/// a text box, and dropping a keystroke because a paste was too long is worse
+/// than keeping what fits. The whole field is zeroed first so a shorter string
+/// leaves no tail of the previous one behind.
+fn write_str(world: &mut World, entity: Entity, cid: ComponentId, offset: usize, v: &str) {
+    let cap = renzora_plugin::sys::STR_CAP;
+    let mut end = v.len().min(cap);
+    while end > 0 && !v.is_char_boundary(end) {
+        end -= 1;
+    }
+    if let Ok(mut e) = world.get_entity_mut(entity) {
+        if let Ok(mut ptr) = e.get_mut_by_id(cid) {
+            unsafe {
+                let base = ptr.as_mut().as_ptr().add(offset);
+                std::ptr::write_bytes(base, 0, cap + 4);
+                std::ptr::copy_nonoverlapping(v.as_ptr(), base, end);
+                base.add(cap).cast::<u32>().write_unaligned(end as u32);
+            }
+        }
+    }
+}
+
 fn read_i32(world: &World, entity: Entity, cid: ComponentId, offset: usize) -> i32 {
     world
         .get_entity(entity)
@@ -286,6 +333,21 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                         e,
                         move |w: &World| read_bool(w, entity, cid, offset),
                         move |w: &mut World, v: &bool| write_bool(w, entity, cid, offset, *v),
+                    );
+                    e
+                }
+                FieldKind::Str => {
+                    let e = renzora_ember::widgets::text_input(
+                        &mut commands,
+                        &fonts.ui,
+                        "",
+                        &read_str(world, entity, cid, offset),
+                    );
+                    renzora_ember::reactive::bind_2way(
+                        &mut commands,
+                        e,
+                        move |w: &World| read_str(w, entity, cid, offset),
+                        move |w: &mut World, v: &String| write_str(w, entity, cid, offset, v),
                     );
                     e
                 }
