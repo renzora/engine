@@ -53,6 +53,10 @@ pub struct PluginMaterial {
     /// This instance's WGSL module. Applied in `specialize`, which is what lets
     /// one Rust type render every plugin's shader.
     pub shader: Handle<Shader>,
+    /// Size of the settings component, so the per-frame copy reads exactly that
+    /// many bytes. Reading the full uniform capacity instead would run off the
+    /// end of any component smaller than it.
+    pub settings_size: usize,
     /// Raw uniform bytes, refreshed each frame from the settings component.
     pub uniform: [u8; MATERIAL_UNIFORM_CAP as usize],
     pub alpha_mode: AlphaMode,
@@ -177,6 +181,7 @@ pub fn build_plugin_materials(app: &mut App) {
         for m in &pending {
             let handle = materials.add(PluginMaterial {
                 shader: m.shader.clone(),
+                settings_size: (m.settings_size as usize).min(MATERIAL_UNIFORM_CAP as usize),
                 uniform: [0; MATERIAL_UNIFORM_CAP as usize],
                 alpha_mode: match m.alpha_mode {
                     renzora_plugin::sys::AlphaMode::Mask => AlphaMode::Mask(0.5),
@@ -232,13 +237,13 @@ fn apply_custom_material(world: &mut World, entity: Entity, slot: usize) {
 /// global look, not a per-entity one, so one source is the right model — the
 /// same assumption the effect path already makes.
 pub fn collect_material_settings(world: &mut World) {
-    let wanted: Vec<(AssetId<PluginMaterial>, ComponentId)> = {
+    let wanted: Vec<(AssetId<PluginMaterial>, ComponentId, usize)> = {
         let Some(materials) = world.get_resource::<Assets<PluginMaterial>>() else {
             return;
         };
         materials
             .iter()
-            .map(|(id, m)| (id, m.settings))
+            .map(|(id, m)| (id, m.settings, m.settings_size))
             .collect()
     };
     if wanted.is_empty() {
@@ -246,12 +251,18 @@ pub fn collect_material_settings(world: &mut World) {
     }
 
     let mut updates = Vec::new();
-    for (id, component) in wanted {
+    for (id, component, size) in wanted {
+        if size == 0 {
+            continue;
+        }
         let found = world.iter_entities().find_map(|e| {
             e.get_by_id(component).ok().map(|p| unsafe {
-                // SAFETY: the component was registered with this size, and the
-                // cap was enforced at registration.
-                std::slice::from_raw_parts(p.as_ptr(), MATERIAL_UNIFORM_CAP as usize).to_vec()
+                // SAFETY: `size` is the size the plugin registered this
+                // component with, clamped to the uniform cap. Reading the full
+                // cap instead would run past the end of any smaller component —
+                // a heap over-read, and the bytes past it would land in the
+                // uniform as garbage.
+                std::slice::from_raw_parts(p.as_ptr(), size).to_vec()
             })
         });
         if let Some(bytes) = found {
