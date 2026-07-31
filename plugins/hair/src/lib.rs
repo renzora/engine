@@ -142,14 +142,21 @@ impl Hair {
 #[component(name = "Hair Ribbons")]
 #[repr(C)]
 pub struct HairRibbons {
-    /// The groom's owner, so an orphan can be told from a live ribbon without
-    /// consulting plugin memory at all.
-    pub owner_bits: f32,
+    /// Non-zero only on an entity this plugin spawned.
+    ///
+    /// Every registered component shows up in the editor's Add Component list —
+    /// there is no way to mark one internal — so this component can be put on
+    /// any entity by hand. The collector below despawns unclaimed ribbons, which
+    /// without this check makes adding it a self-destruct button.
+    ///
+    /// `Default` leaves it zero, which is exactly what a hand-added one gets, so
+    /// only entities the plugin stamped are ever collected.
+    pub plugin_owned: f32,
 }
 
 impl Default for HairRibbons {
     fn default() -> Self {
-        Self { owner_bits: 0.0 }
+        Self { plugin_owned: 0.0 }
     }
 }
 
@@ -221,7 +228,7 @@ static GROOMS: std::sync::Mutex<Option<Grooms>> = std::sync::Mutex::new(None);
 /// ribbons for this frame's camera.
 fn update_grooms(
     q: Query<(Entity, &Hair, &Transform)>,
-    ribbons: Query<Entity, With<HairRibbons>>,
+    ribbons: Query<(Entity, &HairRibbons)>,
     meshes: Meshes,
     time: Res<Time>,
     mut cmds: Commands,
@@ -268,7 +275,7 @@ fn update_grooms(
                     // Geometry is already in world space (see `build_ribbons`),
                     // so the render entity sits at the origin.
                     let mut e = cmds.spawn_mesh(handle, grooms.material, Transform::IDENTITY);
-                    e.insert(HairRibbons { owner_bits: 0.0 });
+                    e.insert(HairRibbons { plugin_owned: 1.0 });
                     let render = e.id();
                     (handle, render)
                 }
@@ -330,10 +337,16 @@ fn update_grooms(
 /// lingering for one.
 fn collect_orphan_ribbons(
     grooms: &Grooms,
-    ribbons: &Query<Entity, With<HairRibbons>>,
+    ribbons: &Query<(Entity, &HairRibbons)>,
     cmds: &mut Commands,
 ) {
-    for entity in ribbons {
+    for (entity, marker) in ribbons {
+        // Only ever touch entities this plugin stamped. The component is
+        // addable by hand from the inspector like any other, and despawning
+        // one of those would delete whatever the user put it on.
+        if marker.plugin_owned == 0.0 {
+            continue;
+        }
         let claimed = grooms.by_entity.values().any(|g| g.render.0 == entity.0);
         if !claimed {
             cmds.entity(entity).despawn();
