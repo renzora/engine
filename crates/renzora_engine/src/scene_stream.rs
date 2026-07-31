@@ -361,6 +361,25 @@ fn spawn_within_budget(
         // maintain the parent's `Children` — re-insert to fire them, same as
         // the sync loader (which does this in a batch after write_to_world).
         if let Some(parent) = world.get::<ChildOf>(target).map(|c| c.parent()) {
+            // The parent has to be checked as well as `target`, and it was not.
+            //
+            // The scene-clear path despawns every named entity but cancels only
+            // the MAIN stream (`cancel_main_stream` partitions on `is_main`), so
+            // an instance stream survives holding ids from the outgoing scene.
+            // Its `spawn_parent` guard upstream catches the case where the
+            // anchor died, but says nothing about the parents recorded *inside*
+            // the scene data.
+            //
+            // Firing the hooks is the entire point of this remove/insert, and
+            // the hooks reach across to maintain the other end's `Children` —
+            // so a dead parent surfaced as a burst of "entity is invalid; its
+            // index now has generation N" warnings naming a command the log
+            // could not name. Cancelling is the honest response: a subtree whose
+            // parent is gone has nowhere to attach, which is exactly what the
+            // `spawn_parent` check concludes one level up.
+            if world.get_entity(parent).is_err() {
+                return SpawnOutcome::Cancelled;
+            }
             world.entity_mut(target).remove::<ChildOf>();
             world.entity_mut(target).insert(ChildOf(parent));
         }
