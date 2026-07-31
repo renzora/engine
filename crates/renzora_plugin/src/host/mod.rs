@@ -2376,12 +2376,25 @@ fn build_dispatcher(
                 state.gather(q);
             }
 
-            // A system with queries but no rows has nothing to say. One with no
-            // queries at all — `fn(Commands)` — still runs, because its whole
-            // job is the side effect.
-            if !states.is_empty() && states.iter().all(|s| s.entities.is_empty()) {
-                return;
-            }
+            // Deliberately NOT skipped when every query is empty.
+            //
+            // This used to return early on the reasoning that a system with no
+            // rows has nothing to say. That is true of a system whose whole job
+            // is its query, and false of any plugin holding state outside the
+            // ECS — which is most of the interesting ones, because a plugin
+            // component is a closed set of numeric kinds and anything richer
+            // has to live in the plugin's own memory.
+            //
+            // `plugins/hair` is the case that found it: it spawns a render
+            // entity per groom and tracks it plugin-side, and the ABI gives it
+            // no `RemovedComponents` and no despawn hook. Absence of a row IS
+            // the teardown signal, so skipping the call is precisely the frame
+            // it needed. The symptom was hair left standing in the scene after
+            // its model was deleted, with nothing to blame in the plugin.
+            //
+            // The saving was small in any case: the staging buffers and the
+            // gather already ran above, so this only avoided one FFI call and
+            // the resource-slot setup on an idle system.
 
             let views: Vec<sys::QueryView> = states.iter_mut().map(ViewState::view).collect();
 
