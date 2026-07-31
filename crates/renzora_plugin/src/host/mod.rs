@@ -993,6 +993,76 @@ unsafe extern "C" fn add_material(
 /// `sink` must be the FIRST field: the plugin holds a `*mut CommandSink` and the
 /// host casts it back to this, so the two must share an address.
 #[repr(C)]
+/// Completed HTTP responses waiting for the plugin that asked for them.
+///
+/// Held here rather than acted on for the same reason [`PluginServiceCalls`] is:
+/// this crate has no HTTP client and cannot depend on one. Whichever engine
+/// crate owns networking drains the *requests* and pushes results back here.
+///
+/// Keyed by the plugin's own tag. Nothing ages entries out: a plugin that fires
+/// a request and never polls for it leaks one response, which is bounded by how
+/// many requests it makes and is the plugin's own bug to fix. Dropping them on a
+/// timer would instead make a slow frame look like a network failure.
+#[derive(Resource, Default)]
+pub struct PluginHttpInbox(pub Vec<PluginHttpResponse>);
+
+/// One completed response.
+pub struct PluginHttpResponse {
+    /// The tag the plugin supplied with the request.
+    pub tag: u64,
+    /// HTTP status, or 0 if the request never completed — `body` then holds the
+    /// error text.
+    pub status: u16,
+    pub body: String,
+}
+
+/// Backs [`sys::HttpSource`] for one system call.
+#[repr(C)]
+struct HttpSourceImpl<'a> {
+    src: sys::HttpSource,
+    inbox: Option<&'a mut PluginHttpInbox>,
+}
+
+/// Hand the plugin the next response for `tag`.
+///
+/// **The probe pass does not consume.** A caller that learns the length and then
+/// fails to allocate must be able to try again; removing on the first call would
+/// drop the response on the floor. The filling pass — the one that actually
+/// takes the bytes — is what removes it.
+unsafe extern "C" fn http_poll(
+    src: *mut sys::HttpSource,
+    tag: u64,
+    out: *mut sys::HttpRead,
+) -> bool {
+    let me = &mut *(src as *mut HttpSourceImpl);
+    let out = &mut *out;
+    out.body_len = 0;
+    out.status = 0;
+
+    let Some(inbox) = me.inbox.as_deref_mut() else {
+        return false;
+    };
+    let Some(at) = inbox.0.iter().position(|r| r.tag == tag) else {
+        return false;
+    };
+
+    let consuming = !out.body.is_null() && out.body_capacity > 0;
+    {
+        let r = &inbox.0[at];
+        out.status = r.status;
+        out.body_len = r.body.len();
+        if consuming {
+            let n = out.body_capacity.min(r.body.len());
+            std::ptr::copy_nonoverlapping(r.body.as_ptr(), out.body, n);
+            out.body_len = n;
+        }
+    }
+    if consuming {
+        inbox.0.remove(at);
+    }
+    true
+}
+
 /// Backs [`sys::MeshSource`] for one system call.
 ///
 /// `src` is first so a `*mut MeshSourceImpl` can be handed over as a
@@ -2048,6 +2118,9 @@ fn build_dispatcher(
         // name it in `With` but never get a data cell for it), so this cannot
         // conflict with the dynamic queries above.
         ParamBuilder::of::<Query<&'static Mesh3d>>(),
+        // HTTP delivery. `Option` because a host without an HTTP bridge simply
+        // never completes a request, which a plugin sees as "not ready yet".
+        ParamBuilder::of::<Option<ResMut<PluginHttpInbox>>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
@@ -2056,7 +2129,8 @@ fn build_dispatcher(
                             mut commands: Commands,
                             plugin_input: Option<Res<input::PluginInput>>,
                             mesh_assets: Option<Res<Assets<Mesh>>>,
-                            mesh_handles: Query<&Mesh3d>| {
+                            mesh_handles: Query<&Mesh3d>,
+                            http_inbox: Option<ResMut<PluginHttpInbox>>| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -2128,6 +2202,10 @@ fn build_dispatcher(
                 });
             }
 
+            let mut http_src = HttpSourceImpl {
+                src: sys::HttpSource { poll: http_poll },
+                inbox: http_inbox.map(|i| i.into_inner()),
+            };
             let mut mesh_src = MeshSourceImpl {
                 src: sys::MeshSource { read: mesh_read },
                 assets: mesh_assets.as_deref(),
@@ -2167,6 +2245,7 @@ fn build_dispatcher(
                     .as_ref()
                     .map_or(core::ptr::null(), |i| &i.0 as *const sys::InputState),
                 meshes: (&mut mesh_src as *mut MeshSourceImpl).cast(),
+                http: (&mut http_src as *mut HttpSourceImpl).cast(),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps

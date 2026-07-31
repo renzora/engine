@@ -107,6 +107,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 4 -> 5 appended `add_mesh_data`.
 /// 5 -> 6 appended `FieldKind::Str` and [`Str256`].
 /// 6 -> 7 appended `SystemCall::meshes`.
+/// 7 -> 8 appended `SystemCall::http`.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -114,7 +115,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 7;
+pub const VERSION_MINOR: u32 = 8;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -183,6 +184,17 @@ pub type ScopeEntry = unsafe extern "C" fn() -> PluginScope;
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Entity(pub u64);
+
+impl Entity {
+    /// An entity that is deliberately no entity.
+    ///
+    /// For service calls that are not about anything in the world — an HTTP
+    /// request belongs to the plugin, not to a body — so the consumer still
+    /// sees one shape whether or not the call has a subject. `u64::MAX` never
+    /// round-trips through `Entity::try_from_bits`, so it cannot be mistaken
+    /// for a real handle.
+    pub const PLACEHOLDER: Self = Self(u64::MAX);
+}
 
 /// A component's runtime id, assigned by the host. Resolved either by
 /// registering a plugin-owned component ([`Interface::register_component`]) or
@@ -858,6 +870,54 @@ pub struct SystemCall {
     /// runs. Same shape as [`commands`](Self::commands): created for the call,
     /// dead when it returns.
     pub meshes: *mut MeshSource,
+    /// Delivers completed HTTP responses. Null if the host has no HTTP.
+    ///
+    /// Appended at the END, like [`input`](Self::input) and
+    /// [`meshes`](Self::meshes), for the same offset reason.
+    pub http: *mut HttpSource,
+}
+
+/// One completed HTTP response, copied out for the plugin.
+///
+/// Two-pass like [`MeshRead`]: probe for the length, allocate, fill. A body is
+/// arbitrarily large and the host cannot allocate with the plugin's allocator.
+#[repr(C)]
+pub struct HttpRead {
+    /// In: how many bytes `body` holds. Out: unchanged.
+    pub body_capacity: usize,
+    pub body: *mut u8,
+    /// Out: the response's full length, whatever the capacity was.
+    pub body_len: usize,
+    /// Out: HTTP status, or 0 if the request never completed — `body` then
+    /// holds the error text.
+    pub status: u16,
+    pub _pad: [u8; 6],
+}
+
+impl HttpRead {
+    /// A length-only probe — the first of the two passes.
+    pub const COUNTS_ONLY: Self = Self {
+        body_capacity: 0,
+        body: core::ptr::null_mut(),
+        body_len: 0,
+        status: 0,
+        _pad: [0; 6],
+    };
+}
+
+/// Delivers completed HTTP responses during one system call.
+#[repr(C)]
+pub struct HttpSource {
+    /// Take the next completed response for `tag`.
+    ///
+    /// Returns `false` when none is ready, which is the normal state — a
+    /// request takes many frames, so a plugin polls. A response is delivered
+    /// **once**: the probe pass does not consume it, the filling pass does.
+    pub poll: unsafe extern "C" fn(
+        src: *mut HttpSource,
+        tag: u64,
+        out: *mut HttpRead,
+    ) -> bool,
 }
 
 /// Geometry copied out of a host mesh, for [`MeshSource::read`].

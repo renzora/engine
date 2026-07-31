@@ -41,6 +41,30 @@ impl HttpInbox {
             .unwrap_or_default()
     }
 
+    /// Take only the results whose callback starts with `prefix`, leaving the
+    /// rest queued.
+    ///
+    /// Scripts and standalone plugins share one client and one queue — there is
+    /// no reason to run two — but they have separate consumers, and a plain
+    /// [`drain`](Self::drain) by either would swallow the other's responses.
+    /// The plugin bridge tags its callbacks with a prefix nothing else uses and
+    /// claims only those.
+    pub fn drain_matching(&self, prefix: &str) -> Vec<HttpResult> {
+        let Ok(mut v) = self.results.lock() else {
+            return Vec::new();
+        };
+        let mut taken = Vec::new();
+        let mut i = 0;
+        while i < v.len() {
+            if v[i].callback.starts_with(prefix) {
+                taken.push(v.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        taken
+    }
+
     /// Spawn a background thread that performs the request and queues the
     /// result. Returns immediately — the game loop never blocks on the network.
     pub fn request(&self, method: String, url: String, body: Option<String>, callback: String) {

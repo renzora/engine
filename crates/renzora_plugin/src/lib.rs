@@ -75,6 +75,12 @@ pub mod anim;
 #[cfg(feature = "physics")]
 pub mod physics;
 
+/// HTTP: fire a request, poll for the response.
+///
+/// Opt in with `features = ["http"]`. Same shape as [`anim`] and [`physics`].
+#[cfg(feature = "http")]
+pub mod http;
+
 #[cfg(feature = "host")]
 pub mod host;
 

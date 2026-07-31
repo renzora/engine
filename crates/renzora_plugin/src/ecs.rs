@@ -1302,34 +1302,7 @@ impl<'a> EntityCommands<'a> {
         if self.sink.is_null() {
             return self;
         }
-        // Header and payload have to be one contiguous buffer, because the sink
-        // copies exactly one `data` pointer. 128 bytes covers every service
-        // argument list so far without putting an allocator on this path.
-        const INLINE: usize = 128;
-        let header = sys::ServiceCall { service, op, _pad: 0 };
-        let hdr_len = core::mem::size_of::<sys::ServiceCall>();
-        if payload.len() > INLINE - hdr_len {
-            error("service payload is too large and was dropped");
-            return self;
-        }
-        let mut buf = [0u8; INLINE];
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                (&header as *const sys::ServiceCall).cast::<u8>(),
-                buf.as_mut_ptr(),
-                hdr_len,
-            );
-        }
-        buf[hdr_len..hdr_len + payload.len()].copy_from_slice(payload);
-
-        let cmd = sys::Command {
-            kind: sys::CommandKind::Service,
-            entity: self.id,
-            component: sys::ComponentId::INVALID,
-            data: buf.as_ptr(),
-            data_len: hdr_len + payload.len(),
-        };
-        unsafe { ((*self.sink).push)(self.sink, &cmd) };
+        push_service(self.sink, self.id, service, op, payload);
         self
     }
 }
@@ -1413,6 +1386,67 @@ unsafe impl<T: ResourceParam> SystemParam for ResMut<'_, T> {
     }
     unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
         ResMut(T::res_ptr(call), PhantomData)
+    }
+}
+
+/// Build the header + payload into one contiguous buffer and push it.
+///
+/// One buffer because the sink copies exactly one `data` pointer. The stack
+/// fast path covers every per-frame caller — an animation or physics command is
+/// well under 128 bytes — and the heap fallback exists for the ones that are
+/// genuinely variable-length, like an HTTP body.
+fn push_service(
+    sink: *mut sys::CommandSink,
+    entity: sys::Entity,
+    service: u64,
+    op: u32,
+    payload: &[u8],
+) {
+    const INLINE: usize = 128;
+    let header = sys::ServiceCall { service, op, _pad: 0 };
+    let hdr_len = core::mem::size_of::<sys::ServiceCall>();
+    let total = hdr_len + payload.len();
+
+    let mut stack = [0u8; INLINE];
+    let mut heap;
+    let buf: &mut [u8] = if total <= INLINE {
+        &mut stack[..total]
+    } else {
+        heap = vec![0u8; total];
+        &mut heap[..]
+    };
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            (&header as *const sys::ServiceCall).cast::<u8>(),
+            buf.as_mut_ptr(),
+            hdr_len,
+        );
+    }
+    buf[hdr_len..].copy_from_slice(payload);
+
+    let cmd = sys::Command {
+        kind: sys::CommandKind::Service,
+        entity,
+        component: sys::ComponentId::INVALID,
+        data: buf.as_ptr(),
+        data_len: total,
+    };
+    unsafe { ((*sink).push)(sink, &cmd) };
+}
+
+impl Commands<'_> {
+    /// Call a host service that is not about any particular entity.
+    ///
+    /// The entity-scoped [`EntityCommands::call_service`] is the common case —
+    /// animation and physics both act on a body. Some domains do not: an HTTP
+    /// request belongs to the plugin, not to a thing in the world. The entity
+    /// field still crosses, carrying [`sys::Entity::PLACEHOLDER`], so the
+    /// consumer sees one shape either way.
+    pub fn call_service(&mut self, service: u64, op: u32, payload: &[u8]) -> &mut Self {
+        if !self.sink.is_null() {
+            push_service(self.sink, sys::Entity::PLACEHOLDER, service, op, payload);
+        }
+        self
     }
 }
 

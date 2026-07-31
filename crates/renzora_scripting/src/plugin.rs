@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use std::path::PathBuf;
 
 use crate::command::CharacterCommandQueue;
+use crate::plugin_bridge::PluginHttpBridge;
 use crate::component::ScriptComponent;
 use crate::engine::ScriptEngine;
 use crate::input::{update_script_input, ScriptInput};
@@ -92,6 +93,8 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<crate::get_handler::AssetProgressBridge>()
             .init_resource::<crate::perf::ScriptPerfStats>()
             .init_resource::<crate::http::HttpInbox>()
+            // The C-ABI surface: standalone plugins issuing HTTP requests.
+            .add_plugins(PluginHttpBridge)
             .register_type::<ScriptComponent>()
             // Configure system set ordering
             .configure_sets(
