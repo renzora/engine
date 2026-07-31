@@ -477,7 +477,19 @@ fn enforce_entity_ids(
         let unique = renzora::unique_id(&clean, |c| taken.contains(c));
         taken.insert(unique.clone());
         if &unique != raw {
-            commands.entity(*e).insert(Name::new(unique));
+            // `try_insert`, because deferring is what makes this reachable: the
+            // rewrite is queued from a read-only pass and applied later, and a
+            // scene load despawns every named entity in between. A GLTF import
+            // is the worst case — it produces exactly the colliding names this
+            // system exists to de-duplicate, so the entities queued here are the
+            // ones most likely to be gone by the time the queue drains.
+            //
+            // A plain `insert` logged one "the entity with ID Nv1 is invalid"
+            // per renamed entity on every scene load, naming a command that only
+            // `bevy_ecs/debug` could identify. Renaming an entity that no longer
+            // exists is a no-op by definition, so silence is the correct outcome
+            // rather than a swallowed error.
+            commands.entity(*e).try_insert(Name::new(unique));
         }
     }
 }
