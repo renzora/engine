@@ -1566,6 +1566,51 @@ impl Meshes<'_> {
     }
 }
 
+impl Meshes<'_> {
+    /// Replace the geometry of a mesh created with [`App::add_mesh_data`].
+    ///
+    /// `add_mesh_data` is init-only, so without this a plugin could generate
+    /// geometry once and never again. Anything that rebuilds per frame — hair
+    /// ribbons, a water surface, a trail — writes from a system instead.
+    ///
+    /// Validated exactly as `add_mesh_data` is, and refused on the same
+    /// grounds. A refusal leaves the existing mesh alone rather than replacing
+    /// it with something malformed, so a bad frame shows the previous geometry
+    /// instead of nothing.
+    ///
+    /// `colors` are per-vertex linear RGBA — the built-in PBR material
+    /// multiplies them into its base colour, which is how a groom gets
+    /// per-strand shade variation without a custom shader.
+    pub fn write(
+        &self,
+        handle: sys::AssetHandle,
+        positions: &[Vec3],
+        normals: Option<&[Vec3]>,
+        uvs: Option<&[[f32; 2]]>,
+        indices: Option<&[u32]>,
+        colors: Option<&[[f32; 4]]>,
+    ) -> bool {
+        if self.src.is_null() {
+            return false;
+        }
+        let desc = sys::MeshDataDesc {
+            positions: positions.as_ptr(),
+            position_count: positions.len(),
+            normals: normals.map_or(core::ptr::null(), |n| n.as_ptr()),
+            normal_count: normals.map_or(0, |n| n.len()),
+            uvs: uvs.map_or(core::ptr::null(), |u| u.as_ptr()),
+            uv_count: uvs.map_or(0, |u| u.len()),
+            indices: indices.map_or(core::ptr::null(), |i| i.as_ptr()),
+            index_count: indices.map_or(0, |i| i.len()),
+        };
+        let colors = sys::MeshColors {
+            colors: colors.map_or(core::ptr::null(), |c| c.as_ptr()),
+            color_count: colors.map_or(0, |c| c.len()),
+        };
+        unsafe { ((*self.src).write)(self.src, handle, &desc, &colors) }
+    }
+}
+
 unsafe impl SystemParam for Meshes<'_> {
     fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
     unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {

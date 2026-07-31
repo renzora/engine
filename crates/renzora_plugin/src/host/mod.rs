@@ -865,113 +865,134 @@ unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) 
 /// stack locals — and every length is treated as untrusted, because these are
 /// raw pointers out of another compilation unit and a bad one is a read off the
 /// end of the plugin's heap, not a panic.
+/// Validate plugin-supplied geometry and build a `Mesh`.
+///
+/// Shared by `add_mesh_data` (init) and `MeshSource::write` (per frame) so the
+/// two cannot drift — a rule enforced on one path and not the other is worse
+/// than no rule, because it makes the failure depend on which call you used.
+///
+/// Every length is treated as untrusted: these are raw pointers out of another
+/// compilation unit, and a bad one is a read off the end of the plugin's heap.
+unsafe fn build_mesh_from_desc(
+    d: &sys::MeshDataDesc,
+    colors: Option<&sys::MeshColors>,
+) -> Option<Mesh> {
+    if d.positions.is_null() || d.position_count == 0 {
+        error!("[plugin] mesh data with no positions");
+        return None;
+    }
+    let positions: Vec<[f32; 3]> = std::slice::from_raw_parts(d.positions, d.position_count)
+        .iter()
+        .map(|v| [v.x, v.y, v.z])
+        .collect();
+
+    // The index bound check is the one that matters. An out-of-range index is
+    // not a soft failure downstream — wgpu reads past the vertex buffer and
+    // faults the process, taking the editor with it.
+    let indices: Option<Vec<u32>> = if d.indices.is_null() || d.index_count == 0 {
+        None
+    } else {
+        let raw = std::slice::from_raw_parts(d.indices, d.index_count);
+        if let Some(&bad) = raw.iter().find(|&&i| i as usize >= positions.len()) {
+            error!(
+                "[plugin] mesh index {bad} is out of range for {} vertices — refusing rather                  than letting the GPU read past the buffer",
+                positions.len()
+            );
+            return None;
+        }
+        if raw.len() % 3 != 0 {
+            error!("[plugin] {} indices is not a whole number of triangles", raw.len());
+            return None;
+        }
+        Some(raw.to_vec())
+    };
+    if indices.is_none() && positions.len() % 3 != 0 {
+        error!(
+            "[plugin] {} unindexed positions is not a whole number of triangles",
+            positions.len()
+        );
+        return None;
+    }
+
+    // A short attribute array is refused rather than padded. Padding renders
+    // with silently wrong shading or UVs on the tail vertices, which is harder
+    // to notice than getting nothing.
+    let normals: Option<Vec<[f32; 3]>> = if d.normals.is_null() || d.normal_count == 0 {
+        None
+    } else if d.normal_count != positions.len() {
+        error!(
+            "[plugin] {} normals for {} vertices",
+            d.normal_count,
+            positions.len()
+        );
+        return None;
+    } else {
+        Some(
+            std::slice::from_raw_parts(d.normals, d.normal_count)
+                .iter()
+                .map(|v| [v.x, v.y, v.z])
+                .collect(),
+        )
+    };
+    let uvs: Option<Vec<[f32; 2]>> = if d.uvs.is_null() || d.uv_count == 0 {
+        None
+    } else if d.uv_count != positions.len() {
+        error!("[plugin] {} uvs for {} vertices", d.uv_count, positions.len());
+        return None;
+    } else {
+        Some(std::slice::from_raw_parts(d.uvs, d.uv_count).to_vec())
+    };
+    let vertex_colors: Option<Vec<[f32; 4]>> = match colors {
+        Some(c) if !c.colors.is_null() && c.color_count > 0 => {
+            if c.color_count != positions.len() {
+                error!(
+                    "[plugin] {} vertex colors for {} vertices",
+                    c.color_count,
+                    positions.len()
+                );
+                return None;
+            }
+            Some(std::slice::from_raw_parts(c.colors, c.color_count).to_vec())
+        }
+        _ => None,
+    };
+
+    let mut mesh = Mesh::new(
+        bevy::render::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    // UVs before normals: `compute_normals` needs the indices in place but not
+    // the UVs, and inserting them first keeps the attribute set complete
+    // whichever branch runs below.
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_UV_0,
+        uvs.unwrap_or_else(|| vec![[0.0, 0.0]; mesh.count_vertices()]),
+    );
+    if let Some(c) = vertex_colors {
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, c);
+    }
+    if let Some(indices) = indices {
+        mesh.insert_indices(bevy::render::mesh::Indices::U32(indices));
+    }
+    match normals {
+        Some(n) => mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, n),
+        // Bevy's own derivation, so a plugin that skips normals gets the same
+        // shading an engine crate would have produced by hand.
+        None => mesh.compute_normals(),
+    }
+    Some(mesh)
+}
+
 unsafe extern "C" fn add_mesh_data(
     host: *mut sys::Host,
     desc: *const sys::MeshDataDesc,
 ) -> sys::AssetHandle {
     guard_host("add_mesh_data", sys::AssetHandle::INVALID, || {
         let ctx = &mut *(host as *mut HostCtx);
-        let d = &*desc;
-
-        if d.positions.is_null() || d.position_count == 0 {
-            error!("[plugin] add_mesh_data with no positions");
+        let Some(mesh) = build_mesh_from_desc(&*desc, None) else {
             return sys::AssetHandle::INVALID;
-        }
-        let positions: Vec<[f32; 3]> = std::slice::from_raw_parts(d.positions, d.position_count)
-            .iter()
-            .map(|v| [v.x, v.y, v.z])
-            .collect();
-
-        // Indices are validated against the vertex count rather than trusted.
-        // An out-of-range index is not a soft failure downstream: wgpu reads
-        // past the vertex buffer and the result is a GPU fault, which takes the
-        // whole process with it rather than this one mesh.
-        let indices: Option<Vec<u32>> = if d.indices.is_null() || d.index_count == 0 {
-            None
-        } else {
-            let raw = std::slice::from_raw_parts(d.indices, d.index_count);
-            if let Some(&bad) = raw.iter().find(|&&i| i as usize >= positions.len()) {
-                error!(
-                    "[plugin] add_mesh_data index {bad} is out of range for {} vertices — \
-                     refusing the mesh rather than letting the GPU read past the buffer",
-                    positions.len()
-                );
-                return sys::AssetHandle::INVALID;
-            }
-            if raw.len() % 3 != 0 {
-                error!(
-                    "[plugin] add_mesh_data got {} indices, which is not a whole number of \
-                     triangles",
-                    raw.len()
-                );
-                return sys::AssetHandle::INVALID;
-            }
-            Some(raw.to_vec())
         };
-        if indices.is_none() && positions.len() % 3 != 0 {
-            error!(
-                "[plugin] add_mesh_data got {} unindexed positions, which is not a whole \
-                 number of triangles",
-                positions.len()
-            );
-            return sys::AssetHandle::INVALID;
-        }
-
-        // A short attribute array is refused rather than padded. Padding would
-        // hand back a mesh that renders with silently wrong shading or UVs on
-        // the tail vertices, which is harder to notice than nothing at all.
-        let normals: Option<Vec<[f32; 3]>> = if d.normals.is_null() || d.normal_count == 0 {
-            None
-        } else if d.normal_count != positions.len() {
-            error!(
-                "[plugin] add_mesh_data got {} normals for {} vertices",
-                d.normal_count,
-                positions.len()
-            );
-            return sys::AssetHandle::INVALID;
-        } else {
-            Some(
-                std::slice::from_raw_parts(d.normals, d.normal_count)
-                    .iter()
-                    .map(|v| [v.x, v.y, v.z])
-                    .collect(),
-            )
-        };
-        let uvs: Option<Vec<[f32; 2]>> = if d.uvs.is_null() || d.uv_count == 0 {
-            None
-        } else if d.uv_count != positions.len() {
-            error!(
-                "[plugin] add_mesh_data got {} uvs for {} vertices",
-                d.uv_count,
-                positions.len()
-            );
-            return sys::AssetHandle::INVALID;
-        } else {
-            Some(std::slice::from_raw_parts(d.uvs, d.uv_count).to_vec())
-        };
-
-        let mut mesh = Mesh::new(
-            bevy::render::mesh::PrimitiveTopology::TriangleList,
-            bevy::asset::RenderAssetUsages::default(),
-        );
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        // UVs before normals: `compute_normals` needs the indices in place but
-        // not the UVs, and inserting them first keeps the attribute set complete
-        // whichever branch runs.
-        mesh.insert_attribute(
-            Mesh::ATTRIBUTE_UV_0,
-            uvs.unwrap_or_else(|| vec![[0.0, 0.0]; mesh.count_vertices()]),
-        );
-        if let Some(indices) = indices {
-            mesh.insert_indices(bevy::render::mesh::Indices::U32(indices));
-        }
-        match normals {
-            Some(n) => mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, n),
-            // Bevy's own derivation, so a plugin that skips normals gets the
-            // same shading an engine crate would have produced by hand.
-            None => mesh.compute_normals(),
-        }
-
         let Some(mut meshes) = ctx.world.get_resource_mut::<Assets<Mesh>>() else {
             warn!("[plugin] add_mesh_data ignored — this build has no renderer");
             return sys::AssetHandle::INVALID;
@@ -1097,8 +1118,47 @@ unsafe extern "C" fn http_poll(
 #[repr(C)]
 struct MeshSourceImpl<'a, 'w, 's> {
     src: sys::MeshSource,
-    assets: Option<&'a Assets<Mesh>>,
+    assets: Option<&'a mut Assets<Mesh>>,
     handles: &'a Query<'w, 's, &'static Mesh3d>,
+    /// Slot table, so `write` can resolve the handle the plugin was given at
+    /// init. Read-only — a write replaces the asset's contents, never the slot.
+    store: Option<&'a PluginAssets>,
+}
+
+/// Replace a plugin mesh's geometry from inside a system.
+///
+/// The counterpart to `add_mesh_data`, which is init-only. Validation is shared
+/// with it, so a mesh that would be refused at registration is refused here too
+/// — and the existing geometry is left alone rather than half-replaced.
+unsafe extern "C" fn mesh_write(
+    src: *mut sys::MeshSource,
+    handle: sys::AssetHandle,
+    data: *const sys::MeshDataDesc,
+    colors: *const sys::MeshColors,
+) -> bool {
+    let me = &mut *(src as *mut MeshSourceImpl);
+    let Some(store) = me.store else {
+        return false;
+    };
+    let Some((_, target)) = store.meshes.get(handle.0 as usize).cloned() else {
+        error!("[plugin] mesh write named slot {}, which was never created", handle.0);
+        return false;
+    };
+    let colors = if colors.is_null() { None } else { Some(&*colors) };
+    let Some(mesh) = build_mesh_from_desc(&*data, colors) else {
+        return false;
+    };
+    let Some(assets) = me.assets.as_deref_mut() else {
+        return false;
+    };
+    // Replace the contents at the existing handle rather than adding a new
+    // asset: everything already rendering this mesh holds that handle, and a
+    // fresh one would leave them drawing the old geometry forever.
+    let Some(mut slot) = assets.get_mut(&target) else {
+        return false;
+    };
+    *slot = mesh;
+    true
 }
 
 /// Copy one mesh's geometry into the plugin's buffers.
@@ -1117,7 +1177,7 @@ unsafe extern "C" fn mesh_read(
     out.uv_count = 0;
     out.index_count = 0;
 
-    let Some(assets) = me.assets else {
+    let Some(assets) = me.assets.as_deref() else {
         return false;
     };
     let Some(entity) = Entity::try_from_bits(entity.0) else {
@@ -2243,7 +2303,7 @@ fn build_dispatcher(
         ParamBuilder::of::<Option<Res<input::PluginInput>>>(),
         // Mesh reading. `Option`, because a headless host has no renderer and so
         // no `Assets<Mesh>` — a plugin there simply never gets geometry back.
-        ParamBuilder::of::<Option<Res<Assets<Mesh>>>>(),
+        ParamBuilder::of::<Option<ResMut<Assets<Mesh>>>>(),
         // Read-only, and `Mesh3d` is filter-only across the ABI (a plugin can
         // name it in `With` but never get a data cell for it), so this cannot
         // conflict with the dynamic queries above.
@@ -2251,6 +2311,9 @@ fn build_dispatcher(
         // HTTP delivery. `Option` because a host without an HTTP bridge simply
         // never completes a request, which a plugin sees as "not ready yet".
         ParamBuilder::of::<Option<ResMut<PluginHttpInbox>>>(),
+        // The slot table, so `MeshSource::write` can resolve a handle the
+        // plugin was handed at init.
+        ParamBuilder::of::<Option<Res<PluginAssets>>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
@@ -2258,9 +2321,10 @@ fn build_dispatcher(
                             time: Res<Time>,
                             mut commands: Commands,
                             plugin_input: Option<Res<input::PluginInput>>,
-                            mesh_assets: Option<Res<Assets<Mesh>>>,
+                            mut mesh_assets: Option<ResMut<Assets<Mesh>>>,
                             mesh_handles: Query<&Mesh3d>,
-                            http_inbox: Option<ResMut<PluginHttpInbox>>| {
+                            http_inbox: Option<ResMut<PluginHttpInbox>>,
+                            plugin_assets: Option<Res<PluginAssets>>| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -2337,9 +2401,10 @@ fn build_dispatcher(
                 inbox: http_inbox.map(|i| i.into_inner()),
             };
             let mut mesh_src = MeshSourceImpl {
-                src: sys::MeshSource { read: mesh_read },
-                assets: mesh_assets.as_deref(),
+                src: sys::MeshSource { read: mesh_read, write: mesh_write },
+                assets: mesh_assets.as_deref_mut(),
                 handles: &mesh_handles,
+                store: plugin_assets.as_deref(),
             };
             let mut sink = SinkImpl {
                 sink: sys::CommandSink {

@@ -8189,17 +8189,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_hair"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "mlua",
- "renzora",
- "renzora_macros",
- "renzora_scripting",
-]
-
-[[package]]
 name = "renzora_hanabi"
 version = "0.1.0"
 dependencies = [
@@ -8619,6 +8608,7 @@ dependencies = [
  "bevy",
  "mlua",
  "renzora",
+ "renzora_plugin",
  "renzora_scripting",
  "serde",
 ]
@@ -8846,6 +8836,7 @@ dependencies = [
  "mlua",
  "renzora",
  "renzora_blueprint",
+ "renzora_plugin",
  "rhai",
  "serde",
  "serde_json",

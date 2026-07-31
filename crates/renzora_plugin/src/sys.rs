@@ -109,6 +109,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 6 -> 7 appended `SystemCall::meshes`.
 /// 7 -> 8 appended `SystemCall::http`.
 /// 8 -> 9 appended `add_material_shader`.
+/// 9 -> 10 appended `MeshSource::write`.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -116,7 +117,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 9;
+pub const VERSION_MINOR: u32 = 10;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -984,6 +985,38 @@ pub struct MeshSource {
         entity: Entity,
         out: *mut MeshRead,
     ) -> bool,
+
+    /// Replace the geometry of a mesh the plugin created with
+    /// [`Interface::add_mesh_data`].
+    ///
+    /// `add_mesh_data` is init-only — it needs a `Host` handle, which is null
+    /// while a system runs — so without this a plugin could generate geometry
+    /// once and never again. Anything that rebuilds its mesh per frame (hair
+    /// ribbons, a water surface, a deforming ribbon trail) needs to write from
+    /// a system, which is where this lives.
+    ///
+    /// Validates exactly as `add_mesh_data` does and returns `false` on the
+    /// same grounds, leaving the existing mesh untouched rather than replacing
+    /// it with something malformed.
+    /// `colors` may be null; it is a separate argument rather than a field on
+    /// [`MeshDataDesc`] because that struct is shared with
+    /// [`add_mesh_data`](Interface::add_mesh_data) and growing it would shift
+    /// every field for a plugin built against the older layout.
+    pub write: unsafe extern "C" fn(
+        src: *mut MeshSource,
+        handle: AssetHandle,
+        data: *const MeshDataDesc,
+        colors: *const MeshColors,
+    ) -> bool,
+}
+
+/// Per-vertex colours for [`MeshSource::write`].
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MeshColors {
+    /// Linear RGBA per vertex. Must match the position count.
+    pub colors: *const [f32; 4],
+    pub color_count: usize,
 }
 
 /// One frame of input, as the host saw it.
