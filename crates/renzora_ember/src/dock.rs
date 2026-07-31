@@ -3028,6 +3028,9 @@ fn guard_dock_target_cameras(
 
 /// (Re)build each dirty dock: the primary [`DockArea`] when [`DockDirty`], and
 /// every floating dock window whose per-window flag is set.
+// A system's parameters are not an argument list a caller has to thread — the
+// same allow `rebuild_area` below carries, and for the same reason.
+#[allow(clippy::too_many_arguments)]
 fn rebuild_dock(
     mut dirty: ResMut<DockDirty>,
     mut wins: ResMut<DockWindows>,
@@ -3037,6 +3040,11 @@ fn rebuild_dock(
     markers: Res<BottomStripMarkers>,
     areas: Query<(Entity, Option<&Children>, Option<&FloatingDockArea>), With<DockArea>>,
     leaves: Query<&DockLeaf>,
+    // Liveness probe for `DockLeaf::content`. A leaf stores its content node as a
+    // bare `Entity`, which nothing invalidates when that node is despawned — see
+    // `rebuild_area` for why a stale one has to be filtered out rather than
+    // re-parented.
+    alive: Query<Entity>,
 ) {
     let Some(fonts) = fonts else {
         return;
@@ -3045,7 +3053,7 @@ fn rebuild_dock(
         if let Some((area_entity, children, _)) = areas.iter().find(|(.., f)| f.is_none()) {
             rebuild_area(
                 &mut commands, &fonts, &markers.0, &dock.tree, area_entity, children, &leaves,
-                false,
+                &alive, false,
             );
             dirty.0 = false;
         }
@@ -3055,7 +3063,8 @@ fn rebuild_dock(
         // apply at the end of the frame) — leave it dirty and retry next frame.
         if let Ok((area_entity, children, _)) = areas.get(st.area) {
             rebuild_area(
-                &mut commands, &fonts, &markers.0, &st.tree, area_entity, children, &leaves, true,
+                &mut commands, &fonts, &markers.0, &st.tree, area_entity, children, &leaves,
+                &alive, true,
             );
             st.dirty = false;
         }
@@ -3074,6 +3083,7 @@ fn rebuild_area(
     area_entity: Entity,
     children: Option<&Children>,
     leaves: &Query<&DockLeaf>,
+    alive: &Query<Entity>,
     floating: bool,
 ) {
     // Preserve each leaf's content entity (keyed by its active panel) and detach
@@ -3095,8 +3105,26 @@ fn rebuild_area(
     let mut reusable = std::collections::HashSet::new();
     tree.active_tab_ids(&mut reusable);
     let mut preserved: HashMap<String, Entity> = HashMap::new();
+    //
+    // `alive` is not belt-and-braces. `DockLeaf::content` is a bare `Entity`,
+    // and nothing invalidates it when that node is despawned — `sync_panes`
+    // despawns every non-active pane, a panel can tear its own content down, and
+    // a chrome rebuild can race this one. The despawn loop just below already
+    // says exactly that, and uses `try_despawn` for it; the same reasoning was
+    // never applied up here. A stale `leaf.content` got preserved, handed to
+    // `build_tree`, and re-parented with `add_child` — which, unlike
+    // `try_despawn`, has no fallible variant, so it surfaced as a burst of
+    // "entity is invalid; its index now has generation N" warnings naming a
+    // command the log could not name.
+    //
+    // Skipping a dead one is also the *correct* outcome, not just a quiet one:
+    // `build_tree` builds fresh content for any panel id missing from
+    // `preserved`, so the panel comes back rather than vanishing.
     for leaf in leaves.iter().filter(|l| l.area == area_entity) {
-        if !leaf.active.is_empty() && reusable.contains(&leaf.active) {
+        if !leaf.active.is_empty()
+            && reusable.contains(&leaf.active)
+            && alive.get(leaf.content).is_ok()
+        {
             preserved.insert(leaf.active.clone(), leaf.content);
             commands.entity(leaf.content).remove::<ChildOf>();
         }
