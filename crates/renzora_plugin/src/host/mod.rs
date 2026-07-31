@@ -1232,7 +1232,21 @@ unsafe extern "C" fn mesh_read(
     true
 }
 
+/// Backs [`sys::CommandSink`] for one system call.
+///
+/// **`#[repr(C)]` is load-bearing, not tidiness.** The plugin is handed a
+/// `*mut sys::CommandSink`, and [`sink_reserve`] / [`sink_push`] cast it back to
+/// `*mut SinkImpl` — which is only sound if `sink` is at offset 0. Under
+/// `repr(Rust)` the compiler may order fields however it likes, and it has every
+/// reason to move this one: nothing ever *reads* `self.sink`, so it looks dead.
+/// The result is `me.commands` resolving to whatever happens to sit at that
+/// offset — a wild `&mut Commands` — and the first `spawn_empty` through it
+/// faults with no Rust-level error to report.
+#[repr(C)]
 struct SinkImpl<'a, 'w, 's> {
+    /// Never read in Rust — the plugin reaches it through the pointer above.
+    /// It exists for its address, which is why the field order matters.
+    #[allow(dead_code)]
     sink: sys::CommandSink,
     commands: &'a mut Commands<'w, 's>,
     queued: Vec<(sys::Command, Vec<u8>)>,
