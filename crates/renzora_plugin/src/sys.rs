@@ -104,6 +104,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 1 -> 2 appended `SystemCall::input`.
 /// 2 -> 3 appended `set_field_range`.
 /// 3 -> 4 appended `CommandKind::Service`.
+/// 4 -> 5 appended `add_mesh_data`.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -111,7 +112,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 4;
+pub const VERSION_MINOR: u32 = 5;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1238,6 +1239,35 @@ pub struct MeshDesc {
     pub size: Vec3,
 }
 
+/// Geometry a plugin generated itself, for [`Interface::add_mesh_data`].
+///
+/// Pointers are borrowed for the duration of the call only — the host copies
+/// every slice into a `Mesh` before returning — so a plugin may point at stack
+/// locals or at a `Vec` it drops immediately after.
+///
+/// Everything but `positions` is optional, and a null pointer is the documented
+/// way to say "derive it". That matters more than it looks: a plugin that
+/// generates geometry procedurally usually has positions and indices and
+/// nothing else, and computing flat normals correctly (per-face, then averaged
+/// per vertex) is the kind of thing every author would otherwise reimplement
+/// slightly differently.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct MeshDataDesc {
+    pub positions: *const Vec3,
+    pub position_count: usize,
+    /// Null to have the host compute them from the faces.
+    pub normals: *const Vec3,
+    pub normal_count: usize,
+    /// Null for zeroed UVs. `[u, v]` per vertex.
+    pub uvs: *const [f32; 2],
+    pub uv_count: usize,
+    /// Null for an unindexed triangle list, i.e. every three positions are one
+    /// face. Indexed geometry is strongly preferred for anything non-trivial.
+    pub indices: *const u32,
+    pub index_count: usize,
+}
+
 #[repr(C)]
 pub struct MaterialDesc {
     /// Linear RGBA.
@@ -1622,6 +1652,22 @@ pub struct Interface {
         field: usize,
         range: *const FieldRange,
     ) -> RegisterStatus,
+
+    /// Upload geometry a plugin generated itself. See [`MeshDataDesc`].
+    ///
+    /// Separate from [`add_mesh`](Self::add_mesh) rather than a `Primitive`
+    /// variant, because the two have nothing in common at the boundary: one
+    /// passes a shape and three floats by value, the other borrows four slices
+    /// that the host must copy before returning.
+    ///
+    /// This is what a plugin needs to be more than a consumer of built-in
+    /// shapes — text meshes, procedural foliage, hair ribbons, water surfaces
+    /// all generate their own vertices, and without it they cannot exist
+    /// outside an engine crate.
+    pub add_mesh_data: unsafe extern "C" fn(
+        host: *mut Host,
+        desc: *const MeshDataDesc,
+    ) -> AssetHandle,
 }
 
 /// How the inspector should edit one numeric field.

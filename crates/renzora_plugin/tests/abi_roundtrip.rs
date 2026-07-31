@@ -2080,3 +2080,131 @@ fn the_anim_state_mirror_has_a_stable_layout() {
     assert_eq!(core::mem::size_of::<AnimState>(), 32);
     assert_eq!(core::mem::align_of::<AnimState>(), 8);
 }
+
+
+// ── Generated meshes ─────────────────────────────────────────────────────────
+
+/// Which `add_mesh_data` case the shared init fn should run.
+///
+/// A plugin's entry point is a plain `extern "C" fn` with no state, so the case
+/// is selected through a static and read back the same way. `plugin_lock()`
+/// serialises the tests, which is what makes that safe.
+static MESH_CASE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static MESH_RESULT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(u64::MAX);
+
+fn v3(x: f32, y: f32, z: f32) -> ecs::Vec3 {
+    ecs::Vec3 { x, y, z }
+}
+
+unsafe extern "C" fn mesh_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    // One triangle, and every case below is a mutation of it.
+    let tri = [v3(0.0, 0.0, 0.0), v3(1.0, 0.0, 0.0), v3(0.0, 0.0, 1.0)];
+    let handle = match MESH_CASE.load(std::sync::atomic::Ordering::Relaxed) {
+        // Valid, indexed, with the host deriving normals and UVs.
+        0 => app.add_mesh_data(&tri, None, None, Some(&[0, 1, 2])),
+        // An index past the end of the vertex list.
+        1 => app.add_mesh_data(&tri, None, None, Some(&[0, 1, 7])),
+        // Fewer normals than vertices.
+        2 => app.add_mesh_data(&tri, Some(&[v3(0.0, 1.0, 0.0)]), None, None),
+        // Fewer UVs than vertices.
+        3 => app.add_mesh_data(&tri, None, Some(&[[0.0, 0.0]]), None),
+        // Indices that are not a whole number of triangles.
+        4 => app.add_mesh_data(&tri, None, None, Some(&[0, 1])),
+        // Unindexed positions that are not a whole number of triangles.
+        5 => app.add_mesh_data(&tri[..2], None, None, None),
+        // No geometry at all.
+        _ => app.add_mesh_data(&[], None, None, None),
+    };
+    MESH_RESULT.store(handle.0, std::sync::atomic::Ordering::Relaxed);
+    sys::InitResult::Ok
+}
+
+/// Run one case and report whether the host accepted it.
+fn run_mesh_case(case: u32) -> (bool, usize) {
+    let mut app = test_app();
+    // `add_mesh_data` needs `Assets<Mesh>`, which `MinimalPlugins` has no reason
+    // to provide. Adding it directly keeps these tests about the ABI's
+    // validation rather than about bringing up a renderer.
+    app.init_resource::<Assets<Mesh>>();
+    MESH_CASE.store(case, std::sync::atomic::Ordering::Relaxed);
+    MESH_RESULT.store(u64::MAX, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), mesh_init),
+        sys::InitResult::Ok
+    );
+    let handle = sys::AssetHandle(MESH_RESULT.load(std::sync::atomic::Ordering::Relaxed));
+    let stored = app.world().resource::<Assets<Mesh>>().len();
+    (handle.is_valid(), stored)
+}
+
+#[test]
+fn generated_geometry_becomes_a_mesh_asset() {
+    let _guard = plugin_lock();
+    let (ok, stored) = run_mesh_case(0);
+    assert!(ok, "a valid triangle was refused");
+    assert_eq!(stored, 1, "the mesh was accepted but not stored");
+}
+
+/// The important one. An out-of-range index is not a soft failure downstream:
+/// wgpu reads past the vertex buffer and faults the process, taking the editor
+/// with it. It has to be caught before the mesh reaches the GPU.
+#[test]
+fn an_out_of_range_index_is_refused_rather_than_uploaded() {
+    let _guard = plugin_lock();
+    let (ok, stored) = run_mesh_case(1);
+    assert!(!ok, "an out-of-range index produced a mesh");
+    assert_eq!(stored, 0);
+}
+
+/// A short attribute array is refused, not padded. Padding renders with subtly
+/// wrong shading or UVs on the tail vertices, which is harder to notice — and
+/// harder to trace back — than getting nothing at all.
+#[test]
+fn an_attribute_count_that_disagrees_with_the_vertices_is_refused() {
+    let _guard = plugin_lock();
+    assert!(!run_mesh_case(2).0, "short normals were accepted");
+    assert!(!run_mesh_case(3).0, "short uvs were accepted");
+}
+
+/// Both the indexed and unindexed paths must be a whole number of triangles.
+#[test]
+fn a_partial_triangle_is_refused() {
+    let _guard = plugin_lock();
+    assert!(!run_mesh_case(4).0, "a partial indexed triangle was accepted");
+    assert!(!run_mesh_case(5).0, "a partial unindexed triangle was accepted");
+}
+
+#[test]
+fn geometry_with_no_positions_is_refused() {
+    let _guard = plugin_lock();
+    assert!(!run_mesh_case(6).0, "an empty mesh was accepted");
+}
+
+/// Omitting normals must *derive* them, not leave the attribute off — a mesh
+/// with no `ATTRIBUTE_NORMAL` fails pipeline specialization at draw time, which
+/// surfaces far from the plugin that caused it.
+#[test]
+fn omitted_normals_and_uvs_are_filled_in_by_the_host() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+    app.init_resource::<Assets<Mesh>>();
+    MESH_CASE.store(0, std::sync::atomic::Ordering::Relaxed);
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), mesh_init),
+        sys::InitResult::Ok
+    );
+    let meshes = app.world().resource::<Assets<Mesh>>();
+    let (_, mesh) = meshes.iter().next().expect("mesh was not stored");
+    assert!(
+        mesh.attribute(Mesh::ATTRIBUTE_NORMAL).is_some(),
+        "normals were neither supplied nor derived"
+    );
+    assert!(
+        mesh.attribute(Mesh::ATTRIBUTE_UV_0).is_some(),
+        "UVs were neither supplied nor defaulted"
+    );
+}

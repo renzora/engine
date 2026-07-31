@@ -1853,6 +1853,50 @@ impl App {
         unsafe { ((*self.ctx.iface).add_mesh)(self.ctx.host, &desc) }
     }
 
+    /// Create a mesh from geometry the plugin generated itself.
+    ///
+    /// This is what lets a plugin be more than a consumer of built-in shapes —
+    /// text meshes, procedural foliage, hair ribbons, water surfaces.
+    ///
+    /// ```ignore
+    /// // A quad. Normals and UVs derived by the host.
+    /// let quad = app.add_mesh_data(
+    ///     &[Vec3::new(-1.0, 0.0, -1.0), Vec3::new(1.0, 0.0, -1.0),
+    ///       Vec3::new(1.0, 0.0, 1.0),   Vec3::new(-1.0, 0.0, 1.0)],
+    ///     None, None,
+    ///     Some(&[0, 1, 2, 0, 2, 3]),
+    /// );
+    /// ```
+    ///
+    /// `normals` and `uvs` may be `None` — the host computes normals from the
+    /// faces and zeroes the UVs. `indices` may be `None` for an unindexed
+    /// triangle list, where every three positions form one face.
+    ///
+    /// Everything is copied before this returns, so the slices may be locals.
+    /// Anything inconsistent — an index past the end, a normal count that does
+    /// not match the vertices, a position count that is not a whole number of
+    /// triangles — is **refused**, returning an invalid handle and logging why,
+    /// rather than being padded or clamped into a mesh that renders subtly wrong.
+    pub fn add_mesh_data(
+        &mut self,
+        positions: &[Vec3],
+        normals: Option<&[Vec3]>,
+        uvs: Option<&[[f32; 2]]>,
+        indices: Option<&[u32]>,
+    ) -> sys::AssetHandle {
+        let desc = sys::MeshDataDesc {
+            positions: positions.as_ptr(),
+            position_count: positions.len(),
+            normals: normals.map_or(core::ptr::null(), |n| n.as_ptr()),
+            normal_count: normals.map_or(0, |n| n.len()),
+            uvs: uvs.map_or(core::ptr::null(), |u| u.as_ptr()),
+            uv_count: uvs.map_or(0, |u| u.len()),
+            indices: indices.map_or(core::ptr::null(), |i| i.as_ptr()),
+            index_count: indices.map_or(0, |i| i.len()),
+        };
+        unsafe { ((*self.ctx.iface).add_mesh_data)(self.ctx.host, &desc) }
+    }
+
     /// Create a standard PBR material. Init-only, like [`App::add_mesh`].
     pub fn add_material(&mut self, color: [f32; 4]) -> sys::AssetHandle {
         let desc = sys::MaterialDesc {

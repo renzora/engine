@@ -358,6 +358,7 @@ static IFACE: sys::Interface = sys::Interface {
     insert_resource,
     add_panel,
     set_field_range,
+    add_mesh_data,
 };
 
 
@@ -827,6 +828,131 @@ unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) 
         let mut store = ctx
             .world
             .get_resource_or_insert_with(PluginAssets::default);
+        store.meshes.push((owner, handle));
+        sys::AssetHandle((store.meshes.len() - 1) as u64)
+    })
+}
+
+/// Build a `Mesh` from plugin-generated vertex data.
+///
+/// Every slice is copied before this returns — the plugin may be pointing at
+/// stack locals — and every length is treated as untrusted, because these are
+/// raw pointers out of another compilation unit and a bad one is a read off the
+/// end of the plugin's heap, not a panic.
+unsafe extern "C" fn add_mesh_data(
+    host: *mut sys::Host,
+    desc: *const sys::MeshDataDesc,
+) -> sys::AssetHandle {
+    guard_host("add_mesh_data", sys::AssetHandle::INVALID, || {
+        let ctx = &mut *(host as *mut HostCtx);
+        let d = &*desc;
+
+        if d.positions.is_null() || d.position_count == 0 {
+            error!("[plugin] add_mesh_data with no positions");
+            return sys::AssetHandle::INVALID;
+        }
+        let positions: Vec<[f32; 3]> = std::slice::from_raw_parts(d.positions, d.position_count)
+            .iter()
+            .map(|v| [v.x, v.y, v.z])
+            .collect();
+
+        // Indices are validated against the vertex count rather than trusted.
+        // An out-of-range index is not a soft failure downstream: wgpu reads
+        // past the vertex buffer and the result is a GPU fault, which takes the
+        // whole process with it rather than this one mesh.
+        let indices: Option<Vec<u32>> = if d.indices.is_null() || d.index_count == 0 {
+            None
+        } else {
+            let raw = std::slice::from_raw_parts(d.indices, d.index_count);
+            if let Some(&bad) = raw.iter().find(|&&i| i as usize >= positions.len()) {
+                error!(
+                    "[plugin] add_mesh_data index {bad} is out of range for {} vertices — \
+                     refusing the mesh rather than letting the GPU read past the buffer",
+                    positions.len()
+                );
+                return sys::AssetHandle::INVALID;
+            }
+            if raw.len() % 3 != 0 {
+                error!(
+                    "[plugin] add_mesh_data got {} indices, which is not a whole number of \
+                     triangles",
+                    raw.len()
+                );
+                return sys::AssetHandle::INVALID;
+            }
+            Some(raw.to_vec())
+        };
+        if indices.is_none() && positions.len() % 3 != 0 {
+            error!(
+                "[plugin] add_mesh_data got {} unindexed positions, which is not a whole \
+                 number of triangles",
+                positions.len()
+            );
+            return sys::AssetHandle::INVALID;
+        }
+
+        // A short attribute array is refused rather than padded. Padding would
+        // hand back a mesh that renders with silently wrong shading or UVs on
+        // the tail vertices, which is harder to notice than nothing at all.
+        let normals: Option<Vec<[f32; 3]>> = if d.normals.is_null() || d.normal_count == 0 {
+            None
+        } else if d.normal_count != positions.len() {
+            error!(
+                "[plugin] add_mesh_data got {} normals for {} vertices",
+                d.normal_count,
+                positions.len()
+            );
+            return sys::AssetHandle::INVALID;
+        } else {
+            Some(
+                std::slice::from_raw_parts(d.normals, d.normal_count)
+                    .iter()
+                    .map(|v| [v.x, v.y, v.z])
+                    .collect(),
+            )
+        };
+        let uvs: Option<Vec<[f32; 2]>> = if d.uvs.is_null() || d.uv_count == 0 {
+            None
+        } else if d.uv_count != positions.len() {
+            error!(
+                "[plugin] add_mesh_data got {} uvs for {} vertices",
+                d.uv_count,
+                positions.len()
+            );
+            return sys::AssetHandle::INVALID;
+        } else {
+            Some(std::slice::from_raw_parts(d.uvs, d.uv_count).to_vec())
+        };
+
+        let mut mesh = Mesh::new(
+            bevy::render::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        // UVs before normals: `compute_normals` needs the indices in place but
+        // not the UVs, and inserting them first keeps the attribute set complete
+        // whichever branch runs.
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_UV_0,
+            uvs.unwrap_or_else(|| vec![[0.0, 0.0]; mesh.count_vertices()]),
+        );
+        if let Some(indices) = indices {
+            mesh.insert_indices(bevy::render::mesh::Indices::U32(indices));
+        }
+        match normals {
+            Some(n) => mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, n),
+            // Bevy's own derivation, so a plugin that skips normals gets the
+            // same shading an engine crate would have produced by hand.
+            None => mesh.compute_normals(),
+        }
+
+        let Some(mut meshes) = ctx.world.get_resource_mut::<Assets<Mesh>>() else {
+            warn!("[plugin] add_mesh_data ignored — this build has no renderer");
+            return sys::AssetHandle::INVALID;
+        };
+        let handle = meshes.add(mesh);
+        let owner = ctx.slot;
+        let mut store = ctx.world.get_resource_or_insert_with(PluginAssets::default);
         store.meshes.push((owner, handle));
         sys::AssetHandle((store.meshes.len() - 1) as u64)
     })
