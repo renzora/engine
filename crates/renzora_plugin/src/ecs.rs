@@ -1611,6 +1611,41 @@ impl Meshes<'_> {
     }
 }
 
+/// Replaces the pixels of images the plugin created.
+///
+/// The counterpart to [`App::add_image`], which is init-only. A simulation that
+/// steps a heightfield every frame — the main reason a plugin wants a texture at
+/// all — writes through this.
+pub struct Images<'a> {
+    src: *mut sys::ImageSource,
+    _p: PhantomData<&'a ()>,
+}
+
+impl Images<'_> {
+    /// Overwrite `handle`'s pixels.
+    ///
+    /// `data` must match the image's existing byte count exactly; dimensions and
+    /// format are fixed at creation. A mismatch is refused and the previous
+    /// pixels are left alone, so a bad frame shows the last good texture rather
+    /// than garbage.
+    pub fn write(&self, handle: sys::AssetHandle, data: &[u8]) -> bool {
+        if self.src.is_null() {
+            return false;
+        }
+        unsafe { ((*self.src).write)(self.src, handle, data.as_ptr(), data.len()) }
+    }
+}
+
+unsafe impl SystemParam for Images<'_> {
+    fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
+        Images {
+            src: (*call).images,
+            _p: PhantomData,
+        }
+    }
+}
+
 unsafe impl SystemParam for Meshes<'_> {
     fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
     unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
@@ -2048,6 +2083,31 @@ impl App {
         unsafe { ((*self.ctx.iface).add_mesh)(self.ctx.host, &desc) }
     }
 
+    /// Upload an image the plugin generated.
+    ///
+    /// `data` must be exactly `width * height * bytes_per_pixel` — a short
+    /// buffer is refused, not padded, because uploading one as a full texture
+    /// reads past the plugin's heap into a GPU transfer.
+    ///
+    /// Init-only, like the other asset constructors. Contents can be replaced
+    /// from a system with [`Images::write`]; dimensions and format cannot.
+    pub fn add_image(
+        &mut self,
+        width: u32,
+        height: u32,
+        format: sys::ImageFormat,
+        data: &[u8],
+    ) -> sys::AssetHandle {
+        let desc = sys::ImageDesc {
+            width,
+            height,
+            format,
+            data: data.as_ptr(),
+            data_len: data.len(),
+        };
+        unsafe { ((*self.ctx.iface).add_image)(self.ctx.host, &desc) }
+    }
+
     /// Register a custom shaded material, driven by one of the plugin's own
     /// components.
     ///
@@ -2074,6 +2134,7 @@ impl App {
         id: &'static str,
         wgsl: &'static str,
         alpha_mode: sys::AlphaMode,
+        textures: &[sys::AssetHandle],
     ) -> sys::AssetHandle {
         let settings = self.ctx.id_of::<T>();
         let desc = sys::MaterialShaderDesc {
@@ -2082,6 +2143,8 @@ impl App {
             settings,
             settings_size: core::mem::size_of::<T>() as u64,
             alpha_mode,
+            textures: textures.as_ptr(),
+            texture_count: textures.len(),
         };
         unsafe { ((*self.ctx.iface).add_material_shader)(self.ctx.host, &desc) }
     }

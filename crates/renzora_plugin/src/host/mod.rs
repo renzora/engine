@@ -363,6 +363,7 @@ static IFACE: sys::Interface = sys::Interface {
     set_field_range,
     add_mesh_data,
     add_material_shader,
+    add_image,
 };
 
 
@@ -790,6 +791,8 @@ unsafe extern "C" fn add_system(
 /// for cleanup.
 #[derive(Resource, Default)]
 pub struct PluginAssets {
+    /// Images a plugin created, by the handle index it was given.
+    pub images: Vec<(usize, Handle<Image>)>,
     /// `(owning slot, handle)`. The owner is what lets a reload drop only its own
     /// meshes — the strong handle here is usually the only one, so dropping it is
     /// what actually frees the GPU memory.
@@ -865,6 +868,72 @@ unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) 
 /// stack locals — and every length is treated as untrusted, because these are
 /// raw pointers out of another compilation unit and a bad one is a read off the
 /// end of the plugin's heap, not a panic.
+/// Validate a plugin image descriptor and turn it into pixel bytes.
+///
+/// The length check is the whole point: a buffer shorter than the dimensions
+/// claim would be uploaded as a full texture, reading past the plugin's heap
+/// straight into a GPU transfer. Refused rather than padded.
+unsafe fn image_bytes(d: &sys::ImageDesc) -> Option<(Vec<u8>, bevy::render::render_resource::TextureFormat)> {
+    use bevy::render::render_resource::TextureFormat;
+    if !d.format.is_known() {
+        error!("[plugin] image format {} is not one this build has", d.format.0);
+        return None;
+    }
+    if d.width == 0 || d.height == 0 {
+        error!("[plugin] image is {}x{}", d.width, d.height);
+        return None;
+    }
+    let expected = d.width as usize * d.height as usize * d.format.bytes_per_pixel();
+    if d.data.is_null() || d.data_len != expected {
+        error!(
+            "[plugin] image is {}x{} {:?}, which needs {expected} bytes; got {}",
+            d.width, d.height, d.format, d.data_len
+        );
+        return None;
+    }
+    let format = match d.format {
+        sys::ImageFormat::Rgba8Srgb => TextureFormat::Rgba8UnormSrgb,
+        sys::ImageFormat::Rgba8 => TextureFormat::Rgba8Unorm,
+        _ => TextureFormat::R32Float,
+    };
+    Some((std::slice::from_raw_parts(d.data, d.data_len).to_vec(), format))
+}
+
+unsafe extern "C" fn add_image(
+    host: *mut sys::Host,
+    desc: *const sys::ImageDesc,
+) -> sys::AssetHandle {
+    guard_host("add_image", sys::AssetHandle::INVALID, || {
+        use bevy::image::Image;
+        use bevy::render::render_resource::{Extent3d, TextureDimension};
+        let ctx = &mut *(host as *mut HostCtx);
+        let d = &*desc;
+        let Some((data, format)) = image_bytes(d) else {
+            return sys::AssetHandle::INVALID;
+        };
+        let image = Image::new(
+            Extent3d {
+                width: d.width,
+                height: d.height,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            data,
+            format,
+            bevy::asset::RenderAssetUsages::default(),
+        );
+        let Some(mut images) = ctx.world.get_resource_mut::<Assets<Image>>() else {
+            warn!("[plugin] add_image ignored — this build has no renderer");
+            return sys::AssetHandle::INVALID;
+        };
+        let handle = images.add(image);
+        let owner = ctx.slot;
+        let mut store = ctx.world.get_resource_or_insert_with(PluginAssets::default);
+        store.images.push((owner, handle));
+        sys::AssetHandle((store.images.len() - 1) as u64)
+    })
+}
+
 /// Validate plugin-supplied geometry and build a `Mesh`.
 ///
 /// Shared by `add_mesh_data` (init) and `MeshSource::write` (per frame) so the
@@ -1107,6 +1176,56 @@ unsafe extern "C" fn http_poll(
     if consuming {
         inbox.0.remove(at);
     }
+    true
+}
+
+/// Backs [`sys::ImageSource`] for one system call.
+#[repr(C)]
+struct ImageSourceImpl<'a> {
+    src: sys::ImageSource,
+    assets: Option<&'a mut Assets<Image>>,
+    /// Slot table, so `write` can resolve a handle the plugin got at init.
+    store: Option<&'a PluginAssets>,
+}
+
+/// Replace a plugin image's pixels from inside a system.
+///
+/// Dimensions and format are fixed at creation, so only the byte count is
+/// re-checked — a wrong length here would be the same heap over-read
+/// `add_image` refuses, just arriving a frame later.
+unsafe extern "C" fn image_write(
+    src: *mut sys::ImageSource,
+    handle: sys::AssetHandle,
+    data: *const u8,
+    len: usize,
+) -> bool {
+    let me = &mut *(src as *mut ImageSourceImpl);
+    let Some(store) = me.store else {
+        return false;
+    };
+    let Some((_, target)) = store.images.get(handle.0 as usize).cloned() else {
+        error!("[plugin] image write named slot {}, which was never created", handle.0);
+        return false;
+    };
+    let Some(assets) = me.assets.as_deref_mut() else {
+        return false;
+    };
+    let Some(mut image) = assets.get_mut(&target) else {
+        return false;
+    };
+    let Some(existing) = image.data.as_mut() else {
+        return false;
+    };
+    if data.is_null() || len != existing.len() {
+        error!(
+            "[plugin] image write is {len} bytes; this image is {}",
+            existing.len()
+        );
+        return false;
+    }
+    // Written in place rather than by replacing the `Image`: the asset keeps its
+    // descriptor, and only the pixel upload is redone.
+    existing.copy_from_slice(std::slice::from_raw_parts(data, len));
     true
 }
 
@@ -1775,6 +1894,8 @@ pub struct PendingMaterial {
     pub settings: ComponentId,
     pub settings_size: u64,
     pub alpha_mode: sys::AlphaMode,
+    /// Images the material binds, already resolved to real handles.
+    pub textures: Vec<Handle<Image>>,
     /// Index into `PluginAssets::materials`, so a spawn can name it like any
     /// other material handle.
     pub slot: usize,
@@ -1818,6 +1939,35 @@ unsafe extern "C" fn add_material_shader(
             return sys::AssetHandle::INVALID;
         }
 
+        if desc.texture_count > sys::MAX_MATERIAL_TEXTURES {
+            error!(
+                "[plugin] material `{id}` binds {} textures; the cap is {}",
+                desc.texture_count,
+                sys::MAX_MATERIAL_TEXTURES
+            );
+            return sys::AssetHandle::INVALID;
+        }
+        // Resolved now rather than stored as indices: the bridge builds the
+        // asset later and would otherwise have to reach back into the slot
+        // table, which a reload may have reordered.
+        let mut textures = Vec::with_capacity(desc.texture_count);
+        if desc.texture_count > 0 && !desc.textures.is_null() {
+            let slots = std::slice::from_raw_parts(desc.textures, desc.texture_count);
+            let store = ctx.world.get_resource::<PluginAssets>();
+            for slot in slots {
+                match store.and_then(|s| s.images.get(slot.0 as usize)).cloned() {
+                    Some((_, h)) => textures.push(h),
+                    None => {
+                        error!(
+                            "[plugin] material `{id}` names image slot {}, which was never created",
+                            slot.0
+                        );
+                        return sys::AssetHandle::INVALID;
+                    }
+                }
+            }
+        }
+
         let shader = Shader::from_wgsl(desc.wgsl.as_str().to_string(), id.clone());
         let Some(mut shaders) = ctx.world.get_resource_mut::<Assets<Shader>>() else {
             warn!("[plugin] material `{id}` ignored — this build has no renderer");
@@ -1846,6 +1996,7 @@ unsafe extern "C" fn add_material_shader(
                 settings: ComponentId::new(desc.settings.0 as usize),
                 settings_size: desc.settings_size,
                 alpha_mode: desc.alpha_mode,
+                textures,
                 slot,
             });
         sys::AssetHandle(slot as u64)
@@ -2328,6 +2479,8 @@ fn build_dispatcher(
         // The slot table, so `MeshSource::write` can resolve a handle the
         // plugin was handed at init.
         ParamBuilder::of::<Option<Res<PluginAssets>>>(),
+        // Pixel writes for plugin-created images.
+        ParamBuilder::of::<Option<ResMut<Assets<Image>>>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
@@ -2338,7 +2491,8 @@ fn build_dispatcher(
                             mut mesh_assets: Option<ResMut<Assets<Mesh>>>,
                             mesh_handles: Query<&Mesh3d>,
                             http_inbox: Option<ResMut<PluginHttpInbox>>,
-                            plugin_assets: Option<Res<PluginAssets>>| {
+                            plugin_assets: Option<Res<PluginAssets>>,
+                            mut image_assets: Option<ResMut<Assets<Image>>>| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -2427,6 +2581,11 @@ fn build_dispatcher(
                 src: sys::HttpSource { poll: http_poll },
                 inbox: http_inbox.map(|i| i.into_inner()),
             };
+            let mut image_src = ImageSourceImpl {
+                src: sys::ImageSource { write: image_write },
+                assets: image_assets.as_deref_mut(),
+                store: plugin_assets.as_deref(),
+            };
             let mut mesh_src = MeshSourceImpl {
                 src: sys::MeshSource { read: mesh_read, write: mesh_write },
                 assets: mesh_assets.as_deref_mut(),
@@ -2467,6 +2626,7 @@ fn build_dispatcher(
                     .as_ref()
                     .map_or(core::ptr::null(), |i| &i.0 as *const sys::InputState),
                 meshes: (&mut mesh_src as *mut MeshSourceImpl).cast(),
+                images: (&mut image_src as *mut ImageSourceImpl).cast(),
                 http: (&mut http_src as *mut HttpSourceImpl).cast(),
             };
 

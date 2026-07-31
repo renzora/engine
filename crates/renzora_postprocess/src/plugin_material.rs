@@ -63,6 +63,8 @@ pub struct PluginMaterial {
     /// Component the bytes come from — read by `collect_material_settings`,
     /// never by the GPU.
     pub settings: ComponentId,
+    /// Bound from `@group(2) @binding(1)` upward, each followed by its sampler.
+    pub textures: Vec<Handle<Image>>,
 }
 
 /// Per-instance pipeline key: the shader to specialize to.
@@ -73,11 +75,16 @@ pub struct PluginMaterial {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PluginMaterialKey {
     shader: Handle<Shader>,
+    /// Part of the key because the layout depends on it: two materials binding
+    /// different numbers of textures cannot share a pipeline.
+    texture_count: usize,
 }
 
 impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
     type Data = PluginMaterialKey;
-    type Param = ();
+    type Param = bevy::ecs::system::lifetimeless::SRes<
+        bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>,
+    >;
 
     fn label() -> &'static str {
         "plugin_material"
@@ -88,6 +95,7 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
     fn bind_group_data(&self) -> Self::Data {
         PluginMaterialKey {
             shader: self.shader.clone(),
+            texture_count: self.textures.len(),
         }
     }
 
@@ -95,7 +103,7 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
         &self,
         _layout: &BindGroupLayout,
         render_device: &RenderDevice,
-        _param: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
+        param: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
         _force_no_bindless: bool,
     ) -> Result<UnpreparedBindGroup, AsBindGroupError> {
         use bevy::render::render_resource::{BufferInitDescriptor, BufferUsages};
@@ -104,8 +112,35 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
             contents: &self.uniform,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
+        let mut bindings = vec![(0, OwnedBindingResource::Buffer(buffer))];
+
+        // Texture then sampler, from binding 1 upward. `RetryNextUpdate` rather
+        // than an error when an image has not reached the GPU yet: that is the
+        // normal state for the first frames after creation, and failing outright
+        // would drop the material permanently.
+        for (i, handle) in self.textures.iter().enumerate() {
+            let Some(gpu) = param.get(handle) else {
+                return Err(AsBindGroupError::RetryNextUpdate);
+            };
+            let base = 1 + i as u32 * 2;
+            bindings.push((
+                base,
+                OwnedBindingResource::TextureView(
+                    // Always 2D: `add_image` only creates `TextureDimension::D2`.
+                    bevy::render::render_resource::TextureViewDimension::D2,
+                    gpu.texture_view.clone(),
+                ),
+            ));
+            bindings.push((
+                base + 1,
+                OwnedBindingResource::Sampler(
+                    bevy::render::render_resource::SamplerBindingType::Filtering,
+                    gpu.sampler.clone(),
+                ),
+            ));
+        }
         Ok(UnpreparedBindGroup {
-            bindings: BindingResources(vec![(0, OwnedBindingResource::Buffer(buffer))]),
+            bindings: BindingResources(bindings),
         })
     }
 
@@ -113,13 +148,33 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
         _render_device: &RenderDevice,
         _force_no_bindless: bool,
     ) -> Vec<BindGroupLayoutEntry> {
-        use bevy::render::render_resource::binding_types::uniform_buffer_sized;
-        use bevy::render::render_resource::BindGroupLayoutEntries;
-        BindGroupLayoutEntries::single(
+        use bevy::render::render_resource::binding_types::{
+            sampler, texture_2d, uniform_buffer_sized,
+        };
+        use bevy::render::render_resource::{
+            BindGroupLayoutEntries, SamplerBindingType, TextureSampleType,
+        };
+        // The layout is fixed for the shared material type, so it always
+        // declares the maximum. A material binding fewer textures simply leaves
+        // the tail unbound — which wgpu allows, and which is the same trade the
+        // uniform cap makes.
+        let mut entries = BindGroupLayoutEntries::single(
             ShaderStages::VERTEX_FRAGMENT,
             uniform_buffer_sized(false, core::num::NonZeroU64::new(MATERIAL_UNIFORM_CAP)),
         )
-        .to_vec()
+        .to_vec();
+        for i in 0..renzora_plugin::sys::MAX_MATERIAL_TEXTURES {
+            let base = 1 + i as u32 * 2;
+            let mut t = texture_2d(TextureSampleType::Float { filterable: true })
+                .build(base, ShaderStages::VERTEX_FRAGMENT);
+            t.binding = base;
+            entries.push(t);
+            let mut sm = sampler(SamplerBindingType::Filtering)
+                .build(base + 1, ShaderStages::VERTEX_FRAGMENT);
+            sm.binding = base + 1;
+            entries.push(sm);
+        }
+        entries
     }
 }
 
@@ -183,6 +238,7 @@ pub fn build_plugin_materials(app: &mut App) {
                 shader: m.shader.clone(),
                 settings_size: (m.settings_size as usize).min(MATERIAL_UNIFORM_CAP as usize),
                 uniform: [0; MATERIAL_UNIFORM_CAP as usize],
+                textures: m.textures.clone(),
                 alpha_mode: match m.alpha_mode {
                     renzora_plugin::sys::AlphaMode::Mask => AlphaMode::Mask(0.5),
                     renzora_plugin::sys::AlphaMode::Blend => AlphaMode::Blend,

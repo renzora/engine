@@ -110,6 +110,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 7 -> 8 appended `SystemCall::http`.
 /// 8 -> 9 appended `add_material_shader`.
 /// 9 -> 10 appended `MeshSource::write`.
+/// 10 -> 11 appended `add_image`, `SystemCall::images`, and material textures.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -117,7 +118,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 10;
+pub const VERSION_MINOR: u32 = 11;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -872,6 +873,9 @@ pub struct SystemCall {
     /// runs. Same shape as [`commands`](Self::commands): created for the call,
     /// dead when it returns.
     pub meshes: *mut MeshSource,
+    /// Replaces the pixels of plugin-created images. Null if the host could not
+    /// provide one (no renderer).
+    pub images: *mut ImageSource,
     /// Delivers completed HTTP responses. Null if the host has no HTTP.
     ///
     /// Appended at the END, like [`input`](Self::input) and
@@ -1551,6 +1555,99 @@ pub struct MeshDataDesc {
     pub index_count: usize,
 }
 
+/// Pixel layout of a plugin-created image.
+///
+/// A deliberately short list. Every format here has to be one the host can
+/// validate a byte count against and one wgpu will accept as a sampled texture
+/// on every backend — widening it later is additive, guessing now is not.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImageFormat(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl ImageFormat {
+    /// 8-bit RGBA, colour data. Sampled through sRGB decode — the right choice
+    /// for anything an artist authored.
+    pub const Rgba8Srgb: Self = Self(0);
+    /// 8-bit RGBA, raw values. For data an artist did not author: masks,
+    /// normal maps, packed channels.
+    pub const Rgba8: Self = Self(1);
+    /// Single-channel 32-bit float. Heightfields, distance fields, simulation
+    /// state a plugin steps each frame.
+    pub const R32Float: Self = Self(2);
+
+    pub const fn is_known(self) -> bool {
+        self.0 < 3
+    }
+
+    /// Bytes per pixel, used to check a plugin's buffer against its dimensions.
+    pub const fn bytes_per_pixel(self) -> usize {
+        match self.0 {
+            0 | 1 => 4,
+            2 => 4,
+            _ => 0,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Rgba8Srgb",
+            1 => "Rgba8",
+            2 => "R32Float",
+            _ => "?",
+        }
+    }
+}
+
+impl core::fmt::Debug for ImageFormat {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+/// An image a plugin generated, for [`Interface::add_image`].
+///
+/// `data` is borrowed for the call only — the host copies it before returning —
+/// so a plugin may point at a buffer it drops immediately after.
+#[repr(C)]
+pub struct ImageDesc {
+    pub width: u32,
+    pub height: u32,
+    pub format: ImageFormat,
+    pub data: *const u8,
+    /// Must be exactly `width * height * format.bytes_per_pixel()`. A mismatch
+    /// is refused rather than padded: a short buffer uploaded as a full texture
+    /// is a read past the plugin's heap into a GPU upload.
+    pub data_len: usize,
+}
+
+/// Replaces the pixels of an image already created, during one system call.
+///
+/// Same shape and same reason as [`MeshSource`]: [`Interface::add_image`] needs
+/// the init-time host handle, so without this a plugin could generate a texture
+/// once and never again — and a simulation that steps a heightfield every frame
+/// is the main thing textures are for on this side.
+#[repr(C)]
+pub struct ImageSource {
+    /// Overwrite `handle`'s pixels. The dimensions and format are fixed at
+    /// creation; only the contents change, so `len` must still match.
+    ///
+    /// Returns `false` if the handle is unknown or the length is wrong, leaving
+    /// the existing pixels untouched.
+    pub write: unsafe extern "C" fn(
+        src: *mut ImageSource,
+        handle: AssetHandle,
+        data: *const u8,
+        len: usize,
+    ) -> bool,
+}
+
+/// Textures a material binds, beyond its uniform block.
+///
+/// Bound from `@group(2) @binding(1)` upward, each texture followed by its
+/// sampler — so the first is `1`/`2`, the second `3`/`4`, and so on.
+pub const MAX_MATERIAL_TEXTURES: usize = 4;
+
 /// How a custom material blends.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -1603,6 +1700,17 @@ pub struct MaterialShaderDesc {
     /// Size of that component. Refused above [`MATERIAL_UNIFORM_CAP`].
     pub settings_size: u64,
     pub alpha_mode: AlphaMode,
+    /// Handles from [`Interface::add_image`], bound from `@group(2) @binding(1)`
+    /// upward with each texture followed by its sampler. Null for none.
+    ///
+    /// Fixed at registration rather than per-instance, because the bind-group
+    /// layout is decided once for the shared material type — the same
+    /// constraint that fixes the uniform size. A material that needs its
+    /// texture to change writes new pixels into the same handle with
+    /// [`ImageSource::write`] instead of swapping the binding.
+    pub textures: *const AssetHandle,
+    /// Refused above [`MAX_MATERIAL_TEXTURES`].
+    pub texture_count: usize,
 }
 
 #[repr(C)]
@@ -1989,6 +2097,16 @@ pub struct Interface {
         field: usize,
         range: *const FieldRange,
     ) -> RegisterStatus,
+
+    /// Upload an image a plugin generated. See [`ImageDesc`].
+    ///
+    /// Init-only, like the other asset constructors — it needs the `Host`
+    /// handle. Contents can be replaced from a system with
+    /// [`ImageSource::write`]; dimensions and format cannot.
+    pub add_image: unsafe extern "C" fn(
+        host: *mut Host,
+        desc: *const ImageDesc,
+    ) -> AssetHandle,
 
     /// Register a custom shaded material. See [`MaterialShaderDesc`].
     ///
