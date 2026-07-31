@@ -1,0 +1,24 @@
+[workspace]
+
+[package]
+name = "text3d"
+version = "0.1.0"
+edition = "2021"
+description = "3D text: real triangulated glyph geometry from a font outline, optionally extruded."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# `anim`-style domain features are not needed here; the component's string
+# fields are part of the core surface.
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+# Both are plain Rust with no Bevy anywhere near them, which is why the mesh
+# half of the original crate ported and the SDF half did not.
+ttf-parser = "0.25"
+lyon_tessellation = "1.0"
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"
