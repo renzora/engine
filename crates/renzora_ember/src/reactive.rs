@@ -769,12 +769,31 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
             {
                 let mut commands = Commands::new(&mut queue, world);
                 for (i, &(key, hash)) in snap.items.iter().enumerate() {
-                    match kl.current.get(&key) {
-                        Some(&(h, e)) if h == hash => {
+                    // A tracked row is reusable only if it is BOTH unchanged and
+                    // still ALIVE. The liveness half is not paranoia: the two
+                    // arms below already say a tracked row may have been
+                    // despawned by another rebuild path and its slot reused, and
+                    // that applies just as much to a row whose hash did not
+                    // change. Pushing a dead entity into `ordered` used to reach
+                    // `replace_children`, which — unlike `try_despawn` — has no
+                    // fallible variant, so it surfaced as a bare "entity is
+                    // invalid; its index now has generation N" warning naming a
+                    // command the log could not even name.
+                    //
+                    // Filtering here rather than filtering `ordered` afterwards,
+                    // because a vanished row must be REBUILT (it falls through to
+                    // the `None` arm) rather than silently dropped from the list.
+                    let tracked = kl
+                        .current
+                        .get(&key)
+                        .copied()
+                        .filter(|&(_, e)| world.get_entity(e).is_ok());
+                    match tracked {
+                        Some((h, e)) if h == hash => {
                             next.insert(key, (h, e));
                             ordered.push(e);
                         }
-                        Some(&(_, old)) => {
+                        Some((_, old)) => {
                             // `try_despawn`: the tracked row may already be gone
                             // (its slot despawned + reused by another rebuild path
                             // → a generation mismatch), and a plain `despawn` would
