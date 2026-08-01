@@ -822,6 +822,41 @@ pub enum MaterialSlot {
 #[derive(Resource, Clone, Copy)]
 pub struct CustomMaterialApplier(pub fn(&mut World, Entity, usize));
 
+/// Put a resolved [`MaterialSlot`] on an entity.
+///
+/// Shared by `SpawnMesh` and `SetMaterial` so the two cannot drift — the custom
+/// branch in particular is easy to get subtly wrong, and having it written twice
+/// is how one of them ends up missing the applier check.
+///
+/// `what` names the calling command, so the error says which one a plugin got
+/// wrong rather than leaving the author to guess.
+fn attach_material(
+    world: &mut World,
+    entity: Entity,
+    slot: MaterialSlot,
+    index: usize,
+    what: &str,
+) {
+    match slot {
+        MaterialSlot::Standard(handle) => {
+            if let Ok(mut e) = world.get_entity_mut(entity) {
+                e.insert(MeshMaterial3d(handle));
+            }
+        }
+        // The asset's Rust type lives in the render bridge, so attaching it goes
+        // back out through the applier the bridge registered. Absent in a build
+        // with no renderer, where the entity ends up unmaterialed rather than
+        // wrong.
+        MaterialSlot::Custom => match world.get_resource::<CustomMaterialApplier>().copied() {
+            Some(apply) => (apply.0)(world, entity, index),
+            None => error!(
+                "[plugin] {what} used a custom material but nothing registered a \
+                 `CustomMaterialApplier`"
+            ),
+        },
+    }
+}
+
 unsafe extern "C" fn add_mesh(host: *mut sys::Host, desc: *const sys::MeshDesc) -> sys::AssetHandle {
     guard_host("add_mesh", sys::AssetHandle::INVALID, || {
         let ctx = &mut *(host as *mut HostCtx);
@@ -1493,27 +1528,27 @@ fn apply_queued(commands: &mut Commands, queued: Vec<(sys::Command, Vec<u8>)>) {
                     if let Ok(mut e) = world.get_entity_mut(entity) {
                         e.insert((Mesh3d(mesh), from_mirror(&d.transform)));
                     }
-                    match material {
-                        MaterialSlot::Standard(handle) => {
-                            if let Ok(mut e) = world.get_entity_mut(entity) {
-                                e.insert(MeshMaterial3d(handle));
-                            }
-                        }
-                        // The asset's Rust type lives in the render bridge, so
-                        // attaching it goes back out through the applier the
-                        // bridge registered. Absent in a build with no renderer,
-                        // where the mesh spawns unmaterialed rather than wrong.
-                        MaterialSlot::Custom => {
-                            let slot = d.material.0 as usize;
-                            match world.get_resource::<CustomMaterialApplier>().copied() {
-                                Some(apply) => (apply.0)(world, entity, slot),
-                                None => error!(
-                                    "[plugin] spawn_mesh used a custom material but nothing \
-                                     registered a `CustomMaterialApplier`"
-                                ),
-                            }
-                        }
-                    }
+                    attach_material(world, entity, material, d.material.0 as usize, "spawn_mesh");
+                });
+            }
+            sys::CommandKind::SetMaterial => {
+                if data.len() < size_of::<sys::SpawnMeshDesc>() {
+                    continue;
+                }
+                // SAFETY: pushed by `set_material`, which writes exactly one.
+                // Only `material` is read; the struct is shared with SpawnMesh.
+                let d = unsafe { *data.as_ptr().cast::<sys::SpawnMeshDesc>() };
+                commands.queue(move |world: &mut World| {
+                    let index = d.material.0 as usize;
+                    let Some(slot) = world
+                        .get_resource::<PluginAssets>()
+                        .and_then(|store| store.materials.get(index))
+                        .map(|(_, slot)| slot.clone())
+                    else {
+                        error!("[plugin] set_material used an unknown material handle");
+                        return;
+                    };
+                    attach_material(world, entity, slot, index, "set_material");
                 });
             }
             sys::CommandKind::Insert => {

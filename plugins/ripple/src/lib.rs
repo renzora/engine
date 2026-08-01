@@ -17,8 +17,9 @@
 //!
 //! ## Reading the result
 //!
-//! Add **Ripple** to any entity. It becomes a two-metre plane showing coloured
-//! rings travelling outwards over a drifting plasma.
+//! Add **Ripple** to any entity. Geometry that already has a mesh keeps its
+//! shape and only changes material; anything else becomes a two-metre plane. You
+//! get coloured rings travelling outwards over a drifting plasma either way.
 //!
 //! | What you see | What is wrong |
 //! |---|---|
@@ -123,18 +124,37 @@ static TEXTURE: AtomicU64 = AtomicU64::new(u64::MAX);
 /// Absence of a `_ready` flag is the trigger, since there is no `Added<T>` across
 /// the boundary. Re-issuing `make_renderable` every frame would work and cost a
 /// command per entity per frame; the flag is what makes it once.
-fn apply(mut q: Query<(Entity, &mut Ripple, &Transform)>, mut commands: Commands) {
+fn apply(
+    mut has_mesh: Query<(Entity, &mut Ripple), With<Mesh3d>>,
+    mut bare: Query<(Entity, &mut Ripple, &Transform), Without<Mesh3d>>,
+    mut commands: Commands,
+) {
     let mesh = AssetHandle(MESH.load(Ordering::Relaxed));
     let material = AssetHandle(MATERIAL.load(Ordering::Relaxed));
-    for (entity, ripple, transform) in &mut q {
+
+    // Geometry that already exists keeps its shape, its placement and everything
+    // else about it — only the material changes. This is the case worth having:
+    // a custom shader on an imported model, which is what `set_material` was
+    // added for.
+    for (entity, ripple) in &mut has_mesh {
         if ripple._ready != 0.0 {
             continue;
         }
         ripple._ready = 1.0;
-        // The transform passed back is the one just read. `make_renderable` sets
-        // all three of mesh, material and transform, so handing it a default
-        // would teleport the entity to the origin — which it did, until an
-        // afternoon of watching cubes jump proved the point.
+        commands.entity(entity).set_material(material);
+    }
+
+    // Nothing to shade, so supply something. An empty entity with a material and
+    // no mesh draws nothing at all, which reads as the plugin being broken.
+    //
+    // The transform passed back is the one just read: `make_renderable` sets all
+    // three of mesh, material and transform, so handing it a default would
+    // teleport the entity to the origin.
+    for (entity, ripple, transform) in &mut bare {
+        if ripple._ready != 0.0 {
+            continue;
+        }
+        ripple._ready = 1.0;
         commands
             .entity(entity)
             .make_renderable(mesh, material, *transform);

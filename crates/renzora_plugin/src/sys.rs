@@ -111,6 +111,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 8 -> 9 appended `add_material_shader`.
 /// 9 -> 10 appended `MeshSource::write`.
 /// 10 -> 11 appended `add_image`, `SystemCall::images`, and material textures.
+/// 11 -> 12 appended `CommandKind::SetMaterial`.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -118,7 +119,7 @@ pub const VERSION_MAJOR: u32 = 2;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 11;
+pub const VERSION_MINOR: u32 = 12;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1810,11 +1811,26 @@ impl CommandKind {
     /// discarded each frame, which is the right outcome for a dedicated server
     /// or a lean export that dropped the crate in question.
     pub const Service: Self = Self(5);
+    /// Replace `entity`'s material, leaving its mesh and transform alone.
+    /// `data` holds a [`SpawnMeshDesc`], of which only `material` is read.
+    ///
+    /// [`SpawnMesh`](Self::SpawnMesh) could not do this. It sets all three of
+    /// mesh, material and transform, so a plugin wanting to shade geometry
+    /// somebody else authored had to supply a mesh it did not have — and could
+    /// not get, since `Mesh3d` is deliberately opaque and hands back no handle
+    /// to pass through. The result was that a plugin material only ever worked
+    /// on shapes the plugin spawned itself, which is most of the way to useless:
+    /// the interesting case is a custom shader on an imported model.
+    ///
+    /// Reuses `SpawnMeshDesc` rather than defining a one-field struct, so the
+    /// two commands stay obviously related and there is one less layout to keep
+    /// frozen forever.
+    pub const SetMaterial: Self = Self(6);
 
     /// Whether this is a value this build knows. Anything else came from a
     /// plugin built against a newer ABI.
     pub const fn is_known(self) -> bool {
-        self.0 < 6
+        self.0 < 7
     }
 
     /// The variant name, or `"?"` for a value from a newer ABI.
@@ -1826,6 +1842,7 @@ impl CommandKind {
             3 => "SpawnMesh",
             4 => "SpawnBsn",
             5 => "Service",
+            6 => "SetMaterial",
             _ => "?",
         }
     }

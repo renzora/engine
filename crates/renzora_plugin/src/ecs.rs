@@ -1253,6 +1253,46 @@ impl<'a> EntityCommands<'a> {
         self
     }
 
+    /// Replace this entity's material, keeping its mesh and transform.
+    ///
+    /// The counterpart to [`Self::make_renderable`], and the one to reach for
+    /// when the geometry is not yours: an imported model, a shape the user
+    /// authored, anything already in the scene.
+    ///
+    /// ```ignore
+    /// fn shade(q: Query<Entity, (With<Glow>, With<Mesh3d>)>, mut commands: Commands) {
+    ///     for e in &q {
+    ///         commands.entity(e).set_material(handle);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Filter on [`Mesh3d`] as above unless you know the entity has one. A
+    /// material on an entity with no mesh is not an error and draws nothing — it
+    /// just sits there, which is a confusing thing to debug.
+    pub fn set_material(&mut self, material: sys::AssetHandle) -> &mut Self {
+        if self.sink.is_null() {
+            return self;
+        }
+        // Only `material` is read. Sharing the struct with `make_renderable`
+        // keeps the two commands visibly the same shape, and the unread fields
+        // cost six words on a path that runs once per entity, not per frame.
+        let desc = sys::SpawnMeshDesc {
+            mesh: sys::AssetHandle::INVALID,
+            material,
+            transform: Transform::default(),
+        };
+        let cmd = sys::Command {
+            kind: sys::CommandKind::SetMaterial,
+            entity: self.id,
+            component: sys::ComponentId::INVALID,
+            data: (&desc as *const sys::SpawnMeshDesc).cast(),
+            data_len: core::mem::size_of::<sys::SpawnMeshDesc>(),
+        };
+        unsafe { ((*self.sink).push)(self.sink, &cmd) };
+        self
+    }
+
     pub fn remove<T: Component>(&mut self) -> &mut Self {
         if self.sink.is_null() {
             return self;

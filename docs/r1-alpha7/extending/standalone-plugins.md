@@ -708,6 +708,22 @@ Note `@group(3)`, not `2` — Bevy 0.19 binds view data at 0, mesh data at 1 and
 
 The component must be no larger than 256 bytes (`sys::MATERIAL_UNIFORM_CAP`). Over that is refused with a log line rather than clamped: the bind-group layout is fixed for the shared material type, and a uniform read past the end of its buffer is undefined on the GPU, not merely wrong.
 
+### Shading geometry you didn't make
+
+`spawn_mesh` and `make_renderable` set mesh, material and transform together, which is right when the plugin owns the geometry and wrong when it doesn't. To change only the material — an imported model, a shape the user authored, anything already in the scene:
+
+```rust
+fn shade(q: Query<Entity, (With<Glow>, With<Mesh3d>)>, mut commands: Commands) {
+    for e in &q {
+        commands.entity(e).set_material(material);
+    }
+}
+```
+
+Filter on `Mesh3d` as above unless you know the entity has one. A material on an entity with no mesh isn't an error and draws nothing — it just sits there, which is a confusing thing to debug.
+
+This is the case worth having, and it's why `Mesh3d` staying opaque costs nothing. A plugin can't read the mesh handle back out, so before `set_material` existed there was no way to keep an entity's geometry and replace its shading: adding a custom material meant replacing the shape with one the plugin had made earlier, which limited plugin materials to objects the plugin spawned itself.
+
 ## Render passes
 
 A plugin can put its own code inside Bevy's render graph:
@@ -900,7 +916,7 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 2.11.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
+**The current ABI is 2.12.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)
@@ -913,6 +929,7 @@ A plugin built against a newer MINOR than the host provides is refused with a me
 - **2.9** — [`add_material_shader`](#custom-materials)
 - **2.10** — [`Meshes::write`](#rewriting-a-mesh-each-frame)
 - **2.11** — [`add_image`](#textures), `Images::write`, and material textures
+- **2.12** — [`set_material`](#shading-geometry-you-didnt-make): change an entity's material without touching its mesh
 
 Note what is *not* in that list: animation, physics and HTTP *commands*. They ship alongside but are [domain modules](#domain-modules), not boundary surface, so they moved the crate's version and not the ABI's. What did land as MINORs — `Http::poll`, `Meshes::read` — are the parts that hand data *back*, which the generic channel cannot do. Audio will follow the same split.
 
