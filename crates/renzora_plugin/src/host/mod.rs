@@ -975,7 +975,7 @@ unsafe fn build_mesh_from_desc(
         }
         Some(raw.to_vec())
     };
-    if indices.is_none() && positions.len() % 3 != 0 {
+    if indices.is_none() && !positions.len().is_multiple_of(3) {
         error!(
             "[plugin] {} unindexed positions is not a whole number of triangles",
             positions.len()

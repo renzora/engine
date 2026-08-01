@@ -74,16 +74,19 @@ pub struct PluginMaterial {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PluginMaterialKey {
     shader: Handle<Shader>,
-    /// Part of the key because the layout depends on it: two materials binding
-    /// different numbers of textures cannot share a pipeline.
-    texture_count: usize,
 }
 
 impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
     type Data = PluginMaterialKey;
-    type Param = bevy::ecs::system::lifetimeless::SRes<
-        bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>,
-    >;
+    /// The uploaded images, plus Bevy's fallback for the slots a material did
+    /// not fill — see [`Self::unprepared_bind_group`] for why every slot must be
+    /// filled with something.
+    type Param = (
+        bevy::ecs::system::lifetimeless::SRes<
+            bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>,
+        >,
+        bevy::ecs::system::lifetimeless::SRes<bevy::render::texture::FallbackImage>,
+    );
 
     fn label() -> &'static str {
         "plugin_material"
@@ -91,10 +94,14 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
 
     /// Carries the shader handle into specialization — that is what lets one
     /// Rust type render every plugin's module.
+    ///
+    /// Texture count is deliberately *not* in the key. The layout declares all
+    /// [`MAX_MATERIAL_TEXTURES`](renzora_plugin::sys::MAX_MATERIAL_TEXTURES)
+    /// slots whatever a material actually binds, so two materials with different
+    /// texture counts have identical layouts and can share a pipeline.
     fn bind_group_data(&self) -> Self::Data {
         PluginMaterialKey {
             shader: self.shader.clone(),
-            texture_count: self.textures.len(),
         }
     }
 
@@ -113,19 +120,31 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
         });
         let mut bindings = vec![(0, OwnedBindingResource::Buffer(buffer))];
 
+        // **Every slot the layout declares must be bound, including the ones
+        // this material does not use.** wgpu requires the bind group and its
+        // layout to agree exactly; a material with one texture against a layout
+        // of four is a validation error and a hard render-thread abort, not a
+        // tail that is quietly ignored. So the unused slots get Bevy's fallback
+        // image — the same one its own optional-texture materials bind.
+        //
         // Texture then sampler, from binding 1 upward. `RetryNextUpdate` rather
         // than an error when an image has not reached the GPU yet: that is the
         // normal state for the first frames after creation, and failing outright
         // would drop the material permanently.
-        for (i, handle) in self.textures.iter().enumerate() {
-            let Some(gpu) = param.get(handle) else {
-                return Err(AsBindGroupError::RetryNextUpdate);
+        let (images, fallback) = param;
+        for i in 0..renzora_plugin::sys::MAX_MATERIAL_TEXTURES {
+            let gpu = match self.textures.get(i) {
+                Some(handle) => match images.get(handle) {
+                    Some(gpu) => gpu,
+                    None => return Err(AsBindGroupError::RetryNextUpdate),
+                },
+                // Always `d2`: `add_image` only creates `TextureDimension::D2`.
+                None => &fallback.d2,
             };
             let base = 1 + i as u32 * 2;
             bindings.push((
                 base,
                 OwnedBindingResource::TextureView(
-                    // Always 2D: `add_image` only creates `TextureDimension::D2`.
                     bevy::render::render_resource::TextureViewDimension::D2,
                     gpu.texture_view.clone(),
                 ),
@@ -154,9 +173,10 @@ impl bevy::render::render_resource::AsBindGroup for PluginMaterial {
             BindGroupLayoutEntries, SamplerBindingType, TextureSampleType,
         };
         // The layout is fixed for the shared material type, so it always
-        // declares the maximum. A material binding fewer textures simply leaves
-        // the tail unbound — which wgpu allows, and which is the same trade the
-        // uniform cap makes.
+        // declares the maximum — the same trade the uniform cap makes. A
+        // material binding fewer textures does *not* leave the tail unbound;
+        // `unprepared_bind_group` fills the rest with the fallback image,
+        // because wgpu rejects a bind group whose count differs from its layout.
         let mut entries = BindGroupLayoutEntries::single(
             ShaderStages::VERTEX_FRAGMENT,
             uniform_buffer_sized(false, core::num::NonZeroU64::new(MATERIAL_UNIFORM_CAP)),

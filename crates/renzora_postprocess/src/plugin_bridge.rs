@@ -213,7 +213,13 @@ fn reload_plugin_shaders(
             }
         }
         let handle = handle.clone();
-        shaders.insert(handle.id(), Shader::from_wgsl(wgsl.clone(), id.clone()));
+        // Only fails if the handle's generation is stale, which here means the
+        // shader asset was dropped between the watcher firing and this running.
+        // Nothing to recover — say so and move on rather than swallowing it.
+        if let Err(why) = shaders.insert(handle.id(), Shader::from_wgsl(wgsl.clone(), id.clone())) {
+            error!("[plugin] `{id}` shader reload dropped: {why}");
+            continue;
+        }
         known.0.insert(id.clone(), (handle, wgsl));
         info!("[plugin] `{id}` shader reloaded");
     }
