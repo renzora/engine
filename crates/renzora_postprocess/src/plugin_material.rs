@@ -225,6 +225,33 @@ impl Material for PluginMaterial {
         _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: bevy::pbr::MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
+        // **Only the main pass.** Bevy calls this same function for the prepass
+        // and the shadow pass too, and their vertex stages emit a different
+        // `VertexOutput` — the prepass puts UVs at location 0 where the forward
+        // path puts world position. Overriding the fragment there hands the
+        // shader a struct that does not match what feeds it, which wgpu rejects
+        // while creating the pipeline: an unrecoverable abort, not a bad frame.
+        // Bevy's own source flags this hazard in `PrepassPipelineSpecializer`.
+        //
+        // The pipeline key cannot tell us which pass this is, so the label has
+        // to: `MeshPipelineKey::DEPTH_PREPASS` is set on the *main* pass key as
+        // well, to signal that a prepass exists, so testing the bits identifies
+        // both. Matched positively — an unrecognised pass keeps Bevy's shader,
+        // which is the safe direction for whatever it adds next.
+        //
+        // Leaving the other passes alone is also what we want on the merits.
+        // The prepass still runs Bevy's depth/normal/motion-vector fragment for
+        // this material, so SSAO, TAA, motion blur and DOF see plugin geometry
+        // like any other. Opting out of the prepass entirely would have fixed
+        // the crash and quietly broken all four.
+        let main_pass = descriptor
+            .label
+            .as_deref()
+            .is_some_and(|label| label.ends_with("_mesh_pipeline"));
+        if !main_pass {
+            return Ok(());
+        }
+
         // Fragment only — the vertex stage stays Bevy's, so a plugin's shader
         // is just its `@fragment fn fragment(in: VertexOutput)`.
         //
