@@ -92,7 +92,23 @@ use core::ffi::c_void;
 /// deliberate MAJOR changes made while the ABI is still unpublished: a MAJOR
 /// bump today costs rebuilding the example plugins, and after the first release
 /// it costs every plugin every user has installed.
-pub const VERSION_MAJOR: u32 = 2;
+///
+/// Went 2 -> 3 to repair the [`Interface`] table, which had been **corrupted by
+/// two mid-struct insertions shipped as MINOR bumps**. `add_mesh_data` was
+/// correctly appended at MINOR 5; `add_material_shader` (MINOR 9) and
+/// `add_image` (MINOR 11) were then each inserted *above* it. Function-pointer
+/// tables are read by offset, so a plugin built at MINOR 5-10 would call the
+/// slot it compiled against and land in a different function — passing, for
+/// instance, a `MeshDataDesc*` to something that reads it as an `ImageDesc*` or
+/// runs `from_utf8_unchecked` over vertex positions. `guard_host` catches
+/// panics, not that.
+///
+/// This had to be MAJOR rather than a quiet reorder, because **no field order
+/// makes every historical MINOR correct**: MINOR 5-8 expects `add_mesh_data` in
+/// the slot MINOR 9-10 expects `add_material_shader` in. One of them is always
+/// wrong, so the only honest fix is to reject them all by name. The fields are
+/// now in true append order and a test pins it.
+pub const VERSION_MAJOR: u32 = 3;
 
 /// Bumped when something is *appended*. Older plugins keep working; a plugin
 /// needing the new function declares this as its minimum.
@@ -112,6 +128,13 @@ pub const VERSION_MAJOR: u32 = 2;
 /// 9 -> 10 appended `MeshSource::write`.
 /// 10 -> 11 appended `add_image`, `SystemCall::images`, and material textures.
 /// 11 -> 12 appended `CommandKind::SetMaterial`.
+///
+/// Two of those lines were false when written, which is the whole reason
+/// [`VERSION_MAJOR`] is now 3: MINOR 9 and MINOR 11 *inserted* their functions
+/// into the middle of [`Interface`] and recorded it here as "appended". The
+/// history above is left intact rather than rewritten — it is what those
+/// releases actually claimed, and the correction belongs beside the guarantee it
+/// broke.
 ///
 /// Note what is NOT in that list: animation. It shipped in the same release, as
 /// `crate::anim` — a domain module riding on the generic service command above,
@@ -2122,25 +2145,7 @@ pub struct Interface {
         range: *const FieldRange,
     ) -> RegisterStatus,
 
-    /// Upload an image a plugin generated. See [`ImageDesc`].
-    ///
-    /// Init-only, like the other asset constructors — it needs the `Host`
-    /// handle. Contents can be replaced from a system with
-    /// [`ImageSource::write`]; dimensions and format cannot.
-    pub add_image: unsafe extern "C" fn(
-        host: *mut Host,
-        desc: *const ImageDesc,
-    ) -> AssetHandle,
-
-    /// Register a custom shaded material. See [`MaterialShaderDesc`].
-    ///
-    /// The returned handle is used exactly like [`add_material`](Self::add_material)'s,
-    /// so a plugin can hand it to `spawn_mesh` without caring which kind it is.
-    pub add_material_shader: unsafe extern "C" fn(
-        host: *mut Host,
-        desc: *const MaterialShaderDesc,
-    ) -> AssetHandle,
-
+    // ── Added in MINOR 5 ──────────────────────────────────────────────────
     /// Upload geometry a plugin generated itself. See [`MeshDataDesc`].
     ///
     /// Separate from [`add_mesh`](Self::add_mesh) rather than a `Primitive`
@@ -2155,6 +2160,30 @@ pub struct Interface {
     pub add_mesh_data: unsafe extern "C" fn(
         host: *mut Host,
         desc: *const MeshDataDesc,
+    ) -> AssetHandle,
+
+    // ── Added in MINOR 9 ──────────────────────────────────────────────────
+    /// Register a custom shaded material. See [`MaterialShaderDesc`].
+    ///
+    /// The returned handle is used exactly like [`add_material`](Self::add_material)'s,
+    /// so a plugin can hand it to `spawn_mesh` without caring which kind it is.
+    pub add_material_shader: unsafe extern "C" fn(
+        host: *mut Host,
+        desc: *const MaterialShaderDesc,
+    ) -> AssetHandle,
+
+    // ── Added in MINOR 11 ─────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
+    // the very end, under a new header. See `interface_field_order` in
+    // `tests/abi_order.rs`, which fails if this rule is broken again.
+    /// Upload an image a plugin generated. See [`ImageDesc`].
+    ///
+    /// Init-only, like the other asset constructors — it needs the `Host`
+    /// handle. Contents can be replaced from a system with
+    /// [`ImageSource::write`]; dimensions and format cannot.
+    pub add_image: unsafe extern "C" fn(
+        host: *mut Host,
+        desc: *const ImageDesc,
     ) -> AssetHandle,
 }
 

@@ -916,7 +916,7 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 2.12.** The MINORs since 2.0 are all additive, so a plugin built against 2.0 still loads — it just doesn't see the newer surface:
+**The current ABI is 3.0.** The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)
@@ -934,6 +934,14 @@ A plugin built against a newer MINOR than the host provides is refused with a me
 Note what is *not* in that list: animation, physics and HTTP *commands*. They ship alongside but are [domain modules](#domain-modules), not boundary surface, so they moved the crate's version and not the ABI's. What did land as MINORs — `Http::poll`, `Meshes::read` — are the parts that hand data *back*, which the generic channel cannot do. Audio will follow the same split.
 
 The run from 2.5 to 2.11 is what porting real plugins cost. Each one was a capability an actual plugin was blocked on and nothing else would substitute for: `plugins/text3d` needed strings and then mesh writes; `plugins/hair` needed to read a scalp mesh before it could grow anything from it. None of them was foreseeable from the outside, which is the argument for porting a plugin before declaring the surface complete.
+
+**MAJOR went to 3 to repair the interface table**, and it is worth reading why, because it is the failure mode this whole scheme is built to avoid.
+
+The interface is a struct of function pointers, so a plugin calls a function by its *offset*. Appending is safe; anything else is not. `add_material_shader` (2.9) and `add_image` (2.11) were each **inserted into the middle** of the struct and recorded in the changelog as appended. A plugin built at 2.5–2.10 would therefore have called the slot it compiled against and landed in a different function — handing a mesh descriptor to something that reads it as an image descriptor, or running an unchecked UTF-8 conversion over vertex positions. That is a segfault, and the panic guard around plugin calls catches panics, not that.
+
+No reordering fixes it: 2.5–2.8 expects `add_mesh_data` in the slot 2.9–2.10 expects `add_material_shader` in, so one of them is always wrong. Rejecting them all by name is the only honest repair. The fields are now in true append order, and `crates/renzora_plugin/tests/abi_order.rs` pins that order so the next insertion fails CI rather than shipping.
+
+The lesson generalises past this ABI: **inserting a field next to its relatives reads as tidier than appending it three screens away**, which is exactly why it happened twice without anyone noticing in review. Order-is-ABI has to be enforced by a test, not by intent.
 
 MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
 
