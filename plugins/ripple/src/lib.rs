@@ -123,20 +123,21 @@ static TEXTURE: AtomicU64 = AtomicU64::new(u64::MAX);
 /// Absence of a `_ready` flag is the trigger, since there is no `Added<T>` across
 /// the boundary. Re-issuing `make_renderable` every frame would work and cost a
 /// command per entity per frame; the flag is what makes it once.
-fn apply(mut q: Query<(Entity, &mut Ripple)>, mut commands: Commands) {
+fn apply(mut q: Query<(Entity, &mut Ripple, &Transform)>, mut commands: Commands) {
     let mesh = AssetHandle(MESH.load(Ordering::Relaxed));
     let material = AssetHandle(MATERIAL.load(Ordering::Relaxed));
-    for (entity, ripple) in &mut q {
+    for (entity, ripple, transform) in &mut q {
         if ripple._ready != 0.0 {
             continue;
         }
         ripple._ready = 1.0;
-        // Identity, so the entity keeps whatever placement it already had. The
-        // plane is two metres across and centred, which is large enough to read
-        // at the default editor camera distance.
+        // The transform passed back is the one just read. `make_renderable` sets
+        // all three of mesh, material and transform, so handing it a default
+        // would teleport the entity to the origin — which it did, until an
+        // afternoon of watching cubes jump proved the point.
         commands
             .entity(entity)
-            .make_renderable(mesh, material, Transform::default());
+            .make_renderable(mesh, material, *transform);
     }
 }
 
