@@ -1003,7 +1003,7 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 3.13.** The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
+**The current ABI is 4.0.** The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)
@@ -1153,7 +1153,7 @@ Both sides compile their own copy of that file from separate source trees. There
 - **Grep for a type as a *field type* before touching it.** `StrRef` is embedded in seven boundary structs; `Vec3` in six, plus four pointer arrays. Growing either breaks structs declared elsewhere, with every golden list and every `size_of` unchanged and both sides compiling.
 - **Some contracts are numbering, not shape.** A `Key`'s value *is* its bit index into `InputState`; each domain's `SERVICE` id is compiled into every plugin ever shipped. No layout test can see these.
 
-The guard is `cargo test -p renzora_plugin --test abi_order`, which pins 57 types and 200 fields. It runs natively — this crate links no Bevy, so it does not need the container.
+The guard is `cargo test -p renzora_plugin --test abi_order`, which pins 60 types and 203 fields. It runs natively — this crate links no Bevy, so it does not need the container.
 
 That guard exists because the append-only rule was broken **three times** without anyone noticing in review: `SystemEntry` gained a return value under a MINOR and killed the process with no diagnostic, and two functions were inserted into the middle of `Interface` and recorded in the changelog as appended. Inserting a field next to its relatives reads as tidier than appending it three screens away, which is exactly why it kept happening.
 
