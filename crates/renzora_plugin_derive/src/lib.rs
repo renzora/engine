@@ -317,9 +317,36 @@ fn expand(input: DeriveInput, is_resource: bool) -> TokenStream {
         (quote!(Component), quote!(Option<ComponentDesc>), quote!(Some(desc)))
     };
 
+    // Refuse a type that owns anything, at the point the author can still see why.
+    //
+    // This was a documented rule with no enforcement anywhere: `descriptor()` below
+    // declares `drop: None` whatever the fields are, which is what the host checks,
+    // so the host's own guard could never fire. A `String` field therefore compiled,
+    // registered, and then had its pointer bit-copied into ECS storage, never
+    // dropped, shared verbatim by every default-constructed instance, and written
+    // into saved scenes as a number that means nothing on the next run.
+    //
+    // The message names the way out, because "no destructors" is a surprising rule
+    // to meet through a compiler error rather than the docs.
+    let no_drop = quote! {
+        const _: () = ::core::assert!(
+            !::core::mem::needs_drop::<#name>(),
+            ::core::concat!(
+                "`", ::core::stringify!(#name), "` owns memory, so it cannot be a plugin ",
+                "component or resource. Its storage is allocated by the host from a layout ",
+                "this plugin declares, and nothing on the host side can run a destructor ",
+                "that lives in a library it may unload. Use `Str256` instead of `String`, a ",
+                "fixed-size array instead of `Vec`, or keep the owned data in your own ",
+                "plugin state keyed by `Entity`.",
+            ),
+        );
+    };
+
     let expanded = quote! {
         const _: () = {
             use ::renzora_plugin::sys::{ComponentDesc, FieldDesc, FieldKind, StrRef};
+
+            #no_drop
 
             #bundle
 

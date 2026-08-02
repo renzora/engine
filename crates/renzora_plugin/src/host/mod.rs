@@ -378,22 +378,29 @@ unsafe extern "C" fn register_component(
     let desc = &*desc;
     let name = desc.name.as_str().to_string();
 
-    // Re-registering the same name must return the same id: a plugin reloaded
-    // mid-session would otherwise get a second component and silently stop
-    // matching the entities carrying the first.
-    if let Some(existing) = lookup_component(ctx.world, &name) {
-        verify_same_layout(ctx, existing, desc, &name);
-        return sys::ComponentId(existing.index() as u32);
-    }
-
     // Refused rather than ignored: a component with a destructor whose drop is
     // never run leaks whatever it owns, silently, for the life of the process.
+    //
+    // **Before the early return below, deliberately.** This used to sit after it,
+    // so a reload — which takes the re-registration path — skipped the check
+    // entirely, and the one moment a plugin's layout can legitimately change was
+    // the one moment nothing looked. The derive now refuses these at compile time
+    // too; this stays because the ABI is public and a hand-written `Component`
+    // impl reaches here without passing through the derive at all.
     if desc.drop.is_some() {
         error!(
             "plugin component `{name}` declares a destructor, which is not supported yet — \
              keep plugin components plain data (no String, Vec or Box fields)"
         );
         return sys::ComponentId::INVALID;
+    }
+
+    // Re-registering the same name must return the same id: a plugin reloaded
+    // mid-session would otherwise get a second component and silently stop
+    // matching the entities carrying the first.
+    if let Some(existing) = lookup_component(ctx.world, &name) {
+        verify_same_layout(ctx, existing, desc, &name);
+        return sys::ComponentId(existing.index() as u32);
     }
 
     let Ok(layout) = Layout::from_size_align(desc.size, desc.align) else {
@@ -494,6 +501,19 @@ unsafe extern "C" fn register_resource(
     desc: *const sys::ComponentDesc,
 ) -> sys::ComponentId {
     guard_host("register_resource", sys::ComponentId::INVALID, || {
+        // Same reasoning as `register_component`, and it has to be repeated
+        // rather than inherited: the `Some(id)` arm below never calls that
+        // function, so a resource that owns memory would sail past on every run
+        // after the first.
+        if (*desc).drop.is_some() {
+            error!(
+                "plugin resource `{}` declares a destructor, which is not supported yet — \
+                 keep plugin resources plain data (no String, Vec or Box fields)",
+                (*desc).name.as_str()
+            );
+            return sys::ComponentId::INVALID;
+        }
+
         let existing = {
             let ctx = &mut *(host as *mut HostCtx);
             lookup_component(ctx.world, (*desc).name.as_str())
@@ -1405,6 +1425,26 @@ struct SinkImpl<'a, 'w, 's> {
     commands: &'a mut Commands<'w, 's>,
     queued: Vec<(sys::Command, Vec<u8>)>,
 }
+
+/// The four `*Impl` structs are handed to a plugin as a pointer to their **first
+/// field**, and recovered here by casting that pointer back to the whole struct.
+/// The entire pattern rests on the first field sitting at offset zero.
+///
+/// That is guaranteed by `#[repr(C)]` and by nothing else. A missing `#[repr(C)]`
+/// on `SinkImpl` once let rustc reorder it — the first field is never read from
+/// Rust, so the compiler had every reason to move it, and it warned only that the
+/// field was unused. Every `spawn_mesh` then wrote through a pointer to whatever
+/// landed at offset zero: a hard crash with no panic, no log and no crash report,
+/// which took a day of file-based tracing to find.
+///
+/// So the invariant is asserted rather than trusted. These fail to compile if
+/// anyone reorders a field or drops the attribute.
+const _: () = {
+    assert!(core::mem::offset_of!(SinkImpl, sink) == 0);
+    assert!(core::mem::offset_of!(MeshSourceImpl, src) == 0);
+    assert!(core::mem::offset_of!(ImageSourceImpl, src) == 0);
+    assert!(core::mem::offset_of!(HttpSourceImpl, src) == 0);
+};
 
 /// The host's interface table.
 ///

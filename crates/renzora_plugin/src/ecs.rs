@@ -514,8 +514,30 @@ pub fn component_id_of<T: Component>() -> sys::ComponentId {
 /// # Safety
 /// `CELLS` must equal the number of terms `terms` pushes, and `fetch` must read
 /// exactly that many cells. The host lays cells out row-major on that promise.
+///
+/// [`Self::ReadOnly`] must have the same `CELLS` and read the same cells in the
+/// same order, because iteration reuses one host layout for both projections —
+/// the terms were declared once, from `Self`. A `ReadOnly` that disagreed would
+/// read a neighbouring component's bytes as its own.
 pub unsafe trait QueryData {
     type Item<'a>;
+    /// This query's read-only projection: `&mut T` becomes `&T`, `Option<&mut T>`
+    /// becomes `Option<&T>`, tuples map elementwise, everything else is itself.
+    ///
+    /// Exists so `iter(&self)` can hand out shared items while `iter_mut(&mut self)`
+    /// hands out mutable ones — which is the only thing making the borrow checker
+    /// able to see that two simultaneous iterations of one query would alias.
+    /// Without it, `iter(&self)` on a `Query<&mut T>` yielded `&mut T` from a shared
+    /// borrow, so nesting `q.iter()` inside `for x in &mut q` produced two live
+    /// `&mut` to the same bytes with no `unsafe` written anywhere.
+    ///
+    /// Mirrors Bevy's `QueryData::ReadOnly`, which exists for the same reason.
+    ///
+    /// Its `CELLS` must equal this type's, and its `fetch` must read the same
+    /// cells in the same order — see the trait's safety contract. That cannot be
+    /// written as a bound (`associated_const_equality` is unstable), so it is an
+    /// obligation on the implementor.
+    type ReadOnly: QueryData;
     /// Cells this contributes per row. Zero for terms that read something other
     /// than component data, like [`Entity`].
     const CELLS: usize;
@@ -541,6 +563,7 @@ pub unsafe trait QueryData {
 /// "do this once, then mark it done" unwritable.
 unsafe impl QueryData for sys::Entity {
     type Item<'a> = sys::Entity;
+    type ReadOnly = Self;
     const CELLS: usize = 0;
     fn terms(_: &mut InitCtx, _: &mut alloc::vec::Vec<sys::Term>) {}
     unsafe fn fetch<'a>(
@@ -557,6 +580,7 @@ unsafe impl QueryData for sys::Entity {
 
 unsafe impl<T: Component> QueryData for &T {
     type Item<'a> = &'a T;
+    type ReadOnly = Self;
     const CELLS: usize = 1;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::Read });
@@ -568,6 +592,9 @@ unsafe impl<T: Component> QueryData for &T {
 
 unsafe impl<T: Component> QueryData for &mut T {
     type Item<'a> = &'a mut T;
+    /// The whole point of the projection: shared iteration of a `&mut T` query
+    /// yields `&T`, exactly as it does in Bevy.
+    type ReadOnly = &'static T;
     const CELLS: usize = 1;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::Write });
@@ -584,6 +611,7 @@ unsafe impl<T: Component> QueryData for &mut T {
 /// this extra data if it happens to be there" a single query instead of two.
 unsafe impl<T: Component> QueryData for Option<&T> {
     type Item<'a> = Option<&'a T>;
+    type ReadOnly = Self;
     const CELLS: usize = 1;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::ReadOptional });
@@ -595,6 +623,7 @@ unsafe impl<T: Component> QueryData for Option<&T> {
 
 unsafe impl<T: Component> QueryData for Option<&mut T> {
     type Item<'a> = Option<&'a mut T>;
+    type ReadOnly = Option<&'static T>;
     const CELLS: usize = 1;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::WriteOptional });
@@ -610,6 +639,7 @@ unsafe impl<T: Component> QueryData for Option<&mut T> {
 
 unsafe impl<A: QueryData, B: QueryData, C: QueryData> QueryData for (A, B, C) {
     type Item<'a> = (A::Item<'a>, B::Item<'a>, C::Item<'a>);
+    type ReadOnly = (A::ReadOnly, B::ReadOnly, C::ReadOnly);
     const CELLS: usize = A::CELLS + B::CELLS + C::CELLS;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         A::terms(ctx, out);
@@ -631,6 +661,7 @@ unsafe impl<A: QueryData, B: QueryData, C: QueryData> QueryData for (A, B, C) {
 
 unsafe impl<A: QueryData, B: QueryData> QueryData for (A, B) {
     type Item<'a> = (A::Item<'a>, B::Item<'a>);
+    type ReadOnly = (A::ReadOnly, B::ReadOnly);
     const CELLS: usize = A::CELLS + B::CELLS;
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         A::terms(ctx, out);
@@ -756,7 +787,10 @@ impl<'a, D: QueryData, F: QueryFilter> Query<'a, D, F> {
         }
     }
 
-    pub fn iter(&self) -> QueryIter<'_, D, F> {
+    /// Shared iteration. Yields `D`'s read-only projection, so a `Query<&mut T>`
+    /// gives you `&T` here and `&mut T` from [`Self::iter_mut`] — same split as
+    /// Bevy, and the reason two simultaneous iterations no longer alias.
+    pub fn iter(&self) -> QueryIter<'_, D::ReadOnly, F> {
         QueryIter {
             view: self.view,
             row: 0,
@@ -764,8 +798,13 @@ impl<'a, D: QueryData, F: QueryFilter> Query<'a, D, F> {
         }
     }
 
+    /// Exclusive iteration. Yields `D` itself, mutable terms included.
     pub fn iter_mut(&mut self) -> QueryIter<'_, D, F> {
-        self.iter()
+        QueryIter {
+            view: self.view,
+            row: 0,
+            _p: PhantomData,
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -813,19 +852,21 @@ impl<'a, D: QueryData, F: QueryFilter> Iterator for QueryIter<'a, D, F> {
     }
 }
 
+/// `for x in &q` — shared, so `x` is `D`'s read-only projection.
 impl<'a, D: QueryData, F: QueryFilter> IntoIterator for &'a Query<'_, D, F> {
-    type Item = D::Item<'a>;
-    type IntoIter = QueryIter<'a, D, F>;
+    type Item = <D::ReadOnly as QueryData>::Item<'a>;
+    type IntoIter = QueryIter<'a, D::ReadOnly, F>;
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
 }
 
+/// `for x in &mut q` — exclusive, so `x` is `D` itself.
 impl<'a, D: QueryData, F: QueryFilter> IntoIterator for &'a mut Query<'_, D, F> {
     type Item = D::Item<'a>;
     type IntoIter = QueryIter<'a, D, F>;
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.iter_mut()
     }
 }
 

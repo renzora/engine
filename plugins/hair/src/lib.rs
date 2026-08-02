@@ -267,7 +267,7 @@ fn update_grooms(
                     // entity. Reclaim it before spawning, or every reload leaves
                     // another groom standing in the scene. `try_despawn`
                     // semantics make a stale or never-set id a no-op.
-                    let stored = stored_render(&hair);
+                    let stored = stored_render(hair);
                     if stored.0 != 0 {
                         cmds.entity(stored).despawn();
                     }
