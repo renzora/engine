@@ -242,6 +242,21 @@ impl core::fmt::Debug for AnimName {
 pub struct AnimCommand {
     pub op: AnimOp,
     pub name: AnimName,
+    /// Explicit padding, and it has to be explicit.
+    ///
+    /// [`AnimName`] is 49 bytes at offset 4, so it ends at 53, and `value` must
+    /// be 4-aligned at 56. Bytes 53..56 were therefore compiler padding that no
+    /// constructor wrote — and [`Self::as_bytes`] slices the whole struct and
+    /// hands it to the host, which copies it into a resource. Reading
+    /// uninitialised bytes is undefined behaviour by the letter, and in practice
+    /// it leaked three bytes of plugin stack into host-owned storage on every
+    /// animation command.
+    ///
+    /// Naming the padding costs nothing and changes no offsets — `value` still
+    /// lands at 56 and the struct is still 80 bytes — so this is not an ABI
+    /// change. It just makes the bytes something the constructors below can, and
+    /// now do, write.
+    pub _pad: [u8; 3],
     /// Speed, seconds, weight or parameter value, depending on `op`.
     pub value: f32,
     /// Looping, or a bool parameter's value. 0 or 1.
@@ -257,6 +272,7 @@ impl AnimCommand {
         Self {
             op,
             name,
+            _pad: [0; 3],
             value: 0.0,
             flag: 0,
             target: Vec3 { x: 0.0, y: 0.0, z: 0.0 },
@@ -267,9 +283,11 @@ impl AnimCommand {
     /// The payload bytes, for [`EntityCommands::call_service`].
     ///
     /// # Safety note
-    /// Sound because `Self` is `#[repr(C)]` plain-old-data with no padding the
-    /// caller could observe as uninitialised — every field is written by the
-    /// constructors above.
+    /// Sound because `Self` is `#[repr(C)]` plain-old-data and every byte of it
+    /// is a field the constructors above write — including [`Self::_pad`], which
+    /// exists precisely so that sentence is true. It was not true before that
+    /// field was added: three bytes between `name` and `value` were compiler
+    /// padding, and this function handed them to the host uninitialised.
     pub fn as_bytes(&self) -> &[u8] {
         // SAFETY: `#[repr(C)]`, no pointers, no `Drop`.
         unsafe {

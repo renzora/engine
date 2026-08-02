@@ -2189,9 +2189,25 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
         // permission — see [`HostDataComponents`] for what goes wrong without it.
         // Filter terms never reach here, so `With<Camera3d>` stays free.
         if t.access.has_cell() && component_info(world, id).is_none() && Some(id) != transform_id {
-            let path = info.name();
+            // Resolve the reflected type path rather than `info.name()`.
+            //
+            // `ComponentInfo::name()` returns a `DebugName`, whose inner string is
+            // `#[cfg(feature = "debug")]` in bevy_utils — a feature this workspace
+            // does not enable. Without it, dereferencing yields the literal
+            // "<Enable the debug feature to see the name>" for every component, so
+            // comparing it against a real type path never matched and this gate
+            // refused everything in shipped builds.
+            //
+            // It looked correct under `cargo test` only because a dev-dependency
+            // pulls bevy with `debug` and resolver-2 unifies dev features into the
+            // test build. A guard that is live in tests and dead in release is
+            // worse than no guard, because it reports success.
+            // A component with no reflected type path cannot have been exposed,
+            // and naming it in the error is still the useful thing to do.
+            let path = component_type_path(world, id)
+                .unwrap_or_else(|| format!("<unreflected component #{}>", t.component.0));
             match world.get_resource::<HostDataComponents>() {
-                Some(allowed) if allowed.0.contains(&*path) => {}
+                Some(allowed) if allowed.0.contains(&path) => {}
                 Some(_) => {
                     error!(
                         "plugin asked to read engine component `{path}` as data, which is not \
@@ -2973,6 +2989,23 @@ pub fn expose_component_data<T: Component + bevy::reflect::TypePath>(app: &mut A
 /// The consequence worth knowing: **a host component must be `register_type`'d
 /// to be reachable from a plugin.** That is a real part of the contract, not an
 /// implementation detail.
+/// A component's reflected type path, which is the name plugins address it by.
+///
+/// The inverse of [`lookup_component`], and it must go through the same registry
+/// rather than `ComponentInfo::name()`: that returns a `DebugName` whose string
+/// exists only under bevy_utils' `debug` feature, so in a normal build it is a
+/// fixed placeholder identical for every component.
+///
+/// `None` for a component with no reflected type — a plugin-owned one, or an
+/// engine type nothing registered.
+fn component_type_path(world: &World, id: ComponentId) -> Option<String> {
+    let type_id = world.components().get_info(id)?.type_id()?;
+    let registry = world.get_resource::<AppTypeRegistry>()?;
+    let registry = registry.read();
+    let path = registry.get(type_id)?.type_info().type_path().to_string();
+    Some(path)
+}
+
 fn lookup_component(world: &World, name: &str) -> Option<ComponentId> {
     if let Some(map) = world.get_resource::<PluginComponents>() {
         if let Some(id) = map.0.get(name) {
