@@ -43,38 +43,22 @@ than what the same source does in Bevy**, with no error and no warning.
 Read it before you write anything. It is short on purpose, and it is the most expensive page
 in this documentation to skip.
 
+Three entries have been deleted from this list rather than reworded, which is the intended fate
+of every one of them:
+
+- A component with a `String`, `Vec` or `Box` field used to compile and then corrupt. It is now
+  a compile error naming the fix.
+- `Query::iter()` used to hand out `&mut` from a shared borrow, so nesting it inside a mutable
+  loop aliased with no `unsafe` anywhere. `iter()` now yields the read-only projection and the
+  borrow checker refuses the nested case.
+- `Transform::rotate_x/y/z` used to be Bevy's `rotate_local_*`. They now match Bevy, and
+  `rotate_local_*` exists for the other behaviour.
+
 The reason this list exists at all is a deliberate design choice with a cost. The plugin API is
 built to be *source-identical* to Bevy, so that porting is a change to the `use` line — which
 means you are entitled to assume Bevy's semantics from Bevy's spelling. Every divergence below
 is a place that promise is not kept, and the closer the surface reads like Bevy, the more each
 one costs.
-
-### `Query::iter()` hands out `&mut` — aliasing without `unsafe`
-
-There is no read-only projection: `iter(&self)` on a `Query<&mut T>` yields `&mut T`, and
-`iter_mut` is the same function. Two live iterators over one query — or an inner `q.iter()`
-inside an outer `for x in &mut q`, which is the shape every flocking example has — hand out
-two `&mut` to the same bytes. That is undefined behaviour, and you never wrote `unsafe`.
-
-The aliased memory is a host-owned staging buffer rather than live ECS storage, so in practice
-it costs you interleaved or lost writes rather than a crash. Until this is fixed, do not nest
-iteration over the same query.
-
-### A `String` field compiles, registers, and quietly corrupts
-
-Plugin components may not contain destructors — no `String`, `Vec`, `Box`, `Handle`. That rule
-is real and it is **not enforced**: the derive declares no destructor whatever the field types
-are, so this compiles and registers:
-
-```rust
-#[derive(Component, Default)]
-#[repr(C)]
-pub struct Label { pub text: String }   // WRONG. Compiles anyway.
-```
-
-The pointer is copied into ECS storage, never dropped, shared verbatim by every
-default-constructed instance, used as the change-detection baseline, and written into saved
-scenes as a number that means nothing next run. Use [`Str256`](#text-fields).
 
 ### Plugin systems run while you are editing
 

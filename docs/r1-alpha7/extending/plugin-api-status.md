@@ -304,6 +304,7 @@ built plugin keeps working; *MINOR* appends to the contract and older plugins ke
 | `set_material` | A plugin material can be applied to geometry the plugin did not create — an imported model, a shape the user authored. Before this, `make_renderable` set mesh, material and transform together, so a custom shader could only ever land on shapes the plugin spawned itself. | MINOR 2.12 |
 | Custom material path made to work | Bind group corrected to `@group(3)`; the plugin supplies a fragment only, so Bevy's mesh vertex stage keeps skinning and morph targets; unused texture slots bind a fallback so the bind group matches its layout; the prepass and shadow passes keep Bevy's own fragment. | none |
 | `rotate_x/y/z` corrected | They post-multiplied, so they silently *were* `rotate_local_*`. Copied Bevy source spun the wrong way once an object was tilted, with no diagnostic. `rotate_local_*` added with the old bodies. | none |
+| Documented rules made real | Three rules the docs stated and nothing enforced are now compile errors: a component owning a `String`/`Vec`/`Box` is refused by the derive; `Query::iter()` yields a read-only projection so nested iteration cannot alias; and the four structs handed to plugins as a first-field pointer assert that the field is at offset zero. | none |
 | Textures, geometry read/write, strings, HTTP, physics | See the version history in [Standalone Plugins](./standalone-plugins.md#versioning). | MINOR 2.5–2.11 |
 
 ### Next — makes the documented rules true
@@ -313,10 +314,7 @@ which is worth more than any new feature on this page.
 
 | | What it unlocks | Size | ABI |
 |---|---|---|---|
-| `needs_drop` assert in the derive | A component with a `String`/`Vec`/`Box` field stops compiling. The no-destructor rule is documented and currently unenforced; the host's guard is unreachable because the derive always declares no destructor. Also needs moving above the re-registration early-return, and adding to `register_resource`. | ~10 lines | none |
-| `QueryData::ReadOnly` | Kills the aliasing `&mut` from `Query::iter()`. Source-compatible with Bevy; breaking only for a plugin that relied on `for x in &q` yielding mutable. | ~40 lines | none |
-| Host-mirror allow-list | A plugin can currently name any reflected host component as query *data*, including ones that own a `String`, with no guard. Restricts data access to a curated set; filter access stays open. | ~40 lines | none |
-| `offset_of!` asserts on first-field casts | Four host structs are reached by casting their first field's address. One missing `#[repr(C)]` on that pattern already caused a hard crash with no panic and no log. | ~8 lines | none |
+| Host-mirror allow-list | A plugin can name any reflected host component as query *data*, including ones that own a `String`, and nothing checks that its declared mirror matches the real layout. The no-destructor rule is enforced for a plugin's own types now; this is the remaining hole. Restricts data access to a curated set and leaves filter access open. | ~40 lines | none |
 | Interface prefix hash | Closes the failure class the 3.0 repair was for, at load time rather than build time: a per-field cumulative hash over `(name, written type)`, append-stable, checked in the handshake. Catches both insertion and a signature change at an unchanged slot. | ~100 lines | MINOR |
 | Payload descriptor re-mint rule | `MeshDataDesc`, `ImageDesc`, `ComponentDesc` and the domain payloads are read through pointers, so reordering their fields is invisible to the table tests and equally fatal. The rule — never edit one, mint a new one beside it — costs nothing and would have prevented both incidents. | doc only | none |
 
