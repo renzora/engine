@@ -182,13 +182,39 @@ use core::ffi::c_void;
 /// the slot MINOR 9-10 expects `add_material_shader` in. One of them is always
 /// wrong, so the only honest fix is to reject them all by name. The fields are
 /// now in true append order and a test pins it.
-pub const VERSION_MAJOR: u32 = 3;
+///
+/// Went 3 -> 4 when [`SystemStatus`], [`RegisterStatus`] and [`InitResult`] became
+/// `#[repr(transparent)]` newtypes. All three were real enums whose *values*
+/// cross the boundary, which this file's own rule (above) says they must not be:
+/// materialising an out-of-range discriminant is undefined behaviour, and rustc
+/// attaches `!range` metadata to the load, so a `match` may take an arbitrary arm.
+///
+/// `RegisterStatus` is the one that made this urgent rather than tidy. It travels
+/// host -> plugin, and the handshake **deliberately accepts a newer host** — so
+/// appending a status under a MINOR would hand every already-built plugin a
+/// discriminant it has no variant for. The rule as written only ever considered
+/// the plugin -> host direction, which is how all three were missed.
+///
+/// Wire-identical: the bytes were `i32`/`u32` before and are `i32`/`u32` now, and
+/// every `Status::Ok` call site still compiles. It is MAJOR only because the
+/// *validity* contract changed, and because a host that has not been rebuilt
+/// still treats an unknown value as a real variant.
+pub const VERSION_MAJOR: u32 = 4;
 
 /// Bumped when something is *appended*. Older plugins keep working; a plugin
 /// needing the new function declares this as its minimum.
 ///
-/// Reset to 0 by the MAJOR bump above — a MINOR only means anything relative to
-/// one MAJOR.
+/// **Reset to 0 by the MAJOR bump above** — a MINOR only means anything relative
+/// to one MAJOR. This sentence was here through the 2 -> 3 bump and was not
+/// honoured then; the history below therefore runs 0 -> 13 across MAJOR 2 *and*
+/// 3, and is kept as the record of what those releases actually claimed. MAJOR 4
+/// starts at 0 for real.
+///
+/// ## MAJOR 4
+///
+/// (nothing appended yet)
+///
+/// ## MAJOR 2 and 3, for the record
 ///
 /// 0 -> 1 appended `add_panel`.
 /// 1 -> 2 appended `SystemCall::input`.
@@ -218,7 +244,7 @@ pub const VERSION_MAJOR: u32 = 3;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 13;
+pub const VERSION_MINOR: u32 = 0;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -880,18 +906,40 @@ pub struct SystemDesc {
 /// both caught, logged, and swallowed. The plugin's `init` returned `Ok` with a
 /// system silently missing, which presents as "my plugin loaded and does
 /// nothing": the single hardest failure to diagnose from the outside.
-#[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum RegisterStatus {
-    Ok = 0,
+/// Newtype rather than an `enum`, and this one crosses in the **opposite**
+/// direction to most: the host produces it, the plugin materialises it.
+///
+/// That direction is the more dangerous of the two, and the rule as originally
+/// written did not cover it — it was phrased entirely as "plugin writes, host
+/// reads". The handshake **deliberately accepts a newer host**, because the table
+/// is append-only. So a host that adds a fifth status hands every
+/// already-compiled plugin a discriminant it has no variant for, and the plugin
+/// materialises it where the host's panic guard cannot see the consequences.
+///
+/// The pressure to append is not hypothetical: the host already detects a
+/// duplicate panel id and has to report the generic `Invalid` for it.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct RegisterStatus(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl RegisterStatus {
+    pub const Ok: Self = Self(0);
     /// A term named a component id the host does not have.
-    UnknownComponent = 1,
+    pub const UnknownComponent: Self = Self(1);
     /// Bevy refused the access pattern — usually `&mut T` and `&T` on the same
     /// component in one system.
-    AccessConflict = 2,
+    pub const AccessConflict: Self = Self(2);
     /// The descriptor was malformed: a null pointer, no queries, or a non-zero
     /// `flags`.
-    Invalid = 3,
+    pub const Invalid: Self = Self(3);
+
+    /// Whether this is a value this build knows. A plugin should treat anything
+    /// else as a failure — the host is newer and refused for a reason this build
+    /// has no name for.
+    pub const fn is_known(self) -> bool {
+        self.0 < 4
+    }
 }
 
 // ── The per-frame call ───────────────────────────────────────────────────────
@@ -1369,11 +1417,30 @@ pub struct ResourceSlot {
 /// a half-written system. The ergonomic layer catches unwinds and reports
 /// [`SystemStatus::Panicked`] instead, and the host **disables the system** so a
 /// panic costs one frame rather than repeating forever.
-#[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum SystemStatus {
-    Ok = 0,
-    Panicked = 1,
+/// Newtype rather than an `enum`, for the reason the module doc gives at length:
+/// the **plugin** produces this value and the **host** materialises it, once per
+/// system per frame. A real enum would make an out-of-range discriminant
+/// undefined behaviour on the host — rustc attaches `!range` metadata to the
+/// load, so a `match` may take an arbitrary arm rather than a `_` one.
+///
+/// It was a real enum until MAJOR 4, which made it the exception to a rule this
+/// file spends thirty lines establishing. Nothing had gone wrong yet, but the
+/// pressure to append a third status was already there.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct SystemStatus(pub i32);
+
+#[allow(non_upper_case_globals)]
+impl SystemStatus {
+    pub const Ok: Self = Self(0);
+    /// The plugin caught a panic. The host disables the system.
+    pub const Panicked: Self = Self(1);
+
+    /// Whether this is a value this build knows. Anything else came from a
+    /// plugin built against a newer ABI — treat it as a failure, not as `Ok`.
+    pub const fn is_known(self) -> bool {
+        self.0 == 0 || self.0 == 1
+    }
 }
 
 /// A plugin system. Invoked once per frame by the host.
@@ -2339,7 +2406,7 @@ interface! {
 
     // ── Added in MINOR 11 ─────────────────────────────────────────────────
     // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
-    // the very end, under a new header. See `interface_field_order` in
+    // the very end, under a new header. See `boundary_layouts_are_pinned` in
     // `tests/abi_order.rs`, which fails if this rule is broken again.
     /// Upload an image a plugin generated. See [`ImageDesc`].
     ///
@@ -2353,7 +2420,7 @@ interface! {
 
     // ── Added in MINOR 13 ─────────────────────────────────────────────────
     // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
-    // the very end, under a new header. See `interface_field_order` in
+    // the very end, under a new header. See `boundary_layouts_are_pinned` in
     // `tests/abi_order.rs`, which fails if this rule is broken again.
     /// `[n]` is the host's hash of the first `n` fields of this struct.
     ///
@@ -2460,14 +2527,25 @@ pub struct PanelAction {
 pub type PanelActionEntry = unsafe extern "C" fn(action: *const PanelAction) -> SystemStatus;
 
 /// Result of [`ExtensionInit`].
-#[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum InitResult {
-    Ok = 0,
+/// Newtype rather than an `enum`, same reason as [`SystemStatus`]: the plugin
+/// produces it and the host materialises it.
+///
+/// A variant was appended here under MINOR 13 on the argument that a plugin only
+/// returns the new value after passing the version check, so a host too old to
+/// know it is a host the plugin already refused. That argument holds for this
+/// type — but it is exactly the kind of local reasoning that does not survive
+/// the next edit, and it did not generalise to the two siblings.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct InitResult(pub i32);
+
+#[allow(non_upper_case_globals)]
+impl InitResult {
+    pub const Ok: Self = Self(0);
     /// The host's [`Interface`] is older than the plugin needs.
-    VersionTooOld = 1,
+    pub const VersionTooOld: Self = Self(1);
     /// The plugin's own setup failed. It will not be loaded.
-    Failed = 2,
+    pub const Failed: Self = Self(2);
     /// The host's [`Interface`] has the right version but the wrong *shape* — a
     /// field was inserted, reordered or retyped somewhere in the range this
     /// plugin compiled against, so its calls would land in the wrong function.
@@ -2475,11 +2553,14 @@ pub enum InitResult {
     /// Distinct from [`Self::VersionTooOld`] because the fix is different: too
     /// old means update the engine, this means the two were built from headers
     /// that disagree, and rebuilding the plugin is what resolves it.
-    ///
-    /// Safe to append even though the host reads this as a real enum: a plugin
-    /// only ever returns it after passing the version check, so a host too old to
-    /// know the value is a host this plugin already refused.
-    AbiMismatch = 3,
+    pub const AbiMismatch: Self = Self(3);
+
+    /// Whether this is a value this build knows. The host must check before
+    /// deciding what a plugin's init meant — anything else is a failure it has
+    /// no name for, never a success.
+    pub const fn is_known(self) -> bool {
+        self.0 >= 0 && self.0 < 4
+    }
 }
 
 /// The signature of [`INIT_SYMBOL`], the plugin's sole export.

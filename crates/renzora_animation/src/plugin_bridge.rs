@@ -212,10 +212,20 @@ fn vec3(v: renzora_plugin::sys::Vec3) -> Vec3 {
 
 /// Map `renzora_plugin::anim`'s frozen easing ordinals onto [`EasingFunction`].
 ///
-/// Written out rather than transmuted or indexed. The ordinals are frozen and
-/// `EasingFunction`'s are not, so the moment someone inserts a variant into that
-/// enum this match stops compiling — which is the entire point. An `as`-cast
-/// would have silently remapped every plugin's easing.
+/// Written out rather than transmuted or indexed, and that is what matters: both
+/// sides are named on every arm, so [`EasingFunction`]'s declaration order is
+/// irrelevant here. Someone may insert a variant into it freely. An `as`-cast or
+/// an index would instead have silently remapped every plugin's easing the first
+/// time that happened.
+///
+/// An earlier version of this comment claimed the match would *stop compiling* if
+/// a variant were inserted. It would not, on two counts: the arms construct by
+/// name, and there is a `_` arm below. Nothing here is a compile-time guard —
+/// the safety comes from naming both sides, which is enough.
+///
+/// What genuinely is frozen is `Easing`'s own ordinals, because every shipped
+/// plugin compiled them in. Renumbering those silently remaps behaviour and no
+/// test sees it.
 fn easing(e: Easing) -> EasingFunction {
     match e {
         Easing::Linear => EasingFunction::Linear,

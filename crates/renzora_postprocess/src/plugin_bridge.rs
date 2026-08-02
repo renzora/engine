@@ -391,7 +391,8 @@ impl RenderPass for PluginPass {
                 sys::PipelineId(0),
             )
         };
-        if status == sys::SystemStatus::Panicked {
+        // An unrecognised status is a failure, not a success.
+        if status == sys::SystemStatus::Panicked || !status.is_known() {
             error!("[plugin] render callback panicked");
         }
     }

@@ -252,7 +252,10 @@ fn fill(world: &mut World) {
                     let v = match kind {
                         FieldKind::Bool => read_bool(world, cid, offset) as i32 as f32,
                         FieldKind::I32 => read_i32(world, cid, offset) as f32,
-                        _ => read_f32(world, cid, offset),
+                        FieldKind::F32 => read_f32(world, cid, offset),
+                        // Same as the component path: a kind this build cannot
+                        // size must not be read at a guessed width.
+                        _ => 0.0,
                     };
                     (n, kind, offset, v)
                 })

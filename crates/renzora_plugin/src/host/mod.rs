@@ -373,6 +373,23 @@ static IFACE: sys::Interface = sys::Interface {
 
 // ── Interface implementations ────────────────────────────────────────────────
 
+/// Bytes a field of `kind` occupies, or 0 if this build has no idea.
+///
+/// Zero for an unknown kind is what makes the bounds check above refuse rather
+/// than guess: a `FieldKind` from a newer ABI has no size this build can know,
+/// and the consumers that would otherwise read it default to four bytes at an
+/// offset nothing measured.
+fn field_width(kind: sys::FieldKind) -> usize {
+    match kind {
+        sys::FieldKind::F32 | sys::FieldKind::I32 => 4,
+        sys::FieldKind::Bool => 1,
+        sys::FieldKind::Vec3 => size_of::<sys::Vec3>(),
+        sys::FieldKind::Quat => size_of::<sys::Quat>(),
+        sys::FieldKind::Str => size_of::<sys::Str256>(),
+        _ => 0,
+    }
+}
+
 unsafe extern "C" fn register_component(
     host: *mut sys::Host,
     desc: *const sys::ComponentDesc,
@@ -441,11 +458,49 @@ unsafe extern "C" fn register_component(
         .insert(type_path.clone(), id);
 
     // Copy the schema out of the plugin's memory now, while we know it is valid.
+    //
+    // Every field is bounds-checked against the component's own size here, at the
+    // one moment the whole schema is in front of us. Downstream consumers — the
+    // inspector, the scene writer — read and write `width` bytes at `offset` into
+    // live component storage, and an offset past the end is an out-of-bounds
+    // access with the component's own allocation as the base. That is reachable
+    // from a plugin built against a newer ABI: an unknown `FieldKind` is not
+    // something those consumers can size, and the field is trusted rather than
+    // measured.
+    //
+    // A bad field is dropped rather than refusing the whole component, because a
+    // component that registers with one field missing is a visibly wrong
+    // inspector row, while one that refuses to register at all is a plugin that
+    // silently does nothing.
     let fields = if desc.fields.is_null() {
         Vec::new()
     } else {
         std::slice::from_raw_parts(desc.fields, desc.field_count)
             .iter()
+            .filter(|f| {
+                // A kind this build cannot size is KEPT. That is deliberate and
+                // has its own test: the schema is data, and dropping a field the
+                // inspector cannot draw would silently change the component's
+                // shape for the scene writer too. Consumers are responsible for
+                // skipping what they cannot read — which is the half of this that
+                // was actually broken.
+                let width = field_width(f.kind);
+                if width == 0 {
+                    return true;
+                }
+                let fits = f.offset.saturating_add(width) <= desc.size;
+                if !fits {
+                    error!(
+                        "plugin component `{}` field `{}` is {width} bytes at offset {} but the \
+                         component is only {} — dropping the field",
+                        desc.name.as_str(),
+                        f.name.as_str(),
+                        f.offset,
+                        desc.size
+                    );
+                }
+                fits
+            })
             .map(|f| PluginField {
                 name: f.name.as_str().to_string(),
                 kind: f.kind,
@@ -1163,11 +1218,6 @@ unsafe extern "C" fn add_material(
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-/// Backs `sys::CommandSink` for one system invocation.
-///
-/// `sink` must be the FIRST field: the plugin holds a `*mut CommandSink` and the
-/// host casts it back to this, so the two must share an address.
-#[repr(C)]
 /// Completed HTTP responses waiting for the plugin that asked for them.
 ///
 /// Held here rather than acted on for the same reason [`PluginServiceCalls`] is:
@@ -2765,7 +2815,11 @@ fn build_dispatcher(
             // at a buffer that outlives this statement.
             let status = unsafe { entry(&call) };
             let queued = std::mem::take(&mut sink.queued);
-            if status == sys::SystemStatus::Panicked {
+            // `!is_known` counts as failure, not as success. A status this
+            // build has no name for came from a plugin built against a newer
+            // ABI, and treating it as `Ok` would write back output produced by
+            // a system whose own report we could not read.
+            if status == sys::SystemStatus::Panicked || !status.is_known() {
                 error!("[plugin] system panicked — disabling it for this session");
                 disabled.store(true, std::sync::atomic::Ordering::Relaxed);
                 // Skip write-back: the plugin's partial output is not something
@@ -2813,7 +2867,14 @@ fn write_cell(e: &mut FilteredEntityMut, t: &TermPlan, bytes: &[u8]) {
     match t.marshal {
         Marshal::Transform => {
             // SAFETY: `bytes` is exactly one `sys::Transform`, written by us.
-            let mirror = unsafe { *bytes.as_ptr().cast::<sys::Transform>() };
+            //
+            // `read_unaligned` rather than a plain deref, matching every other
+            // decode site. The buffer behind `bytes` is a `Vec<u8>`, which
+            // requests align 1, while `sys::Transform` needs align 4. It happens
+            // to work because allocators return aligned blocks and the row stride
+            // preserves it — but that is an allocator property, not a guarantee,
+            // and it was the only site in the crate relying on it.
+            let mirror = unsafe { bytes.as_ptr().cast::<sys::Transform>().read_unaligned() };
             if let Some(mut dst) = e.get_mut::<Transform>() {
                 *dst = from_mirror(&mirror);
             }

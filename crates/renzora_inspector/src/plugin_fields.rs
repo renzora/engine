@@ -248,7 +248,14 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
             let v = match kind {
                 FieldKind::Bool => read_bool(world, entity, cid, offset) as i32 as f32,
                 FieldKind::I32 => read_i32(world, entity, cid, offset) as f32,
-                _ => read_f32(world, entity, cid, offset),
+                FieldKind::F32 => read_f32(world, entity, cid, offset),
+                // Anything else reads nothing. `Vec3`, `Quat` and `Str` are drawn
+                // by their own rows further down, and a kind from a newer ABI has
+                // no size this build knows — so the previous `_ => read_f32` was
+                // four bytes at an offset nothing had measured, which the host
+                // deliberately keeps in the schema precisely because it cannot
+                // size it. Zero is a value; an out-of-bounds read is not.
+                _ => 0.0,
             };
             (name, kind, offset, v, range)
         })

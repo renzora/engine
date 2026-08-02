@@ -35,6 +35,31 @@ fn kind_name(kind: FieldKind) -> String {
     }
 }
 
+/// The widths `renzora_bsn` uses to write into live plugin component storage,
+/// checked against the types they are meant to describe.
+///
+/// `renzora_bsn` has no `renzora_plugin` dependency on purpose, so it reconstructs
+/// those widths from literals — `raw_registry::field_width` returns 256 for
+/// `"str"`, and `bsn_tree` writes a string's length at a hardcoded offset of 252.
+/// Both are correct today and derived from nothing, and they are used to write at
+/// computed offsets into memory a plugin owns. If `Str256` were ever resized, a
+/// scene load would put every later field at the wrong place, silently.
+///
+/// This module is the one place that imports both sides, so the equivalence is
+/// asserted here rather than by adding a dependency edge that was deliberately
+/// avoided. A failure here means a literal in `renzora_bsn` needs updating.
+const _: () = {
+    use renzora_plugin::sys;
+    assert!(sys::STR_CAP == 252, "bsn_tree writes a string's length at a literal 252");
+    assert!(size_of::<sys::Str256>() == 256, "raw_registry maps \"str\" to a literal 256");
+    assert!(size_of::<sys::Vec3>() == 12, "raw_registry maps \"vec3\" to a literal 12");
+    assert!(size_of::<sys::Quat>() == 16, "raw_registry maps \"quat\" to a literal 16");
+    assert!(size_of::<f32>() == 4 && size_of::<i32>() == 4);
+    // `field_width` also has an `"entity"` arm, which `kind_name` above can never
+    // produce — `FieldKind` has no such value. Harmless, but it means the two
+    // tables were written from different ideas of what the kinds are.
+};
+
 /// Rebuild [`RawComponentRegistry`] from the plugin host's schemas.
 ///
 /// Idempotent and cheap enough to call directly from a save path rather than

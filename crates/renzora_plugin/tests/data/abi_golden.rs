@@ -144,6 +144,12 @@ const GOLDEN: &[Golden] = &[
         ],
     },
     Golden {
+        name: "RegisterStatus",
+        fields: &[
+            "0: u32",
+        ],
+    },
+    Golden {
         name: "FrameCtx",
         fields: &[
             "delta_secs: f32",
@@ -249,6 +255,12 @@ const GOLDEN: &[Golden] = &[
         fields: &[
             "id: ComponentId",
             "ptr: *mut u8",
+        ],
+    },
+    Golden {
+        name: "SystemStatus",
+        fields: &[
+            "0: i32",
         ],
     },
     Golden {
@@ -488,6 +500,12 @@ const GOLDEN: &[Golden] = &[
         name: "PanelActionEntry",
         fields: &[
             "= unsafe extern \"C\" fn(action: *const PanelAction) -> SystemStatus",
+        ],
+    },
+    Golden {
+        name: "InitResult",
+        fields: &[
+            "0: i32",
         ],
     },
 ];

@@ -278,6 +278,18 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
              against this engine's `renzora_plugin`"
                 .to_string(),
         ),
+        // A value from a newer ABI. Reaching this arm at all is what the newtype
+        // bought: as a real enum the match above would have been exhaustive, and
+        // an out-of-range discriminant would have been undefined behaviour here
+        // rather than a case to handle.
+        //
+        // Refused rather than assumed successful — a plugin that reports a result
+        // this build has no name for has not told us it loaded.
+        other => LoadOutcome::Failed(format!(
+            "plugin init returned status {} which this engine does not know — it was built \
+             against a newer ABI. Rebuild it against this engine's `renzora_plugin`",
+            other.0
+        )),
     }
 }
 

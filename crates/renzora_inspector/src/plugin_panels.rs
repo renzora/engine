@@ -563,7 +563,9 @@ fn dispatch_actions(world: &mut World) {
             // alive for the process lifetime, and every pointer above outlives
             // the call. The plugin's thunk carries its own panic guard.
             let status = unsafe { entry(&payload) };
-            if status == sys::SystemStatus::Panicked {
+            // An unrecognised status is a failure, not a success — see the
+            // dispatcher in `renzora_plugin::host`.
+            if status == sys::SystemStatus::Panicked || !status.is_known() {
                 error!("[plugin] panel action {action} panicked");
             }
         }
