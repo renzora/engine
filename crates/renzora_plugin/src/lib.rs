@@ -105,8 +105,35 @@ pub mod prelude {
     // A post-process effect names the phase it runs in; without this every one of
     // them starts with a `use renzora_plugin::sys::RenderPhase`.
     pub use crate::sys::RenderPhase;
+    // Both forms: the macros for `info!("x = {x}")`, the functions for
+    // `info(&msg)`. Macros and values are separate namespaces, so these coexist.
     pub use crate::ecs::{error, info, warn};
+    pub use crate::{error, info, warn};
     pub use crate::ecs::{First, Last, PostUpdate, PreUpdate, Update};
+}
+
+
+/// `info!("x = {x}")`, formatting like Bevy's.
+///
+/// A macro *and* a function, deliberately. Bevy's logging is macros and plugin
+/// source is meant to be Bevy source, so `info!(..)` has to work — but macros and
+/// values live in separate namespaces, so [`ecs::info`] keeps working too and
+/// neither shadows the other.
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)*) => { $crate::ecs::info(&::std::format!($($arg)*)) };
+}
+
+/// `warn!("…")`. See [`info!`].
+#[macro_export]
+macro_rules! warn {
+    ($($arg:tt)*) => { $crate::ecs::warn(&::std::format!($($arg)*)) };
+}
+
+/// `error!("…")`. See [`info!`].
+#[macro_export]
+macro_rules! error {
+    ($($arg:tt)*) => { $crate::ecs::error(&::std::format!($($arg)*)) };
 }
 
 /// Emit the plugin's sole export.

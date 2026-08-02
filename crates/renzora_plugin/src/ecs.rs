@@ -637,46 +637,56 @@ unsafe impl<T: Component> QueryData for Option<&mut T> {
     }
 }
 
-unsafe impl<A: QueryData, B: QueryData, C: QueryData> QueryData for (A, B, C) {
-    type Item<'a> = (A::Item<'a>, B::Item<'a>, C::Item<'a>);
-    type ReadOnly = (A::ReadOnly, B::ReadOnly, C::ReadOnly);
-    const CELLS: usize = A::CELLS + B::CELLS + C::CELLS;
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        A::terms(ctx, out);
-        B::terms(ctx, out);
-        C::terms(ctx, out);
-    }
-    unsafe fn fetch<'a>(
-        view: *const sys::QueryView,
-        row: usize,
-        cells: *mut *mut u8,
-    ) -> Self::Item<'a> {
-        (
-            A::fetch(view, row, cells),
-            B::fetch(view, row, cells.add(A::CELLS)),
-            C::fetch(view, row, cells.add(A::CELLS + B::CELLS)),
-        )
-    }
+/// Generates the tuple [`QueryData`] impls.
+///
+/// The cells offset has to accumulate across the tuple — element *n* reads from
+/// `cells + sum(CELLS of 0..n)` — which a macro cannot express as a const
+/// expression per element without quadratic repetition. A running counter in
+/// `fetch` does it in one line instead, and is exact because Rust evaluates
+/// tuple elements left to right.
+macro_rules! query_data_tuples {
+    ($(($($t:ident),+))+) => {
+        $(
+            #[allow(non_snake_case, unused_assignments)]
+            unsafe impl<$($t: QueryData),+> QueryData for ($($t,)+) {
+                type Item<'a> = ($($t::Item<'a>,)+);
+                type ReadOnly = ($($t::ReadOnly,)+);
+                const CELLS: usize = 0 $( + $t::CELLS )+;
+                fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
+                    $( $t::terms(ctx, out); )+
+                }
+                unsafe fn fetch<'a>(
+                    view: *const sys::QueryView,
+                    row: usize,
+                    cells: *mut *mut u8,
+                ) -> Self::Item<'a> {
+                    let mut offset = 0usize;
+                    ($({
+                        let item = $t::fetch(view, row, cells.add(offset));
+                        offset += $t::CELLS;
+                        item
+                    },)+)
+                }
+            }
+        )+
+    };
 }
 
-unsafe impl<A: QueryData, B: QueryData> QueryData for (A, B) {
-    type Item<'a> = (A::Item<'a>, B::Item<'a>);
-    type ReadOnly = (A::ReadOnly, B::ReadOnly);
-    const CELLS: usize = A::CELLS + B::CELLS;
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        A::terms(ctx, out);
-        B::terms(ctx, out);
-    }
-    unsafe fn fetch<'a>(
-        view: *const sys::QueryView,
-        row: usize,
-        cells: *mut *mut u8,
-    ) -> Self::Item<'a> {
-        (
-            A::fetch(view, row, cells),
-            B::fetch(view, row, cells.add(A::CELLS)),
-        )
-    }
+query_data_tuples! {
+    (A, B)
+    (A, B, C)
+    (A, B, C, D)
+    (A, B, C, D, E)
+    (A, B, C, D, E, F)
+    (A, B, C, D, E, F, G)
+    (A, B, C, D, E, F, G, H)
+    (A, B, C, D, E, F, G, H, I)
+    (A, B, C, D, E, F, G, H, I, J)
+    (A, B, C, D, E, F, G, H, I, J, K)
+    (A, B, C, D, E, F, G, H, I, J, K, L)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)
 }
 
 // ── Query filters ────────────────────────────────────────────────────────────
@@ -752,19 +762,36 @@ impl<T: Component> QueryFilter for Changed<T> {
     }
 }
 
-impl<A: QueryFilter, B: QueryFilter> QueryFilter for (A, B) {
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        A::terms(ctx, out);
-        B::terms(ctx, out);
-    }
+/// Generates the tuple [`QueryFilter`] impls. A filter tuple means "and", and
+/// contributes no cells, so this is just concatenation.
+macro_rules! query_filter_tuples {
+    ($(($($t:ident),+))+) => {
+        $(
+            impl<$($t: QueryFilter),+> QueryFilter for ($($t,)+) {
+                fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
+                    $( $t::terms(ctx, out); )+
+                }
+            }
+        )+
+    };
 }
 
-impl<A: QueryFilter, B: QueryFilter, C: QueryFilter> QueryFilter for (A, B, C) {
-    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
-        A::terms(ctx, out);
-        B::terms(ctx, out);
-        C::terms(ctx, out);
-    }
+query_filter_tuples! {
+    (A)
+    (A, B)
+    (A, B, C)
+    (A, B, C, D)
+    (A, B, C, D, E)
+    (A, B, C, D, E, F)
+    (A, B, C, D, E, F, G)
+    (A, B, C, D, E, F, G, H)
+    (A, B, C, D, E, F, G, H, I)
+    (A, B, C, D, E, F, G, H, I, J)
+    (A, B, C, D, E, F, G, H, I, J, K)
+    (A, B, C, D, E, F, G, H, I, J, K, L)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)
 }
 
 /// Matches entities satisfying any branch. Mirrors `bevy::Or<(..)>`.
@@ -799,6 +826,17 @@ or_filters! {
     (A, B)
     (A, B, C)
     (A, B, C, D)
+    (A, B, C, D, E)
+    (A, B, C, D, E, F)
+    (A, B, C, D, E, F, G)
+    (A, B, C, D, E, F, G, H)
+    (A, B, C, D, E, F, G, H, I)
+    (A, B, C, D, E, F, G, H, I, J)
+    (A, B, C, D, E, F, G, H, I, J, K)
+    (A, B, C, D, E, F, G, H, I, J, K, L)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)
 }
 
 // ── Query ────────────────────────────────────────────────────────────────────
@@ -853,6 +891,52 @@ impl<'a, D: QueryData, F: QueryFilter> Query<'a, D, F> {
 
     pub fn len(&self) -> usize {
         self.view.entity_count
+    }
+
+    /// The one matching item, or `None` if there is not exactly one.
+    ///
+    /// Bevy returns a `Result` and panics on `.single().unwrap()`; here it is an
+    /// `Option`, because a plugin that panics loses its system for the session
+    /// and `if let Some(x)` is the shape that avoids it.
+    pub fn single(&self) -> Option<<D::ReadOnly as QueryData>::Item<'_>> {
+        (self.view.entity_count == 1).then(|| self.iter().next()).flatten()
+    }
+
+    /// The one matching item, mutably.
+    pub fn single_mut(&mut self) -> Option<D::Item<'_>> {
+        (self.view.entity_count == 1).then(|| self.iter_mut().next()).flatten()
+    }
+
+    /// The item for `entity`, if this query matched it.
+    ///
+    /// Linear in the number of matched rows: the host hands over a flat array,
+    /// not a map. Fine for the "did the thing I spawned match?" case; do not put
+    /// it inside a loop over another query.
+    pub fn get(&self, entity: sys::Entity) -> Option<<D::ReadOnly as QueryData>::Item<'_>> {
+        let row = self.row_of(entity)?;
+        self.iter().nth(row)
+    }
+
+    /// The item for `entity`, mutably.
+    pub fn get_mut(&mut self, entity: sys::Entity) -> Option<D::Item<'_>> {
+        let row = self.row_of(entity)?;
+        self.iter_mut().nth(row)
+    }
+
+    /// Whether this query matched `entity`.
+    pub fn contains(&self, entity: sys::Entity) -> bool {
+        self.row_of(entity).is_some()
+    }
+
+    fn row_of(&self, entity: sys::Entity) -> Option<usize> {
+        if self.view.entities.is_null() {
+            return None;
+        }
+        // SAFETY: the host wrote `entity_count` ids at this pointer.
+        let ids = unsafe {
+            core::slice::from_raw_parts(self.view.entities, self.view.entity_count)
+        };
+        ids.iter().position(|e| e.0 == entity.0)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1214,6 +1298,13 @@ bundle_tuples! {
     (A, B, C, D, E, F)
     (A, B, C, D, E, F, G)
     (A, B, C, D, E, F, G, H)
+    (A, B, C, D, E, F, G, H, I)
+    (A, B, C, D, E, F, G, H, I, J)
+    (A, B, C, D, E, F, G, H, I, J, K)
+    (A, B, C, D, E, F, G, H, I, J, K, L)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)
 }
 
 /// Queue structural changes. Mirrors `bevy::Commands`.
@@ -1540,6 +1631,37 @@ unsafe impl<T: ResourceParam> SystemParam for ResMut<'_, T> {
     }
     unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
         ResMut(T::res_ptr(call), PhantomData)
+    }
+}
+
+/// `Option<Res<T>>` for a resource that may not exist.
+///
+/// Bevy declines to *run* a system whose `Res<T>` is missing. The host cannot do
+/// that — a plugin system's parameters are resolved per call, not per schedule —
+/// so a bare `Res<T>` whose resource is absent panics on first deref, which costs
+/// the plugin its system for the session. `Option` is the way to ask without
+/// risking that, and it is spelled exactly as it is in Bevy.
+unsafe impl<T: ResourceParam> SystemParam for Option<Res<'_, T>> {
+    fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder) {
+        // Declared exactly as the non-optional form: the host resolves the id
+        // and reserves the slot either way, and absence is a null pointer at
+        // fetch time rather than a different declaration.
+        T::res_term(ctx, &mut out.resources, sys::Access::ResRead);
+    }
+    unsafe fn fetch(call: *const sys::SystemCall, n: &mut usize) -> Self {
+        let ptr = T::res_ptr(call);
+        (!ptr.is_null()).then(|| Res::<T>::fetch(call, n))
+    }
+}
+
+/// `Option<ResMut<T>>`. See [`Option<Res<T>>`].
+unsafe impl<T: ResourceParam> SystemParam for Option<ResMut<'_, T>> {
+    fn declare(ctx: &mut InitCtx, out: &mut SystemBuilder) {
+        T::res_term(ctx, &mut out.resources, sys::Access::ResWrite);
+    }
+    unsafe fn fetch(call: *const sys::SystemCall, n: &mut usize) -> Self {
+        let ptr = T::res_ptr(call);
+        (!ptr.is_null()).then(|| ResMut::<T>::fetch(call, n))
     }
 }
 
@@ -1918,6 +2040,16 @@ param_tuples! {
     (A, B, C, D)
     (A, B, C, D, E)
     (A, B, C, D, E, F)
+    (A, B, C, D, E, F, G)
+    (A, B, C, D, E, F, G, H)
+    (A, B, C, D, E, F, G, H, I)
+    (A, B, C, D, E, F, G, H, I, J)
+    (A, B, C, D, E, F, G, H, I, J, K)
+    (A, B, C, D, E, F, G, H, I, J, K, L)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)
 }
 
 /// A function that can be registered as a system.
@@ -1934,6 +2066,52 @@ param_tuples! {
 /// to own, so rejecting it is correct rather than a limitation to lift later.
 pub trait IntoSystem<Marker> {
     fn build(self, ctx: &mut InitCtx) -> (SystemBuilder, sys::SystemEntry, *mut core::ffi::c_void);
+}
+
+
+/// One system, or a tuple of them, for [`App::add_systems`].
+///
+/// Exists so `add_systems(Update, (a, b))` compiles, which is how Bevy source
+/// reads and therefore how a plugin's has to. The `Marker` shapes are what keep
+/// the blanket single-system impl from overlapping the tuple ones: a lone system
+/// is marked `(M,)` and an n-tuple is marked with an n-tuple, so no type can
+/// satisfy two of these at once.
+pub trait IntoSystems<Marker> {
+    fn add_to(self, app: &mut App, schedule: Schedule);
+}
+
+impl<M, S: IntoSystem<M>> IntoSystems<(M,)> for S {
+    fn add_to(self, app: &mut App, schedule: Schedule) {
+        app.add_one_system(schedule, self);
+    }
+}
+
+macro_rules! into_systems_tuples {
+    ($(($($t:ident $m:ident),+))+) => {
+        $(
+            #[allow(non_snake_case)]
+            impl<$($m,)+ $($t: IntoSystem<$m>,)+> IntoSystems<($($m,)+)> for ($($t,)+) {
+                fn add_to(self, app: &mut App, schedule: Schedule) {
+                    let ($($t,)+) = self;
+                    $( app.add_one_system(schedule, $t); )+
+                }
+            }
+        )+
+    };
+}
+
+into_systems_tuples! {
+    (A MA, B MB)
+    (A MA, B MB, C MC)
+    (A MA, B MB, C MC, D MD)
+    (A MA, B MB, C MC, D MD, E ME)
+    (A MA, B MB, C MC, D MD, E ME, F MF)
+    (A MA, B MB, C MC, D MD, E ME, F MF, G MG)
+    (A MA, B MB, C MC, D MD, E ME, F MF, G MG, H MH)
+    (A MA, B MB, C MC, D MD, E ME, F MF, G MG, H MH, I MI)
+    (A MA, B MB, C MC, D MD, E ME, F MF, G MG, H MH, I MI, J MJ)
+    (A MA, B MB, C MC, D MD, E ME, F MF, G MG, H MH, I MI, J MJ, K MK)
+    (A MA, B MB, C MC, D MD, E ME, F MF, G MG, H MH, I MI, J MJ, K MK, L ML)
 }
 
 /// Reconstruct a zero-sized callable from nothing.
@@ -2046,6 +2224,16 @@ into_system! {
     (A, B, C, D)
     (A, B, C, D, E)
     (A, B, C, D, E, F)
+    (A, B, C, D, E, F, G)
+    (A, B, C, D, E, F, G, H)
+    (A, B, C, D, E, F, G, H, I)
+    (A, B, C, D, E, F, G, H, I, J)
+    (A, B, C, D, E, F, G, H, I, J, K)
+    (A, B, C, D, E, F, G, H, I, J, K, L)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O)
+    (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P)
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -2194,7 +2382,22 @@ impl App {
         self.ctx.unresolved
     }
 
-    pub fn add_systems<M, S: IntoSystem<M>>(&mut self, schedule: Schedule, system: S) -> &mut Self {
+    /// Register one system, or a tuple of them. Mirrors `bevy::App::add_systems`.
+    ///
+    /// ```ignore
+    /// app.add_systems(Update, spin)
+    ///    .add_systems(Update, (flock, steer, draw));
+    /// ```
+    ///
+    /// A tuple means "all of these", exactly as in Bevy — it says nothing about
+    /// order, and the ABI has no ordering yet, so they may run in any order or
+    /// in parallel.
+    pub fn add_systems<M, S: IntoSystems<M>>(&mut self, schedule: Schedule, systems: S) -> &mut Self {
+        systems.add_to(self, schedule);
+        self
+    }
+
+    fn add_one_system<M, S: IntoSystem<M>>(&mut self, schedule: Schedule, system: S) -> &mut Self {
         let (builder, entry, user) = system.build(&mut self.ctx);
         let descs: alloc::vec::Vec<sys::QueryDesc> = builder
             .queries
