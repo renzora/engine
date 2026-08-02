@@ -86,6 +86,8 @@ const TABLES: &[Table] = &[
             "add_mesh_data: unsafe extern \"C\" fn( host: *mut Host, desc: *const MeshDataDesc, ) -> AssetHandle",
             "add_material_shader: unsafe extern \"C\" fn( host: *mut Host, desc: *const MaterialShaderDesc, ) -> AssetHandle",
             "add_image: unsafe extern \"C\" fn( host: *mut Host, desc: *const ImageDesc, ) -> AssetHandle",
+            "prefix_hashes: *const u64",
+            "prefix_count: usize",
         ],
     },
     // Read every frame, and the most-appended table in the ABI. An insertion
@@ -154,7 +156,15 @@ const TABLES: &[Table] = &[
 /// is the only source of truth. Reading it directly also means the test cannot
 /// pass by checking something other than what ships.
 fn fields_of(src: &str, struct_name: &str) -> Vec<String> {
-    let needle = format!("pub struct {struct_name} {{");
+    // `Interface` is emitted by the `interface!` macro rather than written out,
+    // because its field list also has to produce the prefix hashes the load-time
+    // check compares — one list, two consumers. Its fields therefore carry no
+    // `pub`, which the field parser below allows for.
+    let needle = if struct_name == "Interface" {
+        "interface! {".to_string()
+    } else {
+        format!("pub struct {struct_name} {{")
+    };
     let start = src
         .find(&needle)
         .unwrap_or_else(|| panic!("`{struct_name}` not found — was it renamed?"));
@@ -175,8 +185,23 @@ fn fields_of(src: &str, struct_name: &str) -> Vec<String> {
         {
             continue;
         }
-        if current.is_empty() && !trimmed.starts_with("pub ") {
-            continue;
+        // A field starts at `pub name:` in a written struct, or plain `name:` in
+        // the macro form. Requiring a `:` is what keeps a stray line from being
+        // mistaken for one — and the depth guard below means an argument line
+        // inside a multi-line `fn(..)` is already being accumulated, not started.
+        if current.is_empty() {
+            let looks_like_field = trimmed
+                .strip_prefix("pub ")
+                .unwrap_or(trimmed)
+                .split(':')
+                .next()
+                .is_some_and(|n| {
+                    !n.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                })
+                && trimmed.contains(':');
+            if !looks_like_field {
+                continue;
+            }
         }
 
         if !current.is_empty() {
@@ -238,5 +263,6 @@ fn interface_size_matches_its_field_list() {
          or removed without updating TABLES"
     );
 }
+
 
 

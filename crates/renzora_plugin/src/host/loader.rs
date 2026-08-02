@@ -268,6 +268,16 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         sys::InitResult::Failed => {
             LoadOutcome::Failed("plugin init returned Failed".to_string())
         }
+        // The version matched and the shape did not, so the two were built from
+        // headers that disagree about field order. Say that, rather than leaving
+        // an author to wonder why a plugin with the right version number is
+        // refused — the fix is a rebuild, not an engine update.
+        sys::InitResult::AbiMismatch => LoadOutcome::Failed(
+            "plugin was built against a differently-shaped interface table — its version \
+             matches but a field was inserted, reordered or retyped. Rebuild the plugin \
+             against this engine's `renzora_plugin`"
+                .to_string(),
+        ),
     }
 }
 

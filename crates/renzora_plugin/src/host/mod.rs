@@ -364,6 +364,10 @@ static IFACE: sys::Interface = sys::Interface {
     add_mesh_data,
     add_material_shader,
     add_image,
+    // Points at a `static`, so this is valid for the life of the process — which
+    // matters because a plugin may read it at any point during its init.
+    prefix_hashes: sys::INTERFACE_PREFIX_HASHES.as_ptr(),
+    prefix_count: sys::INTERFACE_PREFIX_HASHES.len(),
 };
 
 

@@ -138,6 +138,25 @@ macro_rules! add {
             {
                 return $crate::sys::InitResult::VersionTooOld;
             }
+            // The version numbers are two integers a human types, so they say
+            // nothing about whether the table is actually shaped the way this
+            // plugin was compiled to read it. That gap is not theoretical: two
+            // functions were once inserted mid-struct and released as MINOR
+            // bumps, which sends an older plugin's call into a different
+            // function — passing, say, a mesh descriptor to something that reads
+            // it as an image descriptor. A segfault, and the panic guard around
+            // plugin calls catches panics rather than those.
+            //
+            // So compare the host's hash of its first N fields against ours,
+            // where N is how many fields this plugin knows. Appending leaves that
+            // prefix untouched, which is precisely the promise the append-only
+            // rule makes; anything else moves it and the load is refused.
+            if i.prefix_count <= $crate::sys::INTERFACE_FIELDS
+                || *i.prefix_hashes.add($crate::sys::INTERFACE_FIELDS)
+                    != $crate::sys::INTERFACE_PREFIX_HASHES[$crate::sys::INTERFACE_FIELDS]
+            {
+                return $crate::sys::InitResult::AbiMismatch;
+            }
             let mut app = $crate::ecs::App::new(iface, host);
             // A panic in `build` would unwind out of an `extern "C"` fn and abort
             // the editor. Refusing to load is the correct outcome instead.

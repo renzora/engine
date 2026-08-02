@@ -128,6 +128,8 @@ pub const VERSION_MAJOR: u32 = 3;
 /// 9 -> 10 appended `MeshSource::write`.
 /// 10 -> 11 appended `add_image`, `SystemCall::images`, and material textures.
 /// 11 -> 12 appended `CommandKind::SetMaterial`.
+/// 12 -> 13 appended `prefix_hashes` and `prefix_count`, which let a plugin
+///          verify the table's shape rather than trusting the two numbers above.
 ///
 /// Two of those lines were false when written, which is the whole reason
 /// [`VERSION_MAJOR`] is now 3: MINOR 9 and MINOR 11 *inserted* their functions
@@ -142,7 +144,7 @@ pub const VERSION_MAJOR: u32 = 3;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 12;
+pub const VERSION_MINOR: u32 = 13;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -2035,31 +2037,120 @@ pub struct Host {
     _private: [u8; 0],
 }
 
-/// The function table the host hands a plugin at load.
+/// FNV-1a over a string, folded into a running hash.
 ///
-/// **Append-only.** Adding a function is a [`VERSION_MINOR`] bump and older
-/// plugins keep loading, because they simply never read the new field. Removing
-/// or reordering one breaks every plugin ever built, which is the thing this
-/// whole design exists to prevent.
-#[repr(C)]
-pub struct Interface {
-    pub version_major: u32,
-    pub version_minor: u32,
+/// Chosen because it is trivially `const` — the whole point is a value the
+/// compiler can produce for a struct declaration, and a stronger hash that needs
+/// runtime code would be useless here.
+const fn fnv_str(mut h: u64, s: &str) -> u64 {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        h ^= b[i] as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        i += 1;
+    }
+    // A separator, and it is load-bearing rather than tidy: without it the pair
+    // ("add_image", "unsafe fn(..)") hashes identically to
+    // ("add_imageunsafe", " fn(..)"), so a rename that moved a character across
+    // the boundary would be invisible.
+    h ^= 0xff;
+    h.wrapping_mul(0x0000_0100_0000_01b3)
+}
+
+/// Declares [`Interface`] and, from the same field list, the prefix hashes that
+/// let a plugin verify the table's *shape* before it calls through it.
+///
+/// The version handshake compares two numbers a human types, so it cannot see
+/// that the table was reordered — and that is not hypothetical: two functions
+/// were once inserted mid-struct and shipped as MINOR bumps, which would have
+/// sent an older plugin's call into a different function. A build-time test now
+/// pins the order for this repository, but a plugin compiled elsewhere against an
+/// older header has no such protection, and third-party prebuilt plugins are the
+/// entire reason this ABI exists.
+///
+/// So the declaration also emits [`INTERFACE_PREFIX_HASHES`], where entry *n* is a
+/// chain over the first *n* fields' `(name, written type)`. Appending a field
+/// leaves every earlier entry untouched — which is exactly the property the
+/// append-only rule claims — while inserting, reordering or retyping one moves
+/// every entry from that point on. A plugin checks the entry for its own field
+/// count and is refused if the prefix it compiled against is not the prefix the
+/// host is offering.
+macro_rules! interface {
+    ($( $(#[$meta:meta])* $field:ident : $ty:ty ),* $(,)?) => {
+        /// The function table the host hands a plugin at load.
+        ///
+        /// **Append-only.** Adding a function is a [`VERSION_MINOR`] bump and
+        /// older plugins keep loading, because they simply never read the new
+        /// field. Removing or reordering one breaks every plugin ever built,
+        /// which is the thing this whole design exists to prevent — and since
+        /// MINOR 13 a violation is a refused load rather than a wrong call, via
+        /// [`INTERFACE_PREFIX_HASHES`].
+        #[repr(C)]
+        pub struct Interface {
+            $( $(#[$meta])* pub $field: $ty, )*
+        }
+
+        /// Number of fields in [`Interface`] as this build declares it.
+        pub const INTERFACE_FIELDS: usize = [$( ::core::stringify!($field) ),*].len();
+
+        /// `[n]` is the hash of the first `n` fields. `[0]` is the empty prefix.
+        ///
+        /// Append-stable by construction: adding a field only appends an entry.
+        pub static INTERFACE_PREFIX_HASHES: [u64; INTERFACE_FIELDS + 1] = {
+            let names = [$( ::core::stringify!($field) ),*];
+            // The type as *written*, which makes this deliberately conservative:
+            // it hashes the source text, so `*const ImageDesc` and
+            // `*const self::ImageDesc` differ, and so does a renamed parameter,
+            // even though neither changes the ABI. Those are false positives, and
+            // they are the right way to be wrong — a false positive costs a
+            // rebuild, a false negative costs a call into the wrong function.
+            //
+            // The practical consequence, worth knowing before you tidy this
+            // struct: **re-spelling a type or renaming a parameter refuses every
+            // prebuilt plugin**, exactly as a real reorder would. Treat cosmetic
+            // edits here as ABI edits, or do not make them.
+            let types = [$( ::core::stringify!($ty) ),*];
+            let mut out = [0u64; INTERFACE_FIELDS + 1];
+            out[0] = 0xcbf2_9ce4_8422_2325;
+            let mut i = 0;
+            while i < INTERFACE_FIELDS {
+                out[i + 1] = fnv_str(fnv_str(out[i], names[i]), types[i]);
+                i += 1;
+            }
+            out
+        };
+    };
+}
+
+/// The table is shared across threads: the host builds one `static` and every
+/// plugin system, on whichever thread the executor picks, reads through it.
+///
+/// Sound because it is immutable after construction and its one data pointer
+/// addresses a `static` array of plain `u64`. It needs saying explicitly only
+/// because a raw pointer is not `Sync`, and until MINOR 13 the struct held
+/// nothing but function pointers and so derived `Sync` on its own.
+unsafe impl Sync for Interface {}
+
+// The struct's own documentation lives on the macro, since that is what emits it.
+interface! {
+    version_major: u32,
+    version_minor: u32,
 
     /// Register a plugin-owned component. Idempotent per name.
-    pub register_component:
+    register_component:
         unsafe extern "C" fn(host: *mut Host, desc: *const ComponentDesc) -> ComponentId,
 
     /// Look up a component the *host* owns, by type path — e.g.
     /// `"bevy_transform::components::transform::Transform"`. Returns
     /// [`ComponentId::INVALID`] if nothing matches.
-    pub component_id_by_name:
+    component_id_by_name:
         unsafe extern "C" fn(host: *mut Host, name: StrRef) -> ComponentId,
 
     /// Register a system. The host builds a matching Bevy query and inserts a
     /// dispatcher into `schedule`.
     /// Register a system. Returns why it was refused, if it was.
-    pub add_system:
+    add_system:
         unsafe extern "C" fn(host: *mut Host, desc: *const SystemDesc) -> RegisterStatus,
 
     /// Write a line to the engine log.
@@ -2067,7 +2158,7 @@ pub struct Interface {
     /// A plugin has no stdout worth using and no `tracing` subscriber of its
     /// own, so without this its only way to report anything is to return an
     /// error code with no detail. Panic messages come through here too.
-    pub log: unsafe extern "C" fn(host: *mut Host, level: LogLevel, msg: StrRef),
+    log: unsafe extern "C" fn(host: *mut Host, level: LogLevel, msg: StrRef),
 
     // ── Added in MINOR 1 ─────────────────────────────────────────────────────
     // APPENDED, not inserted. These went in above `log` first time round, which
@@ -2075,19 +2166,19 @@ pub struct Interface {
     // with mismatched arguments. "Append-only" means the END of the struct — a
     // new field in the middle is a MAJOR break wearing a MINOR's clothes.
     /// Register a full-screen render pass. See [`RenderPassDesc`].
-    pub add_render_pass: unsafe extern "C" fn(host: *mut Host, desc: *const RenderPassDesc),
+    add_render_pass: unsafe extern "C" fn(host: *mut Host, desc: *const RenderPassDesc),
 
     /// Bind the pass's pipeline. Call before [`Interface::render_draw`].
-    pub render_set_pipeline: unsafe extern "C" fn(ctx: RenderCtx, pipeline: PipelineId),
+    render_set_pipeline: unsafe extern "C" fn(ctx: RenderCtx, pipeline: PipelineId),
 
     /// Issue a draw. For a fullscreen pass that is `render_draw(ctx, 3, 1)` —
     /// the engine's fullscreen vertex shader generates a covering triangle from
     /// the vertex index, so there is no vertex buffer to bind.
-    pub render_draw: unsafe extern "C" fn(ctx: RenderCtx, vertices: u32, instances: u32),
+    render_draw: unsafe extern "C" fn(ctx: RenderCtx, vertices: u32, instances: u32),
 
     // ── Added in MINOR 2 ─────────────────────────────────────────────────────
     /// Register a parameterised full-screen effect. See [`PostProcessDesc`].
-    pub add_post_process: unsafe extern "C" fn(host: *mut Host, desc: *const PostProcessDesc),
+    add_post_process: unsafe extern "C" fn(host: *mut Host, desc: *const PostProcessDesc),
 
     // ── Added in MINOR 4 ─────────────────────────────────────────────────────
     /// Create a mesh asset. **Only valid during plugin init** — asset collections
@@ -2095,10 +2186,10 @@ pub struct Interface {
     /// and not while a system runs. Create what you need up front and keep the
     /// handles; that is also the cheap way round, since a primitive built once
     /// and spawned a thousand times shares one asset.
-    pub add_mesh: unsafe extern "C" fn(host: *mut Host, desc: *const MeshDesc) -> AssetHandle,
+    add_mesh: unsafe extern "C" fn(host: *mut Host, desc: *const MeshDesc) -> AssetHandle,
 
     /// Create a material asset. Same init-only restriction as [`Self::add_mesh`].
-    pub add_material:
+    add_material:
         unsafe extern "C" fn(host: *mut Host, desc: *const MaterialDesc) -> AssetHandle,
 
     // ── Added in MINOR 5 ─────────────────────────────────────────────────────
@@ -2107,14 +2198,14 @@ pub struct Interface {
     /// Takes the same [`ComponentDesc`] as a component — a resource in Bevy is a
     /// component on a hidden entity, so the layout, field schema and default all
     /// mean the same thing.
-    pub register_resource:
+    register_resource:
         unsafe extern "C" fn(host: *mut Host, desc: *const ComponentDesc) -> ComponentId,
     /// Overwrite a registered resource with `len` bytes read from `value`.
     ///
     /// Separate from registration because registration is idempotent and
     /// insertion is not: two systems taking the same `ResMut` must not reset it,
     /// but `insert_resource(Config { .. })` must replace whatever is there.
-    pub insert_resource: unsafe extern "C" fn(
+    insert_resource: unsafe extern "C" fn(
         host: *mut Host,
         id: ComponentId,
         value: *const u8,
@@ -2123,7 +2214,7 @@ pub struct Interface {
 
     // ── Added in MINOR 1 ─────────────────────────────────────────────────────
     /// Register an editor panel. See [`PanelDesc`].
-    pub add_panel: unsafe extern "C" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus,
+    add_panel: unsafe extern "C" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus,
 
     // ── Added in MINOR 3 ─────────────────────────────────────────────────────
     /// Give a registered field an editing range, so the inspector draws a bounded
@@ -2138,7 +2229,7 @@ pub struct Interface {
     ///
     /// `field` is the index into the `fields` array the component was registered
     /// with. Out of range is ignored.
-    pub set_field_range: unsafe extern "C" fn(
+    set_field_range: unsafe extern "C" fn(
         host: *mut Host,
         component: ComponentId,
         field: usize,
@@ -2157,7 +2248,7 @@ pub struct Interface {
     /// shapes — text meshes, procedural foliage, hair ribbons, water surfaces
     /// all generate their own vertices, and without it they cannot exist
     /// outside an engine crate.
-    pub add_mesh_data: unsafe extern "C" fn(
+    add_mesh_data: unsafe extern "C" fn(
         host: *mut Host,
         desc: *const MeshDataDesc,
     ) -> AssetHandle,
@@ -2167,7 +2258,7 @@ pub struct Interface {
     ///
     /// The returned handle is used exactly like [`add_material`](Self::add_material)'s,
     /// so a plugin can hand it to `spawn_mesh` without caring which kind it is.
-    pub add_material_shader: unsafe extern "C" fn(
+    add_material_shader: unsafe extern "C" fn(
         host: *mut Host,
         desc: *const MaterialShaderDesc,
     ) -> AssetHandle,
@@ -2181,10 +2272,31 @@ pub struct Interface {
     /// Init-only, like the other asset constructors — it needs the `Host`
     /// handle. Contents can be replaced from a system with
     /// [`ImageSource::write`]; dimensions and format cannot.
-    pub add_image: unsafe extern "C" fn(
+    add_image: unsafe extern "C" fn(
         host: *mut Host,
         desc: *const ImageDesc,
     ) -> AssetHandle,
+
+    // ── Added in MINOR 13 ─────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
+    // the very end, under a new header. See `interface_field_order` in
+    // `tests/abi_order.rs`, which fails if this rule is broken again.
+    /// `[n]` is the host's hash of the first `n` fields of this struct.
+    ///
+    /// A plugin reads the entry for its own field count and compares it with the
+    /// one its build computed. Equal means the host's table starts with exactly
+    /// the fields the plugin compiled against, whatever was appended after them.
+    ///
+    /// Points at [`INTERFACE_PREFIX_HASHES`], which is `static`, so the pointer
+    /// stays valid for the life of the process.
+    prefix_hashes: *const u64,
+    /// Length of [`Self::prefix_hashes`] — that is, `INTERFACE_FIELDS + 1` as the
+    /// host declares it. A plugin whose own field count exceeds this is reading a
+    /// table older than the one it was built for, which the version check should
+    /// already have caught; it is re-checked because the consequence of not
+    /// checking is an out-of-bounds read.
+    prefix_count: usize,
+
 }
 
 /// How the inspector should edit one numeric field.
@@ -2282,6 +2394,18 @@ pub enum InitResult {
     VersionTooOld = 1,
     /// The plugin's own setup failed. It will not be loaded.
     Failed = 2,
+    /// The host's [`Interface`] has the right version but the wrong *shape* — a
+    /// field was inserted, reordered or retyped somewhere in the range this
+    /// plugin compiled against, so its calls would land in the wrong function.
+    ///
+    /// Distinct from [`Self::VersionTooOld`] because the fix is different: too
+    /// old means update the engine, this means the two were built from headers
+    /// that disagree, and rebuilding the plugin is what resolves it.
+    ///
+    /// Safe to append even though the host reads this as a real enum: a plugin
+    /// only ever returns it after passing the version check, so a host too old to
+    /// know the value is a host this plugin already refused.
+    AbiMismatch = 3,
 }
 
 /// The signature of [`INIT_SYMBOL`], the plugin's sole export.

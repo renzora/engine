@@ -1003,7 +1003,7 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 3.0.** The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
+**The current ABI is 3.13.** The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)
@@ -1017,6 +1017,7 @@ A plugin built against a newer MINOR than the host provides is refused with a me
 - **2.10** — [`Meshes::write`](#rewriting-a-mesh-each-frame)
 - **2.11** — [`add_image`](#textures), `Images::write`, and material textures
 - **2.12** — [`set_material`](#shading-geometry-you-didnt-make): change an entity's material without touching its mesh
+- **3.13** — the interface table now carries a hash of its own shape, so a mismatch is a refused load rather than a wrong call (below)
 
 Note what is *not* in that list: animation, physics and HTTP *commands*. They ship alongside but are [domain modules](#domain-modules), not boundary surface, so they moved the crate's version and not the ABI's. What did land as MINORs — `Http::poll`, `Meshes::read` — are the parts that hand data *back*, which the generic channel cannot do. Audio will follow the same split.
 
@@ -1029,6 +1030,10 @@ The interface is a struct of function pointers, so a plugin calls a function by 
 No reordering fixes it: 2.5–2.8 expects `add_mesh_data` in the slot 2.9–2.10 expects `add_material_shader` in, so one of them is always wrong. Rejecting them all by name is the only honest repair. The fields are now in true append order, and `crates/renzora_plugin/tests/abi_order.rs` pins that order so the next insertion fails CI rather than shipping.
 
 The lesson generalises past this ABI: **inserting a field next to its relatives reads as tidier than appending it three screens away**, which is exactly why it happened twice without anyone noticing in review. Order-is-ABI has to be enforced by a test, not by intent.
+
+A test only protects this repository, though, and the whole point of the ABI is a plugin built somewhere else. So since **3.13** the table carries a hash of its own shape: entry *n* covers the first *n* fields' name and written type, and a plugin compares the entry for its own field count against the one it compiled with. Appending leaves every earlier entry untouched — which is precisely what the append-only rule promises — while inserting, reordering or retyping moves everything from that point on, and the plugin is refused with a message saying to rebuild.
+
+It is deliberately conservative: it hashes the source text, so re-spelling a type or renaming a parameter refuses prebuilt plugins even though neither changes the ABI. That is the right way to be wrong — a false positive costs a rebuild, a false negative costs a call landing in a different function. Treat cosmetic edits to that struct as ABI edits.
 
 MAJOR went to 2 when panels landed, so a plugin built against a 1.x ABI is refused and needs a rebuild — no source change, in most cases. The two changes that were not additive:
 
