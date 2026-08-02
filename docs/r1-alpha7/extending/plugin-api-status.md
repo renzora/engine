@@ -283,3 +283,66 @@ type with a destructor, or a method that is compiled code in the host binary.
 The *differs* column is the one to read closely. It is the largest, and every row in it is a
 place where Bevy muscle memory produces something that either does not compile or does not
 do what you meant.
+
+---
+
+## Roadmap
+
+The *missing* column above is a backlog, and this is the order it gets worked in. Ordered by
+how many rows each step deletes, not by how interesting it is.
+
+**ABI** says what a step costs compatibility: *none* is plugin-side or host-side only and every
+built plugin keeps working; *MINOR* appends to the contract and older plugins keep working;
+*MAJOR* refuses every plugin built before it.
+
+### Shipped
+
+| | What it changed | ABI |
+|---|---|---|
+| Interface table repaired | Two functions had been *inserted* mid-struct and recorded as appended, so a plugin built against 2.5–2.10 would have called the slot it compiled for and landed in a different function. No field order makes every historical MINOR correct, so all of them are refused by name. | **MAJOR** → 3.0 |
+| Every offset-keyed table pinned | `Interface`, `SystemCall`, `FrameCtx`, `CommandSink`, `MeshSource`, `ImageSource`, `HttpSource` — field names *and* written types, so a signature change at an unchanged offset fails too. `FrameCtx` is included because `SystemCall` embeds it by value, which makes appending one float there an ABI break authored in a different struct. | none |
+| `set_material` | A plugin material can be applied to geometry the plugin did not create — an imported model, a shape the user authored. Before this, `make_renderable` set mesh, material and transform together, so a custom shader could only ever land on shapes the plugin spawned itself. | MINOR 2.12 |
+| Custom material path made to work | Bind group corrected to `@group(3)`; the plugin supplies a fragment only, so Bevy's mesh vertex stage keeps skinning and morph targets; unused texture slots bind a fallback so the bind group matches its layout; the prepass and shadow passes keep Bevy's own fragment. | none |
+| `rotate_x/y/z` corrected | They post-multiplied, so they silently *were* `rotate_local_*`. Copied Bevy source spun the wrong way once an object was tilted, with no diagnostic. `rotate_local_*` added with the old bodies. | none |
+| Textures, geometry read/write, strings, HTTP, physics | See the version history in [Standalone Plugins](./standalone-plugins.md#versioning). | MINOR 2.5–2.11 |
+
+### Next — makes the documented rules true
+
+Each of these turns a [trap](./standalone-plugins.md#traps) into something that cannot happen,
+which is worth more than any new feature on this page.
+
+| | What it unlocks | Size | ABI |
+|---|---|---|---|
+| `needs_drop` assert in the derive | A component with a `String`/`Vec`/`Box` field stops compiling. The no-destructor rule is documented and currently unenforced; the host's guard is unreachable because the derive always declares no destructor. Also needs moving above the re-registration early-return, and adding to `register_resource`. | ~10 lines | none |
+| `QueryData::ReadOnly` | Kills the aliasing `&mut` from `Query::iter()`. Source-compatible with Bevy; breaking only for a plugin that relied on `for x in &q` yielding mutable. | ~40 lines | none |
+| Host-mirror allow-list | A plugin can currently name any reflected host component as query *data*, including ones that own a `String`, with no guard. Restricts data access to a curated set; filter access stays open. | ~40 lines | none |
+| `offset_of!` asserts on first-field casts | Four host structs are reached by casting their first field's address. One missing `#[repr(C)]` on that pattern already caused a hard crash with no panic and no log. | ~8 lines | none |
+| Interface prefix hash | Closes the failure class the 3.0 repair was for, at load time rather than build time: a per-field cumulative hash over `(name, written type)`, append-stable, checked in the handshake. Catches both insertion and a signature change at an unchanged slot. | ~100 lines | MINOR |
+| Payload descriptor re-mint rule | `MeshDataDesc`, `ImageDesc`, `ComponentDesc` and the domain payloads are read through pointers, so reordering their fields is invisible to the table tests and equally fatal. The rule — never edit one, mint a new one beside it — costs nothing and would have prevented both incidents. | doc only | none |
+
+### Then — deletes whole classes of workaround
+
+| | What it unlocks | Size | ABI |
+|---|---|---|---|
+| `RemovedComponents` by `ComponentId` | Deletes the per-frame liveness sweep in every plugin that owns anything. Both shipped plugins hand-roll one. The param has empty access declarations, so it can never conflict. | medium | MINOR |
+| `Added<T>` / `Changed<T>` | Deletes the hand-rolled signature hashing in `hair` and `text3d`, and `ripple`'s `_ready` flag. `QueryBuilder` cannot express these, so it routes through change ticks and row skipping — row-level rather than archetype-level, so it loses Bevy's whole-table skip. | medium | MINOR |
+| Reflective field patch | The complement to BSN insert, which replaces rather than patches. The only way to nudge one field of a live `Camera` or `PointLight` without resetting the rest. Must refuse immutable and relationship components. | ~80 lines | MINOR |
+| Capturing closures as systems | Recovers `Commands::queue`, `add_observer`, `entity.observe`, and `on(\|ev\| …)` in BSN. The per-system token already round-trips through the ABI unused — the refusal is a `const` assert in the ergonomic layer, not a boundary constraint. | medium | none |
+| Syntax-parity sweep | Tuple arities to Bevy's 15/16, `add_systems(Update, (a, b))`, `info!`/`warn!` as macros, `Query::single`/`get`/`contains`, `Option<Res<T>>`, `Local<T>`, and the missing maths (`Vec2`/`Vec4`/`Color`/`Dir3`, `Quat::from_euler`, `looking_at`). This is where "zero syntax changes" is won or lost in an author's first hour, and none of it touches the ABI. | medium | none |
+| Deferred asset creation | Deletes the fixed-pool idiom — `hair` reserves 16 meshes, `text3d` 64, each with a slot index stored on the component to survive reload. The pattern already exists for entities. | medium | MINOR |
+| Run conditions, ordering, system sets | `SystemDesc.flags` is reserved and enforced-zero for exactly this. Ordering *between plugin systems* is tractable; ordering against *host* sets needs a curated published map, because the set interner is private. | large | MINOR |
+| Schedules by name | `Startup`, `FixedUpdate` and the rest. Note `Startup` is a trap under hot reload — a reloaded plugin's `Startup` system would never fire, since reload happens mid-frame. | small | MINOR |
+| Per-entity plugin materials | Today the settings component is read from the first entity carrying it *anywhere in the world* and broadcast, so two entities using one plugin material always look the same. | one file | none |
+| Reflective mirroring | Read *any* registered host component by type path with no hand-written `#[repr(C)]` mirror. Kills the mirror-layout hazard permanently instead of guarding it. Placed last deliberately: the largest contained piece of work here, and the steps above deliver most of the practical value first. | large | MINOR |
+
+### Not planned
+
+The 38 *never* rows, and two things that look like natural next steps and are not:
+
+- **Reflected function calls** — "call any engine function by name". Three independent
+  blockers: the feature is not compiled, the registry is created empty with no call sites
+  anywhere in Bevy, and `World` does not implement `Reflect` so no function taking it could be
+  registered even if it were.
+- **Direct pointers into component storage.** Would save the per-entity copy, but loses the
+  comparison against a baseline that stops every plugin system marking everything it merely
+  read as changed. The real cost is the per-cell allocation, which is fixable without this.

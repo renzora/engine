@@ -1169,7 +1169,8 @@ That shape is the useful part. **Most of what is absent is a backlog, not a boun
 - **A method that is compiled code in the host binary** — `camera.world_to_viewport(..)`,
   `material.base_color = ..`, `Circle::new(50.0).mesh()`.
 
-Everything else on the page is work nobody has done yet.
+Everything else on the page is work nobody has done yet, and the order it gets worked in is the
+[roadmap](./plugin-api-status.md#roadmap) at the bottom of it.
 
 ### The gaps most likely to matter to you
 
