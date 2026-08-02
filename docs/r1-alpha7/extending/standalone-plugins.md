@@ -34,6 +34,109 @@ Reach for a standalone plugin when you want to ship a prebuilt binary to people 
 
 In practice that line falls in a consistent place, and it is more useful than the table: **gameplay and geometry are well covered; rendering *integration* is not.** A plugin can simulate anything, generate any mesh, and put its own shader on it. As soon as it needs to know where the camera is, which way the light points, or what another pass wrote, it wants to be in-tree. See [Current limits](#current-limits).
 
+## Traps
+
+Everything a plugin *cannot* do fails at compile time, which costs you five minutes and a
+lookup. This section is the other list: code that **compiles, runs, and does something other
+than what the same source does in Bevy**, with no error and no warning.
+
+Read it before you write anything. It is short on purpose, and it is the most expensive page
+in this documentation to skip.
+
+The reason this list exists at all is a deliberate design choice with a cost. The plugin API is
+built to be *source-identical* to Bevy, so that porting is a change to the `use` line — which
+means you are entitled to assume Bevy's semantics from Bevy's spelling. Every divergence below
+is a place that promise is not kept, and the closer the surface reads like Bevy, the more each
+one costs.
+
+### `Query::iter()` hands out `&mut` — aliasing without `unsafe`
+
+There is no read-only projection: `iter(&self)` on a `Query<&mut T>` yields `&mut T`, and
+`iter_mut` is the same function. Two live iterators over one query — or an inner `q.iter()`
+inside an outer `for x in &mut q`, which is the shape every flocking example has — hand out
+two `&mut` to the same bytes. That is undefined behaviour, and you never wrote `unsafe`.
+
+The aliased memory is a host-owned staging buffer rather than live ECS storage, so in practice
+it costs you interleaved or lost writes rather than a crash. Until this is fixed, do not nest
+iteration over the same query.
+
+### A `String` field compiles, registers, and quietly corrupts
+
+Plugin components may not contain destructors — no `String`, `Vec`, `Box`, `Handle`. That rule
+is real and it is **not enforced**: the derive declares no destructor whatever the field types
+are, so this compiles and registers:
+
+```rust
+#[derive(Component, Default)]
+#[repr(C)]
+pub struct Label { pub text: String }   // WRONG. Compiles anyway.
+```
+
+The pointer is copied into ECS storage, never dropped, shared verbatim by every
+default-constructed instance, used as the change-detection baseline, and written into saved
+scenes as a number that means nothing next run. Use [`Str256`](#text-fields).
+
+### Plugin systems run while you are editing
+
+A plugin's `Update` systems have no play-state gate — they run in the editor viewport at all
+times. Gameplay logic mutates the scene you are authoring, and those mutations are what gets
+saved. If a system should only run during play, gate it yourself on your own resource.
+
+### Anything you spawn without a name is not saved
+
+Scene save collects only entities `With<Name>`. `commands.spawn((MyComp, Transform))` adds no
+name, so it is silently absent from every saved scene. In BSN, the `#Key` prefix is what adds
+one.
+
+### `insert(bsn! { .. })` replaces, it does not patch
+
+Inserting a component onto an existing entity builds the value from the type's `Default` and
+applies only the fields you named. Setting `translation` therefore **resets `rotation` and
+`scale`**. Safe on a marker component, destructive on a live `Camera` or `PointLight`.
+
+Only the *first* top-level tree targets the entity — later ones become loose parentless roots.
+
+### A mistyped type path matches nothing, forever
+
+Host component names resolve by string at runtime. A typo in a `host_component!` path or a BSN
+component name is a log line at most: the query compiles, matches zero entities, and keeps
+doing so. There is no compile-time check and no plugin-visible error, because checking would
+require the derive to know the engine's registry and a plugin links nothing.
+
+Assert your mirrors at startup if you can, and check the log when a query is mysteriously empty.
+
+### `remove::<T>()` for an unregistered type is a silent no-op
+
+`insert` logs an error when the component was never registered; `remove` does not. Call
+`app.register_component::<T>()` in `build()` for every type you insert *or* remove — including
+host types.
+
+### Several BSN constructs parse and are then dropped
+
+These are accepted by the parser and discarded with at most a `warn!`, with no plugin-visible
+result: field shorthand (`Comp { name }`), `on(|ev| …)` handlers, and a relationship target
+other than `Children` (`MyRel [ … ]` spawns **children** regardless of the name). Loud failures,
+by contrast, are `~Template`, `@SceneComponent` and `:"file.bsn"`.
+
+### Smaller ones worth knowing
+
+- **Change detection is quieter than Bevy's.** The host compares staged bytes against a
+  baseline before writing back, so a system that reads and rewrites an unchanged component does
+  *not* mark it changed. Usually what you want — it stops every plugin system dirtying
+  everything it looks at — but it is a divergence.
+- **`usize`, `i64` and `u32` fields are all edited as 32-bit** in the inspector, which
+  reads and writes four bytes.
+- **`#[derive(Component)]` on a tuple struct** registers with an empty field schema — only
+  named fields are walked. Nothing appears in the inspector and nothing round-trips.
+- **A field whose type the ABI cannot describe is dropped from the schema** silently, while
+  still counting toward the component's size.
+- **`PanelActionId` must sit on an entity that carries `Interaction`.** Bevy's `Button` does;
+  `EmberButtonWidget` does not, because it builds its clickable box as a child. The pairing
+  compiles, spawns, looks correct, and never dispatches.
+- **A layout change means a restart.** Adding or removing a component field, or changing its
+  type, is refused by [hot reload](#hot-reload) — existing entities hold bytes for the old
+  layout. Renames are free. This is the edit you will make most often while iterating.
+
 ## What it looks like
 
 This is a complete, working plugin:
@@ -377,7 +480,7 @@ These are **not** Bevy's `KeyCode` discriminants, deliberately. That enum is `#[
 Animation is **not part of the ABI**. It is a feature-gated domain module you opt into:
 
 ```toml
-renzora_plugin = { version = "0.1", features = ["anim"] }
+renzora_plugin = { path = "../../crates/renzora_plugin", features = ["anim"] }
 ```
 
 ```rust
@@ -1041,20 +1144,79 @@ The one exception is `renzora` itself, which is capped at Bevy + serialization b
 
 ## Current limits
 
-The surface is deliberately incremental. Not yet available:
+The full ledger is **[Plugin API status](./plugin-api-status.md)** — 215 entries, one row per
+thing a Bevy developer might reach for. The summary:
 
-- `Startup` and `FixedUpdate` schedules — systems run in the five main-loop schedules only
-- **Gamepad.** Keyboard, mouse and cursor are covered; gamepad is not.
-- Hierarchy (`ChildOf` / `Children`, `with_children`) from a system — panel BSN can nest freely
-- Change detection (`Added<T>`, `Changed<T>`, `Ref<T>`)
-- Messages, observers, and component hooks
-- `Local<T>`, `ParamSet`, run conditions, system ordering
-- The `Assets<T>` / `AssetServer` idiom, and loading assets by path. Meshes and images can be [created](#geometry) and [rewritten](#textures), but only ones the plugin made — there is no handle to an asset on disk.
-- **Cameras and lights.** A plugin cannot read where the camera is or which way the sun points, and cannot add a component (`DepthPrepass`, say) to a camera. This is the gap that keeps `pool_water` in-tree: screen-space refraction needs both.
-- **Creating physics bodies.** [Driving](#physics) one works; `RigidBody`, `Collider` and joints have no mirror to cross on, so the body has to exist already.
-- **Reading an animation parameter back** — see [Animation](#what-is-missing). Setting one works.
-- Audio and navigation have no surface yet. They follow the same shape as [animation, physics and HTTP](#domain-modules) when they land.
-- Host components beyond `Transform`, `GlobalTransform`, `Visibility`, `Name`, `Mesh3d`, [`AnimState`](#reading-it-back) and [`PhysicsState`](#physics). In particular a plugin cannot configure Bevy's own rendering — bloom, SSAO, decals, depth prepass — since those components have no `#[repr(C)]` mirror to cross on. An **in-tree** plugin can expose its own, though: make the component `#[repr(C)]` plain data and hand out its type path with `renzora_plugin::host_component!`.
-- **Adding** a panel, render pass or post-process effect during a [reload](#hot-reload). Editing an existing one works; adding one needs a restart.
+| | |
+|---|---|
+| **22** | work identically — the source is character-for-character Bevy |
+| **95** | differ — usable, but you write something else or it behaves differently |
+| **60** | missing — no blocker, nobody built it |
+| **38** | never — structurally blocked |
 
-The shape of what's left is worth naming: the boundary covers **gameplay and geometry** well, and **rendering integration** badly. A plugin can simulate anything, generate any mesh, and put its own shader on it — but the moment it needs to know about the camera, the lights, or another pass's output, it belongs in-tree. That is why the engine still ships `crates/renzora_text3d` (its flat mode rasterizes an SDF atlas) and `crates/renzora_pool_water`, and it is a real division rather than a queue of things to get round to.
+That shape is the useful part. **Most of what is absent is a backlog, not a boundary.** Of the
+38 that will never work, almost all are one of four things:
+
+- **A Bevy generic that would have to be instantiated** — `Assets<T>`, `Handle<T>`,
+  `MeshMaterial3d<M>`, `EventReader<E>`, `ButtonInput<T>`. Monomorphization happens at compile
+  time against a Bevy the plugin does not link. The dodge is a fixed-shape surface the host
+  pre-monomorphized, which is why you write `app.add_mesh(...)` and not `meshes.add(...)`.
+- **A capturing closure** — `Commands::queue`, `add_observer`, `entity.observe`, `on(|ev| …)`
+  in BSN. A boxed closure is a destructor crossing the boundary. (The per-system token that
+  would allow this already exists in the ABI, unused — so this one may move.)
+- **A type with a destructor as component data** — `String`, `Vec`, `Box`, `Handle`, and
+  therefore `&Children` and `&Name` as query data.
+- **A method that is compiled code in the host binary** — `camera.world_to_viewport(..)`,
+  `material.base_color = ..`, `Circle::new(50.0).mesh()`.
+
+Everything else on the page is work nobody has done yet.
+
+### The gaps most likely to matter to you
+
+- **Scheduling vocabulary.** No `.run_if`, `.before`, `.after`, `.chain`, `.in_set`, no system
+  sets, no states. `add_systems(Update, (a, b))` does not compile — one system per call. Two
+  plugin systems in the same schedule have no defined order relative to each other.
+- **`Startup` and `FixedUpdate`.** Five main-loop schedules only. An unknown one is re-homed to
+  `Update` with a warning rather than dropped.
+- **Change detection and removal.** No `Added<T>`, `Changed<T>`, `Ref<T>`, `RemovedComponents`.
+  This is why `plugins/hair` and `plugins/text3d` both hand-roll a per-frame liveness sweep and
+  a signature hash — read them before writing your own.
+- **`Local<T>`, `ParamSet`, `Single`, messages, observers, component hooks.**
+- **Assets by path.** No `AssetServer`. Meshes and images can be [created](#geometry) and
+  [rewritten](#textures), but only ones the plugin made. Asset creation is init-only, which is
+  why real plugins allocate a fixed pool in `build()` and hand out slots.
+- **Gamepad.** Keyboard, mouse and cursor are covered.
+- **Audio and navigation** have no domain module yet; they follow the shape of
+  [animation, physics and HTTP](#domain-modules) when they land.
+- **Adding** a panel, render pass or post-process effect during a [reload](#hot-reload).
+  Editing an existing one works; adding one needs a restart.
+
+### What is *not* a limit, contrary to earlier versions of this page
+
+Two entries were wrong here for months, in opposite directions, and both are worth stating
+plainly because they change what you would build.
+
+**A plugin *can* configure Bevy's own rendering.** `commands.entity(e).insert(bsn! { Bloom })`
+goes through reflection host-side and reaches **every** engine component that derives
+`Reflect` — `DepthPrepass`, `Bloom`, `Tonemapping`, `Msaa`, SSAO, lights, camera settings. No
+`#[repr(C)]` mirror, no `ComponentId`, no layout knowledge. See
+[Shading geometry you didn't make](#shading-geometry-you-didnt-make) for the sibling case, and
+mind that BSN insert **replaces rather than patches** — safe on a marker, destructive on a live
+`Camera`.
+
+**A plugin *can* find the camera and the lights.** Not with Bevy-identical source, but with
+three lines:
+
+```rust
+pub struct Camera3d(());
+renzora_plugin::host_component!(Camera3d, "bevy_camera::components::Camera3d");
+```
+
+Then `With<Camera3d>` compiles and matches. This works for any host component registered for
+reflection. **Filter-only** — never use such a mirror as query *data*, because a mirror of a
+non-plain-data host component hands you a pointer into the engine's heap.
+
+The engine still ships `crates/renzora_pool_water` and `crates/renzora_text3d`, but the reason
+is narrower than "rendering integration": the first displaces vertices in a *vertex* shader,
+and a plugin material supplies a fragment only; the second rasterizes glyphs into an SDF atlas
+sized at runtime, and plugin image creation is init-only.

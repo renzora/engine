@@ -134,6 +134,7 @@
           "pages": [
             { "slug": "extending/plugins", "title": "Building Plugins" },
             { "slug": "extending/standalone-plugins", "title": "Standalone Plugins (C ABI)" },
+            { "slug": "extending/plugin-api-status", "title": "Plugin API Status" },
             { "slug": "extending/localization", "title": "Localization" },
             { "slug": "extending/custom-nodes", "title": "Custom Blueprint Nodes" },
             { "slug": "extending/script-bindings", "title": "Script API Bindings" },

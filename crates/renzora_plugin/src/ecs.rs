@@ -342,14 +342,43 @@ impl Transform {
     pub fn rotate(&mut self, q: Quat) {
         self.rotation = q * self.rotation;
     }
+
+    // ── Rotation, and the one place mimicking Bevy nearly went wrong ──────
+    //
+    // These four pre-multiply and the `rotate_local_*` below post-multiply.
+    // That is not a stylistic pairing — it is the entire difference between
+    // turning about the *parent's* axes and turning about the object's own, and
+    // it is why the order matters more here than anywhere else in this file.
+    //
+    // Until 2026-08 `rotate_x/y/z` post-multiplied, so they silently were
+    // `rotate_local_*`. Source copied from a Bevy project compiled and spun the
+    // wrong way with nothing to see: no error, no warning, just a rotation that
+    // drifts once the object is tilted. That is the worst failure this shim can
+    // have — the closer the surface reads like Bevy, the more a divergence costs,
+    // because an author is entitled to assume Bevy's semantics from Bevy's
+    // spelling. Match behaviour, not just names.
     pub fn rotate_x(&mut self, angle: f32) {
-        self.rotation = self.rotation * Quat::from_rotation_x(angle);
+        self.rotate(Quat::from_rotation_x(angle));
     }
     pub fn rotate_y(&mut self, angle: f32) {
-        self.rotation = self.rotation * Quat::from_rotation_y(angle);
+        self.rotate(Quat::from_rotation_y(angle));
     }
     pub fn rotate_z(&mut self, angle: f32) {
-        self.rotation = self.rotation * Quat::from_rotation_z(angle);
+        self.rotate(Quat::from_rotation_z(angle));
+    }
+
+    /// Rotate about this entity's own axes, ignoring how it is oriented.
+    pub fn rotate_local(&mut self, q: Quat) {
+        self.rotation = self.rotation * q;
+    }
+    pub fn rotate_local_x(&mut self, angle: f32) {
+        self.rotate_local(Quat::from_rotation_x(angle));
+    }
+    pub fn rotate_local_y(&mut self, angle: f32) {
+        self.rotate_local(Quat::from_rotation_y(angle));
+    }
+    pub fn rotate_local_z(&mut self, angle: f32) {
+        self.rotate_local(Quat::from_rotation_z(angle));
     }
 
     pub fn forward(&self) -> Vec3 {
