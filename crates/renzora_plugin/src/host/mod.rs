@@ -2180,6 +2180,41 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
             });
             continue;
         }
+        // A term that carries data and names a component this plugin did not
+        // register is a *host* component being read as plain bytes. That needs
+        // permission — see [`HostDataComponents`] for what goes wrong without it.
+        // Filter terms never reach here, so `With<Camera3d>` stays free.
+        if t.access.has_cell() && component_info(world, id).is_none() && Some(id) != transform_id {
+            let path = info.name();
+            match world.get_resource::<HostDataComponents>() {
+                Some(allowed) if allowed.0.contains(&*path) => {}
+                Some(_) => {
+                    error!(
+                        "plugin asked to read engine component `{path}` as data, which is not \
+                         exposed for that. Filtering on it (`With`/`Without`) is fine and needs \
+                         nothing; reading its bytes needs the crate that owns the type to call \
+                         `renzora_plugin::host::expose_component_data`, which is a promise that \
+                         its layout is stable enough to mirror"
+                    );
+                    return None;
+                }
+                // Nothing has exposed anything at all, which is almost never what
+                // an author meant — it means the plugin host was added before the
+                // crates that expose their mirrors. Worth its own message: the
+                // one above would send someone to add a call that is already there.
+                None => {
+                    error!(
+                        "plugin asked to read engine component `{path}` as data, but nothing has \
+                         exposed any engine component for plugin reads. If this is a full engine \
+                         build, `RenzoraPluginHostPlugin` was added before the crates owning \
+                         those mirrors — it has to come after them, because plugins resolve \
+                         components during its `build`"
+                    );
+                    return None;
+                }
+            }
+        }
+
         let (marshal, cell_size) = if Some(id) == transform_id {
             (Marshal::Transform, size_of::<sys::Transform>())
         } else {
@@ -2865,6 +2900,56 @@ pub struct PluginComponentInfo {
 /// init, which the editor is not involved in.
 #[derive(Resource, Default)]
 pub struct PluginComponentSchemas(pub Vec<PluginComponentInfo>);
+
+/// Host components a plugin may read and write as **data**, by type path, with
+/// the host-side size each one is expected to have.
+///
+/// Filtering is unrestricted — `With<Camera3d>` works for anything the engine
+/// registered for reflection, and costs nothing because a filter term produces no
+/// cell. *Data* is the dangerous direction, and it was unrestricted too.
+///
+/// A plugin declares a mirror of a host component with `host_component!`, naming
+/// it by string, and then reads it as plain bytes. Nothing checked that the
+/// component was safe to hand over that way. Two things went wrong with that:
+///
+/// - **Owned memory.** `bevy_window::window::Window` contains a `String`. A plugin
+///   could name it, be handed its bytes, and follow a pointer into the engine's
+///   heap. The no-destructor rule the derive now enforces covers a plugin's *own*
+///   types and never covered these.
+/// - **Layouts nobody promised.** A mirror is matched by name; field order and
+///   size are the author's problem, and a mismatch is a wrong-offset read rather
+///   than a compile error. Worse, some engine types have no stable layout to
+///   mirror at all — `GlobalTransform` wraps a `glam::Affine3A`, whose
+///   representation changes with the SIMD backend the engine was built with.
+///
+/// So a host component is readable as data only if something deliberately said so.
+///
+/// Entries come from the crate that owns the type — `renzora_animation` exposes
+/// its own `PluginAnimState` — for the same reason bridges live there: this crate
+/// must not learn the name of every domain in the engine.
+///
+/// **This restricts; it does not verify.** Nothing here can check that a plugin's
+/// mirror actually matches the host type, because the plugin never sends its
+/// mirror's size or layout — `component_id_by_name` carries a name and nothing
+/// else. So an author who exposes a type here is promising the layout is stable
+/// and documented, and an author who mirrors it is still responsible for getting
+/// the fields right. Closing that second gap needs a size beside the name in the
+/// ABI, which is a MINOR bump nobody has spent yet.
+#[derive(Resource, Default)]
+pub struct HostDataComponents(pub std::collections::HashSet<String>);
+
+/// Let plugins read `T` as data, by its reflected type path.
+///
+/// For an in-tree crate exposing a mirror it owns. `T` must be `#[repr(C)]` plain
+/// data with no destructor and no layout that varies with build configuration —
+/// the whole point of the list is that somebody checked.
+pub fn expose_component_data<T: Component + bevy::reflect::TypePath>(app: &mut App) {
+    let path = <T as bevy::reflect::TypePath>::type_path().to_string();
+    app.world_mut()
+        .get_resource_or_insert_with(HostDataComponents::default)
+        .0
+        .insert(path);
+}
 
 /// Look a component up by its type path. Silent — callers decide whether a miss
 /// is an error.

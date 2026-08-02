@@ -165,6 +165,14 @@ pub fn install(app: &mut App) {
     app.register_type::<PluginPhysicsState>();
     app.world_mut().register_component::<PluginPhysicsState>();
 
+    // And say it may be read as *data*, not merely filtered on. Every host
+    // component is filterable; handing over raw bytes is the restricted
+    // direction, because a mirror is matched by name and its layout is the
+    // plugin author's problem. This type is `#[repr(C)]` plain data built for
+    // exactly that, which is what makes it safe to expose and why the exposing
+    // call lives here rather than in a list the plugin crate maintains.
+    renzora_plugin::host::expose_component_data::<PluginPhysicsState>(app);
+
     // The two sides agree by *string*, and a mismatch is silent on both: the
     // plugin asks for a path nothing registered, gets `INVALID`, and its physics
     // queries match nothing forever. Assert it here, where the failure is a

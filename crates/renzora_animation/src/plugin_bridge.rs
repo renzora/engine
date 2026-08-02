@@ -253,6 +253,14 @@ pub fn install(app: &mut App) {
     app.register_type::<PluginAnimState>();
     app.world_mut().register_component::<PluginAnimState>();
 
+    // And say it may be read as *data*, not merely filtered on. Every host
+    // component is filterable; handing over raw bytes is the restricted
+    // direction, because a mirror is matched by name and its layout is the
+    // plugin author's problem. This type is `#[repr(C)]` plain data built for
+    // exactly that, which is what makes it safe to expose and why the exposing
+    // call lives here rather than in a list the plugin crate maintains.
+    renzora_plugin::host::expose_component_data::<PluginAnimState>(app);
+
     // The two sides agree on this type by *string*, and a mismatch is silent on
     // both: the plugin asks for a path nothing registered, gets `INVALID`, and
     // its animation queries match no entities forever. So assert it, here, where

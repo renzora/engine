@@ -1097,6 +1097,17 @@ renzora_plugin::host_component!(Health, "my_game::health::Health");
 
 Field order and types must match exactly — a mismatch is a wrong-offset read, not a compile error. And the component must be plain data: a `String`, `Vec` or `Handle` in the mirror would hand the plugin a pointer into the engine's heap.
 
+**You have to say it may be read.** Naming a type is not enough — a plugin that asks to read an engine component as *data* is refused unless the crate owning that type has opted in:
+
+```rust
+// In your crate's plugin_bridge::install:
+renzora_plugin::host::expose_component_data::<Health>(app);
+```
+
+Filtering (`With<Health>` / `Without<Health>`) needs none of this and works for anything the engine registered for reflection. Data is the restricted direction, because it hands over raw bytes: without the gate a plugin could name `bevy_window::window::Window`, which owns a `String`, and follow a pointer into the engine's heap. Types whose layout is not stable enough to mirror should simply never be exposed — `GlobalTransform` wraps a `glam::Affine3A`, whose representation changes with the SIMD backend the engine was built with.
+
+Note what the gate does **not** do: nothing can check that a plugin's mirror actually matches your type, because the plugin sends a name and nothing else. Exposing a type is a promise that its layout is stable and documented; mirroring it correctly is still the plugin author's job.
+
 If your real component *can't* be plain data (`AnimatorReadState` is `String` + `HashMap`), synthesize a second numeric-only mirror and keep it in sync each frame. That is the bulk of what `renzora_animation::plugin_bridge` does.
 
 **Constructing your components — already free.** `spawn_bsn` sends text that names components, resolved host-side through the reflection registry, so a plugin can construct any registered engine component — including yours — with neither side knowing the other exists.
