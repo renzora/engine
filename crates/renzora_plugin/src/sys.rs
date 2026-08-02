@@ -76,6 +76,80 @@
 //! unknown [`Primitive`] draws a cube — except for [`Access`], where a term the
 //! host cannot interpret would shift every later cell index and hand the plugin
 //! its own data at the wrong offsets. That one refuses the system outright.
+//!
+//! # Editing anything in this file
+//!
+//! Which rule applies depends on **how the type crosses**, not on how small the
+//! edit looks. Get it backwards and nothing tells you: both sides compile their
+//! own copy of this file from independent source trees, so there is no link
+//! error, no symbol to mismatch, and no version number that moves on its own.
+//!
+//! ## A table read by offset MAY be appended to
+//!
+//! [`Interface`], [`SystemCall`], [`FrameCtx`], [`CommandSink`], [`MeshSource`],
+//! [`ImageSource`], [`HttpSource`] and [`PanelAction`] are handed over as a
+//! pointer and read field by field. A build compiled against an older layout
+//! reads the prefix it knows and never touches what follows, so a field added
+//! **at the very end** is invisible to it.
+//!
+//! Append it, append its `"name: type"` to the golden list in
+//! `tests/abi_order.rs`, and bump [`VERSION_MINOR`] in the same commit.
+//!
+//! Anything else — inserting, reordering, removing, retyping, or changing a
+//! function pointer's signature in place — moves a slot an already-built plugin
+//! is compiled to call, and needs [`VERSION_MAJOR`]. The signature change is the
+//! one that hides: a fn pointer is one `usize` whatever its arity, so neither a
+//! field-name list nor `size_of` moves when its shape does.
+//!
+//! ## Every other type here is FROZEN — not even appendable
+//!
+//! A struct crossing through a pointer ([`MeshDataDesc`], [`ComponentDesc`],
+//! [`FieldDesc`], [`Command`], [`QueryView`], [`InputState`], every `*Desc`), by
+//! value inside another ([`StrRef`], [`Vec3`], [`Quat`], [`Transform`]), or as
+//! opaque payload bytes ([`SpawnMeshDesc`], [`ServiceCall`], the domain commands)
+//! is **not read prefix-first**. The reader dereferences every field, walks an
+//! array at its own `size_of`, or memcpys the whole thing. There is no prefix to
+//! preserve, so appending is exactly as fatal as reordering.
+//!
+//! Four guards exist and all four are blind to this. `VERSION_MINOR` does not
+//! move, because you did not touch a table. The load-time [`Interface`] prefix
+//! hash covers the *spelling* of `*const MeshDataDesc`, not its contents. The
+//! golden test cannot see inside a pointer. And the payload length checks are
+//! `<` minimums, which a reorder passes and a growth passes.
+//!
+//! ## Instead: mint a new type beside the old one
+//!
+//! Add `MeshDataDesc2` next to [`MeshDataDesc`], add `add_mesh_data2` at the
+//! **end** of [`Interface`], and leave the old struct and old slot untouched
+//! forever. Freezing costs one dead struct; editing costs every prebuilt plugin,
+//! silently.
+//!
+//! This is already the practice here twice, both times arrived at the hard way.
+//! [`MeshColors`] is a separate *argument* to [`MeshSource::write`] rather than a
+//! field on [`MeshDataDesc`], because that struct is shared with `add_mesh_data`.
+//! [`FieldRange`] is a separate struct reached by its own `set_field_range`
+//! rather than three fields on [`FieldDesc`], because widening `FieldDesc`
+//! changes the stride of an array the host walks and yields garbage from element
+//! one onward.
+//!
+//! ## By-value embedding is the trap that catches careful people
+//!
+//! [`StrRef`] is a field of seven boundary structs *and* a by-value argument of
+//! two [`Interface`] functions. [`Vec3`] is a field of six *and* the element type
+//! of four pointer arrays. Growing either is an ABI break authored in a different
+//! part of the file from the struct it breaks: every golden list stays identical,
+//! `size_of::<Interface>()` stays identical, and both sides compile.
+//!
+//! **Before editing any type here, grep for it as a field type.** If it appears
+//! inside another boundary struct, you are editing that struct too.
+//!
+//! ## Some contracts are numbering, not shape
+//!
+//! A [`Key`]'s value **is** its bit index into [`InputState`]. Each domain's
+//! `SERVICE` id is baked into every plugin ever shipped. `STR_CAP` and `NAME_CAP`
+//! are inline capacities other crates reconstruct by hand. Renumbering or
+//! resizing any of them compiles cleanly on both sides and silently remaps
+//! behaviour — as frozen as a field order, and no layout test can see them.
 
 use core::ffi::c_void;
 

@@ -56,9 +56,6 @@ struct Golden {
     fields: &'static [&'static str],
 }
 
-// In  rather than beside this file: cargo treats every 
-// as its own test binary, and a bare list of  literals does not compile
-// on its own.
 // Lives in `tests/data/` rather than beside this file because cargo compiles
 // every `tests/*.rs` as its own test binary, and a bare list of `Golden`
 // literals does not compile on its own.
@@ -87,6 +84,33 @@ fn declared_types(src: &str) -> Vec<(String, Vec<String>)> {
                 i += 1;
             }
             i += 1;
+            continue;
+        }
+
+        // Function-pointer aliases carry a signature and no fields, so nothing
+        // above reaches them — and they are the most dangerous declarations in
+        // the file, because a signature change is invisible everywhere else. A
+        // fn pointer is one `usize` whatever its arity, so no struct that holds
+        // one changes size or field text when its shape moves.
+        //
+        // This is not hypothetical for `SystemEntry` specifically: it gained a
+        // return value under a MINOR and killed the process with no diagnostic
+        // (`sys.rs:44`). Pinned as a single field holding the whole signature.
+        if l.starts_with("pub type ") && l.contains("extern \"C\" fn") {
+            let mut sig = l.to_string();
+            let mut k = i;
+            while !sig.ends_with(';') && k + 1 < lines.len() {
+                k += 1;
+                sig.push(' ');
+                sig.push_str(lines[k].trim());
+            }
+            let name: String = sig["pub type ".len()..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let rhs = sig.split_once('=').map(|(_, r)| r.trim().trim_end_matches(';').trim());
+            out.push((name, vec![format!("= {}", rhs.unwrap_or(""))]));
+            i = k + 1;
             continue;
         }
 
@@ -252,5 +276,6 @@ fn interface_size_matches_its_field_list() {
          without the list being updated"
     );
 }
+
 
 

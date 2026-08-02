@@ -12,6 +12,12 @@ const GOLDEN: &[Golden] = &[
         ],
     },
     Golden {
+        name: "ScopeEntry",
+        fields: &[
+            "= unsafe extern \"C\" fn() -> PluginScope",
+        ],
+    },
+    Golden {
         name: "Entity",
         fields: &[
             "0: u64",
@@ -246,6 +252,12 @@ const GOLDEN: &[Golden] = &[
         ],
     },
     Golden {
+        name: "SystemEntry",
+        fields: &[
+            "= unsafe extern \"C\" fn(call: *const SystemCall) -> SystemStatus",
+        ],
+    },
+    Golden {
         name: "PipelineId",
         fields: &[
             "0: u32",
@@ -470,6 +482,12 @@ const GOLDEN: &[Golden] = &[
             "user: *mut c_void",
             "iface: *const Interface",
             "commands: *mut CommandSink",
+        ],
+    },
+    Golden {
+        name: "PanelActionEntry",
+        fields: &[
+            "= unsafe extern \"C\" fn(action: *const PanelAction) -> SystemStatus",
         ],
     },
 ];

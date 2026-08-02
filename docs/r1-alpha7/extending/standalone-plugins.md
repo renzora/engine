@@ -1142,6 +1142,21 @@ In the crate that owns the domain, as long as that crate may depend on `renzora_
 
 The one exception is `renzora` itself, which is capped at Bevy + serialization by policy so a feature crate can never introduce a cycle. That is why the render bridge lives in `renzora_postprocess` rather than beside `RenderComposition` in `renzora` — one crate out, in an existing neighbour that owns the same domain.
 
+### Editing the contract itself
+
+*For engine developers.* If you are about to change anything in `crates/renzora_plugin/src/sys.rs`, read that file's module documentation first — it carries the full rule. The short version, because getting it wrong is silent:
+
+Both sides compile their own copy of that file from separate source trees. There is no link step, no symbol to mismatch, and no version that moves on its own. **The layout is the entire contract.**
+
+- **A table read by offset may be appended to.** `Interface`, `SystemCall`, `FrameCtx`, `CommandSink`, `MeshSource`, `ImageSource`, `HttpSource`, `PanelAction`. A field at the very end is invisible to a build compiled against the older layout. Append it, update the golden list in `tests/abi_order.rs`, bump `VERSION_MINOR` in the same commit.
+- **Everything else is frozen — not even appendable.** Anything crossing through a pointer, by value inside another struct, or as opaque payload bytes is not read prefix-first: the reader dereferences every field, walks an array at its own `size_of`, or memcpys the whole thing. There is no prefix to preserve, so appending is exactly as fatal as reordering. **Mint a new type beside the old one and a new function that takes it.**
+- **Grep for a type as a *field type* before touching it.** `StrRef` is embedded in seven boundary structs; `Vec3` in six, plus four pointer arrays. Growing either breaks structs declared elsewhere, with every golden list and every `size_of` unchanged and both sides compiling.
+- **Some contracts are numbering, not shape.** A `Key`'s value *is* its bit index into `InputState`; each domain's `SERVICE` id is compiled into every plugin ever shipped. No layout test can see these.
+
+The guard is `cargo test -p renzora_plugin --test abi_order`, which pins 57 types and 200 fields. It runs natively — this crate links no Bevy, so it does not need the container.
+
+That guard exists because the append-only rule was broken **three times** without anyone noticing in review: `SystemEntry` gained a return value under a MINOR and killed the process with no diagnostic, and two functions were inserted into the middle of `Interface` and recorded in the changelog as appended. Inserting a field next to its relatives reads as tidier than appending it three screens away, which is exactly why it kept happening.
+
 ## Current limits
 
 The full ledger is **[Plugin API status](./plugin-api-status.md)** — 215 entries, one row per
