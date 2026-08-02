@@ -2256,8 +2256,23 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
             // and naming it in the error is still the useful thing to do.
             let path = component_type_path(world, id)
                 .unwrap_or_else(|| format!("<unreflected component #{}>", t.component.0));
+            // A write needs its own permission: a mirror larger than the host
+            // type writes past the end of its staging row, not merely reads the
+            // wrong bytes.
+            let writes = matches!(t.access, sys::Access::Write | sys::Access::WriteOptional);
             match world.get_resource::<HostDataComponents>() {
-                Some(allowed) if allowed.0.contains(&path) => {}
+                Some(allowed)
+                    if allowed.readable.contains(&path)
+                        && (!writes || allowed.writable.contains(&path)) => {}
+                Some(allowed) if writes && allowed.readable.contains(&path) => {
+                    error!(
+                        "plugin asked to WRITE engine component `{path}`, which is exposed for \
+                         reading only. Reading it works; `&mut` needs the owning crate to call \
+                         `expose_component_data_mut`, which is a stronger promise — a mirror \
+                         that disagrees writes past its row rather than merely reading wrong"
+                    );
+                    return None;
+                }
                 Some(_) => {
                     error!(
                         "plugin asked to read engine component `{path}` as data, which is not \
@@ -3017,7 +3032,22 @@ pub struct PluginComponentSchemas(pub Vec<PluginComponentInfo>);
 /// the fields right. Closing that second gap needs a size beside the name in the
 /// ABI, which is a MINOR bump nobody has spent yet.
 #[derive(Resource, Default)]
-pub struct HostDataComponents(pub std::collections::HashSet<String>);
+pub struct HostDataComponents {
+    /// Readable as `&T`.
+    pub readable: std::collections::HashSet<String>,
+    /// Writable as `&mut T`. Always a subset of [`Self::readable`].
+    ///
+    /// Separate because the two have different blast radii, and the write one is
+    /// worse. A mirror that is *smaller* than the host type reads bytes it should
+    /// not see; a mirror that is *larger* writes past the end of its staging row,
+    /// into the host's own buffer. Nothing in the ABI carries the plugin's mirror
+    /// size, so neither can be detected — only permitted or not.
+    ///
+    /// Most mirrors want read only. `AnimState` and `PhysicsState` are state a
+    /// plugin observes, not state it sets: an engine system owns them and
+    /// overwrites them every frame, so a plugin write would be discarded anyway.
+    pub writable: std::collections::HashSet<String>,
+}
 
 /// Let plugins read `T` as data, by its reflected type path.
 ///
@@ -3028,8 +3058,27 @@ pub fn expose_component_data<T: Component + bevy::reflect::TypePath>(app: &mut A
     let path = <T as bevy::reflect::TypePath>::type_path().to_string();
     app.world_mut()
         .get_resource_or_insert_with(HostDataComponents::default)
-        .0
+        .readable
         .insert(path);
+}
+
+/// Let plugins **write** `T` as well as read it.
+///
+/// Deliberately separate, and deliberately more work to say. Reading a mirror
+/// that disagrees with the host type is a wrong value; writing one is a write
+/// past the end of the host's staging row, and no size crosses the ABI for
+/// either to be checked against.
+///
+/// Only reach for this when a plugin is meant to *own* the value. A mirror an
+/// engine system rewrites every frame — which is what most of them are — should
+/// stay read-only, because a plugin's write to one is discarded anyway.
+pub fn expose_component_data_mut<T: Component + bevy::reflect::TypePath>(app: &mut App) {
+    let path = <T as bevy::reflect::TypePath>::type_path().to_string();
+    let mut allowed = app
+        .world_mut()
+        .get_resource_or_insert_with(HostDataComponents::default);
+    allowed.readable.insert(path.clone());
+    allowed.writable.insert(path);
 }
 
 /// Look a component up by its type path. Silent — callers decide whether a miss

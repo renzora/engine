@@ -65,7 +65,12 @@ pub fn drain_plugin_http_requests(
         // and a bad pair would slice past the end of the payload.
         let url_end = hdr_len.saturating_add(hdr.url_len as usize);
         let body_end = url_end.saturating_add(hdr.body_len as usize);
-        if body_end > call.payload.len() {
+        // Exact rather than "not past the end": trailing bytes mean the sender
+        // and this bridge disagree about the payload's shape, and the header
+        // alone cannot tell a longer string from a reordered struct. Unlike the
+        // anim and physics commands, the header check above stays a minimum,
+        // because this payload genuinely has a variable-length tail.
+        if body_end != call.payload.len() {
             warn!(
                 "[http] plugin request claims {} + {} bytes but sent {}",
                 hdr.url_len,

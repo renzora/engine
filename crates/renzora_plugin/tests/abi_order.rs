@@ -280,3 +280,81 @@ fn interface_size_matches_its_field_list() {
 
 
 
+
+/// Values a shipped plugin compiled into itself, which therefore cannot move.
+///
+/// The layout tests above compare *shapes*. These are numbers whose meaning is
+/// positional or hashed, so changing one compiles cleanly on both sides and
+/// silently remaps behaviour at runtime. Nothing else in this crate can see them.
+///
+/// - A [`Key`]'s value **is** its bit index into `InputState`. Renumbering makes
+///   every already-built plugin read a different key than it asked for.
+/// - A `SERVICE` id is an FNV hash of a domain name, baked into every plugin ever
+///   built. Change the string and every call falls through unmatched — and the
+///   host discards unclaimed service calls silently, so it presents as "my plugin
+///   loaded and does nothing", which is the hardest failure to diagnose from
+///   outside.
+/// - `Easing`'s ordinals are compiled into plugins the same way.
+/// - The inline capacities are reconstructed by hand in other crates.
+///
+/// The expected numbers are written out rather than derived. Deriving them from
+/// the source would defeat the point: the source is the thing they constrain.
+#[test]
+fn frozen_values_have_not_moved() {
+    use renzora_plugin::sys;
+
+    let checks: &[(&str, u64, u64)] = &[
+        // Key numbering is the InputState bit index.
+        ("Key::A", sys::Key::A.0 as u64, 0),
+        ("Key::Space", sys::Key::Space.0 as u64, 36),
+        ("Key::COUNT", sys::Key::COUNT as u64, 84),
+        ("MouseButton::Left", sys::MouseButton::Left.0 as u64, 0),
+        // Inline capacities other crates reconstruct from literals.
+        ("STR_CAP", sys::STR_CAP as u64, 252),
+        ("size_of::<Str256>", size_of::<sys::Str256>() as u64, 256),
+        // Payload-carrying sizes, frozen with the structs themselves.
+        ("size_of::<Vec3>", size_of::<sys::Vec3>() as u64, 12),
+        ("size_of::<Quat>", size_of::<sys::Quat>() as u64, 16),
+        ("size_of::<Transform>", size_of::<sys::Transform>() as u64, 40),
+        // Caps a plugin sizes its own buffers against.
+        ("MATERIAL_UNIFORM_CAP", sys::MATERIAL_UNIFORM_CAP, 256),
+        ("MAX_MATERIAL_TEXTURES", sys::MAX_MATERIAL_TEXTURES as u64, 4),
+    ];
+
+    let mut moved = Vec::new();
+    for (what, actual, expected) in checks {
+        if actual != expected {
+            moved.push(format!("{what}: was {expected}, now {actual}"));
+        }
+    }
+    assert!(
+        moved.is_empty(),
+        "\n\nFrozen values moved:\n  - {}\n\n\
+         These are compiled into every plugin ever built. Changing one is an ABI break \
+         even though no layout changed, and it fails at runtime as wrong behaviour rather \
+         than as an error.\n",
+        moved.join("\n  - ")
+    );
+}
+
+/// The service ids, checked against the strings that produce them.
+///
+/// Separate from the test above because the failure is different in kind: these
+/// are hashes, so a mismatch means the *domain name* changed, and the number is
+/// not something anyone would recognise on sight.
+/// Each domain is feature-gated, so each assertion is too — a test that only
+/// compiles under one feature set is a test that silently stops running.
+#[test]
+fn service_ids_have_not_moved() {
+    use renzora_plugin::sys::service_id;
+    // Written as the hash of the literal, so renaming a domain fails here rather
+    // than silently orphaning every call a shipped plugin makes.
+    #[cfg(feature = "anim")]
+    assert_eq!(renzora_plugin::anim::SERVICE, service_id("renzora.animation"));
+    #[cfg(feature = "physics")]
+    assert_eq!(renzora_plugin::physics::SERVICE, service_id("renzora.physics"));
+    #[cfg(feature = "http")]
+    assert_eq!(renzora_plugin::http::SERVICE, service_id("renzora.http"));
+    // Keeps the import used when no domain feature is on.
+    let _ = service_id("");
+}

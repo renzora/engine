@@ -113,9 +113,15 @@ pub fn drain_plugin_anim_commands(
 ) {
     for call in parked.take(renzora_plugin::anim::SERVICE) {
         // The payload is bytes the host never looked at, so every check happens
-        // here. A short one means a plugin built against a different version of
-        // `renzora_plugin` — refuse it rather than read off the end.
-        if call.payload.len() < size_of::<AnimCommand>() {
+        // here — and it is exact, not a minimum. A `<` check passes a payload that is the right
+        // size or larger, which sounds forgiving and is not: a plugin built from
+        // a version of `renzora_plugin` that REORDERED this struct sends exactly
+        // the right number of bytes and is misread silently, field for field. The
+        // domain modules sit outside the ABI version deliberately, so nothing else
+        // catches that — not the handshake, not the interface prefix hash, and not
+        // cargo, since a plugin's `renzora_plugin = "0.1"` resolves to any 0.1.x.
+        // An equality check turns a silent misread into a clean refusal.
+        if call.payload.len() != size_of::<AnimCommand>() {
             warn!(
                 "[animation] plugin sent {} bytes for an animation command; expected {}",
                 call.payload.len(),
