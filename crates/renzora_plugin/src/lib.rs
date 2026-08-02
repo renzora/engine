@@ -94,7 +94,8 @@ pub mod prelude {
     pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
     pub use crate::ecs::{
         Action, App, Bundle, Commands, Entity, EntityCommands, Images, Input, Mesh3d, MeshData, Meshes,
-        Or, Panel, Plugin, Quat, Query, RenderPass, Res, ResMut, Resource, Scene, Schedule,
+        Or, Panel, Plugin, Quat, Query, RemovedComponents, RenderPass, Res, ResMut, Resource,
+        Scene, Schedule,
         Str256, Time, Transform, Vec3, Visibility, With, Without,
     };
     // `Key::W` and `MouseButton::Left` read like the Bevy names they map to, and a

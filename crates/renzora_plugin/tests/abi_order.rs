@@ -358,3 +358,4 @@ fn service_ids_have_not_moved() {
     // Keeps the import used when no domain feature is on.
     let _ = service_id("");
 }
+

@@ -212,7 +212,7 @@ pub const VERSION_MAJOR: u32 = 4;
 ///
 /// ## MAJOR 4
 ///
-/// (nothing appended yet)
+/// 0 -> 1 appended `SystemCall::removed`.
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -244,7 +244,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 0;
+pub const VERSION_MINOR: u32 = 1;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1029,6 +1029,11 @@ pub struct SystemCall {
     /// Appended at the END, like [`input`](Self::input) and
     /// [`meshes`](Self::meshes), for the same offset reason.
     pub http: *mut HttpSource,
+
+    // ── Added in MINOR 4.1 ────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT.
+    /// Which entities lost a component. Null in a build without the source.
+    pub removed: *mut RemovedSource,
 }
 
 /// One completed HTTP response, copied out for the plugin.
@@ -2525,6 +2530,55 @@ pub struct PanelAction {
 /// A panel's action handler. Returns [`SystemStatus::Panicked`] if the plugin
 /// caught a panic, exactly like a system.
 pub type PanelActionEntry = unsafe extern "C" fn(action: *const PanelAction) -> SystemStatus;
+
+/// Entities that lost a component, copied out for a plugin.
+///
+/// Two passes, like [`MeshRead`]: the first learns the count with null pointers,
+/// the second fills buffers the plugin owns. The host cannot allocate for the
+/// plugin — they do not share an allocator — so this is the only shape available.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RemovedRead {
+    /// In: how many entities `entities` holds. Out: unchanged.
+    pub entity_capacity: usize,
+    pub entities: *mut Entity,
+    /// Out: how many were removed, whatever the capacity was.
+    pub entity_count: usize,
+}
+
+impl RemovedRead {
+    /// A probe pass: no buffers, just the count.
+    pub const COUNTS_ONLY: Self = Self {
+        entity_capacity: 0,
+        entities: core::ptr::null_mut(),
+        entity_count: 0,
+    };
+}
+
+/// Reads which entities lost a component since this system last ran.
+///
+/// A system param rather than an [`Interface`] function, for the same reason
+/// [`MeshSource`] is: delivery needs host state, and `SystemCall::host` is null
+/// while a system runs.
+///
+/// The cursor is **per system**, matching Bevy: two plugin systems watching the
+/// same component each see every removal once, and a system that does not run on
+/// a given frame still sees that frame's removals when it next runs. That last
+/// part is why this is a cursor rather than a snapshot of the current frame —
+/// the buffers rotate, and a snapshot would drop removals for any system that
+/// skipped a frame.
+#[repr(C)]
+pub struct RemovedSource {
+    /// Read removals of `component` since this system last asked.
+    ///
+    /// Returns `false` if nothing has ever removed that component — which is not
+    /// an error, and is the normal state for most components on most frames.
+    pub read: unsafe extern "C" fn(
+        src: *mut RemovedSource,
+        component: ComponentId,
+        out: *mut RemovedRead,
+    ) -> bool,
+}
 
 /// Result of [`ExtensionInit`].
 /// Newtype rather than an `enum`, same reason as [`SystemStatus`]: the plugin

@@ -172,6 +172,7 @@ const GOLDEN: &[Golden] = &[
             "meshes: *mut MeshSource",
             "images: *mut ImageSource",
             "http: *mut HttpSource",
+            "removed: *mut RemovedSource",
         ],
     },
     Golden {
@@ -500,6 +501,20 @@ const GOLDEN: &[Golden] = &[
         name: "PanelActionEntry",
         fields: &[
             "= unsafe extern \"C\" fn(action: *const PanelAction) -> SystemStatus",
+        ],
+    },
+    Golden {
+        name: "RemovedRead",
+        fields: &[
+            "entity_capacity: usize",
+            "entities: *mut Entity",
+            "entity_count: usize",
+        ],
+    },
+    Golden {
+        name: "RemovedSource",
+        fields: &[
+            "read: unsafe extern \"C\" fn( src: *mut RemovedSource, component: ComponentId, out: *mut RemovedRead, ) -> bool",
         ],
     },
     Golden {

@@ -1746,6 +1746,90 @@ impl Images<'_> {
     }
 }
 
+/// Entities that lost `T` since this system last ran. Mirrors Bevy's
+/// `RemovedComponents<T>`.
+///
+/// ```ignore
+/// fn cleanup(mut removed: RemovedComponents<Hair>) {
+///     for entity in removed.read() {
+///         // tear down whatever this entity owned
+///     }
+/// }
+/// ```
+///
+/// Before this existed, a plugin owning anything per-entity had to sweep: keep a
+/// map of what it had built, walk it every frame, and diff it against the
+/// entities its query still matched. Both shipped plugins did exactly that, and
+/// the cost was O(tracked x live) per frame for information the engine already
+/// had.
+///
+/// The cursor is per system, like Bevy's — two systems watching the same
+/// component each see every removal, and a system that skips a frame still sees
+/// that frame's removals when it next runs.
+///
+/// **A despawn counts as a removal**, which is the case the sweeps existed for.
+pub struct RemovedComponents<'a, T: Component> {
+    src: *mut sys::RemovedSource,
+    _p: PhantomData<(&'a (), T)>,
+}
+
+impl<T: Component> RemovedComponents<'_, T> {
+    /// Take the removals this system has not seen yet.
+    ///
+    /// Returns owned entities rather than an iterator borrowing the host: the
+    /// bytes are copied out during the call, and holding a borrow across it would
+    /// outlive the pointer the host lent us.
+    pub fn read(&mut self) -> alloc::vec::Vec<sys::Entity> {
+        if self.src.is_null() {
+            return alloc::vec::Vec::new();
+        }
+        let component = component_id_of::<T>();
+        // Two passes: learn the count, then fill a buffer we own. The host does
+        // not share our allocator, so it cannot hand back a `Vec`.
+        let mut probe = sys::RemovedRead::COUNTS_ONLY;
+        unsafe {
+            if !((*self.src).read)(self.src, component, &mut probe) {
+                return alloc::vec::Vec::new();
+            }
+        }
+        if probe.entity_count == 0 {
+            return alloc::vec::Vec::new();
+        }
+        let mut out = alloc::vec![sys::Entity(u64::MAX); probe.entity_count];
+        let mut fill = sys::RemovedRead {
+            entity_capacity: out.len(),
+            entities: out.as_mut_ptr(),
+            entity_count: 0,
+        };
+        unsafe {
+            if !((*self.src).read)(self.src, component, &mut fill) {
+                return alloc::vec::Vec::new();
+            }
+        }
+        // The second pass consumes, so its count is authoritative — and it can
+        // legitimately differ from the probe's if a removal landed between them.
+        out.truncate(fill.entity_count.min(out.len()));
+        out
+    }
+}
+
+unsafe impl<T: Component> SystemParam for RemovedComponents<'_, T> {
+    // Declares nothing. Removal tracking is not component access — the host's
+    // source reads a message buffer, not storage — so this can never conflict
+    // with another system, which is also true of Bevy's own param.
+    fn declare(ctx: &mut InitCtx, _: &mut SystemBuilder) {
+        // Resolve the id, though: a plugin may only ever *remove* a component,
+        // and then nothing else would have taught the host its name.
+        let _ = ctx.id_of::<T>();
+    }
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
+        RemovedComponents {
+            src: (*call).removed,
+            _p: PhantomData,
+        }
+    }
+}
+
 unsafe impl SystemParam for Images<'_> {
     fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
     unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {

@@ -29,12 +29,15 @@ pub mod input;
 pub mod loader;
 
 use bevy::ecs::component::{ComponentDescriptor, ComponentId, StorageType};
+use bevy::ecs::lifecycle::{RemovedComponentEntity, RemovedComponentMessages};
+use bevy::ecs::message::MessageCursor;
 use bevy::ecs::query::QueryBuilder;
 use bevy::ecs::schedule::{ScheduleLabel, Schedules};
 use bevy::ecs::system::{
     FilteredResourcesMutParamBuilder, ParamBuilder, QueryParamBuilder, SystemParamBuilder,
 };
 use bevy::ecs::world::FilteredResourcesMut;
+use std::collections::HashMap;
 use bevy::ecs::world::{FilteredEntityMut, FilteredEntityRef};
 use bevy::prelude::*;
 use bevy::render::render_phase::TrackedRenderPass;
@@ -1460,6 +1463,69 @@ unsafe extern "C" fn mesh_read(
     true
 }
 
+/// Backs [`sys::RemovedSource`] for one system invocation.
+///
+/// `src` must be the FIRST field — see the offset assertions below.
+///
+/// The cursors are borrowed from a `Local` on the dispatcher, which is what
+/// makes the per-system semantics work: each plugin system has its own
+/// dispatcher, so each has its own cursor per component and sees every removal
+/// exactly once, matching Bevy's `RemovedComponents<T>`.
+#[repr(C)]
+struct RemovedSourceImpl<'a> {
+    src: sys::RemovedSource,
+    messages: Option<&'a RemovedComponentMessages>,
+    cursors: &'a mut HashMap<ComponentId, MessageCursor<RemovedComponentEntity>>,
+}
+
+/// Copy out the removals this system has not seen yet.
+///
+/// The probe pass must NOT consume, or a caller that learns the count and then
+/// fails to allocate would silently lose them — the same rule `http_poll`
+/// follows, and for the same reason.
+unsafe extern "C" fn removed_read(
+    src: *mut sys::RemovedSource,
+    component: sys::ComponentId,
+    out: *mut sys::RemovedRead,
+) -> bool {
+    guard_host("removed_read", false, || {
+        let this = &mut *(src as *mut RemovedSourceImpl);
+        let Some(messages) = this.messages else {
+            return false;
+        };
+        if !component.is_valid() {
+            return false;
+        }
+        let id = ComponentId::new(component.0 as usize);
+        // `None` means nothing has ever removed this component. Not an error, and
+        // the normal state for most components on most frames.
+        let Some(queue) = messages.get(id) else {
+            return false;
+        };
+        let out = &mut *out;
+        let cursor = this.cursors.entry(id).or_default();
+
+        if out.entities.is_null() || out.entity_capacity == 0 {
+            // Probe. `len` reads the cursor's outstanding count without advancing
+            // it, which is what keeps this pass non-consuming.
+            out.entity_count = cursor.len(queue);
+            return true;
+        }
+
+        let mut n = 0usize;
+        for message in cursor.read(queue) {
+            if n == out.entity_capacity {
+                break;
+            }
+            let entity: Entity = message.clone().into();
+            out.entities.add(n).write(sys::Entity(entity.to_bits()));
+            n += 1;
+        }
+        out.entity_count = n;
+        true
+    })
+}
+
 /// Backs [`sys::CommandSink`] for one system call.
 ///
 /// **`#[repr(C)]` is load-bearing, not tidiness.** The plugin is handed a
@@ -1498,6 +1564,7 @@ const _: () = {
     assert!(core::mem::offset_of!(MeshSourceImpl, src) == 0);
     assert!(core::mem::offset_of!(ImageSourceImpl, src) == 0);
     assert!(core::mem::offset_of!(HttpSourceImpl, src) == 0);
+    assert!(core::mem::offset_of!(RemovedSourceImpl, src) == 0);
 };
 
 /// The host's interface table.
@@ -2676,6 +2743,15 @@ fn build_dispatcher(
         ParamBuilder::of::<Option<Res<PluginAssets>>>(),
         // Pixel writes for plugin-created images.
         ParamBuilder::of::<Option<ResMut<Assets<Image>>>>(),
+        // Removal tracking. Declares no access at all — it reads a message
+        // buffer, not component storage — so it can never conflict with the
+        // dynamic queries above, and adding it to every dispatcher costs nothing
+        // to schedule.
+        ParamBuilder::of::<&RemovedComponentMessages>(),
+        // Per-system cursors, which is what makes the semantics match Bevy's:
+        // this `Local` belongs to THIS dispatcher, so each plugin system sees
+        // every removal exactly once even when several watch the same component.
+        ParamBuilder::of::<Local<HashMap<ComponentId, MessageCursor<RemovedComponentEntity>>>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
@@ -2687,7 +2763,11 @@ fn build_dispatcher(
                             mesh_handles: Query<&Mesh3d>,
                             http_inbox: Option<ResMut<PluginHttpInbox>>,
                             plugin_assets: Option<Res<PluginAssets>>,
-                            mut image_assets: Option<ResMut<Assets<Image>>>| {
+                            mut image_assets: Option<ResMut<Assets<Image>>>,
+                            removed_messages: &RemovedComponentMessages,
+                            mut removed_cursors: Local<
+            HashMap<ComponentId, MessageCursor<RemovedComponentEntity>>,
+        >| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -2787,6 +2867,11 @@ fn build_dispatcher(
                 handles: &mesh_handles,
                 store: plugin_assets.as_deref(),
             };
+            let mut removed_src = RemovedSourceImpl {
+                src: sys::RemovedSource { read: removed_read },
+                messages: Some(removed_messages),
+                cursors: &mut removed_cursors,
+            };
             let mut sink = SinkImpl {
                 sink: sys::CommandSink {
                     reserve_entity: sink_reserve,
@@ -2823,6 +2908,7 @@ fn build_dispatcher(
                 meshes: (&mut mesh_src as *mut MeshSourceImpl).cast(),
                 images: (&mut image_src as *mut ImageSourceImpl).cast(),
                 http: (&mut http_src as *mut HttpSourceImpl).cast(),
+                removed: (&mut removed_src as *mut RemovedSourceImpl).cast(),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps

@@ -219,13 +219,10 @@ fn update_grooms(
     mut q: Query<(Entity, &mut Hair, &Transform)>,
     meshes: Meshes,
     time: Res<Time>,
+    mut removed: RemovedComponents<Hair>,
     mut cmds: Commands,
 ) {
     let dt = time.delta_secs().min(MAX_DT);
-    // Every entity that still has `Hair` this frame. Anything tracked but not
-    // in here has lost its component or been despawned, and its groom has to go
-    // with it — see `retire_dead_grooms`.
-    let mut live: Vec<u64> = Vec::new();
     let Ok(mut guard) = GROOMS.lock() else {
         return;
     };
@@ -236,7 +233,6 @@ fn update_grooms(
     for (entity, hair, transform) in &mut q {
         let key = entity.0;
         let signature = hair.shape_signature();
-        live.push(key);
 
         // Grow, or regrow if a shape field moved. The mesh may not have loaded
         // yet, which is the normal state for the first few frames — `read`
@@ -319,28 +315,25 @@ fn update_grooms(
         );
     }
 
-    retire_dead_grooms(grooms, &live, &mut cmds);
+    retire_dead_grooms(grooms, &mut removed, &mut cmds);
 }
 
 /// Tear down grooms whose owner is gone.
 ///
-/// The boundary has no `RemovedComponents` and no despawn hook, so absence is
-/// the only signal available: anything tracked that did not appear in this
-/// frame's query has lost its `Hair` or been despawned. Without this the ribbon
-/// entity outlives its owner — hair left standing in the scene after the model
-/// is deleted — and its mesh slot is never reusable again.
-fn retire_dead_grooms(grooms: &mut Grooms, live: &[u64], cmds: &mut Commands) {
-    if grooms.by_entity.len() == live.len() {
-        return;
-    }
-    let dead: Vec<u64> = grooms
-        .by_entity
-        .keys()
-        .copied()
-        .filter(|k| !live.contains(k))
-        .collect();
-    for key in dead {
-        if let Some(groom) = grooms.by_entity.remove(&key) {
+/// Without this the ribbon entity outlives its owner — hair left standing in the
+/// scene after the model is deleted — and its mesh slot is never reusable again.
+///
+/// This used to sweep: build the list of entities that still had `Hair` this
+/// frame, then diff every tracked groom against it, every frame, at O(tracked x
+/// live). The boundary had no `RemovedComponents`, so absence was the only signal
+/// available. It has one now, and the engine already knew the answer.
+fn retire_dead_grooms(
+    grooms: &mut Grooms,
+    removed: &mut RemovedComponents<Hair>,
+    cmds: &mut Commands,
+) {
+    for entity in removed.read() {
+        if let Some(groom) = grooms.by_entity.remove(&entity.0) {
             cmds.entity(groom.render).despawn();
             // Back on the free stack, so add/delete cycles do not exhaust the
             // pool. The mesh asset itself stays allocated and is overwritten by
