@@ -93,7 +93,8 @@ pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
 pub mod prelude {
     pub use renzora_plugin_derive::{bsn, bsn_list, Component, Resource};
     pub use crate::ecs::{
-        Action, App, Bundle, Commands, Entity, EntityCommands, Images, Input, Mesh3d, MeshData, Meshes,
+        Action, Added, App, Bundle, Changed, Commands, Entity, EntityCommands, Images, Input,
+        Mesh3d, MeshData, Meshes,
         Or, Panel, Plugin, Quat, Query, RemovedComponents, RenderPass, Res, ResMut, Resource,
         Scene, Schedule,
         Str256, Time, Transform, Vec3, Visibility, With, Without,

@@ -708,6 +708,50 @@ impl<T: Component> QueryFilter for Without<T> {
     }
 }
 
+/// Matches entities whose `T` was added since this system last ran.
+///
+/// Like Bevy's, and with Bevy's implications: it also requires `T` to be
+/// present, and takes a read borrow on it, so the system will not run in
+/// parallel with anything writing `T`.
+///
+/// **A hot reload makes this fire for the whole scene.** Reloading keeps your
+/// components but registers new systems, and a system that has never run treats
+/// everything already in the world as freshly added. Reload is the inner loop of
+/// plugin development, so do not use `Added<T>` for one-time setup.
+///
+/// Cannot appear inside [`Or`] — the host refuses the system at load and says so.
+pub struct Added<T>(PhantomData<T>);
+
+impl<T: Component> QueryFilter for Added<T> {
+    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
+        out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::Added });
+    }
+}
+
+/// Matches entities whose `T` changed since this system last ran.
+///
+/// Like Bevy's, with one semantic difference worth knowing before you rely on
+/// it: **a plugin's `&mut` write only marks a component changed when the bytes
+/// actually change.** Bevy marks it the moment you take `&mut`, whether or not
+/// you wrote anything different. The host compares your staged bytes against a
+/// snapshot taken before the system ran and skips the write when they match, and
+/// skipping the write is what skips the tick.
+///
+/// So `Changed<T>` fires *less* often here than the same code would in-tree, and
+/// there is no `set_changed()` to force it — the Bevy idiom `let _ = &mut *foo;`
+/// compiles and does nothing. The comparison is bitwise over the whole
+/// component, padding included, so it can report a change that did not really
+/// happen but never misses one that did.
+///
+/// Cannot appear inside [`Or`] — the host refuses the system at load and says so.
+pub struct Changed<T>(PhantomData<T>);
+
+impl<T: Component> QueryFilter for Changed<T> {
+    fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
+        out.push(sys::Term { component: ctx.id_of::<T>(), access: sys::Access::Changed });
+    }
+}
+
 impl<A: QueryFilter, B: QueryFilter> QueryFilter for (A, B) {
     fn terms(ctx: &mut InitCtx, out: &mut alloc::vec::Vec<sys::Term>) {
         A::terms(ctx, out);

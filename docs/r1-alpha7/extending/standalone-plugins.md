@@ -102,12 +102,31 @@ result: field shorthand (`Comp { name }`), `on(|ev| …)` handlers, and a relati
 other than `Children` (`MyRel [ … ]` spawns **children** regardless of the name). Loud failures,
 by contrast, are `~Template`, `@SceneComponent` and `:"file.bsn"`.
 
+### `Changed<T>` fires less often than it would in Bevy
+
+A plugin's `&mut` write only marks a component changed **when the bytes actually change**. Bevy marks it the moment you take `&mut`, whether or not you wrote anything different; the host compares your staged bytes against a snapshot taken before your system ran and skips the write when they match, and skipping the write is what skips the tick.
+
+So a `Changed<T>` watcher — another plugin system, or an ordinary engine system — fires less often for a plugin-written component than for the same feature written in-tree. There is no `set_changed()` in the ABI, so you cannot notify a downstream system without changing a byte, and the Bevy idiom `let _ = &mut *foo;` compiles here and does nothing.
+
+The comparison is bitwise over the whole component, padding included. It errs loud rather than quiet: it can report a change that did not really happen (`-0.0` differs from `0.0`) but it cannot miss one that did.
+
+This is deliberate and load-bearing. Unconditional write-back marked every matched component changed every frame, which does not merely cost time — it destroys change detection for the whole engine, because `Changed<Transform>` anywhere becomes true whenever any plugin so much as looks at a transform.
+
+### `Added<T>` fires for the whole scene after a hot reload
+
+Reloading keeps your components and resources — that is what makes hot reload tractable — but it registers *new systems*, and a Bevy system that has never run treats everything already in the world as freshly added.
+
+Do not use `Added<T>` for one-time setup. Reload is the inner loop of plugin development, so you will hit this.
+
+### `Added<T>` and `Changed<T>` cannot go inside `Or`
+
+The host refuses the whole system at load, naming the term. A change-tick test is a per-row predicate and the host's query builder has no tick dimension, so the branch would come out empty — and an empty branch in an `Or` matches **every entity in the world**.
+
+At the top level of a filter tuple they work normally: `(Changed<A>, With<B>)` and `(Changed<A>, Changed<B>)` are both fine, and mean "and", as in Bevy.
+
 ### Smaller ones worth knowing
 
-- **Change detection is quieter than Bevy's.** The host compares staged bytes against a
-  baseline before writing back, so a system that reads and rewrites an unchanged component does
-  *not* mark it changed. Usually what you want — it stops every plugin system dirtying
-  everything it looks at — but it is a divergence.
+
 - **`usize`, `i64` and `u32` fields are all edited as 32-bit** in the inspector, which
   reads and writes four bytes.
 - **`#[derive(Component)]` on a tuple struct** registers with an empty field schema — only
@@ -117,6 +136,8 @@ by contrast, are `~Template`, `@SceneComponent` and `:"file.bsn"`.
 - **`PanelActionId` must sit on an entity that carries `Interaction`.** Bevy's `Button` does;
   `EmberButtonWidget` does not, because it builds its clickable box as a child. The pairing
   compiles, spawns, looks correct, and never dispatches.
+- **Two plugin systems cannot be ordered against each other yet**, so a `Changed<T>` handoff between two of your own systems may be seen this frame or next, at the scheduler's choice. Bevy would let you write `.after(a)`. Do not build a pipeline out of `Changed<T>` between your own systems until the ABI has ordering — it will work most runs and jitter by a frame on others.
+- **`Changed<T>` implies `With<T>` and takes a read borrow**, exactly as in Bevy: `Query<&Bar, Changed<Foo>>` matches only entities that have `Foo`, and will not run in parallel with anything writing `Foo`.
 - **A layout change means a restart.** Adding or removing a component field, or changing its
   type, is refused by [hot reload](#hot-reload) — existing entities hold bytes for the old
   layout. Renames are free. This is the edit you will make most often while iterating.

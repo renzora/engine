@@ -34,7 +34,8 @@ use bevy::ecs::message::MessageCursor;
 use bevy::ecs::query::QueryBuilder;
 use bevy::ecs::schedule::{ScheduleLabel, Schedules};
 use bevy::ecs::system::{
-    FilteredResourcesMutParamBuilder, ParamBuilder, QueryParamBuilder, SystemParamBuilder,
+    FilteredResourcesMutParamBuilder, ParamBuilder, QueryParamBuilder, SystemChangeTick,
+    SystemParamBuilder,
 };
 use bevy::ecs::world::FilteredResourcesMut;
 use std::collections::HashMap;
@@ -2261,6 +2262,9 @@ unsafe extern "C" fn log(_host: *mut sys::Host, level: sys::LogLevel, msg: sys::
 fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
     let transform_id = world.component_id::<Transform>();
     let mut plan = Vec::with_capacity(terms.len());
+    // Nesting depth of `Or` brackets, so a change-tick term inside one can be
+    // refused — see the match below for why that matters.
+    let mut or_depth = 0usize;
 
     for t in terms {
         // Refuse the whole system rather than skip the term. An unknown access
@@ -2274,6 +2278,32 @@ fn build_plan(world: &World, terms: &[sys::Term]) -> Option<Vec<TermPlan>> {
                 t.access.0
             );
             return None;
+        }
+        // A change-tick test is a per-row predicate the dispatcher evaluates, not
+        // something `QueryBuilder` can express — it has no tick dimension at all.
+        // Inside an `Or` group that is fatal in the quiet direction: `apply_filters`
+        // would drop the term through its `_ => {}` arm, leaving the branch EMPTY,
+        // and an empty `FilteredAccess` is `matches_everything()`. One empty
+        // disjunct makes the whole `Or` match every entity in the world.
+        //
+        // The `_ => {}` arm is justified for an unknown kind, where widening the
+        // match is harmless. It is not justified here, so refuse instead — the
+        // same reflex as the unknown-access arm above.
+        match t.access {
+            sys::Access::OrBegin => or_depth += 1,
+            sys::Access::OrEnd => or_depth = or_depth.saturating_sub(1),
+            sys::Access::Added | sys::Access::Changed if or_depth > 0 => {
+                error!(
+                    "plugin used `{}` inside an `Or` group. A change-tick test is a per-row \
+                     predicate and the query builder has no tick dimension, so the branch would \
+                     be empty — and an empty branch makes the whole `Or` match every entity in \
+                     the world. Refusing the system; move the tick filter to the top level of \
+                     the filter tuple.",
+                    t.access.name()
+                );
+                return None;
+            }
+            _ => {}
         }
         // `Or` brackets name nothing. They survive into the plan so the query
         // builder can still see the grouping, and are filtered out everywhere
@@ -2458,7 +2488,17 @@ fn build_query(builder: &mut QueryBuilder<FilteredEntityMut>, terms: &[TermPlan]
         let t = &terms[i];
         i += 1;
         match t.access {
-            sys::Access::Read => {
+            sys::Access::Read
+            // `ref_id`, not `with_id`, and that is mandatory rather than
+            // stylistic: `FilteredEntityRef::get_change_ticks_by_id` is gated on
+            // the same `access.has_read(id)` that `get_by_id` is. A `with_id`
+            // term contributes filter sets and no read, so every row would
+            // return `None` and the filter would match nothing, forever, with no
+            // error. `ref_id`'s footprint is byte-identical to Bevy's own
+            // `Changed<T>` — both end in `FilteredAccess::add_read` — so this
+            // also inherits Bevy's implied `With<T>` and its scheduling.
+            | sys::Access::Added
+            | sys::Access::Changed => {
                 builder.ref_id(t.id);
             }
             sys::Access::Write => {
@@ -2534,12 +2574,39 @@ struct ViewState {
     present: Vec<Vec<bool>>,
     entities: Vec<sys::Entity>,
     cells: Vec<*mut u8>,
+    /// Change-tick filters, which carry a component but produce no cell and so
+    /// are absent from `cells_plan`.
+    tick_plan: Vec<(ComponentId, TickKind)>,
+    /// Precomputed `!tick_plan.is_empty()`, so the common unfiltered case pays
+    /// nothing per row — and so an empty `kept` is unambiguous, rather than also
+    /// meaning "zero rows matched".
+    filtered: bool,
+    /// One entry per row the query **iterated**, not per row staged.
+    ///
+    /// `gather` and `scatter` are two independent walks of the same query, each
+    /// indexing by enumeration ordinal. They agree today only because both walk
+    /// the identical unfiltered query. Once `gather` can skip, `scatter` has to
+    /// skip exactly the same rows — replaying a recorded mask makes them aligned
+    /// by construction, where recomputing the predicate would not: `write_cell`
+    /// marks components changed as it goes, so the second evaluation would see a
+    /// different answer than the first.
+    kept: Vec<bool>,
+}
+
+/// Which tick predicate a filter term carries.
+#[derive(Clone, Copy)]
+enum TickKind {
+    Added,
+    Changed,
 }
 
 impl ViewState {
-    fn new(cells_plan: Vec<TermPlan>) -> Self {
+    fn new(cells_plan: Vec<TermPlan>, tick_plan: Vec<(ComponentId, TickKind)>) -> Self {
         let n = cells_plan.len();
         Self {
+            filtered: !tick_plan.is_empty(),
+            tick_plan,
+            kept: Vec::new(),
             staging: cells_plan
                 .iter()
                 .map(|t| Vec::<u8>::with_capacity(t.cell_size * 64))
@@ -2560,8 +2627,35 @@ impl ViewState {
     }
 
     /// Copy every matched row into the staging buffers.
-    fn gather(&mut self, q: &mut Query<FilteredEntityMut>) {
+    fn gather(&mut self, q: &mut Query<FilteredEntityMut>, ticks: SystemChangeTick) {
         for e in q.iter() {
+            // Before `read_cell`, deliberately: that allocates and copies per
+            // cell, so a filtered-out row now costs a tick comparison instead of
+            // a heap allocation per term. Skipping here also compacts for free —
+            // everything below indexes by staged position, and nothing is pushed
+            // for a skipped row.
+            if self.filtered {
+                let keep = self.tick_plan.iter().all(|(id, kind)| {
+                    match e.get_change_ticks_by_id(*id) {
+                        Some(t) => match kind {
+                            TickKind::Added => t.is_added(ticks.last_run(), ticks.this_run()),
+                            TickKind::Changed => t.is_changed(ticks.last_run(), ticks.this_run()),
+                        },
+                        // Unreachable in a correct build: the term was emitted
+                        // with `ref_id`, which grants the read this getter is
+                        // gated on and implies `With`. Drop rather than keep, so
+                        // a host bug presents as "matches nothing" instead of
+                        // silently widening the match.
+                        None => false,
+                    }
+                });
+                // Recorded for EVERY iterated row, including kept ones, and
+                // before the `continue` — `scatter` indexes it by raw ordinal.
+                self.kept.push(keep);
+                if !keep {
+                    continue;
+                }
+            }
             self.entities.push(sys::Entity(e.id().to_bits()));
             for (i, t) in self.cells_plan.iter().enumerate() {
                 match read_cell(&e, t) {
@@ -2621,7 +2715,29 @@ impl ViewState {
         if !self.cells_plan.iter().any(Self::is_writable) {
             return;
         }
-        for (row, mut e) in q.iter_mut().enumerate() {
+        // A fully-filtered frame otherwise pays a whole second walk of the
+        // unfiltered query to write nothing.
+        if self.entities.is_empty() {
+            return;
+        }
+        // Two cursors. `iterated` walks the query exactly as `gather` did;
+        // `staged` counts only the rows that survived, which is what every
+        // buffer is indexed by.
+        //
+        // The mask is replayed rather than recomputed, and that is a correctness
+        // requirement, not a saving: `write_cell` reaches storage through
+        // `MutUntyped::as_mut`, which marks the component changed. Re-evaluating
+        // `Changed<T>` here would see rows this very loop had just dirtied and
+        // give a different answer than `gather` did — the predicate would be
+        // self-referential, and a `Query<&mut Foo, Changed<Foo>>` would write to
+        // the wrong entities.
+        let mut staged = 0usize;
+        for (iterated, mut e) in q.iter_mut().enumerate() {
+            if self.filtered && !self.kept.get(iterated).copied().unwrap_or(false) {
+                continue;
+            }
+            let row = staged;
+            staged += 1;
             for (i, t) in self.cells_plan.iter().enumerate() {
                 if !Self::is_writable(t) || !self.present[i][row] {
                     continue;
@@ -2752,6 +2868,16 @@ fn build_dispatcher(
         // this `Local` belongs to THIS dispatcher, so each plugin system sees
         // every removal exactly once even when several watch the same component.
         ParamBuilder::of::<Local<HashMap<ComponentId, MessageCursor<RemovedComponentEntity>>>>(),
+        // The same `last_run`/`this_run` a real `Changed<T>` in this system would
+        // see — `SystemChangeTick` reads them straight off `SystemMeta`, declares
+        // no access, and costs nothing to schedule. Because the host builds one
+        // real Bevy system per plugin system, per-system change scoping maps 1:1.
+        //
+        // Never cache these in a `Local`. `World::check_change_ticks` clamps ticks
+        // wherever it can reach them, and a tick hidden in a `Local` is not
+        // somewhere it can reach — past the threshold it starts returning wrong
+        // answers, silently.
+        ParamBuilder::of::<SystemChangeTick>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
@@ -2767,7 +2893,8 @@ fn build_dispatcher(
                             removed_messages: &RemovedComponentMessages,
                             mut removed_cursors: Local<
             HashMap<ComponentId, MessageCursor<RemovedComponentEntity>>,
-        >| {
+        >,
+                            system_ticks: SystemChangeTick| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -2797,12 +2924,21 @@ fn build_dispatcher(
                             .filter(|t| t.access.has_cell())
                             .cloned()
                             .collect(),
+                        // Tick filters carry a component but produce no cell, so
+                        // they are absent from the list above and need their own.
+                        plan.iter()
+                            .filter_map(|t| match t.access {
+                                sys::Access::Added => Some((t.id, TickKind::Added)),
+                                sys::Access::Changed => Some((t.id, TickKind::Changed)),
+                                _ => None,
+                            })
+                            .collect(),
                     )
                 })
                 .collect();
 
             for (state, q) in states.iter_mut().zip(queries.iter_mut()) {
-                state.gather(q);
+                state.gather(q, system_ticks);
             }
 
             // Deliberately NOT skipped when every query is empty.

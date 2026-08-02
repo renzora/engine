@@ -2296,3 +2296,191 @@ fn triangles_are_derived_for_unindexed_geometry() {
     };
     assert_eq!(indexed.triangles(), vec![[2, 1, 0]]);
 }
+
+// ── Change-detection filters ────────────────────────────────────────────────
+//
+// The regression these exist for is not "does the filter work" — it is row
+// compaction. `gather` and `scatter` are two independent walks of the same
+// query, each indexing the staging buffers by enumeration ordinal. The moment
+// `gather` can skip a row, `scatter` must skip exactly the same ones or every
+// staged row after the first divergence is written to the WRONG ENTITY.
+
+const TICKED: &str = "test::Ticked";
+
+/// Registers one system whose query is `Query<&mut Transform, FILTER<Ticked>>`.
+///
+/// `FILTER` comes from a static so the two tests can share the plugin.
+static TICK_ACCESS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(12);
+
+unsafe extern "C" fn tick_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let i = &*iface;
+    let ticked = (i.register_component)(
+        host,
+        &sys::ComponentDesc {
+            name: sys::StrRef::new(TICKED),
+            size: 4,
+            align: 4,
+            drop: None,
+            display_name: sys::StrRef::new(""),
+            fields: std::ptr::null(),
+            field_count: 0,
+            default_init: None,
+        },
+    );
+    let transform = (i.component_id_by_name)(
+        host,
+        sys::StrRef::new("bevy_transform::components::transform::Transform"),
+    );
+    let terms = [
+        sys::Term { component: transform, access: sys::Access::Write },
+        sys::Term {
+            component: ticked,
+            access: sys::Access(TICK_ACCESS.load(std::sync::atomic::Ordering::Relaxed)),
+        },
+    ];
+    let query = sys::QueryDesc { terms: terms.as_ptr(), term_count: terms.len() };
+    let status = (i.add_system)(
+        host,
+        &sys::SystemDesc {
+            entry: stamp,
+            schedule: sys::Schedule::Update,
+            queries: &query,
+            query_count: 1,
+            resources: std::ptr::null(),
+            resource_count: 0,
+            user: std::ptr::null_mut(),
+            flags: 0,
+        },
+    );
+    if status == sys::RegisterStatus::Ok {
+        sys::InitResult::Ok
+    } else {
+        sys::InitResult::Failed
+    }
+}
+
+/// The compaction regression test, and the most valuable one here.
+///
+/// Five entities, only the middle one changed. If `scatter` does not replay
+/// `gather`'s skip decisions, the stamp lands on entity 0 instead of entity 2 —
+/// a cross-entity write no other test in this suite would notice.
+#[test]
+fn write_back_lands_on_the_filtered_row_not_the_first_one() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+    TICK_ACCESS.store(12, std::sync::atomic::Ordering::Relaxed); // Changed
+    assert_eq!(abi_host::init_plugin(app.world_mut(), tick_init), sys::InitResult::Ok);
+
+    let ticked = app.world().resource::<abi_host::PluginComponents>().0[TICKED];
+    let ids: Vec<_> = (0..5)
+        .map(|_| {
+            let e = app.world_mut().spawn(Transform::IDENTITY).id();
+            unsafe {
+                let v: u32 = 0;
+                bevy::ptr::OwningPtr::make(v, |ptr| {
+                    app.world_mut().entity_mut(e).insert_by_id(ticked, ptr);
+                });
+            }
+            e
+        })
+        .collect();
+
+    // One frame so every insert stops counting as a change.
+    app.update();
+    for e in &ids {
+        app.world_mut().entity_mut(*e).get_mut::<Transform>().unwrap().translation.x = 0.0;
+    }
+    app.update();
+
+    // Now touch ONLY the middle one.
+    {
+        let mut e = app.world_mut().entity_mut(ids[2]);
+        // `MutUntyped::as_mut` is what sets the changed tick — the same call
+        // `write_cell` makes, so this is exactly what a real mutation looks like.
+        let mut m = e.get_mut_by_id(ticked).unwrap();
+        let _ = m.as_mut();
+    }
+    app.update();
+
+    let x = |app: &App, e: bevy::prelude::Entity| {
+        app.world().entity(e).get::<Transform>().unwrap().translation.x
+    };
+    assert_eq!(x(&app, ids[2]), 1.0, "the changed row should have been stamped");
+    for (n, e) in ids.iter().enumerate() {
+        if n != 2 {
+            assert_eq!(
+                x(&app, *e),
+                0.0,
+                "entity {n} was written to — gather/scatter desynced and the staged row \
+                 landed on the wrong entity"
+            );
+        }
+    }
+}
+
+/// A tick filter inside `Or` must refuse the system, not register an `Or` with
+/// an empty branch — an empty branch matches every entity in the world.
+#[test]
+fn a_tick_filter_inside_an_or_refuses_the_system() {
+    let _guard = plugin_lock();
+    let mut app = test_app();
+    assert_eq!(
+        abi_host::init_plugin(app.world_mut(), or_tick_init),
+        sys::InitResult::Failed,
+        "a change-tick term inside `Or` must refuse the system"
+    );
+}
+
+unsafe extern "C" fn or_tick_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let i = &*iface;
+    let a = (i.register_component)(
+        host,
+        &sys::ComponentDesc {
+            name: sys::StrRef::new("test::OrTickA"),
+            size: 0,
+            align: 1,
+            drop: None,
+            display_name: sys::StrRef::new(""),
+            fields: std::ptr::null(),
+            field_count: 0,
+            default_init: None,
+        },
+    );
+    let transform = (i.component_id_by_name)(
+        host,
+        sys::StrRef::new("bevy_transform::components::transform::Transform"),
+    );
+    let terms = [
+        sys::Term { component: transform, access: sys::Access::Write },
+        sys::Term { component: sys::ComponentId::INVALID, access: sys::Access::OrBegin },
+        sys::Term { component: a, access: sys::Access::Changed },
+        sys::Term { component: sys::ComponentId::INVALID, access: sys::Access::OrNext },
+        sys::Term { component: a, access: sys::Access::With },
+        sys::Term { component: sys::ComponentId::INVALID, access: sys::Access::OrEnd },
+    ];
+    let query = sys::QueryDesc { terms: terms.as_ptr(), term_count: terms.len() };
+    let status = (i.add_system)(
+        host,
+        &sys::SystemDesc {
+            entry: stamp,
+            schedule: sys::Schedule::Update,
+            queries: &query,
+            query_count: 1,
+            resources: std::ptr::null(),
+            resource_count: 0,
+            user: std::ptr::null_mut(),
+            flags: 0,
+        },
+    );
+    if status == sys::RegisterStatus::Ok {
+        sys::InitResult::Ok
+    } else {
+        sys::InitResult::Failed
+    }
+}

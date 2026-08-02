@@ -213,6 +213,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// ## MAJOR 4
 ///
 /// 0 -> 1 appended `SystemCall::removed`.
+/// 1 -> 2 appended `Access::Added` and `Access::Changed`.
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -244,7 +245,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 1;
+pub const VERSION_MINOR: u32 = 2;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -771,11 +772,16 @@ impl Access {
     pub const OrNext: Self = Self(9);
     /// Closes an `Or` group. Carries no component.
     pub const OrEnd: Self = Self(10);
+    /// Match only rows whose component was added since this system last ran.
+    /// Carries the component but produces **no cell** — it is a filter.
+    pub const Added: Self = Self(11);
+    /// Match only rows whose component changed since this system last ran.
+    pub const Changed: Self = Self(12);
 
     /// Whether this is a value this build knows. Anything else came from a
     /// plugin built against a newer ABI.
     pub const fn is_known(self) -> bool {
-        self.0 < 11
+        self.0 < 13
     }
 
     /// The variant name, or `"?"` for a value from a newer ABI.
@@ -792,6 +798,8 @@ impl Access {
             8 => "OrBegin",
             9 => "OrNext",
             10 => "OrEnd",
+            11 => "Added",
+            12 => "Changed",
             _ => "?",
         }
     }
