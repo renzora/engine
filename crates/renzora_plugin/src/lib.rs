@@ -97,7 +97,7 @@ pub mod prelude {
         Mesh3d, MeshData, Meshes,
         Or, Panel, Plugin, Quat, Query, RemovedComponents, RenderPass, Res, ResMut, Resource,
         Scene, Schedule,
-        Str256, Time, Transform, Vec3, Visibility, With, Without,
+        Color, Str256, Time, Transform, Vec2, Vec3, Visibility, With, Without,
     };
     // `Key::W` and `MouseButton::Left` read like the Bevy names they map to, and a
     // plugin writing input handling wants both without reaching into `sys`.

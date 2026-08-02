@@ -611,52 +611,40 @@ fn build_ribbons(strands: &[Strand], color: Vec3) -> Ribbons {
 // carries values, not a library. These are the handful of operations this plugin
 // needs, kept local rather than pulling in a dependency for a dozen lines.
 
+// These were full implementations until the shim grew the same operations. They
+// are one-line delegations now rather than deleted outright: the call sites read
+// better with names at this density of vector maths, and a second *implementation*
+// was the actual hazard — two copies of a cross product that can quietly disagree.
 fn add(a: Vec3, b: Vec3) -> Vec3 {
-    Vec3 { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }
+    a + b
 }
 fn sub(a: Vec3, b: Vec3) -> Vec3 {
-    Vec3 { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }
+    a - b
 }
 fn scale(a: Vec3, s: f32) -> Vec3 {
-    Vec3 { x: a.x * s, y: a.y * s, z: a.z * s }
+    a * s
 }
 fn cross(a: Vec3, b: Vec3) -> Vec3 {
-    Vec3 {
-        x: a.y * b.z - a.z * b.y,
-        y: a.z * b.x - a.x * b.z,
-        z: a.x * b.y - a.y * b.x,
-    }
+    a.cross(b)
 }
 fn lerp(a: Vec3, b: Vec3, t: f32) -> Vec3 {
-    add(a, scale(sub(b, a), t))
+    a.lerp(b, t)
 }
 fn is_zero(v: Vec3) -> bool {
-    v.x == 0.0 && v.y == 0.0 && v.z == 0.0
+    v == Vec3::ZERO
 }
 fn normalize_or_zero(v: Vec3) -> Vec3 {
-    let len = v.length();
-    if len > 1e-6 {
-        scale(v, 1.0 / len)
-    } else {
-        Vec3 { x: 0.0, y: 0.0, z: 0.0 }
-    }
+    v.normalize_or_zero()
 }
 
 /// Rotate `v` by the unit quaternion `q`.
-///
-/// Written out because `sys::Quat` is plain data with no maths — the boundary
-/// carries values, not a library. The standard `v + 2w(q×v) + 2(q×(q×v))` form.
 fn quat_rotate(q: Quat, v: Vec3) -> Vec3 {
-    let u = Vec3 { x: q.x, y: q.y, z: q.z };
-    let uv = cross(u, v);
-    let uuv = cross(u, uv);
-    add(v, add(scale(uv, 2.0 * q.w), scale(uuv, 2.0)))
+    q * v
 }
 
-/// The inverse of a **unit** quaternion, which is just its conjugate. A
-/// `Transform`'s rotation is always unit, so the general form is not needed.
+/// The inverse of a **unit** quaternion.
 fn quat_conjugate(q: Quat) -> Quat {
-    Quat { x: -q.x, y: -q.y, z: -q.z, w: q.w }
+    q.inverse()
 }
 
 /// Cheap deterministic hash → `[0, 1)`.
