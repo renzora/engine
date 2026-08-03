@@ -1068,7 +1068,6 @@ The engine ships several, each under `plugins/`:
 | Plugin | Demonstrates |
 |---|---|
 | `drift` | **hot reload you can see** — change a constant, rebuild, watch entities change course |
-| `ticker` | **hot reload state** — a resource that survives a swap, and proof only one build runs after |
 | `flock` | a resource shared across systems, `Option<&T>`, and a panel with bound sliders |
 | `magnet` | `Or` filters and optional write access |
 | `forge` | assets, and spawning renderable entities from a panel |
@@ -1088,7 +1087,7 @@ Alongside them sit the **post-process effects** — every screen-space effect th
 
 Two of the examples are worth singling out.
 
-**`drift` and `ticker` exist to be broken.** Rebuild either while the editor runs and the change takes effect without a restart. Then try to break the reload: introduce a compile error and nothing happens, because the previous build keeps running; add a field to `Drift` and the reload is refused with the reason, because entities already carrying it were allocated for the old layout. Both are the intended behaviour, not bugs to report.
+**`drift` exists to be broken.** Rebuild it while the editor runs and the change takes effect without a restart. Then try to break the reload: introduce a compile error and nothing happens, because the previous build keeps running; add a field to `Drift` and the reload is refused with the reason, because entities already carrying it were allocated for the old layout. Both are the intended behaviour, not bugs to report.
 
 **`ripple` is built to fail legibly.** A material is the one part of the surface where a mistake gives you a black quad rather than a compile error — the uniform bound at the wrong group, a texture that never uploaded, a per-frame refresh that isn't running. So it puts all four in one entity and makes each failure a *different* picture; its module doc has the table. Add **Ripple** to any entity and read what you get.
 
