@@ -45,6 +45,16 @@ impl Plugin for PluginRenderBridgePlugin {
         // `ExtractResourcePlugin` carries it across — the untyped equivalent of
         // `ExtractComponentPlugin<T>`, which needs a concrete type a plugin
         // component does not have.
+        // The dispatchers that actually run registered passes live in the
+        // composition core. It used to arrive as a side effect of a typed
+        // `PostProcessPlugin<T>`, but every effect is a standalone plugin now, so
+        // nothing added it and every plugin effect was registered and never run.
+        // This bridge is the thing that registers them, so this is where the
+        // dependency belongs.
+        if !app.is_plugin_added::<renzora::postprocess::PostProcessCorePlugin>() {
+            app.add_plugins(renzora::postprocess::PostProcessCorePlugin);
+        }
+
         app.init_resource::<PluginEffectSettings>()
             .init_resource::<PluginEffectComponents>()
             .init_resource::<PluginShaders>()
@@ -53,6 +63,21 @@ impl Plugin for PluginRenderBridgePlugin {
     }
 
     fn finish(&self, app: &mut App) {
+        // Registering a pass and *running* one are wired up in two different
+        // places, and for a while nothing connected them: the dispatchers arrived
+        // only as a side effect of a typed `PostProcessPlugin<T>`, so once every
+        // effect became a standalone plugin they stopped being installed and all
+        // sixty registered into a list nothing read. Silent, because registration
+        // itself succeeded.
+        //
+        // `build` adds the core now, so this cannot happen — but the invariant is
+        // worth a line rather than a comment, because the failure it guards
+        // against produced no error at any layer and took a day to find.
+        debug_assert!(
+            app.is_plugin_added::<renzora::postprocess::PostProcessCorePlugin>(),
+            "PostProcessCorePlugin is missing — passes will register and never run"
+        );
+
         let pending = app
             .world_mut()
             .remove_resource::<PendingRenderPasses>()
@@ -473,6 +498,8 @@ impl RenderPass for PluginEffect {
         view_target: &ViewTarget,
         _view_entity: Entity,
     ) {
+        // No settings on any entity = the effect is off. This is how a plugin
+        // effect is enabled: put its component on something.
         // No settings on any entity = the effect is off. This is how a plugin
         // effect is enabled: put its component on something.
         let Some(settings) = world

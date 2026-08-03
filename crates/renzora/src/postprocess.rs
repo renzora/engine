@@ -675,7 +675,18 @@ fn dispatch_overlay(world: &World, view: ViewQuery<&'static ViewTarget>, mut ctx
 // Core plugin (added once, sets up the render-composition pipeline)
 // ---------------------------------------------------------------------------
 
-struct PostProcessCorePlugin;
+/// Installs the render-composition dispatchers and the phase anchoring.
+///
+/// **Add this if you register passes without a typed `PostProcessPlugin<T>`.**
+/// It used to be private and installed only as a side effect of that plugin,
+/// which was fine while every effect was an in-tree type. Once the effects moved
+/// to standalone C-ABI plugins nothing added it any more, so passes registered
+/// into `RenderComposition` and were never dispatched — every plugin effect
+/// silently did nothing, with no error anywhere, because registration and
+/// dispatch are wired up in two different places.
+///
+/// Idempotent: adding it twice is a no-op via `is_plugin_added`.
+pub struct PostProcessCorePlugin;
 
 impl Plugin for PostProcessCorePlugin {
     fn build(&self, app: &mut App) {
