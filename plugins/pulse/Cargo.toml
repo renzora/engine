@@ -1,0 +1,25 @@
+# Declares this its OWN workspace root. Without it, cargo walks up, finds the
+# engine's Cargo.toml and uses that workspace's target dir and profiles — even
+# though `plugins` is in its `exclude` list, which only stops membership.
+[workspace]
+
+[package]
+name = "pulse"
+version = "0.1.0"
+edition = "2021"
+description = "Pulsing screen vignette. A second effect, to prove effects compose."
+
+[lib]
+crate-type = ["cdylib"]
+
+# One dependency, and it has none of its own. No bevy, no renzora, no workspace,
+# no pinned toolchain — the whole manifest a third-party author writes.
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+# Mirrors the engine's `dist` profile. Needed in full because this is its own
+# workspace root and inherits nothing.
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"

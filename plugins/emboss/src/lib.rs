@@ -1,0 +1,38 @@
+//! Emboss post-process effect.
+//!
+//! Converted from the Bevy-linking `crates/renzora_emboss`. Links no Bevy, so it
+//! rebuilds in about a second and hot-reloads, shader included. See `plugins/crt`
+//! for the conversion notes.
+
+use renzora_plugin::prelude::*;
+
+const WGSL: &str = include_str!("emboss.wgsl");
+
+#[derive(Component)]
+#[component(name = "Emboss")]
+#[repr(C)]
+pub struct Emboss {
+    #[field(min = 0.0, max = 3.0, speed = 0.01)]
+    pub strength: f32,
+    #[field(min = 0.0, max = 1.0, speed = 0.01)]
+    pub mix_amount: f32,
+}
+
+impl Default for Emboss {
+    fn default() -> Self {
+        Self {
+            strength: 1.0,
+            mix_amount: 0.5,
+        }
+    }
+}
+
+pub struct EmbossPlugin;
+
+impl Plugin for EmbossPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_post_process::<Emboss>("emboss", WGSL, RenderPhase::LdrPost, 0.0);
+    }
+}
+
+renzora_plugin::add!(EmbossPlugin);

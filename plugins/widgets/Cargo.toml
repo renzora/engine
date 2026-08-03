@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "widgets"
+version = "0.1.0"
+edition = "2021"
+description = "A gallery of every renzora_ember widget the panel vocabulary exposes. Exists to test the panel system, not to do anything."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"

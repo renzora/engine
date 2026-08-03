@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "wobble"
+version = "0.1.0"
+edition = "2021"
+description = "Perlin-noise wobble. Demonstrates a plugin pulling in a third-party crate."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin" }
+# An ordinary crates.io dependency. It compiles into this cdylib and the engine
+# never sees it — the only crates a plugin cannot use are ones that take real
+# Bevy types, since the ECS types here are shims.
+noise = "0.9"
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"
