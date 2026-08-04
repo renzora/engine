@@ -43,14 +43,24 @@ fn update_system_monitor(
     // No internal gate: the run condition (the Stats Refresh setting) governs how
     // often this runs, so the configured interval fully controls the FPS /
     // frame-time readout's update rate.
-    if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
-        if let Some(val) = fps.average() {
-            state.fps = val;
-        }
-    }
+    // Both numbers come from the averaged frame time, so the pair in the status
+    // bar agrees with itself.
+    //
+    // Bevy also publishes an FPS diagnostic, but reading its `average()` means
+    // averaging *reciprocals* — and the mean of 1/dt is not 1/mean(dt). By
+    // Jensen's inequality it is always the larger of the two, with the gap
+    // widening as frame times vary, so the old readout showed an FPS that could
+    // not be squared with the millisecond figure printed beside it: "60 FPS
+    // (18.50ms)" when 18.50ms is really 54. Averaging frame time and inverting
+    // once is both self-consistent and the unbiased statistic, because it
+    // weights every frame by its actual duration rather than over-weighting the
+    // fast ones.
     if let Some(ft) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
         if let Some(val) = ft.average() {
             state.frame_time_ms = val;
+            if val > 0.0 {
+                state.fps = 1000.0 / val;
+            }
         }
     }
 }
