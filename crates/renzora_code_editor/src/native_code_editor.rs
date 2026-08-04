@@ -37,7 +37,7 @@ struct CodeContentRoot;
 /// Text/code extensions accepted by drop-to-open. Mirrors the asset browser's
 /// code-editor-backed kinds.
 const CODE_EXTENSIONS: &[&str] = &[
-    "lua", "rhai", "rs", "py", "js", "ts", "wgsl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "htm", "css", "bsn",
+    "lua", "rs", "py", "js", "ts", "wgsl", "glsl", "vert", "frag", "json", "toml", "yaml", "yml", "ron", "txt", "md", "html", "htm", "css", "bsn",
 ];
 
 /// A tab chip → selects open_files[idx] on click.
@@ -214,7 +214,7 @@ fn binding_spec() -> CodeBindingSpec {
 fn line_comment_for(lang: Language) -> Option<&'static str> {
     match lang {
         Language::Lua | Language::Sql => Some("--"),
-        Language::Rhai | Language::Rust | Language::Wgsl | Language::Bsn => Some("//"),
+        Language::Rust | Language::Wgsl | Language::Bsn => Some("//"),
         Language::Python | Language::Shell | Language::Toml => Some("#"),
         Language::Json | Language::Html | Language::PlainText => None,
     }
@@ -380,7 +380,6 @@ fn status_text(world: &World) -> String {
     let Some(f) = active_file(state) else { return String::new() };
     let lang = match Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()) {
         Language::Lua => "Lua",
-        Language::Rhai => "Rhai",
         Language::Rust => "Rust",
         Language::Wgsl => "WGSL",
         Language::Python => "Python",

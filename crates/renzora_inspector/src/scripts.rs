@@ -902,7 +902,7 @@ fn scan_scripts_inner(dir: &std::path::Path, root: &std::path::Path, out: &mut V
             scan_scripts_inner(&path, root, out);
         } else {
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if matches!(ext, "lua" | "rhai") {
+            if matches!(ext, "lua") {
                 let display = path
                     .strip_prefix(root)
                     .unwrap_or(&path)
@@ -934,7 +934,7 @@ fn add_script_drop(
     let (Some(payload), Some(cmds)) = (payload, cmds) else {
         return;
     };
-    if !payload.is_detached || !payload.matches_extensions(&["lua", "rhai", "blueprint", "bp"]) {
+    if !payload.is_detached || !payload.matches_extensions(&["lua", "blueprint", "bp"]) {
         return;
     }
     for (rcp, zone) in &zones {
@@ -964,7 +964,7 @@ fn add_script_drop_highlight(
         let active = payload.as_ref().is_some_and(|p| {
             p.is_detached
                 && rcp.cursor_over
-                && p.matches_extensions(&["lua", "rhai", "blueprint", "bp"])
+                && p.matches_extensions(&["lua", "blueprint", "bp"])
         });
         let want = BorderColor::all(if active {
             Color::srgb_u8(120, 140, 200)

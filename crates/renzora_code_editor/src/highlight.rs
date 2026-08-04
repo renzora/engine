@@ -8,7 +8,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Language {
     Lua,
-    Rhai,
     Rust,
     Wgsl,
     Python,
@@ -29,7 +28,6 @@ impl Language {
     pub fn from_extension(ext: &str) -> Self {
         match ext {
             "lua" => Language::Lua,
-            "rhai" => Language::Rhai,
             "rs" => Language::Rust,
             "wgsl" | "glsl" => Language::Wgsl,
             "py" => Language::Python,
@@ -47,7 +45,7 @@ impl Language {
     pub fn line_comment(self) -> Option<&'static str> {
         match self {
             Language::Lua => Some("--"),
-            Language::Rhai | Language::Rust | Language::Wgsl | Language::Sql | Language::Bsn => {
+            Language::Rust | Language::Wgsl | Language::Sql | Language::Bsn => {
                 Some("//")
             }
             Language::Python | Language::Shell | Language::Toml => Some("#"),
@@ -59,7 +57,7 @@ impl Language {
     fn has_c_block_comment(self) -> bool {
         matches!(
             self,
-            Language::Rhai | Language::Rust | Language::Wgsl | Language::Bsn
+            Language::Rust | Language::Wgsl | Language::Bsn
         )
     }
 
@@ -73,7 +71,7 @@ impl Language {
     /// Ctrl+Shift+/ wrap action.
     pub fn block_comment(self) -> Option<(&'static str, &'static str)> {
         match self {
-            Language::Rhai | Language::Rust | Language::Wgsl | Language::Bsn => Some(("/*", "*/")),
+            Language::Rust | Language::Wgsl | Language::Bsn => Some(("/*", "*/")),
             Language::Html => Some(("<!--", "-->")),
             _ => None,
         }
@@ -86,11 +84,6 @@ fn keywords_for(lang: Language) -> &'static [&'static str] {
             "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto",
             "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until",
             "while", "self",
-        ],
-        Language::Rhai => &[
-            "let", "const", "fn", "if", "else", "while", "for", "in", "loop", "break", "continue",
-            "return", "throw", "try", "catch", "switch", "import", "export", "as", "private",
-            "this", "do", "until", "true", "false",
         ],
         Language::Rust => &[
             "as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn",

@@ -251,15 +251,6 @@ pub const CAPABILITIES: &[Capability] = &[
         default_on: false,
     },
     Capability {
-        id: "rhai",
-        label: "Rhai scripting backend",
-        help: "The Rhai script backend (~2.3 MiB). Lua is always included; Rhai is \
-               auto-enabled only when the project contains .rhai scripts.",
-        bevy_features: &[],
-        runtime_features: &["rhai"],
-        default_on: false,
-    },
-    Capability {
         id: "script_http",
         label: "Script HTTP (http_get / http_post)",
         help: "The script HTTP verbs — pull in the ureq + rustls/ring TLS stack (~1 MiB). \
@@ -287,8 +278,6 @@ fn detection_extensions(id: &str) -> &'static [&'static str] {
             "dds", "jpg", "jpeg", "jpe", "webp", "basis",
             "exr", "hdr", "gif", "bmp", "tga",
         ],
-        // Rhai backend only when the project ships .rhai scripts (Lua is always in).
-        "rhai" => &["rhai"],
         // Visual scripting only when the project ships blueprint graphs.
         "blueprint" => &["blueprint", "bp"],
         _ => &[],
@@ -336,7 +325,7 @@ fn project_uses_script_http(root: &Path) -> bool {
                 }
             } else if matches!(
                 path.extension().and_then(|e| e.to_str()),
-                Some("lua") | Some("rhai")
+                Some("lua")
             ) {
                 if let Ok(src) = std::fs::read_to_string(&path) {
                     if src.contains("http_get") || src.contains("http_post") {

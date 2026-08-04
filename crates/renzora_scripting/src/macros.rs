@@ -2,8 +2,6 @@
 //!
 //! # Overview
 //!
-//! - [`dual_register!`] — defines script functions once, generates both Lua and Rhai bindings
-//! - Helper functions for context setup (`lua_set_map`, `rhai_set_map`, etc.)
 //!
 //! To mutate the world from a script function, queue a
 //! `ScriptCommand::Action { name, args, .. }` and apply it with an
@@ -43,56 +41,20 @@ pub fn lua_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash>
     }
 }
 
-/// Push a Rhai scope variable from a `HashMap<String, f32>`.
-#[cfg(feature = "rhai")]
-pub fn rhai_set_map(
-    scope: &mut rhai::Scope,
-    name: &str,
-    map: &std::collections::HashMap<String, f32>,
-) {
-    let mut rhai_map = rhai::Map::new();
-    for (k, v) in map {
-        rhai_map.insert(k.clone().into(), rhai::Dynamic::from(*v as f64));
-    }
-    scope.push(name.to_string(), rhai_map);
-}
-
-/// Push a Rhai scope variable from a nested `HashMap<K, HashMap<String, f32>>`.
-#[cfg(feature = "rhai")]
-pub fn rhai_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash>(
-    scope: &mut rhai::Scope,
-    name: &str,
-    map: &std::collections::HashMap<K, std::collections::HashMap<String, f32>>,
-) {
-    let mut outer = rhai::Map::new();
-    for (key, inner_map) in map {
-        let mut inner = rhai::Map::new();
-        for (k, v) in inner_map {
-            inner.insert(k.clone().into(), rhai::Dynamic::from(*v as f64));
-        }
-        outer.insert(key.to_string().into(), rhai::Dynamic::from(inner));
-    }
-    scope.push(name.to_string(), outer);
-}
-
 // ── dual_register! ───────────────────────────────────────────────────────
 
-/// Define script functions once, generating both Lua and Rhai registration functions.
 ///
 /// Each function body receives standard Rust types (`String`, `f64`, `i64`, `bool`).
-/// The macro handles type conversion automatically — Rhai's `ImmutableString` is
 /// converted to `String`, etc.
 ///
 /// # Supported argument types
 ///
-/// | Type     | Lua receives | Rhai receives       |
 /// |----------|-------------|---------------------|
 /// | `String` | `String`    | `ImmutableString` → converted to `String` |
 /// | `f64`    | `f64`       | `f64`               |
 /// | `i64`    | `i64`       | `i64`               |
 /// | `bool`   | `bool`      | `bool`              |
 ///
-/// **Note:** Rhai doesn't support `u64` natively — use `i64` and cast in the body.
 ///
 /// # Example
 ///
@@ -103,7 +65,6 @@ pub fn rhai_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash
 ///
 /// renzora_scripting::dual_register! {
 ///     lua_fn = register_my_lua,
-///     rhai_fn = register_my_rhai,
 ///
 ///     fn my_action(name: String, value: f64) {
 ///         let mut args = HashMap::new();
@@ -115,7 +76,6 @@ pub fn rhai_set_nested_map<K: std::fmt::Display + std::cmp::Eq + std::hash::Hash
 /// A matching `add_observer(On<ScriptAction>)` handler then applies the action.
 ///
 /// This generates `register_my_lua(lua: &mlua::Lua)` and
-/// `register_my_rhai(engine: &mut rhai::Engine)` with all functions registered.
 #[macro_export]
 macro_rules! dual_register {
     (
@@ -143,18 +103,6 @@ macro_rules! dual_register {
             )*
         }
 
-        #[cfg(feature = "rhai")]
-        pub fn $rhai_fn(engine: &mut rhai::Engine) {
-            $(
-                engine.register_fn(
-                    stringify!($fn_name),
-                    | $( $arg_name: $crate::__rhai_param_type!($arg_type) ),* | {
-                        $( let $arg_name: $arg_type = $crate::__from_rhai_param!($arg_name, $arg_type); )*
-                        { $($body)* }
-                    },
-                );
-            )*
-        }
     };
 }
 

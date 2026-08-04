@@ -378,7 +378,6 @@ enum NewAsset {
     Material,
     Blueprint,
     Lua,
-    Rhai,
     Particle,
     Template,
     Bsn,
@@ -387,11 +386,10 @@ enum NewAsset {
 impl NewAsset {
     /// The creatable file types offered by the Add button + right-click menu,
     /// in display order. `Folder` is excluded — it has its own toolbar button.
-    const MENU: [NewAsset; 7] = [
+    const MENU: [NewAsset; 6] = [
         NewAsset::Material,
         NewAsset::Blueprint,
         NewAsset::Lua,
-        NewAsset::Rhai,
         NewAsset::Particle,
         NewAsset::Template,
         NewAsset::Bsn,
@@ -403,7 +401,6 @@ impl NewAsset {
             NewAsset::Material => "NewMaterial.material",
             NewAsset::Blueprint => "NewBlueprint.blueprint",
             NewAsset::Lua => "new_script.lua",
-            NewAsset::Rhai => "new_script.rhai",
             NewAsset::Particle => "NewParticle.particle",
             NewAsset::Template => "NewTemplate.html",
             NewAsset::Bsn => "NewScene.bsn",
@@ -414,7 +411,6 @@ impl NewAsset {
             NewAsset::Folder => "",
             NewAsset::Material | NewAsset::Blueprint => "{}",
             NewAsset::Lua => "-- New Lua script\n",
-            NewAsset::Rhai => "// New Rhai script\n",
             NewAsset::Particle => "(name: \"New Particle\")",
             NewAsset::Template => "<template>\n    <node></node>\n</template>\n",
             // An empty scene = just the interim-BSN header the parser expects.
@@ -428,7 +424,6 @@ impl NewAsset {
             NewAsset::Material => renzora::lang::t("assets.new.material"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint"),
             NewAsset::Lua => renzora::lang::t("assets.new.lua"),
-            NewAsset::Rhai => renzora::lang::t("assets.new.rhai"),
             NewAsset::Particle => renzora::lang::t("assets.new.particle"),
             NewAsset::Template => renzora::lang::t("assets.new.template"),
             NewAsset::Bsn => renzora::lang::t("assets.new.bsn"),
@@ -442,7 +437,6 @@ impl NewAsset {
             NewAsset::Material => renzora::lang::t("assets.new.material_sub"),
             NewAsset::Blueprint => renzora::lang::t("assets.new.blueprint_sub"),
             NewAsset::Lua => renzora::lang::t("assets.new.lua"),
-            NewAsset::Rhai => renzora::lang::t("assets.new.rhai"),
             NewAsset::Particle => renzora::lang::t("assets.new.particle_sub"),
             NewAsset::Template => renzora::lang::t("assets.new.template_sub"),
             NewAsset::Bsn => renzora::lang::t("assets.new.scene_sub"),
@@ -454,7 +448,7 @@ impl NewAsset {
             NewAsset::Folder => "folder-plus",
             NewAsset::Material => "palette",
             NewAsset::Blueprint => "blueprint",
-            NewAsset::Lua | NewAsset::Rhai | NewAsset::Template => "code",
+            NewAsset::Lua | NewAsset::Template => "code",
             NewAsset::Particle => "sparkle",
             NewAsset::Bsn => "film-slate",
         }
@@ -467,7 +461,6 @@ impl NewAsset {
             NewAsset::Material => (0, 200, 130),
             NewAsset::Blueprint => (100, 180, 255),
             NewAsset::Lua => (120, 170, 255),
-            NewAsset::Rhai => (130, 230, 180),
             NewAsset::Particle => (230, 160, 90),
             NewAsset::Template => (230, 120, 90),
             NewAsset::Bsn => (115, 191, 242),
@@ -2020,7 +2013,6 @@ fn asset_type_info(path: &Path) -> ((u8, u8, u8), &'static str) {
         "material" => ((0, 200, 130), "Material"),
         "blueprint" | "bp" => ((100, 180, 255), "Blueprint"),
         "lua" => ((120, 170, 255), "Lua Script"),
-        "rhai" => ((130, 230, 180), "Rhai Script"),
         "wgsl" | "glsl" | "vert" | "frag" => ((220, 120, 255), "Shader"),
         "rs" => ((230, 140, 90), "Rust Source"),
         "png" | "jpg" | "jpeg" | "webp" | "ktx2" | "dds" | "bmp" | "tga" => {
@@ -2067,7 +2059,7 @@ fn icon_for(path: &Path, is_dir: bool) -> &'static str {
         "glb" | "gltf" | "obj" | "fbx" => "cube",
         "material" => "palette",
         "wgsl" | "glsl" | "vert" | "frag" => "graphics-card",
-        "lua" | "rhai" | "rs" | "py" | "js" | "ts" => "code",
+        "lua" | "rs" | "py" | "js" | "ts" => "code",
         "scene" | "bsn" | "ron" | "scn" => "film-slate",
         "wav" | "ogg" | "mp3" | "flac" => "speaker-high",
         "particle" => "sparkle",

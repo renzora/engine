@@ -409,7 +409,7 @@ fn sync_asset_filter_for_scripting(
     let desired: Option<Vec<String>> = if is_scripting {
         Some(
             [
-                "lua", "rhai", "wgsl", "glsl", "json", "ron", "toml", "txt", "md",
+                "lua", "wgsl", "glsl", "json", "ron", "toml", "txt", "md",
             ]
             .iter()
             .map(|s| s.to_string())

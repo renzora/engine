@@ -1,9 +1,6 @@
 #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
 pub mod lua;
 
-#[cfg(feature = "rhai")]
-pub mod rhai;
-
 use crate::command::ScriptCommand;
 
 thread_local! {

@@ -17,13 +17,7 @@ toml = "0.8"
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["navmesh", "terrain", "spline", "water", "audio", "particles",
-    "animation", "blueprint", "game_ui", "postfx", "sky", "solari", "rhai",
-    "script_http", "physics", "render_3d", "render_2d", "tilemap",
-    "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll",
-    "light2d", "text3d", "vignette", "forward_decal", "pool_water",
-    "procedural_tree"
-]
+default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "postfx", "sky", "solari", "script_http", "physics", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
@@ -68,7 +62,6 @@ physics = [
 # `rhai`/`blueprint`/`script_http` are in `default` so the lean export strips
 # them unless a capability keeps them (Rhai-less desktop, no-blueprint, no-http).
 lua = ["renzora_scripting/lua", "renzora_lang/lua"]
-rhai = ["renzora_scripting/rhai", "renzora_lang/rhai"]
 script_http = ["renzora_scripting/script_http"]
 # Code gate for the runtime's `bevy::solari` GPU ray-tracing probe. Paired with
 # the root `bevy/bevy_solari` feature by the exporter's Solari capability — both

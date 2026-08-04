@@ -70,9 +70,6 @@ impl Plugin for ScriptingPlugin {
         #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
         engine.add_backend(Box::new(crate::backends::lua::LuaBackend::new()));
 
-        #[cfg(feature = "rhai")]
-        engine.add_backend(Box::new(crate::backends::rhai::RhaiBackend::new()));
-
         if let Some(ref folder) = self.scripts_folder {
             engine.set_scripts_folder(folder.clone());
         }

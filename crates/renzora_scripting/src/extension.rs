@@ -29,7 +29,6 @@ impl ExtensionData {
     }
 }
 
-
 // ── Script extension trait ───────────────────────────────────────────────
 
 /// Trait that external crates implement to extend the scripting system.
@@ -56,13 +55,6 @@ pub trait ScriptExtension: Send + Sync + 'static {
     #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
     fn setup_lua_context(&self, _lua: &mlua::Lua, _data: &ExtensionData) {}
 
-    /// Register custom Rhai functions. Called once per engine creation.
-    #[cfg(feature = "rhai")]
-    fn register_rhai_functions(&self, _engine: &mut rhai::Engine) {}
-
-    /// Set up Rhai scope from extension data before each script execution.
-    #[cfg(feature = "rhai")]
-    fn setup_rhai_scope(&self, _scope: &mut rhai::Scope, _data: &ExtensionData) {}
 }
 
 // ── Registry resource ────────────────────────────────────────────────────
@@ -100,22 +92,6 @@ impl ScriptExtensions {
     pub fn setup_lua_context(&self, lua: &mlua::Lua, data: &ExtensionData) {
         for ext in &self.extensions {
             ext.setup_lua_context(lua, data);
-        }
-    }
-
-    /// Register Rhai functions from all extensions.
-    #[cfg(feature = "rhai")]
-    pub fn register_rhai_functions(&self, engine: &mut rhai::Engine) {
-        for ext in &self.extensions {
-            ext.register_rhai_functions(engine);
-        }
-    }
-
-    /// Set up Rhai scope from all extensions.
-    #[cfg(feature = "rhai")]
-    pub fn setup_rhai_scope(&self, scope: &mut rhai::Scope, data: &ExtensionData) {
-        for ext in &self.extensions {
-            ext.setup_rhai_scope(scope, data);
         }
     }
 

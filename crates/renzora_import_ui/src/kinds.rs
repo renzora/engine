@@ -68,7 +68,7 @@ pub const SCENE_EXTS: &[&str] = &["bsn"];
 /// Font extensions.
 pub const FONT_EXTS: &[&str] = &["ttf", "otf"];
 /// Script extensions.
-pub const SCRIPT_EXTS: &[&str] = &["lua", "rhai"];
+pub const SCRIPT_EXTS: &[&str] = &["lua"];
 
 /// True when a `.ply` file belongs to the splat renderer rather than the mesh
 /// converter.
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(detect_kind(Path::new("fx.particle")), Some(AssetKind::Particle));
         assert_eq!(detect_kind(Path::new("m.material")), Some(AssetKind::Material));
         assert_eq!(detect_kind(Path::new("f.ttf")), Some(AssetKind::Font));
-        assert_eq!(detect_kind(Path::new("g.rhai")), Some(AssetKind::Script));
+        assert_eq!(detect_kind(Path::new("g.lua")), Some(AssetKind::Script));
         for k in [AssetKind::Image, AssetKind::Audio, AssetKind::Scene] {
             assert!(!k.is_model());
         }

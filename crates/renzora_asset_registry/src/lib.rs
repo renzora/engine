@@ -68,7 +68,7 @@ impl AssetKind {
             "scene" => AssetKind::Scene,
             "wav" | "ogg" | "mp3" | "flac" | "opus" => AssetKind::Audio,
             "mp4" | "avi" | "mov" | "webm" => AssetKind::Video,
-            "rhai" | "lua" | "js" | "ts" => AssetKind::Script,
+            "lua" | "js" | "ts" => AssetKind::Script,
             "wgsl" | "glsl" | "vert" | "frag" | "hlsl" => AssetKind::Shader,
             _ => AssetKind::Other,
         }

@@ -30,7 +30,7 @@ pub fn extract_symbols(content: &str, lang: Language) -> Vec<OutlineSymbol> {
                     });
                 }
             }
-            Language::Rust | Language::Rhai | Language::Wgsl => {
+            Language::Rust | Language::Wgsl => {
                 if let Some(name) = parse_c_style_fn(trimmed) {
                     out.push(OutlineSymbol {
                         name,

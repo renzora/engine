@@ -33,8 +33,4 @@ impl ScriptExtension for LangScriptExtension {
         );
     }
 
-    #[cfg(feature = "rhai")]
-    fn register_rhai_functions(&self, engine: &mut rhai::Engine) {
-        engine.register_fn("tr", |key: &str| renzora::lang::t(key));
-    }
 }
