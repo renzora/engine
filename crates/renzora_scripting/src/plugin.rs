@@ -339,13 +339,26 @@ fn auto_insert_script_component(
 
 /// Drop backend state for entities whose `ScriptComponent` has gone.
 ///
-/// `RemovedComponents` covers both a despawn and a bare component removal,
-/// which are the two ways a script stops belonging to an entity.
+/// The `still_scripted` check is load-bearing, not defensive. `run_scripts`
+/// **takes** the `ScriptComponent` off the entity for the duration of the run
+/// and re-inserts it at the end, so it can use `&mut World` freely — and a
+/// `take` registers as a removal. Without the check this fires for every
+/// scripted entity every frame and evicts the VM that is still in use, which
+/// resets any state a script keeps in a global: an accumulator stops
+/// accumulating, and the entity looks frozen while still responding to
+/// inspector edits.
+///
+/// `run_scripts` is exclusive, so its re-insert has already landed by the time
+/// this runs in `Cleanup` — an entity that still has the component is one the
+/// executor merely borrowed.
 fn evict_despawned_scripts(
     mut removed: RemovedComponents<ScriptComponent>,
+    still_scripted: Query<(), With<ScriptComponent>>,
     engine: Res<ScriptEngine>,
 ) {
     for entity in removed.read() {
-        engine.evict_entity(entity.to_bits());
+        if still_scripted.get(entity).is_err() {
+            engine.evict_entity(entity.to_bits());
+        }
     }
 }
