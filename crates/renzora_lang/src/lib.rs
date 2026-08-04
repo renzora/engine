@@ -31,7 +31,6 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 
-#[cfg(any(feature = "lua", feature = "rhai"))]
 mod script_extension;
 
 /// Built-in language packs, embedded at compile time from the repo-root
@@ -118,8 +117,11 @@ impl Plugin for LangPlugin {
             );
 
         // Expose `tr("key")` to Lua/Rhai scripts via the scripting extension
-        // registry — only when a backend is actually compiled in.
-        #[cfg(any(feature = "lua", feature = "rhai"))]
+        // registry. Unconditional now that a binding is a declaration rather
+        // than a Lua function: which interpreter is present — if any — is
+        // decided at runtime by whichever language plugin loaded, so gating
+        // this on a compile-time backend feature would drop `tr` from a game
+        // scripted in something else.
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(
                 renzora_scripting::extension::ScriptExtensions::default,

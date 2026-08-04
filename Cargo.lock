@@ -7472,7 +7472,6 @@ name = "renzora_animation"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "mlua",
  "renzora",
  "renzora_plugin",
  "renzora_scripting",
@@ -8301,7 +8300,6 @@ name = "renzora_lang"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "mlua",
  "renzora",
  "renzora_scripting",
 ]
@@ -8474,7 +8472,6 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
- "mlua",
  "polyanya",
  "renzora",
  "renzora_scripting",
@@ -8578,7 +8575,6 @@ dependencies = [
  "avian2d",
  "avian3d",
  "bevy",
- "mlua",
  "renzora",
  "renzora_plugin",
  "renzora_scripting",
@@ -8680,7 +8676,6 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
- "mlua",
  "renzora",
  "renzora_animation",
  "renzora_macros",

@@ -1,9 +1,12 @@
 //! Animation scripting bindings — owned by `renzora_animation`.
 //!
-//! Registers Lua helpers for animation parameters and clip length lookup.
-//! Mutations flow through the existing `bridge.rs` `ScriptAction` observer.
+//! Mutations flow through the existing `bridge.rs` `ScriptAction` observer;
+//! `get_animation_length` is a read, which the declaration expresses as a
+//! reflected-field lookup with the clip name substituted into the path.
+//!
+//! Other reads go through `get("AnimatorReadState.*")` directly.
 
-use renzora_scripting::extension::{ExtensionData, ScriptExtension};
+use renzora_scripting::extension::{Bind, Binding, ParamKind, ScriptExtension};
 
 pub struct AnimationScriptExtension;
 
@@ -12,85 +15,26 @@ impl ScriptExtension for AnimationScriptExtension {
         "animation"
     }
 
-    fn populate_context(
-        &self,
-        _world: &bevy::prelude::World,
-        _entity: bevy::prelude::Entity,
-        _data: &mut ExtensionData,
-    ) {
-        // Reads go through `get("AnimatorReadState.*")`.
-    }
-
-    #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
-    fn register_lua_functions(&self, lua: &mlua::Lua) {
-        use renzora::ScriptActionValue;
-        use renzora_scripting::backends::push_command;
-        use renzora_scripting::ScriptCommand;
-        use std::collections::HashMap;
-
-        let globals = lua.globals();
-
-        fn push_action(name: &'static str, args: HashMap<String, ScriptActionValue>) {
-            push_command(ScriptCommand::Action {
-                name: name.into(),
-                target_entity: None,
-                args,
-            });
-        }
-
-        // set_anim_param(name, value)
-        let _ = globals.set(
-            "set_anim_param",
-            lua.create_function(|_, (name, value): (String, f32)| {
-                let mut m = HashMap::new();
-                m.insert("name".into(), ScriptActionValue::String(name));
-                m.insert("value".into(), ScriptActionValue::Float(value));
-                push_action("set_anim_param", m);
-                Ok(())
-            })
-            .unwrap(),
-        );
-
-        // set_anim_bool(name, bool)
-        let _ = globals.set(
-            "set_anim_bool",
-            lua.create_function(|_, (name, value): (String, bool)| {
-                let mut m = HashMap::new();
-                m.insert("name".into(), ScriptActionValue::String(name));
-                m.insert("value".into(), ScriptActionValue::Bool(value));
-                push_action("set_anim_bool", m);
-                Ok(())
-            })
-            .unwrap(),
-        );
-
-        // set_anim_trigger(name) — one-shot trigger parameter
-        let _ = globals.set(
-            "set_anim_trigger",
-            lua.create_function(|_, name: String| {
-                let mut m = HashMap::new();
-                m.insert("name".into(), ScriptActionValue::String(name));
-                push_action("trigger_anim", m);
-                Ok(())
-            })
-            .unwrap(),
-        );
-
-        // get_animation_length(name) → f32 seconds (0 if not loaded)
-        let _ = globals.set(
-            "get_animation_length",
-            lua.create_function(|_, name: String| {
-                let result = renzora_scripting::get_handler::call_get(
-                    None,
-                    "AnimatorReadState",
-                    &format!("clip_lengths.{}", name),
-                );
-                Ok(match result {
-                    Some(renzora::PropertyValue::Float(f)) => f,
-                    _ => 0.0,
-                })
-            })
-            .unwrap(),
-        );
+    fn bindings(&self) -> Vec<Binding> {
+        vec![
+            Bind::action("set_anim_param", "set_anim_param")
+                .arg("name", ParamKind::Str)
+                .arg("value", ParamKind::Float)
+                .doc("Set a float parameter on the animator.")
+                .build(),
+            Bind::action("set_anim_bool", "set_anim_bool")
+                .arg("name", ParamKind::Str)
+                .arg("value", ParamKind::Bool)
+                .doc("Set a bool parameter on the animator.")
+                .build(),
+            Bind::action("set_anim_trigger", "trigger_anim")
+                .arg("name", ParamKind::Str)
+                .doc("Fire a one-shot trigger parameter.")
+                .build(),
+            Bind::read("get_animation_length", "AnimatorReadState", "clip_lengths.{0}")
+                .arg("name", ParamKind::Str)
+                .doc("Length of a clip in seconds, or 0 if it is not loaded.")
+                .build(),
+        ]
     }
 }

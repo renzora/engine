@@ -1,560 +1,129 @@
-use bevy::prelude::*;
+//! The command vocabulary — everything a script can ask the engine to do.
+//!
+//! The enum itself now lives in [`renzora_plugin::script`], and this module
+//! re-exports it. That is worth explaining, because the obvious arrangement is
+//! the opposite one: define it here, where it is applied, and mirror it at the
+//! boundary.
+//!
+//! A mirror needs a conversion arm per variant — 115 of them — and every
+//! command added afterwards has to be added in three places, two of which are
+//! in a different crate. That stays correct for about two months. Defining it
+//! once, in the crate both the engine and every language plugin compile,
+//! removes the question.
+//!
+//! The cost is that the fields lost their Bevy vocabulary: `Vec3` is `[f32; 3]`
+//! and `Vec2` is `[f32; 2]`. In memory they were always that; the conversion
+//! now happens where the commands are *applied*, which is one place per command
+//! instead of one per construction site.
+//!
+//! ## Two value types that look alike
+//!
+//! [`PropValue`] and [`ActionValue`] are the boundary's versions of
+//! [`PropertyValue`] and [`renzora::ScriptActionValue`]. The engine-wide ones
+//! stay in the contract crate, because ten other crates observe
+//! `ScriptAction` events and none of them should learn about the scripting
+//! boundary to do it. The two meet in [`systems::commands`](crate::systems),
+//! through the free functions below — free rather than `From` impls because
+//! both types are foreign to this crate and the orphan rule forbids it.
 
-// Re-export from renzora for backwards compatibility
 pub use renzora::{CharacterCommand, CharacterCommandQueue};
 
-/// Commands that scripts can issue, processed after execution.
-/// Language-agnostic — all backends produce these same commands.
-#[derive(Debug)]
-pub enum ScriptCommand {
-    // === Self-Transform ===
-    SetPosition {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    SetRotation {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    SetScale {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    Translate {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    Rotate {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    LookAt {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    /// Jump the script's own entity to a named [`renzora::CameraPresets`] angle.
-    /// No-op (with a warning) if the entity has no presets or none match.
-    GotoCameraPreset {
-        name: String,
-    },
+/// Commands scripts issue, applied after the hook returns.
+///
+/// Language-agnostic — a Lua binding, a Wren binding and the blueprint compiler
+/// all produce these same values.
+pub use renzora_plugin::script::ScriptCommand;
 
-    // === Parent Transform ===
-    ParentSetPosition {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    ParentSetRotation {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    ParentTranslate {
-        x: f32,
-        y: f32,
-        z: f32,
-    },
+/// The boundary's reflected-property value. See the module docs.
+pub use renzora_plugin::script::PropValue;
 
-    // === Child Transform ===
-    ChildSetPosition {
-        name: String,
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    ChildSetRotation {
-        name: String,
-        x: f32,
-        y: f32,
-        z: f32,
-    },
-    ChildTranslate {
-        name: String,
-        x: f32,
-        y: f32,
-        z: f32,
-    },
+/// The boundary's script-action argument. See the module docs.
+pub use renzora_plugin::script::ActionValue;
 
-    // === Environment ===
-    SetSunAngles {
-        azimuth: f32,
-        elevation: f32,
-    },
-    SetAmbientBrightness {
-        brightness: f32,
-    },
-    SetAmbientColor {
-        r: f32,
-        g: f32,
-        b: f32,
-    },
-    SetSkyTopColor {
-        r: f32,
-        g: f32,
-        b: f32,
-    },
-    SetSkyHorizonColor {
-        r: f32,
-        g: f32,
-        b: f32,
-    },
-    SetFog {
-        enabled: bool,
-        start: f32,
-        end: f32,
-    },
-    SetFogColor {
-        r: f32,
-        g: f32,
-        b: f32,
-    },
-    SetEv100 {
-        value: f32,
-    },
+/// The engine-wide reflected-property value, as every other crate knows it.
+pub use renzora::PropertyValue;
 
-    // === ECS ===
-    SpawnEntity {
-        name: String,
-    },
-    SpawnPrimitive {
-        name: String,
-        primitive_type: String,
-        position: Option<Vec3>,
-        scale: Option<Vec3>,
-        /// Optional `MeshColor` so callers can vary the per-voxel tint
-        /// without dropping a separate `set` reflection call afterward.
-        /// `None` falls back to the shape's registered default color.
-        color: Option<[f32; 4]>,
-    },
-    DespawnEntity {
-        entity_id: u64,
-    },
-    DespawnSelf,
-    /// Despawn every entity whose `Name` starts with `prefix`. Used by
-    /// streaming/chunk-style scripts that name spawned entities like
-    /// `chunk_<x>_<z>_<...>` and need to evict an entire chunk in one
-    /// call. Cheap because it's a single world-walk.
-    DespawnByPrefix {
-        prefix: String,
-    },
-    SetEntityName {
-        entity_id: u64,
-        name: String,
-    },
-    AddTag {
-        entity_id: Option<u64>,
-        tag: String,
-    },
-    RemoveTag {
-        entity_id: Option<u64>,
-        tag: String,
-    },
-
-    // === Audio ===
-    PlaySound {
-        path: String,
-        volume: f32,
-        looping: bool,
-        bus: String,
-    },
-    PlaySound3D {
-        path: String,
-        volume: f32,
-        position: Vec3,
-        bus: String,
-    },
-    PlayMusic {
-        path: String,
-        volume: f32,
-        fade_in: f32,
-        bus: String,
-    },
-    StopMusic {
-        fade_out: f32,
-    },
-    StopAllSounds,
-    SetMasterVolume {
-        volume: f32,
-    },
-    PauseSound,
-    PauseSoundEntity {
-        entity_id: u64,
-    },
-    ResumeSound,
-    ResumeSoundEntity {
-        entity_id: u64,
-    },
-    SetSoundVolume {
-        volume: f32,
-        fade: f32,
-    },
-    SetSoundVolumeEntity {
-        entity_id: u64,
-        volume: f32,
-        fade: f32,
-    },
-    SetSoundPitch {
-        pitch: f32,
-        fade: f32,
-    },
-    SetSoundPitchEntity {
-        entity_id: u64,
-        pitch: f32,
-        fade: f32,
-    },
-    CrossfadeMusic {
-        path: String,
-        volume: f32,
-        duration: f32,
-        bus: String,
-    },
-
-    // === Debug ===
-    Log {
-        level: String,
-        message: String,
-    },
-    DrawLine {
-        start: Vec3,
-        end: Vec3,
-        color: [f32; 4],
-        duration: f32,
-    },
-    DrawRay {
-        origin: Vec3,
-        direction: Vec3,
-        length: f32,
-        color: [f32; 4],
-        duration: f32,
-    },
-    DrawSphere {
-        center: Vec3,
-        radius: f32,
-        color: [f32; 4],
-        duration: f32,
-    },
-    DrawBox {
-        center: Vec3,
-        half_extents: Vec3,
-        color: [f32; 4],
-        duration: f32,
-    },
-    DrawPoint {
-        position: Vec3,
-        size: f32,
-        color: [f32; 4],
-        duration: f32,
-    },
-
-    // === Physics ===
-    ApplyForce {
-        entity_id: Option<u64>,
-        force: Vec3,
-    },
-    ApplyImpulse {
-        entity_id: Option<u64>,
-        impulse: Vec3,
-    },
-    ApplyTorque {
-        entity_id: Option<u64>,
-        torque: Vec3,
-    },
-    SetVelocity {
-        entity_id: Option<u64>,
-        velocity: Vec3,
-    },
-    SetAngularVelocity {
-        entity_id: Option<u64>,
-        velocity: Vec3,
-    },
-    SetGravityScale {
-        entity_id: Option<u64>,
-        scale: f32,
-    },
-    Raycast {
-        origin: Vec3,
-        direction: Vec3,
-        max_distance: f32,
-        result_var: String,
-    },
-
-    // === Character Controller ===
-    CharacterMove {
-        direction: Vec2,
-    },
-    CharacterJump,
-    CharacterSprint {
-        sprinting: bool,
-    },
-
-    // === Timers ===
-    StartTimer {
-        name: String,
-        duration: f32,
-        repeat: bool,
-    },
-    StopTimer {
-        name: String,
-    },
-    PauseTimer {
-        name: String,
-    },
-    ResumeTimer {
-        name: String,
-    },
-
-    // === Scene ===
-    LoadScene {
-        path: String,
-    },
-    UnloadScene {
-        handle_id: u64,
-    },
-    SpawnPrefab {
-        path: String,
-        position: Vec3,
-        rotation: Vec3,
-    },
-
-    // === Animation ===
-    PlayAnimation {
-        entity_id: Option<u64>,
-        name: String,
-        looping: bool,
-        speed: f32,
-    },
-    StopAnimation {
-        entity_id: Option<u64>,
-    },
-    PauseAnimation {
-        entity_id: Option<u64>,
-    },
-    ResumeAnimation {
-        entity_id: Option<u64>,
-    },
-    SetAnimationSpeed {
-        entity_id: Option<u64>,
-        speed: f32,
-    },
-    SeekAnimation {
-        entity_id: Option<u64>,
-        time: f32,
-    },
-    CrossfadeAnimation {
-        entity_id: Option<u64>,
-        name: String,
-        duration: f32,
-        looping: bool,
-    },
-    SetAnimationParam {
-        entity_id: Option<u64>,
-        name: String,
-        value: f32,
-    },
-    SetAnimationBoolParam {
-        entity_id: Option<u64>,
-        name: String,
-        value: bool,
-    },
-    TriggerAnimation {
-        entity_id: Option<u64>,
-        name: String,
-    },
-    SetAnimationLayerWeight {
-        entity_id: Option<u64>,
-        layer_name: String,
-        weight: f32,
-    },
-
-    // === Sprite Animation ===
-    PlaySpriteAnimation {
-        entity_id: Option<u64>,
-        name: String,
-        looping: bool,
-    },
-    SetSpriteFrame {
-        entity_id: Option<u64>,
-        frame: i64,
-    },
-
-    // === Tweens ===
-    Tween {
-        entity_id: Option<u64>,
-        property: String,
-        target: f32,
-        duration: f32,
-        easing: String,
-    },
-    TweenPosition {
-        entity_id: Option<u64>,
-        target: Vec3,
-        duration: f32,
-        easing: String,
-    },
-    TweenRotation {
-        entity_id: Option<u64>,
-        target: Vec3,
-        duration: f32,
-        easing: String,
-    },
-    TweenScale {
-        entity_id: Option<u64>,
-        target: Vec3,
-        duration: f32,
-        easing: String,
-    },
-
-    // === Rendering ===
-    SetVisibility {
-        entity_id: Option<u64>,
-        visible: bool,
-    },
-    SetMaterialColor {
-        entity_id: Option<u64>,
-        color: [f32; 4],
-    },
-    SetLightIntensity {
-        entity_id: Option<u64>,
-        intensity: f32,
-    },
-    SetLightColor {
-        entity_id: Option<u64>,
-        color: [f32; 3],
-    },
-
-    // === Cursor ===
-    LockCursor,
-    UnlockCursor,
-
-    // === Camera ===
-    SetCameraTarget {
-        position: Vec3,
-    },
-    SetCameraZoom {
-        zoom: f32,
-    },
-    ScreenShake {
-        intensity: f32,
-        duration: f32,
-    },
-    CameraFollow {
-        entity_id: u64,
-        offset: Vec3,
-        smoothing: f32,
-    },
-    StopCameraFollow,
-
-    // === Health ===
-    SetHealth {
-        entity_id: Option<u64>,
-        value: f32,
-    },
-    SetMaxHealth {
-        entity_id: Option<u64>,
-        value: f32,
-    },
-    Damage {
-        entity_id: Option<u64>,
-        amount: f32,
-    },
-    Heal {
-        entity_id: Option<u64>,
-        amount: f32,
-    },
-    SetInvincible {
-        entity_id: Option<u64>,
-        invincible: bool,
-        duration: f32,
-    },
-    Kill {
-        entity_id: Option<u64>,
-    },
-    Revive {
-        entity_id: Option<u64>,
-    },
-
-    // === Particles ===
-    ParticlePlay {
-        entity_id: u64,
-    },
-    ParticlePause {
-        entity_id: u64,
-    },
-    ParticleStop {
-        entity_id: u64,
-    },
-    ParticleReset {
-        entity_id: u64,
-    },
-    ParticleBurst {
-        entity_id: u64,
-        count: u32,
-    },
-    ParticleSetRate {
-        entity_id: u64,
-        multiplier: f32,
-    },
-    ParticleSetScale {
-        entity_id: u64,
-        multiplier: f32,
-    },
-    ParticleSetTimeScale {
-        entity_id: u64,
-        scale: f32,
-    },
-    ParticleSetTint {
-        entity_id: u64,
-        r: f32,
-        g: f32,
-        b: f32,
-        a: f32,
-    },
-
-    // === Property (cross-entity) ===
-    SetProperty {
-        entity_id: u64,
-        property: String,
-        value: PropertyValue,
-    },
-
-    // === Generic Reflection ===
-    /// Set any reflected component field by path.
-    /// `component_type` is the short type name (e.g. "Sun").
-    /// `field_path` is dot-separated (e.g. "elevation" or "color.x").
-    SetComponentField {
-        entity_id: Option<u64>,
-        entity_name: Option<String>,
-        component_type: String,
-        field_path: String,
-        value: PropertyValue,
-    },
-
-    // === Generic Script Action ===
-    /// Fires a `ScriptAction` event that domain crates observe.
-    /// Replaces domain-specific extension commands with a generic event bus.
-    Action {
-        name: String,
-        target_entity: Option<String>,
-        args: std::collections::HashMap<String, renzora::ScriptActionValue>,
-    },
-
-    // === HTTP ===
-    /// Fire an async HTTP request (`http_get` / `http_post`). The result is
-    /// delivered to scripts' `on_http(callback, status, body)` hook.
-    HttpRequest {
-        method: String,
-        url: String,
-        body: Option<String>,
-        callback: String,
-    },
-
+/// Boundary value → engine value.
+pub fn to_engine_prop(v: PropValue) -> PropertyValue {
+    match v {
+        PropValue::Float(f) => PropertyValue::Float(f),
+        PropValue::Int(i) => PropertyValue::Int(i),
+        PropValue::Bool(b) => PropertyValue::Bool(b),
+        PropValue::String(s) => PropertyValue::String(s),
+        PropValue::Vec3(v) => PropertyValue::Vec3(v),
+        PropValue::Color(c) => PropertyValue::Color(c),
+    }
 }
 
-// Re-export PropertyValue from renzora for backwards compatibility
-pub use renzora::PropertyValue;
+/// Engine value → boundary value, for a `get(...)` answer on its way back to a
+/// script.
+pub fn to_wire_prop(v: PropertyValue) -> PropValue {
+    match v {
+        PropertyValue::Float(f) => PropValue::Float(f),
+        PropertyValue::Int(i) => PropValue::Int(i),
+        PropertyValue::Bool(b) => PropValue::Bool(b),
+        PropertyValue::String(s) => PropValue::String(s),
+        PropertyValue::Vec3(v) => PropValue::Vec3(v),
+        PropertyValue::Color(c) => PropValue::Color(c),
+    }
+}
+
+/// Boundary action argument → engine action argument.
+pub fn to_engine_action(v: ActionValue) -> renzora::ScriptActionValue {
+    use renzora::ScriptActionValue as E;
+    match v {
+        ActionValue::Float(f) => E::Float(f),
+        ActionValue::Int(i) => E::Int(i),
+        ActionValue::Bool(b) => E::Bool(b),
+        ActionValue::String(s) => E::String(s),
+        ActionValue::Vec3(v) => E::Vec3(v),
+    }
+}
+
+/// Engine action argument → boundary action argument, for the arguments of an
+/// inbound `on_rpc` / `on_ui` hook.
+pub fn to_wire_action(v: renzora::ScriptActionValue) -> ActionValue {
+    use renzora::ScriptActionValue as E;
+    match v {
+        E::Float(f) => ActionValue::Float(f),
+        E::Int(i) => ActionValue::Int(i),
+        E::Bool(b) => ActionValue::Bool(b),
+        E::String(s) => ActionValue::String(s),
+        E::Vec3(v) => ActionValue::Vec3(v),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both directions for every variant. Cheap, and the failure it guards
+    /// against — a variant silently mapping to the wrong one — is invisible
+    /// until a script sets a colour and gets a position.
+    #[test]
+    fn prop_values_survive_a_round_trip_in_both_directions() {
+        for v in [
+            PropValue::Float(1.5),
+            PropValue::Int(-9),
+            PropValue::Bool(true),
+            PropValue::String("hi".into()),
+            PropValue::Vec3([1.0, 2.0, 3.0]),
+            PropValue::Color([1.0, 2.0, 3.0, 4.0]),
+        ] {
+            assert_eq!(to_wire_prop(to_engine_prop(v.clone())), v);
+        }
+    }
+
+    #[test]
+    fn action_values_survive_a_round_trip_in_both_directions() {
+        for v in [
+            ActionValue::Float(1.5),
+            ActionValue::Int(-9),
+            ActionValue::Bool(true),
+            ActionValue::String("hi".into()),
+            ActionValue::Vec3([1.0, 2.0, 3.0]),
+        ] {
+            assert_eq!(to_wire_action(to_engine_action(v.clone())), v);
+        }
+    }
+}

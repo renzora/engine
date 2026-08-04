@@ -11,8 +11,7 @@ description = "Skeletal ragdoll physics distribution plugin. Auto-builds Avian r
 crate-type = ["rlib"]
 
 [features]
-default = ["lua", "editor"]
-lua = ["renzora_scripting/lua", "dep:mlua"]
+default = ["editor"]
 # Forwards to `renzora/editor` so `Ragdoll` registers into the Inspector's
 # "Add Component" list. Off in lean exports — the dev/editor build keeps it
 # on by default (see docs/r1-alpha7/editor-dev/inspector-fields.md).
@@ -36,7 +35,6 @@ features = ["3d", "f32", "default-collider", "parry-f32"]
 
 # Lua types referenced in the RagdollScriptExtension trait impl.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-mlua = { version = "0.10", features = ["lua54"], optional = true }
 
 [lints]
 workspace = true

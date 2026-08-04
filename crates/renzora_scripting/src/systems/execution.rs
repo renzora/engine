@@ -491,9 +491,8 @@ pub fn run_scripts(world: &mut World) {
                 });
             }
 
-            // Script extensions: populate custom data and set pointer for backends
+            // Let the backend reach the declared bindings.
             if let Some(extensions) = world.get_resource::<crate::extension::ScriptExtensions>() {
-                extensions.populate_context(world, sed.entity, &mut ctx.extension_data);
                 ctx.extensions_ptr = Some(extensions as *const crate::extension::ScriptExtensions);
             }
 

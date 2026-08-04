@@ -7,9 +7,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use mlua::prelude::*;
 
 use crate::backend::{FileReader, ScriptBackend};
-use crate::command::ScriptCommand;
+use crate::command::{ActionValue, ScriptCommand};
 use crate::component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
 use crate::context::ScriptContext;
+use crate::extension::{Binding, BindingKind, ParamKind};
 
 /// If `path` is a `.blueprint`/`.bp` file, compile its JSON graph to Lua source;
 /// otherwise return the source unchanged. A parse failure becomes a top-level
@@ -296,7 +297,7 @@ impl LuaBackend {
             let lua = Lua::new();
             register_api(&lua);
             if let Some(extensions) = ctx.extensions() {
-                extensions.register_lua_functions(&lua);
+                register_bindings(&lua, extensions.bindings());
             }
             lua.load(&source)
                 .exec()
@@ -315,12 +316,9 @@ impl LuaBackend {
             .ok_or_else(|| "Lua instance vanished".to_string())?;
         let lua = &instance.lua;
 
-        // Per-frame: refresh extension context + globals before each call.
-        // These tables/values are overwritten in place, so the cost scales
-        // with context size, not with API surface.
-        if let Some(extensions) = ctx.extensions() {
-            extensions.setup_lua_context(lua, &ctx.extension_data);
-        }
+        // Per-frame: refresh globals before each call. These tables/values are
+        // overwritten in place, so the cost scales with context size, not with
+        // API surface. Extension bindings are built once, with the VM.
         set_context_globals(lua, ctx, vars);
 
         // Drain stale commands so this hook only sees its own output.
@@ -799,6 +797,122 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
 // Lua API registration
 // =============================================================================
 
+/// Build a Lua function for every function a domain crate declared.
+///
+/// This is the whole of what `renzora_physics` and friends used to write by
+/// hand, once, for every language — see [`crate::extension`]. Done at VM
+/// creation rather than per frame, because the set only changes when a plugin
+/// registers an extension and the VM is rebuilt on a source change anyway.
+fn register_bindings(lua: &Lua, bindings: &[Binding]) {
+    let globals = lua.globals();
+    for b in bindings {
+        let f = match &b.kind {
+            BindingKind::Action { action } => action_fn(lua, b, action),
+            BindingKind::Read { component, field } => read_fn(lua, b, component, field),
+            BindingKind::Translate => translate_fn(lua),
+        };
+        match f {
+            Ok(f) => {
+                let _ = globals.set(b.name.as_str(), f);
+            }
+            // A binding that will not build is one missing script function, not
+            // a reason to abandon the rest of them.
+            Err(e) => log::warn!(
+                "[Scripting] could not build binding `{}`: {}",
+                b.name,
+                e
+            ),
+        }
+    }
+}
+
+/// Read one script argument as the parameter kind says to.
+///
+/// A missing or wrong-typed argument becomes the type's zero rather than an
+/// error, matching what the hand-written bindings did: `mlua`'s `f32` coercion
+/// turned `apply_force(1, 2)` into a third argument of `0.0`, and scripts
+/// depend on that.
+fn arg_value(args: &LuaMultiValue, i: usize, kind: ParamKind) -> ActionValue {
+    let v = args.get(i);
+    match kind {
+        ParamKind::Float => ActionValue::Float(arg_f32(v)),
+        ParamKind::Int => ActionValue::Int(match v {
+            Some(LuaValue::Integer(n)) => *n,
+            Some(LuaValue::Number(n)) => *n as i64,
+            _ => 0,
+        }),
+        ParamKind::Bool => ActionValue::Bool(matches!(v, Some(LuaValue::Boolean(true)))),
+        ParamKind::Str => ActionValue::String(arg_string(v)),
+        // Consumes three script arguments; see `ParamKind::arity`.
+        ParamKind::Vec3 => ActionValue::Vec3([
+            arg_f32(args.get(i)),
+            arg_f32(args.get(i + 1)),
+            arg_f32(args.get(i + 2)),
+        ]),
+    }
+}
+
+fn arg_f32(v: Option<&LuaValue>) -> f32 {
+    match v {
+        Some(LuaValue::Number(n)) => *n as f32,
+        Some(LuaValue::Integer(n)) => *n as f32,
+        _ => 0.0,
+    }
+}
+
+fn arg_string(v: Option<&LuaValue>) -> String {
+    match v {
+        Some(LuaValue::String(s)) => s.to_str().map(|s| s.to_string()).unwrap_or_default(),
+        Some(other) => lua_value_to_string(other),
+        None => String::new(),
+    }
+}
+
+/// Pack the declared parameters and push a `ScriptCommand::Action`.
+fn action_fn(lua: &Lua, b: &Binding, action: &str) -> LuaResult<LuaFunction> {
+    let params = b.params.clone();
+    let action = action.to_string();
+    lua.create_function(move |_, args: LuaMultiValue| {
+        let mut out = Vec::with_capacity(params.len());
+        let mut i = 0;
+        for p in &params {
+            out.push((p.name.clone(), arg_value(&args, i, p.kind)));
+            i += p.kind.arity();
+        }
+        push_command(ScriptCommand::Action {
+            name: action.clone(),
+            target_entity: None,
+            args: out,
+        });
+        Ok(())
+    })
+}
+
+/// Read a reflected field, substituting the call's arguments into the path.
+fn read_fn(lua: &Lua, b: &Binding, component: &str, field: &str) -> LuaResult<LuaFunction> {
+    let params = b.params.clone();
+    let component = component.to_string();
+    let field = field.to_string();
+    lua.create_function(move |lua, args: LuaMultiValue| {
+        // Placeholders are positional over the *script* arguments, not the
+        // packed ones, so a `Vec3` parameter does not shift the numbering.
+        let subs: Vec<String> = (0..params.len().max(args.len()))
+            .map(|i| arg_string(args.get(i)))
+            .collect();
+        let component = crate::extension::substitute(&component, &subs);
+        let field = crate::extension::substitute(&field, &subs);
+        match crate::get_handler::call_get(None, &component, &field) {
+            Some(v) => property_value_to_lua_result(lua, v),
+            None => Ok(LuaValue::Nil),
+        }
+    })
+}
+
+/// Look a key up in the localization table.
+fn translate_fn(lua: &Lua) -> LuaResult<LuaFunction> {
+    lua.create_function(|_, key: String| Ok(renzora::lang::t(&key)))
+}
+
 fn register_api(lua: &Lua) {
     let globals = lua.globals();
 
@@ -1121,7 +1235,7 @@ fn register_api(lua: &Lua) {
             push_command(ScriptCommand::Action {
                 name: "play_audio_player".to_string(),
                 target_entity: target.filter(|s| !s.is_empty()),
-                args: std::collections::HashMap::new(),
+                args: Vec::new(),
             });
             Ok(())
         })
@@ -1134,7 +1248,7 @@ fn register_api(lua: &Lua) {
         lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
             push_command(ScriptCommand::ApplyForce {
                 entity_id: None,
-                force: bevy::prelude::Vec3::new(x, y, z),
+                force: [x, y, z],
             });
             Ok(())
         })
@@ -1145,7 +1259,7 @@ fn register_api(lua: &Lua) {
         lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
             push_command(ScriptCommand::ApplyImpulse {
                 entity_id: None,
-                impulse: bevy::prelude::Vec3::new(x, y, z),
+                impulse: [x, y, z],
             });
             Ok(())
         })
@@ -1156,7 +1270,7 @@ fn register_api(lua: &Lua) {
         lua.create_function(|_, (x, y, z): (f32, f32, f32)| {
             push_command(ScriptCommand::SetVelocity {
                 entity_id: None,
-                velocity: bevy::prelude::Vec3::new(x, y, z),
+                velocity: [x, y, z],
             });
             Ok(())
         })
@@ -1213,8 +1327,8 @@ fn register_api(lua: &Lua) {
         lua.create_function(
             |_, (sx, sy, sz, ex, ey, ez, duration): (f32, f32, f32, f32, f32, f32, Option<f32>)| {
                 push_command(ScriptCommand::DrawLine {
-                    start: bevy::prelude::Vec3::new(sx, sy, sz),
-                    end: bevy::prelude::Vec3::new(ex, ey, ez),
+                    start: [sx, sy, sz],
+                    end: [ex, ey, ez],
                     color: [1.0, 0.0, 0.0, 1.0],
                     duration: duration.unwrap_or(0.0),
                 });
@@ -1470,7 +1584,7 @@ fn register_api(lua: &Lua) {
                 push_command(ScriptCommand::SpawnPrimitive {
                     name,
                     primitive_type: kind,
-                    position: Some(bevy::math::Vec3::new(x, y, z)),
+                    position: Some([x, y, z]),
                     scale: None,
                     color,
                 });
@@ -1610,10 +1724,10 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "action",
         lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
-            let mut map = std::collections::HashMap::new();
+            let mut map = Vec::new();
             if let Some(tbl) = args {
                 for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
-                    map.insert(k, lua_to_action_value(&v));
+                    map.push((k, lua_to_action_value(&v)));
                 }
             }
             push_command(ScriptCommand::Action {
@@ -1713,16 +1827,16 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "rpc",
         lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
-            let mut map = std::collections::HashMap::new();
+            let mut map = Vec::new();
             if let Some(tbl) = args {
                 for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
-                    map.insert(k, lua_to_action_value(&v));
+                    map.push((k, lua_to_action_value(&v)));
                 }
             }
-            map.insert(
+            map.push((
                 "__rpc".to_string(),
-                renzora::ScriptActionValue::String(name),
-            );
+                crate::command::ActionValue::String(name),
+            ));
             push_command(ScriptCommand::Action {
                 name: "net_rpc".to_string(),
                 target_entity: None,
@@ -1738,10 +1852,10 @@ fn register_api(lua: &Lua) {
         "action_on",
         lua.create_function(
             |_, (target, name, args): (String, String, Option<LuaTable>)| {
-                let mut map = std::collections::HashMap::new();
+                let mut map = Vec::new();
                 if let Some(tbl) = args {
                     for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
-                        map.insert(k, lua_to_action_value(&v));
+                        map.push((k, lua_to_action_value(&v)));
                     }
                 }
                 push_command(ScriptCommand::Action {
@@ -2306,8 +2420,8 @@ fn parse_component_path(path: &str) -> Option<(String, String)> {
 }
 
 /// Convert a Lua value to PropertyValue for reflection writes.
-fn lua_to_property_value(value: &LuaValue) -> crate::command::PropertyValue {
-    use crate::command::PropertyValue;
+fn lua_to_property_value(value: &LuaValue) -> crate::command::PropValue {
+    use crate::command::PropValue as PropertyValue;
     match value {
         LuaValue::Number(n) => PropertyValue::Float(*n as f32),
         LuaValue::Integer(n) => PropertyValue::Int(*n),
@@ -2389,8 +2503,8 @@ fn action_value_to_lua(lua: &Lua, value: &renzora::ScriptActionValue) -> LuaResu
 }
 
 /// Extract a string argument from a LuaMultiValue by index.
-fn lua_to_action_value(value: &LuaValue) -> renzora::ScriptActionValue {
-    use renzora::ScriptActionValue;
+fn lua_to_action_value(value: &LuaValue) -> crate::command::ActionValue {
+    use crate::command::ActionValue as ScriptActionValue;
     match value {
         LuaValue::Number(n) => ScriptActionValue::Float(*n as f32),
         LuaValue::Integer(n) => ScriptActionValue::Int(*n),

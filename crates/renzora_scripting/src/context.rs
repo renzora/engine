@@ -2,7 +2,6 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::command::ScriptCommand;
-use crate::extension::ExtensionData;
 
 /// Time info provided to scripts
 #[derive(Clone, Copy, Default)]
@@ -217,11 +216,9 @@ pub struct ScriptContext {
     pub self_light_color: [f32; 3],
     pub self_material_color: [f32; 4],
 
-    /// Extension data populated by script extensions before execution.
-    pub extension_data: ExtensionData,
-
-    /// Pointer to the ScriptExtensions resource for backend use.
-    /// Valid only during script execution (set by the execution system).
+    /// Pointer to the `ScriptExtensions` resource, so a backend can build the
+    /// declared bindings. Valid only during script execution — the execution
+    /// system sets it and the resource lives in the world it is borrowing.
     pub(crate) extensions_ptr: Option<*const crate::extension::ScriptExtensions>,
 
     // === Outputs ===
@@ -307,7 +304,6 @@ impl ScriptContext {
             self_max_health: 0.0,
             self_health_percent: 0.0,
             self_is_invincible: false,
-            extension_data: ExtensionData::default(),
             extensions_ptr: None,
             self_light_intensity: 0.0,
             self_light_color: [1.0, 1.0, 1.0],

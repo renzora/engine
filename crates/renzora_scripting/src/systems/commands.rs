@@ -9,7 +9,9 @@ use super::execution::{
     ReflectionSet, ScriptCommandQueue, ScriptEnvironmentCommands, ScriptLogBuffer, ScriptLogEntry,
     ScriptReflectionQueue,
 };
-use crate::command::{CharacterCommand, CharacterCommandQueue, ScriptCommand};
+use crate::command::{
+    to_engine_action, to_engine_prop, CharacterCommand, CharacterCommandQueue, ScriptCommand,
+};
 use crate::resources::ScriptTimers;
 
 /// System that applies script outputs to the world.
@@ -110,10 +112,10 @@ pub fn apply_script_commands(
             } => {
                 let mut t = Transform::default();
                 if let Some(pos) = position {
-                    t.translation = pos;
+                    t.translation = Vec3::from(pos);
                 }
                 if let Some(s) = scale {
-                    t.scale = s;
+                    t.scale = Vec3::from(s);
                 }
                 // `MeshPrimitive` + (optional) `MeshColor` is the same
                 // pair the editor's shape spawner writes — the
@@ -280,7 +282,7 @@ pub fn apply_script_commands(
                     entity_name,
                     component_type,
                     field_path,
-                    value,
+                    value: to_engine_prop(value),
                 });
             }
 
@@ -294,7 +296,7 @@ pub fn apply_script_commands(
             ScriptCommand::CharacterMove { direction } => {
                 character_queue
                     .commands
-                    .push((source_entity, CharacterCommand::Move(direction)));
+                    .push((source_entity, CharacterCommand::Move(Vec2::from(direction))));
             }
             ScriptCommand::CharacterJump => {
                 character_queue
@@ -329,6 +331,12 @@ pub fn apply_script_commands(
                 args,
             } => {
                 let entity = source_entity;
+                // The boundary carries arguments as an ordered list; the event
+                // has always taken a map, and ten other crates observe it.
+                let args = args
+                    .into_iter()
+                    .map(|(k, v)| (k, to_engine_action(v)))
+                    .collect();
                 commands.queue(move |world: &mut World| {
                     world.trigger(renzora::ScriptAction {
                         name,
@@ -389,18 +397,18 @@ fn script_command_to_action(
             if let Some(id) = entity_id {
                 args.insert("entity_id".into(), V::Int(id as i64));
             }
-            args.insert("x".into(), V::Float(force.x));
-            args.insert("y".into(), V::Float(force.y));
-            args.insert("z".into(), V::Float(force.z));
+            args.insert("x".into(), V::Float(force[0]));
+            args.insert("y".into(), V::Float(force[1]));
+            args.insert("z".into(), V::Float(force[2]));
             "apply_force"
         }
         ScriptCommand::ApplyImpulse { entity_id, impulse } => {
             if let Some(id) = entity_id {
                 args.insert("entity_id".into(), V::Int(id as i64));
             }
-            args.insert("x".into(), V::Float(impulse.x));
-            args.insert("y".into(), V::Float(impulse.y));
-            args.insert("z".into(), V::Float(impulse.z));
+            args.insert("x".into(), V::Float(impulse[0]));
+            args.insert("y".into(), V::Float(impulse[1]));
+            args.insert("z".into(), V::Float(impulse[2]));
             "apply_impulse"
         }
         ScriptCommand::SetVelocity {
@@ -410,9 +418,9 @@ fn script_command_to_action(
             if let Some(id) = entity_id {
                 args.insert("entity_id".into(), V::Int(id as i64));
             }
-            args.insert("x".into(), V::Float(velocity.x));
-            args.insert("y".into(), V::Float(velocity.y));
-            args.insert("z".into(), V::Float(velocity.z));
+            args.insert("x".into(), V::Float(velocity[0]));
+            args.insert("y".into(), V::Float(velocity[1]));
+            args.insert("z".into(), V::Float(velocity[2]));
             "set_velocity"
         }
         ScriptCommand::SetGravityScale { entity_id, scale } => {
@@ -538,7 +546,7 @@ fn script_command_to_action(
             if let Some(id) = entity_id {
                 args.insert("entity_id".into(), V::Int(id as i64));
             }
-            args.insert("target".into(), V::Vec3([target.x, target.y, target.z]));
+            args.insert("target".into(), V::Vec3(target));
             args.insert("duration".into(), V::Float(duration));
             args.insert("easing".into(), V::String(easing));
             "tween_position"
@@ -552,7 +560,7 @@ fn script_command_to_action(
             if let Some(id) = entity_id {
                 args.insert("entity_id".into(), V::Int(id as i64));
             }
-            args.insert("target".into(), V::Vec3([target.x, target.y, target.z]));
+            args.insert("target".into(), V::Vec3(target));
             args.insert("duration".into(), V::Float(duration));
             args.insert("easing".into(), V::String(easing));
             "tween_rotation"
@@ -566,7 +574,7 @@ fn script_command_to_action(
             if let Some(id) = entity_id {
                 args.insert("entity_id".into(), V::Int(id as i64));
             }
-            args.insert("target".into(), V::Vec3([target.x, target.y, target.z]));
+            args.insert("target".into(), V::Vec3(target));
             args.insert("duration".into(), V::Float(duration));
             args.insert("easing".into(), V::String(easing));
             "tween_scale"

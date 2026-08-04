@@ -21,7 +21,7 @@ script_http = ["dep:ureq"]
 [dependencies]
 # Engine side of the C ABI's HTTP surface (`plugin_bridge`). The client already
 # lives here, so a plugin request takes the same path a script's does.
-renzora_plugin = { path = "../renzora_plugin", features = ["host", "http"] }
+renzora_plugin = { path = "../renzora_plugin", features = ["host", "http", "script"] }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 # Visual-scripting compiler — used only to compile `.blueprint`/`.bp` graphs to
