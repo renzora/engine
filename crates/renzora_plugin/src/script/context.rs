@@ -11,14 +11,17 @@
 //! one by roughly the ratio of the two structs. The frame half contains the
 //! action tables and a map of *every named entity in the scene*; the entity half
 //! is a few hundred bytes. Encoding the frame half once and pointing every call
-//! at it turns "cost × entities" into "cost + entities".
+//! at it turns "cost × entities" into "cost + entities", on both sides —
+//! `frame_seq` lets the plugin skip re-decoding it too.
 //!
-//! This is not a tax the boundary introduced — it is one it removes. The engine
-//! today does `ctx.found_entities = entities_by_name.clone()` inside the
-//! per-entity loop, cloning that whole map for every scripted entity every
-//! frame, plus five more clones for the key and action tables. Splitting the
-//! context is what makes those clones go away, so the ABI version of this loop
-//! does *less* allocation than the in-process one it replaces.
+//! Worth being precise about what this does and does not fix. It bounds the
+//! cost the *boundary* adds. The engine separately still does
+//! `ctx.found_entities = entities_by_name.clone()` inside its per-entity loop,
+//! cloning that whole map for every scripted entity every frame, plus five more
+//! clones for the key and action tables — a cost that predates any of this and
+//! is unchanged by it. The split is what makes those removable, since there is
+//! now a frame-shaped thing to build once and hand round; actually removing
+//! them is a change to `execution.rs`, not to this file.
 //!
 //! ## Sparse, not dense
 //!

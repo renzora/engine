@@ -131,6 +131,12 @@ impl Plugin for ScriptingPlugin {
                     .after(ScriptingSet::CommandProcessing)
                     .run_if(scripts_should_run),
             )
+            // Adopt any language a plugin registered. Runs in PreScript so a
+            // backend is live before the first hook of the same frame.
+            .add_systems(
+                Update,
+                crate::plugin_backend::adopt_plugin_backends.in_set(ScriptingSet::PreScript),
+            )
             // Sync scripts folder from CurrentProject
             .add_systems(Update, sync_scripts_folder.in_set(ScriptingSet::PreScript))
             // Hot-reload: check for modified script files
