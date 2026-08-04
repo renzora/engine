@@ -223,11 +223,21 @@ pub fn run_scripts(world: &mut World) {
         }
     }
 
+    // A real frame number, not a placeholder. This was hardcoded to 0 for as
+    // long as nothing read it — and then the plugin bridge started using it to
+    // decide when its cached frame context had gone stale, so a constant 0 meant
+    // "the frame never changes": every script saw the first call's `delta`
+    // forever, which is zero, which silently froze every scripted entity in the
+    // scene. If this ever stops being monotonic, that is the symptom.
+    let frame_count = world
+        .get_resource::<bevy::diagnostic::FrameCount>()
+        .map(|f| f.0 as u64)
+        .unwrap_or(0);
     let script_time = ScriptTime {
         elapsed: time_elapsed,
         delta: time_delta,
         fixed_delta: 1.0 / 60.0,
-        frame_count: 0,
+        frame_count,
     };
 
     // Collect input into context-friendly format

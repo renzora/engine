@@ -117,6 +117,25 @@ fn compile_blueprint(path: &Path, source: String) -> String {
     }
 }
 
+/// Frame sequence for a call that carries no frame context. Chosen so it can
+/// never equal a real `FrameCount`, which is a `u32` widened to `u64`.
+const NO_FRAME: u64 = u64::MAX;
+
+/// Whether an op is a per-entity script hook, and so carries a real context.
+fn is_hook(op: sys::ScriptOp) -> bool {
+    matches!(
+        op,
+        sys::ScriptOp::OnReady
+            | sys::ScriptOp::OnUpdate
+            | sys::ScriptOp::OnRpc
+            | sys::ScriptOp::OnUi
+            | sys::ScriptOp::OnDraw
+            | sys::ScriptOp::OnAnimationEvent
+            | sys::ScriptOp::OnHttp
+            | sys::ScriptOp::OnPlayerEvent
+    )
+}
+
 fn is_blueprint(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
@@ -403,7 +422,19 @@ impl PluginScriptBackend {
         } else {
             Self::ensure_source(&mut state, path)?
         };
-        let frame_seq = Self::frame_bytes(&mut state, ctx);
+
+        // Only a hook carries a real context. `Props`, `Eval` and `Evict` are
+        // called from outside the per-entity loop and pass a default
+        // `ScriptContext`, so letting them touch the frame cache would store a
+        // context with `delta = 0` and — since they run first — leave every
+        // script reading it. That is not hypothetical: it is exactly what
+        // happened, and it froze every scripted entity in the scene.
+        let (frame_blob, frame_seq) = if is_hook(op) {
+            let seq = Self::frame_bytes(&mut state, ctx);
+            (sys::BlobRef::new(&state.frame), seq)
+        } else {
+            (sys::BlobRef::EMPTY, NO_FRAME)
+        };
 
         let mut w = Writer::new();
         entity_context(ctx).encode(&mut w);
@@ -436,7 +467,7 @@ impl PluginScriptBackend {
             source: str_ref(&source),
             version,
             entity: ctx.self_entity_id,
-            frame: sys::BlobRef::new(&state.frame),
+            frame: frame_blob,
             frame_seq,
             entity_ctx: sys::BlobRef::new(&entity_bytes),
             args: sys::BlobRef::new(&arg_bytes),
