@@ -158,4 +158,18 @@ pub trait ScriptBackend: Send + Sync {
 
     /// Evaluate an arbitrary expression (for console/REPL)
     fn eval_expression(&self, expr: &str) -> Result<String, String>;
+
+    /// Drop any cached per-entity state for a script that has gone away.
+    ///
+    /// An empty `path` means every script on that entity; a zero `entity` means
+    /// every entity running that script.
+    ///
+    /// Backends that keep a VM per `(entity, script)` — which is every backend
+    /// that wants a script's globals to be per-entity state — otherwise grow
+    /// that map forever as entities churn. The in-tree interpreter had an
+    /// `evict_entity` for exactly this and nothing ever called it; this is the
+    /// hook that makes it reachable.
+    fn evict(&self, path: &Path, entity: u64) {
+        let _ = (path, entity);
+    }
 }

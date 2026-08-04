@@ -266,7 +266,7 @@ default = ["runtime", "xr"]
 # absent → the same binary is the exported game. The runtime binary is also
 # the dedicated server (launch with `--server` to boot headless) and the
 # host/listen server (`--host`). No separate editor/server feature or binary.
-runtime = ["dep:renzora_runtime", "renzora_runtime/lua"]
+runtime = ["dep:renzora_runtime"]
 # Statically link selected distribution plugins into the binary (lean export
 # only). OFF in every normal build — the editor/dev/server builds keep loading
 # plugins as dlopen cdylibs. The lean exporter regenerates the

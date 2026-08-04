@@ -282,6 +282,16 @@ impl ScriptEngine {
             .reload(&resolved)
     }
 
+    /// Drop cached per-entity state for scripts on an entity that went away.
+    ///
+    /// Broadcast to every backend rather than routed by extension: the caller
+    /// knows an entity died, not which languages were running on it.
+    pub fn evict_entity(&self, entity: u64) {
+        for backend in &self.backends {
+            backend.evict(std::path::Path::new(""), entity);
+        }
+    }
+
     pub fn eval_expression(&self, expr: &str) -> Result<String, String> {
         // Try first backend (primary language)
         self.backends

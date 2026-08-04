@@ -29,7 +29,7 @@ path = "src/main.rs"
 
 [dependencies]
 bevy = { workspace = true }
-renzora_runtime = { path = "../renzora_runtime", features = ["lua"] }
+renzora_runtime = { path = "../renzora_runtime" }
 # The editor itself, linked statically as an rlib. With Bevy statically linked
 # there is no shared `bevy_dylib` for a loadable bundle to attach to, so the
 # editor cannot be a `dlopen`'d file any more — a cdylib linking static Bevy

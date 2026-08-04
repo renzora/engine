@@ -4,14 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-# All four ON by default so the editor/dev build is unchanged. The lean exporter
-# strips the backends/subsystems a game doesn't use — but only by depending on
-# this crate with `default-features = false` (every lean-closure dependent does)
-# and forwarding the kept ones from `renzora_runtime`. `blueprint` pulls the
-# visual-scripting compiler (~0.2 MiB); `script_http` pulls `ureq` + the whole
-# rustls/ring TLS stack (~1 MiB) for the `http_get`/`http_post` script verbs.
-default = ["lua", "blueprint", "script_http"]
-lua = ["dep:mlua"]
+# Both ON by default so the editor/dev build is unchanged. The lean exporter
+# strips what a game doesn't use, by depending on this crate with
+# `default-features = false` (every lean-closure dependent does) and forwarding
+# the kept ones from `renzora_runtime`. `blueprint` pulls the visual-scripting
+# compiler (~0.2 MiB); `script_http` pulls `ureq` plus the whole rustls/ring TLS
+# stack (~1 MiB) for the `http_get`/`http_post` script verbs.
+#
+# There is no `lua` feature any more: the interpreter is `plugins/lua`, so which
+# language a game can be scripted in is decided by which plugin is present, not
+# by how the engine was compiled.
+default = ["blueprint", "script_http"]
 blueprint = ["dep:renzora_blueprint"]
 script_http = ["dep:ureq"]
 
@@ -24,22 +27,19 @@ script_http = ["dep:ureq"]
 renzora_plugin = { path = "../renzora_plugin", features = ["host", "http", "script"] }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
-# Visual-scripting compiler — used only to compile `.blueprint`/`.bp` graphs to
-# Lua on load (see backends/lua.rs). Optional → stripped for games that ship no
-# blueprints.
+# Visual-scripting compiler. Used by `plugin_backend` to turn a `.blueprint`/
+# `.bp` graph into Lua before the source reaches the language plugin — it links
+# Bevy, so it cannot cross the boundary itself. Optional: stripped for games
+# that ship no blueprints.
 renzora_blueprint = { path = "../renzora_blueprint", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 
-# Rhai backend (pure Rust, works everywhere including WASM)
-
-# Lua backend (native only — requires C compiler, cannot target WASM).
 # `ureq` powers `http_get`/`http_post` from scripts (blocking client run on a
 # background thread; native only — a wasm fetch path can come later). Optional
-# (`script_http`) → a game with no script HTTP drops the whole TLS stack.
+# (`script_http`): a game with no script HTTP drops the whole TLS stack.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-mlua = { version = "0.10", features = ["lua54", "vendored", "send"], optional = true }
 ureq = { version = "3", optional = true }
 
 [lints]

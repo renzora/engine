@@ -1,0 +1,34 @@
+[workspace]
+
+[package]
+name = "lua"
+version = "0.1.0"
+edition = "2021"
+description = "Lua scripting for Renzora. Implements the engine's language-backend contract."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# `script` is what makes this a language rather than a gameplay plugin: it adds
+# the command vocabulary, the contexts and the codec, plus the one `Interface`
+# entry a backend registers through.
+renzora_plugin = { path = "../../crates/renzora_plugin", features = ["script"] }
+
+# Vendored so the plugin builds with nothing but a C compiler — no system Lua,
+# no pkg-config, nothing for a plugin author to install. This is the entire
+# reason the interpreter is worth moving out of the engine: mlua's C build now
+# costs only the people who want Lua.
+# `send` makes `Lua` `Send`, which the generated `static` needs. It is not
+# `Sync` even so, which is why the backend keeps its VMs behind a `Mutex`.
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
+
+# Blueprints are compiled to Lua by the *host* before the source reaches here —
+# `renzora_blueprint` links Bevy and cannot cross the boundary. So this plugin
+# claims the `.blueprint`/`.bp` extensions but only ever sees Lua text.
+serde_json = "1"
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"

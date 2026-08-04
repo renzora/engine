@@ -299,11 +299,18 @@ pub struct EntityContext {
     pub name: String,
 
     pub position: [f32; 3],
-    /// Quaternion `[x, y, z, w]`. Sent as a quaternion rather than euler angles
-    /// because the plugin needs it to derive `forward`/`right`/`up`, and euler
-    /// round-tripping loses that at the poles. Scripts that want degrees get
-    /// them from the plugin's own conversion.
+    /// Quaternion `[x, y, z, w]`, for deriving `forward`/`right`/`up`.
     pub rotation: [f32; 4],
+    /// The same rotation as euler degrees, YXZ — the order the inspector uses.
+    ///
+    /// Sent alongside the quaternion rather than left for the plugin to derive,
+    /// and the redundancy is deliberate. Quaternion-to-YXZ has a gimbal case and
+    /// an easily-inverted sign, and getting it wrong would silently change what
+    /// `rotation_y` means to every script that turns a character. The engine
+    /// already has glam and has always done this conversion; making each
+    /// language plugin reimplement it is three lines saved on the wire against
+    /// one subtle bug per language.
+    pub rotation_euler: [f32; 3],
     pub scale: [f32; 3],
 
     pub has_parent: bool,
@@ -335,6 +342,7 @@ impl EntityContext {
         w.str(&self.name);
         w.f32x3(self.position);
         w.f32x4(self.rotation);
+        w.f32x3(self.rotation_euler);
         w.f32x3(self.scale);
 
         w.bool(self.has_parent);
@@ -381,6 +389,7 @@ impl EntityContext {
             name: r.string()?,
             position: r.f32x3()?,
             rotation: r.f32x4()?,
+            rotation_euler: r.f32x3()?,
             scale: r.f32x3()?,
             has_parent: r.bool()?,
             parent_entity: r.opt_u64()?,
@@ -751,6 +760,29 @@ impl Binding {
     }
 }
 
+/// Substitute `{0}`, `{1}` … in a [`BindingKind::Read`] path with the call's
+/// arguments.
+///
+/// Lives here rather than in either backend so every language resolves a path
+/// the same way — a Lua plugin and a Wren plugin disagreeing about what
+/// `clip_lengths.{0}` means would be a genuinely miserable bug to find.
+///
+/// A placeholder with no matching argument is left as written, deliberately:
+/// a path that visibly fails to resolve beats one that silently reads a
+/// different field.
+pub fn substitute(template: &str, args: &[String]) -> String {
+    // Almost every template has no placeholder at all, so do not build a new
+    // string for the common case.
+    if !template.contains('{') {
+        return template.to_string();
+    }
+    let mut out = template.to_string();
+    for (i, a) in args.iter().enumerate() {
+        out = out.replace(&format!("{{{i}}}"), a);
+    }
+    out
+}
+
 pub fn encode_bindings(w: &mut Writer, bindings: &[Binding]) {
     w.count(bindings.len());
     for b in bindings {
@@ -836,6 +868,7 @@ mod tests {
             name: "Player".into(),
             position: [1.0, 2.0, 3.0],
             rotation: [0.0, 0.0, 0.0, 1.0],
+            rotation_euler: [0.0, 45.0, 0.0],
             scale: [1.0, 1.0, 1.0],
             has_parent: true,
             parent_entity: Some(7),

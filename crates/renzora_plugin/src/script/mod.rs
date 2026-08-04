@@ -67,7 +67,7 @@ pub use command::{decode_list, encode_list, ScriptCommand, VARIANT_COUNT};
 pub use context::{
     decode_bindings, encode_bindings, AssetProgress, Binding, BindingKind, ChildNode,
     EntityContext, FrameContext, GamepadSnapshot, HookArgs, Param, ParamKind, RaycastHit,
-    ScriptTime, GAMEPAD_BUTTON_NAMES,
+    substitute, ScriptTime, GAMEPAD_BUTTON_NAMES,
 };
 pub use reply::ScriptReply;
 pub use value::{ActionValue, DrawCmd, PropValue, ScriptValue, VarDef};

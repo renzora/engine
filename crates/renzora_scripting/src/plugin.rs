@@ -64,11 +64,11 @@ impl Default for ScriptingPlugin {
 impl Plugin for ScriptingPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] ScriptingPlugin");
-        // Create the script engine with available backends
+        // The engine starts with no backends at all. A language arrives as a
+        // plugin — `adopt_plugin_backends` below picks up whatever registered —
+        // so a build with no language plugin present simply runs no scripts,
+        // rather than carrying an interpreter it may never use.
         let mut engine = ScriptEngine::new();
-
-        #[cfg(all(feature = "lua", not(target_arch = "wasm32")))]
-        engine.add_backend(Box::new(crate::backends::lua::LuaBackend::new()));
 
         if let Some(ref folder) = self.scripts_folder {
             engine.set_scripts_folder(folder.clone());
@@ -150,6 +150,13 @@ impl Plugin for ScriptingPlugin {
 
         // Auto-insert ScriptComponent on new named entities (decouples hierarchy from scripting)
         app.add_observer(auto_insert_script_component);
+
+        // Tell backends when a scripted entity goes away. A backend keeps a VM
+        // per (entity, script) so a script's globals are per-entity state, and
+        // without this that map grows for the life of the process — which is
+        // what happened before, since the in-tree interpreter's `evict_entity`
+        // existed and nothing ever called it.
+        app.add_systems(Update, evict_despawned_scripts.in_set(ScriptingSet::Cleanup));
 
         // Bridge blueprint lifecycle/cursor ScriptActions (the interpreter only
         // emits ScriptActions; despawn + cursor lock would otherwise be no-ops).
@@ -327,5 +334,18 @@ fn auto_insert_script_component(
     // Only add if the entity doesn't already have ScriptComponent
     if query.get(entity).is_ok() {
         commands.entity(entity).insert(ScriptComponent::new());
+    }
+}
+
+/// Drop backend state for entities whose `ScriptComponent` has gone.
+///
+/// `RemovedComponents` covers both a despawn and a bare component removal,
+/// which are the two ways a script stops belonging to an entity.
+fn evict_despawned_scripts(
+    mut removed: RemovedComponents<ScriptComponent>,
+    engine: Res<ScriptEngine>,
+) {
+    for entity in removed.read() {
+        engine.evict_entity(entity.to_bits());
     }
 }

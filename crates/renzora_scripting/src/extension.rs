@@ -186,24 +186,11 @@ impl ScriptExtensions {
     }
 }
 
-/// Substitute `{0}`, `{1}` … in a [`BindingKind::Read`] path with the call's
-/// arguments.
+/// Resolve `{0}`-style placeholders in a [`BindingKind::Read`] path.
 ///
-/// Shared so every backend resolves a path the same way — a Lua plugin and a
-/// Wren plugin disagreeing about what `clip_lengths.{0}` means would be a
-/// genuinely miserable bug to find.
-pub fn substitute(template: &str, args: &[String]) -> String {
-    // Almost every template has no placeholder at all, so do not build a new
-    // string for the common case.
-    if !template.contains('{') {
-        return template.to_string();
-    }
-    let mut out = template.to_string();
-    for (i, a) in args.iter().enumerate() {
-        out = out.replace(&format!("{{{i}}}"), a);
-    }
-    out
-}
+/// Re-exported from the boundary rather than defined here, so the engine and
+/// every language plugin cannot drift on what a path means.
+pub use renzora_plugin::script::substitute;
 
 #[cfg(test)]
 mod tests {

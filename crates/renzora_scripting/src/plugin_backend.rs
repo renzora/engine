@@ -76,6 +76,54 @@ struct Source {
     modified: Option<std::time::SystemTime>,
 }
 
+/// Compile a `.blueprint`/`.bp` graph to Lua source; pass anything else through.
+///
+/// Host-side rather than in the language plugin, for a hard reason and a soft
+/// one. The hard one: `renzora_blueprint` links Bevy, so it cannot cross into a
+/// standalone plugin at all. The soft one: the host already decides *what text*
+/// a backend receives, having just read the file, so this is the same decision
+/// and belongs in the same place.
+///
+/// A parse failure becomes a top-level `error(...)` so it surfaces in the
+/// console rather than failing silently.
+#[cfg(feature = "blueprint")]
+fn compile_blueprint(path: &Path, source: String) -> String {
+    if !is_blueprint(path) {
+        return source;
+    }
+    match serde_json::from_str::<renzora_blueprint::graph::BlueprintGraph>(&source) {
+        Ok(graph) => renzora_blueprint::compiler::compile_to_lua(&graph),
+        Err(e) => {
+            let msg = e.to_string().replace(['\'', '\n'], " ");
+            log::warn!(
+                "[scripting] blueprint '{}' failed to parse: {}",
+                path.display(),
+                msg
+            );
+            format!("error('blueprint parse failed: {msg}')")
+        }
+    }
+}
+
+/// Blueprint support stripped from this build (lean export, `blueprint` off).
+/// A graph cannot be compiled, so say so rather than feeding JSON to an
+/// interpreter that will report a confusing syntax error.
+#[cfg(not(feature = "blueprint"))]
+fn compile_blueprint(path: &Path, source: String) -> String {
+    if is_blueprint(path) {
+        "error('blueprint support is not included in this build')".to_string()
+    } else {
+        source
+    }
+}
+
+fn is_blueprint(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e == "blueprint" || e == "bp")
+        .unwrap_or(false)
+}
+
 /// Collects the plugin's reply.
 ///
 /// # Safety
@@ -257,12 +305,11 @@ impl PluginScriptBackend {
 
     /// Read a script, preferring the VFS reader an exported build installs.
     fn read_source(state: &State, path: &Path) -> Option<String> {
-        if let Some(reader) = &state.file_reader {
-            if let Some(text) = reader(path) {
-                return Some(text);
-            }
-        }
-        std::fs::read_to_string(path).ok()
+        let text = match &state.file_reader {
+            Some(reader) => reader(path).or_else(|| std::fs::read_to_string(path).ok()),
+            None => std::fs::read_to_string(path).ok(),
+        }?;
+        Some(compile_blueprint(path, text))
     }
 
     /// Make sure `path` is cached, returning its source and version.
@@ -349,7 +396,13 @@ impl PluginScriptBackend {
     ) -> Result<ScriptReply, String> {
         let mut state = self.state.lock().map_err(|e| e.to_string())?;
         self.sync_bindings(&mut state, ctx);
-        let (source, version) = Self::ensure_source(&mut state, path)?;
+        // Evicting a script the plugin never loaded is a no-op, not an error —
+        // the entity may have been despawned before its script ever ran.
+        let (source, version) = if op == sys::ScriptOp::Evict {
+            Self::ensure_source(&mut state, path).unwrap_or_default()
+        } else {
+            Self::ensure_source(&mut state, path)?
+        };
         let frame_seq = Self::frame_bytes(&mut state, ctx);
 
         let mut w = Writer::new();
@@ -544,6 +597,7 @@ fn entity_context(ctx: &ScriptContext) -> EntityContext {
         name: ctx.self_entity_name.clone(),
         position: ctx.transform.position.to_array(),
         rotation: ctx.transform.rotation.to_array(),
+        rotation_euler: ctx.transform.euler_degrees().to_array(),
         scale: ctx.transform.scale.to_array(),
         has_parent: ctx.has_parent,
         parent_entity: ctx.parent_entity.map(|e| e.to_bits()),
@@ -830,6 +884,21 @@ impl ScriptBackend for PluginScriptBackend {
             },
         );
         Ok(())
+    }
+
+    fn evict(&self, path: &Path, entity: u64) {
+        let mut ctx = ScriptContext::new(Default::default(), Default::default());
+        ctx.self_entity_id = entity;
+        let mut vars = ScriptVariables::default();
+        // Eviction is best-effort housekeeping: if the plugin does not
+        // implement the op, or the script was never loaded, there is nothing to
+        // report and nothing the caller could do about it.
+        let _ = self.call(sys::ScriptOp::Evict, path, &HookArgs::None, &mut ctx, &mut vars);
+        if let Ok(mut state) = self.state.lock() {
+            if !path.as_os_str().is_empty() {
+                state.sources.remove(path);
+            }
+        }
     }
 
     fn eval_expression(&self, expr: &str) -> Result<String, String> {

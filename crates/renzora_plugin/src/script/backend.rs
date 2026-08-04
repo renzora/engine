@@ -141,6 +141,27 @@ fn opt_str_ref(s: Option<&str>) -> StrRef {
 }
 
 impl<'a> HostCalls<'a> {
+    /// Wrap the raw table a call carried.
+    ///
+    /// Public because an interpreter registers its host-backed functions once,
+    /// when it builds a VM, and needs to reach the table at *call* time — which
+    /// means stashing the pointer somewhere and rebuilding this around it. The
+    /// lifetime is what keeps that honest: whatever it is rebuilt from must not
+    /// outlive the call.
+    pub fn new(raw: &'a ScriptHostCalls) -> Self {
+        Self { raw }
+    }
+
+    /// The underlying table, for stashing across a registration boundary.
+    ///
+    /// The counterpart to [`Self::new`]: an interpreter registers its
+    /// host-backed functions once and needs to reach the table from inside them
+    /// later, which means keeping the pointer somewhere the closure can see.
+    /// Whatever does that is responsible for clearing it when the call ends.
+    pub fn raw(&self) -> &'a ScriptHostCalls {
+        self.raw
+    }
+
     fn ask(&self, call: impl FnOnce(&ByteSink)) -> Vec<u8> {
         let mut buf: Vec<u8> = Vec::new();
         let sink = ByteSink {

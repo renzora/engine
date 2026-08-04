@@ -1,312 +1,103 @@
+//! The Lua interpreter.
+//!
+//! Moved out of the engine wholesale. What changed in the move is narrow, and
+//! worth knowing because it is the shape any language backend takes:
+//!
+//! * **No file I/O.** The host reads the script and hands over `source` plus a
+//!   `version`; a VM is rebuilt when the version moves. That is the whole of
+//!   hot reload from this side, and it is what lets an exported game run
+//!   scripts out of an rpak archive without this crate knowing archives exist.
+//! * **No `ScriptContext`.** Globals are set from [`Ctx`], whose frame half the
+//!   host encodes once per frame rather than once per entity.
+//! * **Reads go back through the host.** `get(...)` and friends call across the
+//!   boundary; see [`crate::host`] for why that needs a thread-local.
+//!
+//! Everything else — the ~1,100-line `register_api`, the draw context, the prop
+//! parser — is unchanged, because none of it ever touched Bevy. It built
+//! `ScriptCommand`s, and `ScriptCommand` is now defined at the boundary.
+
 #![allow(unused_mut, dead_code, unused_variables)]
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Mutex;
 
 use mlua::prelude::*;
 
-use crate::backend::{FileReader, ScriptBackend};
-use crate::command::{ActionValue, ScriptCommand};
-use crate::component::{ScriptValue, ScriptVariableDefinition, ScriptVariables};
-use crate::context::ScriptContext;
-use crate::extension::{Binding, BindingKind, ParamKind};
+use renzora_plugin::script::{
+    ActionValue, Backend, Binding, BindingKind, Ctx, GamepadSnapshot, Hook, ParamKind, PropValue,
+    ScriptCommand, ScriptReply, ScriptRef, ScriptValue, VarDef, GAMEPAD_BUTTON_NAMES,
+};
 
-/// If `path` is a `.blueprint`/`.bp` file, compile its JSON graph to Lua source;
-/// otherwise return the source unchanged. A parse failure becomes a top-level
-/// `error(...)` so it surfaces in the console instead of failing silently.
-#[cfg(feature = "blueprint")]
-fn compile_blueprint_source(path: &Path, source: String) -> String {
-    let is_bp = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e == "blueprint" || e == "bp")
-        .unwrap_or(false);
-    if !is_bp {
-        return source;
-    }
-    match serde_json::from_str::<renzora_blueprint::graph::BlueprintGraph>(&source) {
-        Ok(graph) => renzora_blueprint::compiler::compile_to_lua(&graph),
-        Err(e) => {
-            let msg = e.to_string().replace(['\'', '\n'], " ");
-            log::warn!("[Scripting] Blueprint '{}' failed to parse: {}", path.display(), msg);
-            format!("error('blueprint parse failed: {msg}')")
-        }
-    }
-}
+use crate::buffers::{drain_commands, drain_draws, push_command};
+use crate::host;
 
-/// Blueprint support stripped from this build (lean export, `blueprint` feature
-/// off): a `.blueprint`/`.bp` file can't be compiled, so surface a clear console
-/// error rather than feeding JSON to the Lua parser. Plain `.lua` passes through.
-#[cfg(not(feature = "blueprint"))]
-fn compile_blueprint_source(path: &Path, source: String) -> String {
-    let is_bp = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| e == "blueprint" || e == "bp")
-        .unwrap_or(false);
-    if is_bp {
-        "error('blueprint support is not included in this build')".to_string()
-    } else {
-        source
-    }
-}
-
-/// Cached compiled Lua script
-struct CachedScript {
-    source: String,
-    path: PathBuf,
-    name: String,
-    last_modified: std::time::SystemTime,
-    props: Vec<ScriptVariableDefinition>,
-    /// Bumped each time the source is reloaded so persistent VMs know to
-    /// drop their cached compilation.
-    version: u64,
-}
-
-/// Persistent Lua VM associated with one (entity, script_path) pair.
+/// Persistent Lua VM for one (entity, script) pair.
 ///
 /// Creating a `Lua` state and registering the API costs ~hundreds of
-/// `create_function` calls; doing it per script per entity per frame is
-/// what makes scripted scenes drop FPS at hundreds of entities. This
-/// struct lets us pay that cost once per entity-script lifetime instead.
+/// `create_function` calls; doing that per script per entity per frame is what
+/// makes scripted scenes drop frames at hundreds of entities. This pays it once
+/// per entity-script lifetime instead.
 struct LuaInstance {
     lua: Lua,
-    /// Version of the cached source that was last `exec`'d into this VM.
-    /// On mismatch we drop and rebuild — same observable behaviour as a
-    /// hot reload.
+    /// The host's version of the source this VM compiled. On mismatch the VM is
+    /// dropped and rebuilt, which is how a hot reload reaches Lua.
     source_version: u64,
+    /// Which binding generation the VM was built with. A plugin registering an
+    /// extension after a VM exists would otherwise leave that VM without the
+    /// new functions until its source happened to change.
+    bindings_generation: u64,
 }
 
-use super::{drain_commands, push_command};
-
+/// The Lua backend.
+#[derive(Default)]
 pub struct LuaBackend {
-    scripts_folder: Option<PathBuf>,
-    cache: Arc<RwLock<HashMap<PathBuf, CachedScript>>>,
-    /// Per-(entity, script_path) Lua VMs reused across frames.
-    /// `mlua::Lua` is `Send` (with the `send` feature) but `!Sync`, so the
-    /// outer `Mutex` is what lets `LuaBackend` be a Bevy `Resource`. In
-    /// practice `run_scripts` is an exclusive system so the lock is never
-    /// contended.
-    instances: Arc<Mutex<HashMap<(u64, PathBuf), LuaInstance>>>,
-    file_reader: Option<FileReader>,
-}
-
-impl Default for LuaBackend {
-    fn default() -> Self {
-        Self::new()
-    }
+    /// Keyed by `(entity, path)` — two entities running the same script get
+    /// separate VMs, which is what makes a script's globals per-entity state.
+    ///
+    /// `mlua::Lua` is `Send` but not `Sync`, so the `Mutex` is what lets this
+    /// live behind the generated `static`. It is never contended in practice:
+    /// the engine runs scripts from one exclusive system.
+    instances: Mutex<HashMap<(u64, String), LuaInstance>>,
+    bindings: Vec<Binding>,
+    /// Bumped whenever `bindings` is replaced, so existing VMs know to rebuild.
+    bindings_generation: u64,
 }
 
 impl LuaBackend {
-    pub fn new() -> Self {
-        Self {
-            scripts_folder: None,
-            cache: Arc::new(RwLock::new(HashMap::new())),
-            instances: Arc::new(Mutex::new(HashMap::new())),
-            file_reader: None,
-        }
-    }
-
-    fn create_lua(&self) -> Lua {
-        let lua = Lua::new();
-        register_api(&lua);
-        lua
-    }
-
-    /// Drop every cached VM whose script path matches `path`. Called when
-    /// a script is reloaded so the next call rebuilds against fresh source.
-    fn evict_path(&self, path: &Path) {
-        if let Ok(mut instances) = self.instances.lock() {
-            instances.retain(|(_, p), _| p.as_path() != path);
-        }
-    }
-
-    /// Drop every cached VM owned by an entity that no longer exists.
-    /// Public so a Bevy system listening on `RemovedComponents<ScriptComponent>`
-    /// can call it; without this the map slowly grows as entities churn.
-    pub fn evict_entity(&self, entity_id: u64) {
-        if let Ok(mut instances) = self.instances.lock() {
-            instances.retain(|(eid, _), _| *eid != entity_id);
-        }
-    }
-
-    fn load_script(&self, path: &Path) -> Result<(), String> {
-        // Check cache (skip mtime check if using VFS — archives have no mtime)
-        if let Ok(cache) = self.cache.read() {
-            if let Some(cached) = cache.get(path) {
-                if self.file_reader.is_some() {
-                    // VFS mode: script is from rpak, no mtime to compare
-                    return Ok(());
-                }
-                if let Ok(meta) = std::fs::metadata(path) {
-                    if let Ok(modified) = meta.modified() {
-                        if modified == cached.last_modified {
-                            return Ok(());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Try VFS file reader first, then fall back to filesystem
-        let source = if let Some(ref reader) = self.file_reader {
-            if let Some(s) = reader(path) {
-                s
-            } else {
-                std::fs::read_to_string(path)
-                    .map_err(|e| format!("Failed to read script '{}': {}", path.display(), e))?
-            }
-        } else {
-            std::fs::read_to_string(path)
-                .map_err(|e| format!("Failed to read script '{}': {}", path.display(), e))?
-        };
-
-        // A `.blueprint` file is a JSON `BlueprintGraph`; compile it to Lua here
-        // so the rest of the pipeline (props, on_ready/on_update) treats it like
-        // any other Lua script. This is the "blueprint compiles into scripting"
-        // path — drop a `.blueprint` on a Script component and Play runs it.
-        let source = compile_blueprint_source(path, source);
-
-        // Parse props by running the script in a temporary Lua state
-        let props = self.parse_props(&source);
-
-        let name = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string();
-
-        let last_modified = std::fs::metadata(path)
-            .and_then(|m| m.modified())
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-
-        if let Ok(mut cache) = self.cache.write() {
-            let prev_version = cache.get(path).map(|c| c.version).unwrap_or(0);
-            cache.insert(
-                path.to_path_buf(),
-                CachedScript {
-                    source,
-                    path: path.to_path_buf(),
-                    name,
-                    last_modified,
-                    props,
-                    version: prev_version.wrapping_add(1),
-                },
-            );
-        }
-
-        // Source changed, so any persistent VM running the old chunk is
-        // stale. Drop them so the next call rebuilds against fresh source.
-        self.evict_path(path);
-
-        Ok(())
-    }
-
-    fn parse_props(&self, source: &str) -> Vec<ScriptVariableDefinition> {
-        let lua = self.create_lua();
-        let mut props = Vec::new();
-
-        // Execute the script to define functions
-        if lua.load(source).exec().is_err() {
-            return props;
-        }
-
-        // Call props() if it exists
-        let globals = lua.globals();
-        let props_fn: Result<LuaFunction, _> = globals.get("props");
-        let Ok(func) = props_fn else { return props };
-
-        let result: Result<LuaTable, _> = func.call(());
-        let Ok(table) = result else { return props };
-
-        for pair in table.pairs::<String, LuaValue>() {
-            let Ok((name, value)) = pair else { continue };
-            let display_name = to_display_name(&name);
-
-            // Check if it's a table with "default" or "value" key
-            if let LuaValue::Table(ref prop_table) = value {
-                let default_val = prop_table
-                    .get::<LuaValue>("value")
-                    .or_else(|_| prop_table.get::<LuaValue>("default"));
-
-                if let Ok(ref default_val) = default_val {
-                    if let Some(sv) = lua_to_script_value(default_val) {
-                        let hint: Option<String> = prop_table.get("hint").ok();
-                        let tab: Option<String> = prop_table.get("tab").ok();
-                        let mut def =
-                            ScriptVariableDefinition::new(name, sv).with_display_name(display_name);
-                        if let Some(h) = hint {
-                            def = def.with_hint(h);
-                        }
-                        if let Some(t) = tab {
-                            def = def.with_tab(t);
-                        }
-                        props.push(def);
-                        continue;
-                    }
-                }
-            }
-
-            if let Some(sv) = lua_to_script_value(&value) {
-                props.push(ScriptVariableDefinition::new(name, sv).with_display_name(display_name));
-            }
-        }
-
-        props.sort_by(|a, b| a.name.cmp(&b.name));
-        props
-    }
-
-    /// Ensure this entity's VM for `path` is built and its context globals are
-    /// fresh, then run `invoke` against it. Shared by every lifecycle hook
-    /// (`on_ready`/`on_update`/`on_rpc`) so they all see the same per-frame
-    /// context setup and command draining.
-    fn with_hook_vm<F>(
+    /// Get or build the VM for this script, then run `invoke` against it.
+    fn with_vm<F>(
         &self,
-        path: &Path,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
+        script: &ScriptRef,
+        ctx: &Ctx,
+        reply: &mut ScriptReply,
         invoke: F,
-    ) -> Result<Vec<ScriptCommand>, String>
+    ) -> Result<(), String>
     where
         F: FnOnce(&Lua) -> Result<(), String>,
     {
-        self.load_script(path)?;
-
-        let (source, version) = {
-            let cache = self.cache.read().map_err(|e| e.to_string())?;
-            let cached = cache
-                .get(path)
-                .ok_or_else(|| format!("Script not in cache: {}", path.display()))?;
-            (cached.source.clone(), cached.version)
-        };
-
-        let entity_id = ctx.self_entity_id;
-        let key = (entity_id, path.to_path_buf());
-
+        let key = (script.entity, script.path.to_string());
         let mut instances = self.instances.lock().map_err(|e| e.to_string())?;
 
-        // (Re)build the VM if missing or stale. Otherwise reuse — this is
-        // the whole point of the cache: skip Lua::new + register_api +
-        // source compilation on every frame.
-        let needs_init = match instances.get(&key) {
+        let stale = match instances.get(&key) {
             None => true,
-            Some(inst) => inst.source_version != version,
+            Some(i) => {
+                i.source_version != script.version
+                    || i.bindings_generation != self.bindings_generation
+            }
         };
-        if needs_init {
+        if stale {
             let lua = Lua::new();
             register_api(&lua);
-            if let Some(extensions) = ctx.extensions() {
-                register_bindings(&lua, extensions.bindings());
-            }
-            lua.load(&source)
+            register_bindings(&lua, &self.bindings);
+            lua.load(script.source)
                 .exec()
-                .map_err(|e| format!("Lua error: {}", e))?;
+                .map_err(|e| format!("Lua error: {e}"))?;
             instances.insert(
                 key.clone(),
                 LuaInstance {
                     lua,
-                    source_version: version,
+                    source_version: script.version,
+                    bindings_generation: self.bindings_generation,
                 },
             );
         }
@@ -316,319 +107,215 @@ impl LuaBackend {
             .ok_or_else(|| "Lua instance vanished".to_string())?;
         let lua = &instance.lua;
 
-        // Per-frame: refresh globals before each call. These tables/values are
-        // overwritten in place, so the cost scales with context size, not with
-        // API surface. Extension bindings are built once, with the VM.
-        set_context_globals(lua, ctx, vars);
+        // Per-frame: overwrite the context globals in place, so the cost scales
+        // with context size rather than with API surface.
+        set_context_globals(lua, ctx, script.vars);
 
-        // Drain stale commands so this hook only sees its own output.
+        // Drain anything left over so this hook only sees its own output.
         drain_commands();
+        drain_draws();
 
         invoke(lua)?;
 
-        read_back_variables(lua, vars);
-
-        Ok(drain_commands())
+        reply.vars = read_back_variables(lua, script.vars);
+        reply.commands = drain_commands();
+        reply.draws = drain_draws();
+        Ok(())
     }
 
-    fn execute_hook(
+    /// Call a hook by name, if the script defines it.
+    fn call_hook(
         &self,
-        path: &Path,
+        script: &ScriptRef,
+        ctx: &Ctx,
+        reply: &mut ScriptReply,
         hook: &str,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.with_hook_vm(path, ctx, vars, |lua| {
+        args: impl IntoLuaMulti,
+    ) -> Result<(), String> {
+        self.with_vm(script, ctx, reply, |lua| {
             let globals = lua.globals();
-            if let Ok(func) = globals.get::<LuaFunction>(hook) {
-                func.call::<()>(()).map_err(|e| {
-                    let name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown");
-                    format!("{} {}: {}", name, hook, e)
-                })?;
-            }
-            Ok(())
+            // A script that does not define the hook is the common case, not an
+            // error — most define two of the nine.
+            let Ok(func) = globals.get::<LuaFunction>(hook) else {
+                return Ok(());
+            };
+            func.call::<()>(args).map_err(|e| {
+                let name = script.path.rsplit(['/', '\\']).next().unwrap_or("script");
+                format!("{name} {hook}: {e}")
+            })
         })
     }
-}
 
-impl ScriptBackend for LuaBackend {
-    fn name(&self) -> &str {
-        "Lua"
-    }
+    /// Parse the props a script declares, by running it in a throwaway VM.
+    fn read_props(&self, source: &str) -> Vec<VarDef> {
+        let lua = Lua::new();
+        register_api(&lua);
+        register_bindings(&lua, &self.bindings);
+        let mut props = Vec::new();
 
-    fn extensions(&self) -> &[&str] {
-        // `.blueprint` files are compiled to Lua on load (see `load_script`), so
-        // a blueprint dropped onto a Script component runs through this backend.
-        &["lua", "blueprint", "bp"]
-    }
+        if lua.load(source).exec().is_err() {
+            return props;
+        }
 
-    fn set_scripts_folder(&mut self, path: PathBuf) {
-        self.scripts_folder = Some(path);
-    }
-
-    fn set_file_reader(&mut self, reader: FileReader) {
-        self.file_reader = Some(reader);
-    }
-
-    fn get_available_scripts(&self) -> Vec<(String, PathBuf)> {
-        let Some(folder) = &self.scripts_folder else {
-            return Vec::new();
+        let globals = lua.globals();
+        let Ok(func) = globals.get::<LuaFunction>("props") else {
+            return props;
         };
-        let mut scripts = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(folder) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|e| e == "lua") {
-                    let name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-                    scripts.push((name, path));
+        let Ok(table) = func.call::<LuaTable>(()) else {
+            return props;
+        };
+
+        for pair in table.pairs::<String, LuaValue>() {
+            let Ok((name, value)) = pair else { continue };
+            let display_name = to_display_name(&name);
+
+            // A prop may be a bare value, or a table carrying `default`/`value`
+            // plus optional `hint` and `tab`.
+            if let LuaValue::Table(ref prop_table) = value {
+                let default_val = prop_table
+                    .get::<LuaValue>("value")
+                    .or_else(|_| prop_table.get::<LuaValue>("default"));
+
+                if let Ok(ref default_val) = default_val {
+                    if let Some(sv) = lua_to_script_value(default_val) {
+                        props.push(VarDef {
+                            name,
+                            display_name,
+                            default_value: sv,
+                            hint: prop_table.get("hint").ok(),
+                            tab: prop_table.get("tab").ok(),
+                        });
+                        continue;
+                    }
                 }
             }
-        }
-        scripts
-    }
 
-    fn get_script_props(&self, path: &Path) -> Vec<ScriptVariableDefinition> {
-        let _ = self.load_script(path);
-        let cache = self.cache.read().ok();
-        cache
-            .and_then(|c| c.get(path).map(|s| s.props.clone()))
-            .unwrap_or_default()
-    }
-
-    fn call_on_ready(
-        &self,
-        path: &Path,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.execute_hook(path, "on_ready", ctx, vars)
-    }
-
-    fn call_on_update(
-        &self,
-        path: &Path,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.execute_hook(path, "on_update", ctx, vars)
-    }
-
-    fn call_on_rpc(
-        &self,
-        path: &Path,
-        rpc_name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
-        from: u64,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.with_hook_vm(path, ctx, vars, |lua| {
-            let globals = lua.globals();
-            let Ok(func) = globals.get::<LuaFunction>("on_rpc") else {
-                return Ok(()); // script doesn't handle RPCs — fine
-            };
-            let table = lua.create_table().map_err(|e| e.to_string())?;
-            for (k, v) in args {
-                let lv = action_value_to_lua(lua, v).map_err(|e| e.to_string())?;
-                table.set(k.as_str(), lv).map_err(|e| e.to_string())?;
+            if let Some(sv) = lua_to_script_value(&value) {
+                props.push(VarDef {
+                    name,
+                    display_name,
+                    default_value: sv,
+                    hint: None,
+                    tab: None,
+                });
             }
-            func.call::<()>((rpc_name, table, from)).map_err(|e| {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} on_rpc: {}", name, e)
-            })?;
-            Ok(())
-        })
-    }
-
-    fn call_on_ui(
-        &self,
-        path: &Path,
-        name: &str,
-        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
-        entity_bits: u64,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.with_hook_vm(path, ctx, vars, |lua| {
-            let globals = lua.globals();
-            let Ok(func) = globals.get::<LuaFunction>("on_ui") else {
-                return Ok(()); // script doesn't handle UI callbacks — fine
-            };
-            let table = lua.create_table().map_err(|e| e.to_string())?;
-            for (k, v) in args {
-                let lv = action_value_to_lua(lua, v).map_err(|e| e.to_string())?;
-                table.set(k.as_str(), lv).map_err(|e| e.to_string())?;
-            }
-            func.call::<()>((name, table, entity_bits)).map_err(|e| {
-                let script = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} on_ui: {}", script, e)
-            })?;
-            Ok(())
-        })
-    }
-
-    fn call_on_draw(
-        &self,
-        path: &Path,
-        width: f32,
-        height: f32,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<renzora::DrawCmd>, String> {
-        let mut draws: Vec<renzora::DrawCmd> = Vec::new();
-        // `with_hook_vm` drains the *command* buffer; the draw buffer is separate,
-        // so we clear it before and drain it after the hook (into `draws`).
-        let _ = self.with_hook_vm(path, ctx, vars, |lua| {
-            let globals = lua.globals();
-            let Ok(func) = globals.get::<LuaFunction>("on_draw") else {
-                return Ok(()); // script doesn't draw — fine
-            };
-            let _ = super::drain_draws(); // discard anything stale
-            let g = build_draw_context(lua, width, height).map_err(|e| e.to_string())?;
-            func.call::<()>((g,)).map_err(|e| {
-                let script = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} on_draw: {}", script, e)
-            })?;
-            draws = super::drain_draws();
-            Ok(())
-        })?;
-        Ok(draws)
-    }
-
-    fn call_on_animation_event(
-        &self,
-        path: &Path,
-        name: &str,
-        entity_bits: u64,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.with_hook_vm(path, ctx, vars, |lua| {
-            let globals = lua.globals();
-            let Ok(func) = globals.get::<LuaFunction>("on_animation_event") else {
-                return Ok(()); // script doesn't handle animation events — fine
-            };
-            func.call::<()>((name, entity_bits)).map_err(|e| {
-                let script = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} on_animation_event: {}", script, e)
-            })?;
-            Ok(())
-        })
-    }
-
-    fn call_on_http(
-        &self,
-        path: &Path,
-        callback: &str,
-        status: u16,
-        body: &str,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        self.with_hook_vm(path, ctx, vars, |lua| {
-            let globals = lua.globals();
-            let Ok(func) = globals.get::<LuaFunction>("on_http") else {
-                return Ok(()); // script doesn't handle HTTP — fine
-            };
-            func.call::<()>((callback, status as i64, body)).map_err(|e| {
-                let script = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} on_http: {}", script, e)
-            })?;
-            Ok(())
-        })
-    }
-
-    fn call_on_player_event(
-        &self,
-        path: &Path,
-        id: u64,
-        joined: bool,
-        ctx: &mut ScriptContext,
-        vars: &mut ScriptVariables,
-    ) -> Result<Vec<ScriptCommand>, String> {
-        let hook = if joined { "on_player_joined" } else { "on_player_left" };
-        self.with_hook_vm(path, ctx, vars, |lua| {
-            let globals = lua.globals();
-            let Ok(func) = globals.get::<LuaFunction>(hook) else {
-                return Ok(()); // script doesn't handle this lifecycle event — fine
-            };
-            func.call::<()>(id).map_err(|e| {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                format!("{} {}: {}", name, hook, e)
-            })?;
-            Ok(())
-        })
-    }
-
-    fn needs_reload(&self, path: &Path) -> bool {
-        let cache = match self.cache.read() {
-            Ok(c) => c,
-            Err(_) => return false,
-        };
-        // Not in cache = never loaded yet, not a "reload" scenario
-        let Some(cached) = cache.get(path) else {
-            return false;
-        };
-        // VFS/rpak scripts don't change at runtime — no reload needed once cached
-        if self.file_reader.is_some() {
-            return false;
         }
-        let Ok(meta) = std::fs::metadata(path) else {
-            return false;
-        };
-        let Ok(modified) = meta.modified() else {
-            return false;
-        };
-        modified != cached.last_modified
+
+        props.sort_by(|a, b| a.name.cmp(&b.name));
+        props
+    }
+}
+
+impl Backend for LuaBackend {
+    const NAME: &'static str = "Lua";
+    // `.blueprint`/`.bp` graphs are compiled to Lua by the host before the
+    // source reaches here — `renzora_blueprint` links Bevy and cannot cross the
+    // boundary — so this backend claims them but only ever sees Lua text.
+    const EXTENSIONS: &'static [&'static str] = &["lua", "blueprint", "bp"];
+
+    fn set_bindings(&mut self, bindings: &[Binding]) {
+        self.bindings = bindings.to_vec();
+        self.bindings_generation = self.bindings_generation.wrapping_add(1);
     }
 
-    fn reload(&self, path: &Path) -> Result<(), String> {
-        if let Ok(mut cache) = self.cache.write() {
-            cache.remove(path);
+    fn props(&mut self, script: &ScriptRef) -> Vec<VarDef> {
+        self.read_props(script.source)
+    }
+
+    fn hook(
+        &mut self,
+        script: &ScriptRef,
+        hook: Hook,
+        ctx: &Ctx,
+        reply: &mut ScriptReply,
+    ) -> Result<(), String> {
+        // Host reads are reachable from inside Lua only through a thread-local,
+        // because those functions were registered when the VM was built and the
+        // call table is valid only now. Scoped so it cannot outlive the call.
+        let _guard = host::enter(ctx.host);
+        let name = hook.fn_name();
+        match hook {
+            Hook::Ready | Hook::Update => self.call_hook(script, ctx, reply, name, ()),
+            Hook::Rpc {
+                name: rpc,
+                from,
+                args,
+            } => self.with_vm(script, ctx, reply, |lua| {
+                let globals = lua.globals();
+                let Ok(func) = globals.get::<LuaFunction>("on_rpc") else {
+                    return Ok(());
+                };
+                let table = args_table(lua, args).map_err(|e| e.to_string())?;
+                func.call::<()>((rpc, table, from))
+                    .map_err(|e| format!("on_rpc: {e}"))
+            }),
+            Hook::Ui {
+                name: ui,
+                entity_bits,
+                args,
+            } => self.with_vm(script, ctx, reply, |lua| {
+                let globals = lua.globals();
+                let Ok(func) = globals.get::<LuaFunction>("on_ui") else {
+                    return Ok(());
+                };
+                let table = args_table(lua, args).map_err(|e| e.to_string())?;
+                func.call::<()>((ui, table, entity_bits))
+                    .map_err(|e| format!("on_ui: {e}"))
+            }),
+            Hook::Draw { width, height } => self.with_vm(script, ctx, reply, |lua| {
+                let globals = lua.globals();
+                let Ok(func) = globals.get::<LuaFunction>("on_draw") else {
+                    return Ok(());
+                };
+                let g = build_draw_context(lua, width, height).map_err(|e| e.to_string())?;
+                func.call::<()>(g).map_err(|e| format!("on_draw: {e}"))
+            }),
+            Hook::AnimationEvent {
+                name: ev,
+                entity_bits,
+            } => self.call_hook(script, ctx, reply, name, (ev, entity_bits)),
+            Hook::Http {
+                callback,
+                status,
+                body,
+            } => self.call_hook(script, ctx, reply, name, (callback, status, body)),
+            Hook::PlayerEvent { id, .. } => self.call_hook(script, ctx, reply, name, id),
         }
-        // Drop any persistent VMs running the old source, otherwise their
-        // cached `on_update` would keep firing the previous chunk.
-        self.evict_path(path);
-        self.load_script(path)
     }
 
-    fn eval_expression(&self, expr: &str) -> Result<String, String> {
-        let lua = self.create_lua();
-        drain_commands();
+    fn eval(&mut self, expr: &str) -> Result<String, String> {
+        let lua = Lua::new();
+        register_api(&lua);
+        register_bindings(&lua, &self.bindings);
         match lua.load(expr).eval::<LuaValue>() {
-            Ok(val) => {
-                let _ = drain_commands();
-                Ok(lua_value_to_string(&val))
-            }
-            Err(e) => Err(format!("{}", e)),
+            Ok(v) => Ok(lua_value_to_string(&v)),
+            Err(e) => Err(format!("{e}")),
+        }
+    }
+
+    /// Drop cached VMs. An empty `path` means any script, and a zero `entity`
+    /// means any entity, so a despawn sends `("", bits)` and a detached script
+    /// sends `(path, bits)`.
+    fn evict(&mut self, path: &str, entity: u64) {
+        if let Ok(mut instances) = self.instances.lock() {
+            instances.retain(|(eid, p), _| {
+                let path_matches = path.is_empty() || p == path;
+                let entity_matches = entity == 0 || *eid == entity;
+                !(path_matches && entity_matches)
+            });
         }
     }
 }
+
+/// Build the Lua table an `on_rpc`/`on_ui` hook receives.
+fn args_table(lua: &Lua, args: &[(String, ActionValue)]) -> LuaResult<LuaTable> {
+    let table = lua.create_table()?;
+    for (k, v) in args {
+        table.set(k.as_str(), action_value_to_lua(lua, v)?)?;
+    }
+    Ok(table)
+}
+
 
 /// Parse a `#RRGGBB` / `#RRGGBBAA` hex string to sRGB `[r,g,b,a]` in 0..1. Anything
 /// unparseable falls back to opaque white so a typo is visible, not invisible.
@@ -657,7 +344,7 @@ fn parse_hex(s: &str) -> [f32; 4] {
 /// with dot syntax (`g.arc(...)`, not `g:arc(...)`) — the functions take no `self`.
 /// Colours are `#hex` strings; the trailing thickness arg is optional.
 fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::Table> {
-    use renzora::DrawCmd;
+    use renzora_plugin::script::DrawCmd;
     let g = lua.create_table()?;
     g.set("width", width)?;
     g.set("height", height)?;
@@ -665,7 +352,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
         "line",
         lua.create_function(
             |_, (x1, y1, x2, y2, color, thickness): (f32, f32, f32, f32, String, Option<f32>)| {
-                super::push_draw(DrawCmd::Line {
+                crate::buffers::push_draw(DrawCmd::Line {
                     x1,
                     y1,
                     x2,
@@ -690,7 +377,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
                 String,
                 Option<f32>,
             )| {
-                super::push_draw(DrawCmd::Arc {
+                crate::buffers::push_draw(DrawCmd::Arc {
                     cx,
                     cy,
                     r,
@@ -706,7 +393,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
     g.set(
         "circle",
         lua.create_function(|_, (cx, cy, r, color): (f32, f32, f32, String)| {
-            super::push_draw(DrawCmd::Circle {
+            crate::buffers::push_draw(DrawCmd::Circle {
                 cx,
                 cy,
                 r,
@@ -718,7 +405,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
     g.set(
         "rect",
         lua.create_function(|_, (x, y, w, h, color): (f32, f32, f32, f32, String)| {
-            super::push_draw(DrawCmd::Rect {
+            crate::buffers::push_draw(DrawCmd::Rect {
                 x,
                 y,
                 w,
@@ -731,7 +418,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
     g.set(
         "text",
         lua.create_function(|_, (x, y, text, size, color): (f32, f32, String, f32, String)| {
-            super::push_draw(DrawCmd::Text {
+            crate::buffers::push_draw(DrawCmd::Text {
                 x,
                 y,
                 text,
@@ -745,7 +432,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
         "triangle",
         lua.create_function(
             |_, (x1, y1, x2, y2, x3, y3, color): (f32, f32, f32, f32, f32, f32, String)| {
-                super::push_draw(DrawCmd::Triangle {
+                crate::buffers::push_draw(DrawCmd::Triangle {
                     x1,
                     y1,
                     x2,
@@ -776,7 +463,7 @@ fn build_draw_context(lua: &Lua, width: f32, height: f32) -> mlua::Result<mlua::
                 for i in 1..(n - 1) {
                     let (xa, ya) = pt(i);
                     let (xb, yb) = pt(i + 1);
-                    super::push_draw(DrawCmd::Triangle {
+                    crate::buffers::push_draw(DrawCmd::Triangle {
                         x1: x0,
                         y1: y0,
                         x2: xa,
@@ -817,7 +504,7 @@ fn register_bindings(lua: &Lua, bindings: &[Binding]) {
             }
             // A binding that will not build is one missing script function, not
             // a reason to abandon the rest of them.
-            Err(e) => log::warn!(
+            Err(e) => renzora_plugin::warn!(
                 "[Scripting] could not build binding `{}`: {}",
                 b.name,
                 e
@@ -899,9 +586,9 @@ fn read_fn(lua: &Lua, b: &Binding, component: &str, field: &str) -> LuaResult<Lu
         let subs: Vec<String> = (0..params.len().max(args.len()))
             .map(|i| arg_string(args.get(i)))
             .collect();
-        let component = crate::extension::substitute(&component, &subs);
-        let field = crate::extension::substitute(&field, &subs);
-        match crate::get_handler::call_get(None, &component, &field) {
+        let component = renzora_plugin::script::substitute(&component, &subs);
+        let field = renzora_plugin::script::substitute(&field, &subs);
+        match host::call_get(None, &component, &field) {
             Some(v) => property_value_to_lua_result(lua, v),
             None => Ok(LuaValue::Nil),
         }
@@ -910,7 +597,7 @@ fn read_fn(lua: &Lua, b: &Binding, component: &str, field: &str) -> LuaResult<Lu
 
 /// Look a key up in the localization table.
 fn translate_fn(lua: &Lua) -> LuaResult<LuaFunction> {
-    lua.create_function(|_, key: String| Ok(renzora::lang::t(&key)))
+    lua.create_function(|_, key: String| Ok(host::translate(&key)))
 }
 
 fn register_api(lua: &Lua) {
@@ -1428,8 +1115,8 @@ fn register_api(lua: &Lua) {
         "get_animation_time",
         lua.create_function(|_, ()| {
             Ok(
-                match crate::get_handler::call_get(None, "AnimatorReadState", "time") {
-                    Some(crate::command::PropertyValue::Float(f)) => f,
+                match host::call_get(None, "AnimatorReadState", "time") {
+                    Some(PropValue::Float(f)) => f,
                     _ => 0.0,
                 },
             )
@@ -1440,8 +1127,8 @@ fn register_api(lua: &Lua) {
         "is_animation_playing",
         lua.create_function(|_, ()| {
             Ok(matches!(
-                crate::get_handler::call_get(None, "AnimatorReadState", "playing"),
-                Some(crate::command::PropertyValue::Bool(true))
+                host::call_get(None, "AnimatorReadState", "playing"),
+                Some(PropValue::Bool(true))
             ))
         })
         .unwrap(),
@@ -1696,7 +1383,7 @@ fn register_api(lua: &Lua) {
             let (component, field) = parse_component_path(&path).ok_or_else(|| {
                 mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
             })?;
-            match crate::get_handler::call_get(None, &component, &field) {
+            match host::call_get(None, &component, &field) {
                 Some(v) => property_value_to_lua_result(lua, v),
                 None => Ok(LuaValue::Nil),
             }
@@ -1711,7 +1398,7 @@ fn register_api(lua: &Lua) {
             let (component, field) = parse_component_path(&path).ok_or_else(|| {
                 mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
             })?;
-            match crate::get_handler::call_get(Some(&entity_name), &component, &field) {
+            match host::call_get(Some(&entity_name), &component, &field) {
                 Some(v) => property_value_to_lua_result(lua, v),
                 None => Ok(LuaValue::Nil),
             }
@@ -1835,7 +1522,7 @@ fn register_api(lua: &Lua) {
             }
             map.push((
                 "__rpc".to_string(),
-                crate::command::ActionValue::String(name),
+                ActionValue::String(name),
             ));
             push_command(ScriptCommand::Action {
                 name: "net_rpc".to_string(),
@@ -1874,7 +1561,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "get_component",
         lua.create_function(|lua, component_type: String| {
-            match crate::get_handler::call_get_component(None, &component_type) {
+            match host::call_get_component(None, &component_type) {
                 Some(fields) => {
                     let t = lua.create_table()?;
                     for (key, val) in fields {
@@ -1894,7 +1581,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "get_component_on",
         lua.create_function(|lua, (entity_name, component_type): (String, String)| {
-            match crate::get_handler::call_get_component(Some(&entity_name), &component_type) {
+            match host::call_get_component(Some(&entity_name), &component_type) {
                 Some(fields) => {
                     let t = lua.create_table()?;
                     for (key, val) in fields {
@@ -1914,7 +1601,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "get_components",
         lua.create_function(|lua, ()| {
-            let names = crate::get_handler::call_get_components(None);
+            let names = host::call_get_components(None);
             let t = lua.create_table()?;
             for (i, name) in names.iter().enumerate() {
                 t.set(i + 1, name.as_str())?;
@@ -1928,7 +1615,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "get_components_on",
         lua.create_function(|lua, entity_name: String| {
-            let names = crate::get_handler::call_get_components(Some(&entity_name));
+            let names = host::call_get_components(Some(&entity_name));
             let t = lua.create_table()?;
             for (i, name) in names.iter().enumerate() {
                 t.set(i + 1, name.as_str())?;
@@ -1942,7 +1629,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "has_component",
         lua.create_function(|_, component_type: String| {
-            Ok(crate::get_handler::call_get_component(None, &component_type).is_some())
+            Ok(host::call_get_component(None, &component_type).is_some())
         })
         .unwrap(),
     );
@@ -1952,7 +1639,7 @@ fn register_api(lua: &Lua) {
         "has_component_on",
         lua.create_function(|_, (entity_name, component_type): (String, String)| {
             Ok(
-                crate::get_handler::call_get_component(Some(&entity_name), &component_type)
+                host::call_get_component(Some(&entity_name), &component_type)
                     .is_some(),
             )
         })
@@ -1980,7 +1667,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "asset_progress",
         lua.create_function(|lua, ()| {
-            let Some(snapshot) = crate::get_handler::call_asset_progress() else {
+            let Some(snapshot) = host::call_asset_progress() else {
                 return Ok(LuaValue::Nil);
             };
             let t = lua.create_table()?;
@@ -2004,7 +1691,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "is_loading",
         lua.create_function(|_, ()| {
-            Ok(crate::get_handler::call_asset_progress()
+            Ok(host::call_asset_progress()
                 .map(|s| s.state == "loading")
                 .unwrap_or(false))
         })
@@ -2015,7 +1702,7 @@ fn register_api(lua: &Lua) {
     let _ = globals.set(
         "is_loaded",
         lua.create_function(|_, ()| {
-            Ok(crate::get_handler::call_asset_progress()
+            Ok(host::call_asset_progress()
                 .map(|s| s.state == "done")
                 .unwrap_or(false))
         })
@@ -2083,102 +1770,99 @@ fn register_fn1(lua: &Lua, globals: &LuaTable, name: &str, f: fn(f32)) {
 // Context marshalling
 // =============================================================================
 
-fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
+fn set_context_globals(lua: &Lua, ctx: &Ctx, vars: &[(String, ScriptValue)]) {
     let g = lua.globals();
+    let frame = ctx.frame;
+    let ent = ctx.entity;
 
     // Time
-    let _ = g.set("delta", ctx.time.delta as f64);
-    let _ = g.set("elapsed", ctx.time.elapsed);
+    let _ = g.set("delta", frame.time.delta as f64);
+    let _ = g.set("elapsed", frame.time.elapsed);
 
-    // Transform
-    let _ = g.set("position_x", ctx.transform.position.x as f64);
-    let _ = g.set("position_y", ctx.transform.position.y as f64);
-    let _ = g.set("position_z", ctx.transform.position.z as f64);
-    let euler = ctx.transform.euler_degrees();
-    let _ = g.set("rotation_x", euler.x as f64);
-    let _ = g.set("rotation_y", euler.y as f64);
-    let _ = g.set("rotation_z", euler.z as f64);
-    let _ = g.set("scale_x", ctx.transform.scale.x as f64);
-    let _ = g.set("scale_y", ctx.transform.scale.y as f64);
-    let _ = g.set("scale_z", ctx.transform.scale.z as f64);
+    // Transform. Rotation comes over as degrees already — see the note on
+    // `EntityContext::rotation_euler` for why the engine converts rather than
+    // each language plugin.
+    let _ = g.set("position_x", ent.position[0] as f64);
+    let _ = g.set("position_y", ent.position[1] as f64);
+    let _ = g.set("position_z", ent.position[2] as f64);
+    let _ = g.set("rotation_x", ent.rotation_euler[0] as f64);
+    let _ = g.set("rotation_y", ent.rotation_euler[1] as f64);
+    let _ = g.set("rotation_z", ent.rotation_euler[2] as f64);
+    let _ = g.set("scale_x", ent.scale[0] as f64);
+    let _ = g.set("scale_y", ent.scale[1] as f64);
+    let _ = g.set("scale_z", ent.scale[2] as f64);
 
     // Input
-    let _ = g.set("input_x", ctx.input_movement.x as f64);
-    let _ = g.set("input_y", ctx.input_movement.y as f64);
-    let _ = g.set("mouse_x", ctx.mouse_position.x as f64);
-    let _ = g.set("mouse_y", ctx.mouse_position.y as f64);
-    let _ = g.set("mouse_delta_x", ctx.mouse_delta.x as f64);
-    let _ = g.set("mouse_delta_y", ctx.mouse_delta.y as f64);
-    let _ = g.set("camera_yaw", ctx.camera_yaw as f64);
+    let _ = g.set("input_x", frame.input_movement[0] as f64);
+    let _ = g.set("input_y", frame.input_movement[1] as f64);
+    let _ = g.set("mouse_x", frame.mouse_position[0] as f64);
+    let _ = g.set("mouse_y", frame.mouse_position[1] as f64);
+    let _ = g.set("mouse_delta_x", frame.mouse_delta[0] as f64);
+    let _ = g.set("mouse_delta_y", frame.mouse_delta[1] as f64);
+    let _ = g.set("camera_yaw", frame.camera_yaw as f64);
 
     // Mouse buttons
-    let _ = g.set("mouse_left", ctx.mouse_buttons_pressed[0]);
-    let _ = g.set("mouse_right", ctx.mouse_buttons_pressed[1]);
-    let _ = g.set("mouse_middle", ctx.mouse_buttons_pressed[2]);
-    let _ = g.set("mouse_left_just_pressed", ctx.mouse_buttons_just_pressed[0]);
+    let _ = g.set("mouse_left", frame.mouse_buttons_pressed[0]);
+    let _ = g.set("mouse_right", frame.mouse_buttons_pressed[1]);
+    let _ = g.set("mouse_middle", frame.mouse_buttons_pressed[2]);
+    let _ = g.set(
+        "mouse_left_just_pressed",
+        frame.mouse_buttons_just_pressed[0],
+    );
     let _ = g.set(
         "mouse_right_just_pressed",
-        ctx.mouse_buttons_just_pressed[1],
+        frame.mouse_buttons_just_pressed[1],
     );
-    let _ = g.set("mouse_scroll", ctx.mouse_scroll as f64);
+    let _ = g.set("mouse_scroll", frame.mouse_scroll as f64);
 
     // Camera state — live scene EV-100 from auto-exposure readback.
-    let _ = g.set("camera_ev", ctx.camera_ev as f64);
+    let _ = g.set("camera_ev", frame.camera_ev as f64);
 
     // Project — configured game resolution (world units). Handy for 2D:
     // centre a follow camera by offsetting half of these (top-left origin).
-    let _ = g.set("project_width", ctx.project_width as f64);
-    let _ = g.set("project_height", ctx.project_height as f64);
+    let _ = g.set("project_width", frame.project_width as f64);
+    let _ = g.set("project_height", frame.project_height as f64);
 
-    // Gamepad
-    let _ = g.set("gamepad_left_x", ctx.gamepad_left_stick.x as f64);
-    let _ = g.set("gamepad_left_y", ctx.gamepad_left_stick.y as f64);
-    let _ = g.set("gamepad_right_x", ctx.gamepad_right_stick.x as f64);
-    let _ = g.set("gamepad_right_y", ctx.gamepad_right_stick.y as f64);
-    let _ = g.set("gamepad_left_trigger", ctx.gamepad_left_trigger as f64);
-    let _ = g.set("gamepad_right_trigger", ctx.gamepad_right_trigger as f64);
-    // Buttons: South(X/A), East(O/B), West(□/X), North(△/Y),
+    // Gamepad. The legacy single-pad globals are the first connected pad; the
+    // engine sends the list and this derives them rather than sending both.
+    let first = frame.gamepads.first();
+    let axis = |f: fn(&GamepadSnapshot) -> f32| first.map(f).unwrap_or(0.0);
+    let _ = g.set("gamepad_left_x", axis(|p| p.left_stick[0]) as f64);
+    let _ = g.set("gamepad_left_y", axis(|p| p.left_stick[1]) as f64);
+    let _ = g.set("gamepad_right_x", axis(|p| p.right_stick[0]) as f64);
+    let _ = g.set("gamepad_right_y", axis(|p| p.right_stick[1]) as f64);
+    let _ = g.set("gamepad_left_trigger", axis(|p| p.left_trigger) as f64);
+    let _ = g.set("gamepad_right_trigger", axis(|p| p.right_trigger) as f64);
+    // Buttons: South(X/A), East(O/B), West(square/X), North(triangle/Y),
     //          L1, R1, L2, R2, Select, Start, L3, R3,
     //          DPadUp, DPadDown, DPadLeft, DPadRight
-    let _ = g.set("gamepad_south", ctx.gamepad_buttons[0]);
-    let _ = g.set("gamepad_east", ctx.gamepad_buttons[1]);
-    let _ = g.set("gamepad_west", ctx.gamepad_buttons[2]);
-    let _ = g.set("gamepad_north", ctx.gamepad_buttons[3]);
-    let _ = g.set("gamepad_l1", ctx.gamepad_buttons[4]);
-    let _ = g.set("gamepad_r1", ctx.gamepad_buttons[5]);
-    let _ = g.set("gamepad_l2", ctx.gamepad_buttons[6]);
-    let _ = g.set("gamepad_r2", ctx.gamepad_buttons[7]);
-    let _ = g.set("gamepad_select", ctx.gamepad_buttons[8]);
-    let _ = g.set("gamepad_start", ctx.gamepad_buttons[9]);
-    let _ = g.set("gamepad_l3", ctx.gamepad_buttons[10]);
-    let _ = g.set("gamepad_r3", ctx.gamepad_buttons[11]);
-    let _ = g.set("gamepad_dpad_up", ctx.gamepad_buttons[12]);
-    let _ = g.set("gamepad_dpad_down", ctx.gamepad_buttons[13]);
-    let _ = g.set("gamepad_dpad_left", ctx.gamepad_buttons[14]);
-    let _ = g.set("gamepad_dpad_right", ctx.gamepad_buttons[15]);
+    let buttons = first.map(|p| p.buttons).unwrap_or([false; 16]);
+    for (i, name) in GAMEPAD_BUTTON_NAMES.iter().enumerate() {
+        let _ = g.set(format!("gamepad_{name}"), buttons[i]);
+    }
 
     // Multi-gamepad: `_gamepads` keyed by stable pad slot id, read through
     // gamepad_count() / gamepad_axis() / gamepad_button() etc.
-    let _ = g.set("_gamepad_count", ctx.gamepads.len() as i64);
+    let _ = g.set("_gamepad_count", frame.gamepads.len() as i64);
     if let Ok(pads) = lua.create_table() {
-        for pad in &ctx.gamepads {
+        for pad in &frame.gamepads {
             let Ok(pad_t) = lua.create_table() else {
                 continue;
             };
-            let _ = pad_t.set("left_x", pad.left_stick.x as f64);
-            let _ = pad_t.set("left_y", pad.left_stick.y as f64);
-            let _ = pad_t.set("right_x", pad.right_stick.x as f64);
-            let _ = pad_t.set("right_y", pad.right_stick.y as f64);
+            let _ = pad_t.set("left_x", pad.left_stick[0] as f64);
+            let _ = pad_t.set("left_y", pad.left_stick[1] as f64);
+            let _ = pad_t.set("right_x", pad.right_stick[0] as f64);
+            let _ = pad_t.set("right_y", pad.right_stick[1] as f64);
             let _ = pad_t.set("left_trigger", pad.left_trigger as f64);
             let _ = pad_t.set("right_trigger", pad.right_trigger as f64);
-            if let Ok(buttons) = lua.create_table() {
-                for (i, name) in crate::context::GAMEPAD_BUTTON_NAMES.iter().enumerate() {
-                    let _ = buttons.set(*name, pad.buttons[i]);
+            if let Ok(bt) = lua.create_table() {
+                for (i, name) in GAMEPAD_BUTTON_NAMES.iter().enumerate() {
+                    let _ = bt.set(*name, pad.buttons[i]);
                 }
-                let _ = pad_t.set("buttons", buttons);
+                let _ = pad_t.set("buttons", bt);
             }
             if let Ok(just) = lua.create_table() {
-                for (i, name) in crate::context::GAMEPAD_BUTTON_NAMES.iter().enumerate() {
+                for (i, name) in GAMEPAD_BUTTON_NAMES.iter().enumerate() {
                     let _ = just.set(*name, pad.buttons_just_pressed[i]);
                 }
                 let _ = pad_t.set("just_pressed", just);
@@ -2189,94 +1873,74 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     }
 
     // Entity
-    let _ = g.set("self_entity_id", ctx.self_entity_id as i64);
-    let _ = g.set("self_entity_name", ctx.self_entity_name.clone());
+    let _ = g.set("self_entity_id", ent.entity_id as i64);
+    let _ = g.set("self_entity_name", ent.name.clone());
 
     // Network status (read via net_is_server() / net_is_connected() / etc.)
-    let _ = g.set("_net_is_server", ctx.net_is_server);
-    let _ = g.set("_net_is_connected", ctx.net_is_connected);
-    let _ = g.set("_net_player_count", ctx.net_player_count);
+    let _ = g.set("_net_is_server", frame.net_is_server);
+    let _ = g.set("_net_is_connected", frame.net_is_connected);
+    let _ = g.set("_net_player_count", frame.net_player_count);
 
-    // Keyboard maps
-    if let Ok(keys_table) = lua.create_table() {
-        for (key, &pressed) in &ctx.keys_pressed {
-            let _ = keys_table.set(key.clone(), pressed);
+    // Keyboard maps. The boundary carries only the keys that are down, so a
+    // lookup that misses reads `nil` — which is falsey in Lua, exactly as the
+    // `false` entries the old dense map carried were.
+    let set_flags = |name: &str, names: &[String]| {
+        if let Ok(t) = lua.create_table() {
+            for k in names {
+                let _ = t.set(k.as_str(), true);
+            }
+            let _ = g.set(name, t);
         }
-        let _ = g.set("_keys_pressed", keys_table);
-    }
-    if let Ok(keys_table) = lua.create_table() {
-        for (key, &pressed) in &ctx.keys_just_pressed {
-            let _ = keys_table.set(key.clone(), pressed);
-        }
-        let _ = g.set("_keys_just_pressed", keys_table);
-    }
-    if let Ok(keys_table) = lua.create_table() {
-        for (key, &released) in &ctx.keys_just_released {
-            let _ = keys_table.set(key.clone(), released);
-        }
-        let _ = g.set("_keys_just_released", keys_table);
-    }
+    };
+    set_flags("_keys_pressed", &frame.keys_pressed);
+    set_flags("_keys_just_pressed", &frame.keys_just_pressed);
+    set_flags("_keys_just_released", &frame.keys_just_released);
 
     // Action-based input (InputMap). Exposed as _action_* tables keyed by
     // action name; Lua side reads via `input_button_pressed("jump")` etc.
+    set_flags("_action_pressed", &frame.actions_pressed);
+    set_flags("_action_just_pressed", &frame.actions_just_pressed);
+    set_flags("_action_just_released", &frame.actions_just_released);
     if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_pressed {
-            let _ = t.set(k.clone(), v);
-        }
-        let _ = g.set("_action_pressed", t);
-    }
-    if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_just_pressed {
-            let _ = t.set(k.clone(), v);
-        }
-        let _ = g.set("_action_just_pressed", t);
-    }
-    if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_just_released {
-            let _ = t.set(k.clone(), v);
-        }
-        let _ = g.set("_action_just_released", t);
-    }
-    if let Ok(t) = lua.create_table() {
-        for (k, &v) in &ctx.action_axis_1d {
-            let _ = t.set(k.clone(), v as f64);
+        for (k, v) in &frame.action_axis_1d {
+            let _ = t.set(k.as_str(), *v as f64);
         }
         let _ = g.set("_action_axis_1d", t);
     }
     if let Ok(t) = lua.create_table() {
-        for (k, v) in &ctx.action_axis_2d {
+        for (k, v) in &frame.action_axis_2d {
             if let Ok(pair) = lua.create_table() {
-                let _ = pair.set(1, v.x as f64);
-                let _ = pair.set(2, v.y as f64);
-                let _ = t.set(k.clone(), pair);
+                let _ = pair.set(1, v[0] as f64);
+                let _ = pair.set(2, v[1] as f64);
+                let _ = t.set(k.as_str(), pair);
             }
         }
         let _ = g.set("_action_axis_2d", t);
     }
 
     // Collisions
-    let _ = g.set("is_colliding", !ctx.active_collisions.is_empty());
+    let _ = g.set("is_colliding", !ent.active_collisions.is_empty());
 
     // Timers
     if let Ok(t) = lua.create_table() {
-        for (i, name) in ctx.timers_just_finished.iter().enumerate() {
+        for (i, name) in frame.timers_just_finished.iter().enumerate() {
             let _ = t.set(i + 1, name.clone());
         }
         let _ = g.set("timers_finished", t);
     }
 
     // Health
-    let _ = g.set("self_health", ctx.self_health as f64);
-    let _ = g.set("self_max_health", ctx.self_max_health as f64);
+    let _ = g.set("self_health", ent.health as f64);
+    let _ = g.set("self_max_health", ent.max_health as f64);
 
     // Parent
-    let _ = g.set("has_parent", ctx.has_parent);
-    let _ = g.set("parent_position_x", ctx.parent_position.x as f64);
-    let _ = g.set("parent_position_y", ctx.parent_position.y as f64);
-    let _ = g.set("parent_position_z", ctx.parent_position.z as f64);
+    let _ = g.set("has_parent", ent.has_parent);
+    let _ = g.set("parent_position_x", ent.parent_position[0] as f64);
+    let _ = g.set("parent_position_y", ent.parent_position[1] as f64);
+    let _ = g.set("parent_position_z", ent.parent_position[2] as f64);
 
     // Script variables as globals
-    for (key, value) in vars.iter_all() {
+    for (key, value) in vars {
         match value {
             ScriptValue::Float(v) => {
                 let _ = g.set(key.as_str(), *v as f64);
@@ -2287,33 +1951,30 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
             ScriptValue::Bool(v) => {
                 let _ = g.set(key.as_str(), *v);
             }
-            ScriptValue::String(v) => {
-                let _ = g.set(key.as_str(), v.clone());
-            }
-            ScriptValue::Entity(v) => {
+            ScriptValue::String(v) | ScriptValue::Entity(v) => {
                 let _ = g.set(key.as_str(), v.clone());
             }
             ScriptValue::Vec2(v) => {
                 if let Ok(t) = lua.create_table() {
-                    let _ = t.set("x", v.x as f64);
-                    let _ = t.set("y", v.y as f64);
+                    let _ = t.set("x", v[0] as f64);
+                    let _ = t.set("y", v[1] as f64);
                     let _ = g.set(key.as_str(), t);
                 }
             }
             ScriptValue::Vec3(v) => {
                 if let Ok(t) = lua.create_table() {
-                    let _ = t.set("x", v.x as f64);
-                    let _ = t.set("y", v.y as f64);
-                    let _ = t.set("z", v.z as f64);
+                    let _ = t.set("x", v[0] as f64);
+                    let _ = t.set("y", v[1] as f64);
+                    let _ = t.set("z", v[2] as f64);
                     let _ = g.set(key.as_str(), t);
                 }
             }
             ScriptValue::Color(v) => {
                 if let Ok(t) = lua.create_table() {
-                    let _ = t.set("r", v.x as f64);
-                    let _ = t.set("g", v.y as f64);
-                    let _ = t.set("b", v.z as f64);
-                    let _ = t.set("a", v.w as f64);
+                    let _ = t.set("r", v[0] as f64);
+                    let _ = t.set("g", v[1] as f64);
+                    let _ = t.set("b", v[2] as f64);
+                    let _ = t.set("a", v[3] as f64);
                     let _ = g.set(key.as_str(), t);
                 }
             }
@@ -2321,9 +1982,25 @@ fn set_context_globals(lua: &Lua, ctx: &ScriptContext, vars: &ScriptVariables) {
     }
 }
 
-/// Recursively convert a `serde_json::Value` into a Lua value. Objects and
-/// arrays become tables (arrays 1-indexed, Lua convention). Avoids needing
-/// mlua's `serialize` feature.
+/// Read the script's prop globals back out after a hook.
+///
+/// Only the names the inspector already knows are read back — a script writing
+/// a fresh global is not silently promoted to a prop, which is what the engine
+/// did before the move and what keeps the inspector's row list stable.
+fn read_back_variables(lua: &Lua, vars: &[(String, ScriptValue)]) -> Vec<(String, ScriptValue)> {
+    let g = lua.globals();
+    let mut out = Vec::with_capacity(vars.len());
+    for (name, _) in vars {
+        if let Ok(value) = g.get::<LuaValue>(name.as_str()) {
+            if let Some(sv) = lua_to_script_value(&value) {
+                out.push((name.clone(), sv));
+            }
+        }
+    }
+    out
+}
+
+/// Turn a decoded JSON value into a Lua one, for `json_decode`.
 fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> mlua::Result<LuaValue> {
     use serde_json::Value as J;
     match value {
@@ -2354,18 +2031,6 @@ fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> mlua::Result<LuaValue> {
     }
 }
 
-fn read_back_variables(lua: &Lua, vars: &mut ScriptVariables) {
-    let g = lua.globals();
-    let var_names: Vec<String> = vars.iter_all().map(|(k, _)| k.clone()).collect();
-    for name in &var_names {
-        if let Ok(value) = g.get::<LuaValue>(name.as_str()) {
-            if let Some(sv) = lua_to_script_value(&value) {
-                vars.set(name.clone(), sv);
-            }
-        }
-    }
-}
-
 fn lua_to_script_value(value: &LuaValue) -> Option<ScriptValue> {
     match value {
         LuaValue::Number(n) => Some(ScriptValue::Float(*n as f32)),
@@ -2376,20 +2041,14 @@ fn lua_to_script_value(value: &LuaValue) -> Option<ScriptValue> {
             // Check for vec2/vec3/color
             if let (Ok(x), Ok(y)) = (t.get::<f64>("x"), t.get::<f64>("y")) {
                 if let Ok(z) = t.get::<f64>("z") {
-                    return Some(ScriptValue::Vec3(bevy::prelude::Vec3::new(
-                        x as f32, y as f32, z as f32,
-                    )));
+                    return Some(ScriptValue::Vec3([x as f32, y as f32, z as f32]));
                 }
-                return Some(ScriptValue::Vec2(bevy::prelude::Vec2::new(
-                    x as f32, y as f32,
-                )));
+                return Some(ScriptValue::Vec2([x as f32, y as f32]));
             }
             if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b"))
             {
                 let a: f64 = t.get("a").unwrap_or(1.0);
-                return Some(ScriptValue::Color(bevy::prelude::Vec4::new(
-                    r as f32, g as f32, b as f32, a as f32,
-                )));
+                return Some(ScriptValue::Color([r as f32, g as f32, b as f32, a as f32]));
             }
             None
         }
@@ -2420,8 +2079,8 @@ fn parse_component_path(path: &str) -> Option<(String, String)> {
 }
 
 /// Convert a Lua value to PropertyValue for reflection writes.
-fn lua_to_property_value(value: &LuaValue) -> crate::command::PropValue {
-    use crate::command::PropValue as PropertyValue;
+fn lua_to_property_value(value: &LuaValue) -> PropValue {
+    use renzora_plugin::script::PropValue as PropertyValue;
     match value {
         LuaValue::Number(n) => PropertyValue::Float(*n as f32),
         LuaValue::Integer(n) => PropertyValue::Int(*n),
@@ -2457,9 +2116,9 @@ fn lua_to_property_value(value: &LuaValue) -> crate::command::PropValue {
 /// Convert a PropertyValue to a Lua value (requires Lua context for strings/tables).
 fn property_value_to_lua_result(
     lua: &Lua,
-    value: crate::command::PropertyValue,
+    value: PropValue,
 ) -> LuaResult<LuaValue> {
-    use crate::command::PropertyValue;
+    use renzora_plugin::script::PropValue as PropertyValue;
     match value {
         PropertyValue::Float(v) => Ok(LuaValue::Number(v as f64)),
         PropertyValue::Int(v) => Ok(LuaValue::Integer(v)),
@@ -2485,8 +2144,8 @@ fn property_value_to_lua_result(
 
 /// Convert a `ScriptActionValue` back into a Lua value, for handing RPC args
 /// to `on_rpc(name, args)`. Inverse of [`lua_to_action_value`].
-fn action_value_to_lua(lua: &Lua, value: &renzora::ScriptActionValue) -> LuaResult<LuaValue> {
-    use renzora::ScriptActionValue;
+fn action_value_to_lua(lua: &Lua, value: &ActionValue) -> LuaResult<LuaValue> {
+    use ActionValue as ScriptActionValue;
     match value {
         ScriptActionValue::Float(v) => Ok(LuaValue::Number(*v as f64)),
         ScriptActionValue::Int(v) => Ok(LuaValue::Integer(*v)),
@@ -2503,8 +2162,8 @@ fn action_value_to_lua(lua: &Lua, value: &renzora::ScriptActionValue) -> LuaResu
 }
 
 /// Extract a string argument from a LuaMultiValue by index.
-fn lua_to_action_value(value: &LuaValue) -> crate::command::ActionValue {
-    use crate::command::ActionValue as ScriptActionValue;
+fn lua_to_action_value(value: &LuaValue) -> ActionValue {
+    use ActionValue as ScriptActionValue;
     match value {
         LuaValue::Number(n) => ScriptActionValue::Float(*n as f32),
         LuaValue::Integer(n) => ScriptActionValue::Int(*n),
