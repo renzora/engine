@@ -3022,6 +3022,40 @@ impl App {
         }
         self
     }
+
+    /// Register a scripting language.
+    ///
+    /// The descriptor comes from the `script_backend!` macro, which owns the
+    /// entry point's state — see [`crate::script`]. The extension array it
+    /// returns alongside must stay alive across this call, which is why the two
+    /// travel together rather than the macro handing back a bare descriptor
+    /// pointing at a temporary.
+    ///
+    /// ```ignore
+    /// renzora_plugin::script_backend!(LuaBackend);
+    ///
+    /// impl Plugin for LuaPlugin {
+    ///     fn build(&self, app: &mut App) {
+    ///         app.add_script_backend(script_backend::desc());
+    ///     }
+    /// }
+    /// ```
+    #[cfg(feature = "script")]
+    pub fn add_script_backend(
+        &mut self,
+        backend: (sys::ScriptBackendDesc, Vec<sys::Str256>),
+    ) -> &mut Self {
+        let (desc, extensions) = backend;
+        // SAFETY: `extensions` is alive for this whole function, `desc` points
+        // into it, and the host copies both name and extensions before
+        // returning.
+        let status = unsafe { ((*self.ctx.iface).add_script_backend)(self.ctx.host, &desc) };
+        drop(extensions);
+        if status != sys::RegisterStatus::Ok && self.rejected.is_none() {
+            self.rejected = Some(status);
+        }
+        self
+    }
 }
 
 /// An editor panel, before registration.

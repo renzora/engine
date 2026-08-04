@@ -233,6 +233,12 @@ pub fn retire_slot(world: &mut World, slot: usize) {
     if let Some(mut mats) = world.get_resource_mut::<PendingMaterials>() {
         mats.0.retain(|m| m.owner != slot);
     }
+    // A retired backend's `entry` points into a library about to be unmapped.
+    // Leaving it registered would turn the next `on_update` into a call through
+    // a dangling function pointer, so this one is not merely tidy.
+    if let Some(mut backends) = world.get_resource_mut::<PluginScriptBackends>() {
+        backends.0.retain(|b| b.owner != slot);
+    }
 
     // GPU assets are the one thing that leaks visibly if this is skipped: a
     // reloaded plugin creates a fresh mesh and material every cycle, and
@@ -372,6 +378,7 @@ static IFACE: sys::Interface = sys::Interface {
     // matters because a plugin may read it at any point during its init.
     prefix_hashes: sys::INTERFACE_PREFIX_HASHES.as_ptr(),
     prefix_count: sys::INTERFACE_PREFIX_HASHES.len(),
+    add_script_backend,
 };
 
 
@@ -711,6 +718,76 @@ unsafe extern "C" fn add_panel(
             markup: desc.markup.as_str().to_string(),
             on_action: desc.on_action,
             user: desc.user as usize,
+        });
+        sys::RegisterStatus::Ok
+    })
+}
+
+unsafe extern "C" fn add_script_backend(
+    host: *mut sys::Host,
+    desc: *const sys::ScriptBackendDesc,
+) -> sys::RegisterStatus {
+    guard_host("add_script_backend", sys::RegisterStatus::Invalid, || {
+        if desc.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let desc = &*desc;
+        let name = desc.name.as_str().to_string();
+        if name.is_empty() {
+            error!("plugin registered a script backend with no name");
+            return sys::RegisterStatus::Invalid;
+        }
+        if desc.extensions.is_null() || desc.extension_count == 0 {
+            error!("script backend `{name}` claims no file extensions, so nothing would route to it");
+            return sys::RegisterStatus::Invalid;
+        }
+
+        // Copy now. The descriptor may point at a plugin stack local, and it
+        // certainly points at plugin memory that a hot reload would unmap.
+        let raw = std::slice::from_raw_parts(desc.extensions, desc.extension_count);
+        let extensions: Vec<String> = raw
+            .iter()
+            .map(|e| e.as_str().trim_start_matches('.').to_ascii_lowercase())
+            .filter(|e| !e.is_empty())
+            .collect();
+        if extensions.is_empty() {
+            error!("script backend `{name}` claims only empty file extensions");
+            return sys::RegisterStatus::Invalid;
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let owner = ctx.slot;
+        let mut backends = ctx
+            .world
+            .get_resource_or_insert_with(PluginScriptBackends::default);
+
+        // First claim wins. Two backends fighting over `.lua` would make which
+        // interpreter runs a script depend on plugin load order, which is
+        // directory iteration order — so the same project would behave
+        // differently on two machines.
+        let taken: Vec<&str> = extensions
+            .iter()
+            .filter(|e| backends.0.iter().any(|b| b.extensions.contains(e)))
+            .map(String::as_str)
+            .collect();
+        if !taken.is_empty() {
+            error!(
+                "script backend `{name}` claims .{} which another backend already handles — \
+                 it is ignored",
+                taken.join(", .")
+            );
+            return sys::RegisterStatus::Invalid;
+        }
+
+        info!(
+            "[scripting] backend `{name}` handles .{}",
+            extensions.join(", .")
+        );
+        backends.0.push(PluginScriptBackend {
+            name,
+            extensions,
+            entry: desc.entry,
+            owner,
         });
         sys::RegisterStatus::Ok
     })
@@ -1964,6 +2041,29 @@ pub struct PluginPanel {
 /// Every panel registered by every loaded plugin.
 #[derive(Resource, Default)]
 pub struct PluginPanels(pub Vec<PluginPanel>);
+
+/// A scripting language a plugin registered.
+///
+/// The strings are copied out of plugin memory at registration, so this
+/// outlives the descriptor the plugin passed — which may well have been a
+/// stack local.
+pub struct PluginScriptBackend {
+    /// Human-readable, for logs and the language picker.
+    pub name: String,
+    /// Extensions claimed, lowercased and without the dot.
+    pub extensions: Vec<String>,
+    pub entry: sys::ScriptEntry,
+    /// Registering plugin slot — see [`retire_slot`].
+    pub owner: usize,
+}
+
+/// Every scripting language registered by every loaded plugin.
+///
+/// `renzora_scripting` drains this into its own `ScriptEngine`, which is what
+/// keeps this crate from needing to know what a script *is*. All it holds is a
+/// name, some extensions and a function pointer.
+#[derive(Resource, Default)]
+pub struct PluginScriptBackends(pub Vec<PluginScriptBackend>);
 
 /// Turns BSN source into entities.
 ///

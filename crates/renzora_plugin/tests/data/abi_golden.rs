@@ -465,6 +465,7 @@ const GOLDEN: &[Golden] = &[
             "add_image: unsafe extern \"C\" fn( host: *mut Host, desc: *const ImageDesc, ) -> AssetHandle",
             "prefix_hashes: *const u64",
             "prefix_count: usize",
+            "add_script_backend: unsafe extern \"C\" fn(host: *mut Host, desc: *const ScriptBackendDesc) -> RegisterStatus",
         ],
     },
     Golden {
@@ -521,6 +522,76 @@ const GOLDEN: &[Golden] = &[
         name: "InitResult",
         fields: &[
             "0: i32",
+        ],
+    },
+    Golden {
+        name: "ScriptOp",
+        fields: &[
+            "0: u32",
+        ],
+    },
+    Golden {
+        name: "ScriptStatus",
+        fields: &[
+            "0: i32",
+        ],
+    },
+    Golden {
+        name: "BlobRef",
+        fields: &[
+            "ptr: *const u8",
+            "len: usize",
+        ],
+    },
+    Golden {
+        name: "ByteSink",
+        fields: &[
+            "ctx: *mut c_void",
+            "write: unsafe extern \"C\" fn(ctx: *mut c_void, bytes: *const u8, len: usize)",
+        ],
+    },
+    Golden {
+        name: "ScriptHostCalls",
+        fields: &[
+            "ctx: *mut c_void",
+            "get: unsafe extern \"C\" fn( ctx: *mut c_void, entity: StrRef, component: StrRef, field: StrRef, reply: *const ByteSink, )",
+            "get_component: unsafe extern \"C\" fn( ctx: *mut c_void, entity: StrRef, component: StrRef, reply: *const ByteSink, )",
+            "get_components: unsafe extern \"C\" fn(ctx: *mut c_void, entity: StrRef, reply: *const ByteSink)",
+            "asset_progress: unsafe extern \"C\" fn(ctx: *mut c_void, reply: *const ByteSink)",
+            "translate: unsafe extern \"C\" fn(ctx: *mut c_void, key: StrRef, reply: *const ByteSink)",
+        ],
+    },
+    Golden {
+        name: "ScriptCall",
+        fields: &[
+            "op: ScriptOp",
+            "_pad: u32",
+            "path: StrRef",
+            "source: StrRef",
+            "version: u64",
+            "entity: u64",
+            "frame_seq: u64",
+            "frame: BlobRef",
+            "entity_ctx: BlobRef",
+            "args: BlobRef",
+            "vars: BlobRef",
+            "out: *const ByteSink",
+            "host: *const ScriptHostCalls",
+        ],
+    },
+    Golden {
+        name: "ScriptEntry",
+        fields: &[
+            "= unsafe extern \"C\" fn(call: *const ScriptCall) -> ScriptStatus",
+        ],
+    },
+    Golden {
+        name: "ScriptBackendDesc",
+        fields: &[
+            "name: Str256",
+            "extensions: *const Str256",
+            "extension_count: usize",
+            "entry: ScriptEntry",
         ],
     },
 ];
