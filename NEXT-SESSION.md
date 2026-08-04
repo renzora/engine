@@ -1,9 +1,14 @@
 # Next session — plan and state
 
-Branch: `plugin-abi`. Two commits pushed:
+Branch: `plugin-abi`. Seven commits:
 
 - `e304191f` feat(build): statically link Bevy; split the editor into its own binary
 - `7a802449` refactor(scripting): remove the Rhai backend
+- `3ebcea18` feat(script): the language-backend boundary, behind a `script` feature
+- `d72555fb` feat(script): register a language backend through the ABI (MINOR 3)
+- `af7315d4` refactor(script): share one command enum; make extensions declarative
+- `d2400344` feat(script): drive a language plugin through the ScriptBackend trait
+- `ab87f550` feat(lua): move the interpreter into plugins/lua
 
 **Nothing here has been run.** Everything is verified to compile, with
 `cargo tree` confirming the structural properties. The engine has not been
@@ -80,63 +85,68 @@ the earlier cdylib conversion.
 
 ---
 
-## 2. Lua → C-ABI plugin
+## 2. Lua -> C-ABI plugin - **DONE**
 
-**Why:** Lua doesn't need Bevy. Moving the interpreter into a plugin makes
-scripting optional per game, swappable, and removes mlua's vendored C build
-from the engine. `backend.rs` (161 lines) stops being "which interpreter is
-compiled in" and becomes **the contract a scripting plugin implements** — so a
-third-party Wren or Python backend needs no engine change.
+Landed as five commits on `plugin-abi`. **Still unlaunched** - everything below
+is verified to compile and unit-test, nothing has been run.
 
-**The split:**
+The shape that shipped: the scripting *system* stays statically linked (hooks,
+the 115-command vocabulary, the context, the apply queue) and the *interpreter*
+moved to `plugins/lua`. `backend.rs` is the contract a scripting plugin
+implements, so a Wren or Python backend needs no engine change.
 
-```
-INTERPRETER — no Bevy, moves to plugins/lua/
-  backends/lua.rs        2,423
+- `crates/renzora_plugin/src/script/` - the boundary. Hand-rolled codec (the
+  guest side must stay dependency-free), compiled into both sides so there is
+  one encoder and nothing to drift. 40 unit tests, including a round trip of
+  every one of the 115 command variants.
+- `sys::Interface` gained `add_script_backend` - MINOR 2 -> 3. The only domain
+  that needed a table entry, because it is the only one where the host calls
+  *into* the plugin.
+- `crates/renzora_scripting/src/plugin_backend.rs` - the engine side.
+- `plugins/lua/` - the interpreter, tracked as a rename so history follows it.
 
-BEVY GLUE — stays or dissolves                ~5,100 across 8 files
-  systems/execution.rs     804   command.rs    560
-  systems/commands.rs      651   engine.rs     498
-  context.rs               402   plugin.rs     328
-  component.rs             246   backend.rs    161
-```
+**The `ScriptExtension` "blocker" was half dead code.** All five implementations
+were the same four lines (pack args, fire an action), and `populate_context` /
+`setup_lua_context` / `ExtensionData` were empty stubs nobody read. The trait is
+now declarative, so **mlua is gone from `renzora_physics`, `_animation`,
+`_navmesh`, `_ragdoll` and `_lang`**, and a second language inherits every
+binding for free.
 
-**Two things make this tractable:**
+**Decisions that were open, now settled:**
 
-1. Scripts already never touch the World. `command.rs` + `systems/commands.rs`
-   are a command queue — scripts enqueue, a Bevy system applies. That is the
-   same shape the C-ABI uses for crossing a boundary, so this is swapping a
-   bespoke queue for the existing one, not adding an indirection.
-2. `renzora_scripting` already depends on `renzora_plugin` with `host` + `http`.
+- **Hooks are op codes, not one function pointer each.** Adding a tenth hook is
+  therefore *not* an ABI change - a plugin that does not know an op returns
+  `UnknownOp` and the host treats it as an undefined hook. The doc's worry about
+  freezing the set at eight does not apply.
+- **Two backends can coexist**, routed by file extension, which `ScriptEngine`
+  already did. Two claiming the *same* extension is refused - first wins - since
+  otherwise the choice would depend on directory iteration order.
+- **The host keeps file I/O.** A plugin gets `source` + `version` and never
+  opens a path, or rpak-backed exports would break. Blueprint compilation also
+  stays host-side: `renzora_blueprint` links Bevy.
 
-**The blocker: `ScriptExtension`.** With Rhai gone, 5 crates register domain
-functions directly into the Lua state — `renzora`, `renzora_animation`,
-`renzora_lang`, `renzora_navmesh`, `renzora_physics`, `renzora_ragdoll`. With
-the interpreter behind an ABI they must register into the **C-ABI** instead,
-and the scripting plugin binds script names → C-ABI calls.
+**Per-frame cost:** the context splits frame-global from per-entity, encoded and
+decoded once per frame via `frame_seq`. Note this bounds what the *boundary*
+adds; `execution.rs` still clones the named-entity map and the key/action tables
+per scripted entity, which predates all of this. Removing those is now possible
+and is the obvious follow-up.
 
-That is the real work, and it is the right direction: the C-ABI becomes the
-single engine API surface with Lua as one consumer, rather than two parallel
-ways to call into the engine.
+**Fixed in passing:** `LuaBackend::evict_entity` existed and nothing ever called
+it, so the VM map grew for the life of the process. `ScriptBackend::evict` plus a
+`RemovedComponents` system makes it reachable.
 
-**Decide explicitly:**
+**What to check when you launch:**
 
-- **Which side owns the hooks.** `on_ready`, `on_update`, `on_rpc`, `on_ui`,
-  `on_animation_event`, `on_http`, `on_player_joined`, `on_player_left` become
-  the backend contract — adding a ninth later is an ABI change. Fix the set
-  deliberately rather than inheriting it.
-- **Can a game load two backends?** Two entities, one `.lua` and one `.wren` —
-  does `ScriptComponent` dispatch by extension to whichever backend claimed it?
-  That is the natural design but needs a registry of "which backend handles
-  `.lua`" rather than a compile-time choice.
-
-**Verify before committing:** that per-frame `on_update` across many entities
-stays cheap when it crosses the ABI. Encouraging sign — `plugins/locomotion`'s
-doc comment notes `AnimState` arrives as an ordinary query cell so a per-frame
-check "makes no calls back into the engine at all", i.e. the ABI already has a
-design for avoiding per-call crossings on reads.
-
----
+1. `cargo renzora dist` builds `plugins/lua` automatically (xtask iterates
+   `plugins/*`). Confirm `lua.dll` lands in `dist/windows-x64/plugins/`.
+2. Boot log: `[scripting] backend `Lua` handles .lua, .blueprint, .bp` then
+   `[scripting] adopting `Lua``. Absent = the plugin did not load.
+3. A script that moves something, reads `get(...)`, calls `apply_force`, and
+   declares a prop - those exercise commands, host reads, declared bindings and
+   the inspector round trip respectively.
+4. Hot reload: edit a running script, confirm the VM rebuilds.
+5. `docker/build-all.sh` does **not** build standalone plugins at all - see §3.
+   Only the xtask path stages them.
 
 ## 3. Finish the migration's loose ends
 
