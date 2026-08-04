@@ -233,10 +233,19 @@ pub fn run_scripts(world: &mut World) {
         .get_resource::<bevy::diagnostic::FrameCount>()
         .map(|f| f.0 as u64)
         .unwrap_or(0);
+    // Read the real fixed timestep rather than assuming one. This was hardcoded
+    // to 1/60, which is not even Bevy's default — that is 1/64 (15625us) — so a
+    // script integrating against `fixed_delta` was off by ~7% before anyone
+    // touched the setting, and would not have followed a project that changed it
+    // at all.
+    let fixed_delta = world
+        .get_resource::<Time<bevy::time::Fixed>>()
+        .map(|t| t.delta_secs())
+        .unwrap_or_else(|| Time::<bevy::time::Fixed>::default().delta_secs());
     let script_time = ScriptTime {
         elapsed: time_elapsed,
         delta: time_delta,
-        fixed_delta: 1.0 / 60.0,
+        fixed_delta,
         frame_count,
     };
 
