@@ -124,7 +124,6 @@ pub fn build_lean(
     let ws = sync_export_workspace(workspace_dir, static_plugin_crates, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
-    force_rlib_only(&ws.join("crates").join("renzora").join("Cargo.toml"))?;
     let has_static_plugins =
         wire_static_plugins(&ws.join("crates"), static_plugin_crates, progress)?;
     let mut features = String::from("runtime");
@@ -488,32 +487,6 @@ fn strip_runtime_features(
     Ok(())
 }
 
-/// Rewrite a crate's `[lib] crate-type` to exactly `["rlib"]`. Applied to the
-/// disposable export copy (no restore needed). Used to drop `renzora`'s `dylib`
-/// artifact: in a static build it re-exports all of bevy and would blow the
-/// Windows PE 65535-export cap. Robust to whatever's inside the brackets.
-fn force_rlib_only(manifest: &Path) -> Result<(), String> {
-    let bytes =
-        std::fs::read(manifest).map_err(|e| format!("read {}: {e}", manifest.display()))?;
-    let text = String::from_utf8_lossy(&bytes).into_owned();
-    let key = text
-        .find("crate-type")
-        .ok_or_else(|| format!("no crate-type in {}", manifest.display()))?;
-    let lb = text[key..]
-        .find('[')
-        .map(|i| key + i)
-        .ok_or_else(|| format!("malformed crate-type in {}", manifest.display()))?;
-    let rb = text[lb..]
-        .find(']')
-        .map(|i| lb + i)
-        .ok_or_else(|| format!("malformed crate-type in {}", manifest.display()))?;
-    let patched = format!("{}[\"rlib\"]{}", &text[..lb], &text[rb + 1..]);
-    if patched != text {
-        std::fs::write(manifest, patched.as_bytes())
-            .map_err(|e| format!("patch {}: {e}", manifest.display()))?;
-    }
-    Ok(())
-}
 
 /// Wire the selected distribution plugins into the `renzora_static_plugins`
 /// aggregator (in the export copy) so the lean build links them in (no dlopen).

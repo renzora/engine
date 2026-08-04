@@ -13,7 +13,7 @@ description = "Renzora — types, events, and contracts shared across the engine
 # dylib gets produced for those targets because cargo defaults to rlib
 # when `prefer-dynamic` isn't set on the target.
 [lib]
-crate-type = ["dylib", "rlib"]
+crate-type = ["rlib"]
 
 [features]
 default = []

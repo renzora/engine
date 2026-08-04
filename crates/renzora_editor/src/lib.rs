@@ -44,19 +44,35 @@
 #[cfg(feature = "editor")]
 include!(concat!(env!("OUT_DIR"), "/bundle_reexports.rs"));
 
-// Editor SDK foundation — NOT in the inventory; added explicitly + ordered,
-// exactly as `renzora_runtime::add_editor_plugins` does (lib.rs:509-514).
-// Each inits shared registries (AssetRegistry → editor registries → KeyBindings)
-// that the Editor-scope fan-out reads in its own build().
+/// Install the whole editor into `app`.
+///
+/// Called directly by the `renzora-editor` binary, which links this crate as an
+/// rlib. It replaces the old `plugin_install_scope` FFI door: with Bevy
+/// statically linked there is no second `bevy_dylib` for a loadable bundle to
+/// share, so the editor is a *binary*, not a `dlopen`'d file.
+///
+/// Ordering is load-bearing and matches what `export_plugin_bundle!` did: the
+/// foundation plugins init the shared registries (AssetRegistry → editor
+/// registries → KeyBindings) that every Editor-scope plugin reads inside its own
+/// `build()`. Call this AFTER `add_engine_plugins`, so the editor layers on top
+/// of the runtime foundation.
 #[cfg(feature = "editor")]
-renzora::export_plugin_bundle!(foundation = [
-    renzora_asset_registry::AssetRegistryPlugin,
-    renzora_editor_framework::RenzoraEditorPlugin,
-    renzora_keybindings::KeybindingsPlugin,
-]);
+pub fn install(app: &mut renzora::bevy::app::App) {
+    app.add_plugins(renzora_asset_registry::AssetRegistryPlugin);
+    app.add_plugins(renzora_editor_framework::RenzoraEditorPlugin);
+    app.add_plugins(renzora_keybindings::KeybindingsPlugin);
 
-// `dlopen` without `editor` (no editor crates linked): emit the empty bundle
-// door. `plugin_install_scope` replays an empty Editor-scope fan-out. Not a
-// shipping configuration, but keeps the crate buildable in isolation.
-#[cfg(all(feature = "dlopen", not(feature = "editor")))]
-renzora::export_plugin_bundle!();
+    // Dedup by name, kept from the bundle version. An editor-only crate can end
+    // up linked twice (e.g. a dual-mode crate like `renzora_hanabi` depends on
+    // `renzora_inspector`), running its `add!()` ctor twice and submitting two
+    // entries for one plugin. The install fn pointers differ between linkage
+    // copies, so key on the stable `name` — installing both panics Bevy with
+    // "plugin was already added".
+    let mut seen: std::collections::HashSet<&'static str> = std::collections::HashSet::new();
+    renzora::for_each_static_plugin(renzora::PluginScope::Editor, |plugin| {
+        if !seen.insert(plugin.name) {
+            return;
+        }
+        (plugin.install)(app);
+    });
+}

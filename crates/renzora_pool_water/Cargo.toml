@@ -9,11 +9,10 @@ edition = "2021"
 # unmangled `extern "C"` symbols emitted by `renzora::add!` under
 # the `dlopen` feature.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["editor", "dlopen"]
-dlopen = []
+default = ["editor"]
 editor = ["renzora/editor"]
 
 [dependencies]

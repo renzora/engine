@@ -6,10 +6,10 @@ description = "3D text distribution plugin — renders a string as per-glyph qua
 
 # Distribution plugin: cdylib shipped as .dll/.so/.dylib in plugins/.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["dlopen", "editor"]
+default = ["editor"]
 dlopen = []                 # FFI exports gate — expansion site only
 editor = ["renzora/editor"] # registers the inspector + Add-Entity preset
 

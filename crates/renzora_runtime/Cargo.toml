@@ -17,11 +17,12 @@ toml = "0.8"
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = [
-    "navmesh", "terrain", "spline", "water", "audio", "particles",
-    "animation", "blueprint", "game_ui", "postfx", "sky", "solari",
-    "rhai", "script_http", "physics", "render_3d", "render_2d", "tilemap",
-    "sprite_anim",
+default = ["navmesh", "terrain", "spline", "water", "audio", "particles",
+    "animation", "blueprint", "game_ui", "postfx", "sky", "solari", "rhai",
+    "script_http", "physics", "render_3d", "render_2d", "tilemap",
+    "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll",
+    "light2d", "text3d", "vignette", "forward_decal", "pool_water",
+    "procedural_tree"
 ]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
@@ -72,7 +73,17 @@ script_http = ["renzora_scripting/script_http"]
 # Code gate for the runtime's `bevy::solari` GPU ray-tracing probe. Paired with
 # the root `bevy/bevy_solari` feature by the exporter's Solari capability — both
 # are stripped together, so this stays consistent with whether Solari is built.
-solari = []
+solari = ["dep:renzora_solari"]
+lumen = ["dep:renzora_lumen"]
+cloth = ["dep:renzora_cloth"]
+gaussian_splatting = ["dep:renzora_gaussian_splatting"]
+ragdoll = ["dep:renzora_ragdoll"]
+light2d = ["dep:renzora_light2d"]
+text3d = ["dep:renzora_text3d"]
+vignette = ["dep:renzora_vignette"]
+forward_decal = ["dep:renzora_forward_decal"]
+pool_water = ["dep:renzora_pool_water"]
+procedural_tree = ["dep:renzora_procedural_tree"]
 navmesh = ["dep:renzora_navmesh"]
 particles = ["dep:renzora_hanabi"]
 # 2D tilemap runtime (chunked quad-mesh renderer). Content is 2D, so a pure-3D
@@ -106,6 +117,30 @@ sky = [
 ]
 
 [dependencies]
+# Former dlopen'd distribution plugins, now statically linked.
+#
+# They shipped as cdylibs loaded from `plugins/` and sharing the host's
+# `bevy_dylib`. With Bevy statically linked that is impossible: each would link
+# its own copy of Bevy and therefore its own `World` type, so the loader could
+# only reject them. Linking them in is the alternative that preserves the
+# feature.
+#
+# Optional + in `default`, so behaviour is unchanged for a dev build while the
+# lean exporter can still drop any of them per game (see
+# `renzora_export::capabilities`) — which is what keeps a shipped title from
+# carrying Lumen or gaussian splatting it never uses.
+renzora_lumen = { path = "../renzora_lumen", optional = true }
+renzora_cloth = { path = "../renzora_cloth", optional = true }
+renzora_solari = { path = "../renzora_solari", optional = true }
+renzora_gaussian_splatting = { path = "../renzora_gaussian_splatting", optional = true }
+renzora_ragdoll = { path = "../renzora_ragdoll", optional = true }
+renzora_light2d = { path = "../renzora_light2d", optional = true }
+renzora_text3d = { path = "../renzora_text3d", optional = true }
+renzora_vignette = { path = "../renzora_vignette", optional = true }
+renzora_forward_decal = { path = "../renzora_forward_decal", optional = true }
+renzora_pool_water = { path = "../renzora_pool_water", optional = true }
+renzora_procedural_tree = { path = "../renzora_procedural_tree", optional = true }
+
 bevy = { workspace = true }
 # Used by the runtime startup system to set the primary window's icon from
 # the rpak. Bevy 0.18 doesn't expose a public window-icon API, so we drop

@@ -8,11 +8,10 @@ edition = "2021"
 # startup. Adds an "AI Chat" panel that streams from a local Ollama
 # server — delete the dylib and the editor carries no AI code at all.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["dlopen"]
-dlopen = []
+default = []
 
 [dependencies]
 bevy = { workspace = true }

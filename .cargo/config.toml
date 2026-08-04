@@ -11,16 +11,46 @@
 # pinning rustc, this mirrors the container locally on the host platform; Docker
 # stays the path for cross-platform/release builds.
 renzora = "run --package xtask --"
-runtime = "run --profile dist --bin renzora -- --no-editor"
+# ⚠ These two select a SINGLE package, so they resolve `renzora` without its
+# `editor` feature and recompile ~86 shared packages against the `--workspace`
+# cache (see the note under `dist` below). Fine for an occasional headless
+# server run; if you are switching back and forth, build once with `cargo dist`
+# and launch `target/dist/renzora.exe` directly instead.
+#
+# `--no-editor` is gone from `runtime`: it used to suppress loading the editor
+# bundle dll, and this binary can no longer become the editor at all.
+runtime = "run --profile dist --bin renzora"
 # Dedicated server = the runtime binary launched with `--server`.
 server = "run --profile dist --bin renzora -- --server"
 
 # Build
-# build-editor / build-all: binary + editor bundle + distribution plugins in
-# one --workspace invocation (shared bevy_dylib). build-runtime: the lean game
-# binary only (no bundle, no editor crates — verified via `cargo tree`).
+#
+# `cargo dist` is the everyday one: BOTH executables — `renzora` (the runtime /
+# shipped game) and `renzora-editor` — from ONE invocation. Faster than
+# `build-all` because it stops at the two binaries instead of also building
+# every other workspace target.
+#
+# ── Why every build alias says `--workspace` ───────────────────────────────
+# Cargo resolves features once per invocation, across the packages it selected.
+# A `--workspace` build resolves `renzora` WITH its `editor` feature (the editor
+# package asks for it); selecting one package alone resolves it WITHOUT. Those
+# are different feature sets, so they get different `-C metadata` hashes and
+# therefore different `.rlib` filenames — and ~86 shared packages (bevy,
+# bevy_ecs, wgpu, glam, …) get compiled a SECOND time. Worse, the two
+# invocations then evict each other forever: alternating them recompiles the
+# engine every single time.
+#
+# (Not to be confused with `cargo renzora dist`, which STAGES an already-built
+# tree into dist/<platform>/. This one only compiles + links.)
+#
+# That is exactly what the old `build-runtime = "build --profile dist --bin
+# renzora"` alias did — and it wrote to the same `target/dist/renzora.exe` path
+# as `build-editor`, so the two silently fought over one output file. It has
+# been REMOVED. Building only the runtime is no longer a thing you need: the
+# runtime binary produced by `cargo dist` already contains no editor code,
+# because `renzora_app` does not depend on any editor crate.
+dist = "build --profile dist --workspace --bin renzora --bin renzora-editor"
 build-editor = "build --profile dist --workspace"
-build-runtime = "build --profile dist --bin renzora"
 build-all = "build --profile dist --workspace"
 build-plugins = "build --profile dist --workspace"
 
@@ -79,7 +109,12 @@ build-tvos-sim = "build --profile dist --target aarch64-apple-tvos-sim -p renzor
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
 rustflags = [
-    "-C", "prefer-dynamic",
+    # Statically linking Bevy AND the ~187k lines of editor into one executable
+    # produces a debug PDB well past the 4 GiB that the default 4096-byte page
+    # size can address (`rust-lld: Output data is larger than 4 GiB`). Raising
+    # the page size is the fix lld itself recommends; it costs nothing in the
+    # stripped `dist` profile and only matters for dev builds of the editor.
+    "-C", "link-arg=/pdbpagesize:16384",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",
 ]
@@ -89,7 +124,6 @@ rustflags = [
 [target.aarch64-apple-darwin]
 rustflags = [
     "-C", "link-arg=-Wl,-rpath,@loader_path",
-    "-C", "prefer-dynamic",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",
 ]
@@ -97,7 +131,6 @@ rustflags = [
 [target.x86_64-apple-darwin]
 rustflags = [
     "-C", "link-arg=-Wl,-rpath,@loader_path",
-    "-C", "prefer-dynamic",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",
 ]
@@ -109,7 +142,6 @@ linker = "clang"
 rustflags = [
     "-C", "link-arg=-fuse-ld=/usr/bin/mold",
     "-C", "link-arg=-Wl,-rpath,$ORIGIN",
-    "-C", "prefer-dynamic",
     "--remap-path-prefix=/usr/local/cargo=/cargo",
     "--remap-path-prefix=/app/src=/renzora",
 ]

@@ -23,13 +23,10 @@ build = "build.rs"
 # the dual-mode crates' Runtime/EditorAndRuntime plugins are installed by the
 # host, never by the bundle.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["dlopen", "editor"]
-# `dlopen` makes `export_plugin_bundle!` emit the FFI exports (resolves against
-# THIS crate, the expansion site — same discipline as `renzora::add!`).
-dlopen = []
+default = ["editor"]
 # Mirror of `renzora_runtime`'s `editor` feature: pull every editor-only crate
 # as a static rlib dep + cascade the dual-mode crates' own `editor` sub-feature
 # so their inspector/editor code compiles into this bundle.
@@ -85,6 +82,9 @@ editor = [
     "dep:renzora_test_component",
     "dep:renzora_theme_status",
     "dep:renzora_tutorial",
+    # Former dlopen'd Editor-scope cdylib, now linked (see renzora_runtime).
+    "dep:renzora_tracy",
+    "dep:renzora_ai_chat",
     # Cascade editor sub-features into the dual-mode crates (these arrive as
     # rlibs; this flips on their `editor` code so the panels compile here).
     # renzora_engine is fully split: its editor half is a separate dep crate.
@@ -173,6 +173,8 @@ renzora_sprite_anim_editor = { path = "../renzora_sprite_anim/editor", optional 
 renzora_test_component     = { path = "../renzora_test_component", optional = true }
 renzora_theme_status       = { path = "../renzora_theme_status", optional = true }
 renzora_tutorial           = { path = "../renzora_tutorial", optional = true }
+renzora_tracy              = { path = "../renzora_tracy", optional = true }
+renzora_ai_chat            = { path = "../renzora_ai_chat", optional = true }
 renzora_engine_editor      = { path = "../renzora_engine/editor", optional = true }
 
 # ── Dual-mode crates touched by the `editor` cascade above ───────────────────

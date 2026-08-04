@@ -112,7 +112,7 @@ fn scan_plugins(world: &mut World) {
         return;
     }
     let dir = world.resource::<TemplateManager>().runtime_plugins_dir();
-    let plugins = dynamic_plugin_loader::scan_plugins(&dir);
+    let plugins = renzora_plugin::host::loader::scan_plugins(&dir);
 
     // Pre-select only the plugins a scene actually references, so the export
     // ships just the effects it uses instead of all 50+. A plugin id is the dll
@@ -149,7 +149,7 @@ fn scan_plugins(world: &mut World) {
 /// `.ron` could be read, so the caller falls back to selecting all plugins.
 fn scene_used_plugin_ids(
     root: &std::path::Path,
-    available: &[dynamic_plugin_loader::DynamicPluginInfo],
+    available: &[renzora_plugin::host::loader::PluginInfo],
 ) -> Option<std::collections::HashSet<String>> {
     let needles: Vec<(String, String)> = available
         .iter()

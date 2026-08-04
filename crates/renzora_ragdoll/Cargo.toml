@@ -8,11 +8,10 @@ description = "Skeletal ragdoll physics distribution plugin. Auto-builds Avian r
 # `dynamic_plugin_loader` picks up from the engine's `plugins/` directory at
 # startup, same model as `renzora_cloth`.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["dlopen", "lua", "editor"]
-dlopen = []
+default = ["lua", "editor"]
 lua = ["renzora_scripting/lua", "dep:mlua"]
 # Forwards to `renzora/editor` so `Ragdoll` registers into the Inspector's
 # "Add Component" list. Off in lean exports — the dev/editor build keeps it

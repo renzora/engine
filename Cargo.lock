@@ -3713,15 +3713,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
-name = "dynamic_plugin_loader"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "libloading 0.8.9",
- "renzora",
-]
-
-[[package]]
 name = "earcutr"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7560,7 +7551,6 @@ name = "renzora_app"
 version = "0.2.0"
 dependencies = [
  "bevy",
- "dynamic_plugin_loader",
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "log",
@@ -7881,6 +7871,7 @@ name = "renzora_editor"
 version = "0.1.0"
 dependencies = [
  "renzora",
+ "renzora_ai_chat",
  "renzora_animation",
  "renzora_animation_editor",
  "renzora_antialiasing",
@@ -7976,6 +7967,7 @@ dependencies = [
  "renzora_tilemap_editor",
  "renzora_tonemapping",
  "renzora_tonemapping_editor",
+ "renzora_tracy",
  "renzora_tutorial",
  "renzora_undo",
  "renzora_viewport",
@@ -7984,6 +7976,20 @@ dependencies = [
  "renzora_water",
  "renzora_water_editor",
  "toml 0.8.23",
+]
+
+[[package]]
+name = "renzora_editor_app"
+version = "0.2.0"
+dependencies = [
+ "bevy",
+ "log",
+ "renzora_editor",
+ "renzora_plugin",
+ "renzora_postprocess",
+ "renzora_runtime",
+ "toml 0.8.23",
+ "winres",
 ]
 
 [[package]]
@@ -8098,13 +8104,13 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "bevy",
- "dynamic_plugin_loader",
  "p256",
  "rand_core 0.6.4",
  "rcgen",
  "renzora",
  "renzora_ember",
  "renzora_import",
+ "renzora_plugin",
  "renzora_rpak",
  "rfd",
  "serde",
@@ -8760,35 +8766,46 @@ dependencies = [
  "renzora_auto_exposure",
  "renzora_bloom_effect",
  "renzora_blueprint",
+ "renzora_cloth",
  "renzora_clouds",
  "renzora_distance_fog",
  "renzora_dof",
  "renzora_ember",
  "renzora_engine",
  "renzora_environment_map",
+ "renzora_forward_decal",
+ "renzora_gaussian_splatting",
  "renzora_globals",
  "renzora_hanabi",
  "renzora_input",
  "renzora_lang",
  "renzora_lens_distortion",
+ "renzora_light2d",
  "renzora_lighting",
+ "renzora_lumen",
  "renzora_motion_blur",
  "renzora_navmesh",
  "renzora_network",
  "renzora_night_stars",
  "renzora_oit",
  "renzora_physics",
+ "renzora_pool_water",
  "renzora_postprocess",
+ "renzora_procedural_tree",
+ "renzora_ragdoll",
  "renzora_scripting",
  "renzora_shader",
  "renzora_skybox",
+ "renzora_solari",
  "renzora_spline",
  "renzora_sprite_anim",
  "renzora_ssao",
  "renzora_ssr",
  "renzora_terrain",
+ "renzora_text3d",
  "renzora_tilemap",
  "renzora_tonemapping",
+ "renzora_vignette",
  "renzora_volumetric_fog",
  "renzora_water",
  "renzora_xr",

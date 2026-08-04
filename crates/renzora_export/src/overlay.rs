@@ -96,7 +96,7 @@ pub struct ExportOverlayState {
     /// Background export task (if running).
     pub(crate) active_task: Option<ExportTask>,
     /// Available runtime-compatible plugins (scanned once).
-    pub available_plugins: Vec<dynamic_plugin_loader::DynamicPluginInfo>,
+    pub available_plugins: Vec<renzora_plugin::host::loader::PluginInfo>,
     /// Which plugins are selected for export (by id).
     pub selected_plugins: std::collections::HashSet<String>,
     /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped

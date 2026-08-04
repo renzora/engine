@@ -45,11 +45,19 @@ use renzora_ember::widgets::{
 };
 use renzora_theme::ThemeManager;
 
-type GetFn = fn(&World, Entity) -> Option<FieldValue>;
-type SetFn = fn(&mut World, Entity, FieldValue);
-type Pred = fn(&World, Entity) -> bool;
-type Mutate = fn(&mut World, Entity);
-type SetEnabled = fn(&mut World, Entity, bool);
+// Boxed rather than bare `fn` pointers so a row's accessor can *capture* state.
+// A hand-written `FieldDef` names its component statically and needs no capture,
+// but a reflection-generated row (see [`crate::reflect_source`]) is parameterised
+// by a type path + field path known only at runtime — there is no `fn` pointer
+// that can carry those. `Arc<dyn Fn>` is `Clone + Send + Sync + 'static`, so it
+// still lives in the widget marker Components that drive the edit handlers.
+type GetFn = std::sync::Arc<dyn Fn(&World, Entity) -> Option<FieldValue> + Send + Sync>;
+type SetFn = std::sync::Arc<dyn Fn(&mut World, Entity, FieldValue) + Send + Sync>;
+// Boxed for the same reason as `GetFn`/`SetFn` above: a generated section's
+// remove/enable actions are parameterised by a runtime type path.
+type Pred = std::sync::Arc<dyn Fn(&World, Entity) -> bool + Send + Sync>;
+type Mutate = std::sync::Arc<dyn Fn(&mut World, Entity) + Send + Sync>;
+type SetEnabled = std::sync::Arc<dyn Fn(&mut World, Entity, bool) + Send + Sync>;
 
 /// Apply a field edit through the undo system instead of calling `set_fn`
 /// directly, so every inspector edit is undoable. Captures the pre-edit value
@@ -78,7 +86,7 @@ fn record_field_change(
             field_name: name,
             old,
             new,
-            set_fn,
+            set_fn: set_fn.clone(),
         }),
     );
 }
@@ -125,7 +133,7 @@ impl renzora_undo::UndoCommand for AddComponentCmd {
         (self.add_fn)(world, self.entity);
     }
     fn undo(&mut self, world: &mut World) {
-        if let Some(remove_fn) = self.remove_fn {
+        if let Some(remove_fn) = self.remove_fn.clone() {
             remove_fn(world, self.entity);
         }
     }
@@ -319,6 +327,17 @@ pub fn register_native_inspector(app: &mut App) {
     use renzora_editor_framework::SplashState;
     app.init_resource::<NativeInspectorState>();
     app.init_resource::<InspectorSectionsOpen>();
+    // Reflection-generated sections (see `append_reflected_sections`). Settable
+    // from the environment so the hand-written and generated renderings of the
+    // same component can be compared without a settings-UI round trip:
+    //   RENZORA_REFLECT_INSPECTOR=off   hand-written only (today's behaviour)
+    //                             gaps  generated only where nothing is registered (default)
+    //                             all   generated for every component, alongside
+    app.insert_resource(match std::env::var("RENZORA_REFLECT_INSPECTOR").as_deref() {
+        Ok("gaps") => crate::reflect_source::ReflectInspectorMode::FillGaps,
+        Ok("all") => crate::reflect_source::ReflectInspectorMode::All,
+        _ => crate::reflect_source::ReflectInspectorMode::Off,
+    });
     // Bridge to the timeline editor's per-property keyframe buttons.
     // `init_resource` is idempotent — the timeline editor inits these too, so
     // they exist whichever crate loads first (and stay default when it's absent).
@@ -1118,10 +1137,10 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             .map(|tm| category_rgb(&tm.active_theme, entry.category))
             .unwrap_or(((120, 140, 200), (44, 44, 54)));
         let enable = match (entry.is_enabled_fn, entry.set_enabled_fn) {
-            (Some(g), Some(s)) => Some((g, s)),
+            (Some(g), Some(s)) => Some((std::sync::Arc::new(g) as Pred, std::sync::Arc::new(s) as SetEnabled)),
             _ => None,
         };
-        let enabled_now = enable.map(|(g, _)| g(world, entity)).unwrap_or(true);
+        let enabled_now = enable.as_ref().map(|(g, _)| g(world, entity)).unwrap_or(true);
         // Priority: a registered native bevy_ui drawer > declarative `fields` >
         // placeholder note (component has neither a native drawer nor any fields).
         let native_drawer = native_reg.and_then(|r| r.get(entry.type_id));
@@ -1132,8 +1151,8 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 type_id: entry.type_id,
                 custom: false,
                 native_drawer,
-                remove_fn: entry.remove_fn,
-                enable,
+                remove_fn: entry.remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
+                enable: enable.clone(),
                 enabled_now,
                 header_bg,
                 accent,
@@ -1149,8 +1168,8 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 type_id: entry.type_id,
                 custom: true,
                 native_drawer: None,
-                remove_fn: entry.remove_fn,
-                enable,
+                remove_fn: entry.remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
+                enable: enable.clone(),
                 enabled_now,
                 header_bg,
                 accent,
@@ -1224,17 +1243,19 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 _ => Vec::new(),
             };
             let create_fn = match &f.field_type {
-                FieldType::AssetCreatable { create_fn, .. } => Some(*create_fn),
+                FieldType::AssetCreatable { create_fn, .. } => Some(std::sync::Arc::new(*create_fn) as Mutate),
                 _ => None,
             };
             fields.push(FieldSpec {
                 name: f.name,
                 kind,
-                get_fn: f.get_fn,
-                set_fn: f.set_fn,
+                // A hand-written `FieldDef` still supplies plain fn pointers;
+                // they coerce into the boxed accessor here, at the one seam.
+                get_fn: std::sync::Arc::new(f.get_fn),
+                set_fn: std::sync::Arc::new(f.set_fn),
                 init,
                 extensions,
-                create_fn,
+                create_fn: create_fn.clone(),
             });
         }
         out.push(SectionSpec {
@@ -1243,8 +1264,8 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             type_id: entry.type_id,
             custom: false,
             native_drawer: None,
-            remove_fn: entry.remove_fn,
-            enable,
+            remove_fn: entry.remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
+            enable: enable.clone(),
             enabled_now,
             header_bg,
             accent,
@@ -1253,12 +1274,159 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         });
     }
 
+    append_reflected_sections(world, entity, reg, &mut out);
+
     // Pin the most-edited components to the top in a fixed order — Name,
     // Transform, then Scripts, then Material — so they're always right where you
     // expect regardless of plugin registration order. A stable sort keeps every
     // other component in its original registry order behind them.
     out.sort_by_key(|s| section_priority(s.title));
     out
+}
+
+/// Append sections generated from `bevy_reflect` for components the hand-written
+/// [`InspectorRegistry`] does not cover (or, in `All` mode, for every reflected
+/// component, so a generated section can be compared side by side against the
+/// hand-written one for the same type).
+///
+/// This is the whole point of [`crate::reflect_source`]: the rows below are
+/// produced without any component naming an inspector type, which is what lets a
+/// component crate carry no editor dependency at all.
+fn append_reflected_sections(
+    world: &World,
+    entity: Entity,
+    reg: &InspectorRegistry,
+    out: &mut Vec<SectionSpec>,
+) {
+    let mode = world
+        .get_resource::<crate::reflect_source::ReflectInspectorMode>()
+        .copied()
+        .unwrap_or_default();
+    if mode == crate::reflect_source::ReflectInspectorMode::Off {
+        return;
+    }
+
+    // The hand-written registry keys on a slug (`"transform"`), reflection on a
+    // Rust type name (`Transform`). Match on both the slug and the display name
+    // with separators removed, which is as close as the two vocabularies get —
+    // an over-match only means a component keeps its hand-written section, which
+    // is the safe direction.
+    let mut covered: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if mode == crate::reflect_source::ReflectInspectorMode::FillGaps {
+        for entry in reg.iter() {
+            for key in [entry.type_id, entry.display_name] {
+                let k = key.to_ascii_lowercase().replace([' ', '_', '-'], "");
+                // Register the singular too: entries are named for the panel
+                // ("Scripts") while the type is singular (`ScriptComponent`).
+                covered.insert(k.trim_end_matches('s').to_string());
+                covered.insert(k);
+            }
+        }
+    }
+
+    let generated = crate::reflect_source::reflect_sections(world, entity, &|short| {
+        // Reflected type names carry noise words the curated names never do —
+        // `AtmosphereComponentSettings` is the `Atmosphere` entry, `CloudsData`
+        // is `Clouds`. Strip those before comparing, or every settings component
+        // gets a duplicate generated section next to its hand-written one.
+        let bare = short.replace('_', "");
+        let mut stem = bare.as_str();
+        for suffix in ["componentsettings", "component", "settings", "config", "data"] {
+            stem = stem.strip_suffix(suffix).unwrap_or(stem);
+        }
+        covered.contains(&bare)
+            || covered.contains(stem)
+            || covered.contains(stem.trim_end_matches('s'))
+    });
+
+    for section in generated {
+        let type_path = section.type_path;
+        // Generic equivalents of a hand-written entry's `remove_fn` and
+        // `is_enabled_fn`/`set_enabled_fn`, both parameterised by the type path —
+        // which is exactly why these had to stop being bare fn pointers.
+        let remove_fn: Option<Mutate> = Some(std::sync::Arc::new(
+            move |w: &mut World, e: Entity| {
+                crate::reflect_source::remove_component(w, e, type_path);
+            },
+        ));
+        let enable: Option<(Pred, SetEnabled)> = section.has_enabled.then(|| {
+            let pred: Pred = std::sync::Arc::new(move |w: &World, e: Entity| {
+                matches!(
+                    crate::reflect_source::read_field(w, e, type_path, "enabled", false),
+                    Some(FieldValue::Bool(true))
+                )
+            });
+            let set: SetEnabled = std::sync::Arc::new(move |w: &mut World, e: Entity, v: bool| {
+                crate::reflect_source::write_field(w, e, type_path, "enabled", FieldValue::Bool(v));
+            });
+            (pred, set)
+        });
+        let enabled_now = enable.as_ref().map(|(g, _)| g(world, entity)).unwrap_or(true);
+        let mut fields = Vec::new();
+        for f in section.fields {
+            let (kind, init) = match (&f.field_type, &f.value) {
+                (FieldType::Float { speed, min, max }, FieldValue::Float(v)) => (
+                    FieldKind::Float { speed: *speed, min: *min, max: *max },
+                    FieldInit::Float(*v),
+                ),
+                (FieldType::Int { min, max }, FieldValue::Float(v)) => {
+                    (FieldKind::Int { min: *min, max: *max }, FieldInit::Float(*v))
+                }
+                (FieldType::Vec3 { speed }, FieldValue::Vec3(a)) => {
+                    (FieldKind::Vec3 { speed: *speed }, FieldInit::Vec3(*a))
+                }
+                (FieldType::Bool, FieldValue::Bool(b)) => (FieldKind::Bool, FieldInit::Bool(*b)),
+                // The colour widgets seed themselves from the live value.
+                (FieldType::Color, FieldValue::Color(_)) => {
+                    (FieldKind::Color, FieldInit::Text(String::new()))
+                }
+                (FieldType::ColorRgba, FieldValue::ColorRgba(_)) => {
+                    (FieldKind::ColorRgba, FieldInit::Text(String::new()))
+                }
+                (FieldType::String, FieldValue::String(s)) => {
+                    (FieldKind::Text, FieldInit::Text(s.clone()))
+                }
+                (FieldType::Enum { options }, FieldValue::Enum(s)) => {
+                    (FieldKind::Enum { options }, FieldInit::Text(s.clone()))
+                }
+                _ => (
+                    FieldKind::ReadOnly,
+                    FieldInit::Text(format_value(Some(&f.value))),
+                ),
+            };
+            let read_only = matches!(kind, FieldKind::ReadOnly);
+            let (path, get_path) = (f.path, f.path);
+            fields.push(FieldSpec {
+                name: f.label,
+                kind,
+                get_fn: std::sync::Arc::new(move |w: &World, e: Entity| {
+                    crate::reflect_source::read_field(w, e, type_path, get_path, read_only)
+                }),
+                set_fn: std::sync::Arc::new(move |w: &mut World, e: Entity, v: FieldValue| {
+                    crate::reflect_source::write_field(w, e, type_path, path, v);
+                }),
+                init,
+                extensions: Vec::new(),
+                create_fn: None,
+            });
+        }
+        out.push(SectionSpec {
+            title: section.short_name,
+            icon: "cube",
+            type_id: type_path,
+            custom: false,
+            native_drawer: None,
+            remove_fn,
+            enable,
+            enabled_now,
+            header_bg: (44, 44, 54),
+            accent: (150, 130, 200),
+            // Closed by default: in `All` mode every component gains a second
+            // section, and opening them all would bury the hand-written ones.
+            open: false,
+            fields,
+        });
+    }
 }
 
 /// Display order weight for a section: pinned components come first in a fixed
@@ -1631,13 +1799,13 @@ fn build_section(
         });
         extra.push(lock);
     }
-    if let Some((_, set_enabled)) = sec.enable {
+    if let Some((_, set_enabled)) = sec.enable.clone() {
         let sw = toggle_switch(commands, sec.enabled_now);
         // Block the press from bubbling to the section header behind it, so
         // flipping the enable switch doesn't also collapse/expand the section
         // (same reason the lock/trash glyphs above set FocusPolicy::Block).
         commands.entity(sw).insert(FocusPolicy::Block);
-        let g = sec.enable.unwrap().0;
+        let g = sec.enable.clone().unwrap().0;
         bind_2way(
             commands,
             sw,
@@ -1648,7 +1816,7 @@ fn build_section(
                 renzora_undo::execute(
                     w,
                     ctx,
-                    Box::new(EnableToggleCmd { entity, set_enabled, target }),
+                    Box::new(EnableToggleCmd { entity, set_enabled: set_enabled.clone(), target }),
                 );
             },
         );
@@ -1659,7 +1827,7 @@ fn build_section(
     // so a whole-component delete here is a one-click data-loss hazard. Their
     // registry `remove_fn` stays — it's also the undo half of Add Component.
     let hide_trash = matches!(sec.type_id, "script_component" | "material_ref");
-    if let (Some(remove_fn), false) = (sec.remove_fn, hide_trash) {
+    if let (Some(remove_fn), false) = (sec.remove_fn.clone(), hide_trash) {
         let trash = phosphor_glyph(commands, fonts, "trash", renzora_ember::theme::text_muted(), 13.0);
         commands.entity(trash).insert((
             Interaction::default(),
@@ -1727,7 +1895,7 @@ fn build_field_row(
     // Skipped for kinds that have no value to reset (action buttons, read-only
     // text) — resetting those would be meaningless.
     if field_is_resettable(field.kind) {
-        let reset = build_reset_button(commands, fonts, field.name, field.get_fn, field.set_fn, entity);
+        let reset = build_reset_button(commands, fonts, field.name, field.get_fn.clone(), field.set_fn.clone(), entity);
         commands.entity(value).add_child(reset);
     }
     let label = field_label_loc(field.name);
@@ -1891,15 +2059,16 @@ fn build_field_value(
             if max > min {
                 commands.entity(dv).insert(DragRange { min, max });
             }
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             bind_2way(
                 commands,
                 dv,
-                move |w| match get_fn(w, entity) {
+                move |w| match get_r(w, entity) {
                     Some(FieldValue::Float(v)) => v,
                     _ => 0.0,
                 },
-                move |w, v: &f32| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*v)),
+                move |w, v: &f32| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Float(*v)),
             );
             renzora_ember::inspector::fill_control(commands, dv);
             commands.entity(value_parent).add_child(dv);
@@ -1914,15 +2083,16 @@ fn build_field_value(
             if max > min {
                 commands.entity(dv).insert(DragRange { min, max });
             }
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             bind_2way(
                 commands,
                 dv,
-                move |w| match get_fn(w, entity) {
+                move |w| match get_r(w, entity) {
                     Some(FieldValue::Float(v)) => v,
                     _ => 0.0,
                 },
-                move |w, v: &f32| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*v)),
+                move |w, v: &f32| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Float(*v)),
             );
             renzora_ember::inspector::fill_control(commands, dv);
             commands.entity(value_parent).add_child(dv);
@@ -1940,18 +2110,19 @@ fn build_field_value(
             ];
             for (i, (axis, color)) in AXES.iter().enumerate() {
                 let dv = drag_value(commands, &fonts.ui, axis, *color, init[i], speed.max(0.001));
-                let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+                let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+                let get_r = get_fn.clone();
                 bind_2way(
                     commands,
                     dv,
-                    move |w| match get_fn(w, entity) {
+                    move |w| match get_r(w, entity) {
                         Some(FieldValue::Vec3(a)) => a[i],
                         _ => 0.0,
                     },
                     move |w, v: &f32| {
                         if let Some(FieldValue::Vec3(mut a)) = get_fn(w, entity) {
                             a[i] = *v;
-                            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Vec3(a));
+                            record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Vec3(a));
                         }
                     },
                 );
@@ -1962,36 +2133,39 @@ fn build_field_value(
         FieldKind::Bool => {
             let init = matches!(field.init, FieldInit::Bool(true));
             let sw = toggle_switch(commands, init);
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             bind_2way(
                 commands,
                 sw,
-                move |w| matches!(get_fn(w, entity), Some(FieldValue::Bool(true))),
-                move |w, v: &bool| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Bool(*v)),
+                move |w| matches!(get_r(w, entity), Some(FieldValue::Bool(true))),
+                move |w, v: &bool| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Bool(*v)),
             );
             commands.entity(value_parent).add_child(sw);
         }
         FieldKind::Color => {
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             let editor = renzora_ember::inspector::color_field(
                 commands,
-                move |w| match get_fn(w, entity) {
+                move |w| match get_r(w, entity) {
                     Some(FieldValue::Color(c)) => c,
                     _ => [0.0; 3],
                 },
-                move |w, rgb: [f32; 3]| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Color(rgb)),
+                move |w, rgb: [f32; 3]| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Color(rgb)),
             );
             commands.entity(value_parent).add_child(editor);
         }
         FieldKind::ColorRgba => {
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             let editor = renzora_ember::inspector::color_field_rgba(
                 commands,
-                move |w| match get_fn(w, entity) {
+                move |w| match get_r(w, entity) {
                     Some(FieldValue::ColorRgba(c)) => c,
                     _ => [0.0; 4],
                 },
-                move |w, rgba: [f32; 4]| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::ColorRgba(rgba)),
+                move |w, rgba: [f32; 4]| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::ColorRgba(rgba)),
             );
             commands.entity(value_parent).add_child(editor);
         }
@@ -2002,15 +2176,16 @@ fn build_field_value(
                 String::new()
             };
             let ti = text_input(commands, &fonts.ui, "—", &init);
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             bind_text_input(
                 commands,
                 ti,
-                move |w| match get_fn(w, entity) {
+                move |w| match get_r(w, entity) {
                     Some(FieldValue::String(s)) => s,
                     _ => String::new(),
                 },
-                move |w, v: String| record_field_change(w, entity, name, get_fn, set_fn, FieldValue::String(v)),
+                move |w, v: String| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::String(v)),
             );
             renzora_ember::inspector::fill_control(commands, ti);
             commands.entity(value_parent).add_child(ti);
@@ -2027,14 +2202,15 @@ fn build_field_value(
             };
             let sel = options.iter().position(|o| *o == cur).unwrap_or(0);
             let dd = dropdown(commands, fonts, &refs, sel);
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             // The dropdown works in option indices; the field stores an enum
             // string, so translate both ways.
             bind_2way(
                 commands,
                 dd,
                 move |w| {
-                    let cur = match get_fn(w, entity) {
+                    let cur = match get_r(w, entity) {
                         Some(FieldValue::Enum(s)) => s,
                         _ => String::new(),
                     };
@@ -2046,8 +2222,8 @@ fn build_field_value(
                             w,
                             entity,
                             name,
-                            get_fn,
-                            set_fn,
+                            get_fn.clone(),
+                            set_fn.clone(),
                             FieldValue::Enum((*opt).to_string()),
                         );
                     }
@@ -2065,18 +2241,19 @@ fn build_field_value(
             let refs: Vec<&str> = options.iter().map(|s| s.as_str()).collect();
             let sel = selected.min(refs.len().saturating_sub(1));
             let dd = dropdown(commands, fonts, &refs, sel);
-            let (get_fn, set_fn, name) = (field.get_fn, field.set_fn, field.name);
+            let (get_fn, set_fn, name) = (field.get_fn.clone(), field.set_fn.clone(), field.name);
+            let get_r = get_fn.clone();
             // The value is the selected index; two-way bind so a keyframed /
             // externally-changed index updates the shown option and vice versa.
             bind_2way(
                 commands,
                 dd,
-                move |w| match get_fn(w, entity) {
+                move |w| match get_r(w, entity) {
                     Some(FieldValue::Float(v)) => v.round().max(0.0) as usize,
                     _ => 0,
                 },
                 move |w, i: &usize| {
-                    record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Float(*i as f32));
+                    record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Float(*i as f32));
                 },
             );
             renzora_ember::inspector::fill_control(commands, dd);
@@ -2088,10 +2265,10 @@ fn build_field_value(
                 fonts,
                 entity,
                 field.name,
-                field.get_fn,
-                field.set_fn,
+                field.get_fn.clone(),
+                field.set_fn.clone(),
                 field.extensions.clone(),
-                field.create_fn,
+                field.create_fn.clone(),
             );
             commands.entity(value_parent).add_child(f);
         }
@@ -2110,7 +2287,7 @@ fn build_field_value(
                     ..default()
                 },
                 FieldButton {
-                    set_fn: field.set_fn,
+                    set_fn: field.set_fn.clone(),
                     entity,
                 },
             ));
@@ -2145,7 +2322,7 @@ fn build_field_value(
             // One-way `bind_text`: there is no editing to conflict with, so unlike
             // the `bind_2way` fields there's no focus or in-progress drag to
             // destroy by writing to it.
-            let get = field.get_fn;
+            let get = field.get_fn.clone();
             bind_text(commands, t, move |w| format_value((get)(w, entity).as_ref()));
             commands.entity(value_parent).add_child(t);
         }
@@ -2202,7 +2379,18 @@ pub fn asset_drop_field(
     set_fn: fn(&mut World, Entity, FieldValue),
     extensions: Vec<String>,
 ) -> Entity {
-    build_asset_field(commands, fonts, entity, "asset", get_fn, set_fn, extensions, None)
+    // Public signature deliberately still takes fn pointers — external drawers
+    // have nothing to capture, and widening it would churn every caller.
+    build_asset_field(
+        commands,
+        fonts,
+        entity,
+        "asset",
+        std::sync::Arc::new(get_fn),
+        std::sync::Arc::new(set_fn),
+        extensions,
+        None,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2216,6 +2404,10 @@ fn build_asset_field(
     extensions: Vec<String>,
     create_fn: Option<Mutate>,
 ) -> Entity {
+    // One handle per `move` closure below: each takes ownership of what it
+    // captures, so they cannot share a single binding.
+    let get_r = get_fn.clone();
+    let get_r2 = get_fn.clone();
     let path_text = commands
         .spawn((
             Text::new(renzora::lang::t("inspector.drag_asset")),
@@ -2228,7 +2420,7 @@ fn build_asset_field(
     bind_with(
         commands,
         path_text,
-        move |w| asset_display(get_fn(w, entity)),
+        move |w| asset_display(get_r(w, entity)),
         |w, e, (text, has): &(String, bool)| {
             if let Some(mut t) = w.get_mut::<Text>(e) {
                 if t.0 != *text {
@@ -2257,8 +2449,8 @@ fn build_asset_field(
             bevy::ui::RelativeCursorPosition::default(),
             AssetDropZone {
                 extensions,
-                get_fn,
-                set_fn,
+                get_fn: get_fn.clone(),
+                set_fn: set_fn.clone(),
                 entity,
                 field_name,
             },
@@ -2278,8 +2470,8 @@ fn build_asset_field(
             },
             Interaction::default(),
             AssetClearBtn {
-                get_fn,
-                set_fn,
+                get_fn: get_fn.clone(),
+                set_fn: set_fn.clone(),
                 entity,
                 field_name,
             },
@@ -2317,8 +2509,8 @@ fn build_asset_field(
                 },
                 Interaction::default(),
                 AssetCreateBtn {
-                    create_fn,
-                    get_fn,
+                    create_fn: create_fn.clone(),
+                    get_fn: get_fn.clone(),
                     entity,
                 },
                 Name::new("asset-create"),
@@ -2330,7 +2522,7 @@ fn build_asset_field(
         bind_with(
             commands,
             plus,
-            move |w| matches!(get_fn(w, entity), Some(FieldValue::Asset(Some(_)))),
+            move |w| matches!(get_r2(w, entity), Some(FieldValue::Asset(Some(_)))),
             |w, e, has: &bool| {
                 if let Some(mut node) = w.get_mut::<Node>(e) {
                     let want = if *has { Display::None } else { Display::Flex };
@@ -2366,7 +2558,7 @@ fn asset_create_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (create_fn, get_fn, entity) = (btn.create_fn, btn.get_fn, btn.entity);
+        let (create_fn, get_fn, entity) = (btn.create_fn.clone(), btn.get_fn.clone(), btn.entity);
         cmds.push(move |w: &mut World| {
             // Guard against a double-fire creating two files: skip if the field
             // already has a value (e.g. a race with drag-drop).
@@ -2407,9 +2599,9 @@ fn asset_drop(
             .as_ref()
             .map(|p| p.make_asset_relative(&payload.path))
             .unwrap_or_else(|| payload.path.to_string_lossy().to_string());
-        let (get_fn, set_fn, entity, name) = (zone.get_fn, zone.set_fn, zone.entity, zone.field_name);
+        let (get_fn, set_fn, entity, name) = (zone.get_fn.clone(), zone.set_fn.clone(), zone.entity, zone.field_name);
         cmds.push(move |w: &mut World| {
-            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Asset(Some(path_str.clone())))
+            record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Asset(Some(path_str.clone())))
         });
         break;
     }
@@ -2424,9 +2616,9 @@ fn asset_clear_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (get_fn, set_fn, entity, name) = (btn.get_fn, btn.set_fn, btn.entity, btn.field_name);
+        let (get_fn, set_fn, entity, name) = (btn.get_fn.clone(), btn.set_fn.clone(), btn.entity, btn.field_name);
         cmds.push(move |w: &mut World| {
-            record_field_change(w, entity, name, get_fn, set_fn, FieldValue::Asset(None))
+            record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Asset(None))
         });
     }
 }
@@ -2519,7 +2711,7 @@ fn remove_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (remove_fn, entity, type_id) = (btn.remove_fn, btn.entity, btn.type_id);
+        let (remove_fn, entity, type_id) = (btn.remove_fn.clone(), btn.entity, btn.type_id);
         cmds.push(move |w: &mut World| {
             let ctx = renzora_undo::active_context(w);
             renzora_undo::execute(
@@ -2703,7 +2895,7 @@ fn field_button_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (set_fn, entity) = (btn.set_fn, btn.entity);
+        let (set_fn, entity) = (btn.set_fn.clone(), btn.entity);
         cmds.push(move |w: &mut World| set_fn(w, entity, FieldValue::Bool(true)));
     }
 }
@@ -2720,10 +2912,10 @@ fn reset_click(
         if *interaction != Interaction::Pressed {
             continue;
         }
-        let (get_fn, set_fn, entity, name) = (btn.get_fn, btn.set_fn, btn.entity, btn.field_name);
+        let (get_fn, set_fn, entity, name) = (btn.get_fn.clone(), btn.set_fn.clone(), btn.entity, btn.field_name);
         cmds.push(move |w: &mut World| {
             if let Some(cur) = get_fn(w, entity) {
-                record_field_change(w, entity, name, get_fn, set_fn, cur.type_default());
+                record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), cur.type_default());
             }
         });
     }
@@ -2804,13 +2996,30 @@ fn open_add_component(world: &mut World) {
                     ctx,
                     Box::new(AddComponentCmd {
                         entity,
-                        add_fn,
-                        remove_fn,
+                        // The Add Component overlay is fed purely from the
+                        // hand-written registry, so these are still plain fn
+                        // pointers; they coerce here.
+                        add_fn: std::sync::Arc::new(add_fn),
+                        remove_fn: remove_fn.map(|f| std::sync::Arc::new(f) as Mutate),
                     }),
                 );
             },
         ));
     }
+
+    // NOTE: Add Component is deliberately NOT fed from reflection.
+    //
+    // Inferring addability from `#[reflect(Default)]` was tried and reverted. It
+    // is technically correct and practically useless: every ecosystem crate
+    // registers its internals, so the menu filled with `AngularDamping`,
+    // `CenterOfMass`, `ColliderConstructorHierarchy` — twice each, because
+    // avian2d and avian3d both register a type of that name.
+    //
+    // The deeper reason is a vocabulary mismatch, not a filtering problem.
+    // Reflection enumerates *components*; this menu offers *features*. One
+    // feature ("Vignette") is a plugin that may own several components, and no
+    // amount of per-component metadata reconstructs that grouping. Whatever
+    // replaces the registry here has to be declared at plugin level.
 
     // Plugin components. Injected here rather than through `InspectorRegistry`
     // because `SearchEntry` takes a CLOSURE — so the component id can be captured

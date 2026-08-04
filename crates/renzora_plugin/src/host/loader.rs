@@ -592,3 +592,61 @@ impl Plugin for RenzoraPluginHostPlugin {
         }
     }
 }
+
+/// One C-ABI plugin found on disk, without loading it into a `World`.
+///
+/// The export UI needs this: it lists what a game *could* ship so the user can
+/// tick plugins on and off, which happens long before (and independently of)
+/// anything being installed into a running app.
+#[derive(Debug, Clone)]
+pub struct PluginInfo {
+    /// File stem — what the export UI shows and what a selection is keyed on.
+    pub id: String,
+    pub path: PathBuf,
+    pub scope: sys::PluginScope,
+}
+
+/// Enumerate the C-ABI plugins in `dir` by probing their exported symbols.
+///
+/// Replaces `dynamic_plugin_loader::scan_plugins`, which probed for the old
+/// Bevy-cdylib symbols (`plugin_create` / `plugin_scope`). Those no longer exist
+/// — and note the old scanner read `plugin_scope` while C-ABI plugins export
+/// `renzora_plugin_scope`, so every plugin silently came back as Runtime and
+/// Editor-scope ones were offered as shippable. Reading the right symbol is the
+/// fix.
+///
+/// A library that does not export `renzora_plugin_init` is simply not a plugin
+/// and is skipped, so unrelated DLLs sitting in the folder are ignored.
+pub fn scan_plugins(dir: &Path) -> Vec<PluginInfo> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some(std::env::consts::DLL_EXTENSION)
+            || is_proc_macro_dylib(&path)
+        {
+            continue;
+        }
+        // Loading only to read two symbols: the library is dropped at the end of
+        // the iteration and never initialised, so nothing it contains runs.
+        let Ok(library) = (unsafe { libloading::Library::new(&path) }) else {
+            continue;
+        };
+        if unsafe { library.get::<sys::ExtensionInit>(sys::INIT_SYMBOL.as_bytes()) }.is_err() {
+            continue; // not a Renzora plugin
+        }
+        let scope = match unsafe { library.get::<sys::ScopeEntry>(sys::SCOPE_SYMBOL.as_bytes()) } {
+            Ok(f) => unsafe { f() },
+            Err(_) => sys::PluginScope::Runtime,
+        };
+        let id = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        out.push(PluginInfo { id, path, scope });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}

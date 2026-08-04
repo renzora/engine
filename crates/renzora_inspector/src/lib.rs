@@ -7,6 +7,7 @@
 
 mod camera_presets;
 mod native;
+pub mod reflect_source;
 mod richtext;
 mod scripts;
 mod textfont;

@@ -1,0 +1,49 @@
+[package]
+name = "renzora_editor_app"
+version = "0.2.0"
+edition = "2021"
+build = "build.rs"
+
+# The editor executable.
+#
+# A SEPARATE PACKAGE from `renzora_app`, not a second `[[bin]]` in it — and that
+# is the whole mechanism by which the runtime binary stays editor-free. Binary
+# targets inside one package share that package's dependency set, and plugin
+# registration is link-time (`inventory::submit!` ctors run for every linked
+# crate). A shared dep set would therefore put all ~80 editor crates into the
+# runtime binary's link graph AND its plugin registry.
+#
+# Two packages keep the dep sets disjoint while `cargo build --workspace` still
+# compiles every shared crate exactly ONCE and links twice — resolver-2 resolves
+# features once per invocation, so `renzora_runtime` et al. are built a single
+# time and both binaries link the same rlibs. The marginal cost of the editor is
+# a link step, not a second compile.
+#
+# HARD RULE: always build via `--workspace`. `cargo build -p renzora_app` alone
+# resolves `renzora` without the `editor` feature, which changes its metadata
+# hash and forces a recompile of 86 shared packages — the "two full builds"
+# everyone is trying to avoid.
+[[bin]]
+name = "renzora-editor"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true }
+renzora_runtime = { path = "../renzora_runtime", features = ["lua"] }
+# The editor itself, linked statically as an rlib. With Bevy statically linked
+# there is no shared `bevy_dylib` for a loadable bundle to attach to, so the
+# editor cannot be a `dlopen`'d file any more — a cdylib linking static Bevy
+# would carry a SECOND copy of Bevy, i.e. a second `World` type.
+renzora_editor = { path = "../renzora_editor" }
+# C-ABI plugin host — the surviving dynamic-plugin mechanism. These link no Bevy
+# at all, so they keep working unchanged in a statically linked host.
+renzora_plugin = { path = "../renzora_plugin", features = ["host"] }
+renzora_postprocess = { path = "../renzora_postprocess" }
+toml = "0.8"
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+
+[build-dependencies]
+winres = "0.1"
+
+[lints]
+workspace = true

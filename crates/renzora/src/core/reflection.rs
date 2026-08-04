@@ -2,11 +2,59 @@
 //!
 //! These live in renzora so both scripting and blueprint crates can use them
 //! without creating a dependency between each other.
+//!
+//! ## What is Bevy's and what is ours
+//!
+//! Path navigation is **Bevy's** — [`GetPath::reflect_path`] parses a dotted
+//! string and walks structs, tuple structs, lists and maps, treating a numeric
+//! segment as a tuple index exactly the way the hand-written navigator this
+//! module used to carry did. That navigator (three mutually recursive functions,
+//! ~100 lines) was deleted in favour of it.
+//!
+//! What remains here is genuinely ours and has no Bevy equivalent:
+//!   * [`resolve_field_alias`] — the friendly names scripts use (`Text.content`
+//!     for `Text.0`).
+//!   * [`read_value_from_reflect`] / [`apply_value_to_reflect`] — conversion to
+//!     and from [`PropertyValue`], the single wire type scripts and animation
+//!     tracks speak. The `apply` half is *lossy on purpose*: it rounds a float
+//!     into an integer field, which `PartialReflect::try_apply` will not do
+//!     (it requires an exact type match), and which property animation depends
+//!     on — every track carries floats.
+//!   * The case-insensitive short-name component lookup scripts rely on.
 
 use bevy::prelude::*;
-use bevy::reflect::ReflectRef;
+use bevy::reflect::{GetPath, ReflectRef, TypeRegistration, TypeRegistry};
 
 use crate::PropertyValue;
+
+/// Find a registered component by its **short, case-insensitive** type name
+/// (`"transform"` matches `bevy_transform::components::Transform`).
+///
+/// Scripts and the undo stack both address components this way — a user types
+/// `get("Transform.translation.x")`, not a full Rust path. Deduplicated here
+/// because five call sites carried a copy of this loop.
+fn find_registration<'a>(
+    registry: &'a TypeRegistry,
+    component_type: &str,
+) -> Option<&'a TypeRegistration> {
+    let query = component_type.to_lowercase();
+    registry.iter().find(|reg| {
+        let path = reg.type_info().type_path();
+        let short = path.rsplit("::").next().unwrap_or(path);
+        short.to_lowercase() == query
+    })
+}
+
+/// The reflected component on `entity`, by short type name.
+fn reflect_on<'a>(
+    world: &'a World,
+    entity: Entity,
+    registry: &TypeRegistry,
+    component_type: &str,
+) -> Option<&'a dyn bevy::reflect::Reflect> {
+    let reflect_component = find_registration(registry, component_type)?.data::<ReflectComponent>()?;
+    reflect_component.reflect(world.get_entity(entity).ok()?)
+}
 
 /// Read a reflected component field value from the world.
 /// Returns None if the component/field doesn't exist.
@@ -18,21 +66,9 @@ pub fn get_reflected_field(
 ) -> Option<PropertyValue> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-
-    let query = component_type.to_lowercase();
-    let registration = registry.iter().find(|reg| {
-        let path = reg.type_info().type_path();
-        let short = path.rsplit("::").next().unwrap_or(path);
-        short.to_lowercase() == query
-    })?;
-
-    let reflect_component = registration.data::<ReflectComponent>()?;
-    let entity_ref = world.entity(entity);
-    let reflected = reflect_component.reflect(entity_ref)?;
-
+    let reflected = reflect_on(world, entity, &registry, component_type)?;
     let resolved_path = resolve_field_alias(component_type, field_path);
-    let parts: Vec<&str> = resolved_path.split('.').collect();
-    get_field_by_path(reflected, &parts)
+    read_value_from_reflect(reflected.reflect_path(resolved_path.as_str()).ok()?)
 }
 
 /// Translate a friendly first-segment field name into the underlying
@@ -80,19 +116,8 @@ pub fn get_reflected_f32_vec(
 ) -> Option<Vec<f32>> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-
-    let query = component_type.to_lowercase();
-    let registration = registry.iter().find(|reg| {
-        let path = reg.type_info().type_path();
-        let short = path.rsplit("::").next().unwrap_or(path);
-        short.to_lowercase() == query
-    })?;
-    let reflect_component = registration.data::<ReflectComponent>()?;
-    let entity_ref = world.entity(entity);
-    let reflected = reflect_component.reflect(entity_ref)?;
-
-    let parts: Vec<&str> = field_path.split('.').collect();
-    let field = navigate_to_field(reflected, &parts)?;
+    let reflected = reflect_on(world, entity, &registry, component_type)?;
+    let field = reflected.reflect_path(field_path).ok()?;
     match field.reflect_ref() {
         ReflectRef::List(list) => {
             let mut out = Vec::with_capacity(list.len());
@@ -102,65 +127,6 @@ pub fn get_reflected_f32_vec(
                 out.push(*v);
             }
             Some(out)
-        }
-        _ => None,
-    }
-}
-
-fn navigate_to_field<'a>(
-    reflect: &'a dyn bevy::reflect::PartialReflect,
-    path: &[&str],
-) -> Option<&'a dyn bevy::reflect::PartialReflect> {
-    if path.is_empty() {
-        return Some(reflect);
-    }
-    let field_name = path[0];
-    let remaining = &path[1..];
-    match reflect.reflect_ref() {
-        ReflectRef::Struct(s) => {
-            let field = s.field(field_name)?;
-            if remaining.is_empty() {
-                Some(field)
-            } else {
-                navigate_to_field(field, remaining)
-            }
-        }
-        _ => None,
-    }
-}
-
-/// Recursively navigate a reflected struct or tuple-struct by field path
-/// and read the value. Numeric path parts (e.g. "0") index into tuple
-/// structs — that's how `get("Text.0")` (and the aliased `Text.content`)
-/// reach `Text(pub String)`.
-fn get_field_by_path(
-    reflect: &dyn bevy::reflect::PartialReflect,
-    path: &[&str],
-) -> Option<PropertyValue> {
-    if path.is_empty() {
-        return read_value_from_reflect(reflect);
-    }
-
-    let field_name = path[0];
-    let remaining = &path[1..];
-
-    match reflect.reflect_ref() {
-        ReflectRef::Struct(s) => {
-            let field = s.field(field_name)?;
-            if remaining.is_empty() {
-                read_value_from_reflect(field)
-            } else {
-                get_field_by_path(field, remaining)
-            }
-        }
-        ReflectRef::TupleStruct(ts) => {
-            let idx = field_name.parse::<usize>().ok()?;
-            let field = ts.field(idx)?;
-            if remaining.is_empty() {
-                read_value_from_reflect(field)
-            } else {
-                get_field_by_path(field, remaining)
-            }
         }
         _ => None,
     }
@@ -222,37 +188,33 @@ pub fn set_reflected_field(
 ) -> bool {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-
-    let query = component_type.to_lowercase();
-    let Some(registration) = registry.iter().find(|reg| {
-        let path = reg.type_info().type_path();
-        let short = path.rsplit("::").next().unwrap_or(path);
-        short.to_lowercase() == query
-    }) else {
+    let Some(reflect_component) =
+        find_registration(&registry, component_type).and_then(|r| r.data::<ReflectComponent>())
+    else {
         return false;
     };
-
-    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
+    let Some(reflected) = reflect_on(world, entity, &registry, component_type) else {
         return false;
     };
-
-    let entity_ref = world.entity(entity);
-    let Some(reflected) = reflect_component.reflect(entity_ref) else {
-        return false;
-    };
+    // Mutate a clone and `apply` the whole component rather than poking the live
+    // one: `apply` goes through `Mut`, so change detection fires — which the
+    // inspector's two-way bindings and every `Changed<T>` system depend on.
     let Ok(mut cloned) = reflected.reflect_clone() else {
         return false;
     };
 
     let resolved_path = resolve_field_alias(component_type, field_path);
-    let parts: Vec<&str> = resolved_path.split('.').collect();
-    if set_field_by_path(cloned.as_mut(), &parts, value) {
-        let mut entity_mut = world.entity_mut(entity);
-        reflect_component.apply(&mut entity_mut, cloned.as_partial_reflect());
-        true
-    } else {
-        false
+    let Ok(target) = cloned.reflect_path_mut(resolved_path.as_str()) else {
+        return false;
+    };
+    if !apply_value_to_reflect(target, value) {
+        return false;
     }
+    let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
+        return false;
+    };
+    reflect_component.apply(&mut entity_mut, cloned.as_partial_reflect());
+    true
 }
 
 /// Reflect-clone a whole component off `entity` by its (short, case-insensitive)
@@ -266,16 +228,9 @@ pub fn capture_component(
 ) -> Option<Box<dyn bevy::reflect::Reflect>> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-    let query = component_type.to_lowercase();
-    let registration = registry.iter().find(|reg| {
-        let path = reg.type_info().type_path();
-        let short = path.rsplit("::").next().unwrap_or(path);
-        short.to_lowercase() == query
-    })?;
-    let reflect_component = registration.data::<ReflectComponent>()?;
-    let entity_ref = world.entity(entity);
-    let reflected = reflect_component.reflect(entity_ref)?;
-    reflected.reflect_clone().ok()
+    reflect_on(world, entity, &registry, component_type)?
+        .reflect_clone()
+        .ok()
 }
 
 /// Insert a previously [`capture_component`]-ed value back onto `entity`,
@@ -289,15 +244,9 @@ pub fn insert_component_reflected(
 ) -> bool {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-    let query = component_type.to_lowercase();
-    let Some(registration) = registry.iter().find(|reg| {
-        let path = reg.type_info().type_path();
-        let short = path.rsplit("::").next().unwrap_or(path);
-        short.to_lowercase() == query
-    }) else {
-        return false;
-    };
-    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
+    let Some(reflect_component) =
+        find_registration(&registry, component_type).and_then(|r| r.data::<ReflectComponent>())
+    else {
         return false;
     };
     let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
@@ -307,50 +256,8 @@ pub fn insert_component_reflected(
     true
 }
 
-/// Recursively navigate a reflected struct or tuple-struct by field path and set
-/// the final value. Numeric path parts (e.g. "0") index into tuple structs.
-pub fn set_field_by_path(
-    reflect: &mut dyn bevy::reflect::PartialReflect,
-    path: &[&str],
-    value: &PropertyValue,
-) -> bool {
-    if path.is_empty() {
-        return false;
-    }
-
-    let field_name = path[0];
-    let remaining = &path[1..];
-
-    match reflect.reflect_mut() {
-        bevy::reflect::ReflectMut::Struct(s) => {
-            let Some(field) = s.field_mut(field_name) else {
-                return false;
-            };
-            if remaining.is_empty() {
-                apply_value_to_reflect(field, value)
-            } else {
-                set_field_by_path(field, remaining, value)
-            }
-        }
-        bevy::reflect::ReflectMut::TupleStruct(ts) => {
-            let Ok(idx) = field_name.parse::<usize>() else {
-                return false;
-            };
-            let Some(field) = ts.field_mut(idx) else {
-                return false;
-            };
-            if remaining.is_empty() {
-                apply_value_to_reflect(field, value)
-            } else {
-                set_field_by_path(field, remaining, value)
-            }
-        }
-        _ => false,
-    }
-}
-
 /// Apply a [`PropertyValue`] onto a reflected field, coercing numeric types.
-pub fn apply_value_to_reflect(
+fn apply_value_to_reflect(
     field: &mut dyn bevy::reflect::PartialReflect,
     value: &PropertyValue,
 ) -> bool {
@@ -459,17 +366,7 @@ pub fn get_all_component_fields(
 ) -> Option<std::collections::HashMap<String, PropertyValue>> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
     let registry = type_registry.read();
-
-    let query = component_type.to_lowercase();
-    let registration = registry.iter().find(|reg| {
-        let path = reg.type_info().type_path();
-        let short = path.rsplit("::").next().unwrap_or(path);
-        short.to_lowercase() == query
-    })?;
-
-    let reflect_component = registration.data::<ReflectComponent>()?;
-    let entity_ref = world.entity(entity);
-    let reflected = reflect_component.reflect(entity_ref)?;
+    let reflected = reflect_on(world, entity, &registry, component_type)?;
 
     let mut fields = std::collections::HashMap::new();
     collect_struct_fields(reflected, "", &mut fields);
@@ -635,4 +532,195 @@ fn prettify_field(field: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+//
+// These pin the path-navigation behaviour that used to be hand-written here and
+// is now delegated to Bevy's `GetPath`. They are the reason that swap is safe:
+// the scripting `get`/`set` API addresses fields by string, so a change in path
+// semantics would break user scripts silently rather than at compile time.
+//
+// NOTE: run with `renzora test` — `cargo test` does not link natively on
+// Windows (CLAUDE.md §2).
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component)]
+    struct Nested {
+        value: f32,
+        count: u32,
+    }
+
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component)]
+    struct Sample {
+        flag: bool,
+        label: String,
+        nested: Nested,
+        offset: Vec3,
+    }
+
+    /// Stands in for Bevy's tuple-struct components (`Text(String)`), which
+    /// reflection only exposes as field "0".
+    #[derive(Component, Reflect, Default)]
+    #[reflect(Component)]
+    struct Tup(String);
+
+    fn setup() -> (World, Entity) {
+        let mut world = World::new();
+        let registry = AppTypeRegistry::default();
+        {
+            let mut w = registry.write();
+            w.register::<Sample>();
+            w.register::<Nested>();
+            w.register::<Tup>();
+        }
+        world.insert_resource(registry);
+        let entity = world
+            .spawn((
+                Sample {
+                    flag: true,
+                    label: "hello".into(),
+                    nested: Nested { value: 1.5, count: 7 },
+                    offset: Vec3::new(1.0, 2.0, 3.0),
+                },
+                Tup("tuple".into()),
+            ))
+            .id();
+        (world, entity)
+    }
+
+    #[test]
+    fn reads_top_level_and_nested_fields() {
+        let (world, e) = setup();
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "flag"),
+            Some(PropertyValue::Bool(true))
+        ));
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "nested.value"),
+            Some(PropertyValue::Float(v)) if (v - 1.5).abs() < f32::EPSILON
+        ));
+    }
+
+    /// The component name is matched case-insensitively on the SHORT type name —
+    /// scripts write `get("sample.flag")`, not a full Rust path.
+    #[test]
+    fn component_lookup_is_case_insensitive() {
+        let (world, e) = setup();
+        assert!(get_reflected_field(&world, e, "sample", "flag").is_some());
+        assert!(get_reflected_field(&world, e, "SAMPLE", "flag").is_some());
+    }
+
+    /// A numeric path segment indexes a tuple struct. This is the case the
+    /// hand-written navigator special-cased and `GetPath` handles natively.
+    #[test]
+    fn reads_tuple_struct_by_index() {
+        let (world, e) = setup();
+        assert!(matches!(
+            get_reflected_field(&world, e, "Tup", "0"),
+            Some(PropertyValue::String(s)) if s == "tuple"
+        ));
+    }
+
+    /// Vec3 stops at the value rather than recursing into x/y/z…
+    #[test]
+    fn vec3_reads_as_one_value_but_components_are_addressable() {
+        let (world, e) = setup();
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "offset"),
+            Some(PropertyValue::Vec3([1.0, 2.0, 3.0]))
+        ));
+        // …and is still reachable field-by-field through the same path syntax.
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "offset.y"),
+            Some(PropertyValue::Float(v)) if (v - 2.0).abs() < f32::EPSILON
+        ));
+    }
+
+    #[test]
+    fn writes_round_trip() {
+        let (mut world, e) = setup();
+        assert!(set_reflected_field(
+            &mut world,
+            e,
+            "Sample",
+            "nested.value",
+            &PropertyValue::Float(9.25)
+        ));
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "nested.value"),
+            Some(PropertyValue::Float(v)) if (v - 9.25).abs() < f32::EPSILON
+        ));
+    }
+
+    /// The lossy half of [`apply_value_to_reflect`]: property-animation tracks
+    /// carry only floats, so a float written into an integer field must round
+    /// rather than fail. `PartialReflect::try_apply` would reject this outright,
+    /// which is why that function still exists.
+    #[test]
+    fn float_writes_round_into_integer_fields() {
+        let (mut world, e) = setup();
+        assert!(set_reflected_field(
+            &mut world,
+            e,
+            "Sample",
+            "nested.count",
+            &PropertyValue::Float(3.7)
+        ));
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "nested.count"),
+            Some(PropertyValue::Int(4))
+        ));
+    }
+
+    #[test]
+    fn missing_component_or_field_is_none_not_panic() {
+        let (mut world, e) = setup();
+        assert!(get_reflected_field(&world, e, "NoSuchComponent", "flag").is_none());
+        assert!(get_reflected_field(&world, e, "Sample", "no_such_field").is_none());
+        assert!(!set_reflected_field(
+            &mut world,
+            e,
+            "Sample",
+            "no_such_field",
+            &PropertyValue::Float(1.0)
+        ));
+    }
+
+    /// A write whose value kind cannot fit the field must fail cleanly and leave
+    /// the component untouched.
+    #[test]
+    fn mismatched_value_kind_fails_without_writing() {
+        let (mut world, e) = setup();
+        assert!(!set_reflected_field(
+            &mut world,
+            e,
+            "Sample",
+            "label",
+            &PropertyValue::Float(1.0)
+        ));
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "label"),
+            Some(PropertyValue::String(s)) if s == "hello"
+        ));
+    }
+
+    #[test]
+    fn captured_component_can_be_reinserted() {
+        let (mut world, e) = setup();
+        let captured = capture_component(&world, e, "Sample").expect("captured");
+        world.entity_mut(e).remove::<Sample>();
+        assert!(get_reflected_field(&world, e, "Sample", "flag").is_none());
+        assert!(insert_component_reflected(&mut world, e, "Sample", captured.as_ref()));
+        assert!(matches!(
+            get_reflected_field(&world, e, "Sample", "flag"),
+            Some(PropertyValue::Bool(true))
+        ));
+    }
 }

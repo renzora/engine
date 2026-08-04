@@ -61,58 +61,24 @@ fn exe_dir() -> Option<std::path::PathBuf> {
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
 }
 
-/// Path to the editor bundle cdylib sitting beside the exe, if present.
-/// Cargo prefixes cdylibs with `lib` on Unix, so both stems are checked.
-/// **Removing this one file is what turns the editor binary into a shipped
-/// game** — the binary itself is identical either way.
-fn editor_bundle_path() -> Option<std::path::PathBuf> {
-    let dir = exe_dir()?;
-    #[cfg(target_os = "windows")]
-    let names: &[&str] = &["renzora_editor.dll"];
-    #[cfg(target_os = "linux")]
-    let names: &[&str] = &["librenzora_editor.so", "renzora_editor.so"];
-    #[cfg(target_os = "macos")]
-    let names: &[&str] = &["librenzora_editor.dylib", "renzora_editor.dylib"];
-    #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-    let names: &[&str] = &[];
-    names.iter().map(|n| dir.join(n)).find(|p| p.exists())
-}
-
-/// Whether this launch is an editor session: the editor bundle is present
-/// beside the exe and no override forces game mode (`--no-editor` /
-/// `RENZORA_NO_EDITOR`). Server/host launches are excluded by the caller.
-fn editor_session() -> bool {
-    if std::env::args().any(|a| a == "--no-editor")
-        || std::env::var_os("RENZORA_NO_EDITOR").is_some()
-    {
-        return false;
-    }
-    editor_bundle_path().is_some()
-}
-
-/// Load the editor bundle (editor sessions only) plus any community plugins
-/// from `<exe_dir>/plugins/`. Called once at startup, AFTER
-/// `add_engine_plugins`, so the bundle's Editor-scope plugins layer on top of
-/// the runtime foundation — reproducing the old `add_editor_plugins` ordering.
-/// The directory loader filters by scope so an editor-scope community plugin
-/// won't activate in a game and vice versa.
+/// Load community plugins from `<exe_dir>/plugins/`.
+///
+/// The editor is no longer loaded here. It used to arrive as a `dlopen`'d
+/// `renzora_editor` cdylib sharing this binary's `bevy_dylib`; it is now a
+/// separate executable (`crates/renzora_editor_app`) that links the editor
+/// statically. With Bevy statically linked there is nothing for a loadable
+/// bundle to share — a cdylib linking static Bevy would carry its own copy of
+/// Bevy and therefore its own `World` type.
+///
+/// The consequence worth stating plainly: **this binary can no longer become
+/// the editor under any circumstance.** It is always a game, a dedicated server
+/// or a listen server, which is exactly what makes it safe to ship.
 fn load_global_plugins(app: &mut App, is_editor: bool) {
-    if is_editor {
-        if let Some(bundle) = editor_bundle_path() {
-            dynamic_plugin_loader::load_bundle(app, &bundle, true);
-        }
-    }
-    if let Some(dir) = exe_dir() {
-        let plugins = dir.join("plugins");
-        if plugins.exists() {
-            dynamic_plugin_loader::load_plugins(app, &plugins, is_editor);
-        }
-    }
-    // C-ABI plugins (`renzora_plugin`) live in the SAME directory and are told
-    // apart by exported symbol, not by filename or location: this loader only
-    // claims libraries exporting `renzora_plugin_init`, and the loader above
-    // only claims those exporting `plugin_create`. Each ignores the other's, so
-    // the two mechanisms coexist during the migration with no staging changes.
+    // C-ABI plugins from `<exe_dir>/plugins/`. The only plugin mechanism left:
+    // the Bevy-linking `dlopen` path (and its `dynamic_plugin_loader`) is gone,
+    // because a cdylib linking a statically-linked Bevy carries its own copy of
+    // Bevy and therefore its own `World` type. The former distribution plugins
+    // are now ordinary rlib dependencies of `renzora_runtime`.
     //
     // `is_editor` is the scope gate: a C-ABI plugin declares Runtime or Editor via
     // `renzora_plugin_scope`, read BEFORE its init is called, so an editor-only
@@ -170,7 +136,12 @@ fn main() {
     // launches this exact flag on a child process. Ignored for server/host.
     let vr_mode =
         !host_mode && !server_mode && std::env::args().any(|a| a == "--vr");
-    let is_editor = !server_mode && !host_mode && !vr_mode && editor_session();
+    // Always false: this binary is the runtime. The editor is a separate
+    // executable now (see `load_global_plugins`). Kept as a variable rather than
+    // inlined because `is_editor` is threaded through `add_default_rendering` /
+    // `add_engine_plugins`, which are shared with the editor binary.
+    let is_editor = false;
+    let _ = (server_mode, host_mode, vr_mode);
 
     // Install the panic hook now that we know the session kind — it picks the
     // crash-file location + dialog from `is_editor` (it can't read the World).
@@ -246,17 +217,6 @@ fn main() {
     // foundation. The `--project <path>` dev shortcut moved into the splash
     // plugin (it lives in the bundle now).
     load_global_plugins(&mut app, is_editor);
-
-    // Watch `plugins/` for dlls dropped in mid-session and hot-load them into
-    // the live world (main-world plugins activate next frame; render plugins
-    // toast "restart to take effect"). No-op on platforms without dynamic
-    // linking.
-    if let Some(dir) = exe_dir() {
-        app.add_plugins(dynamic_plugin_loader::HotPluginPlugin::new(
-            dir.join("plugins"),
-            is_editor,
-        ));
-    }
 
     app.run();
 }

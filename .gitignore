@@ -1,6 +1,9 @@
 # Rust
 /target/
 /target-runtime/
+# Shared build cache for the standalone plugin projects (plugins/.cargo/config.toml
+# points every one of them here so the common deps compile once).
+/plugins/target/
 updater/target/
 **/target/
 # Ignore sub-crate lockfiles (only the workspace root Cargo.lock is tracked).
@@ -51,3 +54,6 @@ Dockerfile.test
 # diffs while migration runs.
 .cache/
 .thumbs/
+
+# Crash reports written beside the exe at runtime.
+crash.log

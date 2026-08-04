@@ -685,8 +685,17 @@ pub struct FieldChangeCmd {
     pub field_name: &'static str,
     pub old: FieldValue,
     pub new: FieldValue,
-    pub set_fn: fn(&mut World, Entity, FieldValue),
+    pub set_fn: FieldWriter,
 }
+
+/// Writes a `FieldValue` back onto a component.
+///
+/// Boxed rather than a bare `fn` pointer so the writer can capture state. A
+/// hand-written inspector field names its component statically and needs no
+/// capture, but a reflection-generated field is parameterised by a type path +
+/// field path known only at runtime, which no `fn` pointer can carry. Plain
+/// `fn`s still coerce in via `Arc::new`.
+pub type FieldWriter = std::sync::Arc<dyn Fn(&mut World, Entity, FieldValue) + Send + Sync>;
 
 impl UndoCommand for FieldChangeCmd {
     fn label(&self) -> &str {

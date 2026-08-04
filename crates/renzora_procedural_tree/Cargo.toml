@@ -9,11 +9,10 @@ description = "Procedural 3D tree generation distribution plugin. Wraps the vend
 # startup. cdylib keeps the export surface to the unmangled `extern "C"`
 # symbols emitted by `renzora::add!` under the `dlopen` feature.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["dlopen"]
-dlopen = []
+default = []
 
 [dependencies]
 bevy = { workspace = true }

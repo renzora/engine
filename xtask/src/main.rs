@@ -6,13 +6,21 @@
 //! (rustup auto-selects 1.95.0). This binary handles the second half WITHOUT a
 //! container, for the host platform only:
 //!
-//!   1. `cargo build --profile dist --workspace` — compile the binary, the
-//!      editor bundle cdylib, the shared `bevy_dylib`/`renzora` dylibs, and every
-//!      distribution plugin cdylib.
-//!   2. Stage `dist/<platform>/` exactly like `docker/build-all.sh`'s
-//!      `copy_shared_libs`: bevy_dylib + renzora + the editor bundle + Rust `std`
-//!      beside the exe; every OTHER plugin cdylib into `plugins/`.
-//!   3. (`run` only) launch the staged binary.
+//!   1. `cargo build --profile dist --workspace` — compile BOTH executables
+//!      (`renzora`, the runtime/shipped game, and `renzora-editor`) plus every
+//!      distribution plugin cdylib. One invocation: the ~700 shared crates
+//!      compile once and are linked into both binaries.
+//!   2. Stage `dist/<platform>/`: the two executables + the OpenXR loader beside
+//!      each other, every plugin cdylib into `plugins/`.
+//!   3. (`run` only) launch the staged editor.
+//!
+//! There are no shared `bevy_dylib` / `renzora` / Rust-`std` libraries to stage
+//! any more — Bevy is statically linked into both executables, so each is
+//! self-contained. That is also why the editor is a second *executable* rather
+//! than the removable `renzora_editor.dll` it used to be: a cdylib linking a
+//! static Bevy would carry its own copy of Bevy, and therefore its own `World`
+//! type, so nothing could cross the boundary. Shipping a game is now "copy
+//! `renzora`", not "copy everything except one dll".
 //!
 //! Why a staging step at all: a bare `cargo run` leaves the plugin cdylibs flat
 //! in `target/dist/` next to the exe, but the dynamic loader scans
@@ -163,18 +171,29 @@ fn stage_one_plugin(repo: &Path, plat: &Platform, name: &str) -> ExitCode {
         eprintln!("[xtask] could not create {}: {e}", out.display());
         return ExitCode::FAILURE;
     }
-    // Sweep the plugin's own target dir rather than guessing the filename: a
-    // crate's library name is not always its directory name.
-    let from = dir.join("target").join("dist");
+    // All plugins share `plugins/target/` (see `plugins/.cargo/config.toml`), so
+    // this directory holds every plugin's artifact, not just this one's. Resolve
+    // the package name from the manifest — a crate's library name is not always
+    // its directory name — and copy only that file, or a single-plugin rebuild
+    // would restage all 61.
+    let from = repo.join("plugins").join("target").join("dist");
+    let pkg = std::fs::read_to_string(dir.join("Cargo.toml"))
+        .ok()
+        .and_then(|t| {
+            t.lines()
+                .find(|l| l.trim_start().starts_with("name = "))
+                .and_then(|l| l.split('"').nth(1).map(|s| s.replace('-', "_")))
+        })
+        .unwrap_or_else(|| name.replace('-', "_"));
+    let wanted = format!("{}{}.{}", plat.lib_prefix, pkg, plat.ext);
     let Ok(entries) = std::fs::read_dir(&from) else {
         eprintln!("[xtask] nothing built at {}", from.display());
         return ExitCode::FAILURE;
     };
-    let suffix = format!(".{}", plat.ext);
     let mut staged = 0;
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_file() || !file_name(&path).ends_with(&suffix) {
+        if !path.is_file() || file_name(&path) != wanted {
             continue;
         }
         if let Err(e) = copy(&path, &out.join(file_name(&path))) {
@@ -185,7 +204,7 @@ fn stage_one_plugin(repo: &Path, plat: &Platform, name: &str) -> ExitCode {
         staged += 1;
     }
     if staged == 0 {
-        eprintln!("[xtask] {name} built but produced no {suffix} — is it a cdylib?");
+        eprintln!("[xtask] {name} built but produced no {wanted} — is it a cdylib?");
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
@@ -266,8 +285,8 @@ fn build(repo: &Path, features: &[&str]) -> bool {
 /// nasty: a plugin built against an older ABI can pass the version handshake and
 /// then be called with a signature it was not compiled for.
 ///
-/// Each is its own tiny build — well under a second, since there is nothing but
-/// the plugin itself to compile.
+/// Each is its own tiny build — a quarter of a second once the shared
+/// `plugins/target/` is warm, since only the plugin itself compiles.
 fn build_source_plugins(repo: &Path) -> bool {
     let root = repo.join("plugins");
     let Ok(entries) = std::fs::read_dir(&root) else {
@@ -296,7 +315,6 @@ fn build_source_plugins(repo: &Path) -> bool {
 /// clean, runnable `dist/<platform>/`.
 fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     let src = repo.join("target").join("dist");
-    let deps = src.join("deps");
     let out = repo.join("dist").join(plat.dir);
     let plugins = out.join("plugins");
     std::fs::create_dir_all(&plugins)?;
@@ -307,31 +325,36 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     clean_artifacts(&out, plat)?;
     clean_artifacts(&plugins, plat)?;
 
-    // ── Host binary ──────────────────────────────────────────────────────────
+    // ── The two executables ──────────────────────────────────────────────────
+    // `renzora`        the runtime / shipped game — the ONLY binary an export
+    //                  copies. Contains no editor crate.
+    // `renzora-editor` the editor. A separate executable rather than a loadable
+    //                  bundle because Bevy is statically linked now: a cdylib
+    //                  linking static Bevy would carry its own copy of Bevy, and
+    //                  therefore its own `World` type.
+    //
+    // Both are self-contained — no sibling `bevy_dylib`/`renzora`/std dylibs to
+    // copy any more, which is why the shared-lib passes that used to live here
+    // are gone. "Remove the editor" is now "ship the other file".
     let bin_name = format!("renzora{}", plat.exe_suffix);
     let host_bin = out.join(&bin_name);
     copy(&src.join(&bin_name), &host_bin)?;
     #[cfg(unix)]
     make_executable(&host_bin)?;
 
-    // ── bevy_dylib — the EXACT one the binary imports ────────────────────────
-    // deps/ accumulates one `bevy_dylib-<hash>` per feature config across builds;
-    // copying newest-by-mtime can pick a hash the binary does NOT link, giving
-    // "bevy_dylib-<hash> not found" at runtime. So read the import name straight
-    // out of the just-copied binary; fall back to newest only if unreadable.
-    let bevy = bevy_dylib_import(&host_bin, plat)
-        .and_then(|name| {
-            let p = deps.join(&name);
-            p.exists().then_some(p)
-        })
-        .or_else(|| newest_matching(&deps, &format!("{}bevy_dylib-", plat.lib_prefix), plat.ext));
-    match bevy {
-        Some(p) => copy(&p, &out.join(file_name(&p)))?,
-        None => eprintln!("[xtask] WARN: no bevy_dylib found in {}", deps.display()),
+    let editor_name = format!("renzora-editor{}", plat.exe_suffix);
+    let editor_src = src.join(&editor_name);
+    if editor_src.exists() {
+        let editor_bin = out.join(&editor_name);
+        copy(&editor_src, &editor_bin)?;
+        #[cfg(unix)]
+        make_executable(&editor_bin)?;
+    } else {
+        eprintln!(
+            "[xtask] WARN: {} missing — staged a runtime-only tree (build with `cargo dist`)",
+            editor_name
+        );
     }
-
-    // ── Rust std (prefer-dynamic links it as a shared lib) ───────────────────
-    copy_rust_std(&out, plat)?;
 
     // ── OpenXR loader (VR) ───────────────────────────────────────────────────
     // The Khronos loader every OpenXR app must ship: `openxr::Entry::load()`
@@ -343,17 +366,6 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
             copy(&loader, &out.join("openxr_loader.dll"))?;
         } else {
             eprintln!("[xtask] WARN: tools/openxr/openxr_loader.dll missing — VR won't initialize");
-        }
-    }
-
-    // ── SDK dylibs that ship beside the exe (host + every plugin link them) ──
-    // `renzora` (folded contract + post-process) and `renzora_editor` (the
-    // removable editor bundle). Each lives next to the exe, never in plugins/.
-    for sdk in ["renzora", "renzora_editor"] {
-        let name = format!("{}{}.{}", plat.lib_prefix, sdk, plat.ext);
-        let p = src.join(&name);
-        if p.exists() {
-            copy(&p, &out.join(&name))?;
         }
     }
 
@@ -373,19 +385,19 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     }
 
     // ── Source plugin cdylibs (plugins/) → plugins/ ──────────────────────────
-    // Separate pass because each is its own cargo project with its own
-    // `target/`, so the workspace sweep above never sees them.
-    if let Ok(entries) = std::fs::read_dir(repo.join("plugins")) {
-        for entry in entries.flatten() {
-            let ex = entry.path().join("target").join("dist");
-            let Ok(files) = std::fs::read_dir(&ex) else { continue };
-            for f in files.flatten() {
-                let path = f.path();
-                let name = file_name(&path);
-                if path.is_file() && name.ends_with(&format!(".{}", plat.ext)) {
-                    copy(&path, &plugins.join(&name))?;
-                    count += 1;
-                }
+    // Separate pass because they are separate cargo projects, so the workspace
+    // sweep above never sees them.
+    // One shared `plugins/target/` for all of them now (see
+    // `plugins/.cargo/config.toml`), so this is a single directory read rather
+    // than a walk over 61 per-plugin target dirs.
+    let ex = repo.join("plugins").join("target").join("dist");
+    if let Ok(files) = std::fs::read_dir(&ex) {
+        for f in files.flatten() {
+            let path = f.path();
+            let name = file_name(&path);
+            if path.is_file() && name.ends_with(&format!(".{}", plat.ext)) {
+                copy(&path, &plugins.join(&name))?;
+                count += 1;
             }
         }
     }
@@ -428,54 +440,7 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
         || is("renzora_preview") // wasm helper cdylib, not an engine plugin
 }
 
-/// Scan the binary for its `(lib)?bevy_dylib-<hex>.<ext>` import string. Bevy's
-/// dylib is imported by exact filename, so the name is present verbatim in the
-/// binary's import table — a plain byte search finds it with no parsing.
-fn bevy_dylib_import(bin: &Path, plat: &Platform) -> Option<String> {
-    let data = std::fs::read(bin).ok()?;
-    let needle = b"bevy_dylib-";
-    let suffix = format!(".{}", plat.ext);
-    let sb = suffix.as_bytes();
-    let mut i = 0;
-    while i + needle.len() < data.len() {
-        if &data[i..i + needle.len()] == needle {
-            // Include the "lib" prefix when present (Unix DT_NEEDED form).
-            let start = if i >= 3 && &data[i - 3..i] == b"lib" { i - 3 } else { i };
-            let mut j = i + needle.len();
-            while j < data.len() && data[j].is_ascii_hexdigit() {
-                j += 1;
-            }
-            // Require ≥1 hex digit and the matching extension immediately after.
-            if j > i + needle.len() && j + sb.len() <= data.len() && &data[j..j + sb.len()] == sb {
-                return Some(String::from_utf8_lossy(&data[start..j + sb.len()]).into_owned());
-            }
-        }
-        i += 1;
-    }
-    None
-}
 
-/// Copy the dynamic Rust `std` shared lib (needed because `prefer-dynamic` links
-/// std dynamically). It lives under `<sysroot>/lib/rustlib/<host-triple>/lib/`.
-fn copy_rust_std(out: &Path, plat: &Platform) -> std::io::Result<()> {
-    let (Some(sysroot), Some(triple)) = (sysroot(), host_triple()) else {
-        eprintln!("[xtask] WARN: could not query rustc sysroot/triple; skipping std");
-        return Ok(());
-    };
-    let dir = sysroot.join("lib").join("rustlib").join(triple).join("lib");
-    let Ok(rd) = std::fs::read_dir(&dir) else {
-        return Ok(());
-    };
-    for entry in rd.flatten() {
-        let name = file_name(&entry.path());
-        let std_lib = (name.starts_with("std-") || name.starts_with("libstd-"))
-            && name.ends_with(&format!(".{}", plat.ext));
-        if std_lib {
-            copy(&entry.path(), &out.join(&name))?;
-        }
-    }
-    Ok(())
-}
 
 /// Launch the staged editor. cwd = repo root so the editor resolves project
 /// assets the same way a plain `cargo run` does; plugins resolve via the loader's
@@ -547,8 +512,14 @@ fn clean_artifacts(dir: &Path, plat: &Platform) -> std::io::Result<()> {
     };
     for entry in rd.flatten() {
         let name = file_name(&entry.path());
+        // On Unix the executables have no extension, so the suffix tests above
+        // miss them and a renamed/removed binary would linger. Name them
+        // explicitly.
+        let is_unix_exe =
+            plat.exe_suffix.is_empty() && matches!(name.as_str(), "renzora" | "renzora-editor");
         if name.ends_with(&format!(".{}", plat.ext))
             || (!plat.exe_suffix.is_empty() && name.ends_with(plat.exe_suffix))
+            || is_unix_exe
         {
             let _ = std::fs::remove_file(entry.path());
         }
@@ -556,33 +527,8 @@ fn clean_artifacts(dir: &Path, plat: &Platform) -> std::io::Result<()> {
     Ok(())
 }
 
-fn newest_matching(dir: &Path, prefix: &str, ext: &str) -> Option<PathBuf> {
-    let suffix = format!(".{ext}");
-    std::fs::read_dir(dir)
-        .ok()?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            let n = file_name(p);
-            n.starts_with(prefix) && n.ends_with(&suffix)
-        })
-        .max_by_key(|p| p.metadata().and_then(|m| m.modified()).ok())
-}
 
-fn sysroot() -> Option<PathBuf> {
-    let out = Command::new("rustc").arg("--print").arg("sysroot").output().ok()?;
-    out.status.success().then(|| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
-}
 
-/// The host target triple, read from `rustc -vV`'s `host:` line — used to locate
-/// the std shared lib under the sysroot.
-fn host_triple() -> Option<String> {
-    let out = Command::new("rustc").arg("-vV").output().ok()?;
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .find_map(|l| l.strip_prefix("host: "))
-        .map(|s| s.trim().to_string())
-}
 
 #[cfg(unix)]
 fn make_executable(p: &Path) -> std::io::Result<()> {

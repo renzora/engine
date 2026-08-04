@@ -5,11 +5,10 @@ edition = "2021"
 description = "2D lighting distribution plugin. Wraps the vendored bevy_firefly crate (2D point lights, occluders, soft shadows, occlusion z-sorting, normal maps) and wires it into the editor: inspector entries, Add-Entity presets, selection gizmos, and an editor-camera lightmap preview."
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["editor", "dlopen"]
-dlopen = []
+default = ["editor"]
 editor = ["renzora/editor"]
 
 [dependencies]

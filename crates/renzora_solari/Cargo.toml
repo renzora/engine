@@ -11,11 +11,10 @@ description = "Solari hardware-raytraced global illumination — a drop-in cdyli
 # (`GpuRaytracing`) live in the shared `renzora` contract, so this crate must
 # NOT be statically linked by any host/editor crate.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["editor", "dlopen"]
-dlopen = []
+default = ["editor"]
 # Compiles the Solari inspector entry.
 editor = ["renzora/editor"]
 

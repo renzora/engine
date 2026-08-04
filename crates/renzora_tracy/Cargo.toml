@@ -8,11 +8,10 @@ edition = "2021"
 # directory at startup. Delete the dylib and the engine carries no
 # profiler code at all.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["dlopen"]
-dlopen = []
+default = []
 
 [dependencies]
 bevy = { workspace = true }

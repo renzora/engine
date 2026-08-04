@@ -72,3 +72,17 @@ rustflags = ["-C", "prefer-dynamic=no"]
 
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "prefer-dynamic=no"]
+
+# All 61 plugins share ONE target directory.
+#
+# Each plugin is a separate cargo project (deliberately — as workspace members
+# they would inherit the engine feature unification and link Bevy, destroying
+# the zero-dependency property). The cost was that every one of them rebuilt
+# `syn`/`quote`/`proc-macro2`/`renzora_plugin` from scratch into its own
+# `target/`: ~4s each, ~4 minutes across the set, every single build.
+#
+# Sharing a target dir gets the workspace's caching without workspace
+# membership: the common dependencies compile once and every plugin links the
+# same rlibs. Artifacts cannot collide — each package has a distinct name.
+[build]
+target-dir = "target"

@@ -15,11 +15,10 @@ edition = "2021"
 # link, once when `dynamic_plugin_loader` dlopens the cdylib), and
 # `App::add_plugins` panics on a duplicate add.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [features]
-default = ["editor", "dlopen"]
-dlopen = []
+default = ["editor"]
 editor = ["renzora/editor"]
 
 [dependencies]
