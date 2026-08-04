@@ -2,13 +2,19 @@
 
 Scripting is how you give things in your game *behavior* — make a door open, a coin spin, an enemy chase the player. The good news: it's completely optional, and you can mix and match the approach that feels best to you.
 
-Renzora gives you three ways to add logic, and they all work together:
+Renzora gives you two ways to add logic, and they work together:
 
 - **Blueprints** — a no-code, drag-and-connect visual system. Great if you'd rather not write code.
-- **Lua** — a friendly, popular scripting language. The most fully-featured option.
-- **Rhai** — a lighter scripting language, handy when you export your game to the **web**.
+- **Lua** — a friendly, popular scripting language, with the full set of built-in functions.
 
-You can use one, or several at once, even on the same object. Start wherever you're comfortable.
+You can use either, or both at once, even on the same object. Start wherever
+you're comfortable.
+
+> **Scripting languages are plugins.** Lua arrives as `plugins/lua`, which the
+> editor ships with. That is why a language can be added without touching the
+> engine — see
+> [Script Backends](/docs/r1-alpha7/extending/script-backends) if you want to
+> bring your own.
 
 ## Prefer no code? Use Blueprints
 
@@ -16,7 +22,7 @@ If writing code isn't your thing, you don't have to. **Blueprints** let you buil
 
 It's a full system on its own, so it has its own guide. See **[Blueprints](./blueprints)** to get started with the visual editor.
 
-The rest of this page is a gentle look at the text-script side (Lua and Rhai).
+The rest of this page is a gentle look at the text-script side.
 
 ## The code editor
 
@@ -24,7 +30,7 @@ Renzora has a built-in code editor, so you never have to leave the engine to wri
 
 ![The built-in Code editor showing a Lua car-physics script, with tabs for several open .lua files and the file path along the bottom.](/assets/previews/code_editor.png)
 
-You can open scripts a few ways: double-click a `.lua`/`.rhai` file in the asset
+You can open scripts a few ways: double-click a `.lua` file in the asset
 browser, drop one onto the editor, or **select an entity** — the code editor
 follows your selection and shows that entity's editable sources: every script
 attached to it, one tab per script, with the first focused. UI works the same
@@ -53,16 +59,6 @@ A few things to notice:
 - `on_update()` is a **lifecycle hook** — a function the engine runs automatically every frame. There are a couple of others, like `on_ready()` (runs once at the start).
 - `elapsed`, `position_x`, and friends are **context values** the engine fills in for you each frame, so you can read where the object is and how much time has passed.
 - `set_position(...)` is one of many built-in functions for acting on the world.
-
-The same idea written in Rhai looks almost identical:
-
-```rhai
-// bob.rhai
-fn on_update() {
-    let bob = sin(elapsed * 2.0) * 0.1;
-    set_position(position_x, position_y + bob, position_z);
-}
-```
 
 ## Attaching a script to an object
 
@@ -97,18 +93,19 @@ end
 
 Whatever value you give is also the **type** (a decimal becomes a number, `true`/`false` becomes a checkbox, and so on), and the `hint` text shows up as a helpful tooltip.
 
-## Lua or Rhai?
+## Which file extensions run?
 
-Both run inside the same engine, and you pick simply by the file extension — `.lua` files run as Lua, `.rhai` files run as Rhai. A quick rule of thumb:
+A script runs if a language plugin has claimed its extension. With the shipped
+`plugins/lua`, that means `.lua` — plus `.blueprint`/`.bp`, which the engine
+compiles to Lua for it.
 
-- **Lua** — your default. It has the largest set of built-in functions (input, physics, audio, animation, networking, and more).
-- **Rhai** — reach for this when you're exporting to the **web**, where Lua isn't available. It supports a smaller set of features.
+Remove that plugin and `.lua` files simply stop running; add another language
+plugin and its extension starts working alongside Lua, on the same project.
 
 ## Where to go next
 
 This page is just the warm-up. When you're ready for the full toolbox:
 
 - **[Lua reference](./lua)** — every lifecycle hook and built-in function, with examples.
-- **[Rhai reference](./rhai)** — the supported subset for native and web.
-- **[Scripting API](/docs/r1-alpha5/api/scripting)** — the complete function catalog.
+- **[Scripting API](/docs/r1-alpha7/api/scripting)** — the complete function catalog.
 - **[Blueprints](./blueprints)** — the no-code visual option.

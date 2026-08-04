@@ -86,7 +86,6 @@
           "category": "Languages & API",
           "pages": [
             { "slug": "scripting/lua", "title": "Lua" },
-            { "slug": "scripting/rhai", "title": "Rhai" },
             { "slug": "api/scripting", "title": "Scripting API" },
             { "slug": "api/blueprint-nodes", "title": "Blueprint Node API" },
             { "slug": "api/material", "title": "Material API" },
@@ -138,6 +137,7 @@
             { "slug": "extending/localization", "title": "Localization" },
             { "slug": "extending/custom-nodes", "title": "Custom Blueprint Nodes" },
             { "slug": "extending/script-bindings", "title": "Script API Bindings" },
+            { "slug": "extending/script-backends", "title": "Script Backends (languages)" },
             { "slug": "extending/post-processing", "title": "Post-Processing Effects" },
             { "slug": "extending/material-nodes", "title": "Custom Material Nodes" }
           ]

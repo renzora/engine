@@ -284,43 +284,59 @@ Principles (in priority order):
 
 ## 7. Extending the scripting API
 
-Scripts are **Lua and Rhai** (dual backend, `crates/renzora_scripting`). Scripts
-live in `<project>/scripts/*.lua|*.rhai`, attach to entities via
-`ScriptComponent`, and run through hooks: `on_ready`, `on_update`, `on_rpc`,
-`on_ui`, `on_animation_event`, `on_http`, `on_player_joined`, `on_player_left`.
+**The scripting system is statically linked; the interpreter is a plugin.**
+`crates/renzora_scripting` owns the hooks, the command vocabulary, the context
+and the queue that applies commands to the world. It contains no interpreter.
+Lua is `plugins/lua`, a standalone C-ABI cdylib — so which language a game can
+be scripted in is decided by which plugin is present, not by how the engine was
+compiled. Rhai is gone.
+
+Scripts live in `<project>/scripts/*.lua`, attach via `ScriptComponent`, and run
+through hooks: `on_ready`, `on_update`, `on_rpc`, `on_ui`, `on_draw`,
+`on_animation_event`, `on_http`, `on_player_joined`, `on_player_left`. Hooks are
+selected by op code across the boundary, so adding a tenth is not an ABI break.
 
 **When writing scripts, refer to the scripting API first**
-(`docs/r1-alpha6/scripting/` + `docs/r1-alpha6/api/scripting.md`, and the
-backends in `crates/renzora_scripting/src/backends/`).
+(`docs/r1-alpha7/scripting/` + `docs/r1-alpha7/api/scripting.md`, and
+`plugins/lua/src/interp.rs`).
 
 **If a script needs a function that doesn't exist yet:**
 
 1. Tell the user the function isn't in the API and explain how to proceed.
 2. If feasible, **extend the scripting API** rather than working around it.
-3. **Always prefer registering new script functions from the owning `renzora`
-   plugin itself**, via the `ScriptExtension` trait — not by bolting them into
-   the core backend. The domain crate implements `ScriptExtension`
-   (`register_lua_functions` / `register_rhai_functions` / `populate_context`)
-   in its own `src/script_extension.rs`, then registers it in its plugin
-   `build()`:
+3. **Always prefer declaring new script functions from the owning `renzora`
+   crate**, via the `ScriptExtension` trait — not by bolting them into the
+   interpreter. The trait is now purely declarative: the crate says what a
+   function is called and what arguments it takes, and *every* language backend
+   builds it. A domain crate therefore links no interpreter at all.
 
    ```rust
+   impl ScriptExtension for MyScriptExtension {
+       fn name(&self) -> &str { "combat" }
+       fn bindings(&self) -> Vec<Binding> {
+           vec![Bind::action("deal_damage", "deal_damage")
+               .arg("amount", ParamKind::Float)
+               .build()]
+       }
+   }
+
    let mut extensions = app.world_mut().get_resource_or_insert_with(
        renzora_scripting::extension::ScriptExtensions::default,
    );
    extensions.register(my_crate::script_extension::MyScriptExtension);
    ```
 
-   Both backends then expose the function automatically. See
-   `renzora_animation`, `renzora_physics`, `renzora_navmesh`,
-   `renzora_network`, `renzora_audio`, `renzora_game_ui` for real examples.
-4. **Update `docs/r1-alpha6/` for the new function** (see §4).
+   See `renzora_animation`, `renzora_physics`, `renzora_navmesh`,
+   `renzora_ragdoll`, `renzora_lang` for real examples.
+4. **Update `docs/r1-alpha7/` for the new function** (see §4).
 
 Core/engine-wide primitives (`set_position`, `play_sound`, `spawn_entity`, the
-reflection `set`/`get`/`set_on`, …) live in the backends' `register_api()`.
-Domain functions belong in that domain crate's extension.
+reflection `set`/`get`/`set_on`, …) live in the language plugin's
+`register_api()`. Domain functions belong in that domain crate's declaration.
 
----
+**Adding a language** is a plugin: implement `renzora_plugin::script::Backend`,
+claim your extensions, and the engine routes to you by file extension. Two
+languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.md`.
 
 ## 8. Code conventions
 
@@ -368,7 +384,9 @@ Domain functions belong in that domain crate's extension.
 | `crates/renzora/` | Contract dylib: shared types/events/components, editor contract |
 | `crates/renzora/src/plugin_meta.rs` | `add!` / `export_plugin_bundle!`, `PluginScope` |
 | `crates/dynamic_plugin_loader/src/lib.rs` | dlopen loader + `World` `TypeId` ABI gate + hot-reload |
-| `crates/renzora_scripting/` | Lua + Rhai backends, `ScriptExtension` trait |
+| `crates/renzora_scripting/` | Scripting system: hooks, commands, context, declarative `ScriptExtension` |
+| `crates/renzora_plugin/src/script/` | The language-backend boundary (codec, contexts, `Backend`) |
+| `plugins/lua/` | The Lua interpreter, as a standalone plugin |
 | `crates/renzora_lumen`, `crates/renzora_cloth` | Distribution `cdylib` plugin templates |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
 | `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |
