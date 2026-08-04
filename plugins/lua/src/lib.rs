@@ -29,6 +29,9 @@ mod buffers;
 mod host;
 mod interp;
 
+#[cfg(test)]
+mod tests;
+
 // Emits the `extern "C"` entry point and the state it needs. A macro rather
 // than a generic because the entry point must be a bare function pointer with
 // nowhere to carry state, so it needs a `static` — and a `static` cannot be
