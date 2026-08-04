@@ -81,6 +81,14 @@ pub mod physics;
 #[cfg(feature = "http")]
 pub mod http;
 
+/// Scripting: implement a language backend the engine can run scripts through.
+///
+/// Opt in with `features = ["script"]`. The odd one out among the domains —
+/// the host calls *into* the plugin here, so this one does touch [`sys`]. See
+/// the module docs for the shape of a call.
+#[cfg(feature = "script")]
+pub mod script;
+
 #[cfg(feature = "host")]
 pub mod host;
 

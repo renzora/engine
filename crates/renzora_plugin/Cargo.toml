@@ -30,6 +30,14 @@ anim = []
 physics = []
 http = []
 
+# Scripting is a domain like the three above, with one difference worth calling
+# out: it is the only one where the *host* calls into the plugin rather than the
+# other way round. That needs an `Interface` function to register a backend, so
+# unlike `anim`/`physics`/`http` it does move `sys::VERSION_MINOR`. The domain
+# vocabulary — the command list, the context, the codec — still lives behind
+# this feature and still costs a plugin nothing to leave off.
+script = []
+
 # The ENGINE opts into `host`, which adds the other side of the boundary: the
 # interface implementation, the dynamic-query dispatcher, and the `dlopen`
 # loader. Split by feature rather than by crate so a plugin author depends on
