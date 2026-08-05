@@ -1042,10 +1042,18 @@ fn ca(r: u8, g: u8, b: u8, a: u8) -> Color {
     Color::srgba_u8(r, g, b, a)
 }
 
-/// Zebra-stripe background for list rows — a faint overlay on odd rows so long
-/// lists (features, plugins) read as discrete rows.
+/// Zebra-stripe background for list rows — long lists (features, plugins) read
+/// as discrete rows.
+///
+/// BOTH rows are tinted, which looks like a needless change and is not: an
+/// unchecked checkbox is a 1px border over `Color::NONE`, and against the bare
+/// panel that border is invisible. Odd rows carried a faint overlay and even
+/// rows nothing, so exactly half the feature list appeared to have no control at
+/// all — every other row looked like a label. The lighter of the two tints is
+/// what makes an empty checkbox legible; the difference between them is what
+/// still stripes the list.
 fn row_stripe(idx: usize) -> Color {
-    if idx % 2 == 1 { ca(255, 255, 255, 4) } else { Color::NONE }
+    if idx % 2 == 1 { ca(255, 255, 255, 14) } else { ca(255, 255, 255, 6) }
 }
 
 fn cursor() -> renzora_ember::cursor_icon::HoverCursor {
