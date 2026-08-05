@@ -45,13 +45,28 @@ impl ScriptEngine {
         self.scripts_folder.as_deref()
     }
 
-    /// Register a language backend
-    pub fn add_backend(&mut self, backend: Box<dyn ScriptBackend>) {
+    /// Register a language backend, handing it the configuration set so far.
+    ///
+    /// Replaying the configuration is not optional. A backend used to be linked
+    /// in and present before anything ran; the interpreter is a `dlopen`'d
+    /// plugin now, adopted *after* `Startup`, while `set_scripts_folder` and
+    /// `set_file_reader` are called during it. Without this the setters would
+    /// have looped over an empty backend list and the newcomer would start
+    /// unconfigured — reading scripts straight off the filesystem, which fails
+    /// outright in an rpak-packed export where `scripts/` exists only inside
+    /// the archive.
+    pub fn add_backend(&mut self, mut backend: Box<dyn ScriptBackend>) {
         log::info!(
             "[Scripting] Registered {} backend (extensions: {:?})",
             backend.name(),
             backend.extensions()
         );
+        if let Some(folder) = &self.scripts_folder {
+            backend.set_scripts_folder(folder.clone());
+        }
+        if let Some(reader) = &self.file_reader {
+            backend.set_file_reader(reader.clone());
+        }
         self.backends.push(backend);
     }
 
@@ -504,5 +519,32 @@ mod tests {
     fn get_script_props_empty_without_matching_backend() {
         let engine = ScriptEngine::new();
         assert!(engine.get_script_props(Path::new("a.fake")).is_empty());
+    }
+
+    /// A backend registered AFTER configuration still gets it.
+    ///
+    /// This is the real launch order: the scripts folder and the VFS reader are
+    /// set during `Startup`, but the interpreter is a `dlopen`'d plugin adopted
+    /// afterwards. When the setters only walked the backend list, the newcomer
+    /// came up with no reader and read scripts off the filesystem — which works
+    /// in a dev tree and fails in an exported game, where `scripts/` lives only
+    /// inside the rpak.
+    #[test]
+    fn a_late_backend_inherits_the_configuration() {
+        let mut engine = ScriptEngine::new();
+        engine.set_scripts_folder(PathBuf::from("/proj/scripts"));
+        engine.set_file_reader(std::sync::Arc::new(|_| Some("-- from the rpak".into())));
+
+        let backend = FakeBackend::new("late", &["fake"]);
+        let state = backend.state_handle();
+        engine.add_backend(Box::new(backend));
+
+        let state = state.lock().unwrap();
+        assert_eq!(state.scripts_folder.as_deref(), Some(Path::new("/proj/scripts")));
+        let reader = state
+            .file_reader
+            .as_ref()
+            .expect("late backend was left without the VFS reader");
+        assert_eq!(reader(Path::new("anything.lua")).as_deref(), Some("-- from the rpak"));
     }
 }

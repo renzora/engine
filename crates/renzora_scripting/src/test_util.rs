@@ -15,6 +15,9 @@ use crate::context::ScriptContext;
 #[derive(Default)]
 pub struct FakeBackendState {
     pub scripts_folder: Option<PathBuf>,
+    /// The VFS reader the engine handed over, if any. Recorded so a test can
+    /// tell "configured" from "silently left on the filesystem".
+    pub file_reader: Option<FileReader>,
     pub ready_paths: Vec<PathBuf>,
     pub update_paths: Vec<PathBuf>,
     /// `ctx.self_entity_name` captured on each `call_on_update`.
@@ -71,7 +74,9 @@ impl ScriptBackend for FakeBackend {
         self.state.lock().unwrap().scripts_folder = Some(path);
     }
 
-    fn set_file_reader(&mut self, _reader: FileReader) {}
+    fn set_file_reader(&mut self, reader: FileReader) {
+        self.state.lock().unwrap().file_reader = Some(reader);
+    }
 
     fn get_available_scripts(&self) -> Vec<(String, PathBuf)> {
         self.available.clone()
