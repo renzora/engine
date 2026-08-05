@@ -1,259 +1,200 @@
 # Next session — plan and state
 
-Branch: `plugin-abi`. Seven commits:
+Branch: `plugin-abi`, pushed through `5aa128be`.
 
-- `e304191f` feat(build): statically link Bevy; split the editor into its own binary
-- `7a802449` refactor(scripting): remove the Rhai backend
-- `3ebcea18` feat(script): the language-backend boundary, behind a `script` feature
-- `d72555fb` feat(script): register a language backend through the ABI (MINOR 3)
-- `af7315d4` refactor(script): share one command enum; make extensions declarative
-- `d2400344` feat(script): drive a language plugin through the ScriptBackend trait
-- `ab87f550` feat(lua): move the interpreter into plugins/lua
-
-**Nothing here has been run.** Everything is verified to compile, with
-`cargo tree` confirming the structural properties. The engine has not been
-launched since Bevy went static.
+**CI has never run on this branch.** `.github/workflows/test.yml` triggers on
+push to `main` and PRs targeting `main`, so nothing here has been checked by
+GitHub. That is how two clippy failures and a broken test suite accumulated
+unnoticed (both fixed below). Everything is green *locally*: `cargo check
+--workspace`, CI-scope clippy, `cargo renzora sync --check`.
 
 ---
 
-## 0. Launch it — do this before anything else
+## THE NEXT TASK — static plugin linking
 
+**Goal:** an export option choosing between C-ABI plugins as `dlopen`'d
+libraries (today) and *compiled into the binary*. The reason is wasm: there is
+no `dlopen` there at all, so a wasm export can never carry plugins until this
+exists. A lean desktop export wants it too — one file instead of a file plus a
+`plugins/` directory.
+
+### The blocker, stated precisely
+
+`renzora_plugin::add!` (`crates/renzora_plugin/src/lib.rs`, the `add!` macro
+near the end) emits:
+
+```rust
+#[unsafe(no_mangle)] pub unsafe extern "C" fn renzora_plugin_init(...)
+#[unsafe(no_mangle)] pub extern "C" fn renzora_plugin_scope(...)
 ```
-cargo renzora dist
-```
 
-Then run `dist/windows-x64/renzora-editor.exe`.
+The names are fixed because the loader looks them up as strings —
+`sys::INIT_SYMBOL` / `sys::SCOPE_SYMBOL`, used at `host/loader.rs:224` and
+`:634`. Link 63 plugins as rlibs into one binary and there are 63 definitions
+of each: a duplicate-symbol link error, not a warning.
 
-This is the highest-value action available and it gates most of what follows.
-The migration converted 13 distribution plugins from `dlopen` to static
-`inventory` registration. That change **cannot fail at compile time** — a
-plugin that no longer registers just silently does nothing.
+One piece of luck: **all 63 plugins call `add!` at their crate root in
+`src/lib.rs`** (checked — no nesting), so anything the macro emits lands at the
+crate root and is reachable as `sepia::…`, `lua::…`.
 
-What to check:
+### The shape that works
 
-1. Editor boots, panels render, a scene loads.
-2. Boot log plugin count vs. a pre-migration build (`git stash` + build `67bb7ce5`
-   if you want a clean baseline).
-3. The 13 specifically: vignette, forward decal, lumen GI, solari, cloth,
-   ragdoll, light2d, text3d, pool water, procedural tree, gaussian splatting,
-   tracy toggle, AI chat panel.
-4. `plugins/` still loads — 62 C-ABI plugins, unaffected by any of this.
-5. `renzora.exe` (the runtime) launches a project as a game.
+1. **`add!` emits a mangled pair too** — plain `pub fn __renzora_plugin_init` /
+   `__renzora_plugin_scope` carrying the existing body (handshake, prefix-hash
+   check, `catch_unwind`, unresolved-component and rejected-system refusals).
+   Ordinary Rust items, so they never collide. The `#[no_mangle]` pair becomes a
+   thin wrapper over them, emitted only for the dynamic path.
 
-If plugin counts match, the risky part of the migration is confirmed and
-steps 1–3 below become mechanical.
+   Also fold the single-argument arm into the two-argument one
+   (`add!($p)` → `add!($p, Runtime)`) so a scope function always exists — the
+   static table needs a uniform shape, and today a plugin without an explicit
+   scope emits no scope symbol at all.
 
----
+2. **Suppressing the `#[no_mangle]` pair needs a cfg, not a feature.** A
+   `#[cfg(feature = "x")]` inside a `macro_rules!` body resolves against the
+   *calling* crate, so a feature on `renzora_plugin` cannot do it without adding
+   one to all 63 plugin manifests. Use `#[cfg(not(renzora_static_plugins))]`
+   and set `--cfg renzora_static_plugins` through `RUSTFLAGS`, which the
+   exporter already controls (`build.rs::encoded_rustflags`).
 
-## 1. `inventory` → explicit feature-gated plugin lists
+   **Cost to handle:** a bare `--cfg` trips `unexpected_cfgs` once per plugin on
+   every normal build. Pass a matching `--check-cfg=cfg(renzora_static_plugins)`
+   in `plugins/.cargo/config.toml` *and* the root `.cargo/config.toml`, and
+   append it to `encoded_rustflags` (which replaces config rustflags rather than
+   merging with them).
 
-**Why:** `inventory` existed so `dlopen`'d plugins could self-register. Nothing
-is dlopen'd any more — the ex-cdylibs are ordinary Bevy plugins linked into the
-binary. An explicit list is simpler, idiomatic Bevy, and deletes a pile of
-dead-strip scaffolding.
+3. **Aggregator crate**, generated by the exporter into its disposable copy:
+   path-depends on each selected plugin and exposes a `&[StaticPlugin]` table of
+   `{ name, init, scope }` function pointers. Structurally this is the
+   `renzora_static_plugins` crate deleted in `cbb42f25` — same idea, different
+   mechanism (function pointers, not `inventory` ctors). `git show
+   cbb42f25^:crates/renzora_export/src/build.rs` has the old wiring pass,
+   including the `crate-type` patch that adds `rlib` beside `cdylib`.
 
-**Scale:** 160 `add!` sites across 95 crates → two explicit lists.
-`priority` is used in only 3 real places (`-100`, `-50`, `0`), so ordering is
-nearly flat.
+4. **Loader gains a static source.** `host/loader.rs` currently dlopens and
+   resolves symbols; add a path that walks the table instead. Everything after
+   symbol resolution is identical, so this is a new entry point into existing
+   code rather than a parallel implementation.
 
-**Deletes with it:**
+5. **Export UI checkbox** driving which path runs, in
+   `renzora_export/src/overlay.rs` beside the packaging-mode control. Note the
+   plugin copy block there is no longer inside the `!is_lean` branch (see
+   below) — the static path should skip it, the dynamic path keep it.
 
-- `renzora::add!`, `for_each_static_plugin`, `StaticPlugin`, `PluginScope`,
-  the `inventory` dependency
-- **both keepalive `build.rs` files** (`renzora_runtime`, `renzora_editor`) —
-  they generate `pub use renzora_foo;` lines purely so linked crates' ctors run
-- **`crates/renzora_static_plugins`** entirely — that aggregator exists *only*
-  to force inventory ctors into a lean export
-- `src/main.rs`'s `extern crate renzora_static_plugins` keepalive
-
-Four separate dead-strip workarounds collapse into "call the function".
-
-**Fan-out sites to replace:**
-
-- `crates/renzora_runtime/src/lib.rs:924` — Runtime scope
-- `crates/renzora_editor/src/lib.rs:72` — Editor scope (inside `install()`)
-
-**Approach:** automatable. Parse `add!(Type, Scope[, priority = N])` from all
-160 sites, generate the two lists with `#[cfg(feature = "…")]` gates matching
-each optional dep, strip the `add!` lines, delete the macro.
-
-**Hazard:** with `inventory`, adding a crate registers it automatically. With
-explicit lists, **forgetting one is a silent feature loss** — no compile error.
-This is exactly why step 0 matters: without a known-good plugin count to diff
-against, you cannot tell whether a missing plugin came from this step or from
-the earlier cdylib conversion.
+Useful: `sync_export_workspace`'s `TOP_SKIP` does **not** list `plugins/`, so
+the export copy already contains every plugin's source.
 
 ---
 
-## 2. Lua -> C-ABI plugin - **DONE**
+## Done this session
 
-Landed as five commits on `plugin-abi`. **Still unlaunched** - everything below
-is verified to compile and unit-test, nothing has been run.
+- **§1 `inventory` → generated plugin wiring.** Landed differently from the
+  original plan, which called for hand-written lists. `renzora::add!` stays
+  exactly where it is written in all 121 (now 123) sites and now only
+  type-checks; `xtask/src/sync.rs` scans `crates/` for those declarations and
+  generates both the `[dependencies]` entry that links each crate and
+  `plugins.rs` for each host. Drop a crate into `crates/` with an `add!` line
+  and it is wired — verified end to end, including removal.
+  - `cargo renzora sync` / `--check` (CI job); runs before every build.
+  - `cargo renzora remove <crate>` deletes and unwires in one process. Deleting
+    a crate directory by hand also self-heals now, which is why **xtask is its
+    own workspace root** — as a member it could not be built to repair a
+    workspace its own generated dependency had broken. Cost: `cargo renzora`
+    must run from the repo root.
+  - Deleted with it: `inventory`, `StaticPlugin`/`PluginScope`/
+    `for_each_static_plugin`, both keepalive `build.rs` files,
+    `renzora_static_plugins`, the lean exporter's `wire_static_plugins`, and the
+    editor's install-time name dedup.
+- **`cargo renzora` launched the runtime, not the editor** — `launch()` still
+  named the `renzora` binary from when the editor was a dll loaded by it.
+- **Scripts in an exported game.** The Lua backend never received the VFS
+  reader: it is a `dlopen`'d plugin adopted *after* `Startup`, and
+  `set_file_reader` only pushed to backends registered at the time. Invisible in
+  the editor, where the filesystem fallback works.
+- **Plugin components dropped on scene load.** `refresh_raw_component_registry`
+  and `load_current_scene` were both unordered exclusive `Startup` systems.
+- **Boot-scene dropdown was empty** — `scan_scenes` matched only `.ron`.
+- **Avian de-vendored** to crates.io 0.7.0 (targets Bevy 0.19), with its four
+  ecosystem crates. One copy of each in `Cargo.lock`. The vendored fork's only
+  patch — skipping a duplicate `TransformInterpolationPlugin` add when avian2d
+  and avian3d coexist — moved into `renzora_physics`, which disables the 2D
+  interpolation plugin when the 3D backend is present. `physics_3d` /
+  `physics_2d` are separate features.
+- **Lean exports shipped zero C-ABI plugins** — the copy sat inside `!is_lean`.
+- **The editor framework compiled into every game.** `renzora_forward_decal` and
+  `renzora_pool_water` depended on `renzora_editor_framework` non-optionally
+  while registering at Runtime scope; both are split per CLAUDE.md §5.
+- **Feature granularity.** `postfx` bundled 11 effects and `sky` 5 — an
+  aggregate cannot be partially stripped, since whatever remains in `default`
+  re-enables every member. Both are one feature per crate now, and 11 features
+  that had no export capability at all (lumen, cloth, ragdoll,
+  gaussian_splatting, light2d, text3d, vignette, forward_decal, pool_water,
+  procedural_tree, sprite_anim) got one. **20 capabilities → 48.**
 
-The shape that shipped: the scripting *system* stays statically linked (hooks,
-the 115-command vocabulary, the context, the apply queue) and the *interpreter*
-moved to `plugins/lua`. `backend.rs` is the contract a scripting plugin
-implements, so a Wren or Python backend needs no engine change.
+---
 
-- `crates/renzora_plugin/src/script/` - the boundary. Hand-rolled codec (the
-  guest side must stay dependency-free), compiled into both sides so there is
-  one encoder and nothing to drift. 40 unit tests, including a round trip of
-  every one of the 115 command variants.
-- `sys::Interface` gained `add_script_backend` - MINOR 2 -> 3. The only domain
-  that needed a table entry, because it is the only one where the host calls
-  *into* the plugin.
-- `crates/renzora_scripting/src/plugin_backend.rs` - the engine side.
-- `plugins/lua/` - the interpreter, tracked as a rename so history follows it.
+## Still open
 
-**The `ScriptExtension` "blocker" was half dead code.** All five implementations
-were the same four lines (pack args, fire an action), and `populate_context` /
-`setup_lua_context` / `ExtensionData` were empty stubs nobody read. The trait is
-now declarative, so **mlua is gone from `renzora_physics`, `_animation`,
-`_navmesh`, `_ragdoll` and `_lang`**, and a second language inherits every
-binding for free.
+### `render_3d` is too broad
 
-**Decisions that were open, now settled:**
+One switch covers bevy_pbr, glTF loading and the whole `renzora_shader` graph
+material system. Splitting it needs a judgement call about what a 2D game can
+still use — `bevy_light` and atmosphere already survive it. Its forced-strip
+list in `capabilities.rs::disabled_runtime_features` now names members rather
+than the two deleted bundles, so that is the place to look.
 
-- **Hooks are op codes, not one function pointer each.** Adding a tenth hook is
-  therefore *not* an ABI change - a plugin that does not know an op returns
-  `UnknownOp` and the host treats it as an undefined hook. The doc's worry about
-  freezing the set at eight does not apply.
-- **Two backends can coexist**, routed by file extension, which `ScriptEngine`
-  already did. Two claiming the *same* extension is refused - first wins - since
-  otherwise the choice would depend on directory iteration order.
-- **The host keeps file I/O.** A plugin gets `source` + `version` and never
-  opens a path, or rpak-backed exports would break. Blueprint compilation also
-  stays host-side: `renzora_blueprint` links Bevy.
+### Finish the migration's loose ends (old §3)
 
-**Per-frame cost:** the context splits frame-global from per-entity, encoded and
-decoded once per frame via `frame_seq`. Note this bounds what the *boundary*
-adds; `execution.rs` still clones the named-entity map and the key/action tables
-per scripted entity, which predates all of this. Removing those is now possible
-and is the obvious follow-up.
-
-**Fixed in passing:** `LuaBackend::evict_entity` existed and nothing ever called
-it, so the VM map grew for the life of the process. `ScriptBackend::evict` plus a
-`RemovedComponents` system makes it reachable.
-
-**What to check when you launch:**
-
-1. `cargo renzora dist` builds `plugins/lua` automatically (xtask iterates
-   `plugins/*`). Confirm `lua.dll` lands in `dist/windows-x64/plugins/`.
-2. Boot log: `[scripting] backend `Lua` handles .lua, .blueprint, .bp` then
-   `[scripting] adopting `Lua``. Absent = the plugin did not load.
-3. A script that moves something, reads `get(...)`, calls `apply_force`, and
-   declares a prop - those exercise commands, host reads, declared bindings and
-   the inspector round trip respectively.
-4. Hot reload: edit a running script, confirm the VM rebuilds.
-5. `docker/build-all.sh` does **not** build standalone plugins at all - see §3.
-   Only the xtask path stages them.
-
-## 3. Finish the migration's loose ends
-
-- **`docker/build-all.sh`'s `copy_shared_libs`** (lines ~133–203) still stages
-  `bevy_dylib` + `renzora` + the editor bundle + Rust `std`. Needs the same
-  treatment `xtask::stage()` already got: copy two executables, drop the
-  shared-lib pass. Also **delete its runtime lane (~291–307)** — dead code, no
-  `run_lane` invokes it, and its two-target-dir design is what this replaces.
+- **`docker/build-all.sh`'s `copy_shared_libs`** (~133–203) still stages
+  `bevy_dylib` + `renzora` + the editor bundle + Rust `std`. Needs what
+  `xtask::stage()` already got: copy two executables, drop the shared-lib pass.
+  Also **delete its runtime lane (~291–307)** — dead, no `run_lane` calls it.
 - **`wrap_linux_appimage` / `wrap_macos_app`** move the file literally named
   `renzora`. Fine for the game; the editor needs its own wrapper or ships flat.
 - **Stale comments** describing the dlopen architecture: `.cargo/config.toml`
-  (the `prefer-dynamic` block and the `crt-static` note), most
-  `crates/renzora_*/Cargo.toml` headers, `renzora_editor/src/lib.rs`'s whole
-  "Step A/Step B preconditions" section. Prose only, no build impact.
-- **`crt-static` is now viable.** It was disabled because it "changes crate
-  disambiguators, breaking TypeId across dylib boundaries". There are no dylib
-  boundaries left, so that reason is void — enabling it drops the
-  `VCRUNTIME140.dll` dependency. Land it separately with a plugin-allocated
-  string round-trip test, since C-ABI plugins would then be on a different CRT
-  heap.
+  (the `prefer-dynamic` block, the `crt-static` note, and the claim that
+  `dynamic_linking` is in `default` — it is not), and most
+  `crates/renzora_*/Cargo.toml` headers still calling themselves distribution
+  plugins loaded from `plugins/`.
+- **`crt-static` is viable** now there are no dylib boundaries. Land separately
+  with a plugin-allocated string round-trip test, since C-ABI plugins would then
+  be on a different CRT heap. (The lean build already sets it — see
+  `encoded_rustflags`.)
 
----
+### Docs (old §4)
 
-## 4. Docs
-
-CLAUDE.md **§3 is obsolete wholesale** — there is no shared `bevy_dylib`, no
+CLAUDE.md **§3 is obsolete wholesale** — no shared `bevy_dylib`, no
 `plugin_bevy_hash`, no ABI to match. §2's "cargo test does NOT link natively on
-Windows" is also too broad: `cargo test -p renzora --lib` links fine and ran 9
-tests. It is the full-workspace suite that fails.
-
-`docs/r1-alpha7/` only (alpha5/alpha6 are frozen). 41 pages reference
-scripting; the Rhai-specific ones are now wrong.
+Windows" is too broad: `cargo test -p <crate> --lib` links fine and was used
+repeatedly this session; it is the full-workspace suite that fails. §6 and §7
+still describe `renzora::add!` as a runtime registration. `docs/r1-alpha7/` only.
 
 Record the PE measurements so the export-cap myth dies: `bevy_dylib` exported
 44,148 names, `renzora.dll` 1,458, **`renzora.exe` 0**. Executables export
-nothing — the 65,535 cap was a property of `crate-type = ["dylib"]`, not of
-program size.
+nothing.
 
----
+### Smaller items, verified but unlanded (old §5)
 
-## 5. Smaller items, verified but unlanded
-
-- **`renzora_bluenoise`** — orphan. Nothing in the workspace depends on it; it
-  is swept in by the `crates/renzora_*` member glob. Wire it or delete it.
+- **`renzora_bluenoise`** — orphan; nothing depends on it. Wire or delete.
 - **`renzora_rmip`'s `bake` feature leaks into every shipped game.**
-  `renzora_import` (editor-only) enables `bake = ["dep:image", "dep:intel_tex_2"]`,
-  and `renzora_engine` (runtime) deps `renzora_rmip` plain — so feature
-  unification puts a full image codec stack plus the Intel texture compressor
-  in every export. Split into `renzora_rmip_bake`.
+  `renzora_import` (editor-only) enables `bake = ["dep:image", "dep:intel_tex_2"]`
+  and `renzora_engine` deps `renzora_rmip` plain, so feature unification puts a
+  full image codec stack plus the Intel texture compressor in every export.
+  Split into `renzora_rmip_bake`.
 - **`renzora_network` / `renzora_shader` declare `editor = []`** with zero
-  `cfg(feature = "editor")` sites. Dead features; delete them and the
+  `cfg(feature = "editor")` sites. Dead; delete them and the
   `"renzora_network/editor"` line in `renzora_editor/Cargo.toml`.
-- **Lean export ships zero C-ABI plugins.** `renzora_export/src/overlay.rs:1005`
-  sets `is_lean` and skips both the shared-lib copy *and* the `plugins/` copy
-  block. A static host dlopens C-ABI plugins fine. Relax one conditional; 62
-  plugins restored.
-- **Exported VR games ship without `openxr_loader.dll`** — the export
-  allowlist silently drops it although xtask stages it.
-- **`renzora_forward_decal` and `renzora_pool_water`** carry a non-optional
-  `renzora_editor_framework` dep while registering at Runtime scope, so ~4k
-  lines of editor framework land in every shipped game. Split per CLAUDE.md §5
-  into `renzora_<name>` + `renzora_<name>/editor/`.
-- **`reflect_source.rs`** (committed, inert). Reflection-driven inspector rows,
-  `RENZORA_REFLECT_INSPECTOR=gaps|all` to try. Blocked on a feature-level
-  declaration — see the note at the end of this file.
+- **Exported VR games ship without `openxr_loader.dll`** — the export allowlist
+  drops it although xtask stages it.
+- **`reflect_source.rs`** (committed, inert) — see the note at the end.
 
 ---
 
-## Binary sizes, for reference
+## Which static plugins could become C-ABI plugins
 
-Measured on `dist` profile (`opt-level = 2`, `strip = "symbols"`, no LTO):
-
-| | |
-|---|---|
-| `renzora.exe` | 170 MB |
-| `renzora-editor.exe` | 238 MB |
-| `renzora.pdb` / `renzora_editor.pdb` | 91 / 122 MB (separate, never staged) |
-
-Old dynamic footprint for comparison: shipped game ~218 MB
-(85 exe + 121 `bevy_dylib` + 11 `renzora.dll`), editor install ~349 MB.
-
-**Do not enable LTO on `dist`.** Measured: `lto = "thin"` made both binaries
-*larger* (170→174, 238→243) and the build slower. At `opt-level = 2` thin LTO's
-dominant effect is cross-crate inlining, which is not size-constrained, and the
-duplicated inlined bodies outweigh what dead-stripping removes. LTO only pays
-for itself on size when paired with `opt-level = "s"` — which is what
-`[profile.dist-lean]` already does. This is recorded in the profile comment.
-
-`.text` is 117 MB of the 170 MB file — **31% of the binary is not code**.
-Prime suspects for that 52 MB, unmeasured: Bevy features that embed binary
-blobs (`tonemapping_luts`, `smaa_luts`, `bluenoise_texture`, `dfg_lut`,
-`area_light_luts`, `default_font`) plus 186 `.wgsl` files. Worth measuring
-before optimising.
-
-Top `.text` contributors: `bevy_ecs` 5.9, `renzora_ember` 5.8, `bevy_reflect`
-5.1, **`avian3d` 4.5 + `avian2d` 4.2**, `bevy_pbr` 4.4, `bevy_hanabi` 3.2 +
-`renzora_hanabi` 2.0, `naga` 3.1. The real lever is not compiler flags — it is
-`capabilities.rs` not compiling what a given game does not use. No game needs
-both physics engines.
-
----
-
-## Which static plugins can become C-ABI plugins
-
-Assessed after converting all 13 from `cdylib` to `rlib`. **The deciding factor
-is not size — it is whether the plugin's actual work lives in a Bevy-linking
-dependency**, because a C-ABI plugin links no Bevy at all.
+Assessed after the cdylib→rlib conversion. **The deciding factor is not size —
+it is whether the plugin's actual work lives in a Bevy-linking dependency**,
+because a C-ABI plugin links no Bevy at all.
 
 ### Cannot be C-ABI — the plugin *is* a Bevy library
 
@@ -270,35 +211,57 @@ dependency**, because a C-ABI plugin links no Bevy at all.
 | `renzora_tracy` | 231 | `tracing-subscriber` integration |
 
 The thin ones are thin *because* the weight is in the dependency.
-`renzora_cloth` at 25 lines looks trivially portable and is the opposite —
-there would be nothing left to port, and `bevy_silk` cannot cross the boundary.
-
-**These stay as rlibs.** Not a defeat: they are deep engine rendering features
-that arguably belong in the engine, and `capabilities.rs` already strips them
-per game.
+`renzora_cloth` at 25 lines looks trivially portable and is the opposite.
 
 ### Plausibly C-ABI
 
 | crate | loc | needs |
 |---|---|---|
 | `renzora_text3d` | 560 | **`plugins/text3d` already exists** — check whether it supersedes this and delete |
-| `renzora_forward_decal` | 159 | insert Bevy's `ForwardDecal`; only dep is `renzora_editor_framework`, which the `/editor` split removes anyway |
+| `renzora_forward_decal` | 159 | insert Bevy's `ForwardDecal`; the editor-framework dep is gone as of this session |
 | `renzora_vignette` | 166 | insert Bevy's built-in `Vignette`; **no non-Bevy deps at all** |
 | `renzora_ragdoll` | 538 | Avian bodies per bone — the ABI has `physics.rs` |
 | `renzora_pool_water` | 925 | custom material — `plugin_material` exists |
 | `renzora_ai_chat` | 1,962 | panel + HTTP — the ABI has both |
 
-**Unconfirmed capability** that gates vignette and forward_decal: whether a
-C-ABI plugin can insert a **host-defined** component (Bevy's `Vignette`) rather
-than only its own registered ones. `ecs.rs` has `register_component`,
-`component_id_of` and an `unresolved_component` path that hints at referring to
-components the plugin does not own — read it before promising these work.
+**Unconfirmed capability** gating vignette and forward_decal: whether a C-ABI
+plugin can insert a **host-defined** component (Bevy's `Vignette`) rather than
+only its own registered ones. `ecs.rs` has `register_component`,
+`component_id_of` and an `unresolved_component` path that hints at it — read it
+before promising these work.
 
 **Suggested order:** `renzora_text3d` (possibly free), then `renzora_vignette`
-(smallest real port, proves the host-component-insert case), then the rest.
+(smallest real port, proves the host-component-insert case).
 
-None of these are on the critical path. They are the better long-term shape,
-not a blocker.
+---
+
+## Binary sizes, for reference
+
+Measured on `dist` (`opt-level = 2`, `strip = "symbols"`, no LTO):
+
+| | |
+|---|---|
+| `renzora.exe` | 170 MB |
+| `renzora-editor.exe` | 238 MB |
+
+Old dynamic footprint: shipped game ~218 MB, editor install ~349 MB.
+
+**Do not enable LTO on `dist`.** Measured: `lto = "thin"` made both binaries
+*larger* (170→174, 238→243) and the build slower. At `opt-level = 2` thin LTO's
+dominant effect is cross-crate inlining, which is not size-constrained. LTO only
+pays for itself on size paired with `opt-level = "s"` — which `[profile.dist-lean]`
+already does.
+
+`.text` is 117 MB of the 170 MB file — **31% of the binary is not code**. Prime
+suspects for that 52 MB, unmeasured: Bevy features that embed binary blobs
+(`tonemapping_luts`, `smaa_luts`, `bluenoise_texture`, `dfg_lut`,
+`area_light_luts`, `default_font`) plus 186 `.wgsl` files.
+
+Top `.text` contributors: `bevy_ecs` 5.9, `renzora_ember` 5.8, `bevy_reflect`
+5.1, **`avian3d` 4.5 + `avian2d` 4.2**, `bevy_pbr` 4.4, `bevy_hanabi` 3.2 +
+`renzora_hanabi` 2.0, `naga` 3.1. The real lever is `capabilities.rs` not
+compiling what a game does not use — and as of this session physics is two
+features, so a 3D game no longer carries parry2d.
 
 ---
 
@@ -307,18 +270,18 @@ not a blocker.
 Committed but `Off` by default, for a reason worth remembering.
 
 The field-generation layer works — ranges via `#[reflect(@0.0f32..=5.0f32)]`,
-enum dropdowns, nested structs, remove, enable. It was proven end-to-end on
+enum dropdowns, nested structs, remove, enable. Proven end-to-end on
 `renzora_vignette`: deleting its 44-line `InspectorEntry` dropped the crate's
 `renzora` dep to **zero features** (−53/+16 lines). That change was **reverted**
 because the default had to go `Off`, which would have left vignette with no
 inspector at all.
 
-Three things reflection cannot supply, all discovered by running it:
+Three things reflection cannot supply, all found by running it:
 
-1. **Which components are user-facing.** `FillGaps` mode looked safe and was
-   not: "has no hand-written entry" correlates strongly with "is not authored
-   state". `renzora_lumen` re-`try_insert`s `RtLighting` from its routing system
-   every time settings change, so deleting the component or flipping its toggle
+1. **Which components are user-facing.** `FillGaps` looked safe and was not:
+   "has no hand-written entry" correlates strongly with "is not authored state".
+   `renzora_lumen` re-`try_insert`s `RtLighting` from its routing system every
+   time settings change, so deleting the component or flipping its toggle
    silently reverted within a frame.
 2. **Add Component curation.** Inferring addability from `#[reflect(Default)]`
    was tried and reverted — the menu filled with `AngularDamping`,
@@ -327,21 +290,16 @@ Three things reflection cannot supply, all discovered by running it:
    enumerates components, the menu offers features.**
 3. **Presentation** — icon, category, grouping.
 
-**The unblocking idea** (not implemented): declare it at *plugin* level in
-`renzora::add!`, which every plugin already calls and which is not the editor
-contract:
+**The unblocking idea** was to declare it at *plugin* level in `renzora::add!`:
 
 ```rust
 renzora::add!(VignettePlugin, component = VignetteSettings,
               name = "Vignette", icon = "aperture");
 ```
 
-One line replaces the 44-line entry except the field data. It is feature-level
-(so the section is named for the plugin, not the component), it declares which
-component is *authored* (so derived ones like `RtLighting` are never shown,
-killing both bugs by construction), and it needs no `AppEditorExt` or
-`InspectorEntry` import.
-
-**Caveat:** step 1 of this plan deletes `add!`. If both land, the declaration
-belongs wherever the explicit plugin list ends up instead. Sequence them
-together or the design changes under you.
+One line replacing the 44-line entry except the field data, declaring which
+component is *authored* (so derived ones like `RtLighting` are never shown).
+**This is now easier, not harder:** `add!` is parsed as text by
+`xtask/src/sync.rs`, so extra key-value arguments can be read there and emitted
+into the generated list — no proc macro, no editor-contract import. Extend
+`parse_args` in that file.
