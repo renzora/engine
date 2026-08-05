@@ -991,8 +991,8 @@ fn export_worker(
         }
     };
 
-    // The lean binary is statically linked and self-contained, so it ships none
-    // of the dev runtime's sibling dylibs or dlopen plugin cdylibs.
+    // The lean binary is statically linked, so it ships none of the dev
+    // runtime's sibling dylibs. It DOES still ship plugins — see below.
     let is_lean = matches!(packaging_mode, PackagingMode::LeanSingleBinary);
 
     match result {
@@ -1023,26 +1023,36 @@ fn export_worker(
                         }
                     }
                 }
+            }
 
-                // Copy selected plugins
-                if !selected_plugins.is_empty() {
-                    let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
-                    let plugins_out = output_dir.join("plugins");
-                    let _ = std::fs::create_dir_all(&plugins_out);
+            // Plugins ship with EVERY packaging mode, lean included.
+            //
+            // They used to be skipped for a lean export on the reasoning that a
+            // static binary cannot dlopen. That is not true, and it is the wrong
+            // mechanism besides: these are C-ABI plugins (`renzora_plugin`),
+            // which link no Bevy at all — the interface is passed in as a
+            // function table — so there is nothing for them to share with the
+            // host and nothing about static linking that stops the OS loading
+            // them. The result was a lean game shipping zero plugins, silently:
+            // no Lua, no post-process effects, and no error, because the host
+            // simply found an empty `plugins/` directory.
+            if !is_wasm && !selected_plugins.is_empty() {
+                let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
+                let plugins_out = output_dir.join("plugins");
+                let _ = std::fs::create_dir_all(&plugins_out);
 
-                    for plugin_path in &selected_plugins {
-                        if let Some(filename) = plugin_path.file_name() {
-                            let dest = plugins_out.join(filename);
-                            if let Err(e) = std::fs::copy(plugin_path, &dest) {
-                                warn!("[export] Failed to copy plugin {:?}: {}", filename, e);
-                            }
+                for plugin_path in &selected_plugins {
+                    if let Some(filename) = plugin_path.file_name() {
+                        let dest = plugins_out.join(filename);
+                        if let Err(e) = std::fs::copy(plugin_path, &dest) {
+                            warn!("[export] Failed to copy plugin {:?}: {}", filename, e);
                         }
                     }
-                    info!(
-                        "[export] Copied {} plugins to output",
-                        selected_plugins.len()
-                    );
                 }
+                info!(
+                    "[export] Copied {} plugins to output",
+                    selected_plugins.len()
+                );
             }
 
             // Server export

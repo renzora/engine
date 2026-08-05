@@ -7687,6 +7687,7 @@ dependencies = [
  "renzora_environment_map_editor",
  "renzora_export",
  "renzora_foliage_editor",
+ "renzora_forward_decal_editor",
  "renzora_gamepad",
  "renzora_gizmo",
  "renzora_grid",
@@ -7719,6 +7720,7 @@ dependencies = [
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_physics_editor",
+ "renzora_pool_water_editor",
  "renzora_procedural_tree_editor",
  "renzora_scene",
  "renzora_script_variables",
@@ -7917,8 +7919,17 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_editor_framework",
  "serde",
+]
+
+[[package]]
+name = "renzora_forward_decal_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_editor_framework",
+ "renzora_forward_decal",
 ]
 
 [[package]]
@@ -8427,8 +8438,17 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
- "renzora_editor_framework",
  "serde",
+]
+
+[[package]]
+name = "renzora_pool_water_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_editor_framework",
+ "renzora_pool_water",
 ]
 
 [[package]]

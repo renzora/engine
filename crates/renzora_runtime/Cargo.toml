@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "postfx", "sky", "solari", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
+default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "night_stars", "solari", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
@@ -94,19 +94,28 @@ audio = ["dep:renzora_audio", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
 blueprint = ["dep:renzora_blueprint", "renzora_scripting/blueprint"]
 game_ui = ["renzora_ember/game_ui"]
-# Post-process effect stack (the framework `renzora_postprocess` + tonemapping
-# stay core; these are the individual effects).
-postfx = [
-    "dep:renzora_bloom_effect", "dep:renzora_ssao", "dep:renzora_ssr",
-    "dep:renzora_dof", "dep:renzora_motion_blur", "dep:renzora_distance_fog",
-    "dep:renzora_volumetric_fog", "dep:renzora_lens_distortion",
-    "dep:renzora_auto_exposure", "dep:renzora_oit", "dep:renzora_antialiasing",
-]
-# Sky / environment visuals.
-sky = [
-    "dep:renzora_atmosphere", "dep:renzora_environment_map",
-    "dep:renzora_skybox", "dep:renzora_clouds", "dep:renzora_night_stars",
-]
+# Post-process effects, one feature per crate. These were a single `postfx`
+# bundle, which meant a game wanting only bloom still shipped SSR, DoF, OIT and
+# eight others — an aggregate feature cannot be partially stripped, since
+# whatever remains in `default` re-enables every member. The framework
+# (`renzora_postprocess`) and tonemapping stay core.
+bloom = ["dep:renzora_bloom_effect"]
+ssao = ["dep:renzora_ssao"]
+ssr = ["dep:renzora_ssr"]
+dof = ["dep:renzora_dof"]
+motion_blur = ["dep:renzora_motion_blur"]
+distance_fog = ["dep:renzora_distance_fog"]
+volumetric_fog = ["dep:renzora_volumetric_fog"]
+lens_distortion = ["dep:renzora_lens_distortion"]
+auto_exposure = ["dep:renzora_auto_exposure"]
+oit = ["dep:renzora_oit"]
+antialiasing = ["dep:renzora_antialiasing"]
+# Sky / environment visuals, likewise one per crate rather than one `sky` bundle.
+atmosphere = ["dep:renzora_atmosphere"]
+environment_map = ["dep:renzora_environment_map"]
+skybox = ["dep:renzora_skybox"]
+clouds = ["dep:renzora_clouds"]
+night_stars = ["dep:renzora_night_stars"]
 
 [dependencies]
 # Former dlopen'd distribution plugins, now statically linked.

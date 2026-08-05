@@ -109,6 +109,8 @@ editor = [
     "dep:renzora_night_stars_editor",
     "dep:renzora_clouds_editor",
     "dep:renzora_procedural_tree_editor",
+    "dep:renzora_forward_decal_editor",
+    "dep:renzora_pool_water_editor",
     "renzora_network/editor",
     "dep:renzora_water_editor",
     "dep:renzora_ember_editor",
@@ -231,6 +233,8 @@ renzora_clouds_editor   = { path = "../renzora_clouds/editor", optional = true }
 # cdylib (dlopen'd from plugins/, so no dep here); only the editor companion
 # (Add-Entity preset + inspector) links into the editor bundle.
 renzora_procedural_tree_editor = { path = "../renzora_procedural_tree/editor", optional = true }
+renzora_forward_decal_editor = { path = "../renzora_forward_decal/editor", optional = true }
+renzora_pool_water_editor   = { path = "../renzora_pool_water/editor", optional = true }
 renzora_network         = { path = "../renzora_network" }
 renzora_animation       = { path = "../renzora_animation" }
 renzora_water           = { path = "../renzora_water" }

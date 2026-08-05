@@ -2,21 +2,14 @@
 name = "renzora_pool_water"
 version = "0.1.0"
 edition = "2021"
+description = "Pool water — the runtime half. The inspector lives in the nested `editor/` subcrate (renzora_pool_water_editor), linked only by the editor binary."
 
-# Distribution plugin: ships as a standalone .dll/.so/.dylib that
-# `dynamic_plugin_loader` picks up from the engine's `plugins/`
-# directory at startup. cdylib keeps the export surface to the
-# unmangled `extern "C"` symbols emitted by `renzora::add!` under
-# the `dlopen` feature.
 [lib]
 crate-type = ["rlib"]
 
-[features]
-default = ["editor"]
-editor = ["renzora/editor"]
-
+# No `editor` feature — see `renzora_forward_decal`'s manifest for why one could
+# not have kept the editor framework out of a shipped game.
 [dependencies]
-renzora_editor_framework = { path = "../renzora_editor_framework" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }

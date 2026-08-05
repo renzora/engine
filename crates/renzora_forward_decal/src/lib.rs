@@ -3,9 +3,6 @@ use bevy::pbr::decal::{ForwardDecal, ForwardDecalMaterial, ForwardDecalMaterialE
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "editor")]
-use renzora_editor_framework::{AppEditorExt, InspectorEntry};
-
 /// Wrapper settings for a forward decal entity.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, Serialize, Deserialize)]
@@ -26,8 +23,11 @@ impl Default for DecalSettings {
 }
 
 /// Marker to track whether we've already created the decal components.
+///
+/// `pub` for the editor companion crate, whose inspector "remove" action strips
+/// it alongside the settings.
 #[derive(Component)]
-struct DecalMaterialHandle(Handle<ForwardDecalMaterial<StandardMaterial>>);
+pub struct DecalMaterialHandle(Handle<ForwardDecalMaterial<StandardMaterial>>);
 
 fn sync_decals(
     mut commands: Commands,
@@ -105,44 +105,6 @@ fn ensure_depth_prepass(
     }
 }
 
-#[cfg(feature = "editor")]
-fn decal_entry() -> InspectorEntry {
-    InspectorEntry {
-        type_id: "forward_decal",
-        display_name: "Forward Decal",
-        icon: "sticker",
-        category: "rendering",
-        has_fn: |world, entity| world.get::<DecalSettings>(entity).is_some(),
-        add_fn: Some(|world, entity| {
-            world.entity_mut(entity).insert(DecalSettings::default());
-        }),
-        remove_fn: Some(|world, entity| {
-            world
-                .entity_mut(entity)
-                .remove::<(DecalSettings, ForwardDecal, DecalMaterialHandle)>();
-        }),
-        is_enabled_fn: Some(|world, entity| {
-            world
-                .get::<DecalSettings>(entity)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
-        }),
-        set_enabled_fn: Some(|world, entity, val| {
-            if let Some(mut s) = world.get_mut::<DecalSettings>(entity) {
-                s.enabled = val;
-            }
-        }),
-        fields: vec![renzora_editor_framework::float_field!(
-            "Depth Fade",
-            DecalSettings,
-            depth_fade_factor,
-            0.1,
-            0.01,
-            50.0
-        )],
-    }
-}
-
 #[derive(Default)]
 pub struct DecalPlugin;
 
@@ -151,8 +113,6 @@ impl Plugin for DecalPlugin {
         info!("[runtime] DecalPlugin");
         app.register_type::<DecalSettings>();
         app.add_systems(Update, (sync_decals, cleanup_decals, ensure_depth_prepass));
-        #[cfg(feature = "editor")]
-        app.register_inspector(decal_entry());
     }
 }
 

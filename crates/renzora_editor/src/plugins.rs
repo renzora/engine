@@ -42,6 +42,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_environment_map_editor::EnvironmentMapEditorPlugin::default());
     app.add_plugins(renzora_export::ExportPlugin::default());
     app.add_plugins(renzora_foliage_editor::FoliageEditorPlugin::default());
+    app.add_plugins(renzora_forward_decal_editor::DecalEditorPlugin::default());
     app.add_plugins(renzora_gamepad::GamepadPlugin::default());
     app.add_plugins(renzora_gizmo::GizmoPlugin::default());
     app.add_plugins(renzora_grid::GridPlugin::default());
@@ -64,6 +65,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_oit_editor::OitEditorPlugin::default());
     app.add_plugins(renzora_particle_editor::ParticleEditorPlugin::default());
     app.add_plugins(renzora_physics_editor::PhysicsEditorPlugin::default());
+    app.add_plugins(renzora_pool_water_editor::PoolWaterEditorPlugin::default());
     app.add_plugins(renzora_procedural_tree_editor::ProceduralTreeEditorPlugin::default());
     app.add_plugins(renzora_scene::ScenePlugin::default());
     app.add_plugins(renzora_script_variables::ScriptVariablesPlugin::default());
