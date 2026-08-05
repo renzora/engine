@@ -6,6 +6,12 @@ description = "Navigation mesh and pathfinding for the Renzora engine"
 
 [features]
 default = []
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative — no interpreter is linked either way — but the declaration itself
+# needs the scripting crate, so a game exported without scripting drops it.
+# Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
+# it, so the whole engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
 # Terrain-aware nav obstacles (sample heightmaps → slope obstacles). Optional so
 # the lean export drops `renzora_terrain` for a game with no terrain. NOT in
 # `default` — `renzora_runtime`'s `terrain` feature forwards `renzora_navmesh?/terrain`
@@ -25,7 +31,7 @@ bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
-renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # avian3d enabled only via this crate's `physics` feature (see [features]); a
 # no-physics export keeps pathfinding without pulling avian.
 vleue_navigator = { path = "../vleue_navigator", default-features = false, features = ["debug-with-gizmos"] }

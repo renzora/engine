@@ -15,6 +15,8 @@
 
 use bevy::prelude::*;
 
+// Only for `PendingMeshInstanceRehydrate`, which is itself `gltf`-gated.
+#[cfg(feature = "gltf")]
 use crate::scene_io;
 use crate::Vfs;
 use renzora::MeshInstanceData;
@@ -94,8 +96,9 @@ impl AssetLoadProgress {
 /// up each entity's `model_path` in the rpak index.
 pub fn tick_asset_load_progress(
     instances: Query<&MeshInstanceData>,
-    // glTF model loading is `render_3d`-only — a 2D game has no models pending.
-    #[cfg(feature = "render_3d")]
+    // Only models loaded through bevy_gltf are ever "pending" — see the `gltf`
+    // feature. A project built from engine primitives has none.
+    #[cfg(feature = "gltf")]
     pending: Query<&MeshInstanceData, With<scene_io::PendingMeshInstanceRehydrate>>,
     vfs: Option<Res<Vfs>>,
     time: Res<Time>,
@@ -118,10 +121,15 @@ pub fn tick_asset_load_progress(
         }
     }
 
+    // `mut` is only exercised by the glTF-pending loop below; without models
+    // nothing is ever pending, so the three stay at their initial values.
+    #[cfg_attr(not(feature = "gltf"), allow(unused_mut))]
     let mut pending_files: u32 = 0;
+    #[cfg_attr(not(feature = "gltf"), allow(unused_mut))]
     let mut pending_bytes: u64 = 0;
+    #[cfg_attr(not(feature = "gltf"), allow(unused_mut))]
     let mut current: Option<String> = None;
-    #[cfg(feature = "render_3d")]
+    #[cfg(feature = "gltf")]
     for data in pending.iter() {
         if let Some(path) = data.model_path.as_deref() {
             pending_files += 1;
@@ -187,11 +195,17 @@ pub fn tick_asset_load_progress(
     };
 }
 
+/// No-op stand-in when scripting is stripped — the bridge exists only so
+/// scripts can call `asset_progress()`, and there are none.
+#[cfg(not(feature = "scripting"))]
+pub fn publish_asset_progress_to_bridge() {}
+
 /// Mirror [`AssetLoadProgress`] into the scripting crate's
 /// `AssetProgressBridge` so `asset_progress()` reads can find it without
 /// the scripting crate depending on `renzora_engine`.
 ///
 /// Runs every `Update` after [`tick_asset_load_progress`].
+#[cfg(feature = "scripting")]
 pub fn publish_asset_progress_to_bridge(
     progress: Res<AssetLoadProgress>,
     mut bridge: Option<ResMut<renzora_scripting::AssetProgressBridge>>,

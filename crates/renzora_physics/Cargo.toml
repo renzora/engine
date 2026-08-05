@@ -8,6 +8,12 @@ edition = "2021"
 # picks — `renzora_runtime` maps them to `physics_3d` / `physics_2d` so the lean
 # exporter can drop either. A 3D-only game carries no parry2d, and vice versa.
 default = []
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative — no interpreter is linked either way — but the declaration itself
+# needs the scripting crate, so a game exported without scripting drops it.
+# Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
+# it, so the whole engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
 avian3d = ["dep:avian3d"]
 avian2d = ["dep:avian2d"]
 
@@ -18,7 +24,7 @@ renzora_plugin = { path = "../renzora_plugin", features = ["host", "physics"] }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
-renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 
 # From crates.io, not a vendored copy. Avian was vendored when it had no release
 # targeting Bevy 0.19; 0.7.0 does, so the fork (and its four vendored ecosystem

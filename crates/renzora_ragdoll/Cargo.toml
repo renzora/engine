@@ -12,6 +12,12 @@ crate-type = ["rlib"]
 
 [features]
 default = ["editor"]
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative — no interpreter is linked either way — but the declaration itself
+# needs the scripting crate, so a game exported without scripting drops it.
+# Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
+# it, so the whole engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
 # Forwards to `renzora/editor` so `Ragdoll` registers into the Inspector's
 # "Add Component" list. Off in lean exports — the dev/editor build keeps it
 # on by default (see docs/r1-alpha7/editor-dev/inspector-fields.md).
@@ -21,7 +27,7 @@ editor = ["renzora/editor"]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_macros = { path = "../renzora_macros" }
-renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # Bone discovery walks the same AnimatorState/AnimationCommandQueue the
 # skeletal animation system uses, so pausing/resuming playback when a ragdoll
 # toggles on/off goes through the existing command queue instead of reaching

@@ -13,7 +13,10 @@ description = "Renzora's unified bevy_ui UI framework — markup (HUI), widgets,
 # helpers stay regardless (every widget needs them). `renzora_runtime` deps this
 # crate with `default-features = false` and forwards its own `game_ui` feature.
 default = ["game_ui"]
-game_ui = ["dep:bevy_hui", "dep:uuid"]
+# Also pulls scripting: every `renzora_scripting` use in this crate sits inside
+# `markup`/`game_ui` (data binding, input fields, the reflection queue behind
+# widgets), so a game with no markup UI needs neither.
+game_ui = ["dep:bevy_hui", "dep:uuid", "dep:renzora_scripting"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -34,7 +37,7 @@ uuid = { version = "1", optional = true }
 # `default-features = false`: ember uses only core scripting types — the lean
 # exporter strips the backends/blueprint/http via `renzora_runtime`'s forwarding,
 # which only works if no other lean-closure crate forces the defaults back on.
-renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # Send+Sync channel for the markdown widget's image downloads (background
 # thread → per-frame poll), same as renzora_hub's thumbnail cache.
 crossbeam-channel = "0.5"

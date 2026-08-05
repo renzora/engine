@@ -8,6 +8,12 @@ edition = "2021"
 # names the function and every language plugin builds it — so this compiles
 # identically whether the game is scripted in Lua, Wren or nothing at all.
 default = []
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative — no interpreter is linked either way — but the declaration itself
+# needs the scripting crate, so a game exported without scripting drops it.
+# Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
+# it, so the whole engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -15,7 +21,7 @@ bevy = { workspace = true }
 # only *populates* it. No other `renzora_*` dep is needed for the core feature.
 renzora = { path = "../renzora" }
 # Only for the `ScriptExtension` trait, which is now pure declaration.
-renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 
 [lints]
 workspace = true

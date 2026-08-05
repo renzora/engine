@@ -13,6 +13,12 @@ edition = "2021"
 [lib]
 crate-type = ["rlib"]
 
+[features]
+# The plugin custom-material pipeline (`plugin_material`), which implements
+# bevy's `Material` trait and so needs `bevy_pbr`. Off for a 2D-only export;
+# `add_plugin_material` becomes a no-op. Forwarded from `renzora_runtime`.
+render_3d = []
+
 [dependencies]
 renzora = { path = "../renzora", default-features = false, features = ["postprocess"] }
 bevy = { workspace = true }

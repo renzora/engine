@@ -95,9 +95,13 @@ What it strips/changes versus the copy modes:
 - **Static Bevy + static `std`** — `bevy_dylib` and the dynamic `std` are gone;
   everything is linked into the one executable (`--no-default-features --features
   runtime`, which drops the `dynamic_linking` feature).
-- **Fat LTO + size optimisation + symbol strip + `panic = "abort"`** (the
+- **Thin LTO + size optimisation (`opt-level = "s"`) + symbol strip** (the
   `dist-lean` cargo profile) — dead code is eliminated and the binary is built
-  for size.
+  for size. Thin rather than fat because fat LTO merges the whole program into
+  one link unit, which on a graph this size made the linker fail; `panic` stays
+  at `unwind`, since `abort` can't be mixed with the precompiled `std` on stable.
+- **Engine features you don't use are never compiled** — see
+  [Engine features](#engine-features-the-features-tab) below.
 - On Windows it also static-links the MSVC runtime (no `VCRUNTIME140.dll`
   dependency), which is safe here precisely because a lean binary has no dynamic
   plugin ABI to preserve.
@@ -121,14 +125,17 @@ lean binary for a *different* OS is a hard Docker requirement (the canonical
 cross-compile path), which is not yet wired into this mode — use the copy-based
 modes, or build on the matching host, for other platforms in the meantime.
 
-### Plugins are compiled in, not dlopen'd
+### Plugins
 
-A static binary can't `dlopen`, so the distribution plugins a game uses (the
-post-process effects, GI, cloth, …) are **compiled into** the lean binary from
-their workspace source instead. At export, the plugins you selected are wired
-into the generated `renzora_static_plugins` aggregator, which force-links each so
-its `inventory::submit!` registration is pulled in; the runtime then discovers
-and installs them at boot exactly as if they'd been dlopen'd.
+Engine plugins — the post-process effects, GI, cloth and the rest — are ordinary
+crates linked into the binary, so a lean build simply doesn't compile the ones
+you switch off in the Features tab. Nothing special happens at export time.
+
+**C-ABI plugins** (`plugins/`, e.g. the Lua interpreter) are a different
+mechanism: they're `dlopen`'d cdylibs, and a lean export copies them into a
+`plugins/` directory beside the executable exactly as the other packaging modes
+do. Compiling *those* into the binary instead — which a WASM export will require,
+since there is no `dlopen` in a browser — is not implemented yet.
 
 The whole lean build runs in an **isolated copy** of the engine source (synced
 into the gitignored `target/export-src/`), so your dev tree is never touched —
@@ -137,16 +144,130 @@ freely (e.g. `renzora` is built rlib-only to dodge the Windows PE 65535-export
 cap) because it's disposable; the first export copies the source and the rest are
 incremental.
 
-This works today for plugins whose **source is in the engine checkout** (every
-built-in distribution plugin). A lean build recompiles the **engine source** the
-editor was built from — your project is just assets that ride along in the rpak —
-so it's available when you run the editor from a source checkout.
-**Marketplace plugins** install as a prebuilt cdylib plus a `<crate>.plugin.toml`
-metadata sidecar; embedding those into a lean binary means downloading their
-source via that sidecar, which lands once the marketplace's source/build pipeline
-is in place. Until then, a lean build skips any selected plugin whose source
-isn't in the workspace (and says so), so use a copy-based mode if your game
-depends on a marketplace-only plugin.
+A lean build recompiles the **engine source** the editor was built from — your
+project is just assets that ride along in the rpak — so it's available whenever
+you run the editor from a source checkout. **Marketplace plugins** are C-ABI
+cdylibs and need no source: they're copied beside the binary like any other.
+
+## Engine features (the Features tab)
+
+A lean export only compiles the engine your game actually uses. The **Features**
+tab lists every strippable subsystem as a checkbox; unticking one removes its
+Cargo features from the disposable source copy, so the code is never built rather
+than built and dead-stripped. This is the single biggest lever on binary size —
+much larger than LTO or symbol stripping.
+
+Two kinds of default:
+
+- **Structural subsystems** (physics, audio, animation, terrain, the post-process
+  effects, UI, scripting, …) default to **on**. A game might reach them from a
+  script the exporter can't see, so you untick the ones you know you don't use
+  rather than risk silently losing something.
+- **Safe leaves** (raytraced lighting, remote asset loading, debug gizmos, system
+  diagnostics, editor conveniences) default to **off**, because nothing needs
+  them unless you say so.
+
+A few are **detected from your project**: image decoders follow the texture
+formats actually present, `Scripting` follows whether the project contains `.lua`
+files, `glTF model loading` whether it contains `.gltf`/`.glb` files,
+`Blueprints` whether it contains graphs, and `Script HTTP` whether a script calls
+`http_get`/`http_post`.
+
+### Sections
+
+The list is grouped so the two rendering pipelines sit next to each other — a
+game is usually one or the other, and deciding which half to drop is the main
+thing the tab is for:
+
+**3D rendering** · **2D rendering** · **Post-processing** · **Sky & environment** ·
+**Simulation** · **Systems & gameplay** · **Interface** · **Assets** ·
+**Build & diagnostics**
+
+Each header carries a **checkbox** that turns the whole section on or off at once
+— nested children included, since a child is meaningless without its parent.
+Clicking the **title** folds the section shut. Unticking 3D rendering and ticking
+2D rendering is a complete 2D game in two clicks.
+
+### Nested features
+
+Some entries have children, shown indented. A child is always a strict subset of
+its parent, so turning the parent off takes every child with it — leaving, say,
+"advanced PBR texture maps" on while 3D rendering is off would pull the whole PBR
+pipeline back in and undo the saving. Current groups:
+
+| Parent | Children |
+|---|---|
+| **3D rendering** | graph materials, glTF loading, morph targets, advanced PBR texture maps, lighting lookup tables |
+| **User interface** | Bevy's built-in font, Game UI (markup) |
+
+**Graph materials** is the biggest of those — about 1 MiB for the `renzora_shader`
+node-graph system that compiles `.material` assets into custom PBR shaders. A
+game whose meshes all use plain StandardMaterial never touches it, so it's
+detected from whether the project contains `.material` files.
+
+### Dependencies between features
+
+A few features need another one and will pull it back in automatically — Cargo
+resolves this, so you can't produce a broken combination by unticking things:
+
+- **Game UI** needs both **User interface** and **Scripting**.
+- **Blueprints** and **Script HTTP** need **Scripting**.
+- **3D text** needs **User interface** (its glyph outlines come from Bevy's text
+  crate), so switching UI off switches 3D text off too.
+- Turning **3D rendering** off also strips the subsystems built on it — terrain,
+  water, splines, particles, the sky set and the post-process effects.
+
+### Panic unwinding — the largest single lever
+
+**Panic unwinding** is on by default and is not a subsystem: turning it off
+builds with `panic = "abort"`. Measured on a cube-and-light project, that took
+the binary from **60.9 MB to 46.7 MB — about 24%**. The saving is much larger
+than the unwind tables alone, because dropping unwinding also removes the
+landing pads and cleanup glue from the code section and the panic message and
+source-location strings from the data section (`.text` −6.9 MB, `.rdata` −6.9 MB,
+`.pdata` −1.1 MB).
+
+**It has a real cost.** The engine wraps every call into a C-ABI plugin in
+`catch_unwind`, including each script call, so that a panicking plugin or script
+is caught and logged instead of killing the process. With `abort` nothing is
+caught — one bad script takes the whole game down. Crash reporting still works,
+because the panic hook runs before the abort. Ship it only once you've tested
+your game's scripts and plugins.
+
+(This is available to a lean export and not to the dev build for a concrete
+reason: the dev build's `renzora` crate is a `dylib`, which links the precompiled
+`std`'s unwinding runtime and cannot be mixed with `abort`. The export copy
+builds it as an `rlib` only, so the restriction doesn't apply.)
+
+### Where the size actually goes
+
+Worth knowing before hunting for savings, measured on that same project:
+
+| Section | Size | Share |
+|---|---|---|
+| `.text` (code) | 38.9 MiB | 64% |
+| `.rdata` (read-only data) | 18.3 MiB | 30% |
+| `.pdata` (unwind tables) | 2.3 MiB | 4% |
+| everything else | 1.4 MiB | 2% |
+
+**Roughly a third of the binary is data, not code** — embedded lookup tables
+(the blue-noise texture alone is 1.57 MiB), shader source, and reflection type
+information. That is why the LUT capabilities and `panic = "abort"` pay off out
+of proportion to how small they look.
+
+On the code side the largest crates are `bevy_pbr` (3.3 MiB), `std` (2.8),
+`bevy_ecs` (2.6), `bevy_reflect` (2.2) and `naga` (2.1, the shader compiler wgpu
+needs at runtime). Those are the engine itself; a 3D game needs them, so there is
+no large saving left in code beyond switching off subsystems you don't use.
+
+### What "User interface" off actually removes
+
+Worth calling out because it's the largest single saving available: unticking it
+drops `bevy_ui`, `bevy_ui_render`, `bevy_ui_widgets`, `bevy_text` and the
+`renzora_ember` widget framework — and with `bevy_text` goes the entire text
+shaping and font stack (parley, swash, harfrust, fontique, skrifa, read-fonts),
+several MB that a game drawing no text has no use for. Only do it for a game with
+genuinely no on-screen text or UI.
 
 ## Where templates come from
 

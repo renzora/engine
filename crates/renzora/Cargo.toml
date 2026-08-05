@@ -34,6 +34,15 @@ postprocess = []
 # 2D lean export. `tonemapping`/`Core3d` survive (bevy_core_pipeline). ON in every
 # desktop/editor build (forwarded by renzora_runtime/renzora_engine `render_3d`).
 render_3d = []
+# Gates ONLY the TAA/FXAA/SMAA ordering anchors in `postprocess.rs`, which import
+# `bevy::anti_alias`. Split out of `render_3d` because `bevy_anti_alias` is no
+# longer welded into bevy's `3d` meta — the root manifest now names it directly,
+# so the exporter's Anti-aliasing capability can drop it while the rest of the 3D
+# pipeline stays. Without this split, unticking Anti-aliasing broke the build:
+# `render_3d` was still on, so these imports survived a stripped `bevy_anti_alias`.
+# Losing the anchors only loosens ordering — the phases still run, and ordering
+# against a system that isn't in the schedule is a no-op anyway.
+antialiasing = ["render_3d"]
 # Note on the `dlopen` mechanism: distribution plugins (cdylib + dlopen)
 # need the FFI exports `plugin_create`, `plugin_scope`, `plugin_bevy_hash`
 # from `renzora::add!`. The macro gates those exports behind

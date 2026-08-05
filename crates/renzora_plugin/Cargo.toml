@@ -43,6 +43,12 @@ script = []
 # loader. Split by feature rather than by crate so a plugin author depends on
 # exactly one name.
 host = ["dep:bevy", "dep:libloading"]
+# The 3D half of the host: `StandardMaterial` / `MeshMaterial3d`, which come from
+# `bevy_pbr`. A 2D-only export strips that, so without this `add_material`
+# refuses with a warning and `MaterialSlot::Standard` does not exist. Plugins
+# shipping their own material go through `MaterialSlot::Custom` and are
+# unaffected. Only meaningful alongside `host`; a guest plugin never sees it.
+render_3d = []
 
 # NOTE: there is deliberately no `editor` feature pulling in `renzora`.
 # A crate with a path dependency cannot be published to crates.io, and this one

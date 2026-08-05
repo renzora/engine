@@ -40,8 +40,10 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_distance_fog::DistanceFogPlugin::default());
     #[cfg(feature = "dof")]
     app.add_plugins(renzora_dof::DepthOfFieldPlugin::default());
+    #[cfg(feature = "ui")]
     #[cfg(feature = "game_ui")]
     app.add_plugins(renzora_ember::game_ui::GameUiPlugin::default());
+    #[cfg(feature = "ui")]
     #[cfg(feature = "game_ui")]
     app.add_plugins(renzora_ember::markup::MarkupPlugin::default());
     #[cfg(feature = "environment_map")]
@@ -74,9 +76,9 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_procedural_tree::ProceduralTreePlugin::default());
     #[cfg(feature = "ragdoll")]
     app.add_plugins(renzora_ragdoll::RagdollPlugin::default());
-    #[cfg(feature = "render_3d")]
+    #[cfg(feature = "shader_graph")]
     app.add_plugins(renzora_shader::ShaderPlugin::default());
-    #[cfg(feature = "render_3d")]
+    #[cfg(feature = "shader_graph")]
     app.add_plugins(renzora_shader::material::MaterialPlugin::default());
     #[cfg(feature = "skybox")]
     app.add_plugins(renzora_skybox::SkyboxPlugin::default());

@@ -6,6 +6,14 @@ edition = "2021"
 # No `editor` feature: lean runtime crate. The inspector moved to the nested
 # renzora_tonemapping_editor crate (crates/renzora_tonemapping/editor).
 
+[features]
+# Bevy's LUT-sampling tone curves (AgX / TonyMcMapface / BlenderFilmic) read
+# embedded KTX2 tables. ON by default; the exporter strips it with the matching
+# `bevy/tonemapping_luts` feature, and this crate then substitutes `AcesFitted`
+# rather than letting Bevy render magenta. See `substitute_if_no_luts`.
+default = ["tonemapping_luts"]
+tonemapping_luts = []
+
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }

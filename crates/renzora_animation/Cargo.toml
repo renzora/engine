@@ -5,13 +5,19 @@ edition = "2021"
 
 [features]
 default = []
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative — no interpreter is linked either way — but the declaration itself
+# needs the scripting crate, so a game exported without scripting drops it.
+# Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
+# it, so the whole engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
 
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 renzora = { path = "../renzora", default-features = false }
-renzora_scripting = { path = "../renzora_scripting", default-features = false }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 # The engine side of the C ABI's animation surface (`plugin_bridge`). The
 # dependency only runs this way: `renzora_plugin` must stay publishable to
 # crates.io, so it cannot depend on any engine crate.

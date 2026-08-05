@@ -528,15 +528,21 @@ impl Plugin for RuntimePlugin {
             app.add_systems(
                 Update,
                 (scene_io::rehydrate_meshes, scene_io::apply_edited_meshes).chain(),
-            )
-                .add_systems(
-                    Update,
-                    (
-                        scene_io::rehydrate_mesh_instances,
-                        scene_io::finish_mesh_instance_rehydrate,
-                    )
-                        .run_if(not(resource_exists::<renzora::DedicatedServer>)),
-                );
+            );
+
+            // Split from the primitive rehydrate above rather than chained onto
+            // it: these two load `bevy::gltf::Gltf`, so they compile out with the
+            // `gltf` feature, and a `#[cfg]` can't sit on a link in a method
+            // chain. Primitive rehydration is unaffected either way.
+            #[cfg(feature = "gltf")]
+            app.add_systems(
+                Update,
+                (
+                    scene_io::rehydrate_mesh_instances,
+                    scene_io::finish_mesh_instance_rehydrate,
+                )
+                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+            );
         }
 
         // Distance LODs + texture tier streaming run in BOTH sessions — the
@@ -548,16 +554,20 @@ impl Plugin for RuntimePlugin {
         // "disabled").
         #[cfg(feature = "render_3d")]
         {
+            // Distance LODs ride the mesh-instance rehydrate wave:
+            // probe → spawn variants → tag meshes with VisibilityRange. The
+            // first two load `_lodN.glb` variants through `bevy::gltf`, so they
+            // go with the `gltf` feature; the taggers work on whatever subtrees
+            // exist and are kept unconditionally (they simply find none).
+            #[cfg(feature = "gltf")]
             app.add_systems(
                 Update,
-                (
-                    // Distance LODs ride the mesh-instance rehydrate wave:
-                    // probe → spawn variants → tag meshes with VisibilityRange.
-                    mesh_lod::probe_mesh_lods,
-                    mesh_lod::finish_lod_spawn,
-                    mesh_lod::tag_new_lod_meshes,
-                    mesh_lod::reapply_lod_config,
-                )
+                (mesh_lod::probe_mesh_lods, mesh_lod::finish_lod_spawn)
+                    .run_if(not(resource_exists::<renzora::DedicatedServer>)),
+            );
+            app.add_systems(
+                Update,
+                (mesh_lod::tag_new_lod_meshes, mesh_lod::reapply_lod_config)
                     .run_if(not(resource_exists::<renzora::DedicatedServer>)),
             );
             // Second tagger pass right before visibility is computed: glTF
@@ -926,8 +936,18 @@ impl Plugin for RuntimePlugin {
     }
 }
 
+/// No-op stand-in for a build with scripting stripped.
+///
+/// Kept as a real system rather than removed from the `Startup` chain at its
+/// call site: that chain also orders `load_autoloads` before
+/// `load_current_scene`, and dropping a link out of a `.chain()` is an easy way
+/// to lose an ordering that has nothing to do with scripting.
+#[cfg(not(feature = "scripting"))]
+fn setup_vfs_script_reader() {}
+
 /// Wire the VFS file reader into the scripting engine so scripts can be loaded
 /// from rpak archives (Android, exported builds) instead of the filesystem.
+#[cfg(feature = "scripting")]
 fn setup_vfs_script_reader(
     vfs: Res<Vfs>,
     mut engine: Option<ResMut<renzora_scripting::ScriptEngine>>,

@@ -42,6 +42,7 @@ pub(crate) fn register(app: &mut App) {
             cancel_or_back_click,
             copy_log_click,
             close_click,
+            section_toggle_click,
         ),
     );
 }
@@ -76,6 +77,9 @@ struct CancelOrBackBtn;
 /// Copy the full build log to the system clipboard.
 #[derive(Component)]
 struct CopyLogBtn;
+/// Features-tab section header — click folds/unfolds that section.
+#[derive(Component)]
+struct SectionToggle(&'static str);
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -578,28 +582,127 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
         let note = txt(commands, fonts, &renzora::lang::t("export.features.note_host"), 11.0, text_muted());
         commands.entity(body).add_child(note);
         let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
-        // Parents first, each followed by its own children, so the nesting reads
-        // as a tree rather than a flat 50-row wall. Ordering is derived rather
-        // than relying on the const being sorted — a child declared anywhere in
-        // the list still lands under its parent.
-        let ordered: Vec<&crate::capabilities::Capability> = crate::capabilities::CAPABILITIES
-            .iter()
-            .filter(|c| c.group.is_none())
-            .flat_map(|parent| {
-                std::iter::once(parent).chain(
-                    crate::capabilities::CAPABILITIES
-                        .iter()
-                        .filter(move |c| c.group == Some(parent.id)),
-                )
-            })
-            .collect();
-        for (idx, cap) in ordered.into_iter().enumerate() {
+        // Grouped into sections (3D rendering, 2D rendering, Systems, …) so the
+        // two pipelines can be compared side by side instead of reading as one
+        // 60-row wall. Within a section: parents first, each followed by its own
+        // children, so the nesting still reads as a tree. Both orderings are
+        // DERIVED rather than relying on the const being sorted — a capability
+        // declared anywhere in the list lands in the right section, under the
+        // right parent.
+        let mut ordered: Vec<(Option<&str>, &crate::capabilities::Capability)> = Vec::new();
+        for (sid, heading) in crate::capabilities::SECTIONS {
+            let mut first = true;
+            for parent in crate::capabilities::CAPABILITIES
+                .iter()
+                .filter(|c| c.group.is_none() && c.section == *sid)
+            {
+                // The heading rides on the first row of the section, so a section
+                // that ends up empty never leaves a dangling header.
+                ordered.push((first.then_some(*heading), parent));
+                first = false;
+                for child in crate::capabilities::CAPABILITIES
+                    .iter()
+                    .filter(|c| c.group == Some(parent.id))
+                {
+                    ordered.push((None, child));
+                }
+            }
+        }
+        for (idx, (heading, cap)) in ordered.into_iter().enumerate() {
+            if let Some(heading) = heading {
+                let sid = cap.section;
+                // Header: [checkbox] TITLE ......... [chevron]
+                //
+                // The row itself is NOT interactive. The checkbox and the
+                // fold zone are separate siblings, each owning its own
+                // `Interaction` — an earlier version made the whole row the fold
+                // control with buttons inside it, and pressing a button folded
+                // the section as well as doing its job.
+                let hrow = commands.spawn((
+                    Node {
+                        width: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(8.0),
+                        padding: UiRect { left: Val::Px(6.0), right: Val::Px(6.0), top: Val::Px(4.0), bottom: Val::Px(4.0) },
+                        margin: UiRect { top: Val::Px(if idx == 0 { 0.0 } else { 8.0 }), bottom: Val::Px(2.0), ..default() },
+                        border_radius: BorderRadius::all(Val::Px(3.0)),
+                        ..default()
+                    },
+                    BackgroundColor(ca(255, 255, 255, 10)),
+                )).id();
+                // Section checkbox: on when every capability in the section is on,
+                // and writing it sets them all. Children included — a child is
+                // meaningless without its parent, and the nested entries are where
+                // most of the size lives.
+                let scb = checkbox(commands, false);
+                bind_2way(
+                    commands,
+                    scb,
+                    move |w| {
+                        w.get_resource::<ExportOverlayState>().is_some_and(|s| {
+                            section_members(sid)
+                                .all(|c| s.capabilities.get(c.id).copied().unwrap_or(c.default_on))
+                        })
+                    },
+                    move |w, v: &bool| {
+                        if let Some(mut s) = w.get_resource_mut::<ExportOverlayState>() {
+                            for c in section_members(sid) {
+                                s.capabilities.insert(c.id.to_string(), *v);
+                            }
+                        }
+                    },
+                );
+                // Everything right of the checkbox folds the section.
+                let fold = commands.spawn((
+                    Node {
+                        flex_grow: 1.0,
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(6.0),
+                        ..default()
+                    },
+                    Interaction::default(),
+                    SectionToggle(sid),
+                    cursor(),
+                )).id();
+                let ht = commands.spawn((
+                    Text::new(heading.to_string()),
+                    ui_font(&fonts.ui, 11.0),
+                    TextColor(rgb(text_primary())),
+                    Node { flex_grow: 1.0, ..default() },
+                    FocusPolicy::Pass,
+                )).id();
+                // Chevron direction tracks the fold state, so the row reads as a
+                // control rather than decoration.
+                let chev = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 11.0);
+                commands.entity(chev).insert(FocusPolicy::Pass);
+                bind_text(commands, chev, move |w| {
+                    let collapsed = w
+                        .get_resource::<ExportOverlayState>()
+                        .is_some_and(|s| s.collapsed_sections.contains(sid));
+                    let name = if collapsed { "caret-right" } else { "caret-down" };
+                    renzora_ember::phosphor_map::icon_glyph(name)
+                        .unwrap_or('\u{E4C6}')
+                        .to_string()
+                });
+                commands.entity(fold).add_children(&[ht, chev]);
+                commands.entity(hrow).add_children(&[scb, fold]);
+                commands.entity(list).add_child(hrow);
+            }
             let id = cap.id;
             let child = cap.group.is_some();
             // One padded, zebra-striped item per capability (checkbox + label + help).
             // Children are indented and sit flush against the parent row rather
             // than being striped, so the grouping is legible without a header.
             let item = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), padding: UiRect { left: Val::Px(if child { 24.0 } else { 6.0 }), right: Val::Px(6.0), top: Val::Px(5.0), bottom: Val::Px(5.0) }, border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(if child { Color::NONE } else { row_stripe(idx) }))).id();
+            // Fold: hide the row when its section is collapsed. Reactive rather
+            // than a rebuild, so the checkboxes and scroll position survive.
+            let sid = cap.section;
+            bind_display(commands, item, move |w| {
+                !w.get_resource::<ExportOverlayState>()
+                    .is_some_and(|s| s.collapsed_sections.contains(sid))
+            });
             // Inlined `check_state` so the closures can capture the capability id.
             let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
             let cb = checkbox(commands, false);
@@ -943,6 +1046,35 @@ fn copy_log_click(
             let _ = cb.set_text(state.build_log.join("\n"));
         }
     }
+}
+
+/// Fold / unfold a Features-tab section.
+fn section_toggle_click(
+    q: Query<(&Interaction, &SectionToggle), Changed<Interaction>>,
+    mut state: Option<ResMut<ExportOverlayState>>,
+) {
+    let Some(state) = state.as_mut() else { return };
+    for (i, sec) in q.iter() {
+        if *i == Interaction::Pressed && !state.collapsed_sections.remove(sec.0) {
+            state.collapsed_sections.insert(sec.0.to_string());
+        }
+    }
+}
+
+/// Every capability rendered under one section heading, parents and children.
+///
+/// A child is placed by its PARENT's section — `group` decides nesting and
+/// `section` decides placement, and the two agree by construction, but resolving
+/// through the parent means a mismatch can't leave a visible row out of the
+/// header checkbox's reach.
+fn section_members(sid: &'static str) -> impl Iterator<Item = &'static crate::capabilities::Capability> {
+    crate::capabilities::CAPABILITIES.iter().filter(move |c| {
+        let owning = c
+            .group
+            .and_then(|p| crate::capabilities::CAPABILITIES.iter().find(|x| x.id == p))
+            .map_or(c.section, |p| p.section);
+        owning == sid
+    })
 }
 
 fn icon_clear_click(q: Query<&Interaction, (With<IconClearBtn>, Changed<Interaction>)>, mut state: Option<ResMut<ExportOverlayState>>) {

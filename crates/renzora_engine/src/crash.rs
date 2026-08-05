@@ -144,7 +144,10 @@ pub fn install_panic_hook(is_editor: bool) {
 
         // Editor sessions get a native dialog; shipped games write crash.log
         // silently. `is_editor_process()` carries the decision out of `main`.
-        #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+        #[cfg(all(
+            feature = "crash_dialog",
+            not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
+        ))]
         {
             if is_editor_process() {
                 show_crash_dialog(&report);
@@ -297,8 +300,13 @@ pub fn check_previous_crash() -> Option<CrashReport> {
 
 /// Show a native crash dialog using rfd, with option to copy to clipboard.
 /// Called only for editor sessions (gated by `is_editor_process()` at the call
-/// site); shipped games write `crash.log` silently instead.
-#[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+/// site); shipped games write `crash.log` silently instead. Compiled out
+/// entirely without `crash_dialog`, which is what keeps `rfd` and `arboard` out
+/// of a lean export.
+#[cfg(all(
+    feature = "crash_dialog",
+    not(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))
+))]
 fn show_crash_dialog(report: &CrashReport) {
     let short_message = format!(
         "The application has crashed.\n\n\

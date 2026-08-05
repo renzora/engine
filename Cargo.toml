@@ -123,19 +123,68 @@ exclude = ["plugins"]
 # sub-crates as matching 0.19.x registry deps, so the tree stays internally
 # consistent — one Bevy across the dlopen boundary.
 bevy = { version = "0.19", default-features = false, features = [
-    # Bevy's default is the four meta-features `2d, 3d, ui, audio`. We take
+    # ── The `2d` / `3d` / `ui` metas, EXPANDED LEAF BY LEAF ──────────────────
+    # Bevy's default is the four metas `2d, 3d, ui, audio`. We take
     # `default-features = false` and re-add all but `audio` — Renzora's audio is
     # kira-based (`renzora_audio`), so `bevy_audio` (and its rodio/cpal/symphonia
-    # stack) is never used anywhere in the engine. This also establishes the
-    # `default-features = false` base needed to drop other default subsystems
-    # (e.g. gizmos, and eventually 2d/3d) per export.
-    "2d", "3d", "ui",
-    # `bevy_light` listed explicitly (redundant while `3d` is on — `3d` already
-    # provides it) so it SURVIVES when the lean 2D export drops the `3d` meta:
-    # bevy_light does not depend on bevy_pbr, so lights/atmosphere keep working in
-    # a 2D build. See `renzora_export::capabilities` render_3d (which strips `3d`
-    # + the pbr_* sub-features).
+    # stack) is never used anywhere in the engine.
+    #
+    # The other three are written out leaf by leaf instead of named, because
+    # **a meta-feature cannot be partially stripped.** The lean exporter shrinks a
+    # game by deleting feature strings from this list, so anything reachable only
+    # through `3d` survives every attempt to remove it. That was not theoretical:
+    # `capabilities.rs`'s `render_3d` listed `bevy_pbr` for removal while `3d` sat
+    # here re-enabling it, so the toggle did nothing at all. Three more crates
+    # arrived the same way through `default_platform` — which `2d`, `3d` AND `ui`
+    # each pull in — and shipped in every exported game despite the notes below
+    # claiming they had been dropped as unused: `sysinfo_plugin` (→ sysinfo),
+    # `bevy_gilrs` (→ gilrs, gilrs-core) and `bevy_clipboard` (→ arboard).
+    #
+    # This set is the exact union of `2d + 3d + ui` for Bevy 0.19.0, verified by
+    # diffing the resolved feature list either side of the expansion. Keep it
+    # exact: on a Bevy bump, re-derive it from that release's `Cargo.toml` — the
+    # `2d`/`3d`/`ui` entries and the `default_app`, `default_platform`,
+    # `common_api`, `*_api`, `*_bevy_render`, `scene` and `picking` groups they
+    # expand into. Five members (`bevy_light`, `hdr`, `morph`, `morph_animation`,
+    # `bevy_post_process`) are NOT repeated here — they already appear below with
+    # their own notes, and a duplicate would survive the exporter deleting one.
+    #
+    # `default_app` — app scaffolding; all three metas need it.
+    "async_executor", "bevy_asset", "bevy_log", "bevy_state", "reflect_auto_register",
+    # `default_platform` — windowing and OS integration. `x11`/`wayland` are
+    # Linux-only and `webgl2` wasm-only: inert on other targets, but dropping them
+    # would leave those platforms with no windowing backend, so they stay. The
+    # last four are the strippable ones and now have capabilities.
+    "std", "bevy_winit", "multi_threaded", "custom_cursor",
+    "webgl2", "x11", "wayland",
+    "bevy_gilrs", "bevy_clipboard", "default_font", "sysinfo_plugin",
+    # `gamepad` listed SEPARATELY from `bevy_gilrs`, which is the only thing that
+    # would otherwise enable it. The two are different layers: `gamepad` is
+    # `bevy_input`'s ECS surface (`GamepadButton`, `GamepadAxis`, the events),
+    # used by six runtime crates — renzora, renzora_engine, renzora_gamepad,
+    # renzora_input, renzora_scripting, renzora_settings — while `bevy_gilrs` is
+    # the OS backend that feeds it. Naming it here is what lets the Gamepad
+    # capability drop the backend without deleting the types those crates
+    # compile against; a game built that way simply never sees a pad connect.
+    "gamepad",
+    # `scene` + `picking`
+    "bevy_scene", "bevy_world_serialization",
+    "bevy_picking", "mesh_picking", "sprite_picking", "ui_picking",
+    # `common_api` — the part 2d, 3d and ui share.
+    "bevy_animation", "bevy_camera", "bevy_color", "bevy_gizmos", "bevy_image",
+    "bevy_mesh", "bevy_shader", "bevy_material", "bevy_text", "bevy_window", "png",
+    # Render stack shared by all three.
+    "bevy_render", "bevy_core_pipeline", "bevy_gizmos_render",
+    # `2d` proper.
+    "bevy_sprite", "bevy_sprite_render",
+    # `3d` proper. `bevy_light` (listed further down) does NOT depend on bevy_pbr,
+    # which is what lets a 2D export keep lights and atmosphere after the rest of
+    # this group goes.
+    "bevy_pbr", "bevy_gltf", "gltf_animation", "bevy_mikktspace",
+    "bevy_anti_alias", "ktx2", "zstd_rust", "smaa_luts", "tonemapping_luts",
     "bevy_light",
+    # `ui` proper.
+    "bevy_ui", "bevy_ui_render", "bevy_ui_widgets", "bevy_input_focus",
     "serialize",
     # extra engine subsystems
     # (bevy_remote / BRP deliberately omitted — nothing in the editor or the
@@ -149,7 +198,13 @@ bevy = { version = "0.19", default-features = false, features = [
     #                              left is a colour constant copied by hand in
     #                              `renzora_grid/src/infinite_grid.rs`.
     #   bevy_settings            unused.
-    #   sysinfo_plugin           unused — `renzora_debug` owns diagnostics.
+    #   sysinfo_plugin           NOT actually dropped — see the expansion above.
+    #     Removing it from this list achieved nothing, because `default_platform`
+    #     (reached from `2d`/`3d`/`ui`) turned it straight back on, so `sysinfo`
+    #     shipped in every export for a year. It is now named explicitly above and
+    #     stripped by the `diagnostics` capability. Same story for `bevy_gilrs`
+    #     and `bevy_clipboard`. Treat this whole list with suspicion: "not
+    #     mentioned here" never meant "not compiled".
     #   bevy_camera_controller   unused — the editor has its own camera rig
     #     free_camera, pan_camera  (`renzora_camera`).
     #   reflect_functions        unused.
@@ -205,9 +260,11 @@ bevy = { version = "0.19", default-features = false, features = [
     # DROPPED: `asset_processor` + `compressed_image_saver` (Bevy's offline asset
     # pipeline — Renzora has its own `.rmip` texture pipeline and never enabled
     # Bevy's processor at runtime) and `web_asset_cache` (nothing reads it).
-    # `http`/`https` are KEPT pending a check on whether any `AssetServer` load
-    # uses a URL path — the 29 `https://` hits in the tree are reqwest/marketplace
-    # calls, not `AssetSource`, so these may well be droppable too.
+    # `http`/`https` are KEPT for the editor (marketplace/asset browsing); the
+    # `remote_assets` capability strips them from every game export, and doing so
+    # was verified to take the whole ureq/rustls/ring/webpki-roots stack with it.
+    # If TLS still shows up in an export log, the source is `script_http` or
+    # `renzora_network`, not this.
     # `file_watcher` KEPT pending the same check: the theme/shader hot-reload uses
     # its own mtime polling, so Bevy's watcher may be unused.
     "file_watcher", "http", "https",

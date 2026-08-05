@@ -15,13 +15,44 @@ use bevy::prelude::*;
 use bevy::camera::Hdr;
 use renzora::console_log::*;
 use renzora::{
-    CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshColor, MeshInstanceData,
-    MeshPrimitive, PlayModeCamera, PlayModeState, SceneCamera, ShapeRegistry,
-    ViewportRenderTarget,
+    CurrentProject, DefaultCamera, EditorCamera, HideInHierarchy, MeshInstanceData,
+    PlayModeCamera, PlayModeState, SceneCamera, ViewportRenderTarget,
 };
+// Used only by `rehydrate_meshes`, which is itself `render_3d`-only — a 2D
+// export has no mesh primitives to rebuild.
+#[cfg(feature = "render_3d")]
+use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
 use renzora_lighting::Sun;
 use std::collections::BTreeSet;
 use std::path::Path;
+
+/// Chainable stand-in for the two `bevy_ui` camera-target denies.
+///
+/// Four scene-builder chains need them, and `#[cfg]` cannot sit on a link in a
+/// method chain — so the gate lives here instead of being duplicated as a
+/// chain-splitting `let` at every call site. Without `bevy_ui` the two
+/// components do not exist to be denied (nor could a scene contain them), so
+/// the stripped body is a genuine no-op rather than a behaviour change.
+trait DenyUiCameraTargets {
+    fn deny_ui_camera_targets(self) -> Self;
+}
+
+impl DenyUiCameraTargets for DynamicSceneBuilder<'_> {
+    /// `UiTargetCamera` holds an `Entity` reference that doesn't remap across
+    /// loads (e.g. an editor-only play-mode camera), and `ComputedUiTargetCamera`
+    /// is a runtime-derived mirror — persisting either makes UI render to a dead
+    /// entity in the runtime and silently disappear.
+    #[cfg(feature = "ui")]
+    fn deny_ui_camera_targets(self) -> Self {
+        self.deny_component::<bevy::ui::UiTargetCamera>()
+            .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+    }
+
+    #[cfg(not(feature = "ui"))]
+    fn deny_ui_camera_targets(self) -> Self {
+        self
+    }
+}
 
 /// Conditionally-compiled `deny_component` calls for the optional `animation`
 /// and `terrain` subsystems. When the lean exporter strips those crates, their
@@ -102,10 +133,17 @@ impl DenyOptionalSubsystems for DynamicSceneBuilder<'_> {
     // instead and rehydrate on load.
     #[cfg(feature = "render_3d")]
     fn deny_render_3d_materials(self) -> Self {
-        self.deny_component::<Mesh3d>()
-            .deny_component::<MeshMaterial3d<StandardMaterial>>()
+        let b = self
+            .deny_component::<Mesh3d>()
+            .deny_component::<MeshMaterial3d<StandardMaterial>>();
+        // The graph-material half is a separate capability — a game using only
+        // StandardMaterial strips `renzora_shader`, and then these two types
+        // don't exist to be denied.
+        #[cfg(feature = "shader_graph")]
+        let b = b
             .deny_component::<MeshMaterial3d<renzora_shader::material::runtime::GraphMaterial>>()
-            .deny_component::<renzora_shader::material::resolver::MaterialResolved>()
+            .deny_component::<renzora_shader::material::resolver::MaterialResolved>();
+        b
     }
     #[cfg(not(feature = "render_3d"))]
     fn deny_render_3d_materials(self) -> Self {
@@ -321,13 +359,8 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
-        // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
-        // reference that doesn't remap across loads (e.g. an editor-only
-        // play-mode camera), and ComputedUiTargetCamera is a runtime-derived
-        // mirror — persisting either makes UI render to a dead entity in
-        // the runtime and silently disappear.
-        .deny_component::<bevy::ui::UiTargetCamera>()
-        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+        // Bevy UI camera-target plumbing — see `DenyUiCameraTargets`.
+        .deny_ui_camera_targets()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
@@ -493,13 +526,8 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
-        // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
-        // reference that doesn't remap across loads (e.g. an editor-only
-        // play-mode camera), and ComputedUiTargetCamera is a runtime-derived
-        // mirror — persisting either makes UI render to a dead entity in
-        // the runtime and silently disappear.
-        .deny_component::<bevy::ui::UiTargetCamera>()
-        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+        // Bevy UI camera-target plumbing — see `DenyUiCameraTargets`.
+        .deny_ui_camera_targets()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
@@ -685,8 +713,7 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
         .deny_all_resources()
         .deny_render_3d_materials()
         .deny_terrain_material()
-        .deny_component::<bevy::ui::UiTargetCamera>()
-        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+        .deny_ui_camera_targets()
         .deny_component::<ViewVisibility>()
         // Children are rebuilt from the ChildOf links we DO keep.
         .deny_component::<Children>()
@@ -1685,13 +1712,8 @@ pub fn save_prefab_source(
         .deny_terrain_material()
         .deny_component::<Camera3d>()
         .deny_component::<Camera>()
-        // Bevy UI camera-target plumbing. UiTargetCamera holds an Entity
-        // reference that doesn't remap across loads (e.g. an editor-only
-        // play-mode camera), and ComputedUiTargetCamera is a runtime-derived
-        // mirror — persisting either makes UI render to a dead entity in
-        // the runtime and silently disappear.
-        .deny_component::<bevy::ui::UiTargetCamera>()
-        .deny_component::<bevy::ui::ComputedUiTargetCamera>()
+        // Bevy UI camera-target plumbing — see `DenyUiCameraTargets`.
+        .deny_ui_camera_targets()
         .deny_component::<ViewVisibility>()
         .deny_component::<Children>()
         // Children's GlobalTransform reflects the instance root's world-space
@@ -2784,6 +2806,7 @@ pub fn sync_scene_camera_to_editor_camera(world: &mut World) {
 /// Triggers on `Added<MeshInstanceData>` (scene load). Skips entities that already
 /// have children (e.g. model_drop already spawned the SceneRoot child).
 #[cfg(feature = "render_3d")]
+#[cfg(feature = "gltf")]
 pub fn rehydrate_mesh_instances(
     mut commands: Commands,
     query: Query<
@@ -2814,6 +2837,7 @@ pub fn rehydrate_mesh_instances(
 /// Marker: waiting for GLTF to finish loading so we can attach the scene child.
 #[derive(Component)]
 #[cfg(feature = "render_3d")]
+#[cfg(feature = "gltf")]
 pub struct PendingMeshInstanceRehydrate(pub Handle<Gltf>);
 
 /// Marker: the mesh instance's GLB asset failed to load — typically because the
@@ -2826,6 +2850,7 @@ pub struct MeshInstanceLoadFailed;
 
 /// Finishes mesh-instance rehydration once the GLTF asset is ready.
 #[cfg(feature = "render_3d")]
+#[cfg(feature = "gltf")]
 pub fn finish_mesh_instance_rehydrate(
     mut commands: Commands,
     query: Query<(Entity, &PendingMeshInstanceRehydrate)>,

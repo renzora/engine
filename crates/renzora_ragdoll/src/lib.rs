@@ -19,6 +19,7 @@
 //! the simulation is paused) just freezes the pose.
 
 mod generate;
+#[cfg(feature = "scripting")]
 mod script_extension;
 mod toggle;
 
@@ -142,10 +143,15 @@ impl Plugin for RagdollPlugin {
         #[cfg(not(feature = "editor"))]
         app.register_type::<Ragdoll>();
 
-        let mut extensions = app.world_mut().get_resource_or_insert_with(
-            renzora_scripting::extension::ScriptExtensions::default,
-        );
-        extensions.register(script_extension::RagdollScriptExtension);
+        // Script functions owned by the ragdoll crate. Braced so the `cfg` has a
+        // single item to sit on.
+        #[cfg(feature = "scripting")]
+        {
+            let mut extensions = app.world_mut().get_resource_or_insert_with(
+                renzora_scripting::extension::ScriptExtensions::default,
+            );
+            extensions.register(script_extension::RagdollScriptExtension);
+        }
     }
 }
 

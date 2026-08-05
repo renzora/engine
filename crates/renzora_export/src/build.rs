@@ -99,6 +99,7 @@ pub fn build_lean(
     progress: &mut dyn FnMut(String),
     disabled_bevy_features: &[String],
     disabled_runtime_features: &[String],
+    panic_abort: bool,
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
     if Platform::current() != Some(platform) {
@@ -126,6 +127,7 @@ pub fn build_lean(
     let ws = sync_export_workspace(workspace_dir, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
+    set_panic_abort(&ws, panic_abort, progress)?;
     let features = String::from("runtime");
 
     let mut cmd = toolchain.cargo_command();
@@ -437,6 +439,54 @@ fn strip_bevy_features(
     std::fs::write(&manifest, doc.to_string())
         .map_err(|e| format!("write {}: {e}", manifest.display()))?;
     progress(format!("Stripping {} unused Bevy feature(s)", disabled.len()));
+    Ok(())
+}
+
+/// Patch `panic = "abort"` into the export copy's `[profile.dist-lean]`.
+///
+/// The largest single size lever there is — measured 60.9 MB → 46.7 MB on a
+/// cube-and-light project, because dropping unwinding removes the landing pads
+/// and cleanup glue from `.text` and the panic message/location strings from
+/// `.rdata`, not merely the `.pdata` unwind tables.
+///
+/// Only legal because the copy builds `renzora` as `rlib` only (see
+/// `sync_export_workspace`); the dev tree's `dylib` would link the precompiled
+/// std's `panic_unwind` and refuse to mix strategies.
+///
+/// Idempotent, and removes the key again when `abort` is false — the copy
+/// persists between exports, so a stale `panic = "abort"` would silently apply
+/// to a later export that had switched the capability back on.
+fn set_panic_abort(
+    copy_root: &Path,
+    abort: bool,
+    progress: &mut dyn FnMut(String),
+) -> Result<(), String> {
+    let manifest = copy_root.join("Cargo.toml");
+    let text = std::fs::read_to_string(&manifest)
+        .map_err(|e| format!("read {}: {e}", manifest.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("parse {}: {e}", manifest.display()))?;
+    let Some(profile) = doc
+        .get_mut("profile")
+        .and_then(|p| p.get_mut("dist-lean"))
+        .and_then(|p| p.as_table_like_mut())
+    else {
+        return Ok(());
+    };
+    let had = profile.get("panic").is_some();
+    if abort {
+        profile.insert("panic", toml_edit::value("abort"));
+    } else {
+        profile.remove("panic");
+    }
+    if abort != had {
+        std::fs::write(&manifest, doc.to_string())
+            .map_err(|e| format!("write {}: {e}", manifest.display()))?;
+    }
+    if abort {
+        progress("Building with panic = abort (no unwinding)".to_string());
+    }
     Ok(())
 }
 

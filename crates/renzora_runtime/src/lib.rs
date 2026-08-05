@@ -93,6 +93,9 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
         // DX12, Vulkan and Metal but NOT OpenGL, so requesting it as a *required*
         // feature on the GL backend would leave wgpu unable to create a device.
         // Skip it there; GL users simply don't get wireframe.
+        // Only the `solari` block below reassigns this, so without that feature
+        // the binding is never mutated — which a lean export hits every time.
+        #[cfg_attr(not(feature = "solari"), allow(unused_mut))]
         let mut features = if backends == Backends::GL {
             WgpuFeatures::empty()
         } else {
@@ -893,8 +896,15 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     app.add_plugins(renzora_globals::GlobalsPlugin);
     info!("[runtime] foundation: InputPlugin");
     app.add_plugins(renzora_input::InputPlugin);
-    info!("[runtime] foundation: ScriptingPlugin");
-    app.add_plugins(renzora_scripting::ScriptingPlugin::default());
+    // The scripting host: hooks, the command vocabulary and the queue that applies
+    // them. Which LANGUAGE a game can be scripted in is a separate question — the
+    // interpreters are C-ABI plugins, chosen in the Plugins tab — so a game that
+    // ships no scripts at all strips this whole layer.
+    #[cfg(feature = "scripting")]
+    {
+        info!("[runtime] foundation: ScriptingPlugin");
+        app.add_plugins(renzora_scripting::ScriptingPlugin::default());
+    }
     #[cfg(feature = "physics")]
     {
         info!("[runtime] foundation: PhysicsPlugin");
@@ -902,9 +912,14 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     }
 
     // Font scripting: `action("set_ui_font"/"set_font", {name=...})`.
-    app.add_observer(handle_font_script_actions);
-    // Shipped game adopts the project's default UI font.
-    app.add_systems(Update, apply_game_ui_font);
+    // Both are `ui`-only: they resolve into `bevy::text::FontSource` through
+    // ember's registry, and a game with no UI has no text to set a font on.
+    #[cfg(feature = "ui")]
+    {
+        app.add_observer(handle_font_script_actions);
+        // Shipped game adopts the project's default UI font.
+        app.add_systems(Update, apply_game_ui_font);
+    }
 
     // Viewport stretch: pixel-art game scaling. Only meaningful in
     // runtime builds (the editor renders to its own offscreen image
@@ -925,6 +940,7 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
 /// `FontRegistry` (named built-ins + project fonts); otherwise treats a value
 /// ending in `.ttf`/`.otf` or containing `/` as a project asset path and
 /// anything else as a system family name — so it also works in a shipped game.
+#[cfg(feature = "ui")]
 fn resolve_script_font(
     name: &str,
     registry: Option<&renzora_ember::font::FontRegistry>,
@@ -951,6 +967,7 @@ fn resolve_script_font(
 ///
 /// `name` resolves through [`resolve_script_font`] (registry / asset path /
 /// system family). Runs in the editor and shipped games.
+#[cfg(feature = "ui")]
 fn handle_font_script_actions(
     trigger: On<renzora::ScriptAction>,
     registry: Option<Res<renzora_ember::font::FontRegistry>>,
@@ -994,6 +1011,7 @@ fn handle_font_script_actions(
 /// startup. Editor sessions use the per-user editor font (EditorSettings) and
 /// are skipped; only the shipped game adopts the project default. Runs once,
 /// after the project + fonts are ready.
+#[cfg(feature = "ui")]
 fn apply_game_ui_font(
     mut done: Local<bool>,
     session: Option<Res<renzora::EditorSession>>,

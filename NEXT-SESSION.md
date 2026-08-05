@@ -143,80 +143,241 @@ still use — `bevy_light` and atmosphere already survive it. Its forced-strip
 list in `capabilities.rs::disabled_runtime_features` now names members rather
 than the two deleted bundles, so that is the place to look.
 
-### Gate everything (the programme, not a change)
+### Gate everything — LARGELY DONE, see below
 
-The principle: **nothing ships unless it is ticked.** A capability per subsystem
-is not enough — fonts, UI, diagnostics and text shaping all ride along today
-because no switch names them.
+The principle: **nothing ships unless it is ticked.**
 
-**Scripting — start here, it is smaller than it looks.** Coupling measured per
-crate (files touching `renzora_scripting` / `ScriptExtension` references):
+**The root cause turned out to be one thing: the `2d`/`3d`/`ui` meta-features.**
+All three expand to `default_platform`, which pulls `sysinfo_plugin`,
+`bevy_gilrs`, `bevy_clipboard` and `default_font`. A meta cannot be partially
+stripped — the exporter deletes feature strings, so anything reachable only
+through `3d` survived every attempt to remove it. `render_3d`'s capability listed
+`bevy_pbr` for removal while `3d` sat in the manifest re-enabling it, i.e. **the
+3D toggle was a no-op**, and the manifest comments claiming `sysinfo_plugin` had
+been "dropped as unused" were simply false.
 
-| crate | files | notes |
+The three metas are now **expanded leaf by leaf** in the root manifest (verified
+by diffing the resolved feature set either side: only the 14 alias names
+disappeared, every leaf preserved). Everything below follows from that.
+
+Landed:
+
+- **Scripting is a capability.** `renzora_scripting` optional in engine, ember and
+  the five `ScriptExtension` crates; one `scripting` feature on `renzora_runtime`
+  forwards to all of them, so it can never be half-present. Auto-detected from
+  `.lua` files. Ember was free — every one of its scripting uses was already
+  inside `game_ui`.
+- **UI is a capability.** Drops `bevy_ui`/`bevy_ui_render`/`bevy_ui_widgets`/
+  `bevy_text`/`ui_picking`, `renzora_ember`, `renzora_text_mesh` and the whole
+  parley/swash/harfrust/fontique shaping stack. Verified by compiling a
+  UI-stripped runtime: the only breakage was `renzora_text_mesh`, so `ui` off
+  forces `text3d` off. Engine-side cost was six lines in `scene_io.rs`, behind a
+  `DenyUiCameraTargets` helper trait (a `#[cfg]` can't sit on a link in a method
+  chain).
+- **Diagnostics + gamepad + default font** are capabilities; diagnostics defaults
+  OFF, so `sysinfo` stops shipping.
+- **`rfd` + `arboard` gone from games** — `crash_dialog` feature on
+  `renzora_engine`, forwarded from `renzora_runtime`, folded into `dev_extras`
+  (default OFF). Its call site was already `is_editor_process()`-gated, so a game
+  could never reach the dialog; it was simply linked in anyway.
+- **`bevy_anti_alias` + `smaa_luts`** now strippable and forced off with 3D.
+
+Verified empirically by simulating an exporter strip on a copy of the manifests:
+a UI-, scripting-, diagnostics-, gamepad- and http-stripped runtime **compiles**,
+and `parley`, `swash`, `harfrust`, `fontique`, `bevy_ui`, `bevy_text`,
+`renzora_ember`, `renzora_text_mesh`, `arboard`, `rfd`, `sysinfo`, `gilrs`,
+`ureq`, `rustls` and `ring` all leave the dependency graph.
+
+Still open here:
+
+- **`accesskit`** is not strippable: `bevy_window` depends on `bevy_a11y`
+  unconditionally, so it costs a fork or an upstream change.
+- **The TLS stack's real source was `script_http`, not `bevy_asset`.** Both now
+  have working capabilities (both default OFF via detection), so this should be
+  gone — confirm on the next real export.
+- **`renzora_network` is still non-optional** in `renzora_engine` and
+  `renzora_runtime` (the binary's `--server`/`--host` path uses it directly), so
+  it needs `src/main.rs` cfg-gating before it can become a capability.
+- **`tonemapping_luts`** is a KTX2 blob in every binary and has no capability yet;
+  it applies to 2D as well as 3D, so it needs its own switch rather than joining
+  `lighting_luts`.
+- **`renzora_tracy`** is Editor-scope, so it does not reach a game binary. Turning
+  it into a C-ABI plugin is still worth doing but is no longer a size issue.
+- **Measure the result.** Nothing here has been through a real export yet — the
+  74 MB figure predates all of it.
+
+### Size — MEASURED (cube + light + one script, UI off)
+
+74 MB → **60.9 MB** after the gating above. Then, from `cargo bloat` and a PE
+section dump of the actual export:
+
+| Section | Size | Share |
 |---|---|---|
-| `renzora_engine` | 2 | no ScriptExtension — plain usage |
-| `renzora_ember` | 5 | the heaviest; markup/game-UI script hooks |
-| `renzora_animation` | 2 | ScriptExtension impl |
-| `renzora_physics` | 2 | ScriptExtension impl |
-| `renzora_navmesh` | 2 | ScriptExtension impl |
-| `renzora_ragdoll` | 2 | ScriptExtension impl |
-| `renzora_lang` | 2 | ScriptExtension impl |
+| `.text` | 38.9 MiB | 63.9% |
+| **`.rdata`** | **18.3 MiB** | **30.0%** |
+| `.pdata` (unwind) | 2.27 MiB | 3.7% |
+| `.reloc` | 1.07 MiB | 1.8% |
 
-Since CLAUDE.md §7 made `ScriptExtension` purely declarative, five of those are
-a `script_extension.rs` plus its `extensions.register(...)` line. So: make
-`renzora_scripting` an optional dep in each, add a `scripting` feature, `cfg`
-the module and its registration, then a `scripting` feature on
-`renzora_runtime` (gating `ScriptingPlugin` and the font script-action
-observers in `lib.rs`) and a capability. `blueprint` / `script_http` become
-`renzora_scripting?/…`. The Lua interpreter is already optional — it is a
-C-ABI plugin, chosen in the Plugins tab.
+**A third of the binary is data, not code** — that is the thing nobody had
+measured. The blue-noise texture alone is 1.57 MiB (`stbn.ktx2`); tonemapping
+LUTs are ~680 KiB; WGSL source is ~1.2 MiB across bevy + renzora. The rest is
+reflection type paths, vtables and naga's tables.
 
-**UI.** Switching UI off should take `bevy_ui`, `bevy_ui_render`,
-`bevy_ui_widgets`, `bevy_text`, `renzora_ember` and `renzora_text_mesh` with
-it — and the text-shaping stack behind them (`parley`, `swash`, `harfrust`,
-`fontique`, `skrifa`, `read-fonts`, plus `default_font`), which is several MB
-and pure dead weight for a game drawing no text. `renzora_ember` is
-non-optional in `renzora_runtime` today, so this is the same shape of job as
-scripting.
+Largest `.text` crates: `bevy_pbr` 3.3 MiB, `std` 2.8, `bevy_ecs` 2.6,
+`bevy_reflect` 2.2, `naga` 2.1, `bevy_render` 1.7, `bevy_input` 1.4,
+`bevy_asset` 1.3, `bevy_sprite_render` 1.2, `bevy_window` 1.2. These are the
+engine; there is no large win left in code short of dropping subsystems.
 
-**Diagnostics must default OFF, not ON.** `bevy_diagnostic` (and `sysinfo`
-under it) currently ships unconditionally. `trace_tracy` is deliberately out of
-the build (see the root manifest), but the `renzora_tracy` bridge crate is
-Editor scope and already a candidate to become a C-ABI plugin — see the table
-below. Doing that removes it from the runtime binary by construction rather
-than by a feature.
+**`panic = "abort"` is the single biggest lever: 60.9 MB → 46.7 MB (−23%).**
+Not just `.pdata`: `.text` −6.9 MB and `.rdata` −6.9 MB, because landing pads,
+cleanup glue and panic message/location strings all go. The root manifest's claim
+that `dist-lean` can't use it is true only of the dev build — the export copy
+patches `renzora` to `rlib` only, so there is no dylib linking the precompiled
+std's `panic_unwind`. Now the `panic_unwind` capability (default ON, since the
+cost is that the plugin/script `catch_unwind` guards stop working).
 
-**Fonts.** `default_font` embeds a typeface in every binary. It belongs with
-the UI toggle, or its own.
+Also landed after measuring: `picking` and `tonemapping_luts` capabilities
+(−2.31 MiB together, verified compiling).
 
-### Lean export is still 74 MB for a cube and a light — measured leads
+**The `gltf` capability never compiled** — a latent bug that predates this work.
+It stripped the Bevy features while `renzora_engine` still used
+`bevy::gltf::Gltf` directly (the `_lodN.glb` LOD probe in `mesh_lod.rs`, and the
+`MeshInstanceData` rehydrate path in `scene_io.rs`), so unticking "glTF model
+loading" produced a failed export. It was only invisible because the capability
+defaulted ON and nothing exercised it. Now gated behind a `gltf` feature on
+`renzora_engine` (implying `render_3d`, since `bevy_gltf` needs `bevy_pbr`),
+forwarded from `renzora_runtime`, with the capability carrying
+`runtime_features: ["gltf"]` so both halves strip together — and detection-driven
+from `.gltf`/`.glb` files.
 
-Traced with `cargo tree -p renzora_app --no-default-features --features runtime -i <crate>`.
-Every one of these is in a *game* build:
+**Two more of the same bug turned up on the next export**, both in default-ON
+capabilities:
 
-- **`rfd` (native file dialogs) ← `renzora_engine`, directly.** Used only by
-  `crash.rs:315` for the crash-report message box. A shipped game should not
-  carry a file-dialog stack; gate it, or drop to a platform message box.
-- **`ureq` + `rustls` + `ring` + `webpki-roots` (the whole TLS stack) ←
-  `bevy_asset`**, i.e. bevy's `http`/`https` features. The `remote_assets`
-  capability already strips those and is `default_on: false`, so it should be
-  gone — it compiled anyway in the 2026-08-05 export. Find out what re-enables
-  it before adding anything new.
-- **`sysinfo` ← `bevy_diagnostic`**, **`accesskit` (several crates) ←
-  `bevy_a11y`**, **`gilrs` ← `bevy_gilrs`**, **`arboard` ← `bevy_clipboard`**.
-  None of `bevy_gilrs` / `bevy_a11y` / `sysinfo_plugin` / `bevy_clipboard`
-  appears in the root manifest's explicit bevy feature list, so they arrive
-  transitively through something else that is listed. **Find the enabling
-  feature first** — a capability naming a feature the manifest never sets is a
-  no-op toggle that still costs the user a decision (see the 2026-07 note at the
-  top of `capabilities.rs`).
+- **`antialiasing`** — adding `bevy_anti_alias`/`smaa_luts` to it broke the
+  contract crate: `renzora/src/postprocess.rs` imports `bevy::anti_alias` for the
+  TAA/FXAA/SMAA ordering anchors, gated on `render_3d` because that feature used
+  to arrive only through bevy's `3d` meta. Expanding the metas made it
+  independently strippable and left that gate wrong. Now a separate
+  `renzora/antialiasing` feature (implying `render_3d`), forwarded from
+  `renzora_runtime`.
+- **`gamepad`** — stripping `bevy_gilrs` would have taken `bevy_input`'s
+  `gamepad` module with it (`bevy_gilrs = ["gamepad", …]` is its only enabler),
+  breaking six runtime crates that use `GamepadButton`/`GamepadAxis`. Fixed by
+  naming `gamepad` explicitly in the root manifest: the capability now drops only
+  the OS backend, so a game built without it compiles and simply never sees a pad
+  connect.
 
-Not yet strippable without crate surgery, in rough order of size:
-`renzora_scripting` (non-optional in engine, ember, animation, physics,
-navmesh, ragdoll, lang), `renzora_network` (non-optional in renzora_engine),
-`renzora_ember`, `renzora_text_mesh`.
+- **`render_3d`** — the oldest of them, and pre-existing. `renzora_plugin`'s host
+  uses `StandardMaterial` and `MeshMaterial3d` unconditionally, so a 2D-only
+  export never compiled. Now behind a `renzora_plugin/render_3d` feature
+  forwarded from `renzora_engine`: `MaterialSlot::Standard` disappears and
+  `add_material` refuses with a warning, exactly as it already did when no
+  renderer was present. `MaterialSlot::Custom` is untouched, so a plugin shipping
+  its own material still works in 2D. A full "everything unchecked" build was
+  then compiled end to end and is clean.
 
-Also worth measuring before optimising further: `.text` is 117 MB of the 170 MB
+- **`tonemapping_luts`** — the only one that failed at RUNTIME rather than compile
+  time, and the worst kind. Bevy does not fall back when a LUT curve has no
+  table: it logs `TonyMcMapFace tonemapping requires the tonemapping_luts
+  feature` and renders the screen magenta. `Tonemapping`'s own `Default` IS
+  TonyMcMapface and every camera gets it as a required component, so stripping
+  the Bevy feature broke the picture outright. `renzora_tonemapping` now has a
+  matching feature: `mode_to_tonemapping` substitutes `AcesFitted` for the three
+  LUT curves, AND a change-detected system rewrites any `Tonemapping` this crate
+  didn't choose (bevy's camera defaults being exactly that case).
+
+**Lesson worth keeping: a capability that defaults ON is untested by every normal
+export.** Five separate instances of the same bug in one session — and note the
+last one compiled fine. **A compile check is not sufficient evidence that a
+capability works**; anything gating rendering needs a look at the actual picture. Any new one
+needs a build with it OFF before it can be trusted, and the strip must be
+verified to have actually happened — two of my checks passed vacuously because a
+`perl` substitution silently didn't match. The cheap check is `cargo check -p
+renzora_app --no-default-features --features runtime` with the feature removed
+from the root manifest, which takes a second rather than the five minutes a lean
+build costs.
+
+The Features tab is now grouped into sections (`SECTIONS` in `capabilities.rs`,
+rendered by `native.rs`), with three tests guarding the invariants: every
+capability names a known section, no child groups under another child, and ids
+are unique. All three failure modes are invisible by inspection — a capability
+just silently stops rendering while its strip logic still applies.
+
+Ruled out, with evidence:
+
+- **`bevy_log` is not strippable.** `info!`/`warn!`/`error!` reach every crate
+  through `bevy::prelude`, which re-exports `bevy_log::prelude` behind
+  `#[cfg(feature = "bevy_log")]`. Dropping it would break thousands of call
+  sites, so the `regex`/`aho-corasick`/`tracing-subscriber` stack (~683 KiB,
+  bevy_log's `EnvFilter`) stays unless that import path changes.
+- **`accesskit`** — `bevy_window` depends on `bevy_a11y` unconditionally.
+
+**Measured again at 32.9 MB** (everything unchecked, cube + sun + one script):
+`.text` 23.5 MiB, `.rdata` 7.3 MiB, `.pdata` 0.94 MiB. `.rdata` fell 18.3 → 7.3
+MiB, the largest single improvement — LUT blobs, stripped-pipeline shader source
+and the panic strings that went with `abort`.
+
+Largest `.text` at that size: `bevy_reflect` 1.8 MiB (now the biggest — it scales
+with registered types), `bevy_ecs` 1.6, `std` 1.6, `naga` 1.4, `bevy_render` 1.3,
+`bevy_input` 1.1, `bevy_sprite_render` 1.0, `bevy_window` 1.0.
+
+`shader_graph` split out of `render_3d` after that measurement — `renzora_shader`
+was ~1 MiB and a game using only StandardMaterial never touches it. Detected from
+`.material` files.
+
+Still open, with measured sizes:
+
+- **`bevy_sprite_render` + `bevy_sprite` — 1.2 MiB, the biggest remaining win.**
+  Compiled even with `render_2d` off, because `viewport_stretch.rs` blits the
+  offscreen viewport to the window with a bevy `Sprite` in EVERY export, 3D
+  included. Rework that blit (a fullscreen triangle in `renzora_postprocess`
+  would do) and bevy's whole 2D stack becomes strippable for a 3D game.
+- **`bevy_animation` (457 KiB)** — the `animation` capability strips only the
+  runtime feature; the bevy feature is still in the root manifest, so it compiles
+  with animation off. Same oversight class as `render_3d`'s was.
+- **`bevy_post_process` (421 KiB)** — no capability names it, so it survives every
+  post-FX being off.
+- **`bevy_scene` + `bevy_world_serialization` (~442 KiB).** `renzora_bsn` defines
+  its own `DynamicScene`/`DynamicSceneBuilder`; the only bevy_scene references in
+  runtime crates are doc comments and a `Name::new("SceneRoot")` string. Likely
+  strippable alongside glTF (bevy_gltf produces `Scene` handles, so it can't go
+  while glTF is on). Needs a compile to confirm.
+### Why some crates can't be unticked yet
+
+Exactly eight `renzora_*` crates are **non-optional** in `renzora_runtime`, so no
+capability can strip them: `renzora`, `renzora_engine`, `renzora_globals`,
+`renzora_input`, `renzora_lighting`, `renzora_network`, `renzora_postprocess`,
+`renzora_tonemapping`. Plus `renzora_plugin` + `renzora_postprocess` on the binary
+directly. Six of those are genuinely core (contract, engine, globals, input,
+lighting, tonemapping). Two are not:
+
+- **`renzora_network` (184 KiB) — the one worth doing, and the only remaining item
+  needing real code surgery.** The `scene_io.rs` side is trivial: three identical
+  `deny_component` triples, same shape as the UI gate, so use the
+  `DenyUiCameraTargets` helper-trait pattern. The blocker is `src/main.rs`: the
+  `--server`/`--host` path is ~60 interleaved lines where `server_config:
+  Option<NetworkConfig>` decides *which rendering mode* is installed (host →
+  `add_default_rendering`, dedicated → `attach_console` +
+  `add_headless_rendering(tick_rate)`), then adds `NetworkServerPlugin` later. A
+  plain `#[cfg]` doesn't work because the type in the `Option` comes from the
+  crate being gated. It needs restructuring into a `server_started: bool` plus two
+  cfg'd branches, or moving the whole session setup behind a
+  `renzora_runtime::setup_server_session()` behind the feature. `renzora_app` then
+  needs its own `networking` feature (in `default`) and `build_lean` must pass
+  `--features runtime,networking` when the capability is on — the exporter builds
+  `--no-default-features`, so an app-level feature is off unless named.
+  **Do this deliberately, not in a rush** — see the five-bug tally above.
+- **`renzora_postprocess`** stays by design: C-ABI plugins register render passes
+  through it, so a plugin-provided effect needs it even when every built-in effect
+  is off. The new `postfx` capability strips bevy's built-in stack
+  (`bevy_post_process`, ~420 KiB) and all 12 effects instead.
+- **Duplicate crate versions** seen in the export log: `naga` 29 + 27 (with
+  separate `codespan-reporting`, `bit-set`, `bit-vec`, `pp-rs` trees), `ron` ×3
+  (0.8 across renzora, 0.10 in `renzora_input` alone, 0.12 from bevy),
+  `hashbrown` ×3, `toml` ×2, `zstd` + `ruzstd`. `renzora_input` → ron 0.8 is a
+  one-line change; the rest need dependency work.
+
+Historical, for the dev binary: `.text` was 117 MB of the 170 MB
 dev binary, so roughly a third of it is embedded data, not code. `renzora_lang`
 was 2.4 MiB of that and is now strippable; the Bevy LUT/font blobs are the rest
 and now have a `lighting_luts` toggle.
@@ -254,11 +415,17 @@ nothing.
 ### Smaller items, verified but unlanded (old §5)
 
 - **`renzora_bluenoise`** — orphan; nothing depends on it. Wire or delete.
-- **`renzora_rmip`'s `bake` feature leaks into every shipped game.**
-  `renzora_import` (editor-only) enables `bake = ["dep:image", "dep:intel_tex_2"]`
-  and `renzora_engine` deps `renzora_rmip` plain, so feature unification puts a
-  full image codec stack plus the Intel texture compressor in every export.
-  Split into `renzora_rmip_bake`.
+- **`renzora_rmip`'s `bake` feature does NOT leak into a lean export — this entry
+  was wrong.** Verified on the real export config: `intel_tex_2` is absent and the
+  `image` crate present in a game build comes from `bevy_image` (PNG/etc decoding),
+  not from `bake`. The reasoning it was based on — feature unification via
+  `renzora_import` — only applies to a `--workspace` build; a lean export compiles
+  `renzora_app` alone, so the editor-only crate that enables `bake` is not in the
+  tree at all. No `renzora_rmip_bake` split needed.
+  With `bake` off the crate reduces to the `.rmip` asset loader (one
+  `init_asset_loader` + `LOW_RES_CAP`) over bevy + thiserror — under ~95 KiB, below
+  the top 40 in the bloat run. **Not worth a capability**: the saving is negligible
+  and stripping it would make a game with `.rmip` textures fail to load them.
 - **`renzora_network` / `renzora_shader` declare `editor = []`** with zero
   `cfg(feature = "editor")` sites. Dead; delete them and the
   `"renzora_network/editor"` line in `renzora_editor/Cargo.toml`.

@@ -12,14 +12,16 @@ use core::marker::PhantomData;
 // Bevy built-in post-process systems used as fixed ORDERING ANCHORS by the
 // render-composition layer (see `RenderPhase`). The framework is the one place
 // that imports these — individual effect crates never do; they just pick a phase.
-// bevy_anti_alias lives in the `3d` meta — a 2D lean export drops it. These
-// anchors only order renzora's phases against TAA/FXAA/SMAA; without them the
-// ordering is a harmless no-op (the anchor isn't in the schedule anyway).
-#[cfg(feature = "render_3d")]
+// Gated on `antialiasing`, not `render_3d`: `bevy_anti_alias` used to arrive
+// only via bevy's `3d` meta, but the root manifest now names it directly so the
+// exporter can strip anti-aliasing on its own. These anchors only order
+// renzora's phases against TAA/FXAA/SMAA; without them the ordering is a
+// harmless no-op (the anchor isn't in the schedule anyway).
+#[cfg(feature = "antialiasing")]
 use bevy::anti_alias::fxaa::fxaa;
-#[cfg(feature = "render_3d")]
+#[cfg(feature = "antialiasing")]
 use bevy::anti_alias::smaa::smaa;
-#[cfg(feature = "render_3d")]
+#[cfg(feature = "antialiasing")]
 use bevy::anti_alias::taa::temporal_anti_alias;
 use bevy::core_pipeline::tonemapping::tonemapping;
 use bevy::core_pipeline::{Core3d, Core3dSystems, FullscreenShader};
@@ -707,23 +709,24 @@ impl Plugin for PostProcessCorePlugin {
         // crate just picks a `RenderPhase`. (Ordering against an anchor that
         // isn't in the schedule — e.g. TAA plugin absent — is a harmless no-op.)
         use Core3dSystems::{EarlyPostProcess, PostProcess};
-        // The TAA/FXAA/SMAA anchors are `render_3d`-only (bevy_anti_alias). Build
-        // each phase set, conditionally add the anti-alias ordering, then configure;
-        // `tonemapping` + the inter-phase ordering always apply.
+        // The TAA/FXAA/SMAA anchors need `bevy_anti_alias`, which the exporter's
+        // Anti-aliasing capability can strip on its own. Build each phase set,
+        // conditionally add the anti-alias ordering, then configure; `tonemapping`
+        // + the inter-phase ordering always apply.
         let gi = RenderPhase::Gi.in_set(EarlyPostProcess);
-        #[cfg(feature = "render_3d")]
+        #[cfg(feature = "antialiasing")]
         let gi = gi.before(temporal_anti_alias);
 
         let hdr_post = RenderPhase::HdrPost.in_set(EarlyPostProcess);
-        #[cfg(feature = "render_3d")]
+        #[cfg(feature = "antialiasing")]
         let hdr_post = hdr_post.after(temporal_anti_alias);
 
         let ldr_post = RenderPhase::LdrPost.in_set(PostProcess).after(tonemapping);
-        #[cfg(feature = "render_3d")]
+        #[cfg(feature = "antialiasing")]
         let ldr_post = ldr_post.before(fxaa).before(smaa);
 
         let overlay = RenderPhase::Overlay.in_set(PostProcess);
-        #[cfg(feature = "render_3d")]
+        #[cfg(feature = "antialiasing")]
         let overlay = overlay.after(fxaa).after(smaa);
         let overlay = overlay.after(RenderPhase::LdrPost);
 

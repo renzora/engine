@@ -27,7 +27,7 @@ impl Default for TonemappingSettings {
 }
 
 fn mode_to_tonemapping(mode: u32) -> Tonemapping {
-    match mode {
+    let tm = match mode {
         0 => Tonemapping::None,
         1 => Tonemapping::Reinhard,
         2 => Tonemapping::ReinhardLuminance,
@@ -37,6 +37,32 @@ fn mode_to_tonemapping(mode: u32) -> Tonemapping {
         6 => Tonemapping::TonyMcMapface,
         7 => Tonemapping::BlenderFilmic,
         _ => Tonemapping::TonyMcMapface,
+    };
+    substitute_if_no_luts(tm)
+}
+
+/// Identity when the LUTs are compiled in.
+#[cfg(feature = "tonemapping_luts")]
+fn substitute_if_no_luts(tm: Tonemapping) -> Tonemapping {
+    tm
+}
+
+/// Swap LUT-sampling curves for the closest table-free one.
+///
+/// `AgX`, `TonyMcMapface` and `BlenderFilmic` read KTX2 lookup tables that Bevy
+/// only embeds with its `tonemapping_luts` feature. Without them Bevy does not
+/// fall back — it logs `TonyMcMapFace tonemapping requires the tonemapping_luts
+/// feature` and renders the whole screen magenta. Since the DEFAULT mode is 6
+/// (TonyMcMapface), stripping the LUTs would break every export that didn't also
+/// change its tonemapper, so map those three onto `AcesFitted`: also filmic, and
+/// evaluated in the shader with no table.
+#[cfg(not(feature = "tonemapping_luts"))]
+fn substitute_if_no_luts(tm: Tonemapping) -> Tonemapping {
+    match tm {
+        Tonemapping::AgX | Tonemapping::TonyMcMapface | Tonemapping::BlenderFilmic => {
+            Tonemapping::AcesFitted
+        }
+        other => other,
     }
 }
 
@@ -155,6 +181,28 @@ impl Plugin for TonemappingPlugin {
                 cleanup_deband_dither,
             ),
         );
+        // Catch LUT-based curves this crate did not choose. `Camera3d`/`Camera2d`
+        // pull `Tonemapping` as a required component, and its `Default` IS
+        // TonyMcMapface — so in a build with the LUTs stripped every camera
+        // arrives already broken, before any `TonemappingSettings` routing runs.
+        // Substituting only inside `mode_to_tonemapping` was not enough: that
+        // path never sees a camera with no settings entity.
+        #[cfg(not(feature = "tonemapping_luts"))]
+        app.add_systems(Update, force_lutless_tonemapping);
+    }
+}
+
+/// Rewrite any LUT-sampling `Tonemapping` to a table-free curve.
+///
+/// Runs only in a build with `tonemapping_luts` stripped. Change-detected, so it
+/// costs one filtered query per frame in steady state.
+#[cfg(not(feature = "tonemapping_luts"))]
+fn force_lutless_tonemapping(mut q: Query<&mut Tonemapping, Changed<Tonemapping>>) {
+    for mut tm in q.iter_mut() {
+        let fixed = substitute_if_no_luts(*tm);
+        if fixed != *tm {
+            *tm = fixed;
+        }
     }
 }
 

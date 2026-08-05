@@ -41,7 +41,7 @@ fn main() {
     app.add_plugins(renzora_postprocess::plugin_bridge::PluginRenderBridgePlugin);
     // Custom shaded materials registered by those plugins — same `finish`
     // reasoning as the render bridge.
-    app.add_plugins(renzora_postprocess::plugin_material::PluginMaterialPlugin);
+    renzora_postprocess::add_plugin_material(&mut app);
 
     app.run();
 }

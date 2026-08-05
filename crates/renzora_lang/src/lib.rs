@@ -31,6 +31,7 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::time::common_conditions::on_timer;
 
+#[cfg(feature = "scripting")]
 mod script_extension;
 
 /// Built-in language packs, embedded at compile time from the repo-root
@@ -122,6 +123,7 @@ impl Plugin for LangPlugin {
         // decided at runtime by whichever language plugin loaded, so gating
         // this on a compile-time backend feature would drop `tr` from a game
         // scripted in something else.
+        #[cfg(feature = "scripting")]
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(
                 renzora_scripting::extension::ScriptExtensions::default,

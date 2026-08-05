@@ -967,6 +967,11 @@ pub struct PluginAssets {
 #[derive(Clone)]
 pub enum MaterialSlot {
     /// Built by `add_material` — a plain PBR material this crate can name.
+    ///
+    /// Absent without `render_3d`: `StandardMaterial` comes from `bevy_pbr`,
+    /// which a 2D-only export strips. The `Custom` arm still works, so a plugin
+    /// shipping its own material is unaffected.
+    #[cfg(feature = "render_3d")]
     Standard(Handle<StandardMaterial>),
     /// Built by `add_material_shader`. The asset type lives in the render
     /// bridge, which this crate cannot depend on, so applying it goes through
@@ -998,6 +1003,7 @@ fn attach_material(
     what: &str,
 ) {
     match slot {
+        #[cfg(feature = "render_3d")]
         MaterialSlot::Standard(handle) => {
             if let Ok(mut e) = world.get_entity_mut(entity) {
                 e.insert(MeshMaterial3d(handle));
@@ -1274,6 +1280,17 @@ unsafe extern "C" fn add_material(
     desc: *const sys::MaterialDesc,
 ) -> sys::AssetHandle {
     guard_host("add_material", sys::AssetHandle::INVALID, || {
+        // Without bevy_pbr there is no `StandardMaterial` to build. Same shape as
+        // the missing-renderer path below: refuse with a warning rather than
+        // hand back a handle to something that was never created.
+        #[cfg(not(feature = "render_3d"))]
+        {
+            let _ = (host, desc);
+            warn!("[plugin] add_material ignored — this build has no 3D renderer");
+            return sys::AssetHandle::INVALID;
+        }
+        #[cfg(feature = "render_3d")]
+        {
         let ctx = &mut *(host as *mut HostCtx);
         let d = &*desc;
         let material = StandardMaterial {
@@ -1294,6 +1311,7 @@ unsafe extern "C" fn add_material(
             .get_resource_or_insert_with(PluginAssets::default);
         store.materials.push((owner, MaterialSlot::Standard(handle)));
         sys::AssetHandle((store.materials.len() - 1) as u64)
+        }
     })
 }
 

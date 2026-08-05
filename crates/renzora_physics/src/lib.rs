@@ -9,6 +9,7 @@ pub mod data;
 pub mod properties;
 pub mod plugin_bridge;
 pub mod read_state;
+#[cfg(feature = "scripting")]
 pub mod script_extension;
 
 /// When `active`, the editor enters "edit collider" mode for the selected entity:
@@ -124,7 +125,8 @@ impl Plugin for PhysicsPlugin {
         #[cfg(feature = "avian2d")]
         app.add_systems(Update, read_state::update_collision_read_state_2d);
 
-        // Register Lua/Rhai functions owned by the physics crate.
+        // Register script functions owned by the physics crate.
+        #[cfg(feature = "scripting")]
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(
                 renzora_scripting::extension::ScriptExtensions::default,

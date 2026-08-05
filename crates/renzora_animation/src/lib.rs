@@ -22,6 +22,7 @@ pub mod loader;
 pub mod plugin_bridge;
 pub mod property_playback;
 pub mod read_state;
+#[cfg(feature = "scripting")]
 pub mod script_extension;
 pub mod sm_loader;
 pub mod state_machine;
@@ -69,7 +70,8 @@ impl Plugin for AnimationPlugin {
         // Script animation commands (decoupled via ScriptAction observer)
         app.add_observer(bridge::handle_animation_script_actions);
 
-        // Register Lua/Rhai functions owned by the animation crate.
+        // Register script functions owned by the animation crate.
+        #[cfg(feature = "scripting")]
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(
                 renzora_scripting::extension::ScriptExtensions::default,

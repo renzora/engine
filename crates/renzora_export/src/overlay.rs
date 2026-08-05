@@ -102,6 +102,12 @@ pub struct ExportOverlayState {
     /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped
     /// from the lean build. Populated with defaults after the plugin scan.
     pub capabilities: std::collections::HashMap<String, bool>,
+    /// Features-tab sections the user has folded shut, by section id.
+    ///
+    /// Collapse is reactive (`bind_display` per row) rather than a rebuild, so
+    /// folding a section doesn't respawn 60 checkboxes and lose scroll position.
+    /// Absent = expanded, so a fresh state shows everything.
+    pub collapsed_sections: std::collections::HashSet<String>,
     /// Whether plugins have been scanned yet.
     pub(crate) plugins_scanned: bool,
     /// Latest GitHub release info (for runtime downloads).
@@ -147,6 +153,7 @@ impl Default for ExportOverlayState {
             available_plugins: Vec::new(),
             selected_plugins: std::collections::HashSet::new(),
             capabilities: std::collections::HashMap::new(),
+            collapsed_sections: std::collections::HashSet::new(),
             plugins_scanned: false,
             release_info: None,
             release_fetch_rx: None,
@@ -661,6 +668,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         crate::capabilities::disabled_bevy_features(&export_state.capabilities);
     let disabled_runtime_features =
         crate::capabilities::disabled_runtime_features(&export_state.capabilities);
+    let panic_abort = crate::capabilities::use_panic_abort(&export_state.capabilities);
     let project_name = project_name.to_string();
 
     // The game binary is the already-built renzora(.exe) for this platform.
@@ -732,6 +740,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             runtime_dir,
             disabled_bevy_features,
             disabled_runtime_features,
+            panic_abort,
             cancel,
         );
     });
@@ -764,6 +773,7 @@ fn export_worker(
     runtime_dir: std::path::PathBuf,
     disabled_bevy_features: Vec<String>,
     disabled_runtime_features: Vec<String>,
+    panic_abort: bool,
     cancel: Arc<AtomicBool>,
 ) {
     // Pack assets
@@ -978,6 +988,7 @@ fn export_worker(
                             &mut progress,
                             &disabled_bevy_features,
                             &disabled_runtime_features,
+                            panic_abort,
                             &cancel,
                         )
                     });

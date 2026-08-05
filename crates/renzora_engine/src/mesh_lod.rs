@@ -25,15 +25,22 @@
 //! scene load re-probes from scratch — which also picks up newly-baked LODs.
 
 use bevy::camera::visibility::VisibilityRange;
+#[cfg(feature = "gltf")]
 use bevy::gltf::Gltf;
 use bevy::prelude::*;
-use renzora::{CurrentProject, MeshInstanceData, MeshLod};
-
+use renzora::MeshLod;
+// Only the LOD-variant probe and spawn use these, and both are `gltf`-only —
+// the taggers below work off whatever subtrees exist and need none of it.
+#[cfg(feature = "gltf")]
+use renzora::{CurrentProject, MeshInstanceData};
+#[cfg(feature = "gltf")]
 use crate::scene_io::MeshInstanceLoadFailed;
+#[cfg(feature = "gltf")]
 use crate::Vfs;
 
 /// Highest `_lodN` suffix probed. The exporter bakes contiguous levels from 1,
 /// so probing stops at the first missing file; this only bounds the loop.
+#[cfg(feature = "gltf")]
 const MAX_LOD_LEVELS: u32 = 4;
 
 /// Marker: this model was probed for `_lodN.glb` variants (found or not), so
@@ -42,6 +49,7 @@ const MAX_LOD_LEVELS: u32 = 4;
 pub struct LodProbed;
 
 /// Waiting for probed LOD variants' `Gltf` assets to finish loading.
+#[cfg(feature = "gltf")]
 #[derive(Component)]
 pub struct PendingLodSpawn {
     pending: Vec<(u32, Handle<Gltf>)>,
@@ -70,6 +78,7 @@ impl LodApplied {
 }
 
 /// Probe for `_lodN.glb` variants once the base model subtree exists.
+#[cfg(feature = "gltf")]
 pub fn probe_mesh_lods(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -127,6 +136,7 @@ pub fn probe_mesh_lods(
 
 /// Once every probed variant has loaded (or failed), spawn the LOD subtrees
 /// and resolve the visibility bands.
+#[cfg(feature = "gltf")]
 pub fn finish_lod_spawn(
     mut commands: Commands,
     gltf_assets: Option<Res<Assets<Gltf>>>,

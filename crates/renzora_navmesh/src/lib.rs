@@ -19,7 +19,9 @@ use vleue_navigator::{
 };
 
 pub mod persistence;
+#[cfg(feature = "scripting")]
 pub mod script_extension;
+#[cfg(feature = "scripting")]
 pub use script_extension::NavScriptExtension;
 
 #[cfg(feature = "terrain")]
@@ -623,6 +625,8 @@ impl Plugin for NavMeshPlugin {
         #[cfg(feature = "terrain")]
         app.add_systems(Update, sync_terrain_obstacles);
 
+        // Script functions owned by the navmesh crate.
+        #[cfg(feature = "scripting")]
         {
             let mut extensions = app.world_mut().get_resource_or_insert_with(
                 renzora_scripting::extension::ScriptExtensions::default,
