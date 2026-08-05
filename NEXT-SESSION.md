@@ -143,6 +143,52 @@ still use — `bevy_light` and atmosphere already survive it. Its forced-strip
 list in `capabilities.rs::disabled_runtime_features` now names members rather
 than the two deleted bundles, so that is the place to look.
 
+### Gate everything (the programme, not a change)
+
+The principle: **nothing ships unless it is ticked.** A capability per subsystem
+is not enough — fonts, UI, diagnostics and text shaping all ride along today
+because no switch names them.
+
+**Scripting — start here, it is smaller than it looks.** Coupling measured per
+crate (files touching `renzora_scripting` / `ScriptExtension` references):
+
+| crate | files | notes |
+|---|---|---|
+| `renzora_engine` | 2 | no ScriptExtension — plain usage |
+| `renzora_ember` | 5 | the heaviest; markup/game-UI script hooks |
+| `renzora_animation` | 2 | ScriptExtension impl |
+| `renzora_physics` | 2 | ScriptExtension impl |
+| `renzora_navmesh` | 2 | ScriptExtension impl |
+| `renzora_ragdoll` | 2 | ScriptExtension impl |
+| `renzora_lang` | 2 | ScriptExtension impl |
+
+Since CLAUDE.md §7 made `ScriptExtension` purely declarative, five of those are
+a `script_extension.rs` plus its `extensions.register(...)` line. So: make
+`renzora_scripting` an optional dep in each, add a `scripting` feature, `cfg`
+the module and its registration, then a `scripting` feature on
+`renzora_runtime` (gating `ScriptingPlugin` and the font script-action
+observers in `lib.rs`) and a capability. `blueprint` / `script_http` become
+`renzora_scripting?/…`. The Lua interpreter is already optional — it is a
+C-ABI plugin, chosen in the Plugins tab.
+
+**UI.** Switching UI off should take `bevy_ui`, `bevy_ui_render`,
+`bevy_ui_widgets`, `bevy_text`, `renzora_ember` and `renzora_text_mesh` with
+it — and the text-shaping stack behind them (`parley`, `swash`, `harfrust`,
+`fontique`, `skrifa`, `read-fonts`, plus `default_font`), which is several MB
+and pure dead weight for a game drawing no text. `renzora_ember` is
+non-optional in `renzora_runtime` today, so this is the same shape of job as
+scripting.
+
+**Diagnostics must default OFF, not ON.** `bevy_diagnostic` (and `sysinfo`
+under it) currently ships unconditionally. `trace_tracy` is deliberately out of
+the build (see the root manifest), but the `renzora_tracy` bridge crate is
+Editor scope and already a candidate to become a C-ABI plugin — see the table
+below. Doing that removes it from the runtime binary by construction rather
+than by a feature.
+
+**Fonts.** `default_font` embeds a typeface in every binary. It belongs with
+the UI toggle, or its own.
+
 ### Lean export is still 74 MB for a cube and a light — measured leads
 
 Traced with `cargo tree -p renzora_app --no-default-features --features runtime -i <crate>`.
