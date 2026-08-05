@@ -145,7 +145,18 @@ impl Plugin for PluginScenePlugin {
             // Startup rather than plugin-build: plugins are loaded by
             // `load_global_plugins` during app build, and the schemas do not
             // exist until that has run.
-            |world: &mut World| refresh_raw_component_registry(world),
+            //
+            // Ordered before the scene load, which reads this registry to
+            // rebuild plugin components from a scene file. Both are exclusive
+            // systems in the same schedule, so they cannot overlap — but nothing
+            // said which ran first, and the order that happens to hold comes from
+            // this plugin being added a few lines above the one that schedules
+            // the load. Lose that race and every plugin-owned component in the
+            // scene is dropped on load. Runtime-only, since the editor loads
+            // scenes on demand long after Startup, so it would have shown up
+            // exclusively in exported games.
+            (|world: &mut World| refresh_raw_component_registry(world))
+                .before(crate::scene_io::load_current_scene),
         );
     }
 }
