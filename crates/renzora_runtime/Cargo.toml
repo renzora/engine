@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "night_stars", "solari", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
+default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog", "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing", "atmosphere", "environment_map", "skybox", "clouds", "night_stars", "solari", "localization", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
@@ -94,6 +94,8 @@ audio = ["dep:renzora_audio", "renzora_engine/audio"]
 animation = ["dep:renzora_animation", "renzora_engine/animation"]
 blueprint = ["dep:renzora_blueprint", "renzora_scripting/blueprint"]
 game_ui = ["renzora_ember/game_ui"]
+# Translation packs — see the dependency comment.
+localization = ["dep:renzora_lang"]
 # Post-process effects, one feature per crate. These were a single `postfx`
 # bundle, which meant a game wanting only bloom still shipped SSR, DoF, OIT and
 # eight others — an aggregate feature cannot be partially stripped, since
@@ -165,10 +167,12 @@ renzora = { path = "../renzora", default-features = false }
 # `default-features = false`: the backends + blueprint + script_http are switched
 # on via this crate's matching features (above), so the lean export can drop them.
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
-# Core language runtime: loads embedded + external `languages/*.toml` packs
-# into the shared translation table. Non-optional — every build is localized,
-# and missing translations degrade to English, so there's nothing to gate.
-renzora_lang = { path = "../renzora_lang" }
+# Loads the embedded + external `languages/*.toml` packs into the shared
+# translation table. Optional: the packs are `include_str!`'d, so this is ~2.4 MiB
+# of TOML compiled into the binary, and `renzora::lang::t()` lives in the contract
+# crate and falls back to the key's English text when no pack is loaded. A game
+# shipping in one language pays for twenty otherwise.
+renzora_lang = { path = "../renzora_lang", optional = true }
 renzora_blueprint = { path = "../renzora_blueprint", optional = true }
 renzora_input = { path = "../renzora_input" }
 # OpenXR/VR boot mode — desktop only, behind the `xr` feature (see [features]).

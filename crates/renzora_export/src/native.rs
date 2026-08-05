@@ -578,10 +578,28 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
         let note = txt(commands, fonts, &renzora::lang::t("export.features.note_host"), 11.0, text_muted());
         commands.entity(body).add_child(note);
         let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
-        for (idx, cap) in crate::capabilities::CAPABILITIES.iter().enumerate() {
+        // Parents first, each followed by its own children, so the nesting reads
+        // as a tree rather than a flat 50-row wall. Ordering is derived rather
+        // than relying on the const being sorted — a child declared anywhere in
+        // the list still lands under its parent.
+        let ordered: Vec<&crate::capabilities::Capability> = crate::capabilities::CAPABILITIES
+            .iter()
+            .filter(|c| c.group.is_none())
+            .flat_map(|parent| {
+                std::iter::once(parent).chain(
+                    crate::capabilities::CAPABILITIES
+                        .iter()
+                        .filter(move |c| c.group == Some(parent.id)),
+                )
+            })
+            .collect();
+        for (idx, cap) in ordered.into_iter().enumerate() {
             let id = cap.id;
+            let child = cap.group.is_some();
             // One padded, zebra-striped item per capability (checkbox + label + help).
-            let item = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), padding: UiRect::axes(Val::Px(6.0), Val::Px(5.0)), border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(row_stripe(idx)))).id();
+            // Children are indented and sit flush against the parent row rather
+            // than being striped, so the grouping is legible without a header.
+            let item = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), padding: UiRect { left: Val::Px(if child { 24.0 } else { 6.0 }), right: Val::Px(6.0), top: Val::Px(5.0), bottom: Val::Px(5.0) }, border_radius: BorderRadius::all(Val::Px(3.0)), ..default() }, BackgroundColor(if child { Color::NONE } else { row_stripe(idx) }))).id();
             // Inlined `check_state` so the closures can capture the capability id.
             let row = commands.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: Val::Px(8.0), ..default() }).id();
             let cb = checkbox(commands, false);

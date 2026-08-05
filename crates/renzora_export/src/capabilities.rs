@@ -28,6 +28,13 @@ pub struct Capability {
     pub runtime_features: &'static [&'static str],
     /// Default state when no plugin/asset detection overrides it.
     pub default_on: bool,
+    /// Parent capability id, for the nested list in the export UI.
+    ///
+    /// A child is a strict subset of its parent, so the parent going off takes
+    /// every child with it — see [`collect_disabled`]. That is not cosmetic:
+    /// dropping bevy's 3D stack while leaving, say, `pbr_specular_textures`
+    /// enabled would pull `bevy_pbr` straight back in.
+    pub group: Option<&'static str>,
 }
 
 /// The capabilities offered for the lean export.
@@ -40,6 +47,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &["bevy_solari"],
         runtime_features: &["solari"],
         default_on: false,
+        group: None,
     },
     // NOTE (2026-07 slim pass): the `meshlets`, `feathers`, `asset_pipeline`,
     // `extra_shader_langs` and `editor_helpers` capabilities were REMOVED from this
@@ -57,6 +65,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &["http", "https"],
         runtime_features: &[],
         default_on: false,
+        group: None,
     },
     Capability {
         id: "dev_extras",
@@ -74,6 +83,7 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         runtime_features: &[],
         default_on: false,
+        group: None,
     },
     Capability {
         id: "gizmos",
@@ -85,6 +95,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &["bevy_gizmos", "bevy_gizmos_render"],
         runtime_features: &[],
         default_on: false,
+        group: None,
     },
     Capability {
         id: "image_extra",
@@ -102,6 +113,7 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         runtime_features: &[],
         default_on: false,
+        group: None,
     },
     // ── Structural subsystems (default on = kept; uncheck to strip) ─────────
     Capability {
@@ -111,6 +123,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["atmosphere"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "environment_map",
@@ -119,6 +132,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["environment_map"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "skybox",
@@ -127,6 +141,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["skybox"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "clouds",
@@ -135,6 +150,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["clouds"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "night_stars",
@@ -143,6 +159,16 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["night_stars"],
         default_on: true,
+        group: None,
+    },
+    Capability {
+        id: "localization",
+        label: "Translation packs",
+        help: "The twenty embedded `languages/*.toml` packs — about 2.4 MiB of TOML compiled straight into the binary. Off leaves every string at its English fallback, since `t()` returns the key's own text when no pack is loaded. Drop it for a single-language game.",
+        bevy_features: &[],
+        runtime_features: &["localization"],
+        default_on: true,
+        group: None,
     },
     Capability {
         id: "particles",
@@ -151,6 +177,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["particles"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "bloom",
@@ -159,6 +186,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["bloom"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "ssao",
@@ -167,6 +195,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["ssao"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "ssr",
@@ -175,6 +204,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["ssr"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "dof",
@@ -183,6 +213,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["dof"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "motion_blur",
@@ -191,6 +222,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["motion_blur"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "distance_fog",
@@ -199,6 +231,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["distance_fog"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "volumetric_fog",
@@ -207,6 +240,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["volumetric_fog"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "lens_distortion",
@@ -215,6 +249,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["lens_distortion"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "auto_exposure",
@@ -223,6 +258,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["auto_exposure"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "oit",
@@ -231,6 +267,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["oit"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "antialiasing",
@@ -239,6 +276,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["antialiasing"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "lumen",
@@ -247,6 +285,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["lumen"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "cloth",
@@ -255,6 +294,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["cloth"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "ragdoll",
@@ -263,6 +303,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["ragdoll"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "gaussian_splatting",
@@ -271,6 +312,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["gaussian_splatting"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "light2d",
@@ -279,6 +321,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["light2d"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "text3d",
@@ -287,6 +330,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["text3d"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "vignette",
@@ -295,6 +339,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["vignette"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "forward_decal",
@@ -303,6 +348,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["forward_decal"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "pool_water",
@@ -311,6 +357,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["pool_water"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "procedural_tree",
@@ -319,6 +366,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["procedural_tree"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "sprite_anim",
@@ -327,6 +375,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["sprite_anim"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "water",
@@ -335,6 +384,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["water"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "terrain",
@@ -343,6 +393,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["terrain"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "spline",
@@ -351,6 +402,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["spline"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "navmesh",
@@ -359,6 +411,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["navmesh"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "tilemap",
@@ -368,6 +421,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["tilemap"],
         default_on: true,
+        group: None,
     },
     // Physics is two capabilities because avian ships as two crates, each with
     // its own parry. Turning both off strips `renzora_physics` outright — the
@@ -382,6 +436,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["physics_3d"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "physics_2d",
@@ -392,6 +447,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["physics_2d"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "render_3d",
@@ -407,23 +463,57 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[
             // The explicit 3D-render features (we own the manifest now — no `3d` meta).
             "bevy_pbr",
-            "bevy_gltf",
-            "gltf_animation",
             "bevy_mikktspace",
+            "bevy_solari",
+        ],
+        runtime_features: &["render_3d"],
+        default_on: true,
+        group: None,
+    },
+    // ── 3D sub-features ────────────────────────────────────────────────────
+    // Subsets of the pipeline above, separated so a scene of primitives and a
+    // light stops compiling the parts it cannot be using. Each re-enables
+    // `bevy_pbr` on its own, which is why the parent going off forces them off.
+    Capability {
+        id: "gltf",
+        label: "glTF model loading",
+        help: "The .gltf/.glb loader and its animation support. A scene built only from                engine primitives (cube, sphere, plane) never touches it.",
+        bevy_features: &["bevy_gltf", "gltf_animation"],
+        runtime_features: &[],
+        default_on: true,
+        group: Some("render_3d"),
+    },
+    Capability {
+        id: "morph_targets",
+        label: "Morph targets (blend shapes)",
+        help: "Per-vertex blend-shape deformation and its animation sampling. Used by                face rigs and shape keys; nothing else needs it.",
+        bevy_features: &["morph", "morph_animation"],
+        runtime_features: &[],
+        default_on: true,
+        group: Some("render_3d"),
+    },
+    Capability {
+        id: "pbr_textures",
+        label: "Advanced PBR texture maps",
+        help: "Transmission, multi-layer (clearcoat), anisotropy and specular texture                maps on StandardMaterial. The base PBR set — colour, normal, metallic,                roughness, emissive, occlusion — is unaffected.",
+        bevy_features: &[
             "pbr_transmission_textures",
             "pbr_multi_layer_material_textures",
             "pbr_anisotropy_texture",
             "pbr_specular_textures",
-            "bluenoise_texture",
-            "dfg_lut",
-            "area_light_luts",
-            "bevy_solari",
-            // 3D mesh morph targets (skinned/blend-shape) — irrelevant to 2D.
-            "morph",
-            "morph_animation",
         ],
-        runtime_features: &["render_3d"],
+        runtime_features: &[],
         default_on: true,
+        group: Some("render_3d"),
+    },
+    Capability {
+        id: "lighting_luts",
+        label: "Lighting lookup tables",
+        help: "Precomputed tables baked into the binary as data, not code: the blue-noise                texture, the DFG environment-BRDF table and the area-light LTC tables.                Dropping them costs quality in specular/area-light shading, not                correctness elsewhere.",
+        bevy_features: &["bluenoise_texture", "dfg_lut", "area_light_luts"],
+        runtime_features: &[],
+        default_on: true,
+        group: Some("render_3d"),
     },
     Capability {
         id: "render_2d",
@@ -438,6 +528,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["render_2d"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "audio",
@@ -446,6 +537,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["audio"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "animation",
@@ -454,6 +546,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["animation"],
         default_on: true,
+        group: None,
     },
     Capability {
         id: "blueprint",
@@ -463,6 +556,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["blueprint"],
         default_on: false,
+        group: None,
     },
     Capability {
         id: "script_http",
@@ -472,6 +566,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["script_http"],
         default_on: false,
+        group: None,
     },
     Capability {
         id: "game_ui",
@@ -480,6 +575,7 @@ pub const CAPABILITIES: &[Capability] = &[
         bevy_features: &[],
         runtime_features: &["game_ui"],
         default_on: true,
+        group: None,
     },
 ];
 
@@ -594,11 +690,30 @@ fn collect_disabled(
 ) -> Vec<String> {
     let mut out = Vec::new();
     for c in CAPABILITIES {
-        if !state.get(c.id).copied().unwrap_or(c.default_on) {
+        if !is_on(state, c) {
             out.extend(pick(c).iter().map(|f| f.to_string()));
         }
     }
     out
+}
+
+/// Whether a capability is enabled, honouring its parent.
+///
+/// A child is a subset of its parent, so leaving one on while the parent is off
+/// would strip most of a subsystem and then re-enable it through the remainder
+/// — turning off 3D rendering but keeping "advanced PBR texture maps" pulls
+/// `bevy_pbr` back in, and the build either grows again or fails outright. The
+/// UI could enforce this, but the answer has to be right even when the state map
+/// comes from a saved project or an older config that predates the child.
+fn is_on(state: &HashMap<String, bool>, c: &Capability) -> bool {
+    if let Some(parent) = c.group {
+        if let Some(p) = CAPABILITIES.iter().find(|x| x.id == parent) {
+            if !is_on(state, p) {
+                return false;
+            }
+        }
+    }
+    state.get(c.id).copied().unwrap_or(c.default_on)
 }
 
 /// Lowercased file extensions present anywhere under `root` (skipping dot-dirs).

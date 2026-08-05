@@ -16,6 +16,7 @@ use bevy::app::App;
 /// Install every Runtime-scope plugin. Entries are ordered by the
 /// `priority` given to `add!` (lower first, default 0), then by path.
 pub(crate) fn add_runtime_plugins(app: &mut App) {
+    #[cfg(feature = "localization")]
     app.add_plugins(renzora_lang::LangPlugin::default());
     #[cfg(feature = "animation")]
     app.add_plugins(renzora_animation::AnimationPlugin::default());
