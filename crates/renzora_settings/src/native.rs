@@ -601,7 +601,13 @@ fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) 
     Some(root)
 }
 
-/// Scan `<project>/scenes/*.ron` for the boot-scene / autoload pickers.
+/// Scan `<project>/scenes/` for the boot-scene / autoload pickers.
+///
+/// `.bsn` is the scene format; `.ron` is still accepted because projects
+/// predating the switch have scenes in it and the exporter still packs both.
+/// This looked for `.ron` alone, so every dropdown built from it came up empty
+/// for any project written since — including the boot-scene picker, leaving no
+/// way to change which scene a game starts on short of editing `project.toml`.
 fn scan_scenes(world: &World) -> Vec<String> {
     let Some(cp) = world.get_resource::<CurrentProject>() else {
         return Vec::new();
@@ -610,10 +616,14 @@ fn scan_scenes(world: &World) -> Vec<String> {
     if let Ok(rd) = std::fs::read_dir(cp.path.join("scenes")) {
         for entry in rd.flatten() {
             let p = entry.path();
-            if p.extension().and_then(|s| s.to_str()) == Some("ron") {
-                if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
-                    out.push(format!("scenes/{name}"));
-                }
+            if !matches!(
+                p.extension().and_then(|s| s.to_str()),
+                Some("bsn") | Some("ron")
+            ) {
+                continue;
+            }
+            if let Some(name) = p.file_name().and_then(|s| s.to_str()) {
+                out.push(format!("scenes/{name}"));
             }
         }
     }
