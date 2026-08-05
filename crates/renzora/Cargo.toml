@@ -4,14 +4,11 @@ version = "0.1.0"
 edition = "2021"
 description = "Renzora — types, events, and contracts shared across the engine."
 
-# `renzora` ships as a desktop dylib so the host binary AND every dlopen'd
-# distribution plugin link the same compiled copy of these contracts.
-# That gives the `inventory` plugin registry one single global instance
-# (shared across the dylib boundary), and matching `TypeId`s for
-# cross-plugin types like `PluginScope`. Mobile builds (`renzora-ios`
-# staticlib, `renzora-android` cdylib) consume the rlib variant — no
-# dylib gets produced for those targets because cargo defaults to rlib
-# when `prefer-dynamic` isn't set on the target.
+# rlib. `renzora` was a dylib so the host and every dlopen'd distribution
+# plugin linked one compiled copy of these contracts — one global plugin
+# registry, one `TypeId` per boundary-crossing type. Nothing is dlopen'd against
+# Bevy any more (the editor is a binary, third-party extensions are C-ABI
+# plugins that link no Bevy), so there is no second consumer to share with.
 [lib]
 crate-type = ["rlib"]
 
@@ -72,14 +69,6 @@ naga = { version = "27", features = ["termcolor"] }
 # re-exported from core under the `editor` feature. Proc-macro crate with no
 # runtime weight and no cycle (it depends only on syn/quote, never on renzora).
 renzora_macros = { path = "../renzora_macros", optional = true }
-# `inventory` collects plugin registrations across crates at runtime via
-# init constructors (`#[ctor]`). Workspace plugins are statically linked
-# into the host binary (rlib by default), so their submissions register
-# at process start. Distribution plugins built as `cdylib` and dropped
-# into `plugins/` register when the dynamic_plugin_loader dlopens them.
-# Both paths feed into the same runtime registry — works uniformly on
-# desktop, mobile staticlib/cdylib, and wasm32 (via __wasm_call_ctors).
-inventory = "0.3"
 
 [lints]
 workspace = true

@@ -29,6 +29,25 @@ env:
 # yet; `:latest` with eventual consistency is fine for tests.
 
 jobs:
+  # The plugin wiring (`renzora_runtime`/`renzora_editor`'s `plugins.rs` and
+  # their generated dependency blocks) is generated from the `renzora::add!`
+  # declarations under `crates/`, and committed so a plain `cargo build` works.
+  # Committed generated files can go stale, and a stale plugin list fails
+  # SILENTLY — the plugin simply never installs. This job is what makes that
+  # impossible: it regenerates and fails if anything differs from what was
+  # committed. Runs on the plain image (a source scan, no compile of the engine).
+  sync:
+    runs-on: ubuntu-latest
+    container: ghcr.io/renzora/base:latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Check plugin wiring is regenerated
+        run: cargo run --manifest-path xtask/Cargo.toml -- sync --check
+
   test:
     runs-on: ubuntu-latest
     container: ghcr.io/renzora/base:latest
@@ -123,3 +142,9 @@ jobs:
             -- -D warnings \
             -A clippy::too_many_arguments \
             -A clippy::type_complexity
+
+      # xtask is its own workspace root (see xtask/Cargo.toml), so `--workspace`
+      # above does not reach it. Linted separately rather than left uncovered —
+      # it owns the plugin-wiring generator.
+      - name: Clippy (xtask)
+        run: cargo clippy --manifest-path xtask/Cargo.toml -- -D warnings

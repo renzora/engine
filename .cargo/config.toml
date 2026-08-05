@@ -10,7 +10,12 @@
 # it. `cargo renzora dist` stages without launching. With rust-toolchain.toml
 # pinning rustc, this mirrors the container locally on the host platform; Docker
 # stays the path for cross-platform/release builds.
-renzora = "run --package xtask --"
+#
+# `--manifest-path` rather than `-p xtask`: xtask is its own workspace root, not
+# a member (it has to build even when a dangling generated dependency stops the
+# engine workspace from loading — see xtask/Cargo.toml). The path is relative to
+# the current directory, so run `cargo renzora` from the repo root.
+renzora = "run --manifest-path xtask/Cargo.toml --"
 # ⚠ These two select a SINGLE package, so they resolve `renzora` without its
 # `editor` feature and recompile ~86 shared packages against the `--workspace`
 # cache (see the note under `dist` below). Fine for an occasional headless

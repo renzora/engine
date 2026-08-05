@@ -7367,7 +7367,6 @@ name = "renzora"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "inventory",
  "naga 27.0.3",
  "renzora_macros",
  "ron 0.8.1",
@@ -7460,7 +7459,6 @@ dependencies = [
  "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
- "renzora_static_plugins",
  "toml 0.8.23",
  "uuid",
  "wasm-bindgen",
@@ -7878,7 +7876,6 @@ dependencies = [
  "renzora_volumetric_fog_editor",
  "renzora_water",
  "renzora_water_editor",
- "toml 0.8.23",
 ]
 
 [[package]]
@@ -8707,7 +8704,6 @@ dependencies = [
  "renzora_volumetric_fog",
  "renzora_water",
  "renzora_xr",
- "toml 0.8.23",
  "wgpu",
  "winit",
 ]
@@ -8972,10 +8968,6 @@ dependencies = [
  "renzora",
  "renzora_ssr",
 ]
-
-[[package]]
-name = "renzora_static_plugins"
-version = "0.1.0"
 
 [[package]]
 name = "renzora_system_monitor"
@@ -12096,10 +12088,6 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
-
-[[package]]
-name = "xtask"
-version = "0.1.0"
 
 [[package]]
 name = "xz2"

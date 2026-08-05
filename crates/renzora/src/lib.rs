@@ -16,15 +16,9 @@
 //! renzora_postprocess = { path = "..." }      # post-process effect derive
 //! ```
 
-// Re-export bevy so the `add!` macro can reach it as `$crate::bevy::...`
-// and plugin authors can write `use renzora::bevy::prelude::*;` to skip
-// a separate workspace dep if they want.
+// Re-export bevy so plugin authors can write `use renzora::bevy::prelude::*;`
+// to skip a separate workspace dep if they want.
 pub use bevy;
-
-// Re-export inventory so the `add!` macro can reach it as
-// `$crate::inventory::...`. Plugin authors don't need to add inventory as
-// a direct dep.
-pub use inventory;
 
 // ── Core types ───────────────────────────────────────────────────────────
 // Everything that used to live in `renzora_core`. Re-exported at the crate
@@ -57,13 +51,11 @@ pub use world_environment::*;
 // `renzora::lang::t("…")` so localized call sites are greppable.
 pub mod lang;
 
-// ── Dynamic plugin FFI macro ────────────────────────────────────────────
-// `renzora::add!(MyPlugin)` exports the FFI symbols a Renzora editor /
-// runtime loader needs to instantiate the plugin from a `.dll` / `.so` /
-// `.dylib`. Originally lived in a separate `dynamic_plugin_meta` crate;
-// folded in here so plugin authors only ever need `bevy` + `renzora`.
+// ── Plugin declaration ──────────────────────────────────────────────────
+// `renzora::add!(MyPlugin)` declares a plugin to `cargo renzora sync`, which
+// generates the dependency edge that links it and the list that installs it.
+// The macro itself only type-checks — see the module docs.
 mod plugin_meta;
-pub use plugin_meta::{for_each_static_plugin, PluginScope, StaticPlugin};
 // `add!` is registered at the crate root via `#[macro_export]` in plugin_meta.rs.
 
 // ── Post-process framework ───────────────────────────────────────────────

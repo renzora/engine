@@ -948,14 +948,6 @@ fn export_worker(
                 // Recompile a lean static binary from the project workspace,
                 // then embed the rpak in it. No dev runtime/dylibs are copied.
                 let binary_dest = output_dir.join(&binary_name);
-                // Distribution plugins the game uses, by workspace crate name
-                // (dll stem minus any Unix `lib` prefix). A static binary can't
-                // dlopen, so these get compiled in from their workspace source.
-                let crate_names: Vec<String> = selected_plugins
-                    .iter()
-                    .filter_map(|p| p.file_stem().and_then(|s| s.to_str()))
-                    .map(|s| s.strip_prefix("lib").unwrap_or(s).to_string())
-                    .collect();
                 let tx_b = tx.clone();
                 let mut progress = |m: String| {
                     let _ = tx_b.send(ExportMsg::Progress(m));
@@ -984,7 +976,6 @@ fn export_worker(
                             platform,
                             &toolchain,
                             &mut progress,
-                            &crate_names,
                             &disabled_bevy_features,
                             &disabled_runtime_features,
                             &cancel,

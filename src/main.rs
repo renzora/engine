@@ -15,16 +15,6 @@
 
 use bevy::prelude::*;
 
-// Force-link statically-embedded distribution plugins for a lean single-binary
-// export. The `static_plugins` feature is OFF in every normal build; the lean
-// exporter turns it on and regenerates the `renzora_static_plugins` aggregator
-// to depend on the plugins a game uses. This `extern crate` keeps the
-// aggregator — and through its own `extern crate` lines, each plugin's
-// `inventory::submit!` ctor — from being dead-stripped, so the runtime's
-// `for_each_static_plugin` loop discovers and installs them at boot (no dlopen).
-#[cfg(feature = "static_plugins")]
-extern crate renzora_static_plugins;
-
 // ── App setup helpers ────────────────────────────────────────────────────
 //
 // Most setup lives in `renzora_runtime` (the shared meta-crate). The two
@@ -54,14 +44,7 @@ pub fn build_runtime_app() -> App {
     app
 }
 
-/// Directory containing the running executable.
-fn exe_dir() -> Option<std::path::PathBuf> {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-}
-
-/// Load community plugins from `<exe_dir>/plugins/`.
+/// Load community plugins from `<exe-dir>/plugins/`.
 ///
 /// The editor is no longer loaded here. It used to arrive as a `dlopen`'d
 /// `renzora_editor` cdylib sharing this binary's `bevy_dylib`; it is now a
@@ -74,7 +57,7 @@ fn exe_dir() -> Option<std::path::PathBuf> {
 /// the editor under any circumstance.** It is always a game, a dedicated server
 /// or a listen server, which is exactly what makes it safe to ship.
 fn load_global_plugins(app: &mut App, is_editor: bool) {
-    // C-ABI plugins from `<exe_dir>/plugins/`. The only plugin mechanism left:
+    // C-ABI plugins from `<exe-dir>/plugins/`. The only plugin mechanism left:
     // the Bevy-linking `dlopen` path (and its `dynamic_plugin_loader`) is gone,
     // because a cdylib linking a statically-linked Bevy carries its own copy of
     // Bevy and therefore its own `World` type. The former distribution plugins

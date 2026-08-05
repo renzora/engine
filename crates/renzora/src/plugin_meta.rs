@@ -1,122 +1,66 @@
-//! Unified plugin registration.
+//! Plugin declaration.
 //!
-//! Every Renzora plugin uses [`add!`] to declare itself. The macro emits
-//! two registration paths in parallel; the runtime picks whichever fits
-//! the build target:
+//! Every Renzora plugin declares itself with [`add!`] in its own crate:
 //!
-//! 1. **Inventory** — a `StaticPlugin` entry in the runtime registry
-//!    populated by `inventory::submit!`. When the host iterates the
-//!    registry at startup, every plugin compiled into the binary (or
-//!    dlopen'd from a distribution dylib in `plugins/`) self-registers,
-//!    no manual enumeration. Used for engine-internal plugins on every
-//!    platform: desktop binary, iOS staticlib, Android cdylib, wasm32.
+//! ```rust,ignore
+//! renzora::add!(MyPlugin);                    // Runtime (the default)
+//! renzora::add!(MyEditorTool, Editor);        // Editor-only
+//! renzora::add!(MyFoundation, Runtime, priority = -100);
+//! ```
 //!
-//! 2. **FFI** — `extern "C"` exports (`plugin_create`, `plugin_scope`,
-//!    `plugin_bevy_hash`) so the dynamic plugin loader can dlopen a
-//!    standalone `.dll` / `.so` / `.dylib` and read the symbols. Used for
-//!    user-installed plugins on desktop. Multiple statically-linked plugins
-//!    would have these symbols collide, so they're cfg-gated to desktop
-//!    targets only.
+//! **The macro emits no registration code.** It expands to a compile-time check
+//! that the named type really is a `Plugin` with a `Default` impl, and that is
+//! all it does at compile time. What makes the plugin *run* is the wiring
+//! generated from these declarations: `cargo renzora sync` scans every crate
+//! under `crates/` for `add!` lines and regenerates
 //!
-//! The same `renzora::add!(MyPlugin)` line works for both. Plugin authors
-//! don't think about static-vs-dynamic; the macro and the runtime handle it.
+//! - the `[dependencies]` entry that links the crate into the binary, and
+//! - `plugins.rs` in `renzora_runtime` (Runtime scope) or `renzora_editor`
+//!   (Editor scope), which is an ordinary list of `app.add_plugins(...)` calls.
+//!
+//! So dropping a crate into `crates/` with an `add!` line in it is the whole
+//! job — the generator finds it, links it and installs it. Both generated files
+//! are committed, so a plain `cargo build` needs no generator run; CI checks
+//! that regenerating produces no diff, which is what stops a stale list from
+//! shipping.
+//!
+//! ## Why this isn't a registry any more
+//!
+//! It used to be. `add!` submitted an `inventory` entry and the host iterated
+//! the registry at startup, because plugins were `dlopen`'d and a plugin the
+//! host had never heard of had to be able to announce itself. Nothing is
+//! `dlopen`'d against Bevy now — the editor is a binary and third-party
+//! extensions are C-ABI plugins (`renzora_plugin`) that link no Bevy at all —
+//! so there was no longer anyone to announce *to*. Deleting the registry also
+//! deleted the three dead-strip workarounds that existed only to keep its
+//! constructors alive: the keepalive `build.rs` in `renzora_runtime` and
+//! `renzora_editor`, and the `renzora_static_plugins` aggregator that forced
+//! plugin objects into a lean export. A named type in a generated list needs
+//! none of that; the linker can see it.
+//!
+//! ## What the generator reads
+//!
+//! The declaration is parsed as text, so keep it on one line and at the top
+//! level of the file (a commented-out or string-embedded `add!` is ignored
+//! because the parse requires the full `add!(..);` form at line start). The
+//! plugin type is resolved from the module the file defines — a declaration in
+//! `src/material/mod.rs` becomes `mycrate::material::MyPlugin` — so every module
+//! on that path must be `pub`. A wrong path is a compile error in the generated
+//! file, never a silently missing plugin.
+//!
+//! `priority` orders the generated list (lower = installed earlier, default 0).
+//! Reach for it only when a plugin must initialize before another; ordering
+//! between systems belongs in Bevy's own system sets.
 
-use bevy::app::App;
-
-/// Plugin scope — determines when the plugin is loaded.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PluginScope {
-    Editor = 0,
-    Runtime = 1,
-}
-
-impl PluginScope {
-    /// Whether a plugin with `self` scope should be loaded for a host
-    /// running in `host` scope.
-    ///
-    /// Every plugin is exclusively `Runtime` or `Editor` — there is no
-    /// "both" scope. `Runtime` plugins load in the runtime pass, which the
-    /// editor host runs too, so they appear in the editor viewport *and* the
-    /// shipped game. `Editor` plugins load only in the editor pass (the
-    /// `renzora_editor` bundle). A feature that needs editor tooling on top of
-    /// runtime behaviour ships TWO plugins — one of each scope.
-    #[inline]
-    pub fn matches(self, host: PluginScope) -> bool {
-        self == host
-    }
-}
-
-/// One entry in the plugin registry. Each `renzora::add!(...)` invocation
-/// produces one of these and submits it via `inventory::submit!`.
-pub struct StaticPlugin {
-    /// Human-readable name (the plugin type's `stringify!`'d name).
-    /// Useful for debug logging when a plugin fails to register.
-    pub name: &'static str,
-
-    /// When this plugin should load.
-    pub scope: PluginScope,
-
-    /// Order hint. Lower = registered earlier. Default 0; reach for
-    /// non-zero values only when a plugin must initialize before another.
-    /// Most plugins should rely on Bevy's own system-set ordering instead.
-    pub priority: i32,
-
-    /// Installer. Constructs the plugin and adds it to the App. Called once
-    /// at startup if [`scope`](Self::scope) matches the host scope. The
-    /// indirection through a function pointer (rather than `Box<dyn Plugin>`)
-    /// lets us call `app.add_plugins(...)` directly — Bevy's `Plugins`
-    /// trait isn't implemented for trait objects.
-    pub install: fn(&mut App),
-}
-
-// Tell `inventory` that `StaticPlugin` is a collectable type. Each
-// `inventory::submit!` block (emitted by `add!` below) registers one
-// entry. The collection is populated at process startup by ctor
-// functions, plus on dlopen for any distribution plugin loaded later.
-inventory::collect!(StaticPlugin);
-
-/// Iterate every registered plugin, filtering by `host_scope` and
-/// invoking `f` on each matching entry in priority order.
+/// Declare a Bevy plugin so the build wires it into the engine.
 ///
-/// The runtime calls this once at startup. Plugins with mismatched scope
-/// (e.g. `Editor` plugin during a `Runtime` build) are skipped.
-pub fn for_each_static_plugin<F: FnMut(&'static StaticPlugin)>(host_scope: PluginScope, mut f: F) {
-    let mut entries: Vec<&'static StaticPlugin> = inventory::iter::<StaticPlugin>
-        .into_iter()
-        .filter(|p| p.scope.matches(host_scope))
-        .collect();
-    entries.sort_by_key(|p| p.priority);
-    for entry in entries {
-        f(entry);
-    }
-}
-
-/// Register a Bevy plugin with the Renzora engine.
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// // Runtime (default): gameplay/rendering. Runs in the editor viewport AND
-/// // the exported game. This is the default scope.
-/// renzora::add!(MyPlugin);
-///
-/// // Editor only — won't ship with exported games.
-/// renzora::add!(MyEditorTool, Editor);
-///
-/// // Runtime, stated explicitly.
-/// renzora::add!(MyGameplay, Runtime);
-///
-/// // With explicit priority (lower = earlier; default 0).
-/// renzora::add!(MyFoundation, Runtime, priority = -100);
-/// ```
+/// See the [module docs](self) for what this does and does not do. The plugin
+/// type must implement [`Default`]; if it needs a non-default constructor,
+/// implement `Default` to delegate to it.
 ///
 /// There is no "both" scope: a plugin is exclusively `Runtime` or `Editor`. A
 /// feature needing editor tooling on top of runtime behaviour ships two plugins
 /// (e.g. `GameUiPlugin` + `GameUiEditorPlugin`).
-///
-/// The plugin type must implement [`Default`]. If your plugin needs a
-/// non-default constructor, implement `Default` to delegate to it.
 #[macro_export]
 macro_rules! add {
     ($plugin_type:ty) => {
@@ -126,22 +70,13 @@ macro_rules! add {
         $crate::add!($plugin_type, $scope, priority = 0);
     };
     ($plugin_type:ty, $scope:ident, priority = $priority:expr) => {
-        // Runtime registration via `inventory`. Each call expands to a
-        // ctor function (uniquely named per-call so multiple `add!`
-        // invocations in one module don't collide) that pushes a
-        // `StaticPlugin` entry into the shared registry. Works on every
-        // platform: desktop binary, mobile staticlib/cdylib, wasm32.
-        $crate::inventory::submit! {
-            $crate::StaticPlugin {
-                name: stringify!($plugin_type),
-                scope: $crate::PluginScope::$scope,
-                priority: $priority,
-                install: |app| {
-                    app.add_plugins(<$plugin_type as ::std::default::Default>::default());
-                },
-            }
-        }
-
+        // Type check only — the generated list is what installs the plugin.
+        // Catching `Plugin`/`Default` here keeps the error in the plugin's own
+        // crate, where the author can read it, instead of surfacing in a
+        // generated file they didn't write.
+        const _: fn() = || {
+            fn assert_declarable<T: $crate::bevy::app::Plugin + ::std::default::Default>() {}
+            assert_declarable::<$plugin_type>();
+        };
     };
 }
-

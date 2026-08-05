@@ -2,7 +2,6 @@
 name = "renzora_editor"
 version = "0.1.0"
 edition = "2021"
-build = "build.rs"
 
 # The editor bundle: ONE loadable cdylib that statically links every
 # editor-only plugin crate (as rlibs) and exposes them through a single
@@ -115,9 +114,6 @@ editor = [
     "dep:renzora_ember_editor",
     "dep:renzora_navmesh_editor",
 ]
-
-[build-dependencies]
-toml = "0.8"
 
 [dependencies]
 renzora = { path = "../renzora", default-features = false }

@@ -3,10 +3,6 @@ name = "renzora_runtime"
 version = "0.1.0"
 edition = "2021"
 description = "Shared engine library for the Renzora binary — the runtime foundation. The editor is the separate `renzora_editor` bundle dll loaded at startup, never this crate."
-build = "build.rs"
-
-[build-dependencies]
-toml = "0.8"
 
 
 [features]

@@ -81,9 +81,13 @@ pub fn find_engine_source(start: &Path) -> Option<PathBuf> {
 /// at `workspace_dir` (the engine checkout, NOT the project). Returns the path to
 /// the freshly built binary; the caller embeds the project's rpak into it.
 ///
-/// `static_plugin_crates` are the workspace crate names (e.g. `renzora_lumen`)
-/// of distribution plugins the game uses — they're compiled INTO the binary
-/// (a static binary can't `dlopen`), via the `renzora_static_plugins` aggregator.
+/// The plugins a game uses are NOT compiled in: they are C-ABI plugins, which
+/// link no Bevy and so `dlopen` into a static host exactly as into a dynamic
+/// one. The caller copies them beside the binary. (An earlier design compiled
+/// `renzora::add!`-registering distribution plugins into the binary through a
+/// generated `renzora_static_plugins` aggregator; those crates are ordinary
+/// feature-gated dependencies of `renzora_runtime` now, so the aggregator, its
+/// `static_plugins` feature and the wiring pass are all gone.)
 ///
 /// Native cargo can only target the **host** triple; cross-OS builds are a hard
 /// Docker requirement (not yet wired here), so this rejects a non-host target
@@ -93,7 +97,6 @@ pub fn build_lean(
     platform: Platform,
     toolchain: &Toolchain,
     progress: &mut dyn FnMut(String),
-    static_plugin_crates: &[String],
     disabled_bevy_features: &[String],
     disabled_runtime_features: &[String],
     cancel: &Arc<AtomicBool>,
@@ -117,19 +120,13 @@ pub fn build_lean(
 
     // Build from an ISOLATED COPY of the engine source — never the dev tree, so
     // `cargo renzora` / `renzora run` are completely unaffected. The copy can be
-    // patched freely with no restore (it's disposable): `renzora` → rlib-only (its
-    // dylib would blow the PE 65535-export cap), plus any selected plugins wired
-    // into the static aggregator. The copy has its own `target/`, so the dev cache
-    // and locks are untouched and exports stay incremental across runs.
-    let ws = sync_export_workspace(workspace_dir, static_plugin_crates, progress)?;
+    // patched freely with no restore (it's disposable). It has its own `target/`,
+    // so the dev cache and locks are untouched and exports stay incremental
+    // across runs.
+    let ws = sync_export_workspace(workspace_dir, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
-    let has_static_plugins =
-        wire_static_plugins(&ws.join("crates"), static_plugin_crates, progress)?;
-    let mut features = String::from("runtime");
-    if has_static_plugins {
-        features.push_str(",static_plugins");
-    }
+    let features = String::from("runtime");
 
     let mut cmd = toolchain.cargo_command();
     cmd.current_dir(&ws)
@@ -247,7 +244,6 @@ pub fn build_lean(
 /// clear (rare); everything else just works.
 fn sync_export_workspace(
     engine_src: &Path,
-    selected_plugins: &[String],
     progress: &mut dyn FnMut(String),
 ) -> Result<PathBuf, String> {
     let dest = engine_src.join("target").join("export-src");
@@ -264,9 +260,9 @@ fn sync_export_workspace(
         "target", ".git", ".github", ".vscode", ".idea", "dist", "docs",
         "node_modules", "templates", "disabled", "docker", ".claude", ".devcontainer",
     ];
-    // cdylib distribution plugins the game doesn't use are never linked into the
-    // lean binary, so leave them out of the copy entirely.
-    let drop_plugins = unselected_cdylib_plugins(engine_src, selected_plugins);
+    // cdylib crates are never linked into the lean binary, so leave them out of
+    // the copy entirely.
+    let drop_plugins = cdylib_crates(engine_src);
     let mut copied = 0usize;
     for entry in std::fs::read_dir(engine_src).map_err(|e| format!("read {}: {e}", engine_src.display()))? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -299,10 +295,9 @@ fn sync_export_workspace(
     Ok(dest)
 }
 
-/// Sync `crates/`, but skip (and prune from the copy) the unselected cdylib
-/// distribution plugins — they're never linked into the lean binary, so copying
-/// and resolving them is pure waste. Everything else (core rlib crates, vendored
-/// crates, selected plugins, the aggregator) syncs normally.
+/// Sync `crates/`, but skip (and prune from the copy) the cdylib crates — they
+/// are never linked into the lean binary, so copying and resolving them is pure
+/// waste. Everything else (core rlib crates, vendored crates) syncs normally.
 fn sync_crates(
     src: &Path,
     dest: &Path,
@@ -335,11 +330,11 @@ fn sync_crates(
     Ok(())
 }
 
-/// Names of `crates/` entries that are cdylib distribution plugins (dlopen-only,
-/// NOT in the lean binary's link closure) and were NOT selected for this export.
-/// Core runtime subsystems are rlib libraries (no `cdylib` crate-type) and never
-/// match; selected plugins (which the aggregator links) are kept.
-fn unselected_cdylib_plugins(engine_src: &Path, selected: &[String]) -> HashSet<String> {
+/// Names of `crates/` entries that build a cdylib — never in the lean binary's
+/// link closure, so the copy skips them. Core runtime subsystems are rlib
+/// libraries (no `cdylib` crate-type) and never match. The game's own plugins
+/// live in `plugins/`, not here, and ship as files beside the binary.
+fn cdylib_crates(engine_src: &Path) -> HashSet<String> {
     let mut drop = HashSet::new();
     let Ok(rd) = std::fs::read_dir(engine_src.join("crates")) else {
         return drop;
@@ -349,9 +344,6 @@ fn unselected_cdylib_plugins(engine_src: &Path, selected: &[String]) -> HashSet<
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if selected.contains(&name) {
-            continue;
-        }
         if let Ok(text) = std::fs::read_to_string(entry.path().join("Cargo.toml")) {
             if is_cdylib_crate(&text) {
                 drop.insert(name);
@@ -488,88 +480,3 @@ fn strip_runtime_features(
 }
 
 
-/// Wire the selected distribution plugins into the `renzora_static_plugins`
-/// aggregator (in the export copy) so the lean build links them in (no dlopen).
-/// Returns whether any were wired (false = none selected, or none had source).
-/// No restore: it operates on the disposable copy.
-fn wire_static_plugins(
-    crates_dir: &Path,
-    crate_names: &[String],
-    progress: &mut dyn FnMut(String),
-) -> Result<bool, String> {
-    if crate_names.is_empty() {
-        return Ok(false);
-    }
-    let mut wired: Vec<String> = Vec::new();
-    let mut missing: Vec<String> = Vec::new();
-
-    for name in crate_names {
-        let manifest = crates_dir.join(name).join("Cargo.toml");
-        if !manifest.is_file() {
-            // Source not present (e.g. a marketplace plugin not yet downloaded).
-            missing.push(name.clone());
-            continue;
-        }
-        // Make the plugin linkable as an rlib (its cdylib stays too — harmless in
-        // the copy).
-        let bytes = std::fs::read(&manifest)
-            .map_err(|e| format!("read {}: {e}", manifest.display()))?;
-        let text = String::from_utf8_lossy(&bytes);
-        if !text.contains("rlib") {
-            let patched = text.replacen("\"cdylib\"]", "\"cdylib\", \"rlib\"]", 1);
-            if patched == *text {
-                return Err(format!(
-                    "Could not make {} linkable: unexpected crate-type format",
-                    manifest.display()
-                ));
-            }
-            std::fs::write(&manifest, patched.as_bytes())
-                .map_err(|e| format!("patch {}: {e}", manifest.display()))?;
-        }
-        wired.push(name.clone());
-    }
-
-    if !missing.is_empty() {
-        progress(format!(
-            "Skipping {} plugin(s) with no in-workspace source (not embeddable yet): {}",
-            missing.len(),
-            missing.join(", ")
-        ));
-    }
-    if wired.is_empty() {
-        return Ok(false);
-    }
-
-    // Regenerate the aggregator. It's committed empty, so it must already exist.
-    let agg_dir = crates_dir.join("renzora_static_plugins");
-    let agg_manifest = agg_dir.join("Cargo.toml");
-    let agg_lib = agg_dir.join("src").join("lib.rs");
-    if !agg_manifest.is_file() || !agg_lib.is_file() {
-        return Err(
-            "renzora_static_plugins aggregator crate is missing from the workspace".into(),
-        );
-    }
-
-    let deps: String = wired
-        .iter()
-        .map(|n| format!("{n} = {{ path = \"../{n}\", default-features = false }}\n"))
-        .collect();
-    let manifest = format!(
-        "[package]\nname = \"renzora_static_plugins\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
-         [lib]\ncrate-type = [\"rlib\"]\n\n[dependencies]\n{deps}\n[lints]\nworkspace = true\n"
-    );
-    let externs: String = wired.iter().map(|n| format!("extern crate {n};\n")).collect();
-    let lib = format!(
-        "//! GENERATED in the export copy by the renzora_export lean build.\n\
-         #![allow(unused_extern_crates)]\n{externs}"
-    );
-    std::fs::write(&agg_manifest, manifest.as_bytes()).map_err(|e| e.to_string())?;
-    std::fs::write(&agg_lib, lib.as_bytes()).map_err(|e| e.to_string())?;
-
-    progress(format!(
-        "Statically linking {} plugin(s): {}",
-        wired.len(),
-        wired.join(", ")
-    ));
-    Ok(true)
-}

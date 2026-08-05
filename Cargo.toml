@@ -16,10 +16,10 @@ members = [
     # member glob that matches nothing is a hard error, so this stays valid only
     # while ≥1 `editor/` subcrate exists.
     "crates/renzora_*/editor",
-    # Native build helper (`cargo renzora`). Listed explicitly — it lives at the
-    # repo root, not under `crates/`, so no glob covers it. Excluded from the
-    # workspace `--workspace` engine build (it pulls no bevy and isn't shipped).
-    "xtask",
+    # NOTE: `xtask` (`cargo renzora`) is deliberately NOT a member — it is its
+    # own workspace root. It generates the plugin `path` dependencies, and cargo
+    # refuses to load a workspace with a dangling one, so as a member it could
+    # not be built to repair the very tree it maintains. See `xtask/Cargo.toml`.
     # Vendored Bevy ecosystem crates. Listed explicitly (not via a
     # `bevy_*` glob) so we don't accidentally pick up `bevy_oxr`, which
     # is its own vendored workspace.
@@ -267,12 +267,6 @@ default = ["runtime", "xr"]
 # the dedicated server (launch with `--server` to boot headless) and the
 # host/listen server (`--host`). No separate editor/server feature or binary.
 runtime = ["dep:renzora_runtime"]
-# Statically link selected distribution plugins into the binary (lean export
-# only). OFF in every normal build — the editor/dev/server builds keep loading
-# plugins as dlopen cdylibs. The lean exporter regenerates the
-# `renzora_static_plugins` aggregator (whose deps are the plugins a game uses)
-# and builds with this feature so they compile in. See `renzora_export::build`.
-static_plugins = ["dep:renzora_static_plugins"]
 # Shared-`bevy_dylib` dynamic linking. ON by default (above); the lean exporter
 # turns it OFF for a static release binary. Mobile/wasm lanes never enable it
 # (they build via `--no-default-features --features <wasm|…>` or their own
@@ -337,9 +331,6 @@ bevy = { workspace = true }
 
 # Single shared library — `editor` feature on this crate adds editor extras.
 renzora_runtime = { path = "crates/renzora_runtime", optional = true }
-# Lean-export static-plugin aggregator. Optional + behind `static_plugins`, so
-# normal builds never link it; committed empty, regenerated per lean export.
-renzora_static_plugins = { path = "crates/renzora_static_plugins", optional = true }
 uuid = "1"
 
 # Misc

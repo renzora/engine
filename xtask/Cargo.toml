@@ -1,22 +1,35 @@
-# Native build helper — the local mirror of the Docker `build-all.sh` staging.
+# Native build helper — the local mirror of the Docker `build-all.sh` staging,
+# plus the plugin-wiring generator (`src/sync.rs`).
 #
 # This crate exists so `cargo renzora` can do, on the developer's own machine,
 # exactly what the container does: compile the workspace, then arrange the
-# binary + shared libraries into a clean `dist/<platform>/` layout (bevy_dylib,
-# renzora.dll and the editor bundle beside the exe; every other plugin cdylib in
-# `plugins/`). `cargo run`/`cargo build` alone compile everything but leave the
-# plugin cdylibs flat next to the exe, where the dynamic loader (which scans
+# binaries into a clean `dist/<platform>/` layout with every plugin cdylib in
+# `plugins/`. `cargo run`/`cargo build` alone compile everything but leave the
+# plugin cdylibs flat next to the exe, where the loader (which scans
 # `<exe-dir>/plugins/`) never finds them — this tool closes that gap with no
 # Docker and no extra install (it rides on plain `cargo`).
 #
+# ── Its own workspace, on purpose ────────────────────────────────────────────
+#
+# The `[workspace]` table below makes this a workspace ROOT rather than a member
+# of the engine's, and that is load-bearing rather than tidiness. `sync.rs`
+# generates `path` dependencies into `renzora_runtime`/`renzora_editor`, and
+# cargo validates every path dependency of every workspace member before it will
+# build anything at all. Delete a plugin crate's directory and the engine
+# workspace stops loading — so as a member, the one tool able to repair it could
+# no longer be compiled. Outside the workspace it always builds, which is what
+# lets `sync` prune a dangling entry and heal the tree.
+#
+# The cost is that `cargo renzora` is invoked with `--manifest-path` (see
+# `.cargo/config.toml`) and so must be run from the repo root.
+#
 # Deliberately ZERO dependencies: it must stay a tiny, instant-compiling helper,
 # and it must never pull `bevy` (which would perturb the workspace feature
-# unification that keeps every crate on one `bevy_dylib`). std only.
+# unification that keeps every crate on one Bevy compilation). std only.
+[workspace]
+
 [package]
 name = "xtask"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[lints]
-workspace = true

@@ -33,6 +33,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod sync;
+
 /// Host-platform naming. Filled at compile time from `cfg!` because xtask is
 /// built for — and run on — the very platform it stages for.
 struct Platform {
@@ -134,10 +136,41 @@ fn main() -> ExitCode {
             };
             stage_one_plugin(&repo, &plat, &name)
         }
+        // Delete a plugin crate and every reference to it, in one process — the
+        // only safe way to do it. See `sync::remove`.
+        "remove" => {
+            let Some(name) = std::env::args().nth(2) else {
+                eprintln!("[xtask] usage: cargo renzora remove <crate-name>");
+                return ExitCode::from(2);
+            };
+            match sync::remove(&repo, &name) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("[xtask] {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        // Regenerate the plugin wiring from the `renzora::add!` declarations
+        // under `crates/`. Runs automatically before every build; standalone
+        // here for the case where you want the diff without a compile, and with
+        // `--check` for CI, which must fail if a declaration was added without
+        // committing the regenerated files.
+        "sync" => {
+            let check = std::env::args().any(|a| a == "--check");
+            match sync::sync(&repo, check) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("[xtask] {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | dist | plugin <name> | profile)"
+                 (expected: run | dist | plugin <name> | profile | sync [--check] \
+                 | remove <crate-name>)"
             );
             ExitCode::from(2)
         }
@@ -211,6 +244,15 @@ fn stage_one_plugin(repo: &Path, plat: &Platform, name: &str) -> ExitCode {
 }
 
 fn build_and_stage(repo: &Path, plat: &Platform, features: &[&str]) -> Result<PathBuf, ExitCode> {
+    // Wire in any plugin crate whose `renzora::add!` declaration isn't reflected
+    // in the generated lists yet — this is what makes "drop a crate into
+    // `crates/`" the whole job. Cheap (a source scan) and a no-op when nothing
+    // moved, so it runs before every build rather than being something to
+    // remember.
+    if let Err(e) = sync::sync(repo, false) {
+        eprintln!("[xtask] plugin sync failed: {e}");
+        return Err(ExitCode::FAILURE);
+    }
     if !build(repo, features) {
         eprintln!("[xtask] cargo build failed");
         return Err(ExitCode::FAILURE);
@@ -454,9 +496,27 @@ fn is_not_a_plugin(name: &str, plat: &Platform) -> bool {
 /// environment wins either way — the runtime only tests for the variable's
 /// presence, so an explicit one from the caller must not be second-guessed here.
 fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> ExitCode {
-    let bin = out.join(format!("renzora{}", plat.exe_suffix));
-    println!("[xtask] launching {}", bin.display());
     let mut extra: Vec<String> = std::env::args().skip(2).collect();
+
+    // The editor, unless asked for a runtime-only mode.
+    //
+    // `renzora-editor` and `renzora` became separate executables when Bevy went
+    // static (see `stage`), and this launched `renzora` regardless — so
+    // `cargo renzora` silently started the game instead of the editor. The
+    // three flags below are the modes only the runtime binary understands: it
+    // reads them in `main` to boot headless, as a listen server, or into a
+    // headset. `renzora-editor` parses none of them, so forwarding one there
+    // would start an ordinary editor session and quietly ignore the request.
+    const RUNTIME_ONLY: [&str; 3] = ["--server", "--host", "--vr"];
+    let runtime_mode = extra.iter().any(|a| RUNTIME_ONLY.contains(&a.as_str()));
+    let stem = if runtime_mode { "renzora" } else { "renzora-editor" };
+
+    let bin = out.join(format!("{stem}{}", plat.exe_suffix));
+    if !bin.exists() {
+        eprintln!("[xtask] {} was not staged", bin.display());
+        return ExitCode::FAILURE;
+    }
+    println!("[xtask] launching {}", bin.display());
     let want_xr = extra.iter().any(|a| a == "--xr");
     extra.retain(|a| a != "--xr");
     let mut cmd = Command::new(&bin);
