@@ -18,7 +18,7 @@ physics = ["dep:avian3d"]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
-avian3d = { path = "../avian/crates/avian3d", default-features = false, features = ["3d", "f32"], optional = true }
+avian3d = { version = "0.7", default-features = false, features = ["3d", "f32"], optional = true }
 
 [lints]
 workspace = true

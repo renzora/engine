@@ -35,20 +35,15 @@ members = [
     # glam 0.30, which would otherwise clash with bevy's glam (two `Vec2` types).
     "crates/polyanya",
     "crates/bvh2d",
-    # Avian physics closure. `avian/` is its own nested workspace (like
-    # `bevy_oxr`), referenced by path; these three are its ecosystem deps,
-    # already ported to Bevy 0.19 upstream, kept as members so they share the
-    # one workspace Bevy via `workspace = true`.
-    "crates/bevy_heavy",
-    "crates/bevy_transform_interpolation",
-    "crates/glam_matrix_extras",
 ]
-# `crates/avian` is a vendored NESTED workspace — its avian2d/avian3d crates use
-# `workspace = true` against avian's OWN [workspace.dependencies]. Exclude it so
-# cargo doesn't absorb those crates into THIS workspace (which would make their
-# `workspace = true` resolve here and fail). It's pulled in by path from the
-# physics consumers. (bevy_oxr is the same shape but uses explicit versions, so
-# it doesn't trip the inheritance lookup.)
+# Avian comes from crates.io (`avian3d`/`avian2d` 0.7, which target Bevy 0.19),
+# not a vendored nested workspace. It was vendored when no release supported
+# Bevy 0.19; once 0.7.0 shipped, the fork was a copy to keep in sync for one
+# local patch, and that patch now lives in `renzora_physics` instead. Its four
+# ecosystem crates (bevy_heavy, bevy_transform_interpolation, glam_matrix_extras,
+# avian_derive) went with it — they were members only so avian's path deps
+# resolved to them, and a path copy sitting alongside the registry copy the
+# published avian pulls would be two distinct types sharing a name.
 # `plugins/` holds first-party `renzora_plugin` cdylibs — the C-ABI mechanism,
 # not the older dylib one in `crates/renzora_*`. They are deliberately NOT
 # workspace members: as members they would inherit the engine's cargo feature
@@ -56,7 +51,7 @@ members = [
 # plugin build in a second on any machine. Each is its own cargo project with its
 # own lockfile and target dir; `cargo renzora` builds and stages them all, and a
 # dev can `cd plugins/<name> && cargo build` directly.
-exclude = ["crates/avian", "plugins"]
+exclude = ["plugins"]
 # (The old egui-based `disabled/renzora_vr_editor` was deleted — the VR editor
 # is being rebuilt from scratch on the ember/bevy_ui shell. Park any future
 # not-yet-compiling crates under `disabled/`, outside the `crates/*` glob.)

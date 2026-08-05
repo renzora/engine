@@ -169,14 +169,28 @@ pub const CAPABILITIES: &[Capability] = &[
         runtime_features: &["tilemap"],
         default_on: true,
     },
+    // Physics is two capabilities because avian ships as two crates, each with
+    // its own parry. Turning both off strips `renzora_physics` outright — the
+    // shared `physics` feature is enabled only by these, never listed in
+    // `default` on its own.
     Capability {
-        id: "physics",
-        label: "Physics (rigid bodies & collisions)",
-        help: "The avian rigid-body physics engine (~6.5 MiB). Also powers water buoyancy \
-               and navmesh collider-obstacles, which strip with it. Drop for a game with no \
-               physics simulation.",
+        id: "physics_3d",
+        label: "3D physics (rigid bodies & collisions)",
+        help: "The avian3d rigid-body engine and parry3d (~4.5 MiB). Also powers water \
+               buoyancy and navmesh collider-obstacles, which strip with it. Drop for a 2D \
+               game, or one with no physics simulation.",
         bevy_features: &[],
-        runtime_features: &["physics"],
+        runtime_features: &["physics_3d"],
+        default_on: true,
+    },
+    Capability {
+        id: "physics_2d",
+        label: "2D physics (rigid bodies & collisions)",
+        help: "The avian2d rigid-body engine and parry2d. A separate simulation from the 3D \
+               one — sprites, Node2d entities and tilemap colliders route here. Drop for a \
+               pure-3D game.",
+        bevy_features: &[],
+        runtime_features: &["physics_2d"],
         default_on: true,
     },
     Capability {

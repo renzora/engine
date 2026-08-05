@@ -183,7 +183,10 @@ renzora_engine_editor      = { path = "../renzora_engine/editor", optional = tru
 # renzora_shader, renzora_postprocess) are omitted — they arrive transitively
 # and hold no Editor-scope plugins for the bundle to install.
 renzora_engine          = { path = "../renzora_engine" }
-renzora_physics         = { path = "../renzora_physics" }
+# Both backends: a project can hold 3D and 2D scenes, so the editor never
+# strips either. Explicit because renzora_physics has no default backend — the
+# choice belongs to whoever is shipping.
+renzora_physics         = { path = "../renzora_physics", features = ["avian3d", "avian2d"] }
 renzora_physics_editor  = { path = "../renzora_physics/editor", optional = true }
 renzora_scripting       = { path = "../renzora_scripting" }
 renzora_scripting_editor = { path = "../renzora_scripting/editor", optional = true }

@@ -95,11 +95,21 @@ pub fn sync_plugin_physics_state(
 
 /// Turn parked plugin service calls into the script actions physics already
 /// understands.
+///
+/// `Option` because the queue belongs to the C-ABI plugin host, and physics is
+/// usable without it — the integration tests build an app with `PhysicsPlugin`
+/// and no host, and a required `ResMut` turns that into a system-param
+/// validation panic on the first frame rather than a system that simply has
+/// nothing to drain.
 pub fn drain_plugin_physics_commands(
-    mut parked: ResMut<PluginServiceCalls>,
+    parked: Option<ResMut<PluginServiceCalls>>,
     mut commands: Commands,
 ) {
     use renzora::ScriptActionValue as V;
+
+    let Some(mut parked) = parked else {
+        return;
+    };
 
     for call in parked.take(renzora_plugin::physics::SERVICE) {
         // The payload is bytes the host never looked at, so every check happens

@@ -27,6 +27,37 @@ pub struct Avian2dBackendPlugin {
 impl Plugin for Avian2dBackendPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] Avian2dBackendPlugin");
+        // Interpolation disabled here, and ONLY here.
+        //
+        // avian2d and avian3d are separate crates with distinct types
+        // throughout, so they coexist happily — except that both depend on the
+        // one `bevy_transform_interpolation`, and each one's
+        // `PhysicsInterpolationPlugin` adds `TransformInterpolationPlugin` from
+        // it. That plugin is the *same type* from both backends, so the second
+        // `add_plugins` panics with "plugin was already added". The vendored
+        // fork carried a patch to skip the re-add; taking avian from crates.io
+        // means solving it on this side instead.
+        //
+        // Dropping the 2D copy costs nothing measurable: every auto-registration
+        // flag on `PhysicsInterpolationPlugin` defaults to false, so it opts no
+        // entity into anything, and the engine never adds a
+        // `TranslationInterpolation` / `Extrapolation` / `HermiteEasing`
+        // component itself. `TransformInterpolationPlugin` still arrives via the
+        // 3D backend and its easing is component-driven rather than
+        // backend-specific, so it serves 2D entities too. What genuinely goes is
+        // 2D extrapolation and Hermite easing, whose plugins are generic over
+        // avian2d-private velocity sources and so cannot be re-added from out
+        // here — if a 2D game ever needs them, that is the point to upstream a
+        // guard rather than work around it.
+        // Gated on the 3D backend being present: a 2D-only build has nobody to
+        // collide with, so it keeps the whole plugin.
+        #[cfg(feature = "avian3d")]
+        app.add_plugins(
+            PhysicsPlugins::default()
+                .build()
+                .disable::<PhysicsInterpolationPlugin>(),
+        );
+        #[cfg(not(feature = "avian3d"))]
         app.add_plugins(PhysicsPlugins::default());
 
         if self.start_paused {
@@ -39,7 +70,7 @@ impl Plugin for Avian2dBackendPlugin {
         // simulations. (In an avian2d-only lean build the 3D drain is gone and
         // the 2D world keeps avian's defaults — acceptable until 2D grows its
         // own properties UI.)
-        #[cfg(feature = "avian")]
+        #[cfg(feature = "avian3d")]
         app.add_systems(Update, mirror_physics_properties_2d);
     }
 }
@@ -48,7 +79,7 @@ fn pause_physics(mut time: ResMut<Time<Physics>>) {
     time.pause();
 }
 
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 fn mirror_physics_properties_2d(
     state: Res<crate::properties::PhysicsPropertiesState>,
     mut gravity: ResMut<Gravity>,

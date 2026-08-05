@@ -28,14 +28,14 @@ thiserror = "2.0"
 workspace = true
 
 [dependencies.avian3d]
-path = "../avian/crates/avian3d"
+version = "0.7"
 optional = true
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
 
 [dev-dependencies]
 rand = "0.8"
-avian3d = { path = "../avian/crates/avian3d" }
+avian3d = "0.7"
 
 [dev-dependencies.bevy]
 workspace = true

@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::data::PhysicsBodyData;
-#[cfg(any(feature = "avian", feature = "avian2d"))]
+#[cfg(any(feature = "avian3d", feature = "avian2d"))]
 use crate::data::RuntimePhysics2d;
 
 /// Snapshot of per-entity physics state, refreshed each frame.
@@ -48,7 +48,7 @@ pub fn auto_init_physics_read_state(
 /// Refreshes `PhysicsReadState` from Avian's current state. 2D-backend bodies
 /// are excluded — their avian2d twin below owns them (each backend has its own
 /// `LinearVelocity` type, and this one would zero a 2D body's reading).
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 pub fn update_physics_read_state(
     mut q: Query<
         (
@@ -129,7 +129,7 @@ pub fn auto_init_collision_read_state(
 /// set against the previous frame's. 2D-backend bodies are excluded — the 3D
 /// contact graph never contains them, so this would wipe their `prev` set every
 /// frame and the 2D twin below would report a fresh "entered" forever.
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 pub fn update_collision_read_state(
     mut q: Query<(Entity, &mut CollisionReadState), Without<RuntimePhysics2d>>,
     collisions: avian3d::prelude::Collisions,
@@ -171,7 +171,7 @@ pub fn update_collision_read_state_2d(
 }
 
 /// Shared enter/exit diff for both backends' collision updaters.
-#[cfg(any(feature = "avian", feature = "avian2d"))]
+#[cfg(any(feature = "avian3d", feature = "avian2d"))]
 fn diff_collision_state(
     rs: &mut CollisionReadState,
     current: std::collections::HashSet<Entity>,

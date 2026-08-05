@@ -13,7 +13,7 @@ description = "Shared engine library for the Renzora binary — the runtime foun
 # `renzora_export::build` / `capabilities`). Core foundation crates
 # (engine/scripting/input/physics/globals/ember/lighting/postprocess/…) are not
 # optional: they're referenced directly and must always be present.
-default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "postfx", "sky", "solari", "script_http", "physics", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
+default = ["navmesh", "terrain", "spline", "water", "audio", "particles", "animation", "blueprint", "game_ui", "postfx", "sky", "solari", "script_http", "physics_3d", "physics_2d", "render_3d", "render_2d", "tilemap", "sprite_anim", "lumen", "cloth", "gaussian_splatting", "ragdoll", "light2d", "text3d", "vignette", "forward_decal", "pool_water", "procedural_tree"]
 # OpenXR/VR boot mode (`add_xr_rendering`, activated by launching with --vr).
 # NOT in default: the binary (`renzora_app`) opts in for desktop builds via its
 # own default `xr` feature, so wasm/mobile lanes and the lean exporter never
@@ -38,19 +38,23 @@ render_3d = ["dep:renzora_shader", "renzora_engine/render_3d", "renzora/render_3
 # (viewport_stretch.rs in THIS crate) draws with a bevy `Sprite` in every
 # export — so this only gates renzora_engine's sprite systems for now.
 render_2d = ["renzora_engine/render_2d"]
-# avian physics (~6.5 MiB: avian3d + parry3d + bevy_transform_interpolation +
-# bevy_heavy + glam_matrix_extras). Forwards to every crate that touches avian:
-# the engine scene-save denies, water buoyancy, and the navmesh collider-obstacle
-# updater (the `?` enables those only when that subsystem is also kept). Stripped
-# for a game with no rigid-body physics.
+# avian physics. The shared half: the physics crate itself, plus every crate that
+# touches avian — the engine scene-save denies, water buoyancy, and the navmesh
+# collider-obstacle updater (the `?` enables those only when that subsystem is
+# also kept). Not selectable on its own; `physics_3d` / `physics_2d` turn it on,
+# so removing both from `default` strips physics entirely.
 physics = [
     "dep:renzora_physics",
-    "renzora_physics/avian",
-    "renzora_physics/avian2d",
     "renzora_engine/physics",
     "renzora_water?/physics",
     "renzora_navmesh?/physics",
 ]
+# One feature per avian crate, so a game ships only the dimension it uses. The
+# two are separate crates with their own parry (parry3d ≈ 4.5 MiB, parry2d less),
+# and no game needs both — a 3D title carries no 2D solver and vice versa. The
+# editor keeps both, since a project can hold scenes of either kind.
+physics_3d = ["physics", "renzora_physics/avian3d"]
+physics_2d = ["physics", "renzora_physics/avian2d"]
 # Scripting backends/capabilities, forwarded to `renzora_scripting` (which every
 # lean-closure crate now deps `default-features = false`, so these are the sole
 # switches). `lua` is NOT in `default` — it rides the binary's `runtime` feature

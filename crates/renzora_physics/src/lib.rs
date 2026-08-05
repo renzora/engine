@@ -1,7 +1,7 @@
 // Without the simulation backend, the helper systems/fns below are unreferenced
 // (only the avian-free data types are used). Silence the noise for that build
 // rather than scatter per-item gates.
-#![cfg_attr(not(feature = "avian"), allow(dead_code, unused_variables, unused_imports))]
+#![cfg_attr(not(feature = "avian3d"), allow(dead_code, unused_variables, unused_imports))]
 
 pub mod auto_fit;
 pub mod backend;
@@ -40,7 +40,7 @@ fn not_editing(play_mode: Option<Res<PlayModeState>>) -> bool {
 // avian-free serializable data types (`data` / `properties`: `PhysicsBodyData`,
 // `CollisionShapeData`, …). The whole simulation backend (`backend::avian`,
 // the `PhysicsPlugin` body, character controller, read-state systems) is
-// `#[cfg(feature = "avian")]`. This lets the lean export drop avian (~6.5 MiB)
+// `#[cfg(feature = "avian3d")]`. This lets the lean export drop avian (~6.5 MiB)
 // while crates like `renzora_terrain` keep tagging chunks with collider DATA —
 // inert until a build that enables the backend. `renzora_runtime`'s `physics`
 // feature turns the backend back on.
@@ -69,7 +69,7 @@ impl Plugin for PhysicsPlugin {
             .register_type::<PhysicsReadState>()
             .register_type::<read_state::CollisionReadState>();
 
-        #[cfg(feature = "avian")]
+        #[cfg(feature = "avian3d")]
         app.add_plugins(backend::avian::AvianBackendPlugin { start_paused });
 
         #[cfg(feature = "avian2d")]
@@ -89,13 +89,13 @@ impl Plugin for PhysicsPlugin {
         app.add_observer(on_pause_physics)
             .add_observer(on_unpause_physics);
 
-        #[cfg(feature = "avian")]
+        #[cfg(feature = "avian3d")]
         app.add_systems(PostUpdate, clear_avian_forces.run_if(not_editing));
         #[cfg(feature = "avian2d")]
         app.add_systems(PostUpdate, clear_avian_forces_2d.run_if(not_editing));
 
         app.init_resource::<PendingKinematicSlides>();
-        #[cfg(feature = "avian")]
+        #[cfg(feature = "avian3d")]
         {
             app.init_resource::<ResolvedSlides>();
             app.add_systems(
@@ -115,9 +115,9 @@ impl Plugin for PhysicsPlugin {
         // Per-entity read-state mirror + script extension.
         app.add_systems(Update, read_state::auto_init_physics_read_state);
         app.add_systems(Update, read_state::auto_init_collision_read_state);
-        #[cfg(feature = "avian")]
+        #[cfg(feature = "avian3d")]
         app.add_systems(Update, read_state::update_physics_read_state);
-        #[cfg(feature = "avian")]
+        #[cfg(feature = "avian3d")]
         app.add_systems(Update, read_state::update_collision_read_state);
         #[cfg(feature = "avian2d")]
         app.add_systems(Update, read_state::update_physics_read_state_2d);
@@ -152,11 +152,11 @@ pub struct PendingKinematicSlides(pub Vec<PendingSlide>);
 /// Produced by `compute_kinematic_slides` and drained by `apply_kinematic_slides`
 /// — split into two systems so the SpatialQuery reads don't conflict with the
 /// `&mut Position` writes.
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 #[derive(Resource, Default)]
 struct ResolvedSlides(Vec<(Entity, Vec3, bool, Vec3)>);
 
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 fn compute_kinematic_slides(
     mut queue: ResMut<PendingKinematicSlides>,
     mut resolved: ResMut<ResolvedSlides>,
@@ -200,7 +200,7 @@ fn compute_kinematic_slides(
     }
 }
 
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 fn apply_kinematic_slides(
     mut resolved: ResMut<ResolvedSlides>,
     mut q: Query<(&mut Transform, Option<&mut PhysicsReadState>)>,
@@ -221,7 +221,7 @@ fn apply_kinematic_slides(
 }
 
 /// System to clear avian forces each frame (since we use ConstantForce for one-time pushes).
-#[cfg(feature = "avian")]
+#[cfg(feature = "avian3d")]
 fn clear_avian_forces(
     mut commands: Commands,
     query: Query<Entity, With<avian3d::prelude::ConstantForce>>,
@@ -324,7 +324,7 @@ fn handle_physics_script_actions(
                     .entity(target)
                     .insert(avian2d::prelude::ConstantForce(vec.truncate()));
             } else {
-                #[cfg(feature = "avian")]
+                #[cfg(feature = "avian3d")]
                 commands
                     .entity(target)
                     .insert(avian3d::prelude::ConstantForce(vec));
@@ -340,7 +340,7 @@ fn handle_physics_script_actions(
                     .entity(target)
                     .insert(avian2d::prelude::LinearVelocity(vec.truncate()));
             } else {
-                #[cfg(feature = "avian")]
+                #[cfg(feature = "avian3d")]
                 commands
                     .entity(target)
                     .insert(avian3d::prelude::LinearVelocity(vec));
@@ -353,7 +353,7 @@ fn handle_physics_script_actions(
                     .entity(target)
                     .insert(avian2d::prelude::LinearVelocity(vec.truncate()));
             } else {
-                #[cfg(feature = "avian")]
+                #[cfg(feature = "avian3d")]
                 commands
                     .entity(target)
                     .insert(avian3d::prelude::LinearVelocity(vec));
@@ -367,7 +367,7 @@ fn handle_physics_script_actions(
 
 /// Spawn physics body components on an entity.
 pub fn spawn_physics_body(commands: &mut Commands, entity: Entity, body_data: &PhysicsBodyData) {
-    #[cfg(feature = "avian")]
+    #[cfg(feature = "avian3d")]
     backend::avian::spawn_physics_body(commands, entity, body_data);
 }
 
@@ -377,14 +377,14 @@ pub fn spawn_collision_shape(
     entity: Entity,
     shape_data: &CollisionShapeData,
 ) {
-    #[cfg(feature = "avian")]
+    #[cfg(feature = "avian3d")]
     backend::avian::spawn_collision_shape(commands, entity, shape_data);
 }
 
 /// Remove all physics components from an entity — both backends' component
 /// sets (removing absent components is a no-op, so it's safe to sweep both).
 pub fn despawn_physics_components(commands: &mut Commands, entity: Entity) {
-    #[cfg(feature = "avian")]
+    #[cfg(feature = "avian3d")]
     backend::avian::despawn_physics_components(commands, entity);
     #[cfg(feature = "avian2d")]
     backend::avian_2d::despawn_physics_components(commands, entity);
@@ -582,7 +582,7 @@ fn on_unpause_physics(_trigger: On<renzora::UnpausePhysics>, mut commands: Comma
 pub fn unpause(world: &mut World) {
     info!("[Physics] Unpausing physics simulation");
     renzora::console_log::console_info("Physics", "Physics simulation unpaused");
-    #[cfg(feature = "avian")]
+    #[cfg(feature = "avian3d")]
     {
         use avian3d::schedule::PhysicsTime;
         if let Some(mut time) = world.get_resource_mut::<Time<avian3d::prelude::Physics>>() {
@@ -602,7 +602,7 @@ pub fn unpause(world: &mut World) {
 pub fn pause(world: &mut World) {
     info!("[Physics] Pausing physics simulation");
     renzora::console_log::console_info("Physics", "Physics simulation paused");
-    #[cfg(feature = "avian")]
+    #[cfg(feature = "avian3d")]
     {
         use avian3d::schedule::PhysicsTime;
         if let Some(mut time) = world.get_resource_mut::<Time<avian3d::prelude::Physics>>() {

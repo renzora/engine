@@ -140,7 +140,8 @@ fn dynamic_2d_body_blocked_by_static_collider() {
 /// `auto_init_physics`). If a future avian update makes this pass, that
 /// workaround can go.
 #[test]
-#[ignore = "documents the vendored-avian2d standalone-collider bug the backend works around"]
+#[ignore = "documents an upstream avian2d standalone-collider bug the backend works around; \
+            re-checked against 0.7.0 from crates.io and still reproduces"]
 fn raw_avian2d_standalone_wall_blocks() {
     let mut app = physics_app();
     app.world_mut().spawn((

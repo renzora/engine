@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["avian", "avian2d"]
-avian = ["dep:avian3d"]
+# No default backend. Both are named after the crate they pull, and the caller
+# picks — `renzora_runtime` maps them to `physics_3d` / `physics_2d` so the lean
+# exporter can drop either. A 3D-only game carries no parry2d, and vice versa.
+default = []
+avian3d = ["dep:avian3d"]
 avian2d = ["dep:avian2d"]
 
 [dependencies]
@@ -17,8 +20,14 @@ serde = { version = "1", features = ["derive"] }
 renzora = { path = "../renzora", default-features = false }
 renzora_scripting = { path = "../renzora_scripting", default-features = false }
 
+# From crates.io, not a vendored copy. Avian was vendored when it had no release
+# targeting Bevy 0.19; 0.7.0 does, so the fork (and its four vendored ecosystem
+# crates) is just a copy to keep in sync. Both backends resolve one `bevy_heavy`,
+# `bevy_transform_interpolation` and `glam_matrix_extras` from the registry, so
+# there is exactly one of each in the graph — a path copy alongside a registry
+# copy would be two distinct types with the same name.
 [dependencies.avian3d]
-path = "../avian/crates/avian3d"
+version = "0.7"
 optional = true
 default-features = false
 features = ["3d", "f32", "default-collider", "parry-f32"]
@@ -28,7 +37,7 @@ features = ["3d", "f32", "default-collider", "parry-f32"]
 # types are distinct. Entities are routed to one backend or the other by
 # `auto_init_physics` (2D = sprite / `Node2d` ancestry / explicit `Physics2d`).
 [dependencies.avian2d]
-path = "../avian/crates/avian2d"
+version = "0.7"
 optional = true
 default-features = false
 features = ["2d", "f32", "default-collider", "parry-f32"]

@@ -130,15 +130,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "alloca"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5a7d05ea6aea7e9e64d25b9156ba2fee3fdd659e34e41063cd2fc7cd020d7f4"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -325,9 +316,6 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "as-raw-xcb-connection"
@@ -566,7 +554,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "avian2d"
-version = "0.7.0-dev"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "375fa2f2b6d042bda24d6b2ecea01ef1d7c8b7b3eed5c730d3409df4778588c9"
 dependencies = [
  "approx",
  "arrayvec",
@@ -576,18 +566,12 @@ dependencies = [
  "bevy_math",
  "bevy_transform_interpolation",
  "bitflags 2.11.1",
- "bytemuck",
- "criterion 0.8.2",
  "derive_more",
  "disqualified",
- "glam 0.30.10",
  "glam_matrix_extras",
- "itertools 0.14.0",
- "libm",
+ "itertools 0.15.0",
  "obvhs",
  "parry2d",
- "parry2d-f64",
- "serde",
  "smallvec",
  "thiserror 2.0.18",
  "thread_local",
@@ -595,7 +579,9 @@ dependencies = [
 
 [[package]]
 name = "avian3d"
-version = "0.7.0-dev"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35a30cb730c72527ffaca7f8806881c7e4acc70a4a74c54eb1ffb56c27f64235"
 dependencies = [
  "approx",
  "avian_derive",
@@ -604,17 +590,13 @@ dependencies = [
  "bevy_math",
  "bevy_transform_interpolation",
  "bitflags 2.11.1",
- "criterion 0.8.2",
  "derive_more",
  "disqualified",
  "glam_matrix_extras",
- "itertools 0.14.0",
- "libm",
+ "itertools 0.15.0",
  "obvhs",
  "parry3d",
  "parry3d-f64",
- "rand 0.9.4",
- "serde",
  "smallvec",
  "thiserror 2.0.18",
  "thread_local",
@@ -622,7 +604,9 @@ dependencies = [
 
 [[package]]
 name = "avian_derive"
-version = "0.2.2"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b95522267606c85f77ba40b55735583618f7a48e873be71a934f71dd5519ce86"
 dependencies = [
  "proc-macro-error3",
  "proc-macro2",
@@ -1328,16 +1312,13 @@ dependencies = [
 
 [[package]]
 name = "bevy_heavy"
-version = "0.5.0-dev"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afbd898e2c06dfba5854db187a3daece1eaf655c8fc385604bbe5b9304ed3f9b"
 dependencies = [
- "approx",
- "bevy_heavy",
  "bevy_math",
  "bevy_reflect 0.19.0",
  "glam_matrix_extras",
- "rand 0.10.1",
- "rand_chacha 0.10.0",
- "serde",
 ]
 
 [[package]]
@@ -2292,10 +2273,11 @@ dependencies = [
 
 [[package]]
 name = "bevy_transform_interpolation"
-version = "0.5.0-dev"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea40784f1c6a3f61333064ea1d1c7663ef677c1ce46b5ca148c46c4a62c27e62"
 dependencies = [
  "bevy",
- "serde",
 ]
 
 [[package]]
@@ -3003,7 +2985,7 @@ dependencies = [
  "ciborium",
  "clap",
  "codspeed",
- "criterion-plot 0.5.0",
+ "criterion-plot",
  "is-terminal",
  "itertools 0.10.5",
  "num-traits",
@@ -3283,7 +3265,7 @@ dependencies = [
  "cast",
  "ciborium",
  "clap",
- "criterion-plot 0.5.0",
+ "criterion-plot",
  "is-terminal",
  "itertools 0.10.5",
  "num-traits",
@@ -3300,31 +3282,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "criterion"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "950046b2aa2492f9a536f5f4f9a3de7b9e2476e575e05bd6c333371add4d98f3"
-dependencies = [
- "alloca",
- "anes",
- "cast",
- "ciborium",
- "clap",
- "criterion-plot 0.8.2",
- "itertools 0.13.0",
- "num-traits",
- "oorandom",
- "page_size",
- "plotters",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "tinytemplate",
- "walkdir",
-]
-
-[[package]]
 name = "criterion-plot"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3332,16 +3289,6 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
-]
-
-[[package]]
-name = "criterion-plot"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8d80a2f4f5b554395e47b5d8305bc3d27813bacb73493eb1001e8f76dae29ea"
-dependencies = [
- "cast",
- "itertools 0.13.0",
 ]
 
 [[package]]
@@ -4416,7 +4363,6 @@ version = "0.30.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
 dependencies = [
- "bytemuck",
  "serde_core",
 ]
 
@@ -4446,16 +4392,12 @@ dependencies = [
 
 [[package]]
 name = "glam_matrix_extras"
-version = "0.3.0-dev"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db060a7f23a5666ccbe9c770cd0e0e419b2eb94c86a7c8bfd091bacf8b4926cd"
 dependencies = [
- "approx",
  "bevy_reflect 0.19.0",
  "glam 0.32.1",
- "glam_matrix_extras",
- "libm",
- "rand 0.10.1",
- "rand_chacha 0.10.0",
- "serde",
 ]
 
 [[package]]
@@ -4467,7 +4409,6 @@ dependencies = [
  "approx",
  "glam 0.32.1",
  "num-traits",
- "serde",
  "simba",
 ]
 
@@ -5086,18 +5027,18 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
 
 [[package]]
 name = "itertools"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -6426,16 +6367,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "page_size"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30d5b2194ed13191c1999ae0704b7839fb18384fa22e49b57eeaa97d79ce40da"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6512,44 +6443,10 @@ dependencies = [
  "foldhash 0.2.0",
  "glamx",
  "hashbrown 0.16.1",
- "indexmap",
  "log",
  "num-derive",
  "num-traits",
  "ordered-float",
- "rayon",
- "serde",
- "serde_arrays",
- "simba",
- "slab",
- "smallvec",
- "spade",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "parry2d-f64"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9445ae064bfaad3ef13354d2f9a4a5b6e01bbbad770a18aafd38662501b289cb"
-dependencies = [
- "approx",
- "arrayvec",
- "bitflags 2.11.1",
- "downcast-rs 2.0.2",
- "either",
- "ena",
- "foldhash 0.2.0",
- "glamx",
- "hashbrown 0.16.1",
- "indexmap",
- "log",
- "num-derive",
- "num-traits",
- "ordered-float",
- "rayon",
- "serde",
- "serde_arrays",
  "simba",
  "slab",
  "smallvec",
@@ -6572,15 +6469,12 @@ dependencies = [
  "foldhash 0.2.0",
  "glamx",
  "hashbrown 0.16.1",
- "indexmap",
  "log",
  "num-derive",
  "num-traits",
  "ordered-float",
  "rayon",
  "rstar",
- "serde",
- "serde_arrays",
  "simba",
  "slab",
  "smallvec",
@@ -6604,15 +6498,12 @@ dependencies = [
  "foldhash 0.2.0",
  "glamx",
  "hashbrown 0.16.1",
- "indexmap",
  "log",
  "num-derive",
  "num-traits",
  "ordered-float",
  "rayon",
  "rstar",
- "serde",
- "serde_arrays",
  "simba",
  "slab",
  "smallvec",
@@ -6865,9 +6756,6 @@ name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c33a9471896f1c69cecef8d20cbe2f7accd12527ce60845ff44c153bb2a21b49"
-dependencies = [
- "critical-section",
-]
 
 [[package]]
 name = "portable-atomic-util"
@@ -7122,16 +7010,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rand_chacha"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
-dependencies = [
- "ppv-lite86",
- "rand_core 0.10.1",
-]
-
-[[package]]
 name = "rand_core"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7246,7 +7124,7 @@ checksum = "6e7970b4e577b76a96d5e56b5f6662b66d1a4e1f5bb026ee118fc31b373c2752"
 dependencies = [
  "arbitrary-chunks",
  "block-pseudorand",
- "criterion 0.5.1",
+ "criterion",
  "partition",
  "tikv-jemallocator",
  "voracious_radix_sort",
@@ -9635,15 +9513,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_arrays"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a16b99c5ea4fe3daccd14853ad260ec00ea043b2708d1fd1da3106dcd8d9df"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9766,7 +9635,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c99284beb21666094ba2b75bbceda012e610f5479dfcc2d6e2426f53197ffd95"
 dependencies = [
  "approx",
- "libm",
  "num-complex",
  "num-traits",
  "paste",
@@ -9882,7 +9750,6 @@ dependencies = [
  "hashbrown 0.15.5",
  "num-traits",
  "robust",
- "serde",
  "smallvec",
 ]
 
