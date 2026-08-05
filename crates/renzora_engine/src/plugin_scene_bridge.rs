@@ -138,7 +138,7 @@ impl Plugin for PluginScenePlugin {
         // `renzora_bsn` directly (it publishes to crates.io and so cannot take a
         // path dependency), so it holds a function pointer and this installs it.
         app.insert_resource(renzora_plugin::host::BsnSpawner(
-            |world, root, source| renzora_bsn::bsn_tree::spawn_source(world, root, source),
+            renzora_bsn::bsn_tree::spawn_source,
         ));
         app.init_resource::<RawComponentRegistry>().add_systems(
             Startup,

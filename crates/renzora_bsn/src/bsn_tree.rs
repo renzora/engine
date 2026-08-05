@@ -658,10 +658,10 @@ fn build_value(
         // variant and carries its payload — so it goes through the ordinary
         // deserializer.
         _ => {
-            if body != "()" {
-                if let Some(v) = deserialize(registration, registry, body) {
-                    out.apply(v.as_partial_reflect());
-                }
+            if body != "()"
+                && let Some(v) = deserialize(registration, registry, body)
+            {
+                out.apply(v.as_partial_reflect());
             }
         }
     }
