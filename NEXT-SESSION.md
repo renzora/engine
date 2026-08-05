@@ -143,6 +143,38 @@ still use — `bevy_light` and atmosphere already survive it. Its forced-strip
 list in `capabilities.rs::disabled_runtime_features` now names members rather
 than the two deleted bundles, so that is the place to look.
 
+### Lean export is still 74 MB for a cube and a light — measured leads
+
+Traced with `cargo tree -p renzora_app --no-default-features --features runtime -i <crate>`.
+Every one of these is in a *game* build:
+
+- **`rfd` (native file dialogs) ← `renzora_engine`, directly.** Used only by
+  `crash.rs:315` for the crash-report message box. A shipped game should not
+  carry a file-dialog stack; gate it, or drop to a platform message box.
+- **`ureq` + `rustls` + `ring` + `webpki-roots` (the whole TLS stack) ←
+  `bevy_asset`**, i.e. bevy's `http`/`https` features. The `remote_assets`
+  capability already strips those and is `default_on: false`, so it should be
+  gone — it compiled anyway in the 2026-08-05 export. Find out what re-enables
+  it before adding anything new.
+- **`sysinfo` ← `bevy_diagnostic`**, **`accesskit` (several crates) ←
+  `bevy_a11y`**, **`gilrs` ← `bevy_gilrs`**, **`arboard` ← `bevy_clipboard`**.
+  None of `bevy_gilrs` / `bevy_a11y` / `sysinfo_plugin` / `bevy_clipboard`
+  appears in the root manifest's explicit bevy feature list, so they arrive
+  transitively through something else that is listed. **Find the enabling
+  feature first** — a capability naming a feature the manifest never sets is a
+  no-op toggle that still costs the user a decision (see the 2026-07 note at the
+  top of `capabilities.rs`).
+
+Not yet strippable without crate surgery, in rough order of size:
+`renzora_scripting` (non-optional in engine, ember, animation, physics,
+navmesh, ragdoll, lang), `renzora_network` (non-optional in renzora_engine),
+`renzora_ember`, `renzora_text_mesh`.
+
+Also worth measuring before optimising further: `.text` is 117 MB of the 170 MB
+dev binary, so roughly a third of it is embedded data, not code. `renzora_lang`
+was 2.4 MiB of that and is now strippable; the Bevy LUT/font blobs are the rest
+and now have a `lighting_luts` toggle.
+
 ### Finish the migration's loose ends (old §3)
 
 - **`docker/build-all.sh`'s `copy_shared_libs`** (~133–203) still stages
