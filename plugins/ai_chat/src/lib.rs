@@ -79,6 +79,8 @@ fn on_action(action: Action) {
     if id == ACT_INPUT {
         // The whole reason `PanelAction::text` exists. Without it the plugin can
         // render a prompt box and never learn a thing about what is in it.
+        // No dirty flag: the prompt box already shows what was typed, and
+        // re-rendering it from here would fight the widget for the caret.
         with(|s| s.draft = typed);
         return;
     }
@@ -168,11 +170,19 @@ fn on_action(action: Action) {
     };
     if let Some(field) = field {
         with(|s| {
-            match field {
-                0 => s.base_url = typed,
-                1 => s.model = typed,
-                _ => s.api_key = typed,
+            // Compare before assigning. A redraw re-renders the input with its
+            // current value, which the widget reports back as a change — so an
+            // unguarded assignment here would mark dirty, redraw, report again,
+            // and settle into a permanent loop with a file write per frame.
+            let slot = match field {
+                0 => &mut s.base_url,
+                1 => &mut s.model,
+                _ => &mut s.api_key,
+            };
+            if *slot == typed {
+                return;
             }
+            *slot = typed;
             s.save();
             // The chat panel shows the model name, so it changes too.
             s.dirty = true;

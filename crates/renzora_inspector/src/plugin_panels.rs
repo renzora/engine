@@ -33,6 +33,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::settings_sections::RegisterSettingsSection;
+use renzora_ember::reactive::Bound;
 use renzora_ember::widgets::EmberTextInput;
 use renzora_plugin::host::PluginPanels;
 use renzora_plugin::sys;
@@ -218,6 +219,7 @@ pub fn register_plugin_panels(app: &mut App) {
         (
             dispatch_actions,
             dispatch_input_changes,
+            dispatch_value_changes,
             apply_bindings,
             // Ordered before the redraw, so markup a plugin set this frame is
             // picked up this frame rather than next. A frame of latency would
@@ -260,6 +262,41 @@ fn dispatch_input_changes(world: &mut World) {
         return;
     }
     dispatch(world, changed);
+}
+
+/// Fire a panel action when a non-text widget's value changes.
+///
+/// The companion to [`dispatch_input_changes`], and it exists because a
+/// dropdown, toggle, slider or checkbox reports through neither of the other two
+/// paths: the entity carrying the `PanelActionId` never registers a press (the
+/// clickable part is a child), and it holds no `EmberTextInput` either. Without
+/// this a plugin can *render* a dropdown and never learn that it was used —
+/// which is exactly how it presented: settings that looked live and changed
+/// nothing.
+///
+/// `Bound<usize>` is ember's own "this widget's value" component and is what
+/// `dropdown_select` writes on a pick, so watching it covers every widget built
+/// on the same binding rather than just dropdowns.
+///
+/// The index goes out in `value`, not `text`: text is for widgets holding a
+/// string, and a dropdown holds a position in its option list.
+fn dispatch_value_changes(world: &mut World) {
+    let changed: Vec<(usize, u32, f32)> = world
+        .query_filtered::<(&Bound<usize>, &ChildOf), Changed<Bound<usize>>>()
+        .iter(world)
+        .map(|(bound, parent)| (parent.parent(), bound.0))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|(parent, value)| {
+            let id = world.get::<PanelActionId>(parent)?;
+            Some((id.panel, id.action, value as f32))
+        })
+        .collect();
+    if changed.is_empty() {
+        return;
+    }
+    // Same tail as the other two, with the value in place of the text.
+    dispatch_valued(world, changed);
 }
 
 /// Apply `set_panel_content` calls from plugins.
@@ -717,18 +754,41 @@ fn dispatch_actions(world: &mut World) {
 /// panic-status handling and the command drain are the same either way, and only
 /// the question of what counts as "fired" differs.
 fn dispatch(world: &mut World, fired_raw: Vec<(usize, u32, String)>) {
+    dispatch_inner(
+        world,
+        fired_raw
+            .into_iter()
+            .map(|(p, a, t)| (p, a, t, 0.0))
+            .collect(),
+    )
+}
+
+/// [`dispatch`] for widgets that report a number rather than a string.
+fn dispatch_valued(world: &mut World, fired_raw: Vec<(usize, u32, f32)>) {
+    dispatch_inner(
+        world,
+        fired_raw
+            .into_iter()
+            .map(|(p, a, v)| (p, a, String::new(), v))
+            .collect(),
+    )
+}
+
+#[allow(clippy::type_complexity)]
+fn dispatch_inner(world: &mut World, fired_raw: Vec<(usize, u32, String, f32)>) {
     let pressed = fired_raw;
     // Resolved before the sink exists: the sink borrows `Commands`, which
     // borrows the world, so the registry has to be read first.
-    let fired: Vec<(sys::PanelActionEntry, usize, u32, String)> = {
+    #[allow(clippy::type_complexity)]
+    let fired: Vec<(sys::PanelActionEntry, usize, u32, String, f32)> = {
         let Some(reg) = world.get_resource::<RegisteredPanels>() else {
             return;
         };
         pressed
             .into_iter()
-            .filter_map(|(panel, action, text)| {
+            .filter_map(|(panel, action, text, value)| {
                 let p = reg.0.get(panel)?;
-                Some((p.action_entry?, p.user, action, text))
+                Some((p.action_entry?, p.user, action, text, value))
             })
             .collect()
     };
@@ -741,14 +801,14 @@ fn dispatch(world: &mut World, fired_raw: Vec<(usize, u32, String)>) {
     {
         let mut commands = Commands::new(&mut queue, world);
         let mut sink = renzora_plugin::host::HostCommandSink::new(&mut commands);
-        for (entry, user, action, text) in fired {
+        for (entry, user, action, text, value) in fired {
             let name = format!("{action}");
             let payload = sys::PanelAction {
                 name: sys::StrRef {
                     ptr: name.as_ptr(),
                     len: name.len(),
                 },
-                value: 0.0,
+                value,
                 user: user as *mut core::ffi::c_void,
                 iface,
                 commands: sink.as_ptr(),
