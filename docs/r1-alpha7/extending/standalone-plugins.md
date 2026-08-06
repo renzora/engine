@@ -681,6 +681,27 @@ fn collect(http: Http) {
 
 This exists because a plugin genuinely cannot do it itself. Nothing stops it from linking `reqwest`, but it would then own a runtime, a thread pool and a TLS stack per plugin, all of which the engine already has. Riding the engine's client also means a request goes through the same proxy and certificate configuration as everything else.
 
+### Headers
+
+`http_get`/`http_post` send only a JSON `Content-Type`. Anything needing auth goes through `http_with`:
+
+```rust
+use renzora_plugin::http::{HttpHeaders, HttpOp, HttpCommands};
+
+commands.http_with(
+    HttpOp::PostStream, TAG, &url, Some(&body),
+    &HttpHeaders::new().bearer(&api_key),
+);
+```
+
+`.bearer(t)` is `Authorization: Bearer t`; `.add(name, value)` is anything else — Anthropic, for instance, wants `x-api-key` plus a pinned `anthropic-version` rather than a bearer token.
+
+- **An empty `HttpHeaders` falls through to the plain payload**, so a caller need not branch on whether it has any.
+- **Your `Content-Type` wins.** The JSON default is only applied when you did not set one; sending both is two of the same header, which some servers reject and others resolve unpredictably.
+- **Separators are filtered, not escaped.** A newline in a value or a colon in a name would re-split host-side and could smuggle in a second header, so both are dropped — a header name containing a newline is never legitimate.
+
+This does not move `VERSION_MINOR`. The op carries a `WITH_HEADERS` flag bit that selects the payload shape, because the op is the one thing both sides agree on before either reads a byte — appending a field to the existing request header would have a new host misread an old plugin's shorter one.
+
 ### Streaming responses
 
 `poll` waits for the whole body. For an endpoint that answers over a long-lived connection — an LLM streaming tokens as NDJSON or SSE, a progress feed, a tailed log — that defeats the point: you get everything at the end, or nothing.

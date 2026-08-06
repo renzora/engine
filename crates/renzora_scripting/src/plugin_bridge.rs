@@ -26,7 +26,7 @@
 use bevy::prelude::*;
 
 use renzora_plugin::host::{PluginHttpInbox, PluginHttpResponse, PluginServiceCalls};
-use renzora_plugin::http::{HttpHeader, HttpOp};
+use renzora_plugin::http::{HttpHeader, HttpOp, HttpRequestHeader};
 use renzora_plugin::sys;
 
 use crate::http::{ChunkKind, HttpInbox};
@@ -54,6 +54,31 @@ pub fn drain_plugin_http_requests(
     };
 
     for call in calls {
+        let op = HttpOp(call.op);
+        // The op selects the payload shape, because it is the one thing both
+        // sides agree on before either reads a byte — see `http::WITH_HEADERS`
+        // for why this is not a fourth field on `HttpHeader`.
+        if op.has_headers() {
+            match decode_with_headers(&call.payload) {
+                Some((tag, url, body, headers)) => {
+                    let callback = format!("{PLUGIN_CALLBACK}{tag}");
+                    if op.is_streaming() {
+                        inbox.request_stream_with(
+                            op.name().to_string(),
+                            url,
+                            body,
+                            callback,
+                            headers,
+                        );
+                    } else {
+                        inbox.request_with(op.name().to_string(), url, body, callback, headers);
+                    }
+                }
+                None => warn!("[http] plugin sent a malformed request-with-headers payload"),
+            }
+            continue;
+        }
+
         let hdr_len = size_of::<HttpHeader>();
         if call.payload.len() < hdr_len {
             warn!("[http] plugin sent {} bytes for a request header", call.payload.len());
@@ -88,7 +113,6 @@ pub fn drain_plugin_http_requests(
             Some(String::from_utf8_lossy(&call.payload[url_end..body_end]).into_owned())
         };
 
-        let op = HttpOp(call.op);
         if !op.is_known() {
             warn!("[http] plugin used verb {}, which this build does not have", call.op);
             continue;
@@ -104,6 +128,49 @@ pub fn drain_plugin_http_requests(
             inbox.request(op.name().to_string(), url, body, callback);
         }
     }
+}
+
+/// Decode a `WITH_HEADERS` payload into `(tag, url, body, headers)`.
+///
+/// Every length is untrusted — they crossed from another compilation unit — so
+/// each offset is checked before it is used, and the total must match exactly.
+/// Trailing bytes mean the sender and this bridge disagree about the shape, and
+/// no header alone can tell a longer string from a reordered struct.
+#[allow(clippy::type_complexity)]
+fn decode_with_headers(
+    payload: &[u8],
+) -> Option<(u64, String, Option<String>, Vec<(String, String)>)> {
+    let hdr_len = size_of::<HttpRequestHeader>();
+    if payload.len() < hdr_len {
+        return None;
+    }
+    // SAFETY: length checked, and `HttpRequestHeader` is `#[repr(C)]` plain data.
+    let hdr = unsafe { payload.as_ptr().cast::<HttpRequestHeader>().read_unaligned() };
+
+    let url_end = hdr_len.checked_add(hdr.url_len as usize)?;
+    let body_end = url_end.checked_add(hdr.body_len as usize)?;
+    let headers_end = body_end.checked_add(hdr.headers_len as usize)?;
+    if headers_end != payload.len() {
+        return None;
+    }
+
+    let url = String::from_utf8_lossy(&payload[hdr_len..url_end]).into_owned();
+    let body = (hdr.body_len > 0)
+        .then(|| String::from_utf8_lossy(&payload[url_end..body_end]).into_owned());
+
+    // `"Name:value\nName2:value2"` — see `http::HttpHeaders`, which filters the
+    // separators out of both halves so a value cannot smuggle in a second header.
+    let blob = String::from_utf8_lossy(&payload[body_end..headers_end]).into_owned();
+    let headers = blob
+        .split('\n')
+        .filter(|l| !l.is_empty())
+        .filter_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            (!k.is_empty()).then(|| (k.to_string(), v.to_string()))
+        })
+        .collect();
+
+    Some((hdr.tag, url, body, headers))
 }
 
 /// Move completed plugin responses from the shared inbox to the plugin one.

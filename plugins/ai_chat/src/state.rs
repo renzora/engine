@@ -47,7 +47,11 @@ pub struct State {
     /// Partial NDJSON left over from the previous chunk. Chunks are
     /// transport-sized, so a line can and does span two of them.
     pub carry: String,
-    pub endpoint: String,
+    /// Index into [`PRESETS`]. Persisted, and what decides the protocol.
+    pub preset: usize,
+    /// The server root, user-editable after picking a preset. The chat path
+    /// comes from the preset and is not editable, matching the in-tree crate.
+    pub base_url: String,
     pub model: String,
     pub docs_folder: Option<String>,
     /// Bearer token for a hosted provider. Empty for Ollama, which wants none.
@@ -71,7 +75,8 @@ impl Default for State {
             // provider is the same shape — one URL and one bearer token — but
             // asking for a key before the panel does anything at all is a poor
             // first run.
-            endpoint: "http://localhost:11434/api/chat".to_string(),
+            preset: 0,
+            base_url: PRESETS[0].base_url.to_string(),
             model: "llama3.2".to_string(),
             docs_folder: None,
             api_key: String::new(),
@@ -80,6 +85,47 @@ impl Default for State {
         }
     }
 }
+
+/// Which wire protocol a preset speaks.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Protocol {
+    /// NDJSON, one object per line, no auth.
+    Ollama,
+    /// SSE, `x-api-key` + a pinned `anthropic-version`.
+    Anthropic,
+}
+
+/// A provider: label, protocol, and the endpoint it defaults to.
+///
+/// Mirrors `crates/renzora_ai_chat`'s `PRESETS` — same labels, same base URLs,
+/// same chat paths — so the shared config file means the same thing to both.
+/// The base URL stays user-editable after selection; the path is fixed per
+/// provider.
+pub struct Preset {
+    pub label: &'static str,
+    pub protocol: Protocol,
+    pub base_url: &'static str,
+    pub chat_path: &'static str,
+}
+
+/// Deliberately shorter than the in-tree list. Every provider there beyond these
+/// two speaks the OpenAI shape, which is a third `request_body` and a third
+/// stream parser — offering a preset this plugin cannot actually talk to would
+/// be worse than not listing it.
+pub static PRESETS: &[Preset] = &[
+    Preset {
+        label: "Ollama (local)",
+        protocol: Protocol::Ollama,
+        base_url: "http://localhost:11434",
+        chat_path: "/api/chat",
+    },
+    Preset {
+        label: "Claude (Anthropic)",
+        protocol: Protocol::Anthropic,
+        base_url: "https://api.anthropic.com",
+        chat_path: "/v1/messages",
+    },
+];
 
 pub static STATE: Mutex<Option<State>> = Mutex::new(None);
 
@@ -137,7 +183,19 @@ impl State {
             return;
         };
         if let Some(v) = read_field(&text, "base_url").filter(|v| !v.is_empty()) {
-            self.endpoint = v;
+            self.base_url = v;
+        }
+        // `preset` is a number, so it needs its own reader rather than
+        // `read_field`, which only understands quoted strings.
+        if let Some(at) = text.find("\"preset\"") {
+            let digits: String = text[at + 8..]
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(n) = digits.parse::<usize>() {
+                self.preset = n.min(PRESETS.len() - 1);
+            }
         }
         if let Some(v) = read_field(&text, "model").filter(|v| !v.is_empty()) {
             self.model = v;
@@ -165,14 +223,15 @@ impl State {
         let body = format!(
             concat!(
                 "{{\n",
-                "  \"preset\": 0,\n",
+                "  \"preset\": {},\n",
                 "  \"base_url\": \"{}\",\n",
                 "  \"api_key\": \"{}\",\n",
                 "  \"docs_path\": \"{}\",\n",
                 "  \"model\": \"{}\"\n",
                 "}}\n",
             ),
-            json_escape(&self.endpoint),
+            self.preset,
+            json_escape(&self.base_url),
             json_escape(&self.api_key),
             json_escape(self.docs_folder.as_deref().unwrap_or("")),
             json_escape(&self.model),
@@ -214,6 +273,41 @@ impl State {
     /// `System` rows are the plugin's own notices — errors, "cancelled" — and
     /// are filtered out rather than sent, since the model did not say them and
     /// should not be told it did.
+    pub fn preset(&self) -> &'static Preset {
+        &PRESETS[self.preset.min(PRESETS.len() - 1)]
+    }
+
+    /// The full chat URL: the user's server root plus the preset's fixed path.
+    ///
+    /// Trailing slashes are trimmed so `https://host/` and `https://host` both
+    /// work — a pasted URL has one about half the time.
+    pub fn chat_url(&self) -> String {
+        format!(
+            "{}{}",
+            self.base_url.trim_end_matches('/'),
+            self.preset().chat_path
+        )
+    }
+
+    /// The auth headers this provider wants. Empty for Ollama, which wants none.
+    ///
+    /// Anthropic is the reason header support exists: it takes `x-api-key` plus
+    /// a pinned `anthropic-version`, not a bearer token, so "just send
+    /// Authorization" would not have reached it.
+    pub fn auth_headers(&self) -> renzora_plugin::http::HttpHeaders {
+        use renzora_plugin::http::HttpHeaders;
+        let h = HttpHeaders::new();
+        if self.api_key.is_empty() {
+            return h;
+        }
+        match self.preset().protocol {
+            Protocol::Ollama => h,
+            Protocol::Anthropic => h
+                .add("x-api-key", &self.api_key)
+                .add("anthropic-version", "2023-06-01"),
+        }
+    }
+
     pub fn request_body(&self) -> String {
         let mut b = String::from("{\"model\":\"");
         b.push_str(&json_escape(&self.model));
@@ -393,12 +487,23 @@ impl State {
             "Node { flex_direction: Column, row_gap: Px(8.0), width: Percent(100.0) }\nChildren [\n",
         );
 
-        m.push_str("    Text(\"Endpoint\"),\n");
+        // Row order matches `crates/renzora_ai_chat`'s section exactly —
+        // Provider, Server URL, API key, Docs folder — so the two are the same
+        // panel to look at even though one is built imperatively and this one is
+        // markup. Model sits under Provider here because this plugin cannot
+        // fetch the model list (that needs a second request shape per protocol),
+        // so it is typed rather than chosen.
+        m.push_str("    Text(\"Provider\"),\n");
+        let labels: Vec<String> = PRESETS
+            .iter()
+            .map(|p| format!("\"{}\"", bsn_escape(p.label)))
+            .collect();
         m.push_str(&format!(
-            "    ( EmberInput {{ placeholder: \"http://localhost:11434/api/chat\", value: \"{}\" }} \
+            "    ( EmberDropdown {{ options: [{}], selected: {} }} \
              PanelActionId {{ action: {} }} ),\n",
-            bsn_escape(&self.endpoint),
-            crate::ACT_SET_URL
+            labels.join(", "),
+            self.preset.min(PRESETS.len() - 1),
+            crate::ACT_SET_PRESET
         ));
 
         m.push_str("    Text(\"Model\"),\n");
@@ -409,26 +514,29 @@ impl State {
             crate::ACT_SET_MODEL
         ));
 
-        // Shown, stored and persisted, but NOT yet sendable: the http service
-        // takes a URL and a body and no headers, so there is nowhere to put an
-        // `Authorization: Bearer`. It is here because the config file it shares
-        // with the in-tree crate carries it, and dropping the field on save
-        // would wipe a key that version had set.
-        m.push_str("    Text(\"API key (hosted providers - not yet sent, see notes)\"),\n");
+        m.push_str("    Text(\"Server URL\"),\n");
         m.push_str(&format!(
-            "    ( EmberInput {{ placeholder: \"sk-...\", value: \"{}\" }} \
+            "    ( EmberInput {{ placeholder: \"{}\", value: \"{}\" }} \
+             PanelActionId {{ action: {} }} ),\n",
+            bsn_escape(PRESETS[self.preset.min(PRESETS.len() - 1)].base_url),
+            bsn_escape(&self.base_url),
+            crate::ACT_SET_URL
+        ));
+
+        m.push_str("    Text(\"API key\"),\n");
+        m.push_str(&format!(
+            "    ( EmberInput {{ placeholder: \"optional\", value: \"{}\" }} \
              PanelActionId {{ action: {} }} ),\n",
             bsn_escape(&self.api_key),
             crate::ACT_SET_KEY
         ));
 
-        m.push_str("    Text(\"Documentation folder\"),\n");
+        m.push_str("    Text(\"Docs folder\"),\n");
         m.push_str(&format!(
-            "    Text(\"{}\"),\n",
-            bsn_escape(self.docs_folder.as_deref().unwrap_or("(none)"))
-        ));
-        m.push_str(&format!(
-            "    ( Button PanelActionId {{ action: {} }} Children [ Text(\"Browse...\") ] ),\n",
+            "    ( Node {{ flex_direction: Row, column_gap: Px(6.0) }}\n      Children [\n        \
+             Text(\"{}\"),\n        \
+             ( Button PanelActionId {{ action: {} }} Children [ Text(\"Browse...\") ] ),\n      ] ),\n",
+            bsn_escape(self.docs_folder.as_deref().unwrap_or("(none)")),
             crate::ACT_PICK
         ));
 

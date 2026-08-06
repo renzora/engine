@@ -50,6 +50,17 @@ pub const SERVICE: u64 = sys::service_id("renzora.http");
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct HttpOp(pub u32);
 
+/// Set on an [`HttpOp`] to say the payload carries a headers block, and so uses
+/// [`HttpRequestHeader`] rather than [`HttpHeader`].
+///
+/// A flag bit rather than four more verbs, and rather than appending a field to
+/// [`HttpHeader`]. That struct is allocated by the PLUGIN and read by the host,
+/// which is the direction the append-only rule does not cover: a new host
+/// reading an old plugin's shorter header would take four bytes of URL as a
+/// length. The op is the one thing both sides already agree on before either
+/// reads a byte of the payload, so it is what selects the shape.
+pub const WITH_HEADERS: u32 = 0x8000_0000;
+
 #[allow(non_upper_case_globals)]
 impl HttpOp {
     pub const Get: Self = Self(0);
@@ -59,23 +70,102 @@ impl HttpOp {
     /// `POST`, delivered in pieces — poll with [`Http::poll_stream`].
     pub const PostStream: Self = Self(3);
 
+    /// The verb, with [`WITH_HEADERS`] masked off.
+    pub const fn verb(self) -> u32 {
+        self.0 & !WITH_HEADERS
+    }
+
+    /// Whether the payload carries a headers block.
+    pub const fn has_headers(self) -> bool {
+        self.0 & WITH_HEADERS != 0
+    }
+
+    /// The same op, promising a headers block.
+    pub const fn with_headers(self) -> Self {
+        Self(self.0 | WITH_HEADERS)
+    }
+
     pub const fn is_known(self) -> bool {
-        self.0 < 4
+        self.verb() < 4
     }
 
     /// Whether the response arrives as chunks rather than one body.
     pub const fn is_streaming(self) -> bool {
-        self.0 == 2 || self.0 == 3
+        self.verb() == 2 || self.verb() == 3
     }
 
     /// The HTTP verb. Streaming is a delivery mode, not a different method, so
     /// the two stream ops name the same verbs the host would otherwise send.
     pub const fn name(self) -> &'static str {
-        match self.0 {
+        match self.verb() {
             0 | 2 => "GET",
             1 | 3 => "POST",
             _ => "?",
         }
+    }
+}
+
+/// Header of a request that carries HTTP headers: the URL, then the body, then
+/// the headers block follow it in the same buffer.
+///
+/// A separate struct from [`HttpHeader`] rather than a fourth field on it — see
+/// [`WITH_HEADERS`] for why that append would be unsound in this direction.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct HttpRequestHeader {
+    pub tag: u64,
+    pub url_len: u32,
+    pub body_len: u32,
+    pub headers_len: u32,
+    pub _pad: u32,
+}
+
+/// HTTP headers to send with a request.
+///
+/// Crosses the boundary as text — `"Authorization:Bearer sk-x\nAccept:text/event-stream"`
+/// — rather than as a struct, because the count is variable and a `Vec` of
+/// anything cannot cross. Same shape as
+/// [`DialogFilter`](crate::dialog::DialogFilter), for the same reason.
+#[derive(Clone, Debug, Default)]
+pub struct HttpHeaders(String);
+
+impl HttpHeaders {
+    pub fn new() -> Self {
+        Self(String::new())
+    }
+
+    /// Add one header.
+    ///
+    /// A name containing a separator, or a value containing a newline, would
+    /// re-split wrongly on the host side and could smuggle a second header in —
+    /// the HTTP equivalent of an injection. Both are filtered rather than
+    /// escaped, because a header name with a newline in it is never legitimate
+    /// and silently dropping the character is safer than carrying it.
+    pub fn add(mut self, name: &str, value: &str) -> Self {
+        if !self.0.is_empty() {
+            self.0.push('\n');
+        }
+        for c in name.chars().filter(|c| *c != ':' && *c != '\n' && *c != '\r') {
+            self.0.push(c);
+        }
+        self.0.push(':');
+        for c in value.chars().filter(|c| *c != '\n' && *c != '\r') {
+            self.0.push(c);
+        }
+        self
+    }
+
+    /// `Authorization: Bearer <token>` — what almost every hosted LLM wants.
+    pub fn bearer(self, token: &str) -> Self {
+        self.add("Authorization", &alloc::format!("Bearer {token}"))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -272,6 +362,27 @@ pub trait HttpCommands {
     /// NDJSON or SSE over one long-lived response, and waiting for the whole
     /// body would defeat the point of streaming it.
     fn http_post_stream(&mut self, tag: u64, url: &str, body: &str) -> &mut Self;
+
+    /// Any of the above, with HTTP headers.
+    ///
+    /// The one that unlocks hosted APIs: an `Authorization: Bearer` is the
+    /// difference between reaching a local Ollama and reaching anything that
+    /// charges for tokens.
+    ///
+    /// ```ignore
+    /// commands.http_with(
+    ///     HttpOp::PostStream, TAG, url, Some(body),
+    ///     &HttpHeaders::new().bearer(&key),
+    /// );
+    /// ```
+    fn http_with(
+        &mut self,
+        op: HttpOp,
+        tag: u64,
+        url: &str,
+        body: Option<&str>,
+        headers: &HttpHeaders,
+    ) -> &mut Self;
 }
 
 impl HttpCommands for Commands<'_> {
@@ -311,5 +422,43 @@ impl HttpCommands for Commands<'_> {
 
     fn http_post_stream(&mut self, tag: u64, url: &str, body: &str) -> &mut Self {
         self.http(HttpOp::PostStream, tag, url, Some(body))
+    }
+
+    fn http_with(
+        &mut self,
+        op: HttpOp,
+        tag: u64,
+        url: &str,
+        body: Option<&str>,
+        headers: &HttpHeaders,
+    ) -> &mut Self {
+        // No headers to send means the plain payload, so an empty `HttpHeaders`
+        // costs nothing and a caller need not branch on it.
+        if headers.is_empty() {
+            return self.http(op, tag, url, body);
+        }
+        let body = body.unwrap_or("");
+        let headers = headers.as_str();
+        let header = HttpRequestHeader {
+            tag,
+            url_len: url.len() as u32,
+            body_len: body.len() as u32,
+            headers_len: headers.len() as u32,
+            _pad: 0,
+        };
+        let mut payload = Vec::with_capacity(
+            core::mem::size_of::<HttpRequestHeader>() + url.len() + body.len() + headers.len(),
+        );
+        // SAFETY: `#[repr(C)]`, no pointers, no `Drop`.
+        payload.extend_from_slice(unsafe {
+            core::slice::from_raw_parts(
+                (&header as *const HttpRequestHeader).cast::<u8>(),
+                core::mem::size_of::<HttpRequestHeader>(),
+            )
+        });
+        payload.extend_from_slice(url.as_bytes());
+        payload.extend_from_slice(body.as_bytes());
+        payload.extend_from_slice(headers.as_bytes());
+        self.call_service(SERVICE, op.with_headers().0, &payload)
     }
 }

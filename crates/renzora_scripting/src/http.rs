@@ -88,11 +88,23 @@ impl HttpInbox {
     /// Spawn a background thread that performs the request and queues the
     /// result. Returns immediately — the game loop never blocks on the network.
     pub fn request(&self, method: String, url: String, body: Option<String>, callback: String) {
+        self.request_with(method, url, body, callback, Vec::new())
+    }
+
+    /// As [`request`](Self::request), with extra HTTP headers.
+    pub fn request_with(
+        &self,
+        method: String,
+        url: String,
+        body: Option<String>,
+        callback: String,
+        headers: Vec<(String, String)>,
+    ) {
         let sink = self.results.clone();
         std::thread::Builder::new()
             .name("renzora-http".into())
             .spawn(move || {
-                let (status, body) = run_blocking(&method, &url, body.as_deref());
+                let (status, body) = run_blocking(&method, &url, body.as_deref(), &headers);
                 if let Ok(mut v) = sink.lock() {
                     v.push(HttpResult {
                         callback,
@@ -123,14 +135,38 @@ impl HttpInbox {
         body: Option<String>,
         callback: String,
     ) {
+        self.request_stream_with(method, url, body, callback, Vec::new())
+    }
+
+    /// As [`request_stream`](Self::request_stream), with extra HTTP headers.
+    pub fn request_stream_with(
+        &self,
+        method: String,
+        url: String,
+        body: Option<String>,
+        callback: String,
+        headers: Vec<(String, String)>,
+    ) {
         let sink = self.results.clone();
         std::thread::Builder::new()
             .name("renzora-http-stream".into())
             .spawn(move || {
-                run_streaming(&method, &url, body.as_deref(), &callback, &sink);
+                run_streaming(&method, &url, body.as_deref(), &callback, &sink, &headers);
             })
             .ok();
     }
+}
+
+/// Whether the caller supplied their own `Content-Type`.
+///
+/// The JSON default below is a convenience for the common case, but sending it
+/// *as well* as the caller's would be two of the same header — which some
+/// servers reject outright and others resolve unpredictably.
+#[cfg(all(not(target_arch = "wasm32"), feature = "script_http"))]
+fn has_content_type(headers: &[(String, String)]) -> bool {
+    headers
+        .iter()
+        .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
 }
 
 /// Push one chunk onto the shared queue. Separate so both the success and error
@@ -161,15 +197,40 @@ fn push_chunk(
 /// TLS stack (~1 MiB) for a game that issues no script HTTP requests. The
 /// `HttpInbox`/`HttpResult` types above stay so `systems::` need no `#[cfg]`.
 #[cfg(all(not(target_arch = "wasm32"), feature = "script_http"))]
-fn run_blocking(method: &str, url: &str, body: Option<&str>) -> (u16, String) {
+fn run_blocking(
+    method: &str,
+    url: &str,
+    body: Option<&str>,
+    headers: &[(String, String)],
+) -> (u16, String) {
     let result = match method.to_ascii_uppercase().as_str() {
-        "POST" => ureq::post(url)
-            .header("Content-Type", "application/json")
-            .send(body.unwrap_or("").as_bytes()),
-        "PUT" => ureq::put(url)
-            .header("Content-Type", "application/json")
-            .send(body.unwrap_or("").as_bytes()),
-        _ => ureq::get(url).call(),
+        "POST" => {
+            let mut r = ureq::post(url);
+            if !has_content_type(headers) {
+                r = r.header("Content-Type", "application/json");
+            }
+            for (k, v) in headers {
+                r = r.header(k, v);
+            }
+            r.send(body.unwrap_or("").as_bytes())
+        }
+        "PUT" => {
+            let mut r = ureq::put(url);
+            if !has_content_type(headers) {
+                r = r.header("Content-Type", "application/json");
+            }
+            for (k, v) in headers {
+                r = r.header(k, v);
+            }
+            r.send(body.unwrap_or("").as_bytes())
+        }
+        _ => {
+            let mut r = ureq::get(url);
+            for (k, v) in headers {
+                r = r.header(k, v);
+            }
+            r.call()
+        }
     };
     match result {
         Ok(resp) => {
@@ -200,17 +261,38 @@ fn run_streaming(
     body: Option<&str>,
     callback: &str,
     sink: &Arc<Mutex<Vec<HttpResult>>>,
+    headers: &[(String, String)],
 ) {
     use std::io::Read;
 
     let result = match method.to_ascii_uppercase().as_str() {
-        "POST" => ureq::post(url)
-            .header("Content-Type", "application/json")
-            .send(body.unwrap_or("").as_bytes()),
-        "PUT" => ureq::put(url)
-            .header("Content-Type", "application/json")
-            .send(body.unwrap_or("").as_bytes()),
-        _ => ureq::get(url).call(),
+        "POST" => {
+            let mut r = ureq::post(url);
+            if !has_content_type(headers) {
+                r = r.header("Content-Type", "application/json");
+            }
+            for (k, v) in headers {
+                r = r.header(k, v);
+            }
+            r.send(body.unwrap_or("").as_bytes())
+        }
+        "PUT" => {
+            let mut r = ureq::put(url);
+            if !has_content_type(headers) {
+                r = r.header("Content-Type", "application/json");
+            }
+            for (k, v) in headers {
+                r = r.header(k, v);
+            }
+            r.send(body.unwrap_or("").as_bytes())
+        }
+        _ => {
+            let mut r = ureq::get(url);
+            for (k, v) in headers {
+                r = r.header(k, v);
+            }
+            r.call()
+        }
     };
 
     let resp = match result {
@@ -251,6 +333,7 @@ fn run_streaming(
     _body: Option<&str>,
     callback: &str,
     sink: &Arc<Mutex<Vec<HttpResult>>>,
+    _headers: &[(String, String)],
 ) {
     push_chunk(
         sink,
@@ -265,6 +348,11 @@ fn run_streaming(
 /// `script_http` feature stripped by the lean export. `http_get`/`http_post`
 /// then resolve to this disabled response instead of pulling in `ureq`.
 #[cfg(any(target_arch = "wasm32", not(feature = "script_http")))]
-fn run_blocking(_method: &str, _url: &str, _body: Option<&str>) -> (u16, String) {
+fn run_blocking(
+    _method: &str,
+    _url: &str,
+    _body: Option<&str>,
+    _headers: &[(String, String)],
+) -> (u16, String) {
     (0, "http is not available in this build".into())
 }

@@ -37,7 +37,7 @@ use renzora_plugin::panel::PanelCommands;
 use renzora_plugin::prelude::*;
 
 mod state;
-use state::{with, Role};
+use state::{with, Role, PRESETS};
 
 /// Panel id. Prefixed, because ids are global across every loaded plugin.
 const PANEL_ID: &str = "ai_chat";
@@ -52,6 +52,7 @@ pub const ACT_PICK: u32 = 4;
 pub const ACT_SET_URL: u32 = 5;
 pub const ACT_SET_MODEL: u32 = 6;
 pub const ACT_SET_KEY: u32 = 7;
+pub const ACT_SET_PRESET: u32 = 8;
 
 /// The settings section's own id. Distinct from the panel's, because ids are one
 /// namespace across both and `set_panel_content` resolves against it.
@@ -72,6 +73,7 @@ fn on_action(action: Action) {
     // `action`, and the sink is a field of it.
     let id: u32 = action.name().parse().unwrap_or(0);
     let typed = action.text().to_string();
+    let action_value = action.value;
     let mut commands = action.commands;
 
     if id == ACT_INPUT {
@@ -96,10 +98,19 @@ fn on_action(action: Action) {
             // to it rather than the transcript jumping when it arrives.
             s.messages.push((Role::Assistant, String::new()));
             s.dirty = true;
-            Some((s.endpoint.clone(), s.request_body()))
+            Some((s.chat_url(), s.request_body(), s.auth_headers()))
         });
-        if let Some((endpoint, body)) = body {
-            commands.http_post_stream(TAG_CHAT, &endpoint, &body);
+        if let Some((url, body, headers)) = body {
+            // `http_with` rather than `http_post_stream`: an empty header set
+            // falls through to the plain payload, so Ollama pays nothing for
+            // this and Anthropic becomes reachable.
+            commands.http_with(
+                renzora_plugin::http::HttpOp::PostStream,
+                TAG_CHAT,
+                &url,
+                Some(&body),
+                &headers,
+            );
         }
         return;
     }
@@ -130,6 +141,25 @@ fn on_action(action: Action) {
     // Saving on every keystroke is a file write per character, which is fine for
     // a four-line config and is what makes closing the overlay mid-edit keep
     // what was typed.
+    if id == ACT_SET_PRESET {
+        // A dropdown reports its selection in `value`, not `text` — text is for
+        // widgets that hold a string, and a dropdown holds an index.
+        let idx = action_value.max(0.0) as usize;
+        with(|s| {
+            let idx = idx.min(PRESETS.len() - 1);
+            if s.preset != idx {
+                s.preset = idx;
+                // Follow the preset's own server root. Keeping a URL from the
+                // previous provider would point Anthropic's path at Ollama's
+                // host and fail in a way that reads as a broken key.
+                s.base_url = PRESETS[idx].base_url.to_string();
+                s.save();
+                s.dirty = true;
+            }
+        });
+        return;
+    }
+
     let field = match id {
         ACT_SET_URL => Some(0),
         ACT_SET_MODEL => Some(1),
@@ -139,7 +169,7 @@ fn on_action(action: Action) {
     if let Some(field) = field {
         with(|s| {
             match field {
-                0 => s.endpoint = typed,
+                0 => s.base_url = typed,
                 1 => s.model = typed,
                 _ => s.api_key = typed,
             }
