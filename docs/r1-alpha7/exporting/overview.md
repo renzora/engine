@@ -27,7 +27,7 @@ Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-
 | **Console logging** | Whether the shipped build keeps a console/log |
 | **Include server** | Also emit a dedicated-server bundle (desktop only) |
 | **Mesh optimization** | Optional simplify / quantize / LOD generation while packing |
-| **Plugins** | Which Runtime-scope distribution plugins to include |
+| **Plugins** | Which Runtime-scope distribution plugins to include, and whether they ship as files or are linked into the binary |
 
 The actual packing runs on a background thread; the modal polls its progress while open.
 
@@ -132,10 +132,8 @@ crates linked into the binary, so a lean build simply doesn't compile the ones
 you switch off in the Features tab. Nothing special happens at export time.
 
 **C-ABI plugins** (`plugins/`, e.g. the Lua interpreter) are a different
-mechanism: they're `dlopen`'d cdylibs, and a lean export copies them into a
-`plugins/` directory beside the executable exactly as the other packaging modes
-do. Compiling *those* into the binary instead — which a WASM export will require,
-since there is no `dlopen` in a browser — is not implemented yet.
+mechanism, and a lean export gives you a choice about them — see
+[Plugin linking](#plugin-linking-the-plugins-tab) below.
 
 The whole lean build runs in an **isolated copy** of the engine source (synced
 into the gitignored `target/export-src/`), so your dev tree is never touched —
@@ -148,6 +146,67 @@ A lean build recompiles the **engine source** the editor was built from — your
 project is just assets that ride along in the rpak — so it's available whenever
 you run the editor from a source checkout. **Marketplace plugins** are C-ABI
 cdylibs and need no source: they're copied beside the binary like any other.
+
+## Plugin linking (the Plugins tab)
+
+C-ABI plugins can reach the exported game two ways. The **Plugins** tab picks
+which, and the plugin checkboxes below it pick *what* either way.
+
+| Mode | What you ship | Works with |
+|---|---|---|
+| **Ship as files** (default) | A `plugins/` folder beside the executable, one library per plugin, loaded at startup | every packaging mode |
+| **Link into the binary** | Nothing — the plugins are compiled into the executable | **Lean single binary** only |
+
+Neither is more capable than the other: a linked-in plugin registers exactly the
+same components, systems, panels and render passes as a loaded one, because the
+C ABI never depended on there being a shared library. A plugin exports one
+function and imports nothing — the interface is handed *in* as a table — so
+whether the host got that function pointer from the OS loader or from its own
+link table changes nothing downstream.
+
+**Link them in when** you want one file to ship. A lean export is already a
+single binary with its assets appended; a `plugins/` folder next to it puts you
+back to a directory a player can break by deleting the wrong thing. It also
+removes the startup directory scan and the per-plugin load.
+
+**Ship files when** you want the set to stay open after release — mods, DLC
+effects, a plugin you patch without reshipping the game — or when you're not
+using lean mode.
+
+### Why lean only
+
+Linking a plugin in means *compiling* it, and lean mode is the only one that
+compiles anything. The other two copy an already-built runtime binary; no amount
+of packaging can put new code inside it. If you leave the toggle on **Link into
+the binary** and switch packaging to a copy-based mode, the export says so and
+ships the plugins as files instead of failing.
+
+### What it needs, and what happens without it
+
+A linked plugin is built from source, so the exporter looks for its crate under
+the engine checkout's `plugins/` directory, matched by package name. A plugin
+that has no source there — a **marketplace download**, which arrives as a
+prebuilt library — is reported in the build log and shipped as a file beside the
+binary. Mixing is fine and needs no thought: the game links in what it can and
+still reads `plugins/` at startup for the rest.
+
+### What you give up
+
+**Hot reload.** The editor watches `plugins/` and swaps a rebuilt library in
+without a restart; there is no file to watch inside a binary and no way to
+replace code in a running one. This is why linking in is an export-time choice
+and never how the editor itself runs — the editor always loads from files.
+
+### Under the hood
+
+The exporter writes a `renzora_static_plugins` crate into its disposable source
+copy: one path dependency per plugin and a list pairing each plugin's `init`
+function with the scope its library would have reported. The plugins are compiled
+with `renzora_plugin`'s `static_link` feature, which drops the `#[no_mangle]`
+from what `add!` emits — without that, two plugins each defining
+`renzora_plugin_init` would fail to link. The host initialises them before it
+scans `plugins/`, and Editor-scope plugins are skipped in a game exactly as they
+are when loaded from disk.
 
 ## Engine features (the Features tab)
 

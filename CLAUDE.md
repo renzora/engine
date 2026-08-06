@@ -387,6 +387,7 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 | `crates/renzora_scripting/` | Scripting system: hooks, commands, context, declarative `ScriptExtension` |
 | `crates/renzora_plugin/src/script/` | The language-backend boundary (codec, contexts, `Backend`) |
 | `plugins/lua/` | The Lua interpreter, as a standalone plugin |
+| `crates/renzora_static_plugins/` | **Generated.** The list of C-ABI plugins a lean export linked into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
 | `crates/renzora_lumen`, `crates/renzora_cloth` | Distribution `cdylib` plugin templates |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
 | `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |

@@ -10,7 +10,7 @@ A [distribution plugin](./plugins.md) shares one compiled `bevy_dylib` with the 
 
 A standalone plugin sidesteps that entirely:
 
-- **It exports exactly one symbol** (`renzora_plugin_init`) and **imports nothing** from the host.
+- **It exports two symbols** — `renzora_plugin_init`, which does everything, and `renzora_plugin_scope`, which the host reads first to decide whether the plugin belongs in this binary at all — and **imports nothing** from the host.
 - The host passes a `#[repr(C)]` function table *in* at load time.
 
 There is no dynamic symbol to resolve against `renzora.exe`, so there is no filename to match, no `bevy_dylib-<hash>` to find, and no `TypeId` to line up. The only thing both sides must agree on is the layout of a handful of `#[repr(C)]` structs. That means a plugin built with rustc 1.90 loads into an editor built with rustc 1.95, and a plugin built in 2026 keeps loading into editors released later.
@@ -916,6 +916,36 @@ renzora_plugin::add!(WidgetsPlugin, Editor);  // Editor only
 `Runtime` plugins load in the editor viewport **and** the shipped game. `Editor` plugins load only when the editor is present, so a panel-only plugin should say `Editor` — otherwise it defaults to `Runtime` and gets loaded alongside a game that has no editor for it to attach to.
 
 The host reads this from a separate exported symbol before calling your init, so an out-of-scope plugin is never initialised at all.
+
+## Shipping inside the game binary
+
+A game exported in **Lean single binary** mode can compile its plugins *into* the
+executable instead of shipping a `plugins/` folder next to it. The choice is the
+Plugins tab of the export dialog — see
+[Export → Plugin linking](../exporting/overview.md#plugin-linking-the-plugins-tab).
+
+**Nothing in your plugin changes.** You do not opt in, add a feature, or write a
+second entry point. Being linked in is a decision the person exporting the game
+makes about your library, and the code path it takes is the one you already
+wrote: the host calls the same `init` with the same interface table and your
+plugin registers the same things. That works because the C ABI never actually
+required a shared library — a plugin exports a function and imports nothing, so
+where the host got the function pointer is not something the plugin can observe.
+
+Two mechanical details, in case you meet them:
+
+- The exporter builds your plugin from **source**, so it needs the crate in the
+  engine checkout's `plugins/` directory. A prebuilt library with no source
+  alongside it (anything downloaded from the marketplace) is shipped as a file
+  instead, automatically and with a line in the build log.
+- It compiles with `renzora_plugin`'s `static_link` feature on, which drops the
+  `#[no_mangle]` from what `add!` emits so several plugins can coexist in one
+  binary. Never enable that feature yourself: a `cdylib` built with it exports no
+  init symbol and cannot be loaded from disk at all.
+
+Hot reload is the one thing that does not survive — there is no file to watch and
+no way to swap code inside a running binary. That costs a shipped game nothing;
+it is why the editor always loads plugins from files.
 
 ## Editor panels
 

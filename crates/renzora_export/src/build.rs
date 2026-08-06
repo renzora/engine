@@ -81,17 +81,17 @@ pub fn find_engine_source(start: &Path) -> Option<PathBuf> {
 /// at `workspace_dir` (the engine checkout, NOT the project). Returns the path to
 /// the freshly built binary; the caller embeds the project's rpak into it.
 ///
-/// The plugins a game uses are NOT compiled in: they are C-ABI plugins, which
-/// link no Bevy and so `dlopen` into a static host exactly as into a dynamic
-/// one. The caller copies them beside the binary. (An earlier design compiled
-/// `renzora::add!`-registering distribution plugins into the binary through a
-/// generated `renzora_static_plugins` aggregator; those crates are ordinary
-/// feature-gated dependencies of `renzora_runtime` now, so the aggregator, its
-/// `static_plugins` feature and the wiring pass are all gone.)
+/// `static_plugins` is the set the user chose to compile **into** the binary
+/// rather than ship as loose libraries beside it (see [`stage_static_plugins`]).
+/// Empty is the default and means the same as it always did: the caller copies
+/// the selected plugins into `plugins/` and the host `dlopen`s them, which works
+/// against a static binary because a C-ABI plugin links no Bevy and so has
+/// nothing to share with the host.
 ///
 /// Native cargo can only target the **host** triple; cross-OS builds are a hard
 /// Docker requirement (not yet wired here), so this rejects a non-host target
 /// rather than producing a wrong artifact.
+#[allow(clippy::too_many_arguments)]
 pub fn build_lean(
     workspace_dir: &Path,
     platform: Platform,
@@ -100,6 +100,7 @@ pub fn build_lean(
     disabled_bevy_features: &[String],
     disabled_runtime_features: &[String],
     panic_abort: bool,
+    static_plugins: &[StaticPluginSrc],
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
     if Platform::current() != Some(platform) {
@@ -128,7 +129,11 @@ pub fn build_lean(
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
     set_panic_abort(&ws, panic_abort, progress)?;
-    let features = String::from("runtime");
+    stage_static_plugins(workspace_dir, &ws, static_plugins, progress)?;
+    let mut features = String::from("runtime");
+    if !static_plugins.is_empty() {
+        features.push_str(",static_plugins");
+    }
 
     let mut cmd = toolchain.cargo_command();
     cmd.current_dir(&ws)
@@ -258,9 +263,16 @@ fn sync_export_workspace(
     // crate's own `docs/`, or the critical `crates/renzora` vs the stray root
     // `renzora/`). `target` also covers `target/export-src` itself, so the sync
     // can't recurse into its own destination.
+    //
+    // `plugins` is here because those are separate cargo projects that the
+    // engine build never reads — they are only ever needed by the linked-in
+    // plugin path, which stages the handful it wants itself (and has to patch
+    // their manifests, which a blanket copy-if-newer would keep undoing). See
+    // `stage_static_plugins`.
     const TOP_SKIP: &[&str] = &[
         "target", ".git", ".github", ".vscode", ".idea", "dist", "docs",
         "node_modules", "templates", "disabled", "docker", ".claude", ".devcontainer",
+        "plugins",
     ];
     // cdylib crates are never linked into the lean binary, so leave them out of
     // the copy entirely.
@@ -313,6 +325,13 @@ fn sync_crates(
         let ft = entry.file_type().map_err(|e| e.to_string())?;
         let s = entry.path();
         let d = dest.join(&name);
+        // Wholly written by `stage_static_plugins`. Copying the checked-in stub
+        // over the generated version would undo it — and since the two differ in
+        // size, the copy-if-newer test would fire on every export and rebuild the
+        // aggregator (and relink the binary) whether or not anything changed.
+        if name_str == "renzora_static_plugins" {
+            continue;
+        }
         if ft.is_dir() && drop_plugins.contains(name_str.as_ref()) {
             // Pruned: ensure it's absent (a prior export with a different plugin
             // selection may have copied it).
@@ -334,8 +353,9 @@ fn sync_crates(
 
 /// Names of `crates/` entries that build a cdylib — never in the lean binary's
 /// link closure, so the copy skips them. Core runtime subsystems are rlib
-/// libraries (no `cdylib` crate-type) and never match. The game's own plugins
-/// live in `plugins/`, not here, and ship as files beside the binary.
+/// libraries (no `cdylib` crate-type) and never match. The game's own C-ABI
+/// plugins live in `plugins/`, not here — they either ship as files beside the
+/// binary or are linked in via `stage_static_plugins`, which stages them itself.
 fn cdylib_crates(engine_src: &Path) -> HashSet<String> {
     let mut drop = HashSet::new();
     let Ok(rd) = std::fs::read_dir(engine_src.join("crates")) else {
@@ -527,6 +547,285 @@ fn strip_runtime_features(
         .map_err(|e| format!("write {}: {e}", manifest.display()))?;
     progress(format!("Stripping {} unused subsystem(s)", disabled.len()));
     Ok(())
+}
+
+// ── Statically-linked plugins ────────────────────────────────────────────────
+
+/// One plugin to compile into the binary instead of shipping beside it.
+///
+/// [`resolve_static_plugins`] builds these by pairing what the export UI listed
+/// — which comes from scanning built libraries in `dist/<platform>/plugins/` —
+/// with the source directory that produced each one, because linking a plugin in
+/// means compiling it, not copying it.
+#[derive(Debug, Clone)]
+pub struct StaticPluginSrc {
+    /// The plugin's crate name — the Rust identifier the generated list names,
+    /// and what the host logs the plugin as. Underscored, because that is what
+    /// rustc sees; see `package` for what cargo is told.
+    pub id: String,
+    /// The `[package] name` as written, which may contain dashes. Cargo resolves
+    /// a dependency by this and rustc then substitutes underscores, so the
+    /// generated manifest must use it verbatim and the generated code must not.
+    pub package: String,
+    /// The library stem the export UI keys its selection on. Differs from `id`
+    /// on Unix, where a cdylib is `lib<crate>.so`, so the two are kept apart:
+    /// the caller matches its selection on THIS, and a filter written against
+    /// `id` would let every linked plugin be copied beside the binary as well.
+    pub library_stem: String,
+    /// Its directory under `plugins/`. Usually the same as `id`, but the two are
+    /// resolved separately because a package name need not match its folder.
+    pub dir: String,
+    /// `true` for an Editor-scope plugin. Recorded rather than filtered so the
+    /// host applies the same scope rule to a linked plugin as to a loaded one.
+    pub editor_scope: bool,
+}
+
+/// Pair each wanted plugin id with the source directory that builds it.
+///
+/// Returns `(resolved, unresolved)`. An id with no matching source is NOT an
+/// error: a plugin can perfectly well live in `dist/<platform>/plugins/` without
+/// its source being in this checkout — a marketplace download is exactly that —
+/// and the right answer there is to ship it as a file, not to fail the export.
+/// The caller copies the unresolved ones beside the binary as usual.
+pub fn resolve_static_plugins(
+    engine_src: &Path,
+    wanted: &[(String, bool)],
+) -> (Vec<StaticPluginSrc>, Vec<String>) {
+    // Package name → directory, read from the manifests rather than assumed from
+    // the folder names: the library a plugin produces is named after its
+    // `[package] name` (with dashes underscored), and that is what the scan sees.
+    // Underscored package name → (package name as written, directory).
+    let mut by_package: std::collections::HashMap<String, (String, String)> = Default::default();
+    if let Ok(entries) = std::fs::read_dir(engine_src.join("plugins")) {
+        for entry in entries.flatten() {
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let dir = entry.file_name().to_string_lossy().into_owned();
+            let Ok(text) = std::fs::read_to_string(entry.path().join("Cargo.toml")) else {
+                continue;
+            };
+            if let Some(name) = package_name(&text) {
+                by_package.insert(name.replace('-', "_"), (name, dir));
+            }
+        }
+    }
+
+    let mut resolved = Vec::new();
+    let mut unresolved = Vec::new();
+    for (id, editor_scope) in wanted {
+        // Unix libraries are `lib<crate>.so`; the scan keeps the stem verbatim,
+        // so strip the prefix before matching a crate name against it.
+        let crate_name = id.strip_prefix("lib").unwrap_or(id.as_str());
+        match by_package
+            .get(id.as_str())
+            .or_else(|| by_package.get(crate_name))
+        {
+            Some((package, dir)) => resolved.push(StaticPluginSrc {
+                id: crate_name.to_string(),
+                package: package.clone(),
+                library_stem: id.clone(),
+                dir: dir.clone(),
+                editor_scope: *editor_scope,
+            }),
+            None => unresolved.push(id.clone()),
+        }
+    }
+    resolved.sort_by(|a, b| a.id.cmp(&b.id));
+    (resolved, unresolved)
+}
+
+/// The `[package] name` of a manifest, without pulling in a full parse.
+fn package_name(manifest: &str) -> Option<String> {
+    manifest
+        .lines()
+        .find(|l| l.trim_start().starts_with("name = "))
+        .and_then(|l| l.split('"').nth(1))
+        .map(str::to_string)
+}
+
+/// Write the generated `renzora_static_plugins` crate and make each linked
+/// plugin buildable as a dependency of it.
+///
+/// Called on EVERY lean build, including ones linking nothing — the export
+/// workspace persists between exports, so a list left over from a previous run
+/// would otherwise link plugins the user had since unticked, and the binary
+/// would contain code no setting in front of them explained.
+///
+/// Three edits per plugin, all to the disposable copy:
+///
+/// 1. **`crate-type` → `rlib`.** A `cdylib` cannot be a Rust dependency; cargo
+///    refuses with "found staticlib/cdylib, expected rlib". The cdylib artifact
+///    is also pure waste here, so it is replaced rather than appended to.
+/// 2. **Drop `[workspace]`.** Each plugin declares itself a workspace root so a
+///    standalone `cargo build` in its folder does not inherit the engine's
+///    feature unification. As a path dependency that is fatal — cargo reports
+///    "multiple workspace roots found in the same workspace" and stops. The root
+///    manifest's `exclude = ["plugins"]` keeps them out of the member set anyway,
+///    so removing the marker changes nothing except that this now resolves.
+/// 3. **Drop `[profile.*]`.** Profiles outside a workspace root are ignored with
+///    a warning, and sixty of those warnings buries the build log.
+fn stage_static_plugins(
+    engine_src: &Path,
+    copy_root: &Path,
+    plugins: &[StaticPluginSrc],
+    progress: &mut dyn FnMut(String),
+) -> Result<(), String> {
+    let crate_dir = copy_root.join("crates").join("renzora_static_plugins");
+    std::fs::create_dir_all(crate_dir.join("src"))
+        .map_err(|e| format!("create {}: {e}", crate_dir.display()))?;
+
+    let mut copied = 0usize;
+    for p in plugins {
+        let src = engine_src.join("plugins").join(&p.dir);
+        let dest = copy_root.join("plugins").join(&p.dir);
+        std::fs::create_dir_all(&dest).map_err(|e| format!("mkdir {}: {e}", dest.display()))?;
+        // Everything but the manifest, which is written patched below. A plugin
+        // that stops being linked leaves its copy behind; nothing references it,
+        // and deleting directories a later export may want back is a worse
+        // trade than a few hundred KB in a disposable tree.
+        sync_dir_except(&src, &dest, "Cargo.toml", &mut copied)?;
+        patch_plugin_manifest(&src, &dest.join("Cargo.toml"))?;
+    }
+
+    let mut deps = String::new();
+    let mut entries = String::new();
+    for p in plugins {
+        deps.push_str(&format!(
+            "{name} = {{ path = \"../../plugins/{dir}\" }}\n",
+            name = p.package,
+            dir = p.dir
+        ));
+        entries.push_str(&format!(
+            "        StaticPlugin {{\n\
+             \x20           id: \"{id}\",\n\
+             \x20           scope: PluginScope::{scope},\n\
+             \x20           init: {id}::renzora_plugin_init,\n\
+             \x20       }},\n",
+            id = p.id,
+            scope = if p.editor_scope { "Editor" } else { "Runtime" },
+        ));
+    }
+
+    let manifest = format!(
+        "# GENERATED by the lean exporter — see `renzora_export::build`.\n\
+         # Lists the C-ABI plugins compiled into this build's binary.\n\
+         [package]\n\
+         name = \"renzora_static_plugins\"\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n\
+         \n\
+         [dependencies]\n\
+         # `static_link` strips `#[no_mangle]` from what `renzora_plugin::add!`\n\
+         # emits. Without it every plugin below defines `renzora_plugin_init` and\n\
+         # the binary fails to link. Cargo unifies features per package, so\n\
+         # naming it once here applies it to all of them.\n\
+         renzora_plugin = {{ path = \"../renzora_plugin\", features = [\"static_link\"] }}\n\
+         {deps}"
+    );
+    write_if_changed(&crate_dir.join("Cargo.toml"), &manifest)?;
+
+    let body = if plugins.is_empty() {
+        "    Vec::new()\n".to_string()
+    } else {
+        format!("    vec![\n{entries}    ]\n")
+    };
+    let lib = format!(
+        "//! GENERATED by the lean exporter — see `renzora_export::build`.\n\
+         //!\n\
+         //! The plugins this build compiled in rather than shipping as files.\n\
+         //! Overwritten on every lean export; edits here do not survive one.\n\
+         \n\
+         use renzora_plugin::static_link::StaticPlugin;\n\
+         use renzora_plugin::sys::PluginScope;\n\
+         \n\
+         pub fn plugins() -> Vec<StaticPlugin> {{\n{body}}}\n"
+    );
+    write_if_changed(&crate_dir.join("src").join("lib.rs"), &lib)?;
+
+    if !plugins.is_empty() {
+        progress(format!(
+            "Linking {} plugin(s) into the binary: {}",
+            plugins.len(),
+            plugins
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Write only when the content differs, so an unchanged plugin selection does
+/// not touch the mtime and force cargo to rebuild the aggregator (and relink the
+/// whole binary) on every export.
+fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
+    if std::fs::read_to_string(path).is_ok_and(|old| old == content) {
+        return Ok(());
+    }
+    std::fs::write(path, content).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Copy-if-newer of `src` → `dest`, skipping build/vcs noise and one named file
+/// (the manifest, which [`stage_static_plugins`] writes patched instead).
+///
+/// `Cargo.lock` rides along harmlessly: a path dependency's lockfile is ignored,
+/// the workspace's own is what resolves the build.
+fn sync_dir_except(
+    src: &Path,
+    dest: &Path,
+    skip_file: &str,
+    copied: &mut usize,
+) -> Result<(), String> {
+    const DEEP_SKIP: &[&str] = &["target", ".git"];
+    for entry in std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        let s = entry.path();
+        let d = dest.join(&name);
+        if ft.is_dir() {
+            if DEEP_SKIP.contains(&name.to_string_lossy().as_ref()) {
+                continue;
+            }
+            std::fs::create_dir_all(&d).map_err(|e| format!("mkdir {}: {e}", d.display()))?;
+            sync_dir(&s, &d, copied)?;
+        } else if ft.is_file() && name.to_string_lossy() != skip_file && should_copy(&s, &d) {
+            std::fs::copy(&s, &d).map_err(|e| format!("copy {}: {e}", s.display()))?;
+            *copied += 1;
+        }
+    }
+    Ok(())
+}
+
+/// Read the plugin's real manifest, apply the three edits described on
+/// [`stage_static_plugins`], and write the result into the copy.
+///
+/// Reads the pristine source and writes only on a difference, so an unchanged
+/// plugin selection leaves the copied manifest's mtime alone — patching in place
+/// over a synced file could not do that, because the patched and pristine
+/// versions differ in size and the sync would keep clobbering it.
+fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), String> {
+    let src = src_dir.join("Cargo.toml");
+    let text = std::fs::read_to_string(&src)
+        .map_err(|e| format!("read {}: {e}", src.display()))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| format!("parse {}: {e}", src.display()))?;
+
+    doc.remove("workspace");
+    doc.remove("profile");
+    let lib = doc
+        .entry("lib")
+        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+    if let Some(lib) = lib.as_table_like_mut() {
+        let mut kinds = toml_edit::Array::new();
+        kinds.push("rlib");
+        lib.insert("crate-type", toml_edit::value(kinds));
+    }
+
+    write_if_changed(dest_manifest, &doc.to_string())
 }
 
 

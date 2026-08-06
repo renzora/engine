@@ -66,7 +66,21 @@ fn load_global_plugins(app: &mut App, is_editor: bool) {
     // `is_editor` is the scope gate: a C-ABI plugin declares Runtime or Editor via
     // `renzora_plugin_scope`, read BEFORE its init is called, so an editor-only
     // panel plugin never activates in a shipped game and vice versa.
-    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin { is_editor });
+    //
+    // `statics` are plugins the lean exporter compiled INTO this binary rather
+    // than shipping as files (the `static_plugins` feature). Empty otherwise, and
+    // empty even with the feature on unless an export generated the list — the
+    // checked-in `renzora_static_plugins` returns nothing. The `plugins/` scan
+    // still happens either way, so a game can link its own in and still load
+    // whatever a player drops beside the exe.
+    #[cfg(feature = "static_plugins")]
+    let statics = renzora_static_plugins::plugins();
+    #[cfg(not(feature = "static_plugins"))]
+    let statics = Vec::new();
+    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
+        is_editor,
+        statics,
+    });
     // Installs any render passes those plugins registered. Separate plugin
     // because the work happens in `finish`, after every `build` has run and the
     // render sub-app exists.

@@ -27,6 +27,24 @@ pub enum PackagingMode {
     LeanSingleBinary,
 }
 
+/// How the game's C-ABI plugins reach the exported build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PluginLinkMode {
+    /// Copy each plugin's library into a `plugins/` folder beside the binary,
+    /// where the host finds and loads it at startup. Works with every packaging
+    /// mode, and leaves the set changeable after shipping — a player or a mod
+    /// can add one.
+    #[default]
+    ShipFiles,
+    /// Compile the plugins into the binary. One file to ship and nothing to load
+    /// at boot, at the cost of the folder being editable afterwards.
+    ///
+    /// Only possible for [`PackagingMode::LeanSingleBinary`], which is the only
+    /// mode that compiles anything — the other two copy an already-built runtime,
+    /// and no amount of packaging can put new code inside it.
+    LinkIn,
+}
+
 /// Which view the export modal shows: the settings form, or the live build log.
 /// Clicking Export switches to [`ExportView::Log`]; finishing + Back returns to
 /// [`ExportView::Settings`].
@@ -99,6 +117,8 @@ pub struct ExportOverlayState {
     pub available_plugins: Vec<renzora_plugin::host::loader::PluginInfo>,
     /// Which plugins are selected for export (by id).
     pub selected_plugins: std::collections::HashSet<String>,
+    /// Files beside the binary, or compiled into it. See [`PluginLinkMode`].
+    pub plugin_link_mode: PluginLinkMode,
     /// Engine capability toggles (id → on). Off ⇒ its Bevy features are stripped
     /// from the lean build. Populated with defaults after the plugin scan.
     pub capabilities: std::collections::HashMap<String, bool>,
@@ -152,6 +172,7 @@ impl Default for ExportOverlayState {
             active_task: None,
             available_plugins: Vec::new(),
             selected_plugins: std::collections::HashSet::new(),
+            plugin_link_mode: PluginLinkMode::default(),
             capabilities: std::collections::HashMap::new(),
             collapsed_sections: std::collections::HashSet::new(),
             plugins_scanned: false,
@@ -656,12 +677,20 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
     let mesh_quantize = export_state.mesh_quantize;
     let mesh_generate_lods = export_state.mesh_generate_lods;
     let mesh_lod_levels = export_state.mesh_lod_levels;
-    let selected_plugins: Vec<std::path::PathBuf> = export_state
+    // Kept as full `PluginInfo`s rather than bare paths: linking a plugin in
+    // needs its id (to find the source that builds it) and its scope (so the
+    // generated list declares the same one the library would have reported).
+    let selected_plugins: Vec<renzora_plugin::host::loader::PluginInfo> = export_state
         .available_plugins
         .iter()
         .filter(|p| export_state.selected_plugins.contains(&p.id))
-        .map(|p| p.path.clone())
+        .cloned()
         .collect();
+    // Linking in is only meaningful for the mode that compiles. Silently
+    // downgrading elsewhere is right rather than an error: the packaging radio is
+    // the stronger statement of intent, and the UI says so next to the toggle.
+    let link_plugins_in = export_state.plugin_link_mode == PluginLinkMode::LinkIn
+        && packaging_mode == PackagingMode::LeanSingleBinary;
     // Bevy + runtime-subsystem features to strip from the lean build (capabilities
     // the game has off).
     let disabled_bevy_features =
@@ -737,6 +766,7 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             mesh_lod_levels,
             template_path,
             selected_plugins,
+            link_plugins_in,
             runtime_dir,
             disabled_bevy_features,
             disabled_runtime_features,
@@ -769,7 +799,8 @@ fn export_worker(
     mesh_generate_lods: bool,
     mesh_lod_levels: u32,
     template_path: std::path::PathBuf,
-    selected_plugins: Vec<std::path::PathBuf>,
+    selected_plugins: Vec<renzora_plugin::host::loader::PluginInfo>,
+    link_plugins_in: bool,
     runtime_dir: std::path::PathBuf,
     disabled_bevy_features: Vec<String>,
     disabled_runtime_features: Vec<String>,
@@ -910,6 +941,13 @@ fn export_worker(
     let is_ios = matches!(platform, Platform::IOSArm64 | Platform::TvOSArm64);
     let is_wasm = matches!(platform, Platform::WebWasm32);
 
+    // Ids the lean build compiled INTO the binary, so the copy step below leaves
+    // them out. Filled by the lean arm; empty everywhere else, including when
+    // linking was asked for but a plugin's source could not be found — those
+    // fall back to shipping as files, which is why this is the build's answer
+    // rather than the user's request.
+    let mut linked_ids: Vec<String> = Vec::new();
+
     let result = if is_ios {
         export_ios_app(
             &template_path,
@@ -977,6 +1015,37 @@ fn export_worker(
                                     runtime_dir.display()
                                 )
                             })?;
+                        // Linking a plugin in means COMPILING it, so it needs the
+                        // source that produced the library the UI listed. A
+                        // plugin with no source here (a marketplace download, say)
+                        // is reported and shipped as a file instead — refusing the
+                        // whole export over one would be a poor trade.
+                        let statics = if link_plugins_in {
+                            let wanted: Vec<(String, bool)> = selected_plugins
+                                .iter()
+                                .map(|p| {
+                                    (
+                                        p.id.clone(),
+                                        p.scope == renzora_plugin::sys::PluginScope::Editor,
+                                    )
+                                })
+                                .collect();
+                            let (found, missing) =
+                                crate::build::resolve_static_plugins(&engine_dir, &wanted);
+                            if !missing.is_empty() {
+                                progress(format!(
+                                    "No source found for {} — shipping as file(s) beside the binary",
+                                    missing.join(", ")
+                                ));
+                            }
+                            // Keyed on the library stem, which is what the
+                            // selection below compares against — `id` is the
+                            // crate name, and on Unix the two differ by `lib`.
+                            linked_ids = found.iter().map(|p| p.library_stem.clone()).collect();
+                            found
+                        } else {
+                            Vec::new()
+                        };
                         progress(format!(
                             "Compiling lean binary in {} (this can take several minutes)…",
                             engine_dir.display()
@@ -989,6 +1058,7 @@ fn export_worker(
                             &disabled_bevy_features,
                             &disabled_runtime_features,
                             panic_abort,
+                            &statics,
                             &cancel,
                         )
                     });
@@ -1047,12 +1117,23 @@ fn export_worker(
             // them. The result was a lean game shipping zero plugins, silently:
             // no Lua, no post-process effects, and no error, because the host
             // simply found an empty `plugins/` directory.
-            if !is_wasm && !selected_plugins.is_empty() {
+            //
+            // Anything the lean build compiled in is skipped here. Copying it as
+            // well would not merely waste space: the host would initialise the
+            // plugin twice, and every first-claim registration it makes — a
+            // script backend's file extensions, a panel id — would log a
+            // duplicate-registration error on the losing copy.
+            let to_copy: Vec<&std::path::Path> = selected_plugins
+                .iter()
+                .filter(|p| !linked_ids.contains(&p.id))
+                .map(|p| p.path.as_path())
+                .collect();
+            if !is_wasm && !to_copy.is_empty() {
                 let _ = tx.send(ExportMsg::Progress("Copying plugins...".into()));
                 let plugins_out = output_dir.join("plugins");
                 let _ = std::fs::create_dir_all(&plugins_out);
 
-                for plugin_path in &selected_plugins {
+                for plugin_path in &to_copy {
                     if let Some(filename) = plugin_path.file_name() {
                         let dest = plugins_out.join(filename);
                         if let Err(e) = std::fs::copy(plugin_path, &dest) {
@@ -1060,9 +1141,12 @@ fn export_worker(
                         }
                     }
                 }
+                info!("[export] Copied {} plugins to output", to_copy.len());
+            }
+            if !linked_ids.is_empty() {
                 info!(
-                    "[export] Copied {} plugins to output",
-                    selected_plugins.len()
+                    "[export] Linked {} plugins into the binary",
+                    linked_ids.len()
                 );
             }
 

@@ -30,6 +30,25 @@ anim = []
 physics = []
 http = []
 
+# Compile a plugin to be LINKED INTO the host rather than `dlopen`'d.
+#
+# A plugin normally exports `renzora_plugin_init` unmangled, because the loader
+# looks it up by that exact name. Link two such plugins into one binary and the
+# link fails: the symbol is defined twice. So this feature drops `#[no_mangle]`
+# from what `add!` emits, leaving ordinary `pub extern "C"` functions that a
+# generated aggregator calls by path (`pulse::renzora_plugin_init`).
+#
+# The cfg is evaluated HERE, in this crate, not in the plugin — which is exactly
+# why the macro delegates the attribute to `__plugin_init_entry!` rather than
+# writing `#[cfg(feature = ...)]` into its own expansion, where the feature name
+# would resolve against the *plugin's* manifest and always be absent.
+#
+# Turned on for the whole build graph by the lean exporter's generated
+# `renzora_static_plugins` crate; cargo's feature unification then applies it to
+# every plugin compiled in that invocation. Nothing else should enable it — a
+# cdylib built with it exports no init symbol and cannot be loaded from disk.
+static_link = []
+
 # Scripting is a domain like the three above, with one difference worth calling
 # out: it is the only one where the *host* calls into the plugin rather than the
 # other way round. That needs an `Interface` function to register a backend, so

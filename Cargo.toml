@@ -331,6 +331,13 @@ dynamic_linking = ["bevy/dynamic_linking"]
 # it, and the lean exporter's `--no-default-features --features runtime` drops
 # it unless a game opts back in.
 xr = ["renzora_runtime?/xr"]
+# Link the game's C-ABI plugins INTO the binary instead of loading them from
+# `plugins/` beside it. Set only by the lean exporter, and only in its throwaway
+# copy of the workspace, where it also fills in the otherwise-empty
+# `renzora_static_plugins` crate. A dev-tree build with this on links nothing
+# extra — the checked-in crate returns an empty list — so turning it on by hand
+# is harmless and pointless. See `renzora_plugin::static_link`.
+static_plugins = ["dep:renzora_static_plugins"]
 # Throwaway PROFILING build — re-adds Bevy's Tracy instrumentation for a full
 # flame graph + per-system Statistics in Tracy. `bevy/trace` turns on the
 # per-system and render-node CPU spans (bevy_ecs gates system zones behind it, so
@@ -390,6 +397,10 @@ uuid = "1"
 # on `renzora_plugin` with default features and gets zero deps; the engine opts
 # into `host` for the interface impl, dispatcher and dlopen loader.
 renzora_plugin = { path = "crates/renzora_plugin", features = ["host"] }
+# The generated list of plugins linked into the binary. Optional because it is
+# empty (and so pure overhead) in every build but a lean export that asked for
+# static plugins — see the `static_plugins` feature above.
+renzora_static_plugins = { path = "crates/renzora_static_plugins", optional = true }
 # Render half of the plugin ABI — installs plugin-registered render passes.
 renzora_postprocess = { path = "crates/renzora_postprocess" }
 toml = "0.8"

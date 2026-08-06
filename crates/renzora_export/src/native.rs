@@ -19,7 +19,7 @@ use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, OverlaySurface};
 
 use crate::download::{self, DownloadProgress};
-use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode};
+use crate::overlay::{ensure_release_fetch, poll_download_task, poll_export_task, poll_release_fetch, run_export, ExportOverlayState, ExportProgress, ExportView, PackagingMode, PluginLinkMode};
 use crate::templates::{Platform, TemplateManager};
 
 const GREEN: (u8, u8, u8) = (89, 191, 115);
@@ -395,7 +395,7 @@ fn build_settings(commands: &mut Commands, fonts: &EmberFonts, pane: Entity, p: 
         build_output_tab(commands, fonts),
         build_packaging_tab(commands, fonts, p, desktop, host),
         build_features_tab(commands, fonts, host),
-        build_plugins_tab(commands, fonts),
+        build_plugins_tab(commands, fonts, host),
         build_compression_tab(commands, fonts),
         build_options_tab(commands, fonts, p, desktop),
     ];
@@ -737,8 +737,50 @@ fn build_features_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -
 
 // ── Plugins tab ──────────────────────────────────────────────────────────────
 
-fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts, host: bool) -> Entity {
     let panel = tab_panel(commands);
+    let mut secs = Vec::new();
+
+    // How the plugins get there: files beside the binary, or compiled into it.
+    // Offered only on the host platform, because linking in requires the lean
+    // recompile and that can only target the triple the editor is running on.
+    if host {
+        let (lsec, lbody) = section(commands, fonts, "link", &renzora::lang::t("export.section.plugin_link"), accent());
+        let files = renzora::lang::t("export.plugin_link.files");
+        let linked = renzora::lang::t("export.plugin_link.linked");
+        let labels: Vec<&str> = vec![files.as_str(), linked.as_str()];
+        let radios = radio_group(commands, &fonts.ui, &labels, 0);
+        bind_2way(
+            commands,
+            radios,
+            |w| match w.resource::<ExportOverlayState>().plugin_link_mode {
+                PluginLinkMode::ShipFiles => 0usize,
+                PluginLinkMode::LinkIn => 1,
+            },
+            |w, v: &usize| {
+                w.resource_mut::<ExportOverlayState>().plugin_link_mode = match *v {
+                    1 => PluginLinkMode::LinkIn,
+                    _ => PluginLinkMode::ShipFiles,
+                };
+            },
+        );
+        commands.entity(lbody).add_child(radios);
+        let hint = txt(commands, fonts, &renzora::lang::t("export.plugin_link.hint"), 11.0, text_muted());
+        commands.entity(lbody).add_child(hint);
+        // Linking in needs something to compile into, and only the lean mode
+        // compiles. Rather than disable the radio from the other tab (where the
+        // reason would be invisible), say so — and only when it applies.
+        let warn = txt(commands, fonts, &renzora::lang::t("export.plugin_link.needs_lean"), 11.0, AMBER);
+        bind_display(commands, warn, |w| {
+            w.get_resource::<ExportOverlayState>().is_some_and(|s| {
+                s.plugin_link_mode == PluginLinkMode::LinkIn
+                    && s.packaging_mode != PackagingMode::LeanSingleBinary
+            })
+        });
+        commands.entity(lbody).add_child(warn);
+        secs.push(lsec);
+    }
+
     let (sec, body) = section(commands, fonts, "puzzle-piece", &renzora::lang::t("export.section.plugins"), accent());
     let list = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(2.0), ..default() }).id();
     commands.entity(body).add_child(list);
@@ -773,7 +815,8 @@ fn build_plugins_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         }
         queue.apply(world);
     });
-    finish_tab(commands, panel, &[sec]);
+    secs.push(sec);
+    finish_tab(commands, panel, &secs);
     panel
 }
 

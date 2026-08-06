@@ -1,0 +1,23 @@
+# The list of C-ABI plugins linked into the binary.
+#
+# This checked-in copy is EMPTY and deliberately so — see `src/lib.rs`. The lean
+# exporter rewrites both this manifest and that file inside its throwaway copy of
+# the workspace (`target/export-src/`), adding one path dependency per plugin the
+# user chose to link in. The dev tree is never touched.
+#
+# It exists in the dev tree at all because cargo resolves every path dependency
+# when it loads a workspace, optional or not: `renzora_app`'s `static_plugins`
+# feature could not name a crate that only comes into existence during an export.
+[package]
+name = "renzora_static_plugins"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# No `host` feature: this crate names `static_link::StaticPlugin` and the two
+# `sys` types inside it, all of which are dependency-free. Pulling `host` here
+# would drag Bevy into a crate whose entire job is to hold a list.
+renzora_plugin = { path = "../renzora_plugin" }
+
+[lints]
+workspace = true

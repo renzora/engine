@@ -58,6 +58,7 @@
 //! split between the two tiers, not a gap to be closed.
 
 pub mod ecs;
+pub mod static_link;
 pub mod sys;
 
 /// Animation: play clips, drive state machines, read animator state.
@@ -144,77 +145,158 @@ macro_rules! error {
     ($($arg:tt)*) => { $crate::ecs::error(&::std::format!($($arg)*)) };
 }
 
-/// Emit the plugin's sole export.
+/// Emit the plugin's exports.
 ///
 /// Wraps the `Plugin::build` call in the version handshake and the pointer
 /// plumbing, so a plugin author writes one line instead of an `unsafe extern "C"`
-/// function. Exactly one of these per cdylib — the symbol is unmangled and two
+/// function. Exactly one of these per cdylib — the symbols are unmangled and two
 /// would collide at link time.
+///
+/// The exception is a plugin compiled with the `static_link` feature, which
+/// deliberately drops the mangling guard so a whole set of plugins can be linked
+/// into one binary; see [`crate::static_link`] for who does that and why.
 #[macro_export]
 macro_rules! add {
     // `add!(MyPlugin, Editor)` — an editor-only plugin. Absent from the shipped
     // runtime binary entirely, rather than present and inactive.
     ($plugin:expr, $scope:ident) => {
+        $crate::__plugin_scope_entry!($crate::sys::PluginScope::$scope);
+        $crate::__plugin_init_entry!($plugin);
+    };
+    ($plugin:expr) => {
+        // Emitted even though `Runtime` is what the loader assumes when the
+        // symbol is missing. Declaring it costs one function and makes the scope
+        // readable the same way for every plugin — which is what lets the
+        // statically-linked path (`static_link`) call it unconditionally instead
+        // of guessing whether an aggregator may name it.
+        $crate::__plugin_scope_entry!($crate::sys::PluginScope::Runtime);
+        $crate::__plugin_init_entry!($plugin);
+    };
+}
+
+/// The `renzora_plugin_scope` half of [`add!`], with the export attribute the
+/// current link mode needs.
+///
+/// This exists as its own macro because the choice cannot be made inside
+/// `add!`'s expansion: a `#[cfg(feature = ...)]` written there is evaluated when
+/// the **plugin** is compiled, against the plugin's own manifest, where
+/// `static_link` does not exist and never will. Putting the two variants here
+/// evaluates the cfg where the feature actually lives.
+#[doc(hidden)]
+#[cfg(not(feature = "static_link"))]
+#[macro_export]
+macro_rules! __plugin_scope_entry {
+    ($scope:expr) => {
         #[unsafe(no_mangle)]
         pub extern "C" fn renzora_plugin_scope() -> $crate::sys::PluginScope {
-            $crate::sys::PluginScope::$scope
+            $scope
         }
-        $crate::add!($plugin);
     };
+}
+
+/// Linked-in variant: no `#[no_mangle]`, so many plugins can coexist in one
+/// binary. The aggregator calls it by path instead of by symbol name.
+#[doc(hidden)]
+#[cfg(feature = "static_link")]
+#[macro_export]
+macro_rules! __plugin_scope_entry {
+    ($scope:expr) => {
+        pub extern "C" fn renzora_plugin_scope() -> $crate::sys::PluginScope {
+            $scope
+        }
+    };
+}
+
+/// The `renzora_plugin_init` half of [`add!`]. Two definitions, differing only
+/// in the export attribute — see [`__plugin_scope_entry`] and the `static_link`
+/// feature in this crate's manifest.
+#[doc(hidden)]
+#[cfg(not(feature = "static_link"))]
+#[macro_export]
+macro_rules! __plugin_init_entry {
     ($plugin:expr) => {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn renzora_plugin_init(
             iface: *const $crate::sys::Interface,
             host: *mut $crate::sys::Host,
         ) -> $crate::sys::InitResult {
-            let i = &*iface;
-            // A newer host is always fine — the table is append-only. An older
-            // one is not, because we may call a function it lacks.
-            if i.version_major != $crate::sys::VERSION_MAJOR
-                || i.version_minor < $crate::sys::VERSION_MINOR
-            {
-                return $crate::sys::InitResult::VersionTooOld;
-            }
-            // The version numbers are two integers a human types, so they say
-            // nothing about whether the table is actually shaped the way this
-            // plugin was compiled to read it. That gap is not theoretical: two
-            // functions were once inserted mid-struct and released as MINOR
-            // bumps, which sends an older plugin's call into a different
-            // function — passing, say, a mesh descriptor to something that reads
-            // it as an image descriptor. A segfault, and the panic guard around
-            // plugin calls catches panics rather than those.
-            //
-            // So compare the host's hash of its first N fields against ours,
-            // where N is how many fields this plugin knows. Appending leaves that
-            // prefix untouched, which is precisely the promise the append-only
-            // rule makes; anything else moves it and the load is refused.
-            if i.prefix_count <= $crate::sys::INTERFACE_FIELDS
-                || *i.prefix_hashes.add($crate::sys::INTERFACE_FIELDS)
-                    != $crate::sys::INTERFACE_PREFIX_HASHES[$crate::sys::INTERFACE_FIELDS]
-            {
-                return $crate::sys::InitResult::AbiMismatch;
-            }
-            let mut app = $crate::ecs::App::new(iface, host);
-            // A panic in `build` would unwind out of an `extern "C"` fn and abort
-            // the editor. Refusing to load is the correct outcome instead.
-            let built = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                $crate::ecs::Plugin::build(&$plugin, &mut app);
-            }));
-            if built.is_err() {
-                return $crate::sys::InitResult::Failed;
-            }
-            // Refuse rather than install systems whose queries can never match.
-            // The host logs which component was missing.
-            if app.unresolved_component().is_some() {
-                return $crate::sys::InitResult::Failed;
-            }
-            // Likewise for a system the host declined — an access conflict, or a
-            // term it could not resolve. Loading anyway would give a plugin that
-            // reports success and then quietly does less than it says.
-            if app.rejected_system().is_some() {
-                return $crate::sys::InitResult::Failed;
-            }
-            $crate::sys::InitResult::Ok
+            $crate::__plugin_init_body!($plugin, iface, host)
         }
     };
+}
+
+/// Linked-in variant. See [`__plugin_scope_entry`].
+#[doc(hidden)]
+#[cfg(feature = "static_link")]
+#[macro_export]
+macro_rules! __plugin_init_entry {
+    ($plugin:expr) => {
+        pub unsafe extern "C" fn renzora_plugin_init(
+            iface: *const $crate::sys::Interface,
+            host: *mut $crate::sys::Host,
+        ) -> $crate::sys::InitResult {
+            $crate::__plugin_init_body!($plugin, iface, host)
+        }
+    };
+}
+
+/// The body both `__plugin_init_entry!` variants share — the version handshake,
+/// the shape check, and the guarded `Plugin::build` call. Factored out so the
+/// two differ in nothing but their attribute; a copy-paste pair would drift, and
+/// the half that drifted would be the one nobody builds day to day.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __plugin_init_body {
+    ($plugin:expr, $iface:expr, $host:expr) => {{
+        let iface = $iface;
+        let host = $host;
+        let i = &*iface;
+        // A newer host is always fine — the table is append-only. An older
+        // one is not, because we may call a function it lacks.
+        if i.version_major != $crate::sys::VERSION_MAJOR
+            || i.version_minor < $crate::sys::VERSION_MINOR
+        {
+            return $crate::sys::InitResult::VersionTooOld;
+        }
+        // The version numbers are two integers a human types, so they say
+        // nothing about whether the table is actually shaped the way this
+        // plugin was compiled to read it. That gap is not theoretical: two
+        // functions were once inserted mid-struct and released as MINOR
+        // bumps, which sends an older plugin's call into a different
+        // function — passing, say, a mesh descriptor to something that reads
+        // it as an image descriptor. A segfault, and the panic guard around
+        // plugin calls catches panics rather than those.
+        //
+        // So compare the host's hash of its first N fields against ours,
+        // where N is how many fields this plugin knows. Appending leaves that
+        // prefix untouched, which is precisely the promise the append-only
+        // rule makes; anything else moves it and the load is refused.
+        if i.prefix_count <= $crate::sys::INTERFACE_FIELDS
+            || *i.prefix_hashes.add($crate::sys::INTERFACE_FIELDS)
+                != $crate::sys::INTERFACE_PREFIX_HASHES[$crate::sys::INTERFACE_FIELDS]
+        {
+            return $crate::sys::InitResult::AbiMismatch;
+        }
+        let mut app = $crate::ecs::App::new(iface, host);
+        // A panic in `build` would unwind out of an `extern "C"` fn and abort
+        // the editor. Refusing to load is the correct outcome instead.
+        let built = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+            $crate::ecs::Plugin::build(&$plugin, &mut app);
+        }));
+        if built.is_err() {
+            return $crate::sys::InitResult::Failed;
+        }
+        // Refuse rather than install systems whose queries can never match.
+        // The host logs which component was missing.
+        if app.unresolved_component().is_some() {
+            return $crate::sys::InitResult::Failed;
+        }
+        // Likewise for a system the host declined — an access conflict, or a
+        // term it could not resolve. Loading anyway would give a plugin that
+        // reports success and then quietly does less than it says.
+        if app.rejected_system().is_some() {
+            return $crate::sys::InitResult::Failed;
+        }
+        $crate::sys::InitResult::Ok
+    }};
 }

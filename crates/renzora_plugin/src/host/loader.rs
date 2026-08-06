@@ -8,6 +8,7 @@
 
 use bevy::prelude::*;
 use libloading::{Library, Symbol};
+use crate::static_link::StaticPlugin;
 use crate::sys;
 use std::path::{Path, PathBuf};
 
@@ -80,11 +81,26 @@ pub enum LoadOutcome {
     WrongScope(sys::PluginScope),
 }
 
-/// Load every `renzora_plugin` cdylib in `dir`.
+/// Load every `renzora_plugin` cdylib in `dir`, except any already linked into
+/// this binary.
 ///
 /// Missing or unreadable directories are not an error — a build with no plugins
 /// is normal.
-pub fn load_dir(world: &mut World, dir: &Path, is_editor: bool) -> Vec<(PathBuf, LoadOutcome)> {
+///
+/// `linked` holds the crate names of plugins compiled in (see [`load_static`]).
+/// Loading a second copy of one is not a duplicate that resolves itself: the two
+/// get separate slots, so BOTH sets of systems end up in the schedules and every
+/// one of the plugin's systems runs twice a frame — and the second copy's
+/// first-claim registrations (a script backend's extensions, a panel id) fail
+/// with an error that reads like a conflict between two different plugins. An
+/// export never produces this, because it skips copying what it linked; a user
+/// pointing a game at the editor's `plugins/` folder produces it immediately.
+pub fn load_dir(
+    world: &mut World,
+    dir: &Path,
+    is_editor: bool,
+    linked: &[&str],
+) -> Vec<(PathBuf, LoadOutcome)> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -94,6 +110,15 @@ pub fn load_dir(world: &mut World, dir: &Path, is_editor: bool) -> Vec<(PathBuf,
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some(ext) {
+            continue;
+        }
+        // `lib` is stripped because a cdylib is `lib<crate>.so` on Unix and
+        // `<crate>.dll` on Windows, while a linked plugin is only ever known by
+        // its crate name.
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let name = stem.strip_prefix("lib").unwrap_or(&stem);
+        if linked.contains(&name) {
+            info!("[plugin] ignoring {stem} in plugins/ — this build links {name} in");
             continue;
         }
         let outcome = load_one(world, &path, is_editor);
@@ -288,6 +313,69 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         other => LoadOutcome::Failed(format!(
             "plugin init returned status {} which this engine does not know — it was built \
              against a newer ABI. Rebuild it against this engine's `renzora_plugin`",
+            other.0
+        )),
+    }
+}
+
+/// Initialise a plugin that is compiled into this binary.
+///
+/// The short version of everything [`load_one`] does that this does not: there
+/// is no file, so there is nothing to sniff for an init symbol, nothing to copy
+/// aside before mapping, and no library to keep alive — the code is already in
+/// the binary's `.text` and outlives the process's interest in it. What remains
+/// is the part that actually matters: read the scope before init so a plugin for
+/// the other binary never registers anything, then run init against a slot.
+///
+/// The slot is keyed by a synthetic path (`<linked>/<id>`) rather than a real
+/// one. It exists because panels, render passes and materials are all tagged with
+/// their owning slot; a linked plugin needs an owner tag exactly as much as a
+/// loaded one does. `<` and `>` cannot appear in a Windows filename, so the key
+/// can never collide with a plugin on disk — and the extension filter in
+/// [`load_dir`] and [`PluginWatcher`] means nothing ever tries to stat it.
+///
+/// Generation stays 0 forever: linked code cannot be swapped, so nothing retires
+/// and no system ever goes stale.
+pub fn load_static(world: &mut World, plugin: &StaticPlugin, is_editor: bool) -> LoadOutcome {
+    if !plugin.scope.is_known() {
+        return LoadOutcome::Failed(format!(
+            "declares scope {} which this build does not have",
+            plugin.scope.0
+        ));
+    }
+    if plugin.scope == sys::PluginScope::Editor && !is_editor {
+        return LoadOutcome::WrongScope(plugin.scope);
+    }
+
+    let path = PathBuf::from(format!("<linked>/{}", plugin.id));
+    let (slot, counter) = {
+        let mut loaded = world.get_resource_or_insert_with(LoadedPlugins::default);
+        let slot = loaded.slot_for(&path);
+        let counter = loaded.0[slot].generation.clone();
+        (slot, counter)
+    };
+
+    match super::init_plugin_gen(world, plugin.init, counter, 0, slot) {
+        sys::InitResult::Ok => {
+            let mut loaded = world.resource_mut::<LoadedPlugins>();
+            loaded.0[slot].images += 1;
+            LoadOutcome::Loaded
+        }
+        sys::InitResult::VersionTooOld => LoadOutcome::VersionTooOld,
+        sys::InitResult::Failed => {
+            LoadOutcome::Failed("plugin init returned Failed".to_string())
+        }
+        // Unreachable in practice, and deliberately still handled: a linked
+        // plugin was compiled against the very `renzora_plugin` in this build, so
+        // its idea of the table's shape cannot differ. If it somehow does, saying
+        // so beats reporting success.
+        sys::InitResult::AbiMismatch => LoadOutcome::Failed(
+            "plugin was built against a differently-shaped interface table, which should be \
+             impossible for a linked-in plugin — the export workspace is out of sync"
+                .to_string(),
+        ),
+        other => LoadOutcome::Failed(format!(
+            "plugin init returned status {} which this engine does not know",
             other.0
         )),
     }
@@ -509,6 +597,13 @@ pub struct RenzoraPluginHostPlugin {
     /// Whether this binary is the editor. Editor-scope plugins load only when
     /// it is; runtime-scope plugins load either way.
     pub is_editor: bool,
+    /// Plugins compiled into this binary, initialised before the ones on disk.
+    ///
+    /// Empty for every build except a lean export that chose to link its plugins
+    /// in — see [`crate::static_link`]. The two paths coexist deliberately: a
+    /// game can ship some plugins inside the binary and still read a `plugins/`
+    /// folder for anything a player or a mod drops in.
+    pub statics: Vec<StaticPlugin>,
 }
 
 impl Plugin for RenzoraPluginHostPlugin {
@@ -569,7 +664,30 @@ impl Plugin for RenzoraPluginHostPlugin {
             super::dev::install(app, dir.clone());
         }
 
-        for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor) {
+        // Linked-in plugins first, and their names then suppress any loose copy
+        // of the same plugin in `plugins/` — see [`load_dir`] for why loading
+        // both is considerably worse than loading either.
+        for plugin in &self.statics {
+            let id = plugin.id;
+            match load_static(app.world_mut(), plugin, self.is_editor) {
+                LoadOutcome::Loaded => info!("[plugin] linked {id}"),
+                LoadOutcome::WrongScope(scope) => {
+                    debug!("[plugin] skipping linked {id} — {scope:?} scope")
+                }
+                LoadOutcome::VersionTooOld => warn!(
+                    "[plugin] linked {id} needs a newer renzora_plugin ABI than this build \
+                     (host is {}.{})",
+                    sys::VERSION_MAJOR,
+                    sys::VERSION_MINOR
+                ),
+                LoadOutcome::Failed(why) => error!("[plugin] linked {id} failed: {why}"),
+                // Cannot happen: there is no file to fail the symbol sniff.
+                LoadOutcome::NotAPlugin => {}
+            }
+        }
+
+        let linked: Vec<&str> = self.statics.iter().map(|p| p.id).collect();
+        for (path, outcome) in load_dir(app.world_mut(), &dir, self.is_editor, &linked) {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
             match outcome {
                 LoadOutcome::Loaded => info!("[plugin] loaded {name}"),

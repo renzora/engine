@@ -34,7 +34,13 @@ fn main() {
     // C-ABI plugins from `<exe_dir>/plugins/`. Unaffected by static linking:
     // they link no Bevy at all, so there is no ABI to match — the interface is
     // passed in as a function table.
-    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin { is_editor: true });
+    // No `statics`: linking plugins in is an export-time choice for a shipped
+    // game, and it would cost the editor the thing it needs most from them —
+    // hot reload, which needs a file on disk to watch and swap.
+    app.add_plugins(renzora_plugin::host::loader::RenzoraPluginHostPlugin {
+        is_editor: true,
+        statics: Vec::new(),
+    });
     // Render passes those plugins registered. Separate plugin because the work
     // happens in `finish`, after every `build` has run and the render sub-app
     // exists.

@@ -7337,6 +7337,7 @@ dependencies = [
  "renzora_plugin",
  "renzora_postprocess",
  "renzora_runtime",
+ "renzora_static_plugins",
  "toml 0.8.23",
  "uuid",
  "wasm-bindgen",
@@ -8865,6 +8866,13 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_ssr",
+]
+
+[[package]]
+name = "renzora_static_plugins"
+version = "0.1.0"
+dependencies = [
+ "renzora_plugin",
 ]
 
 [[package]]
