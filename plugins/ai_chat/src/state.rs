@@ -388,10 +388,12 @@ pub fn bsn_escape(s: &str) -> String {
 /// plugin cannot reach the editor's own text styles.
 pub fn text(body: &str, size: f32) -> String {
     format!(
-        // `{size:.1}`, not `{size}`. A whole-number f32 formats as `12`, and BSN
-        // reads that as an integer and refuses it — "TextFont.font_size could
-        // not read `12`". The field wants a float literal, so force the decimal.
-        "( Text(\"{}\") TextFont {{ font_size: {size:.1} }} )",
+        // `Px(..)`, not a bare number. `TextFont::font_size` is a `FontSize`
+        // enum — `Px`/`Vw`/`Vh`/`Rem` — not an `f32`, so `font_size: 12.0` is a
+        // type error that BSN reports as "could not read `12.0`" and then drops
+        // the field, leaving the text at the base UI size. The decimal is still
+        // required inside it: `Px(12)` fails the same way.
+        "( Text(\"{}\") TextFont {{ font_size: Px({size:.1}) }} )",
         bsn_escape(body)
     )
 }
@@ -405,7 +407,16 @@ pub fn text(body: &str, size: f32) -> String {
 /// and never dispatches.
 pub fn button(label: &str, action: u32) -> String {
     format!(
-        "( Node {{ padding: {{ left: Px(8.0), right: Px(8.0), top: Px(3.0), bottom: Px(3.0) }} }}          Button Interaction PanelActionId {{ action: {action} }}          Children [ {} ] )",
+        // `Button` is spelled with its FULL type path. BSN resolves a bare name
+        // through `get_with_short_type_path`, which returns nothing when the
+        // short name is ambiguous — and this build has two `Button` types,
+        // `bevy_ui::widget::button::Button` and `bevy_ui_widgets::Button`, so
+        // the bare form silently resolved to neither and logged "no component
+        // called `Button`". The full path is matched first and cannot be
+        // ambiguous.
+        "( Node {{ padding: {{ left: Px(8.0), right: Px(8.0), top: Px(3.0), bottom: Px(3.0) }} }} \
+         bevy_ui::widget::button::Button Interaction PanelActionId {{ action: {action} }} \
+         Children [ {} ] )",
         text(label, 12.0)
     )
 }
