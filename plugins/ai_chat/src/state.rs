@@ -388,7 +388,10 @@ pub fn bsn_escape(s: &str) -> String {
 /// plugin cannot reach the editor's own text styles.
 pub fn text(body: &str, size: f32) -> String {
     format!(
-        "( Text(\"{}\") TextFont {{ font_size: {size} }} )",
+        // `{size:.1}`, not `{size}`. A whole-number f32 formats as `12`, and BSN
+        // reads that as an integer and refuses it — "TextFont.font_size could
+        // not read `12`". The field wants a float literal, so force the decimal.
+        "( Text(\"{}\") TextFont {{ font_size: {size:.1} }} )",
         bsn_escape(body)
     )
 }
