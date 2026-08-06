@@ -292,8 +292,37 @@ fn spawn_build(tx: Sender<PluginBuildResult>, plugin: String, dir: PathBuf, stag
 /// directory, because a crate's library name need not match its folder.
 fn stage(dir: &Path, stage_to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(stage_to)?;
-    let from = dir.join("target").join("dist");
     let suffix = format!(".{}", std::env::consts::DLL_EXTENSION);
+
+    // Two possible artifact directories, and the shared one is now the normal
+    // case. `plugins/.cargo/config.toml` sets `target-dir = "target"`, which
+    // cargo resolves relative to THAT file's directory — so every plugin builds
+    // into `plugins/target/`, not `plugins/<name>/target/`. Looking only in the
+    // per-plugin location failed with a bare "cannot find the path" for every
+    // plugin, because that directory has not existed since the shared target dir
+    // was introduced as a build-time optimisation.
+    //
+    // The per-plugin path is still tried first: a plugin built outside this
+    // checkout has one, and it is the more specific answer when both exist.
+    let own = dir.join("target").join("dist");
+    let shared = dir
+        .parent()
+        .map(|p| p.join("target").join("dist"))
+        .unwrap_or_else(|| own.clone());
+    let (from, shared_dir) = if own.is_dir() {
+        (own, false)
+    } else {
+        (shared, true)
+    };
+
+    // Every plugin's artifacts sit in the shared directory, so copying the lot
+    // would restage all of them on every keystroke — and would overwrite a
+    // plugin the editor has loaded with whatever happened to be built last. Take
+    // only this one, matched on the directory name.
+    let want = dir
+        .file_name()
+        .map(|n| format!("{}{suffix}", n.to_string_lossy()));
+
     let mut copied = 0;
     for entry in std::fs::read_dir(&from)?.flatten() {
         let path = entry.path();
@@ -304,13 +333,29 @@ fn stage(dir: &Path, stage_to: &Path) -> std::io::Result<()> {
         if !name.to_string_lossy().ends_with(&suffix) {
             continue;
         }
+        // Only filter in the shared directory. A per-plugin `target/` holds one
+        // plugin's output, and its library name need not match its folder.
+        if shared_dir {
+            match &want {
+                Some(w) if name.to_string_lossy() != *w => continue,
+                None => continue,
+                _ => {}
+            }
+        }
         std::fs::copy(&path, stage_to.join(&name))?;
         copied += 1;
     }
     if copied == 0 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
-            format!("no {suffix} in {} — is it a cdylib?", from.display()),
+            // Naming what was looked for, not just where: in the shared
+            // directory the usual cause is a package name that differs from the
+            // folder name, and "no .dll in plugins/target/dist" is actively
+            // misleading when 60 of them are sitting there.
+            match &want {
+                Some(w) => format!("no {w} in {} — is it a cdylib, and does the package name match the folder?", from.display()),
+                None => format!("no {suffix} in {} — is it a cdylib?", from.display()),
+            },
         ));
     }
     Ok(())
