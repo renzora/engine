@@ -138,6 +138,12 @@ impl Plugin for PluginDialogBridge {
         // one — the poller treats its absence as "no replies", so a bridge that
         // produces them has to put it there.
         app.init_resource::<PluginServiceReplies>();
-        app.add_systems(Update, drain_plugin_dialogs);
+        // `PostUpdate`: a plugin's service call is a DEFERRED command and only
+        // reaches `PluginServiceCalls` when `Update`'s queue flushes, i.e. after
+        // every `Update` system. Draining from `Update` therefore claimed the queue
+        // before the call was in it, and the `Last` sweep
+        // (`discard_unhandled_service_calls`) binned it before the next frame could
+        // look — so calls were silently lost, every frame, with nothing logged.
+        app.add_systems(PostUpdate, drain_plugin_dialogs);
     }
 }

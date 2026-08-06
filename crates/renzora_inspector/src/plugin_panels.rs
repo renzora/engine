@@ -233,10 +233,25 @@ pub fn register_plugin_panels(app: &mut App) {
             dispatch_input_changes,
             dispatch_value_changes,
             apply_bindings,
-            // Ordered before the redraw, so markup a plugin set this frame is
-            // picked up this frame rather than next. A frame of latency would
-            // be invisible most of the time and maddening for anything
-            // animated, which is exactly what dynamic panels are for.
+        ),
+    );
+    // `PostUpdate`, not `Update`, and this is load-bearing rather than tidy.
+    //
+    // A plugin's `set_panel_content` is a DEFERRED command: it reaches
+    // `PluginServiceCalls` only when `Update`'s command queue flushes, which is
+    // after every `Update` system has run. Sitting in `Update` alongside the
+    // plugin dispatcher, this claimed the queue *before* the call was in it, and
+    // then `discard_unhandled_service_calls` — the `Last` sweep that stops a
+    // build with no bridge growing the queue forever — binned it before the next
+    // frame could look. Every single call was queued and swept, which presents
+    // as a panel that renders once and never updates again, with nothing logged
+    // anywhere.
+    //
+    // Running here puts it after the flush and before the sweep, so a call made
+    // during `Update` is claimed in the same frame it was made.
+    app.add_systems(
+        PostUpdate,
+        (
             apply_panel_content.before(refresh_reloaded_panels),
             refresh_reloaded_panels,
         ),

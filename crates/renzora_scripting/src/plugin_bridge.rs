@@ -213,8 +213,14 @@ pub fn route_plugin_http_responses(
 /// Wires both directions up.
 pub fn install(app: &mut App) {
     app.init_resource::<PluginHttpInbox>();
+    // `PostUpdate`: a plugin's service call is a DEFERRED command and only
+    // reaches `PluginServiceCalls` when `Update`'s queue flushes, i.e. after
+    // every `Update` system. Draining from `Update` therefore claimed the queue
+    // before the call was in it, and the `Last` sweep
+    // (`discard_unhandled_service_calls`) binned it before the next frame could
+    // look — so calls were silently lost, every frame, with nothing logged.
     app.add_systems(
-        Update,
+        PostUpdate,
         (drain_plugin_http_requests, route_plugin_http_responses).chain(),
     );
 }
