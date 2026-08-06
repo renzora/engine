@@ -681,6 +681,41 @@ fn collect(http: Http) {
 
 This exists because a plugin genuinely cannot do it itself. Nothing stops it from linking `reqwest`, but it would then own a runtime, a thread pool and a TLS stack per plugin, all of which the engine already has. Riding the engine's client also means a request goes through the same proxy and certificate configuration as everything else.
 
+### Streaming responses
+
+`poll` waits for the whole body. For an endpoint that answers over a long-lived connection — an LLM streaming tokens as NDJSON or SSE, a progress feed, a tailed log — that defeats the point: you get everything at the end, or nothing.
+
+`http_get_stream` / `http_post_stream` deliver the body in pieces instead:
+
+```rust
+use renzora_plugin::http::{Http, HttpCommands};
+
+const REPLY: u64 = 2;
+
+fn ask(mut commands: Commands) {
+    commands.http_post_stream(REPLY, "http://localhost:11434/api/chat", r#"{"stream":true}"#);
+}
+
+fn collect(http: Http, mut state: ResMut<Reply>) {
+    while let Some(chunk) = http.poll_stream(REPLY) {
+        state.text.push_str(&chunk.data);
+        if chunk.is_last() {
+            state.done = true;
+            break;
+        }
+    }
+}
+```
+
+Four things to hold on to:
+
+- **Poll in a `while` loop, not an `if`.** Several chunks usually land in one frame, and taking one per frame would make a fast reply arrive in slow motion.
+- **Stop at `is_last()`.** Every stream ends with exactly one terminal chunk — `End` normally, `Error` if it failed after the response began, with the error text in `data`. It arrives whatever happens, so a plugin waiting for it will not wait forever. Polling past it just returns `None`.
+- **Chunks are transport-sized, not message-sized.** A chunk is whatever came off the socket, so a JSON object can be split across two of them and two objects can share one. Accumulate and split on your API's own framing — that is why the host does not try to guess it.
+- **`status` repeats on every chunk**, so a plugin that keeps only the latest still knows it. A `0` means the request never reached a response at all.
+
+Streaming and whole-body requests share one queue but never cross: a chunk is invisible to `poll`, and a completed body is invisible to `poll_stream`. Mixing both in one plugin, on different tags, is fine.
+
 ## Domain modules
 
 Animation, physics and HTTP all ride the same mechanism, and the shape matters more than any one of them.

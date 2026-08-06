@@ -27,8 +27,9 @@ use bevy::prelude::*;
 
 use renzora_plugin::host::{PluginHttpInbox, PluginHttpResponse, PluginServiceCalls};
 use renzora_plugin::http::{HttpHeader, HttpOp};
+use renzora_plugin::sys;
 
-use crate::http::HttpInbox;
+use crate::http::{ChunkKind, HttpInbox};
 
 
 /// Callback name used for plugin requests inside [`HttpInbox`].
@@ -93,12 +94,15 @@ pub fn drain_plugin_http_requests(
             continue;
         }
 
-        inbox.request(
-            op.name().to_string(),
-            url,
-            body,
-            format!("{PLUGIN_CALLBACK}{}", hdr.tag),
-        );
+        let callback = format!("{PLUGIN_CALLBACK}{}", hdr.tag);
+        // The verb is the same either way — streaming is a delivery mode, not a
+        // different method — so the only thing the op decides is which inbox
+        // entry point runs the request.
+        if op.is_streaming() {
+            inbox.request_stream(op.name().to_string(), url, body, callback);
+        } else {
+            inbox.request(op.name().to_string(), url, body, callback);
+        }
     }
 }
 
@@ -124,6 +128,15 @@ pub fn route_plugin_http_responses(
                 tag,
                 status: result.status,
                 body: result.body,
+                // The client's ChunkKind and the ABI's are deliberately separate
+                // types — the script client predates the plugin boundary and
+                // must keep working in a build with no plugin host — so the
+                // mapping happens here, at the one place they meet.
+                chunk: result.chunk.map(|k| match k {
+                    ChunkKind::Data => sys::HttpChunkKind::Data,
+                    ChunkKind::End => sys::HttpChunkKind::End,
+                    ChunkKind::Error => sys::HttpChunkKind::Error,
+                }),
             }),
             Err(_) => warn!("[http] plugin response has an unparseable tag `{tag}`"),
         }

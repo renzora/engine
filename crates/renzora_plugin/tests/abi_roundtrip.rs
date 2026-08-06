@@ -49,6 +49,156 @@ unsafe extern "C" fn spinner_init(
     sys::InitResult::Ok
 }
 
+/// Tag the streaming plugin below uses. Arbitrary — the point is only that the
+/// host routes by it.
+#[cfg(feature = "http")]
+const STREAM_TAG: u64 = 0xBEEF;
+
+/// What the streaming plugin saw, in order: `(body, kind)`.
+///
+/// A `static` because the "plugin" here is compiled into the test binary, so it
+/// really can share one — a `dlopen`'d plugin would use its own. That is the
+/// standard shape for plugin state anyway, since a system must be zero-sized
+/// and cannot capture.
+#[cfg(feature = "http")]
+static STREAM_LOG: std::sync::Mutex<Vec<(String, u32)>> = std::sync::Mutex::new(Vec::new());
+
+/// Drain every chunk available this frame, stopping at the terminal one.
+#[cfg(feature = "http")]
+fn read_stream(http: renzora_plugin::http::Http) {
+    while let Some(chunk) = http.poll_stream(STREAM_TAG) {
+        if let Ok(mut log) = STREAM_LOG.lock() {
+            log.push((chunk.data.clone(), chunk.kind.0));
+        }
+        if chunk.is_last() {
+            break;
+        }
+    }
+}
+
+#[cfg(feature = "http")]
+unsafe extern "C" fn stream_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.add_systems(ecs::Schedule::Update, read_stream);
+    sys::InitResult::Ok
+}
+
+/// A streaming response reaches the plugin in order, exactly once each, and the
+/// end marker is consumed rather than re-delivered forever.
+///
+/// That last clause is the one worth a test. A terminal chunk has an empty body,
+/// so the guest's "am I the consuming pass" test — a non-null buffer with
+/// capacity — would be false for it if the guest sized its buffer from
+/// `body_len`. It allocates a one-byte scratch buffer instead; without that the
+/// host never removes the marker and every subsequent frame re-reads it, so the
+/// plugin's `while let` never terminates.
+#[cfg(feature = "http")]
+#[test]
+fn a_streamed_response_arrives_in_order_and_ends_once() {
+    use renzora_plugin::host::{PluginHttpInbox, PluginHttpResponse};
+
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    STREAM_LOG.lock().unwrap().clear();
+    // The real engine gets this from `plugin_bridge::install`, which lives in
+    // renzora_scripting — the crate that owns the HTTP client. This test app has
+    // no bridge, so the landing zone has to be added by hand.
+    app.init_resource::<PluginHttpInbox>();
+
+    assert_eq!(
+        unsafe { abi_host::init_plugin(app.world_mut(), stream_init) },
+        sys::InitResult::Ok,
+    );
+
+    let queue = |world: &mut World, body: &str, kind: sys::HttpChunkKind| {
+        world
+            .resource_mut::<PluginHttpInbox>()
+            .0
+            .push(PluginHttpResponse {
+                tag: STREAM_TAG,
+                status: 200,
+                body: body.to_string(),
+                chunk: Some(kind),
+            });
+    };
+
+    queue(app.world_mut(), "one", sys::HttpChunkKind::Data);
+    queue(app.world_mut(), "two", sys::HttpChunkKind::Data);
+    queue(app.world_mut(), "", sys::HttpChunkKind::End);
+
+    app.update();
+
+    let seen = STREAM_LOG.lock().unwrap().clone();
+    assert_eq!(
+        seen,
+        vec![
+            ("one".to_string(), sys::HttpChunkKind::Data.0),
+            ("two".to_string(), sys::HttpChunkKind::Data.0),
+            (String::new(), sys::HttpChunkKind::End.0),
+        ],
+        "chunks arrived out of order, were dropped, or the end marker was missed"
+    );
+
+    // Nothing is left behind: an unconsumed end marker would sit here forever
+    // and be re-delivered on every future frame.
+    assert!(
+        app.world().resource::<PluginHttpInbox>().0.is_empty(),
+        "the inbox still holds chunks after the plugin drained the stream"
+    );
+
+    // And a second frame adds nothing, which is the re-delivery bug stated as an
+    // assertion rather than as a comment.
+    app.update();
+    assert_eq!(
+        STREAM_LOG.lock().unwrap().len(),
+        3,
+        "a chunk was delivered more than once"
+    );
+}
+
+/// A whole-body response and a stream chunk share one queue, and `poll` must not
+/// hand over a piece of a stream as if it were a complete body.
+#[cfg(feature = "http")]
+#[test]
+fn poll_does_not_steal_stream_chunks() {
+    use renzora_plugin::host::{PluginHttpInbox, PluginHttpResponse};
+
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    STREAM_LOG.lock().unwrap().clear();
+    // The real engine gets this from `plugin_bridge::install`, which lives in
+    // renzora_scripting — the crate that owns the HTTP client. This test app has
+    // no bridge, so the landing zone has to be added by hand.
+    app.init_resource::<PluginHttpInbox>();
+
+    assert_eq!(
+        unsafe { abi_host::init_plugin(app.world_mut(), stream_init) },
+        sys::InitResult::Ok,
+    );
+
+    // A chunk queued FIRST, so a `poll` that matched on tag alone would take it.
+    app.world_mut()
+        .resource_mut::<PluginHttpInbox>()
+        .0
+        .push(PluginHttpResponse {
+            tag: STREAM_TAG,
+            status: 200,
+            body: "chunk".into(),
+            chunk: Some(sys::HttpChunkKind::End),
+        });
+
+    app.update();
+
+    assert_eq!(
+        STREAM_LOG.lock().unwrap().len(),
+        1,
+        "the stream poller did not receive its chunk"
+    );
+}
+
 /// Serialises every test that loads a plugin.
 ///
 /// A component's id is cached on a per-type `static`, and a system reads that

@@ -215,6 +215,8 @@ pub const VERSION_MAJOR: u32 = 4;
 /// 0 -> 1 appended `SystemCall::removed`.
 /// 1 -> 2 appended `Access::Added` and `Access::Changed`.
 /// 2 -> 3 appended `add_script_backend`.
+/// 3 -> 4 appended `HttpSource::poll_stream` and [`HttpChunkRead`], for
+///          responses that arrive in pieces rather than all at once.
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -246,7 +248,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 3;
+pub const VERSION_MINOR: u32 = 4;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1073,6 +1075,88 @@ impl HttpRead {
     };
 }
 
+/// What a [`HttpChunkRead`] is carrying.
+///
+/// A separate word rather than an overloaded `status`, because all three states
+/// can legitimately carry a 200: a chunk, the end marker that follows the last
+/// chunk, and an error that struck mid-stream after the headers were already
+/// sent. Encoding "finished" as an empty body would collide with a server that
+/// legitimately emits an empty chunk, which SSE keep-alives do.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct HttpChunkKind(pub u32);
+
+#[allow(non_upper_case_globals)]
+impl HttpChunkKind {
+    /// Body bytes. More may follow.
+    pub const Data: Self = Self(0);
+    /// The stream ended normally. No more chunks for this tag.
+    pub const End: Self = Self(1);
+    /// The stream failed; the body holds the error text. Terminal, like `End`.
+    pub const Error: Self = Self(2);
+
+    pub const fn is_known(self) -> bool {
+        self.0 < 3
+    }
+
+    /// Whether this is the last chunk for its tag.
+    pub const fn is_terminal(self) -> bool {
+        self.0 == 1 || self.0 == 2
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self.0 {
+            0 => "Data",
+            1 => "End",
+            2 => "Error",
+            _ => "?",
+        }
+    }
+}
+
+// Written out rather than derived, matching `HttpOp`: the value is an
+// append-only integer, so an unknown one has to print as something rather than
+// panic or print a bare number a reader cannot place.
+impl core::fmt::Debug for HttpChunkKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+/// One piece of a streaming HTTP response.
+///
+/// Deliberately a NEW struct rather than fields appended to [`HttpRead`]. That
+/// struct is allocated by the *plugin* and written by the host, so growing it
+/// would have a new host write past the end of an old plugin's allocation — the
+/// append-only rule protects the [`Interface`] table, not plugin-owned memory.
+/// A new struct has no older version to be confused with.
+#[repr(C)]
+pub struct HttpChunkRead {
+    /// In: how many bytes `body` holds. Out: unchanged.
+    pub body_capacity: usize,
+    pub body: *mut u8,
+    /// Out: this chunk's full length, whatever the capacity was.
+    pub body_len: usize,
+    /// Out: which of [`HttpChunkKind`] this is.
+    pub kind: HttpChunkKind,
+    /// Out: HTTP status, repeated on every chunk of a stream so a plugin that
+    /// only keeps the latest chunk still knows it.
+    pub status: u16,
+    pub _pad: [u8; 2],
+}
+
+impl HttpChunkRead {
+    /// A length-only probe — the first of the two passes.
+    pub const COUNTS_ONLY: Self = Self {
+        body_capacity: 0,
+        body: core::ptr::null_mut(),
+        body_len: 0,
+        kind: HttpChunkKind::Data,
+        status: 0,
+        _pad: [0; 2],
+    };
+}
+
 /// Delivers completed HTTP responses during one system call.
 #[repr(C)]
 pub struct HttpSource {
@@ -1085,6 +1169,26 @@ pub struct HttpSource {
         src: *mut HttpSource,
         tag: u64,
         out: *mut HttpRead,
+    ) -> bool,
+
+    // ── Added in MINOR 4.4 ────────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT.
+    /// Take the next *chunk* for `tag`, for a request issued with one of the
+    /// streaming verbs.
+    ///
+    /// Same two-pass, delivered-once contract as [`poll`](Self::poll). The
+    /// difference is that one request yields many of these, in order, ending
+    /// with a [`HttpChunkKind::End`] or [`HttpChunkKind::Error`] — so a caller
+    /// polls until `is_terminal()` rather than until it gets something.
+    ///
+    /// Appending to this struct is safe in the direction that matters: the host
+    /// allocates it, so an older plugin simply never reads this field, and a
+    /// plugin *newer* than its host is refused by the `VERSION_MINOR` check
+    /// before it can call anything.
+    pub poll_stream: unsafe extern "C" fn(
+        src: *mut HttpSource,
+        tag: u64,
+        out: *mut HttpChunkRead,
     ) -> bool,
 }
 

@@ -54,15 +54,26 @@ pub struct HttpOp(pub u32);
 impl HttpOp {
     pub const Get: Self = Self(0);
     pub const Post: Self = Self(1);
+    /// `GET`, delivered in pieces — poll with [`Http::poll_stream`].
+    pub const GetStream: Self = Self(2);
+    /// `POST`, delivered in pieces — poll with [`Http::poll_stream`].
+    pub const PostStream: Self = Self(3);
 
     pub const fn is_known(self) -> bool {
-        self.0 < 2
+        self.0 < 4
     }
 
+    /// Whether the response arrives as chunks rather than one body.
+    pub const fn is_streaming(self) -> bool {
+        self.0 == 2 || self.0 == 3
+    }
+
+    /// The HTTP verb. Streaming is a delivery mode, not a different method, so
+    /// the two stream ops name the same verbs the host would otherwise send.
     pub const fn name(self) -> &'static str {
         match self.0 {
-            0 => "GET",
-            1 => "POST",
+            0 | 2 => "GET",
+            1 | 3 => "POST",
             _ => "?",
         }
     }
@@ -155,6 +166,84 @@ impl Http<'_> {
     }
 }
 
+/// One piece of a streaming response.
+#[derive(Clone, Debug)]
+pub struct HttpChunk {
+    /// HTTP status, repeated on every chunk so a plugin that keeps only the
+    /// latest still knows it. 0 means the request never reached a response.
+    pub status: u16,
+    /// Body bytes for this chunk. Empty on [`HttpChunkKind::End`].
+    pub data: String,
+    pub kind: sys::HttpChunkKind,
+}
+
+impl HttpChunk {
+    /// Whether this is the last chunk for its tag — stop polling after it.
+    pub fn is_last(&self) -> bool {
+        self.kind.is_terminal()
+    }
+
+    /// Whether the stream ended because something went wrong. `data` then holds
+    /// the error text.
+    pub fn is_error(&self) -> bool {
+        self.kind == sys::HttpChunkKind::Error
+    }
+}
+
+impl Http<'_> {
+    /// Take the next chunk for `tag`, for a request issued with
+    /// [`HttpOp::GetStream`] or [`HttpOp::PostStream`].
+    ///
+    /// Unlike [`poll`](Self::poll), one request produces **many** of these. Call
+    /// it in a loop until it returns `None` (nothing more this frame) and stop
+    /// for good once a chunk reports [`is_last`](HttpChunk::is_last) — a
+    /// terminal chunk is the host's promise that the tag is finished, and
+    /// polling past it just returns `None` forever.
+    ///
+    /// ```ignore
+    /// while let Some(chunk) = http.poll_stream(MY_TAG) {
+    ///     reply.push_str(&chunk.data);
+    ///     if chunk.is_last() { break; }
+    /// }
+    /// ```
+    pub fn poll_stream(&self, tag: u64) -> Option<HttpChunk> {
+        if self.src.is_null() {
+            return None;
+        }
+        // Two passes, same as `poll`: the probe must not consume, or a caller
+        // that fails to allocate would silently drop a chunk out of the middle
+        // of a stream — which, unlike dropping a whole response, would corrupt
+        // the reply rather than merely losing it.
+        let mut probe = sys::HttpChunkRead::COUNTS_ONLY;
+        unsafe {
+            if !((*self.src).poll_stream)(self.src, tag, &mut probe) {
+                return None;
+            }
+        }
+        // A terminal chunk carries no body, so there is nothing to allocate and
+        // nothing to fill — but it still has to be CONSUMED, or the same end
+        // marker is returned every frame forever. A one-byte scratch buffer is
+        // what makes the second pass a consuming one.
+        let mut body = vec![0u8; probe.body_len.max(1)];
+        let mut fill = sys::HttpChunkRead {
+            body_capacity: body.len(),
+            body: body.as_mut_ptr(),
+            ..sys::HttpChunkRead::COUNTS_ONLY
+        };
+        unsafe {
+            if !((*self.src).poll_stream)(self.src, tag, &mut fill) {
+                return None;
+            }
+        }
+        body.truncate(fill.body_len);
+        Some(HttpChunk {
+            status: fill.status,
+            data: String::from_utf8_lossy(&body).into_owned(),
+            kind: fill.kind,
+        })
+    }
+}
+
 unsafe impl crate::ecs::SystemParam for Http<'_> {
     fn declare(_: &mut crate::ecs::InitCtx, _: &mut crate::ecs::SystemBuilder) {}
     unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
@@ -174,6 +263,15 @@ pub trait HttpCommands {
     fn http_get(&mut self, tag: u64, url: &str) -> &mut Self;
     /// POST `body` to `url`; poll [`Http`] for `tag` to collect the response.
     fn http_post(&mut self, tag: u64, url: &str, body: &str) -> &mut Self;
+
+    /// GET `url`, delivered in pieces — poll [`Http::poll_stream`] for `tag`.
+    fn http_get_stream(&mut self, tag: u64, url: &str) -> &mut Self;
+    /// POST `body` to `url`, delivered in pieces — poll [`Http::poll_stream`].
+    ///
+    /// This is the shape a token-streaming chat API wants: the reply arrives as
+    /// NDJSON or SSE over one long-lived response, and waiting for the whole
+    /// body would defeat the point of streaming it.
+    fn http_post_stream(&mut self, tag: u64, url: &str, body: &str) -> &mut Self;
 }
 
 impl HttpCommands for Commands<'_> {
@@ -205,5 +303,13 @@ impl HttpCommands for Commands<'_> {
 
     fn http_post(&mut self, tag: u64, url: &str, body: &str) -> &mut Self {
         self.http(HttpOp::Post, tag, url, Some(body))
+    }
+
+    fn http_get_stream(&mut self, tag: u64, url: &str) -> &mut Self {
+        self.http(HttpOp::GetStream, tag, url, None)
+    }
+
+    fn http_post_stream(&mut self, tag: u64, url: &str, body: &str) -> &mut Self {
+        self.http(HttpOp::PostStream, tag, url, Some(body))
     }
 }

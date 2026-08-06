@@ -1330,7 +1330,7 @@ unsafe extern "C" fn add_material(
 #[derive(Resource, Default)]
 pub struct PluginHttpInbox(pub Vec<PluginHttpResponse>);
 
-/// One completed response.
+/// One completed response, or one piece of a streaming one.
 pub struct PluginHttpResponse {
     /// The tag the plugin supplied with the request.
     pub tag: u64,
@@ -1338,6 +1338,15 @@ pub struct PluginHttpResponse {
     /// error text.
     pub status: u16,
     pub body: String,
+    /// `None` for a whole-body response, collected through `HttpSource::poll`.
+    /// `Some(..)` for one piece of a stream, collected through
+    /// `HttpSource::poll_stream`.
+    ///
+    /// The two populations share this queue but not their consumers, and the
+    /// distinction has to be explicit: both pollers match on `tag` alone, so a
+    /// stream chunk reaching `poll` would be handed over as if it were the
+    /// entire body, and the plugin would act on a third of a JSON document.
+    pub chunk: Option<sys::HttpChunkKind>,
 }
 
 /// Backs [`sys::HttpSource`] for one system call.
@@ -1366,7 +1375,14 @@ unsafe extern "C" fn http_poll(
     let Some(inbox) = me.inbox.as_deref_mut() else {
         return false;
     };
-    let Some(at) = inbox.0.iter().position(|r| r.tag == tag) else {
+    // `chunk.is_none()` matters as much as the tag: stream pieces sit in the
+    // same queue, and handing one to a caller expecting a whole body would look
+    // like a complete response that happens to be truncated.
+    let Some(at) = inbox
+        .0
+        .iter()
+        .position(|r| r.tag == tag && r.chunk.is_none())
+    else {
         return false;
     };
 
@@ -1374,6 +1390,59 @@ unsafe extern "C" fn http_poll(
     {
         let r = &inbox.0[at];
         out.status = r.status;
+        out.body_len = r.body.len();
+        if consuming {
+            let n = out.body_capacity.min(r.body.len());
+            std::ptr::copy_nonoverlapping(r.body.as_ptr(), out.body, n);
+            out.body_len = n;
+        }
+    }
+    if consuming {
+        inbox.0.remove(at);
+    }
+    true
+}
+
+/// Hand the plugin the next *chunk* for `tag`. Backs
+/// [`sys::HttpSource::poll_stream`].
+///
+/// Same two-pass contract as [`http_poll`], with one difference that matters: a
+/// terminal chunk carries no body, so `body_len` is 0 and the guest's "is this
+/// the consuming pass" test — a non-null buffer with capacity — is the only
+/// thing that can distinguish the two passes. The guest allocates a one-byte
+/// scratch buffer for exactly this reason; without it an end marker would be
+/// re-delivered every frame forever, and the plugin would never see the stream
+/// finish.
+unsafe extern "C" fn http_poll_stream(
+    src: *mut sys::HttpSource,
+    tag: u64,
+    out: *mut sys::HttpChunkRead,
+) -> bool {
+    let me = &mut *(src as *mut HttpSourceImpl);
+    let out = &mut *out;
+    out.body_len = 0;
+    out.status = 0;
+    out.kind = sys::HttpChunkKind::Data;
+
+    let Some(inbox) = me.inbox.as_deref_mut() else {
+        return false;
+    };
+    // Chunks only, and the FIRST one — `position` is what keeps a stream in
+    // order. Delivering out of order would silently scramble a reply, which is
+    // far worse than dropping it.
+    let Some(at) = inbox
+        .0
+        .iter()
+        .position(|r| r.tag == tag && r.chunk.is_some())
+    else {
+        return false;
+    };
+
+    let consuming = !out.body.is_null() && out.body_capacity > 0;
+    {
+        let r = &inbox.0[at];
+        out.status = r.status;
+        out.kind = r.chunk.unwrap_or(sys::HttpChunkKind::Data);
         out.body_len = r.body.len();
         if consuming {
             let n = out.body_capacity.min(r.body.len());
@@ -3107,7 +3176,10 @@ fn build_dispatcher(
             }
 
             let mut http_src = HttpSourceImpl {
-                src: sys::HttpSource { poll: http_poll },
+                src: sys::HttpSource {
+                    poll: http_poll,
+                    poll_stream: http_poll_stream,
+                },
                 inbox: http_inbox.map(|i| i.into_inner()),
             };
             let mut image_src = ImageSourceImpl {

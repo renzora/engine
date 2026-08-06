@@ -185,10 +185,35 @@ const GOLDEN: &[Golden] = &[
             "_pad: [u8; 6]",
         ],
     },
+    // Crosses the boundary: written by the host into a plugin-allocated
+    // `HttpChunkRead`. An append-only integer, like `Access` and `SystemStatus`.
+    Golden {
+        name: "HttpChunkKind",
+        fields: &[
+            "0: u32",
+        ],
+    },
+    // Crosses the boundary, plugin-allocated. Deliberately a NEW struct rather
+    // than fields appended to `HttpRead`: the host writes into memory the plugin
+    // owns, so growing that one would write past an older plugin's allocation.
+    Golden {
+        name: "HttpChunkRead",
+        fields: &[
+            "body_capacity: usize",
+            "body: *mut u8",
+            "body_len: usize",
+            "kind: HttpChunkKind",
+            "status: u16",
+            "_pad: [u8; 2]",
+        ],
+    },
     Golden {
         name: "HttpSource",
         fields: &[
             "poll: unsafe extern \"C\" fn( src: *mut HttpSource, tag: u64, out: *mut HttpRead, ) -> bool",
+            // Appended in MINOR 4.4. Host-allocated, so an older plugin never
+            // reads it and a newer one is refused by the version check.
+            "poll_stream: unsafe extern \"C\" fn( src: *mut HttpSource, tag: u64, out: *mut HttpChunkRead, ) -> bool",
         ],
     },
     Golden {
