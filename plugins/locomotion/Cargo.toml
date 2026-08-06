@@ -13,9 +13,11 @@ crate-type = ["cdylib"]
 # `anim` is opt-in. Animation is not part of the ABI — it is an ordinary user of
 # the generic service command — so a plugin that never animates anything leaves
 # this feature off and the boundary never learns that animation exists.
-renzora_plugin = { path = "../../crates/renzora_plugin", features = ["anim"] }
+renzora_plugin = { path = "../../crates/renzora_plugin", default-features = false, features = ["libm", "anim"] }
 
 [profile.dist]
 inherits = "release"
 opt-level = 2
 strip = "symbols"
+# no_std cannot unwind on stable.
+panic = "abort"

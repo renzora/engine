@@ -1,3 +1,4 @@
+#![no_std]
 //! CRT screen effect, as a standalone C-ABI plugin.
 //!
 //! One of the first three effects moved off the Bevy-linking `crates/renzora_crt`,
@@ -23,6 +24,13 @@
 //! The plugin links no Bevy: it rebuilds in about a second and hot-reloads, WGSL
 //! included — `include_str!` rather than an embedded asset, so editing the shader
 //! is a source change the watcher already sees.
+
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
 
 use renzora_plugin::prelude::*;
 

@@ -1,3 +1,4 @@
+#![no_std]
 //! Drives an animator from movement speed, as a standalone C-ABI plugin.
 //!
 //! This is the worked example for the animation surface, and it exists to show
@@ -26,6 +27,13 @@
 //! folded at compile time — the plugin never sees the string and does not need
 //! to. What it cannot do is *discover* a clip name it was not already looking
 //! for; see `sys::AnimState` for why that trade is the right one.
+
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
 
 use renzora_plugin::prelude::*;
 // Animation is a feature-gated domain module, not part of the ABI, so it is not

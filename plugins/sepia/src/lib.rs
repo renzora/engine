@@ -1,3 +1,4 @@
+#![no_std]
 //! Sepia tone mapping, as a standalone C-ABI plugin.
 //!
 //! The simplest of the three conversions, and the one that shows `#[field(skip)]`:
@@ -6,6 +7,13 @@
 //! them in the struct and out of the inspector.
 //!
 //! See `plugins/crt` for why there is no padding and no `enabled` flag.
+
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
 
 use renzora_plugin::prelude::*;
 

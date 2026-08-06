@@ -1,9 +1,17 @@
+#![no_std]
 //! God Rays post-process effect.
 //!
 //! Converted from `crates/renzora_god_rays`, which wrote its `PostProcessEffect`
 //! impl and its `InspectorEntry` by hand rather than using `#[post_process]`.
 //! The ranges below came from that entry's `FieldDef` list. See `plugins/crt` for
 //! the conversion notes.
+
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
 
 use renzora_plugin::prelude::*;
 

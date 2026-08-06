@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 # One dependency, and it has none of its own. No bevy, no renzora, no workspace,
 # no pinned toolchain — the whole manifest a third-party author writes.
 [dependencies]
-renzora_plugin = { path = "../../crates/renzora_plugin" }
+renzora_plugin = { path = "../../crates/renzora_plugin", default-features = false, features = ["libm"] }
 
 # Mirrors the engine's `dist` profile. Needed in full because this is its own
 # workspace root and inherits nothing.
@@ -23,3 +23,5 @@ renzora_plugin = { path = "../../crates/renzora_plugin" }
 inherits = "release"
 opt-level = 2
 strip = "symbols"
+# no_std cannot unwind on stable.
+panic = "abort"

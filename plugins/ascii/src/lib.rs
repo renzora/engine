@@ -1,8 +1,16 @@
+#![no_std]
 //! ASCII art post-process, as a standalone C-ABI plugin.
 //!
 //! Three settings, three fields — 12 bytes, which the host rounds to a 16-byte
 //! uniform buffer on its own. The old version of this effect padded to 32 by hand;
 //! see `plugins/crt` for why that is gone.
+
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
 
 use renzora_plugin::prelude::*;
 

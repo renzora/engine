@@ -10,9 +10,11 @@ description = "Pillarbox post-process effect."
 crate-type = ["cdylib"]
 
 [dependencies]
-renzora_plugin = { path = "../../crates/renzora_plugin" }
+renzora_plugin = { path = "../../crates/renzora_plugin", default-features = false, features = ["libm"] }
 
 [profile.dist]
 inherits = "release"
 opt-level = 2
 strip = "symbols"
+# no_std cannot unwind on stable.
+panic = "abort"

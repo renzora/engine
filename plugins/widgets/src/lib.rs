@@ -1,3 +1,4 @@
+#![no_std]
 //! Every ember widget the panel path can reach, in one panel.
 //!
 //! Deliberately does nothing: no systems, no assets, no spawning. If something
@@ -8,6 +9,13 @@
 //! is the same BSN a scene is, and `EmberDropdown` / `EmberTable` /
 //! `EmberTimeline` are ordinary components the engine registered — so this
 //! plugin names them the same way it would name `Transform`.
+
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
 
 use renzora_plugin::prelude::*;
 

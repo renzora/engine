@@ -1,3 +1,11 @@
+#![no_std]
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
+
 use renzora_plugin::prelude::*;
 use renzora_plugin::sys::RenderPhase;
 

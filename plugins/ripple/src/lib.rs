@@ -1,3 +1,4 @@
+#![no_std]
 //! A custom shaded material, driven by the plugin's own component, over a
 //! texture the plugin regenerates every frame.
 //!
@@ -38,9 +39,17 @@
 //! member after it and silently corrupt the shader's view. Padding the WGSL side
 //! already requires is the only space available. See [`Ripple::_ready`].
 
+extern crate alloc;
+
+// Supplies the global allocator and panic handler that `std` would have. Expands
+// to nothing under `std` or `static_link`, so this is safe whichever way the
+// plugin ends up linked.
+renzora_plugin::no_std_runtime!();
+
 use renzora_plugin::prelude::*;
 use renzora_plugin::sys::{AlphaMode, AssetHandle, ImageFormat};
-use std::sync::atomic::{AtomicU64, Ordering};
+// `core`, not `std` — atomics are a core primitive, and this plugin is `no_std`.
+use core::sync::atomic::{AtomicU64, Ordering};
 
 /// Side length of the generated texture.
 ///
