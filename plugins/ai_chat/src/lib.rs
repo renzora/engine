@@ -99,7 +99,7 @@ fn on_action(action: Action) {
             // Start the assistant's row now, empty, so the first delta appends
             // to it rather than the transcript jumping when it arrives.
             s.messages.push((Role::Assistant, String::new()));
-            s.dirty = true;
+            s.panel_dirty = true;
             Some((s.chat_url(), s.request_body(), s.auth_headers()))
         });
         if let Some((url, body, headers)) = body {
@@ -126,7 +126,7 @@ fn on_action(action: Action) {
         with(|s| {
             s.streaming = false;
             s.status = "Stopped".to_string();
-            s.dirty = true;
+            s.panel_dirty = true;
         });
         return;
     }
@@ -156,7 +156,11 @@ fn on_action(action: Action) {
                 // host and fail in a way that reads as a broken key.
                 s.base_url = PRESETS[idx].base_url.to_string();
                 s.save();
-                s.dirty = true;
+                // Both surfaces: the Server URL field cannot show its own new
+                // value, since the change came from the dropdown beside it. A
+                // pick also closes the dropdown, so there is no focus to lose.
+                s.panel_dirty = true;
+                s.settings_dirty = true;
             }
         });
         return;
@@ -184,8 +188,12 @@ fn on_action(action: Action) {
             }
             *slot = typed;
             s.save();
-            // The chat panel shows the model name, so it changes too.
-            s.dirty = true;
+            // ONLY the chat panel. The settings field is already showing what
+            // was typed — re-sending its markup would respawn the input under
+            // the caret and drop focus mid-word, which is precisely the bug this
+            // split exists to avoid. Nothing in the settings section depends on
+            // these values except the fields themselves.
+            s.panel_dirty = true;
         });
     }
 }
@@ -197,17 +205,6 @@ fn on_action(action: Action) {
 /// — and because ordering between them would otherwise be a thing to get wrong,
 /// with no `before`/`after` available to a plugin to fix it with.
 fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
-    // One-shot proof that the host actually runs this system. `pump` takes no
-    // queries and no resources, which is the one system shape worth confirming
-    // rather than assuming — and if it never runs, nothing in this plugin ever
-    // redraws, which matches every symptom seen so far.
-    {
-        static RAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-        if !RAN.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            info("ai_chat: pump is running");
-        }
-    }
-
     // A stream delivers several chunks in one frame. Taking one per frame would
     // make a fast reply arrive in slow motion.
     while let Some(chunk) = http.poll_stream(TAG_CHAT) {
@@ -237,7 +234,7 @@ fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
                 if line.contains("\"done\":true") {
                     s.streaming = false;
                     s.status = "Ready".to_string();
-                    s.dirty = true;
+                    s.panel_dirty = true;
                 }
             }
             if chunk.is_last() {
@@ -247,7 +244,7 @@ fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
                 if s.streaming {
                     s.streaming = false;
                     s.status = "Ready".to_string();
-                    s.dirty = true;
+                    s.panel_dirty = true;
                 }
                 return true;
             }
@@ -270,30 +267,29 @@ fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
                 // leave the status stuck on whatever preceded it.
                 None => s.status = "Ready".to_string(),
             }
-            s.dirty = true;
+            // The folder shows on both surfaces, and neither can know it changed.
+            s.panel_dirty = true;
+            s.settings_dirty = true;
         });
     }
 
     // Redraw last, so everything above lands in one update rather than one per
     // source. The host compares markup before parsing, so a spurious call is a
     // string compare — but building the string is not free, hence the flag.
-    let markup = with(|s| {
-        if !s.dirty {
-            return None;
-        }
-        s.dirty = false;
-        Some((s.markup(), s.settings_markup()))
+    // Each surface is sent only when its OWN content changed. Sending both
+    // together was simpler and cost the caret: every keystroke in a settings
+    // field respawned that field.
+    let (panel, settings) = with(|s| {
+        let p = s.panel_dirty.then(|| s.markup());
+        let g = s.settings_dirty.then(|| s.settings_markup());
+        s.panel_dirty = false;
+        s.settings_dirty = false;
+        (p, g)
     });
-    if let Some((panel, settings)) = markup {
-        info(&format!(
-            "ai_chat: sending panel {} bytes, settings {} bytes",
-            panel.len(),
-            settings.len()
-        ));
+    if let Some(panel) = panel {
         commands.set_panel_content(PANEL_ID, &panel);
-        // The section is cheap to re-send and the host compares before parsing,
-        // so both go together rather than tracking two dirty flags for state
-        // they largely share.
+    }
+    if let Some(settings) = settings {
         commands.set_panel_content(SETTINGS_ID, &settings);
     }
 }

@@ -391,7 +391,9 @@ fn apply_panel_content(
         // redraw below sees no diff and does no work.
         if panel.markup != markup {
             panel.markup = markup;
-            info!("[plugin] set_panel_content applied to `{id}` ({} bytes)", panel.markup.len());
+            // `debug`, not `info`: a plugin driving a live panel sends this every
+            // frame it changes something, which for a text field is every keystroke.
+            debug!("[plugin] set_panel_content applied to `{id}` ({} bytes)", panel.markup.len());
         }
     }
 }
@@ -451,7 +453,7 @@ fn refresh_reloaded_panels(world: &mut World) {
         }
         match renzora_bsn::bsn_tree::parse(&source) {
             Ok(tree) => {
-                info!("[plugin] panel `{id}` changed, redrawing (slot {index})");
+                debug!("[plugin] panel `{id}` changed, redrawing (slot {index})");
                 let slot = &mut reg.0[index];
                 slot.source = source;
                 slot.tree = tree;

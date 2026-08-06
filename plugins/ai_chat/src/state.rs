@@ -57,11 +57,19 @@ pub struct State {
     /// Bearer token for a hosted provider. Empty for Ollama, which wants none.
     pub api_key: String,
     pub status: String,
-    /// Set by anything that changes what should be on screen; cleared by the
-    /// redraw. Without it the plugin would rebuild and re-send the whole markup
-    /// every frame — the host would compare and discard it, but the string
-    /// building is not free.
-    pub dirty: bool,
+    /// Set when the CHAT panel's content should change; cleared by the redraw.
+    ///
+    /// Two flags rather than one, and the split is the whole reason typing does
+    /// not lose the caret. `set_panel_content` replaces a panel's contents
+    /// wholesale, so re-sending a surface respawns every widget in it —
+    /// including the input being typed into, which then loses focus mid-word.
+    /// A settings field already displays what was typed, so telling it again
+    /// costs a rebuild and gains nothing.
+    pub panel_dirty: bool,
+    /// Set when the SETTINGS section's content should change. Deliberately NOT
+    /// set by the text fields it contains — only by something they cannot show
+    /// themselves, like the provider dropdown rewriting the server URL.
+    pub settings_dirty: bool,
 }
 
 impl Default for State {
@@ -81,7 +89,8 @@ impl Default for State {
             docs_folder: None,
             api_key: String::new(),
             status: "Ready".to_string(),
-            dirty: true,
+            panel_dirty: true,
+            settings_dirty: true,
         }
     }
 }
@@ -258,12 +267,12 @@ impl State {
             Some((Role::Assistant, text)) if self.streaming => text.push_str(delta),
             _ => self.messages.push((Role::Assistant, delta.to_string())),
         }
-        self.dirty = true;
+        self.panel_dirty = true;
     }
 
     pub fn say(&mut self, role: Role, text: impl Into<String>) {
         self.messages.push((role, text.into()));
-        self.dirty = true;
+        self.panel_dirty = true;
     }
 
     /// The request body. Hand-built rather than serialised, because a plugin has
