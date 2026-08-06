@@ -197,6 +197,17 @@ fn on_action(action: Action) {
 /// — and because ordering between them would otherwise be a thing to get wrong,
 /// with no `before`/`after` available to a plugin to fix it with.
 fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
+    // One-shot proof that the host actually runs this system. `pump` takes no
+    // queries and no resources, which is the one system shape worth confirming
+    // rather than assuming — and if it never runs, nothing in this plugin ever
+    // redraws, which matches every symptom seen so far.
+    {
+        static RAN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !RAN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            info("ai_chat: pump is running");
+        }
+    }
+
     // A stream delivers several chunks in one frame. Taking one per frame would
     // make a fast reply arrive in slow motion.
     while let Some(chunk) = http.poll_stream(TAG_CHAT) {
@@ -274,6 +285,11 @@ fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
         Some((s.markup(), s.settings_markup()))
     });
     if let Some((panel, settings)) = markup {
+        info(&format!(
+            "ai_chat: sending panel {} bytes, settings {} bytes",
+            panel.len(),
+            settings.len()
+        ));
         commands.set_panel_content(PANEL_ID, &panel);
         // The section is cheap to re-send and the host compares before parsing,
         // so both go together rather than tracking two dirty flags for state
