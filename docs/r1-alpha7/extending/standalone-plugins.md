@@ -1087,6 +1087,32 @@ fn on_action(action: Action) {
 
 Write the BSN inline with `bsn!` rather than parking it in a `const`. Combining the description with the registration is the point of the macro — a panel body in a `&str` constant somewhere else is the thing it replaces.
 
+### Changing a panel after registration
+
+`add_panel` takes the markup once, which covers a panel that is a fixed arrangement of widgets and nothing that has to *change* — a list that grows, a reply streaming in, a form whose fields depend on the selection. For that, a running system hands the host new BSN:
+
+```rust
+use renzora_plugin::panel::PanelCommands;
+
+fn redraw(mut commands: Commands, log: Res<ChatLog>) {
+    let mut markup = String::from("Node { flex_direction: Column } Children [");
+    for line in &log.lines {
+        markup.push_str(&format!("Text({:?}),", line));
+    }
+    markup.push(']');
+    commands.set_panel_content("mychat", &markup);
+}
+```
+
+It takes a `&str` rather than a `Scene`, because `Scene` holds a `&'static str` and the entire point here is content built at run time.
+
+- **Call it unconditionally.** The host compares the markup before it parses anything, so sending a string the panel already has costs a string comparison and no redraw. You do not need to track dirtiness yourself.
+- **The id must already be registered.** Creating a panel needs `&mut App`, which a system does not have, so an unknown id is a typo rather than an ordering problem — it is reported and ignored.
+- **Malformed BSN keeps the old panel.** Same rule as hot reload: a half-built string is a normal intermediate state, and blanking the panel on every frame that does not parse would be worse than showing a stale one.
+- **Action ids survive.** The redraw rebinds the handler to the current build, so `PanelActionId` numbers keep working across a content change.
+
+This rides the generic service channel rather than adding an ABI function, so it does **not** move `VERSION_MINOR` — same as `anim`, `physics` and `http`.
+
 ### Panel content is not limited by the field kinds
 
 Worth being precise about, because it is easy to assume otherwise. The panel body crosses the boundary as a **string**, and is parsed host-side. So it can contain anything BSN can express — nested lists, tuple structs, strings — regardless of the closed [`FieldKind`](#components) set that governs plugin *component* data.

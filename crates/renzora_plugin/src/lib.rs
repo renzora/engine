@@ -135,6 +135,13 @@ pub mod physics;
 #[cfg(feature = "http")]
 pub mod http;
 
+/// Panels: replace a registered panel's contents at run time.
+///
+/// Not behind a feature, unlike the domains above, because the other half of it
+/// — `App::add_panel` — is not either. A plugin that registers a panel should
+/// not have to opt into a second name to change what is in it.
+pub mod panel;
+
 /// Scripting: implement a language backend the engine can run scripts through.
 ///
 /// Opt in with `features = ["script"]`. The odd one out among the domains —

@@ -157,7 +157,88 @@ pub fn register_plugin_panels(app: &mut App) {
         info!("[plugin] panel `{id}`");
     }
 
-    app.add_systems(Update, (dispatch_actions, apply_bindings, refresh_reloaded_panels));
+    app.add_systems(
+        Update,
+        (
+            dispatch_actions,
+            apply_bindings,
+            // Ordered before the redraw, so markup a plugin set this frame is
+            // picked up this frame rather than next. A frame of latency would
+            // be invisible most of the time and maddening for anything
+            // animated, which is exactly what dynamic panels are for.
+            apply_panel_content.before(refresh_reloaded_panels),
+            refresh_reloaded_panels,
+        ),
+    );
+}
+
+/// Apply `set_panel_content` calls from plugins.
+///
+/// Writes into [`PluginPanels`] rather than redrawing here, because the
+/// comparison [`refresh_reloaded_panels`] already runs — "does the markup on
+/// screen still match what the plugin says?" — is the same question, whether the
+/// markup changed because the library was rebuilt or because a system set it.
+/// Doing the parse and respawn here as well would be a second implementation of
+/// the harder half, free to drift from the one hot reload depends on.
+fn apply_panel_content(
+    mut parked: ResMut<renzora_plugin::host::PluginServiceCalls>,
+    mut panels: ResMut<PluginPanels>,
+) {
+    use renzora_plugin::panel::{PanelContentHeader, PanelOp};
+
+    let calls = parked.take(renzora_plugin::panel::SERVICE);
+    for call in calls {
+        let op = PanelOp(call.op);
+        if !op.is_known() {
+            warn!("[plugin] panel op {} is not one this build has", call.op);
+            continue;
+        }
+
+        let hdr_len = size_of::<PanelContentHeader>();
+        if call.payload.len() < hdr_len {
+            warn!("[plugin] panel call sent {} bytes for a header", call.payload.len());
+            continue;
+        }
+        // SAFETY: length checked, and `PanelContentHeader` is `#[repr(C)]` plain
+        // data.
+        let hdr = unsafe {
+            call.payload
+                .as_ptr()
+                .cast::<PanelContentHeader>()
+                .read_unaligned()
+        };
+
+        // The length crossed from another compilation unit, so it is untrusted;
+        // a bad one would slice past the end. Only the id is length-prefixed —
+        // the markup is the remainder — so this is `>` rather than the exact
+        // match the HTTP bridge uses.
+        let id_end = hdr_len.saturating_add(hdr.id_len as usize);
+        if id_end > call.payload.len() {
+            warn!(
+                "[plugin] panel call claims a {}-byte id but sent {}",
+                hdr.id_len,
+                call.payload.len() - hdr_len
+            );
+            continue;
+        }
+
+        let id = String::from_utf8_lossy(&call.payload[hdr_len..id_end]).into_owned();
+        let markup = String::from_utf8_lossy(&call.payload[id_end..]).into_owned();
+
+        let Some(panel) = panels.0.iter_mut().find(|p| p.id == id) else {
+            // Registering a panel needs `&mut App`, so a system cannot create
+            // one — this is always a typo or a stale id rather than an ordering
+            // problem the caller could fix by waiting.
+            warn!("[plugin] set_panel_content for `{id}`, which is not a registered panel");
+            continue;
+        };
+        // Comparing before assigning is what lets a plugin call this every
+        // frame: an unchanged string leaves `PluginPanels` untouched, so the
+        // redraw below sees no diff and does no work.
+        if panel.markup != markup {
+            panel.markup = markup;
+        }
+    }
 }
 
 /// Pick up a panel whose plugin has been reloaded, and redraw it.

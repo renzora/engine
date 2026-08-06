@@ -2133,6 +2133,91 @@ fn a_service_call_reaches_the_host_queue_untouched() {
     assert_eq!(cmd.flag, 0, "looping = false did not cross");
 }
 
+/// The markup a panel plugin sets at run time. Deliberately built rather than a
+/// literal — a `&'static str` would work through `Scene`, and the whole reason
+/// `set_panel_content` takes `&str` is that dynamic content cannot be one.
+fn build_markup() -> String {
+    let mut s = String::from("Node Children [");
+    for i in 0..3 {
+        s.push_str(&format!("Text(\"row {i}\"),"));
+    }
+    s.push(']');
+    s
+}
+
+fn push_panel_content(mut commands: ecs::Commands) {
+    use renzora_plugin::panel::PanelCommands;
+    commands.set_panel_content("demo", &build_markup());
+}
+
+unsafe extern "C" fn panel_content_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.add_systems(ecs::Schedule::Update, push_panel_content);
+    sys::InitResult::Ok
+}
+
+/// `set_panel_content` crosses as a service call whose payload decodes back to
+/// the id and markup that went in.
+///
+/// Splitting is the part worth pinning: only the id is length-prefixed and the
+/// markup is "everything after", so BSN that happens to contain the panel id
+/// cannot cause a mis-split. This markup contains no `demo`, but the decode is
+/// asserted by length rather than by search precisely so that stays true if
+/// someone changes the fixture.
+#[test]
+fn set_panel_content_crosses_as_id_and_markup() {
+    use renzora_plugin::panel::{self, PanelContentHeader, PanelOp};
+
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    assert_eq!(
+        unsafe { abi_host::init_plugin(app.world_mut(), panel_content_init) },
+        sys::InitResult::Ok
+    );
+    app.update();
+
+    let queue = app.world().resource::<abi_host::PluginServiceCalls>();
+    assert_eq!(queue.0.len(), 1, "expected exactly one parked call");
+    let call = &queue.0[0];
+    assert_eq!(call.service, panel::SERVICE);
+    assert_eq!(call.op, PanelOp::SetContent.0);
+
+    let hdr_len = core::mem::size_of::<PanelContentHeader>();
+    let hdr = unsafe {
+        call.payload
+            .as_ptr()
+            .cast::<PanelContentHeader>()
+            .read_unaligned()
+    };
+    let id_end = hdr_len + hdr.id_len as usize;
+    assert_eq!(
+        std::str::from_utf8(&call.payload[hdr_len..id_end]).unwrap(),
+        "demo"
+    );
+    assert_eq!(
+        std::str::from_utf8(&call.payload[id_end..]).unwrap(),
+        build_markup(),
+        "the markup did not survive the sink's byte copy intact"
+    );
+}
+
+/// The panel service must be distinct from every other one, or a bridge would
+/// claim calls meant for a different consumer.
+#[test]
+fn panel_service_id_is_its_own() {
+    use renzora_plugin::panel;
+    assert_eq!(panel::SERVICE, sys::service_id("renzora.panel"));
+    #[cfg(feature = "http")]
+    assert_ne!(panel::SERVICE, renzora_plugin::http::SERVICE);
+    #[cfg(feature = "anim")]
+    assert_ne!(panel::SERVICE, renzora_plugin::anim::SERVICE);
+    #[cfg(feature = "physics")]
+    assert_ne!(panel::SERVICE, renzora_plugin::physics::SERVICE);
+}
+
 /// A consumer must take only its own service, or a second bridge silently loses
 /// its calls whenever an unrelated crate is linked.
 #[test]
