@@ -173,6 +173,8 @@ const GOLDEN: &[Golden] = &[
             "images: *mut ImageSource",
             "http: *mut HttpSource",
             "removed: *mut RemovedSource",
+            // Appended in MINOR 4.5 — the generic reply channel.
+            "replies: *mut ReplySource",
         ],
     },
     Golden {
@@ -183,6 +185,26 @@ const GOLDEN: &[Golden] = &[
             "body_len: usize",
             "status: u16",
             "_pad: [u8; 6]",
+        ],
+    },
+    // Crosses the boundary, plugin-allocated. The generic counterpart to a
+    // service call's payload: the host writes bytes whose meaning is the
+    // domain's, not this crate's.
+    Golden {
+        name: "ReplyRead",
+        fields: &[
+            "data_capacity: usize",
+            "data: *mut u8",
+            "data_len: usize",
+            "op: u32",
+            "_pad: [u8; 4]",
+        ],
+    },
+    // Host-allocated, reached through `SystemCall::replies`.
+    Golden {
+        name: "ReplySource",
+        fields: &[
+            "poll: unsafe extern \"C\" fn( src: *mut ReplySource, service: u64, tag: u64, out: *mut ReplyRead, ) -> bool",
         ],
     },
     // Crosses the boundary: written by the host into a plugin-allocated

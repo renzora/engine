@@ -7780,6 +7780,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_macros",
+ "renzora_plugin",
  "renzora_postprocess",
  "renzora_theme",
  "renzora_ui",

@@ -2330,6 +2330,69 @@ unsafe impl SystemParam for Meshes<'_> {
     }
 }
 
+/// Collects answers to [`Commands::call_service`] calls.
+///
+/// The generic return path. A domain sends with `call_service` and collects
+/// here, keyed by the same service id plus whatever tag it chose — so a new
+/// domain needs no boundary surface in either direction. See
+/// [`sys::ReplySource`] for why this exists and what it replaced.
+///
+/// Most plugins will not name this type: a domain module wraps it in something
+/// that speaks its own vocabulary, the way [`crate::dialog::Dialogs`] does.
+pub struct Replies<'a> {
+    src: *mut sys::ReplySource,
+    _p: PhantomData<&'a ()>,
+}
+
+impl Replies<'_> {
+    /// Take the next reply for `service` and `tag`, if one is ready.
+    ///
+    /// `None` is the normal state. A reply is delivered exactly once; the `u32`
+    /// is the domain's own discriminator, and the bytes are whatever the
+    /// consumer produced.
+    pub fn poll(&self, service: u64, tag: u64) -> Option<(u32, alloc::vec::Vec<u8>)> {
+        if self.src.is_null() {
+            return None;
+        }
+        // Two passes, as everywhere else on this boundary: the probe must not
+        // consume, or a caller that fails to allocate would silently drop the
+        // reply and wait for it forever.
+        let mut probe = sys::ReplyRead::COUNTS_ONLY;
+        unsafe {
+            if !((*self.src).poll)(self.src, service, tag, &mut probe) {
+                return None;
+            }
+        }
+        // `max(1)` so an empty reply is still CONSUMED — the host distinguishes
+        // the two passes by "is there a buffer?", and a zero-length allocation
+        // would leave the reply in the queue to be re-read every frame. A domain
+        // that answers "cancelled" with no payload depends on this.
+        let mut data = alloc::vec![0u8; probe.data_len.max(1)];
+        let mut fill = sys::ReplyRead {
+            data_capacity: data.len(),
+            data: data.as_mut_ptr(),
+            ..sys::ReplyRead::COUNTS_ONLY
+        };
+        unsafe {
+            if !((*self.src).poll)(self.src, service, tag, &mut fill) {
+                return None;
+            }
+        }
+        data.truncate(fill.data_len);
+        Some((fill.op, data))
+    }
+}
+
+unsafe impl SystemParam for Replies<'_> {
+    fn declare(_: &mut InitCtx, _: &mut SystemBuilder) {}
+    unsafe fn fetch(call: *const sys::SystemCall, _: &mut usize) -> Self {
+        Replies {
+            src: (*call).replies,
+            _p: PhantomData,
+        }
+    }
+}
+
 macro_rules! param_tuples {
     ($(($($p:ident),+))+) => {
         $(

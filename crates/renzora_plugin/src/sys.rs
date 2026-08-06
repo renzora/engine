@@ -217,6 +217,10 @@ pub const VERSION_MAJOR: u32 = 4;
 /// 2 -> 3 appended `add_script_backend`.
 /// 3 -> 4 appended `HttpSource::poll_stream` and [`HttpChunkRead`], for
 ///          responses that arrive in pieces rather than all at once.
+/// 4 -> 5 appended `SystemCall::replies`, [`ReplySource`] and [`ReplyRead`] —
+///          a generic host-to-plugin answer channel, so a domain needing a
+///          reply no longer costs a bump of its own. Intended to be the LAST
+///          per-domain source ever added.
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -248,7 +252,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 4;
+pub const VERSION_MINOR: u32 = 5;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1045,6 +1049,77 @@ pub struct SystemCall {
     // NOTHING MAY BE INSERTED ABOVE THIS POINT.
     /// Which entities lost a component. Null in a build without the source.
     pub removed: *mut RemovedSource,
+
+    // ── Added in MINOR 4.5 ────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT.
+    /// Answers to [`CommandKind::Service`] calls. Null in a build with no
+    /// consumer that replies.
+    ///
+    /// **The point of this field is that it is the last one of its kind.** Every
+    /// source above it is a domain that needed the host to hand something back
+    /// and paid a `VERSION_MINOR` bump for the privilege — meshes, images, HTTP,
+    /// removed components. Meanwhile the *other* direction has been generic
+    /// since MINOR 2.4: `call_service` carries any service id and any bytes, so
+    /// adding a domain that only sends costs nothing.
+    ///
+    /// This closes that asymmetry. A domain that needs a reply now rides
+    /// [`ReplySource`] keyed by its own service id, exactly as it rides
+    /// `CommandKind::Service` going out, and adds no boundary surface at all.
+    pub replies: *mut ReplySource,
+}
+
+/// One answer to a service call, copied out for the plugin.
+///
+/// Two-pass like [`HttpRead`]: probe for the length, allocate, fill. The payload
+/// is domain-defined and arbitrarily large, and the host cannot allocate with
+/// the plugin's allocator.
+#[repr(C)]
+pub struct ReplyRead {
+    /// In: how many bytes `data` holds. Out: unchanged.
+    pub data_capacity: usize,
+    pub data: *mut u8,
+    /// Out: the reply's full length, whatever the capacity was.
+    pub data_len: usize,
+    /// Out: domain-defined. A domain with one reply shape can ignore it; one
+    /// with several — "picked a file" versus "cancelled" — uses it rather than
+    /// inventing a sentinel inside the payload.
+    pub op: u32,
+    pub _pad: [u8; 4],
+}
+
+impl ReplyRead {
+    /// A length-only probe — the first of the two passes.
+    pub const COUNTS_ONLY: Self = Self {
+        data_capacity: 0,
+        data: core::ptr::null_mut(),
+        data_len: 0,
+        op: 0,
+        _pad: [0; 4],
+    };
+}
+
+/// Delivers answers to service calls during one system call.
+///
+/// The generic counterpart to [`CommandKind::Service`]. The host stores whatever
+/// bytes a consumer produced; what they mean is the domain's business, exactly
+/// as it is on the way out.
+#[repr(C)]
+pub struct ReplySource {
+    /// Take the next reply for `service` and `tag`.
+    ///
+    /// Returns `false` when none is ready, which is the normal state — a reply
+    /// takes at least a frame and often many. Delivered **once**: the probe pass
+    /// does not consume it, the filling pass does.
+    ///
+    /// Keyed by `service` as well as `tag` so two domains cannot collide: tags
+    /// are chosen by the plugin, and nothing stops it using `1` for both a
+    /// dialog and some future domain.
+    pub poll: unsafe extern "C" fn(
+        src: *mut ReplySource,
+        service: u64,
+        tag: u64,
+        out: *mut ReplyRead,
+    ) -> bool,
 }
 
 /// One completed HTTP response, copied out for the plugin.

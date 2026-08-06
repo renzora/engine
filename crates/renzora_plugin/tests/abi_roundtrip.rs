@@ -2204,6 +2204,135 @@ fn set_panel_content_crosses_as_id_and_markup() {
     );
 }
 
+/// What the dialog plugin below collected.
+#[cfg(feature = "dialog")]
+static DIALOG_LOG: std::sync::Mutex<Vec<(u32, String)>> = std::sync::Mutex::new(Vec::new());
+
+#[cfg(feature = "dialog")]
+const DIALOG_TAG: u64 = 7;
+
+#[cfg(feature = "dialog")]
+fn collect_dialog(dialogs: renzora_plugin::dialog::Dialogs) {
+    if let Some(outcome) = dialogs.poll(DIALOG_TAG) {
+        if let Ok(mut log) = DIALOG_LOG.lock() {
+            log.push((outcome.result.0, outcome.value.clone()));
+        }
+    }
+}
+
+#[cfg(feature = "dialog")]
+unsafe extern "C" fn dialog_init(
+    iface: *const sys::Interface,
+    host: *mut sys::Host,
+) -> sys::InitResult {
+    let mut app = ecs::App::new(iface, host);
+    app.add_systems(ecs::Schedule::Update, collect_dialog);
+    sys::InitResult::Ok
+}
+
+/// A reply queued by a host bridge reaches the plugin that asked, exactly once.
+///
+/// Covers the generic reply channel through its first domain. Two things are
+/// pinned that would otherwise be silent: an EMPTY payload — which "cancelled"
+/// is — must still be consumed rather than re-read every frame, and the reply
+/// must be matched on service as well as tag.
+#[cfg(feature = "dialog")]
+#[test]
+fn a_service_reply_reaches_the_plugin_once() {
+    use renzora_plugin::dialog::{self, DialogResult};
+    use renzora_plugin::host::{PluginServiceReplies, ServiceReply};
+
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    DIALOG_LOG.lock().unwrap().clear();
+    app.init_resource::<PluginServiceReplies>();
+
+    assert_eq!(
+        unsafe { abi_host::init_plugin(app.world_mut(), dialog_init) },
+        sys::InitResult::Ok
+    );
+
+    app.world_mut()
+        .resource_mut::<PluginServiceReplies>()
+        .0
+        .push(ServiceReply {
+            service: dialog::SERVICE,
+            tag: DIALOG_TAG,
+            op: DialogResult::Picked.0,
+            payload: b"C:/models".to_vec(),
+        });
+
+    app.update();
+    assert_eq!(
+        DIALOG_LOG.lock().unwrap().clone(),
+        vec![(DialogResult::Picked.0, "C:/models".to_string())]
+    );
+    assert!(
+        app.world().resource::<PluginServiceReplies>().0.is_empty(),
+        "the reply was read but not consumed"
+    );
+
+    // An empty payload is the "cancelled" case, and the one most likely to be
+    // re-delivered forever: the host tells the two passes apart by "is there a
+    // buffer?", so a guest that sized its allocation from data_len would send a
+    // zero-length one and never consume.
+    app.world_mut()
+        .resource_mut::<PluginServiceReplies>()
+        .0
+        .push(ServiceReply {
+            service: dialog::SERVICE,
+            tag: DIALOG_TAG,
+            op: DialogResult::Cancelled.0,
+            payload: Vec::new(),
+        });
+
+    app.update();
+    app.update();
+    let log = DIALOG_LOG.lock().unwrap().clone();
+    assert_eq!(log.len(), 2, "the empty reply was dropped or re-delivered");
+    assert_eq!(log[1], (DialogResult::Cancelled.0, String::new()));
+}
+
+/// A reply for one service must not be handed to a poller asking about another.
+/// Tags are chosen by the plugin, so two domains can easily both pick `1`.
+#[cfg(feature = "dialog")]
+#[test]
+fn a_reply_for_another_service_is_not_delivered() {
+    use renzora_plugin::host::{PluginServiceReplies, ServiceReply};
+
+    let mut app = test_app();
+    let _guard = plugin_lock();
+    DIALOG_LOG.lock().unwrap().clear();
+    app.init_resource::<PluginServiceReplies>();
+
+    assert_eq!(
+        unsafe { abi_host::init_plugin(app.world_mut(), dialog_init) },
+        sys::InitResult::Ok
+    );
+
+    // Same tag, different service.
+    app.world_mut()
+        .resource_mut::<PluginServiceReplies>()
+        .0
+        .push(ServiceReply {
+            service: sys::service_id("renzora.something.else"),
+            tag: DIALOG_TAG,
+            op: 0,
+            payload: b"not yours".to_vec(),
+        });
+
+    app.update();
+    assert!(
+        DIALOG_LOG.lock().unwrap().is_empty(),
+        "the dialog poller ate another service's reply"
+    );
+    assert_eq!(
+        app.world().resource::<PluginServiceReplies>().0.len(),
+        1,
+        "the reply was consumed by a poller it was not addressed to"
+    );
+}
+
 /// The panel service must be distinct from every other one, or a bridge would
 /// claim calls meant for a different consumer.
 #[test]

@@ -1349,6 +1349,82 @@ pub struct PluginHttpResponse {
     pub chunk: Option<sys::HttpChunkKind>,
 }
 
+/// Answers to service calls, waiting for the plugin that asked.
+///
+/// The mirror of [`PluginServiceCalls`]: that queue is filled by plugins and
+/// drained by whichever engine crate claims the service; this one is filled by
+/// that crate and drained by the plugin. Neither is interpreted here — this
+/// crate cannot depend on an engine crate, so it does not know what any service
+/// means and must not guess.
+///
+/// Nothing ages entries out, for the same reason: a plugin that asks and never
+/// collects leaks one reply, bounded by how many it asked for, and dropping them
+/// on a timer would make a slow frame look like a failure.
+#[derive(Resource, Default)]
+pub struct PluginServiceReplies(pub Vec<ServiceReply>);
+
+/// One answer, addressed to the plugin's own `(service, tag)`.
+pub struct ServiceReply {
+    /// Which service produced it — the same id the plugin called.
+    pub service: u64,
+    /// The tag the plugin supplied with the request.
+    pub tag: u64,
+    /// Domain-defined discriminator, handed back untouched.
+    pub op: u32,
+    pub payload: Vec<u8>,
+}
+
+/// Backs [`sys::ReplySource`] for one system call.
+#[repr(C)]
+struct ReplySourceImpl<'a> {
+    src: sys::ReplySource,
+    replies: Option<&'a mut PluginServiceReplies>,
+}
+
+/// Hand the plugin the next reply for `(service, tag)`.
+///
+/// Matched on **both**, not just the tag: tags are chosen by the plugin, and
+/// nothing stops it using `1` for a dialog and `1` for some future domain. The
+/// service id is what keeps two domains from eating each other's answers.
+unsafe extern "C" fn reply_poll(
+    src: *mut sys::ReplySource,
+    service: u64,
+    tag: u64,
+    out: *mut sys::ReplyRead,
+) -> bool {
+    let me = &mut *(src as *mut ReplySourceImpl);
+    let out = &mut *out;
+    out.data_len = 0;
+    out.op = 0;
+
+    let Some(replies) = me.replies.as_deref_mut() else {
+        return false;
+    };
+    let Some(at) = replies
+        .0
+        .iter()
+        .position(|r| r.service == service && r.tag == tag)
+    else {
+        return false;
+    };
+
+    let consuming = !out.data.is_null() && out.data_capacity > 0;
+    {
+        let r = &replies.0[at];
+        out.op = r.op;
+        out.data_len = r.payload.len();
+        if consuming {
+            let n = out.data_capacity.min(r.payload.len());
+            std::ptr::copy_nonoverlapping(r.payload.as_ptr(), out.data, n);
+            out.data_len = n;
+        }
+    }
+    if consuming {
+        replies.0.remove(at);
+    }
+    true
+}
+
 /// Backs [`sys::HttpSource`] for one system call.
 #[repr(C)]
 struct HttpSourceImpl<'a> {
@@ -1730,6 +1806,7 @@ const _: () = {
     assert!(core::mem::offset_of!(ImageSourceImpl, src) == 0);
     assert!(core::mem::offset_of!(HttpSourceImpl, src) == 0);
     assert!(core::mem::offset_of!(RemovedSourceImpl, src) == 0);
+    assert!(core::mem::offset_of!(ReplySourceImpl, src) == 0);
 };
 
 /// The host's interface table.
@@ -3041,6 +3118,7 @@ fn build_dispatcher(
         // HTTP delivery. `Option` because a host without an HTTP bridge simply
         // never completes a request, which a plugin sees as "not ready yet".
         ParamBuilder::of::<Option<ResMut<PluginHttpInbox>>>(),
+        ParamBuilder::of::<Option<ResMut<PluginServiceReplies>>>(),
         // The slot table, so `MeshSource::write` can resolve a handle the
         // plugin was handed at init.
         ParamBuilder::of::<Option<Res<PluginAssets>>>(),
@@ -3075,6 +3153,7 @@ fn build_dispatcher(
                             mut mesh_assets: Option<ResMut<Assets<Mesh>>>,
                             mesh_handles: Query<&Mesh3d>,
                             http_inbox: Option<ResMut<PluginHttpInbox>>,
+                            service_replies: Option<ResMut<PluginServiceReplies>>,
                             plugin_assets: Option<Res<PluginAssets>>,
                             mut image_assets: Option<ResMut<Assets<Image>>>,
                             removed_messages: &RemovedComponentMessages,
@@ -3175,6 +3254,10 @@ fn build_dispatcher(
                 });
             }
 
+            let mut reply_src = ReplySourceImpl {
+                src: sys::ReplySource { poll: reply_poll },
+                replies: service_replies.map(|r| r.into_inner()),
+            };
             let mut http_src = HttpSourceImpl {
                 src: sys::HttpSource {
                     poll: http_poll,
@@ -3235,6 +3318,7 @@ fn build_dispatcher(
                 images: (&mut image_src as *mut ImageSourceImpl).cast(),
                 http: (&mut http_src as *mut HttpSourceImpl).cast(),
                 removed: (&mut removed_src as *mut RemovedSourceImpl).cast(),
+                replies: (&mut reply_src as *mut ReplySourceImpl).cast(),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps

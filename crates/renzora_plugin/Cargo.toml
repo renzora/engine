@@ -74,6 +74,10 @@ libm = ["dep:libm"]
 anim = []
 physics = []
 http = []
+# Native file/folder pickers. Costs nothing to leave off, and — unlike the three
+# above — cost nothing to ADD either: it was the first domain to ride the generic
+# reply channel, so it needed no `sys::VERSION_MINOR` bump of its own.
+dialog = []
 
 # Compile a plugin to be LINKED INTO the host rather than `dlopen`'d.
 #

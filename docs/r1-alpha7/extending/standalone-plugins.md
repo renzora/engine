@@ -716,6 +716,45 @@ Four things to hold on to:
 
 Streaming and whole-body requests share one queue but never cross: a chunk is invisible to `poll`, and a completed body is invisible to `poll_stream`. Mixing both in one plugin, on different tags, is fine.
 
+## File dialogs
+
+Behind `features = ["dialog"]`. Native file and folder pickers, asked for by tag and collected later — the same fire-and-tag shape as HTTP, and for the same reason: the boundary has no callbacks, and a function pointer handed over would have to survive a hot reload.
+
+```rust
+use renzora_plugin::dialog::{DialogCommands, DialogFilter, Dialogs};
+
+const PICK_DOCS: u64 = 1;
+
+fn browse(mut commands: Commands) {
+    commands.pick_folder(PICK_DOCS, "Choose a docs folder");
+}
+
+fn collect(dialogs: Dialogs, mut cfg: ResMut<Config>) {
+    if let Some(outcome) = dialogs.poll(PICK_DOCS) {
+        match outcome.path() {
+            Some(path) => cfg.docs = path.into(),
+            None => info("cancelled"),
+        }
+    }
+}
+```
+
+`pick_file` and `pick_save_path` additionally take a `DialogFilter`:
+
+```rust
+let filter = DialogFilter::new()
+    .add("Images", &["png", "jpg", "webp"])
+    .add("All Files", &["*"]);
+commands.pick_file(TAG, "Choose a texture", &filter);
+```
+
+- **Cancelling still replies.** It arrives as `DialogResult::Cancelled`, so a plugin that greyed out a button while the dialog was open hears back. `outcome.path()` collapses cancelled and unavailable to `None` when you don't care which.
+- **`Unavailable` is distinct from cancelled** — no windowing, or a headless build. Worth handling separately if the plugin can fall back to typing a path.
+- **The picker blocks the editor while it is open**, matching every other dialog in the editor. Your plugin still sees an async API: the answer lands in a queue and is collected on a later frame, so never assume it arrives in any particular one.
+- **Why not link `rfd` yourself?** You'd own a second copy of the platform's dialog stack, opened from a thread the editor knows nothing about and parented to no window — which on Windows means a modal that can fall behind the editor with no way back to it.
+
+Nothing in this domain touched the ABI. It was the first to ride the generic reply channel (`SystemCall::replies`), which is the return-path counterpart to `call_service` — so unlike meshes, images and HTTP before it, it needed no `VERSION_MINOR` bump of its own, and neither will the next domain.
+
 ## Domain modules
 
 Animation, physics and HTTP all ride the same mechanism, and the shape matters more than any one of them.

@@ -135,6 +135,14 @@ pub mod physics;
 #[cfg(feature = "http")]
 pub mod http;
 
+/// File dialogs: ask the host to open a native file or folder picker.
+///
+/// Opt in with `features = ["dialog"]`. Same shape as [`anim`] and [`http`] —
+/// and the first domain that cost no ABI surface at all, because the reply rides
+/// the generic channel rather than a source of its own.
+#[cfg(feature = "dialog")]
+pub mod dialog;
+
 /// Panels: replace a registered panel's contents at run time.
 ///
 /// Not behind a feature, unlike the domains above, because the other half of it

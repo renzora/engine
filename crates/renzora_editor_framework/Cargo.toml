@@ -27,6 +27,10 @@ renzora_postprocess = { path = "../renzora_postprocess" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
+# The C-ABI plugin host, for the file-dialog bridge. `host` because this is the
+# engine side of the boundary; `dialog` for the shared vocabulary both sides
+# compile.
+renzora_plugin = { path = "../renzora_plugin", features = ["host", "dialog"] }
 
 [lints]
 workspace = true

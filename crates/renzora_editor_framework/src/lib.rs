@@ -7,6 +7,7 @@ pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
 pub mod material_thumbnail_registry;
+pub mod plugin_dialog;
 pub mod model_thumbnail_registry;
 pub mod sdk;
 pub mod settings;
@@ -410,6 +411,7 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<AutoSelectFirstHierarchyEntity>()
             .init_resource::<renzora_ui::Toasts>()
             .add_plugins(renzora_ui::window_chrome::WindowChromePlugin)
+            .add_plugins(plugin_dialog::PluginDialogBridge)
             .add_systems(PostStartup, camera::spawn_ui_camera)
             // Drain queued `EditorCommands` (panel actions — visibility/lock
             // toggles, undo/redo, etc.) under the native (bevy_ui) shell.
