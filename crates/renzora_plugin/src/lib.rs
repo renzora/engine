@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 //! Write Renzora plugins in Rust.
 //!
 //! A plugin is a `cdylib` whose entire manifest is:
@@ -56,10 +58,61 @@
 //! …), because the types above are shims. Anything needing that is an in-tree
 //! engine crate instead, compiled against real Bevy — which is the deliberate
 //! split between the two tiers, not a gap to be closed.
+//!
+//! ## `no_std`
+//!
+//! A plugin can drop the standard library and shrink from ~112 KB to ~18 KB:
+//!
+//! ```toml
+//! [dependencies]
+//! renzora_plugin = { version = "0.1", default-features = false, features = ["libm"] }
+//!
+//! [profile.dist]
+//! inherits = "release"
+//! panic = "abort"   # mandatory: `no_std` on stable cannot unwind
+//! ```
+//!
+//! ```ignore
+//! #![no_std]
+//! extern crate alloc;
+//! renzora_plugin::no_std_runtime!();   // allocator + panic handler
+//! ```
+//!
+//! The cost is the panic firewall — see the `std` feature in this crate's
+//! manifest for what exactly is given up, and [`no_std_runtime!`] for what the
+//! macro emits. The `script` and `host` features are unavailable without `std`.
+
+// Declared at the root so every module reaches `alloc::` the same way in both
+// builds. A plugin allocates — components, query buffers, log strings — so
+// dropping `std` means dropping to `alloc`, not to `core`.
+extern crate alloc;
+
+// `no_std` without a math source would fail deep inside `Vec3::length` with a
+// missing-method error that says nothing about the cause. Say it here instead.
+#[cfg(all(not(feature = "std"), not(feature = "libm")))]
+compile_error!(
+    "renzora_plugin without `std` needs a soft-float math source: \
+     features = [\"libm\"]"
+);
 
 pub mod ecs;
 pub mod static_link;
 pub mod sys;
+
+/// `f32` math for `no_std` plugins — the `std`-only methods, over `libm`.
+/// Exists only in a `no_std` build; see the module docs for why.
+#[cfg(not(feature = "std"))]
+pub mod float;
+
+/// The allocator and abort behind [`no_std_runtime!`]. Public because the macro
+/// expands in the plugin's crate and has to name them; not something a plugin
+/// calls directly.
+///
+/// Compiled in **every** configuration, including `std` where nothing installs
+/// it, so that its unsafe pointer arithmetic is reachable from the test suite.
+/// A `no_std`-only module would be a module CI never builds and never runs,
+/// which is the worst place to put hand-written allocator code.
+pub mod no_std_heap;
 
 /// Animation: play clips, drive state machines, read animator state.
 ///
@@ -119,8 +172,41 @@ pub mod prelude {
     pub use crate::ecs::{error, info, warn};
     pub use crate::{error, info, warn};
     pub use crate::ecs::{First, Last, PostUpdate, PreUpdate, Update};
+
+    // The owned containers, from `alloc`.
+    //
+    // Bevy's prelude does not carry these because the std prelude already has
+    // them — but a `#![no_std]` plugin HAS no std prelude, and `Vec` suddenly
+    // not existing is a confusing way to meet that. Re-exporting them here means
+    // a plugin's source is the same either way, which is the same principle the
+    // rest of this module follows.
+    //
+    // Safe under `std` too: `std::vec::Vec` *is* `alloc::vec::Vec` re-exported,
+    // so this shadows the language prelude with the identical item rather than
+    // introducing an ambiguity.
+    pub use alloc::borrow::ToOwned;
+    pub use alloc::boxed::Box;
+    pub use alloc::string::{String, ToString};
+    pub use alloc::vec::Vec;
+    pub use alloc::{format, vec};
+
+    // `f32::sin` and friends, which `core` does not have. Only under `no_std` —
+    // with `std` the inherent methods are already there, and exporting a trait
+    // carrying the same names would be a second candidate for every call.
+    #[cfg(not(feature = "std"))]
+    pub use crate::float::FloatExt;
 }
 
+
+/// `format!` for the log macros below, resolved through `$crate` rather than
+/// written as `::std::format!` at each call site.
+///
+/// The distinction matters because the macros expand inside the *plugin's*
+/// crate: `::std` there names whatever the plugin has, which under `#![no_std]`
+/// is nothing. Routing through `$crate` picks up this crate's `alloc` instead,
+/// which exists in both builds.
+#[doc(hidden)]
+pub use alloc::format as __format;
 
 /// `info!("x = {x}")`, formatting like Bevy's.
 ///
@@ -130,19 +216,19 @@ pub mod prelude {
 /// neither shadows the other.
 #[macro_export]
 macro_rules! info {
-    ($($arg:tt)*) => { $crate::ecs::info(&::std::format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::ecs::info(&$crate::__format!($($arg)*)) };
 }
 
 /// `warn!("…")`. See [`info!`].
 #[macro_export]
 macro_rules! warn {
-    ($($arg:tt)*) => { $crate::ecs::warn(&::std::format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::ecs::warn(&$crate::__format!($($arg)*)) };
 }
 
 /// `error!("…")`. See [`info!`].
 #[macro_export]
 macro_rules! error {
-    ($($arg:tt)*) => { $crate::ecs::error(&::std::format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::ecs::error(&$crate::__format!($($arg)*)) };
 }
 
 /// Emit the plugin's exports.
@@ -280,10 +366,13 @@ macro_rules! __plugin_init_body {
         let mut app = $crate::ecs::App::new(iface, host);
         // A panic in `build` would unwind out of an `extern "C"` fn and abort
         // the editor. Refusing to load is the correct outcome instead.
-        let built = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-            $crate::ecs::Plugin::build(&$plugin, &mut app);
-        }));
-        if built.is_err() {
+        //
+        // The catch lives behind a function in THIS crate rather than inline
+        // here, because whether it can be caught at all depends on this crate's
+        // `std` feature — and a `#[cfg]` written in a macro body is evaluated
+        // against the *plugin's* manifest, where `std` is not a feature that
+        // exists. Same reason `__plugin_scope_entry!` is its own macro.
+        if !$crate::ecs::guarded_build(&$plugin, &mut app) {
             return $crate::sys::InitResult::Failed;
         }
         // Refuse rather than install systems whose queries can never match.
@@ -299,4 +388,55 @@ macro_rules! __plugin_init_body {
         }
         $crate::sys::InitResult::Ok
     }};
+}
+
+/// Emit the two lang items a `#![no_std]` plugin must define itself: a global
+/// allocator and a panic handler. Call it once, beside [`add!`].
+///
+/// ```ignore
+/// #![no_std]
+/// extern crate alloc;
+/// renzora_plugin::no_std_runtime!();
+/// ```
+///
+/// **The allocator is the host process's own `malloc`/`free`.** That is the
+/// right choice specifically because a plugin is `dlopen`'d *into* a running
+/// engine: the C runtime is already mapped and already initialised, so the
+/// plugin shares one heap with everything else in the process instead of
+/// carrying a second allocator. It is also what makes a `Vec` the plugin
+/// allocates safe to free after the host hands it back.
+///
+/// **The panic handler aborts**, because there is nothing better available:
+/// `no_std` on stable cannot unwind (defining `eh_personality` is nightly-only),
+/// which is why such a plugin must also set `panic = "abort"` in its profile.
+/// This is the panic firewall being given up — see the `std` feature in this
+/// crate's manifest.
+///
+/// Expands to nothing when it would be wrong to emit: under `std` the standard
+/// library supplies both items, and under `static_link` the plugin is compiled
+/// into the host binary, which supplies them — defining them again is a
+/// duplicate-lang-item error in both cases. So the macro is safe to leave in
+/// place unconditionally, which is the point: a plugin's source should not have
+/// to know how it is being linked.
+#[macro_export]
+#[cfg(any(feature = "std", feature = "static_link"))]
+macro_rules! no_std_runtime {
+    () => {};
+}
+
+/// The variant that actually emits. See the `std`-side stub above.
+#[macro_export]
+#[cfg(not(any(feature = "std", feature = "static_link")))]
+macro_rules! no_std_runtime {
+    () => {
+        #[global_allocator]
+        static __RENZORA_HEAP: $crate::no_std_heap::HostHeap = $crate::no_std_heap::HostHeap;
+
+        /// Aborts. A `no_std` plugin cannot unwind, so there is no way to turn
+        /// this into the `SystemStatus::Panicked` a `std` plugin would report.
+        #[panic_handler]
+        fn __renzora_panic(_: &::core::panic::PanicInfo) -> ! {
+            $crate::no_std_heap::abort()
+        }
+    };
 }

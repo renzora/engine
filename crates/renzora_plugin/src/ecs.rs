@@ -21,6 +21,20 @@
 use crate::sys;
 use core::marker::PhantomData;
 
+// `Vec` and `vec!` come from the prelude under `std` and from nowhere at all
+// under `no_std`, so name their `alloc` home explicitly and both builds agree.
+// (Importing a name the prelude also provides is allowed and resolves to the
+// same type, so this is a no-op for the `std` build rather than a shadow.)
+use alloc::vec;
+use alloc::vec::Vec;
+
+// `Vec3::length`, the `Quat` constructors and the colour conversions below all
+// call `f32` methods that only exist in `std`. Under `no_std` the shim supplies
+// them; under `std` the inherent methods are used and this import is absent.
+// Either way the call sites read the same — see `crate::float`.
+#[cfg(not(feature = "std"))]
+use crate::float::FloatExt as _;
+
 // ── Component identity ───────────────────────────────────────────────────────
 
 /// A type that can appear in a plugin query.
@@ -2439,23 +2453,63 @@ unsafe fn materialize<T>() -> T {
 /// overlap.
 pub struct ParamsMarker<P>(PhantomData<P>);
 
+/// Run `body`, returning the panic message if it panicked.
+///
+/// **This function is the entire cost of `no_std`.** `catch_unwind` lives in
+/// `std` and has no `core` equivalent — catching a panic needs the unwinder,
+/// which is part of the standard library's runtime. So there are two versions:
+/// under `std` a panic is caught and reported, and under `no_std` it cannot be,
+/// which is why such a build must also set `panic = "abort"` (see the `std`
+/// feature in this crate's manifest for the full trade).
+///
+/// Callers must therefore treat the `Err` arm as *may never happen* rather than
+/// as dead code — it is live in every ordinary build.
+#[cfg(feature = "std")]
+fn catch(body: impl FnOnce()) -> Result<(), alloc::string::String> {
+    // `AssertUnwindSafe` is required because these calls carry raw pointers;
+    // that is sound here because a panic leaves host memory in whatever state
+    // the partial call wrote — data the host owns and re-reads next frame, with
+    // no plugin-side invariants to break.
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)).map_err(|e| {
+        e.downcast_ref::<&str>()
+            .map(alloc::string::ToString::to_string)
+            .or_else(|| e.downcast_ref::<alloc::string::String>().cloned())
+            .unwrap_or_else(|| alloc::string::String::from("panic"))
+    })
+}
+
+/// `no_std`: nothing to catch with. A panic in `body` reaches the `extern "C"`
+/// frame above and aborts the process. See the `std` variant.
+#[cfg(not(feature = "std"))]
+fn catch(body: impl FnOnce()) -> Result<(), alloc::string::String> {
+    body();
+    Ok(())
+}
+
+/// Run the plugin's `Plugin::build` under [`catch`], so a panic during load is a
+/// refused plugin rather than a dead editor. `true` if it built.
+///
+/// Called by `add!`'s expansion. It lives here, as a function, because whether
+/// the panic is catchable depends on THIS crate's `std` feature, and a `#[cfg]`
+/// written inside a macro body would be evaluated against the plugin's manifest
+/// instead — where `std` is not a feature that exists.
+///
+/// The panic message is dropped rather than logged: `build` runs before the App
+/// has been handed back to the host, so there is no established channel to
+/// report on, and the host already logs the refusal it gets back.
+#[must_use]
+pub fn guarded_build<P: Plugin>(plugin: &P, app: &mut App) -> bool {
+    catch(|| plugin.build(app)).is_ok()
+}
+
 /// Run a system body, converting a panic into a status the host can act on.
 ///
 /// A panic unwinding out of an `extern "C"` function aborts the process, so
 /// without this one bad index in a half-written system takes the editor down.
-/// `AssertUnwindSafe` is required because the call carries raw pointers; that is
-/// sound here because a panic leaves host memory in whatever state the partial
-/// loop wrote — data the host owns and re-reads next frame, with no plugin-side
-/// invariants to break.
 unsafe fn guard(call: &sys::SystemCall, body: impl FnOnce()) -> sys::SystemStatus {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+    match catch(body) {
         Ok(()) => sys::SystemStatus::Ok,
-        Err(e) => {
-            let msg = e
-                .downcast_ref::<&str>()
-                .map(alloc::string::ToString::to_string)
-                .or_else(|| e.downcast_ref::<alloc::string::String>().cloned())
-                .unwrap_or_else(|| alloc::string::String::from("panic"));
+        Err(msg) => {
             if !call.iface.is_null() {
                 ((*call.iface).log)(
                     call.host,
@@ -2621,9 +2675,7 @@ where
 {
     let mut pass = RenderPass { ctx };
     // A panic inside the render graph would take the editor down mid-frame.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        materialize::<F>()(&mut pass)
-    })) {
+    match catch(|| materialize::<F>()(&mut pass)) {
         Ok(()) => sys::SystemStatus::Ok,
         Err(_) => sys::SystemStatus::Panicked,
     }
@@ -3177,16 +3229,9 @@ unsafe extern "C" fn panel_thunk<F: Fn(Action) + 'static>(
     // A panic here would unwind out of an `extern "C"` call made from inside the
     // editor's own UI systems, which aborts the process — a bad button taking
     // the editor down with it.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        materialize::<F>()(payload)
-    })) {
+    match catch(move || materialize::<F>()(payload)) {
         Ok(()) => sys::SystemStatus::Ok,
-        Err(e) => {
-            let msg = e
-                .downcast_ref::<&str>()
-                .map(alloc::string::ToString::to_string)
-                .or_else(|| e.downcast_ref::<alloc::string::String>().cloned())
-                .unwrap_or_else(|| alloc::string::String::from("panic"));
+        Err(msg) => {
             if !a.iface.is_null() {
                 ((*a.iface).log)(
                     core::ptr::null_mut(),
@@ -3206,5 +3251,3 @@ unsafe extern "C" fn panel_thunk<F: Fn(Action) + 'static>(
 pub trait Plugin {
     fn build(&self, app: &mut App);
 }
-
-extern crate alloc;

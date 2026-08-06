@@ -10,7 +10,52 @@ repository = "https://github.com/renzora/engine"
 # A PLUGIN depends on this crate with default features and gets zero
 # dependencies — that is the whole design, and it is what makes a plugin build
 # in under a second on any machine with any rustc.
-default = []
+default = ["std"]
+
+# Link the Rust standard library. ON by default, and the only reason it is a
+# feature at all is that turning it off makes a plugin roughly six times smaller:
+#
+#   pulse.dll, `dist` profile      std  112,128 B
+#                                no_std  17,920 B
+#
+# That is not an optimiser setting — `opt-level = "z"` + fat LTO + `panic =
+# "abort"` on the std build only reaches 92,160 B. Each dlopen'd plugin carries
+# its own copy of std, so ~90 KB is a floor per DLL, and across the 63 plugins
+# shipped in `plugins/` it is 5.6 MB of duplicated runtime.
+#
+# WHAT TURNING IT OFF COSTS — read before reaching for it. `catch_unwind` lives
+# in `std` and has no `core` equivalent, so a `no_std` plugin loses the panic
+# firewall: today a panicking system is caught, reported as
+# `SystemStatus::Panicked`, and the host DISABLES THAT SYSTEM and keeps running
+# (see `host::mod`'s system runner). Without `std` the panic reaches an
+# `extern "C"` frame and takes the whole editor with it. `no_std` on stable
+# cannot unwind at all — there is no way to define `eh_personality` — so such a
+# plugin must also set `panic = "abort"` in its profile.
+#
+# The trade is therefore "5.5 MB against third-party crash isolation", which is
+# why this is opt-out rather than opt-in. The engine's own plugins take it —
+# 59 of the 63 in `plugins/` are `no_std`, dropping that set from 6.30 MB to
+# 1.04 MB — because their panics are our bugs rather than a stranger's, and
+# because a post-process effect is a shader plus two arithmetic systems. A
+# downloaded marketplace plugin should keep `std`.
+#
+# The four that do not: `lua` (needs `script`), `text3d` (`std::fs` for fonts),
+# `hair` (`HashMap` + a `Mutex` static), `wobble` (its `noise` dep pulls
+# `num-traits` with default features, and feature unification cannot subtract).
+std = []
+
+# Soft-float math for `no_std`. `f32::sqrt`, `sin_cos`, `sin`, `acos`, `powf`
+# and `rem_euclid` are `std` inherent methods with no `core` equivalent — they
+# compile down to libm calls that `core` deliberately does not link. `Vec3`,
+# `Quat` and the colour conversions in `ecs` need all six, so a `no_std` plugin
+# has to supply them:
+#
+#   renzora_plugin = { version = "0.1", default-features = false, features = ["libm"] }
+#
+# Two knobs for one decision is not ideal, but it is the shape `glam` and
+# `nalgebra` already use, so it is the one a plugin author has met before. The
+# `std` build never references the crate, so leaving it off costs nothing.
+libm = ["dep:libm"]
 
 # ── Domain modules ────────────────────────────────────────────────────────────
 # One feature per domain a plugin can drive. These are NOT part of the ABI: each
@@ -55,13 +100,23 @@ static_link = []
 # unlike `anim`/`physics`/`http` it does move `sys::VERSION_MINOR`. The domain
 # vocabulary — the command list, the context, the codec — still lives behind
 # this feature and still costs a plugin nothing to leave off.
-script = []
+#
+# Requires `std`, unlike the three domains above. `register_backend!` parks the
+# backend in a `std::sync::Mutex` static, `WireError` implements
+# `std::error::Error`, and — decisively — an interpreter is not a thing that
+# wants `no_std`: the one backend that exists links mlua, which links libc. A
+# language plugin is the case where the 90 KB of std is already noise.
+script = ["std"]
 
 # The ENGINE opts into `host`, which adds the other side of the boundary: the
 # interface implementation, the dynamic-query dispatcher, and the `dlopen`
 # loader. Split by feature rather than by crate so a plugin author depends on
 # exactly one name.
-host = ["dep:bevy", "dep:libloading"]
+#
+# Requires `std` — it links Bevy, `libloading` and the host's own threading, none
+# of which exist without it. That is not a limitation to lift: the host is the
+# editor, and the editor is a windowed GPU application.
+host = ["std", "dep:bevy", "dep:libloading"]
 # The 3D half of the host: `StandardMaterial` / `MeshMaterial3d`, which come from
 # `bevy_pbr`. A 2D-only export strips that, so without this `add_material`
 # refuses with a warning and `MaterialSlot::Standard` does not exist. Plugins
@@ -92,6 +147,10 @@ render_3d = []
 renzora_plugin_derive = { path = "../renzora_plugin_derive" }
 bevy = { workspace = true, optional = true }
 libloading = { version = "0.8", optional = true }
+# Pulled only by the `libm` feature, i.e. only by `no_std` plugins. It is itself
+# `no_std` and dependency-free, so it does not weaken the guarantee above — it
+# exposes functions, not types, and nothing from it crosses the ABI boundary.
+libm = { version = "0.2", optional = true }
 
 # NOTE: the tests deliberately link NO plugin from `plugins/`. A path dependency
 # on one would drag it back into the engine's workspace — cargo rejects a path dep

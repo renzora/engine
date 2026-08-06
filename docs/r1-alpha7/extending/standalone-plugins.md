@@ -229,12 +229,84 @@ If your plugin **does** live inside an engine checkout, you need to override it.
 
 ```toml
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "prefer-dynamic=no", "-C", "target-feature=+crt-static"]
+rustflags = ["-C", "prefer-dynamic=no"]
 ```
 
-Note the explicit `=no`. Cargo **merges** `rustflags` arrays across config files rather than replacing them, so omitting the flag achieves nothing — it has to be contradicted by a later entry. `crt-static` additionally drops `VCRUNTIME140.dll` and the `api-ms-win-crt-*` set; the engine itself can't use it (it moves crate disambiguators, which shifts the `TypeId`s the shared-dylib plugin ABI depends on) but a standalone plugin shares no types with anyone, so nothing there applies.
+Note the explicit `=no`. Cargo **merges** `rustflags` arrays across config files rather than replacing them, so omitting the flag achieves nothing — it has to be contradicted by a later entry.
 
-The cost is size: roughly 20 KB dynamically linked against ~210 KB statically. Take the 210 KB.
+**Not `+crt-static`.** It used to be there, and the reasoning was that statically linking the MSVC runtime drops `VCRUNTIME140.dll` and the `api-ms-win-crt-*` set, leaving nothing in the import table but the OS. That works, and it is not worth it — measured on a minimal plugin, release, symbols stripped:
+
+| Config | Size | Imports |
+|---|---|---|
+| inherits the engine's `prefer-dynamic` | 16 KB | `std-<hash>.dll` — **broken**, see above |
+| `prefer-dynamic=no` | 113 KB | `VCRUNTIME140` + the crt set |
+| `prefer-dynamic=no` + `crt-static` | 219 KB | `KERNEL32` only |
+
+About half the binary to remove imports the host already has: `renzora.exe` is itself an MSVC build and names `VCRUNTIME140.dll` and the whole `api-ms-win-crt-*` set, so every one of them is loaded into the process before a plugin is ever mapped. The dependency a plugin "avoids" is one the thing loading it already took.
+
+The heap is the only substantive consideration, and it points the same way: without `crt-static` a plugin allocates from the **host's** CRT heap rather than a private one. That is fine, and marginally safer — the boundary never transfers ownership of an allocation, since plugin components are refused outright if they declare a destructor and command payloads are copied by the host.
+
+### Drop std entirely (`no_std`)
+
+Optional, off by default, and worth roughly 6× on size. A plugin that gives up the standard library builds to a fraction of one that keeps it:
+
+| Build | `pulse.dll` |
+|---|---|
+| `std`, `dist` profile | 112,640 B |
+| `std` + `panic = "abort"` | 108,032 B |
+| `std` + fat LTO + `opt-level = "z"` + abort | 92,160 B |
+| **`no_std`** | **17,408 B** |
+
+Note the third row: this is not something optimisation flags get you. Every `dlopen`'d plugin carries its own copy of std, so ~90 KB is a floor per file.
+
+**59 of the 63 plugins in this repo are built this way.** Measured across that set:
+
+| | Total | Average |
+|---|---|---|
+| `std` | 6,608,896 B (6.30 MB) | 112,015 B |
+| `no_std` | 1,091,584 B (1.04 MB) | 18,501 B |
+
+— a 5.5 MB saving, 83.5%, for the same 59 plugins. The four that stay on `std` are `lua` (its `script` backend needs `std`, and mlua links libc regardless), `text3d` (reads font files with `std::fs`), `hair` (`HashMap` and a `Mutex` static) and `wobble` (its `noise` dependency pulls `num-traits` with default features, and cargo's feature unification is additive — a downstream crate cannot subtract `std` from a transitive dependency).
+
+**What it costs is the panic firewall, and you should not skip past this.** Today a panicking plugin system is caught, reported, and the host disables *that system* while the editor keeps running. `catch_unwind` lives in std and has no `core` equivalent, so a `no_std` plugin cannot do that: a panic reaches an `extern "C"` frame and takes the whole process with it — the editor, and any unsaved scene work in it. `no_std` on stable also cannot unwind at all, which is why `panic = "abort"` below is mandatory rather than a suggestion.
+
+So this suits a plugin whose failure modes you own — a post-process effect that is a shader plus a couple of arithmetic systems — and not a large gameplay plugin doing real indexing work, where the firewall is earning its 90 KB.
+
+Three changes. In `Cargo.toml`:
+
+```toml
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin", default-features = false, features = ["libm"] }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"
+panic = "abort"        # mandatory — no_std on stable cannot unwind
+```
+
+And at the top of `src/lib.rs`:
+
+```rust
+#![no_std]
+extern crate alloc;
+renzora_plugin::no_std_runtime!();
+```
+
+`no_std_runtime!()` supplies the two lang items the standard library would have: a global allocator and a panic handler. The allocator is the **host process's own `malloc`/`free`**, which is deliberate — your plugin is loaded into a running engine that already has an initialised C runtime, so it shares one heap with everything else rather than carrying a second. That also keeps a buffer safe to free after it has crossed the boundary. The panic handler aborts, because there is nothing else it can do.
+
+The macro expands to nothing when emitting those items would be wrong — under `std`, and under `static_link` where the host binary already provides both — so it is safe to leave in place whatever way the plugin ends up being linked.
+
+Everything else is unchanged: same `add!`, same exports (`renzora_plugin_init`, `renzora_plugin_scope`), same loader path. The engine cannot tell the difference.
+
+Things to know:
+
+- **`features = ["libm"]` is not optional.** `f32::sqrt`, `sin`, `acos`, `powf` and friends are std methods with no `core` equivalent — they lower to libm calls that `core` does not link — and `Vec3::length`, the `Quat` constructors and the colour conversions all need them. Leaving it out is a clear compile error rather than a mysterious one, but it is still a step you have to take. (`glam` and `nalgebra` use the same two-feature shape, so it may look familiar.)
+- **Your own float maths keeps working.** The prelude exports `FloatExt` in a `no_std` build, which restores `sin`, `cos`, `powf`, `floor`, `fract` and the rest on `f32` with `std`'s exact signatures — so `x.sin()` compiles unchanged. It is only exported when `std` is off, so there is never a moment where a trait method and an inherent method both want to resolve the same call.
+- **`Vec`, `String`, `Box`, `vec!` and `format!` are in the prelude too.** Bevy's prelude does not carry them because the std prelude does, but a `no_std` plugin has no std prelude. They come from `alloc`, and under `std` they are the identical items, so this changes nothing for a plugin that keeps it.
+- **`script` and `host` require `std`.** A language backend parks its interpreter in a `std::sync::Mutex` and, in practice, links something like mlua that needs libc anyway — 90 KB is noise next to an interpreter. `host` is the engine side of the boundary and links Bevy.
+- **A `no_std` plugin still links into a static export.** When the lean exporter compiles plugins into the binary, cargo unifies `renzora_plugin` back to `std` and `no_std_runtime!()` emits nothing, because the host already provides the allocator and panic handler. The plugin's own `#![no_std]` is untouched and irrelevant — a `no_std` crate links into a `std` binary perfectly happily.
+- **What will not compile.** `std::collections::HashMap` (use `alloc::collections::BTreeMap`, or add `hashbrown`), `std::sync::Mutex`, anything under `std::fs`/`std::net`/`std::time`, and any dependency that itself needs `std`. Atomics are fine — they live in `core::sync::atomic`, which is where `ripple` gets them.
 
 ### Keep it out of the workspace
 

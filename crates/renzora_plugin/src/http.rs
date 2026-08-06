@@ -36,6 +36,11 @@
 
 use crate::ecs::Commands;
 use crate::sys;
+// From `alloc`, not the prelude — a response body is owned data, and this module
+// has to compile in a `no_std` plugin where the prelude supplies neither.
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 
 /// Identifies this service in the host's queue.
 pub const SERVICE: u64 = sys::service_id("renzora.http");

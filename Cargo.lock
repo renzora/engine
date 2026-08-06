@@ -8421,6 +8421,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "libloading 0.8.9",
+ "libm",
  "renzora_plugin_derive",
 ]
 
