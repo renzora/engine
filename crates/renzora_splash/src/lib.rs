@@ -1,18 +1,15 @@
-pub mod auth;
 pub mod config;
 pub mod github;
 pub mod loading;
 mod native;
-mod native_bg;
+mod native_chamber;
 mod native_loading;
 mod native_post;
-mod native_terrain;
 pub mod project;
 #[cfg(target_arch = "wasm32")]
 pub mod web_storage;
 
-pub use auth::SplashAuth;
-pub use config::{AppConfig, UpdateConfig};
+pub use config::AppConfig;
 pub use github::GithubStats;
 pub use loading::{
     EditorLoadingOverlayActive, LoadingBytes, LoadingTask, LoadingTaskHandle, LoadingTasks,
@@ -40,7 +37,6 @@ impl Plugin for SplashPlugin {
 
         app.init_state::<SplashState>()
             .insert_resource(app_config)
-            .insert_resource(SplashAuth::new())
             .insert_resource(GithubStats::new())
             .init_resource::<LoadingTasks>()
             .init_resource::<LoadingBytes>()
@@ -60,12 +56,11 @@ impl Plugin for SplashPlugin {
         #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Startup, apply_project_arg);
 
-        // Native (bevy_ui) splash, loading screen, dusk-sky background and the
-        // procedural terrain-flyover scene.
+        // Native (bevy_ui) splash + loading screen, the Light Chamber cinematic,
+        // and the post/transition chain that finishes and closes over it.
         native::register(app);
         native_loading::register(app);
-        native_bg::register(app);
-        native_terrain::register(app);
+        native_chamber::register(app);
         native_post::register(app);
     }
 }
@@ -155,15 +150,17 @@ fn apply_project_arg(mut commands: Commands) {
 #[derive(Resource)]
 pub struct PendingProjectReopen;
 
-/// While present, the splash plays a CRT "turn-off" animation; when its timer
-/// reaches [`TVOFF_DURATION`], `native::tick_tvoff` transitions to Loading.
-/// Inserted by `enter_project` (a project was chosen from the launcher).
+/// While present, the splash plays the spectral iris closing over the cinematic;
+/// when its timer reaches [`APERTURE_DURATION`], `native::tick_aperture` transitions
+/// to Loading. Inserted by `enter_project` (a project was chosen from the launcher).
 #[derive(Resource, Default)]
-pub(crate) struct TvOff {
+pub(crate) struct Aperture {
     pub timer: f32,
 }
 
-/// Duration (seconds) of the CRT turn-off animation.
-pub(crate) const TVOFF_DURATION: f32 = 0.45;
+/// Duration (seconds) of the iris close. Long enough to read as a deliberate
+/// camera move rather than a cut, short enough that it never delays getting into
+/// the project.
+pub(crate) const APERTURE_DURATION: f32 = 0.55;
 
 renzora::add!(SplashPlugin, Editor);

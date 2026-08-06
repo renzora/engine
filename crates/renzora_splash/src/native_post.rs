@@ -1,12 +1,13 @@
 //! Real full-frame post-process for the splash.
 //!
-//! The splash background (sky shader + terrain render) is rendered to an offscreen
-//! image by a dedicated `Camera2d` (mirroring `renzora_game_ui_editor`'s
-//! `canvas_render`). A fullscreen [`PostView`] node on the main camera then samples
-//! that image through `post.wgsl`, which does genuine bloom, chromatic aberration,
-//! scanlines, and vignette — effects a UI overlay can't do because it can't read
-//! what's behind it. The interactive launcher UI stays on the main camera, on top
-//! of the post result, so it remains crisp and clickable.
+//! The splash background (the Light Chamber render — see `native_chamber.rs`) is
+//! rendered to an offscreen image by a dedicated `Camera2d` (mirroring
+//! `renzora_game_ui_editor`'s `canvas_render`). A fullscreen [`PostView`] node on
+//! the main camera then samples that image through `post.wgsl`, which does the
+//! lens/film grade — halation, lateral chromatic aberration, vignette, grain —
+//! effects a UI overlay can't do because it can't read what's behind it. The
+//! interactive launcher UI stays on the main camera, on top of the post result, so
+//! it remains crisp and clickable.
 //!
 //! The post camera is `is_active`-gated to the [`SplashState::Splash`] state and
 //! carries the editor's isolation markers, so it costs nothing and doesn't disturb
@@ -67,11 +68,11 @@ impl UiMaterial for PostMaterial {
 
 pub(crate) fn register(app: &mut App) {
     bevy::asset::embedded_asset!(app, "post.wgsl");
-    bevy::asset::embedded_asset!(app, "tvoff.wgsl");
-    bevy::asset::embedded_asset!(app, "network.wgsl");
+    bevy::asset::embedded_asset!(app, "aperture.wgsl");
+    bevy::asset::embedded_asset!(app, "haze.wgsl");
     app.add_plugins(UiMaterialPlugin::<PostMaterial>::default());
-    app.add_plugins(UiMaterialPlugin::<TvOffMaterial>::default());
-    app.add_plugins(UiMaterialPlugin::<NetworkMaterial>::default());
+    app.add_plugins(UiMaterialPlugin::<ApertureMaterial>::default());
+    app.add_plugins(UiMaterialPlugin::<HazeMaterial>::default());
     app.add_systems(Startup, setup_post);
     app.add_systems(OnEnter(SplashState::Editor), start_editor_intro);
     app.add_systems(
@@ -81,12 +82,12 @@ pub(crate) fn register(app: &mut App) {
             resize_post_target,
             attach_post_view,
             sync_post,
-            attach_tvoff_view,
-            sync_tvoff,
+            attach_aperture_view,
+            sync_aperture,
             attach_editor_intro,
             tick_editor_intro,
-            attach_network,
-            sync_network,
+            attach_haze,
+            sync_haze,
         ),
     );
 }
@@ -132,12 +133,15 @@ fn setup_post(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
 /// Only render the background pass while the splash is showing — and never on an
 /// integrated GPU.
 ///
-/// The cinematic is a full-window, multi-pass post chain (procedural terrain
-/// flyover → CRT/post shaders) rendered at the display's physical resolution. That
-/// is precisely the fill-rate-bound workload an integrated adapter is worst at, and
-/// it is the *first* thing a user sees — so on a weak GPU the engine's opening
+/// The cinematic is a full-window, multi-pass post chain (a volumetric light
+/// chamber → spectral/film shaders) rendered at the display's physical resolution.
+/// That is precisely the fill-rate-bound workload an integrated adapter is worst at,
+/// and it is the *first* thing a user sees — so on a weak GPU the engine's opening
 /// impression is a stuttering animation before the editor has even loaded. It is
 /// decorative, so it is not worth paying for; the splash UI itself is unaffected.
+///
+/// `native_chamber::manage_chamber` gates the 3D scene on the same condition, so on
+/// an integrated adapter nothing is rendered *or* displayed.
 ///
 /// With the camera inactive the offscreen target simply keeps its initial clear
 /// (`Color::NONE`), so the backdrop reads as flat rather than broken.
@@ -200,86 +204,99 @@ fn sync_post(
     }
 }
 
-// ── CRT turn-off overlay ───────────────────────────────────────────────────────
+// ── Spectral iris transition ───────────────────────────────────────────────────
 
-/// Marker for the fullscreen CRT turn-off node (on the main camera, above the UI).
+/// Marker for the fullscreen iris node (on the main camera, above the UI).
 #[derive(Component)]
-pub(crate) struct TvOffView;
+pub(crate) struct ApertureView;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(crate) struct TvOffMaterial {
-    /// x = progress 0..1, y = active (0/1).
+pub(crate) struct ApertureMaterial {
+    /// x = progress 0..1, y = active (0/1), z = aspect (w/h).
     #[uniform(0)]
     params: Vec4,
 }
 
-impl UiMaterial for TvOffMaterial {
+impl UiMaterial for ApertureMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/tvoff.wgsl".into()
+        "embedded://renzora_splash/aperture.wgsl".into()
     }
 }
 
-fn attach_tvoff_view(
+/// The iris is a circle in screen space, so it needs the node's aspect ratio —
+/// without it the "circle" is drawn in UV space and comes out as an ellipse
+/// stretched to the window.
+fn node_aspect(node: &ComputedNode) -> f32 {
+    let size = node.size();
+    if size.y > 0.0 {
+        size.x / size.y
+    } else {
+        1.0
+    }
+}
+
+fn attach_aperture_view(
     mut commands: Commands,
-    mut materials: ResMut<Assets<TvOffMaterial>>,
-    views: Query<Entity, (With<TvOffView>, Without<MaterialNode<TvOffMaterial>>)>,
+    mut materials: ResMut<Assets<ApertureMaterial>>,
+    views: Query<Entity, (With<ApertureView>, Without<MaterialNode<ApertureMaterial>>)>,
 ) {
     for e in &views {
-        let handle = materials.add(TvOffMaterial { params: Vec4::ZERO });
+        let handle = materials.add(ApertureMaterial { params: Vec4::ZERO });
         commands.entity(e).insert(MaterialNode(handle));
     }
 }
 
-fn sync_tvoff(
-    tvoff: Option<Res<crate::TvOff>>,
-    mut materials: ResMut<Assets<TvOffMaterial>>,
-    views: Query<&MaterialNode<TvOffMaterial>, With<TvOffView>>,
+fn sync_aperture(
+    aperture: Option<Res<crate::Aperture>>,
+    mut materials: ResMut<Assets<ApertureMaterial>>,
+    views: Query<(&ComputedNode, &MaterialNode<ApertureMaterial>), With<ApertureView>>,
 ) {
-    let (active, progress) = match tvoff {
-        Some(tv) => (1.0, (tv.timer / crate::TVOFF_DURATION).clamp(0.0, 1.0)),
+    let (active, progress) = match aperture {
+        Some(ap) => (1.0, (ap.timer / crate::APERTURE_DURATION).clamp(0.0, 1.0)),
         None => (0.0, 0.0),
     };
-    for mat in &views {
+    for (node, mat) in &views {
         if let Some(mut m) = materials.get_mut(&mat.0) {
-            m.params = Vec4::new(progress, active, 0.0, 0.0);
+            m.params = Vec4::new(progress, active, node_aspect(node), 0.0);
         }
     }
 }
 
-// ── Particle network (loading screen background) ───────────────────────────────
+// ── Drifting haze (loading screen background) ──────────────────────────────────
 
-/// Marker for the fullscreen particle-network node behind the loading terminal.
+/// Marker for the fullscreen haze node behind the loading terminal — the chamber's
+/// shafts and dust carried through to the screen after the iris.
 #[derive(Component)]
-pub(crate) struct NetworkView;
+pub(crate) struct HazeView;
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(crate) struct NetworkMaterial {
+pub(crate) struct HazeMaterial {
     /// x = time, y = width(px), z = height(px).
     #[uniform(0)]
     params: Vec4,
 }
 
-impl UiMaterial for NetworkMaterial {
+impl UiMaterial for HazeMaterial {
     fn fragment_shader() -> ShaderRef {
-        "embedded://renzora_splash/network.wgsl".into()
+        "embedded://renzora_splash/haze.wgsl".into()
     }
 }
 
-fn attach_network(
+fn attach_haze(
     mut commands: Commands,
-    mut materials: ResMut<Assets<NetworkMaterial>>,
-    views: Query<Entity, (With<NetworkView>, Without<MaterialNode<NetworkMaterial>>)>,
+    mut materials: ResMut<Assets<HazeMaterial>>,
+    views: Query<Entity, (With<HazeView>, Without<MaterialNode<HazeMaterial>>)>,
 ) {
     for e in &views {
-        let handle = materials.add(NetworkMaterial { params: Vec4::ZERO });
+        let handle = materials.add(HazeMaterial { params: Vec4::ZERO });
         commands.entity(e).insert(MaterialNode(handle));
     }
 }
 
-fn sync_network(
+fn sync_haze(
     time: Res<Time>,
-    mut materials: ResMut<Assets<NetworkMaterial>>,
-    views: Query<(&ComputedNode, &MaterialNode<NetworkMaterial>), With<NetworkView>>,
+    mut materials: ResMut<Assets<HazeMaterial>>,
+    views: Query<(&ComputedNode, &MaterialNode<HazeMaterial>), With<HazeView>>,
 ) {
     let t = time.elapsed_secs();
     for (cn, mat) in &views {
@@ -292,7 +309,7 @@ fn sync_network(
 
 // ── Editor power-on intro ──────────────────────────────────────────────────────
 
-/// Marker for the editor power-on overlay (runs the CRT effect in reverse).
+/// Marker for the editor power-on overlay (runs the iris in reverse).
 #[derive(Component)]
 struct EditorIntroView;
 
@@ -311,8 +328,8 @@ const EDITOR_INTRO_HOLD_MIN: f32 = 0.3;
 const EDITOR_INTRO_HOLD_MAX: f32 = 8.0;
 const EDITOR_INTRO_REVEAL: f32 = 0.45;
 
-/// On entering the editor, drop a black overlay that quickly powers on (CRT
-/// reveal: dot → line → full) so the editor doesn't pop in abruptly.
+/// On entering the editor, drop a black overlay that quickly powers on (the iris
+/// opening from a point) so the editor doesn't pop in abruptly.
 fn start_editor_intro(mut commands: Commands) {
     commands.insert_resource(EditorIntro::default());
     commands.spawn((
@@ -335,12 +352,13 @@ fn start_editor_intro(mut commands: Commands) {
 
 fn attach_editor_intro(
     mut commands: Commands,
-    mut materials: ResMut<Assets<TvOffMaterial>>,
-    views: Query<Entity, (With<EditorIntroView>, Without<MaterialNode<TvOffMaterial>>)>,
+    mut materials: ResMut<Assets<ApertureMaterial>>,
+    views: Query<Entity, (With<EditorIntroView>, Without<MaterialNode<ApertureMaterial>>)>,
 ) {
     for e in &views {
-        // Start fully closed (progress 1 = black), active.
-        let handle = materials.add(TvOffMaterial { params: Vec4::new(1.0, 1.0, 0.0, 0.0) });
+        // Start fully closed (progress 1 = black), active. Aspect is filled in by
+        // `tick_editor_intro` once the node has been laid out.
+        let handle = materials.add(ApertureMaterial { params: Vec4::new(1.0, 1.0, 1.0, 0.0) });
         commands.entity(e).insert(MaterialNode(handle));
     }
 }
@@ -353,8 +371,8 @@ fn tick_editor_intro(
     intro: Option<ResMut<EditorIntro>>,
     overlay: Option<Res<crate::EditorLoadingOverlayActive>>,
     mut commands: Commands,
-    mut materials: ResMut<Assets<TvOffMaterial>>,
-    views: Query<(Entity, Option<&MaterialNode<TvOffMaterial>>), With<EditorIntroView>>,
+    mut materials: ResMut<Assets<ApertureMaterial>>,
+    views: Query<(Entity, &ComputedNode, Option<&MaterialNode<ApertureMaterial>>), With<EditorIntroView>>,
 ) {
     let Some(mut intro) = intro else { return };
     let dt = time.delta_secs();
@@ -373,16 +391,16 @@ fn tick_editor_intro(
         (1.0 - intro.reveal / EDITOR_INTRO_REVEAL).clamp(0.0, 1.0)
     };
 
-    for (_, mat) in &views {
+    for (_, node, mat) in &views {
         if let Some(m) = mat {
             if let Some(mut mm) = materials.get_mut(&m.0) {
-                mm.params = Vec4::new(progress, 1.0, 0.0, 0.0);
+                mm.params = Vec4::new(progress, 1.0, node_aspect(node), 0.0);
             }
         }
     }
 
     if intro.revealing && intro.reveal >= EDITOR_INTRO_REVEAL {
-        for (e, _) in &views {
+        for (e, _, _) in &views {
             commands.entity(e).try_despawn();
         }
         commands.remove_resource::<EditorIntro>();

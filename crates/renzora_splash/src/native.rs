@@ -1,8 +1,13 @@
 //! Bevy-native (ember) splash launcher — an open, chrome-less project launcher
-//! floating over the procedural terrain-flyover + dusk-sky background: a search field at
-//! top-centre, the "Renzora" title + a narrow recent-projects list in the
-//! middle, and the New/Open actions + social links at bottom-centre. Window
-//! controls float in the top-right; the whole background is a drag handle.
+//! floating over the Light Chamber cinematic (`native_chamber.rs`): a search field
+//! at top-centre, the New/Open actions + a narrow recent-projects list in the
+//! middle, and the social links at bottom-centre. Window controls float in the
+//! top-right; the whole background is a drag handle.
+//!
+//! The launcher's centre column is readable because the cinematic is *built* to
+//! leave it alone — every gate in the chamber has a clear tunnel down the view
+//! axis, so the light banding stays out at the edges. Keep that in mind before
+//! widening this layout.
 //!
 //! Renders while in [`SplashState::Splash`].
 
@@ -111,7 +116,7 @@ struct NewProjectBtn;
 struct OpenProjectBtn;
 #[derive(Component)]
 struct RecentsContainer;
-/// A recent-project row — its border animates into a glitchy rainbow on hover.
+/// A recent-project row — a spectral sheen travels around its border on hover.
 #[derive(Component)]
 struct RecentRow;
 #[derive(Component, Clone)]
@@ -166,19 +171,18 @@ pub(crate) fn register(app: &mut App) {
             recent_remove_click,
             url_click,
             animate_recent_borders,
-            tick_tvoff,
+            tick_aperture,
         ),
     );
 }
 
-/// Cheap deterministic 0..1 hash for the hover glitch (no rng).
-fn glitch_rand(x: f32) -> f32 {
-    let v = (x * 12.9898).sin() * 43758.547;
-    v - v.floor()
-}
-
-/// While a recent-project row is hovered, animate its border into a cycling
-/// rainbow with occasional glitchy hue jumps; restore the soft border otherwise.
+/// While a recent-project row is hovered, run a thin-film sheen around its border
+/// and lift the card; restore the soft border otherwise.
+///
+/// Each edge is a different point on the spectrum and the whole set rotates, so the
+/// colour appears to travel around the row the way it travels along a shaft in the
+/// cinematic behind it. This replaced a glitch/colour-tearing effect that belonged
+/// to the previous CRT-flavoured splash — nothing in this theme tears or blinks.
 fn animate_recent_borders(
     time: Res<Time>,
     mut rows: Query<(&Interaction, &mut BorderColor, &mut BackgroundGradient), With<RecentRow>>,
@@ -192,32 +196,17 @@ fn animate_recent_borders(
             continue;
         }
 
-        // Baseline hover: a smoothly cycling rainbow border + brighter card.
-        let hue = (t * 50.0).rem_euclid(360.0); // ~7s per full cycle, smooth
-        let mut border_col = Color::hsl(hue, 0.9, 0.62);
-        let mut top = panel_hover();
-        let mut bot = ca(20, 22, 40, 250);
-
-        // Occasional glitch burst (like the floating shapes): rare, brief, with
-        // rapid colour-tearing flashes and an off-frame blink.
-        let phase = t * 1.6;
-        let frac = phase.fract();
-        if glitch_rand(phase.floor()) > 0.88 && frac < 0.22 {
-            let f = glitch_rand((t * 50.0).floor());
-            if f > 0.66 {
-                border_col = Color::WHITE; // tear to white
-                top = ca(80, 30, 110, 255);
-            } else if f > 0.33 {
-                border_col = Color::srgb(0.0, 1.0, 1.0); // cyan tear
-            } else {
-                // off-frame blink
-                top = ca(8, 8, 14, 110);
-                bot = ca(4, 4, 8, 110);
-            }
-        }
-
-        *border = BorderColor::all(border_col);
-        *grad = card_gradient(top, bot);
+        // ~9s for the sheen to travel all the way around — slow enough to read as a
+        // material property rather than as an animation demanding attention.
+        let hue = (t * 40.0).rem_euclid(360.0);
+        let edge = |offset: f32| Color::hsl((hue + offset).rem_euclid(360.0), 0.72, 0.66);
+        *border = BorderColor {
+            top: edge(0.0),
+            right: edge(28.0),
+            bottom: edge(56.0),
+            left: edge(84.0),
+        };
+        *grad = card_gradient(panel_hover(), ca(20, 22, 40, 250));
     }
 }
 
@@ -278,7 +267,11 @@ fn manage_splash(world: &mut World) {
 
 fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
     // The root is also the window drag handle — clicking empty background space
-    // (the terrain/sky children are click-through) drags the borderless window.
+    // (the cinematic children are click-through) drags the borderless window.
+    //
+    // Its colour is what shows when the cinematic isn't running (integrated GPU —
+    // see `native_post::gate_post_camera`), so it has to stand on its own: a near
+    // black with a trace of blue in it, matching the chamber's unlit air.
     let root = commands
         .spawn((
             Node {
@@ -290,7 +283,7 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            BackgroundColor(c(5, 4, 10)),
+            BackgroundColor(c(4, 5, 9)),
             GlobalZIndex(500),
             FocusPolicy::Block,
             Interaction::default(),
@@ -300,9 +293,10 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
         ))
         .id();
 
-    // Background (sky shader + terrain render) is rendered to the offscreen post
-    // camera via its own UI root, so the post pass can sample + bloom it. It carries
-    // `SplashRoot` too, so it's torn down with the rest of the splash.
+    // The cinematic (the Light Chamber render, through its spectral finishing pass)
+    // is drawn into the offscreen post camera via its own UI root, so `post.wgsl`
+    // can sample it as a whole frame. It carries `SplashRoot` too, so it's torn down
+    // with the rest of the splash.
     let bg_host = commands
         .spawn((
             fullscreen_abs(),
@@ -312,13 +306,10 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
             Name::new("splash-bg-host"),
         ))
         .id();
-    let backdrop = commands
-        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_bg::BgBackground, Name::new("splash-bg")))
+    let chamber = commands
+        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_chamber::ChamberView, Name::new("splash-chamber")))
         .id();
-    let terrain = commands
-        .spawn((fullscreen_abs(), FocusPolicy::Pass, crate::native_terrain::TerrainView, Name::new("splash-terrain")))
-        .id();
-    commands.entity(bg_host).add_children(&[backdrop, terrain]);
+    commands.entity(bg_host).add_child(chamber);
 
     // The post-processed background, shown on the main camera behind the UI.
     let post_view = commands
@@ -328,19 +319,19 @@ fn spawn_splash(commands: &mut Commands, fonts: &EmberFonts, post_cam: Entity) {
     let layout = build_layout(commands, fonts);
     let controls = build_window_controls(commands, fonts);
 
-    // CRT turn-off overlay, above everything (idle = fully transparent, so it
+    // Iris transition overlay, above everything (idle = fully transparent, so it
     // doesn't block input until a project is chosen).
-    let tvoff = commands
+    let aperture = commands
         .spawn((
             fullscreen_abs(),
             GlobalZIndex(700),
             FocusPolicy::Pass,
-            crate::native_post::TvOffView,
-            Name::new("splash-tvoff"),
+            crate::native_post::ApertureView,
+            Name::new("splash-aperture"),
         ))
         .id();
 
-    commands.entity(root).add_children(&[post_view, layout, controls, tvoff]);
+    commands.entity(root).add_children(&[post_view, layout, controls, aperture]);
     build_resize_zones(commands, root);
 }
 
@@ -1144,22 +1135,23 @@ fn enter_project(world: &mut World, project: crate::project::CurrentProject) {
         let _ = cfg.save();
     }
     world.insert_resource(project);
-    // Play the CRT turn-off effect; `tick_tvoff` switches to Loading when it ends.
-    world.insert_resource(crate::TvOff::default());
+    // Close the iris over the cinematic; `tick_aperture` switches to Loading when
+    // it finishes.
+    world.insert_resource(crate::Aperture::default());
 }
 
-/// Advance the CRT turn-off animation; when it completes, drop into the loading
-/// screen. Uses real time so it plays at a consistent speed.
-fn tick_tvoff(
+/// Advance the iris close; when it completes, drop into the loading screen. Uses
+/// real time so it plays at a consistent speed.
+fn tick_aperture(
     time: Res<Time<Real>>,
-    tvoff: Option<ResMut<crate::TvOff>>,
+    aperture: Option<ResMut<crate::Aperture>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<SplashState>>,
 ) {
-    let Some(mut tv) = tvoff else { return };
-    tv.timer += time.delta_secs();
-    if tv.timer >= crate::TVOFF_DURATION {
-        commands.remove_resource::<crate::TvOff>();
+    let Some(mut ap) = aperture else { return };
+    ap.timer += time.delta_secs();
+    if ap.timer >= crate::APERTURE_DURATION {
+        commands.remove_resource::<crate::Aperture>();
         next_state.set(SplashState::Loading);
     }
 }

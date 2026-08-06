@@ -24,13 +24,6 @@ impl LoadingTask {
     pub fn is_done(&self) -> bool {
         self.completed >= self.total
     }
-    pub fn fraction(&self) -> f32 {
-        if self.total == 0 {
-            1.0
-        } else {
-            (self.completed as f32 / self.total as f32).clamp(0.0, 1.0)
-        }
-    }
 }
 
 #[derive(Resource, Default)]

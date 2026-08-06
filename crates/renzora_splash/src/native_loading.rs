@@ -235,7 +235,7 @@ fn spawn_loading(
         let panel = build_letterbox(commands, fonts);
         commands.entity(backdrop).add_child(panel);
     } else {
-        let network = commands
+        let haze = commands
             .spawn((
                 Node {
                     position_type: PositionType::Absolute,
@@ -246,12 +246,12 @@ fn spawn_loading(
                     ..default()
                 },
                 FocusPolicy::Pass,
-                crate::native_post::NetworkView,
-                Name::new("loading-network"),
+                crate::native_post::HazeView,
+                Name::new("loading-haze"),
             ))
             .id();
         let panel = build_terminal(commands, fonts, project_name, project_path);
-        commands.entity(backdrop).add_children(&[network, panel]);
+        commands.entity(backdrop).add_children(&[haze, panel]);
     }
 }
 

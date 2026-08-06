@@ -2,35 +2,17 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Persisted update configuration
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct UpdateConfig {
-    /// Whether to automatically check for updates on startup
-    pub auto_check: bool,
-    /// Version that the user has chosen to skip (won't be notified again)
-    pub skipped_version: Option<String>,
-}
-
-impl Default for UpdateConfig {
-    fn default() -> Self {
-        Self {
-            auto_check: true,
-            skipped_version: None,
-        }
-    }
-}
-
-/// Application-wide configuration stored in user's config directory
+/// Application-wide configuration stored in user's config directory.
+///
+/// Only what the launcher actually reads. It used to also carry an updater
+/// section (`auto_check` / `skipped_version`) and a `disabled_plugins` list, both
+/// left behind by features that no longer exist — nothing anywhere read either.
+/// Unknown keys in an existing config file are ignored on load, so dropping them
+/// costs a user nothing.
 #[derive(Resource, Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     /// List of recently opened project paths
     pub recent_projects: Vec<PathBuf>,
-    /// Update checker settings
-    #[serde(default)]
-    pub update_config: UpdateConfig,
-    /// Plugin IDs the user has persistently disabled
-    #[serde(default)]
-    pub disabled_plugins: Vec<String>,
 }
 
 impl AppConfig {

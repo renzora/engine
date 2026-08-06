@@ -674,22 +674,29 @@ this is recorded because it is a heuristic that would otherwise keep being appli
 #### Cinematic disabled on integrated GPUs — DONE
 
 `gate_post_camera` now also requires `!GpuIsIntegrated`. The splash cinematic is a
-full-window multi-pass post chain (procedural terrain flyover → CRT/post shaders)
-at physical resolution — exactly the fill-rate-bound workload an integrated adapter
-is worst at, and the **first thing a user sees**, so a weak machine's opening
+full-window multi-pass post chain (a volumetric light chamber → spectral/film
+shaders) at physical resolution — exactly the fill-rate-bound workload an integrated
+adapter is worst at, and the **first thing a user sees**, so a weak machine's opening
 impression was a stuttering animation before the editor had even loaded. It is
 decorative; the splash UI itself is unaffected.
 
 With the camera inactive the offscreen target keeps its initial clear
 (`Color::NONE`), so the backdrop reads **transparent**, not black — untested
 visually. If that looks wrong the fix is a solid fill behind the backdrop image,
-not re-enabling the camera. The terrain/sky *simulation* systems were not gated,
-only the camera that renders them.
+not re-enabling the camera.
+
+Superseded in part by the Light Chamber rewrite (2026-08-06): the note above that
+only the *camera* was gated no longer holds. `native_chamber::manage_chamber` gates
+the 3D scene on the same `!GpuIsIntegrated` condition, so on an integrated adapter
+the scene is never built at all — no volumetric raymarch, no shadow maps, no
+per-frame animation. The old terrain/sky simulation systems this warned about are
+gone with the terrain.
 
 #### Remaining splash cost: ~0.206 ms/f, and it is the 1.3b wall again
 
-All that is left is ~30 render-app systems for 5 splash `UiMaterial` types
-(`BgMaterial`, `FlyoverMaterial`, `PostMaterial`, +2) that can never draw again
+All that is left is the render-app systems for the splash's `UiMaterial` types
+(after the Light Chamber rewrite: `ChamberMaterial`, `PostMaterial`,
+`ApertureMaterial`, `HazeMaterial` — four, down from five) that can never draw again
 after boot. It is tempting to "scope those registrations to a state that ends" —
 but **Bevy has no plugin-removal API**, and `UiMaterialPlugin` adds its systems
 with no `SystemSet` and no run condition. So it is the identical wall as 1.3b:
