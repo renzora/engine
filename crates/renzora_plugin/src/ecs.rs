@@ -3138,6 +3138,47 @@ impl App {
         self
     }
 
+    /// Register a section on the Settings overlay's **Plugins** tab.
+    ///
+    /// Takes the same [`Panel`] a dock panel does, because a settings section is
+    /// one — same id, title, icon, markup and action handler — that renders
+    /// inside Settings instead of in the dock:
+    ///
+    /// ```ignore
+    /// app.add_settings_section(
+    ///     Panel::new("mychat", "AI Chat", bsn! { .. })
+    ///         .icon("robot")
+    ///         .on_action(on_settings_action),
+    /// );
+    /// ```
+    ///
+    /// Ids are ONE namespace across panels and sections, because
+    /// [`Commands::set_panel_content`](crate::panel::PanelCommands::set_panel_content)
+    /// resolves against one list — so a section may update itself the same way a
+    /// panel does, and a section sharing an id with a panel is refused rather
+    /// than silently applying its content to the wrong one.
+    ///
+    /// `.category()` groups sections in the Settings sidebar; it does not choose
+    /// the tab, which is always Plugins.
+    pub fn add_settings_section<H: PanelHandler>(&mut self, panel: Panel<H>) -> &mut Self {
+        let desc = sys::PanelDesc {
+            id: sys::StrRef::new(panel.id),
+            title: sys::StrRef::new(panel.title),
+            icon: sys::StrRef::new(panel.icon),
+            category: sys::StrRef::new(panel.category),
+            markup: sys::StrRef::new(panel.scene.0),
+            on_action: H::ENTRY,
+            user: core::ptr::null_mut(),
+        };
+        // SAFETY: as `add_panel` — every `StrRef` points at a `'static` str and
+        // the host copies the markup before returning.
+        let status = unsafe { ((*self.ctx.iface).add_settings_section)(self.ctx.host, &desc) };
+        if status != sys::RegisterStatus::Ok && self.rejected.is_none() {
+            self.rejected = Some(status);
+        }
+        self
+    }
+
     /// Register a scripting language.
     ///
     /// The descriptor comes from the `script_backend!` macro, which owns the

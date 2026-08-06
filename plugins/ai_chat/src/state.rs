@@ -50,6 +50,8 @@ pub struct State {
     pub endpoint: String,
     pub model: String,
     pub docs_folder: Option<String>,
+    /// Bearer token for a hosted provider. Empty for Ollama, which wants none.
+    pub api_key: String,
     pub status: String,
     /// Set by anything that changes what should be on screen; cleared by the
     /// redraw. Without it the plugin would rebuild and re-send the whole markup
@@ -72,6 +74,7 @@ impl Default for State {
             endpoint: "http://localhost:11434/api/chat".to_string(),
             model: "llama3.2".to_string(),
             docs_folder: None,
+            api_key: String::new(),
             status: "Ready".to_string(),
             dirty: true,
         }
@@ -79,6 +82,104 @@ impl Default for State {
 }
 
 pub static STATE: Mutex<Option<State>> = Mutex::new(None);
+
+/// Where the connection settings live, matching `crates/renzora_ai_chat` byte
+/// for byte so the two read each other's file.
+///
+/// A plugin can do this itself because it keeps `std` — there is no config
+/// service in the ABI, and for one file there does not need to be. What it
+/// cannot do is *ask* where the engine keeps its config, so the convention is
+/// duplicated here; a `renzora.config` domain over the reply channel is the
+/// right fix if a second plugin ever needs it.
+fn config_path() -> Option<std::path::PathBuf> {
+    let base = if cfg!(windows) {
+        std::path::PathBuf::from(std::env::var_os("APPDATA")?)
+    } else {
+        std::path::PathBuf::from(std::env::var_os("HOME")?).join(".config")
+    };
+    Some(base.join("renzora").join("ai_chat.json"))
+}
+
+/// Read one `"key": "value"` string out of the config.
+///
+/// The same not-a-JSON-parser reasoning as `extract_content`: four flat string
+/// fields do not justify the crate's only dependency. Anything it cannot read is
+/// left at its default, so a hand-edited or newer file degrades rather than
+/// wiping the settings.
+fn read_field(src: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let at = src.find(&needle)? + needle.len();
+    let rest = &src[at..];
+    let open = rest.find('"')?;
+    let mut out = String::new();
+    let mut chars = rest[open + 1..].chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some(other) => out.push(other),
+                None => break,
+            },
+            c => out.push(c),
+        }
+    }
+    None
+}
+
+impl State {
+    /// Load what was saved last time, if anything.
+    pub fn load(&mut self) {
+        let Some(text) = config_path().and_then(|p| std::fs::read_to_string(p).ok()) else {
+            return;
+        };
+        if let Some(v) = read_field(&text, "base_url").filter(|v| !v.is_empty()) {
+            self.endpoint = v;
+        }
+        if let Some(v) = read_field(&text, "model").filter(|v| !v.is_empty()) {
+            self.model = v;
+        }
+        if let Some(v) = read_field(&text, "api_key").filter(|v| !v.is_empty()) {
+            self.api_key = v;
+        }
+        if let Some(v) = read_field(&text, "docs_path").filter(|v| !v.is_empty()) {
+            self.docs_folder = Some(v);
+        }
+    }
+
+    /// Write the connection settings back.
+    ///
+    /// Called when a setting changes, not every frame — the transcript changes
+    /// constantly while a reply streams and none of it belongs in the config.
+    pub fn save(&self) {
+        let Some(path) = config_path() else { return };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // Written to match `crates/renzora_ai_chat`'s `AiChatConfig` field for
+        // field, including `preset`, which this plugin does not use but must not
+        // drop — the in-tree version reads the same file and would lose it.
+        let body = format!(
+            concat!(
+                "{{\n",
+                "  \"preset\": 0,\n",
+                "  \"base_url\": \"{}\",\n",
+                "  \"api_key\": \"{}\",\n",
+                "  \"docs_path\": \"{}\",\n",
+                "  \"model\": \"{}\"\n",
+                "}}\n",
+            ),
+            json_escape(&self.endpoint),
+            json_escape(&self.api_key),
+            json_escape(self.docs_folder.as_deref().unwrap_or("")),
+            json_escape(&self.model),
+        );
+        let _ = std::fs::write(path, body);
+    }
+}
 
 /// Run `f` against the state, creating it on first use.
 ///
@@ -271,6 +372,64 @@ impl State {
         };
         m.push_str(&format!(
             "    ( Button PanelActionId {{ action: {action} }} Children [ Text(\"{label}\") ] ),\n"
+        ));
+
+        m.push_str("]\n");
+        m
+    }
+
+    /// The Settings → Plugins section: everything that persists.
+    ///
+    /// Separate markup from [`markup`](Self::markup) but the same mechanism —
+    /// a settings section is a panel that renders in the Settings overlay, so
+    /// `set_panel_content` updates it under its own id exactly the same way.
+    ///
+    /// The connection settings live here rather than in the chat panel, matching
+    /// where `crates/renzora_ai_chat` puts them: they are configured once and
+    /// then never touched, and a panel you talk to every day should not carry
+    /// three text boxes you set in the first minute.
+    pub fn settings_markup(&self) -> String {
+        let mut m = String::from(
+            "Node { flex_direction: Column, row_gap: Px(8.0), width: Percent(100.0) }\nChildren [\n",
+        );
+
+        m.push_str("    Text(\"Endpoint\"),\n");
+        m.push_str(&format!(
+            "    ( EmberInput {{ placeholder: \"http://localhost:11434/api/chat\", value: \"{}\" }} \
+             PanelActionId {{ action: {} }} ),\n",
+            bsn_escape(&self.endpoint),
+            crate::ACT_SET_URL
+        ));
+
+        m.push_str("    Text(\"Model\"),\n");
+        m.push_str(&format!(
+            "    ( EmberInput {{ placeholder: \"llama3.2\", value: \"{}\" }} \
+             PanelActionId {{ action: {} }} ),\n",
+            bsn_escape(&self.model),
+            crate::ACT_SET_MODEL
+        ));
+
+        // Shown, stored and persisted, but NOT yet sendable: the http service
+        // takes a URL and a body and no headers, so there is nowhere to put an
+        // `Authorization: Bearer`. It is here because the config file it shares
+        // with the in-tree crate carries it, and dropping the field on save
+        // would wipe a key that version had set.
+        m.push_str("    Text(\"API key (hosted providers - not yet sent, see notes)\"),\n");
+        m.push_str(&format!(
+            "    ( EmberInput {{ placeholder: \"sk-...\", value: \"{}\" }} \
+             PanelActionId {{ action: {} }} ),\n",
+            bsn_escape(&self.api_key),
+            crate::ACT_SET_KEY
+        ));
+
+        m.push_str("    Text(\"Documentation folder\"),\n");
+        m.push_str(&format!(
+            "    Text(\"{}\"),\n",
+            bsn_escape(self.docs_folder.as_deref().unwrap_or("(none)"))
+        ));
+        m.push_str(&format!(
+            "    ( Button PanelActionId {{ action: {} }} Children [ Text(\"Browse...\") ] ),\n",
+            crate::ACT_PICK
         ));
 
         m.push_str("]\n");

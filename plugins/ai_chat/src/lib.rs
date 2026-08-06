@@ -48,6 +48,14 @@ pub const ACT_INPUT: u32 = 1;
 pub const ACT_SEND: u32 = 2;
 pub const ACT_STOP: u32 = 3;
 pub const ACT_PICK: u32 = 4;
+// Settings-section inputs. Each fires per keystroke carrying its contents.
+pub const ACT_SET_URL: u32 = 5;
+pub const ACT_SET_MODEL: u32 = 6;
+pub const ACT_SET_KEY: u32 = 7;
+
+/// The settings section's own id. Distinct from the panel's, because ids are one
+/// namespace across both and `set_panel_content` resolves against it.
+const SETTINGS_ID: &str = "ai_chat_settings";
 
 /// Tags pairing our requests with their answers. Scoped per service, so the
 /// dialog and the chat stream may not collide even though both are small
@@ -112,6 +120,33 @@ fn on_action(action: Action) {
 
     if id == ACT_PICK {
         commands.pick_folder(TAG_FOLDER, "Choose a documentation folder");
+        return;
+    }
+
+    // The settings inputs. Each writes its field and persists, because there is
+    // no OK button to hang a save on — a section is always live, the way the
+    // rest of the editor's settings are.
+    //
+    // Saving on every keystroke is a file write per character, which is fine for
+    // a four-line config and is what makes closing the overlay mid-edit keep
+    // what was typed.
+    let field = match id {
+        ACT_SET_URL => Some(0),
+        ACT_SET_MODEL => Some(1),
+        ACT_SET_KEY => Some(2),
+        _ => None,
+    };
+    if let Some(field) = field {
+        with(|s| {
+            match field {
+                0 => s.endpoint = typed,
+                1 => s.model = typed,
+                _ => s.api_key = typed,
+            }
+            s.save();
+            // The chat panel shows the model name, so it changes too.
+            s.dirty = true;
+        });
     }
 }
 
@@ -178,6 +213,7 @@ fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
                 Some(path) => {
                     s.status = "Docs folder set".to_string();
                     s.docs_folder = Some(path.to_string());
+                    s.save();
                 }
                 // Cancelling is an ordinary outcome. Saying nothing at all would
                 // leave the status stuck on whatever preceded it.
@@ -195,10 +231,14 @@ fn pump(mut commands: Commands, http: Http, dialogs: Dialogs) {
             return None;
         }
         s.dirty = false;
-        Some(s.markup())
+        Some((s.markup(), s.settings_markup()))
     });
-    if let Some(markup) = markup {
-        commands.set_panel_content(PANEL_ID, &markup);
+    if let Some((panel, settings)) = markup {
+        commands.set_panel_content(PANEL_ID, &panel);
+        // The section is cheap to re-send and the host compares before parsing,
+        // so both go together rather than tracking two dirty flags for state
+        // they largely share.
+        commands.set_panel_content(SETTINGS_ID, &settings);
     }
 }
 
@@ -261,12 +301,26 @@ impl Plugin for AiChatPlugin {
     fn build(&self, app: &mut App) {
         // The initial markup is the empty state's. Everything after this comes
         // through `set_panel_content`.
-        let initial = with(|s| s.markup());
+        // Load before rendering, so the first frame shows the saved endpoint
+        // rather than the default and then flicking to it.
+        let (initial, settings) = with(|s| {
+            s.load();
+            (s.markup(), s.settings_markup())
+        });
         app.add_panel(
             Panel::new(PANEL_ID, "AI Chat", Scene(Box::leak(initial.into_boxed_str())))
                 .icon("chat-circle-dots")
                 .category("Plugins")
                 .on_action(on_action),
+        )
+        .add_settings_section(
+            Panel::new(
+                SETTINGS_ID,
+                "AI Chat",
+                Scene(Box::leak(settings.into_boxed_str())),
+            )
+            .icon("robot")
+            .on_action(on_action),
         )
         .add_systems(Update, pump);
     }

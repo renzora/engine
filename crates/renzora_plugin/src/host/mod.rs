@@ -379,6 +379,7 @@ static IFACE: sys::Interface = sys::Interface {
     prefix_hashes: sys::INTERFACE_PREFIX_HASHES.as_ptr(),
     prefix_count: sys::INTERFACE_PREFIX_HASHES.len(),
     add_script_backend,
+    add_settings_section,
 };
 
 
@@ -718,6 +719,55 @@ unsafe extern "C" fn add_panel(
             markup: desc.markup.as_str().to_string(),
             on_action: desc.on_action,
             user: desc.user as usize,
+            settings: false,
+        });
+        sys::RegisterStatus::Ok
+    })
+}
+
+/// Register a Settings-overlay section. Backs [`sys::Interface::add_settings_section`].
+///
+/// Deliberately the same body as `add_panel` bar the flag, including the
+/// duplicate-id refusal: ids are one namespace across panels AND sections
+/// because `set_panel_content` resolves against one list, so a section sharing
+/// an id with a panel would have its content applied to the wrong one.
+unsafe extern "C" fn add_settings_section(
+    host: *mut sys::Host,
+    desc: *const sys::PanelDesc,
+) -> sys::RegisterStatus {
+    guard_host("add_settings_section", sys::RegisterStatus::Invalid, || {
+        if desc.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let desc = &*desc;
+        let id = desc.id.as_str().to_string();
+        if id.is_empty() || desc.markup.as_str().is_empty() {
+            error!("plugin registered a settings section with no id or no markup");
+            return sys::RegisterStatus::Invalid;
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let owner = ctx.slot;
+        let mut panels = ctx
+            .world
+            .get_resource_or_insert_with(PluginPanels::default);
+        if panels.0.iter().any(|p| p.id == id) {
+            error!("two plugins registered `{id}` — the second is ignored");
+            return sys::RegisterStatus::Invalid;
+        }
+        panels.0.push(PluginPanel {
+            owner,
+            title: {
+                let t = desc.title.as_str();
+                if t.is_empty() { id.clone() } else { t.to_string() }
+            },
+            id,
+            icon: desc.icon.as_str().to_string(),
+            category: desc.category.as_str().to_string(),
+            markup: desc.markup.as_str().to_string(),
+            on_action: desc.on_action,
+            user: desc.user as usize,
+            settings: true,
         });
         sys::RegisterStatus::Ok
     })
@@ -2200,6 +2250,13 @@ pub struct PluginPanel {
     pub user: usize,
     /// Registering plugin slot — see [`retire_slot`].
     pub owner: usize,
+    /// Renders on the Settings overlay's Plugins tab rather than in the dock.
+    ///
+    /// A flag rather than a second registry because everything else about the
+    /// two is identical — the id, the markup, the action thunk, and crucially
+    /// the `set_panel_content` path that updates them. Splitting them would
+    /// mean two of each, and the second copy would be the one nobody tests.
+    pub settings: bool,
 }
 
 /// Every panel registered by every loaded plugin.

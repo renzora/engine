@@ -513,6 +513,9 @@ const GOLDEN: &[Golden] = &[
             "prefix_hashes: *const u64",
             "prefix_count: usize",
             "add_script_backend: unsafe extern \"C\" fn(host: *mut Host, desc: *const ScriptBackendDesc) -> RegisterStatus",
+            // Appended in MINOR 4.7 — a settings section is a panel that
+            // renders in the Settings overlay, hence the shared PanelDesc.
+            "add_settings_section: unsafe extern \"C\" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus",
         ],
     },
     Golden {

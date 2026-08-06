@@ -217,6 +217,8 @@ pub const VERSION_MAJOR: u32 = 4;
 /// 2 -> 3 appended `add_script_backend`.
 /// 3 -> 4 appended `HttpSource::poll_stream` and [`HttpChunkRead`], for
 ///          responses that arrive in pieces rather than all at once.
+/// 6 -> 7 appended `add_settings_section`, so a plugin can put its configuration
+///          on the Settings overlay rather than only in its own panel.
 /// 5 -> 6 appended `PanelAction::text`, so a panel's text inputs can reach the
 ///          plugin at all — before it, `value: f32` was the only channel.
 /// 4 -> 5 appended `SystemCall::replies`, [`ReplySource`] and [`ReplyRead`] —
@@ -254,7 +256,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 6;
+pub const VERSION_MINOR: u32 = 7;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -2649,6 +2651,23 @@ interface! {
     /// means a table entry, which means a MINOR bump.
     add_script_backend:
         unsafe extern "C" fn(host: *mut Host, desc: *const ScriptBackendDesc) -> RegisterStatus,
+
+    // ── Added in MINOR 4.7 ────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT.
+    /// Register a section on the Settings overlay's **Plugins** tab.
+    ///
+    /// Takes a [`PanelDesc`] rather than a type of its own, because a settings
+    /// section *is* a panel — the same id, title, icon, markup and action thunk
+    /// — that renders inside Settings instead of in the dock. Giving it a
+    /// second, near-identical struct would mean two shapes to keep in step and
+    /// two paths for `set_panel_content` to update, and the two would drift.
+    ///
+    /// A new table entry rather than a `category: "Settings"` convention on
+    /// [`add_panel`]: a magic string decides behaviour invisibly, and a
+    /// settings section genuinely is not a dock panel — it has no tab and no
+    /// layout entry. `category` still groups sections in the sidebar.
+    add_settings_section:
+        unsafe extern "C" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus,
 }
 
 /// How the inspector should edit one numeric field.

@@ -32,6 +32,7 @@ use bevy::ecs::component::ComponentId;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::panel::RegisterPanelContent;
+use renzora_ember::settings_sections::RegisterSettingsSection;
 use renzora_ember::widgets::EmberTextInput;
 use renzora_plugin::host::PluginPanels;
 use renzora_plugin::sys;
@@ -67,7 +68,17 @@ struct RegisteredPanels(Vec<Registered>);
 /// `register_panel_content` is an `App` extension — and a guarantee that the
 /// plugin loader has already run, since panels do not exist before it does.
 pub fn register_plugin_panels(app: &mut App) {
-    let panels: Vec<(String, String, String, String, String, Option<sys::PanelActionEntry>, usize)> = {
+    #[allow(clippy::type_complexity)]
+    let panels: Vec<(
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<sys::PanelActionEntry>,
+        usize,
+        bool,
+    )> = {
         let Some(p) = app.world().get_resource::<PluginPanels>() else {
             return;
         };
@@ -81,6 +92,7 @@ pub fn register_plugin_panels(app: &mut App) {
                     p.markup.clone(),
                     p.on_action,
                     p.user,
+                    p.settings,
                 )
             })
             .collect()
@@ -92,9 +104,11 @@ pub fn register_plugin_panels(app: &mut App) {
     // Without this the type registry has never heard of it, and a panel naming
     // it in BSN gets "no component called `PanelActionId`" — the component is
     // defined, but defining is not registering.
+    // See the `fill` note inside the loop.
+    let mut settings_fill_added = false;
     app.register_type::<PanelActionId>();
     app.init_resource::<RegisteredPanels>();
-    for (id, title, icon, category, source, on_action, user) in panels {
+    for (id, title, icon, category, source, on_action, user, is_settings) in panels {
         let tree = match renzora_bsn::bsn_tree::parse(&source) {
             Ok(t) => t,
             Err(e) => {
@@ -114,6 +128,47 @@ pub fn register_plugin_panels(app: &mut App) {
             });
             reg.0.len() - 1
         };
+
+        // A settings section takes the same slot — dispatch and
+        // `set_panel_content` both resolve through `RegisteredPanels`, so it has
+        // to be there — but registers into the Settings overlay instead of the
+        // dock. It gets no `ShellPanelInfo`: it has no tab to name and no layout
+        // entry to persist.
+        if is_settings {
+            let id_owned: &'static str = Box::leak(id.clone().into_boxed_str());
+            let icon = if icon.is_empty() {
+                "puzzle-piece".to_string()
+            } else {
+                icon
+            };
+            app.register_settings_section(id_owned, &title, &icon, move |commands, _fonts| {
+                commands
+                    .spawn((
+                        Node {
+                            flex_direction: FlexDirection::Column,
+                            width: Val::Percent(100.0),
+                            row_gap: Val::Px(6.0),
+                            ..default()
+                        },
+                        PanelRoot {
+                            index,
+                            drawn: false,
+                        },
+                        Name::new("plugin_settings_root"),
+                    ))
+                    .id()
+            });
+            // `fill` is scoped to a panel when `register_panel_content` adds it,
+            // and a settings section has no panel to scope it to — so it is added
+            // once, globally, for them. It is gated on `drawn`, so a second
+            // registration would be idle rather than wrong; `is_settings` firing
+            // for several sections is why this needs to be idempotent at all.
+            if !std::mem::replace(&mut settings_fill_added, true) {
+                app.add_systems(Update, fill);
+            }
+            info!("[plugin] settings section `{id}`");
+            continue;
+        }
 
         {
             let mut reg = app.world_mut().resource_mut::<renzora::ShellPanelRegistry>();
