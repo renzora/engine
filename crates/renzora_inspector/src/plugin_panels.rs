@@ -162,6 +162,7 @@ pub fn register_plugin_panels(app: &mut App) {
         Update,
         (
             dispatch_actions,
+            dispatch_input_changes,
             apply_bindings,
             // Ordered before the redraw, so markup a plugin set this frame is
             // picked up this frame rather than next. A frame of latency would
@@ -171,6 +172,39 @@ pub fn register_plugin_panels(app: &mut App) {
             refresh_reloaded_panels,
         ),
     );
+}
+
+/// Fire a panel action when a text input's contents change.
+///
+/// [`dispatch_actions`] fires on `Interaction::Pressed`, which a text input
+/// never receives while someone is typing in it — so without this the `text`
+/// field added in MINOR 4.6 would only ever reach a plugin when a *button* was
+/// clicked, and a button has no input child to read from.
+///
+/// So the input reports itself. A plugin puts a `PanelActionId` on the
+/// `EmberInput` and gets an action on every keystroke carrying the current
+/// value; it caches that, and reads the cache when its Send button fires. State
+/// lives in the plugin, which is where the rest of it already lives.
+///
+/// `EmberInput` builds its `EmberTextInput` as a CHILD, so the changed component
+/// is one level below the entity carrying the action id — hence the walk up
+/// through `ChildOf` rather than a single query.
+fn dispatch_input_changes(world: &mut World) {
+    let changed: Vec<(usize, u32, String)> = world
+        .query_filtered::<(&EmberTextInput, &ChildOf), Changed<EmberTextInput>>()
+        .iter(world)
+        .map(|(input, parent)| (parent.parent(), input.value.clone()))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter_map(|(parent, value)| {
+            let id = world.get::<PanelActionId>(parent)?;
+            Some((id.panel, id.action, value))
+        })
+        .collect();
+    if changed.is_empty() {
+        return;
+    }
+    dispatch(world, changed);
 }
 
 /// Apply `set_panel_content` calls from plugins.
@@ -620,6 +654,15 @@ fn dispatch_actions(world: &mut World) {
         return;
     }
 
+    dispatch(world, pressed);
+}
+
+/// Call each plugin's action thunk. Shared by [`dispatch_actions`] and
+/// [`dispatch_input_changes`] so the two cannot drift — the unsafe call, the
+/// panic-status handling and the command drain are the same either way, and only
+/// the question of what counts as "fired" differs.
+fn dispatch(world: &mut World, fired_raw: Vec<(usize, u32, String)>) {
+    let pressed = fired_raw;
     // Resolved before the sink exists: the sink borrows `Commands`, which
     // borrows the world, so the registry has to be read first.
     let fired: Vec<(sys::PanelActionEntry, usize, u32, String)> = {

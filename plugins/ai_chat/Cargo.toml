@@ -1,0 +1,25 @@
+# Declares its OWN workspace root. Without it cargo walks up, finds the engine's
+# Cargo.toml and uses that workspace's target dir and profiles — even though
+# `plugins` is in its `exclude` list, which only stops membership.
+[workspace]
+
+[package]
+name = "ai_chat"
+version = "0.1.0"
+edition = "2021"
+description = "Chat with a local or hosted LLM, in an editor panel."
+
+[lib]
+crate-type = ["cdylib"]
+
+# One dependency, and it has none of its own. `http` for the streaming reply,
+# `dialog` for the docs-folder picker. NOT `no_std`: this plugin keeps its
+# conversation in a `Mutex` static and does a lot of string work, and it is the
+# case where 90 KB of std is noise.
+[dependencies]
+renzora_plugin = { path = "../../crates/renzora_plugin", features = ["http", "dialog"] }
+
+[profile.dist]
+inherits = "release"
+opt-level = 2
+strip = "symbols"
