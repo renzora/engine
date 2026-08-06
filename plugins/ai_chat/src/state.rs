@@ -380,6 +380,33 @@ pub fn bsn_escape(s: &str) -> String {
     out
 }
 
+/// A `Text` node at a sane size.
+///
+/// BSN's bare `Text("x")` inherits the base UI font size, which is a heading in
+/// a dense panel — the first render came out roughly twice the size of every
+/// other panel in the editor. `TextFont` has to be named explicitly because a
+/// plugin cannot reach the editor's own text styles.
+pub fn text(body: &str, size: f32) -> String {
+    format!(
+        "( Text(\"{}\") TextFont {{ font_size: {size} }} )",
+        bsn_escape(body)
+    )
+}
+
+/// A clickable button carrying a panel action.
+///
+/// `Node` and `Interaction` are spelled out rather than left to `Button`'s
+/// `#[require(..)]`, because a reflected spawn does not apply required
+/// components — a bare `Button` yields an entity with no `Node` (hence the
+/// B0004 hierarchy warnings) and no `Interaction`, so it renders as loose text
+/// and never dispatches.
+pub fn button(label: &str, action: u32) -> String {
+    format!(
+        "( Node {{ padding: {{ left: Px(8.0), right: Px(8.0), top: Px(3.0), bottom: Px(3.0) }} }}          Button Interaction PanelActionId {{ action: {action} }}          Children [ {} ] )",
+        text(label, 12.0)
+    )
+}
+
 /// One transcript row, wrapped so long replies do not run off the panel.
 ///
 /// Wrapping by hand because the row is a `Text` node built from a string, and
@@ -419,29 +446,29 @@ impl State {
             "Node { flex_direction: Column, row_gap: Px(6.0), width: Percent(100.0) }\nChildren [\n",
         );
 
-        m.push_str(&format!("    Text(\"{}\"),\n", bsn_escape(&self.status)));
+        m.push_str(&format!("    {},\n", text(&self.status, 12.0)));
 
         // Model + docs row.
         m.push_str("    ( Node { flex_direction: Row, column_gap: Px(6.0) }\n      Children [\n");
         m.push_str(&format!(
-            "        Text(\"{}\"),\n",
-            bsn_escape(&format!("model: {}", self.model))
+            "        {},\n",
+            text(&format!("model: {}", self.model), 12.0)
         ));
         m.push_str(&format!(
-            "        ( Button PanelActionId {{ action: {} }} Children [ Text(\"Docs folder\") ] ),\n",
-            crate::ACT_PICK
+            "        {},\n",
+            button("Docs folder", crate::ACT_PICK)
         ));
         m.push_str("      ] ),\n");
 
         if let Some(folder) = &self.docs_folder {
-            m.push_str(&format!("    Text(\"{}\"),\n", bsn_escape(folder)));
+            m.push_str(&format!("    {},\n", text(folder, 11.0)));
         }
 
         // Transcript.
-        for (role, text) in &self.messages {
+        for (role, body) in &self.messages {
             m.push_str(&format!(
-                "    Text(\"{}\"),\n",
-                bsn_escape(&format!("{}: {}", role.label(), wrap(text, 88)))
+                "    {},\n",
+                text(&format!("{}: {}", role.label(), wrap(body, 88)), 12.0)
             ));
         }
 
@@ -464,9 +491,7 @@ impl State {
         } else {
             ("Send", crate::ACT_SEND)
         };
-        m.push_str(&format!(
-            "    ( Button PanelActionId {{ action: {action} }} Children [ Text(\"{label}\") ] ),\n"
-        ));
+        m.push_str(&format!("    {},\n", button(label, action)));
 
         m.push_str("]\n");
         m
@@ -493,7 +518,7 @@ impl State {
         // markup. Model sits under Provider here because this plugin cannot
         // fetch the model list (that needs a second request shape per protocol),
         // so it is typed rather than chosen.
-        m.push_str("    Text(\"Provider\"),\n");
+        m.push_str(&format!("    {},\n", text("Provider", 12.0)));
         let labels: Vec<String> = PRESETS
             .iter()
             .map(|p| format!("\"{}\"", bsn_escape(p.label)))
@@ -506,7 +531,7 @@ impl State {
             crate::ACT_SET_PRESET
         ));
 
-        m.push_str("    Text(\"Model\"),\n");
+        m.push_str(&format!("    {},\n", text("Model", 12.0)));
         m.push_str(&format!(
             "    ( EmberInput {{ placeholder: \"llama3.2\", value: \"{}\" }} \
              PanelActionId {{ action: {} }} ),\n",
@@ -514,7 +539,7 @@ impl State {
             crate::ACT_SET_MODEL
         ));
 
-        m.push_str("    Text(\"Server URL\"),\n");
+        m.push_str(&format!("    {},\n", text("Server URL", 12.0)));
         m.push_str(&format!(
             "    ( EmberInput {{ placeholder: \"{}\", value: \"{}\" }} \
              PanelActionId {{ action: {} }} ),\n",
@@ -523,7 +548,7 @@ impl State {
             crate::ACT_SET_URL
         ));
 
-        m.push_str("    Text(\"API key\"),\n");
+        m.push_str(&format!("    {},\n", text("API key", 12.0)));
         m.push_str(&format!(
             "    ( EmberInput {{ placeholder: \"optional\", value: \"{}\" }} \
              PanelActionId {{ action: {} }} ),\n",
@@ -531,13 +556,12 @@ impl State {
             crate::ACT_SET_KEY
         ));
 
-        m.push_str("    Text(\"Docs folder\"),\n");
+        m.push_str(&format!("    {},\n", text("Docs folder", 12.0)));
         m.push_str(&format!(
-            "    ( Node {{ flex_direction: Row, column_gap: Px(6.0) }}\n      Children [\n        \
-             Text(\"{}\"),\n        \
-             ( Button PanelActionId {{ action: {} }} Children [ Text(\"Browse...\") ] ),\n      ] ),\n",
-            bsn_escape(self.docs_folder.as_deref().unwrap_or("(none)")),
-            crate::ACT_PICK
+            "    ( Node {{ flex_direction: Row, column_gap: Px(6.0), align_items: Center }}\n      \
+             Children [\n        {},\n        {},\n      ] ),\n",
+            text(self.docs_folder.as_deref().unwrap_or("(none)"), 11.0),
+            button("Browse...", crate::ACT_PICK)
         ));
 
         m.push_str("]\n");

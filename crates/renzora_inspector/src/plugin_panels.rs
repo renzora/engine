@@ -108,6 +108,18 @@ pub fn register_plugin_panels(app: &mut App) {
     // See the `fill` note inside the loop.
     let mut settings_fill_added = false;
     app.register_type::<PanelActionId>();
+    // A plugin's markup has to be able to name a clickable thing, and dispatch
+    // needs `Interaction` and the action id on ONE entity. `Button` requires
+    // Node + Interaction + FocusPolicy, but a reflected spawn does not apply
+    // required components — so a panel should still name Node and Interaction
+    // itself, and these registrations are what make all three resolvable at all.
+    // Without them BSN logs "no component called `Button`" and silently drops it,
+    // which is a button that renders as bare text and never fires.
+    app.register_type::<Button>();
+    app.register_type::<Interaction>();
+    // So a panel can size its own text. Everything defaults to the base UI size
+    // otherwise, which is far too large for a dense panel.
+    app.register_type::<TextFont>();
     app.init_resource::<RegisteredPanels>();
     for (id, title, icon, category, source, on_action, user, is_settings) in panels {
         let tree = match renzora_bsn::bsn_tree::parse(&source) {
@@ -364,6 +376,7 @@ fn apply_panel_content(
         // redraw below sees no diff and does no work.
         if panel.markup != markup {
             panel.markup = markup;
+            info!("[plugin] set_panel_content applied to `{id}` ({} bytes)", panel.markup.len());
         }
     }
 }
@@ -423,7 +436,7 @@ fn refresh_reloaded_panels(world: &mut World) {
         }
         match renzora_bsn::bsn_tree::parse(&source) {
             Ok(tree) => {
-                info!("[plugin] panel `{id}` changed, redrawing");
+                info!("[plugin] panel `{id}` changed, redrawing (slot {index})");
                 let slot = &mut reg.0[index];
                 slot.source = source;
                 slot.tree = tree;
