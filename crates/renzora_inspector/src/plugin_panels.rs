@@ -32,6 +32,7 @@ use bevy::ecs::component::ComponentId;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::panel::RegisterPanelContent;
+use renzora_ember::widgets::EmberTextInput;
 use renzora_plugin::host::PluginPanels;
 use renzora_plugin::sys;
 
@@ -595,11 +596,25 @@ fn stamp_panel_index(world: &mut World, root: Entity, index: usize) {
 /// is `extern "C"` into a `dlopen`'d library: nothing about it should be racing
 /// anything else in the schedule.
 fn dispatch_actions(world: &mut World) {
-    let pressed: Vec<(usize, u32)> = world
-        .query::<(&Interaction, &PanelActionId)>()
+    let pressed: Vec<(usize, u32, String)> = world
+        .query::<(&Interaction, &PanelActionId, Option<&Children>)>()
         .iter(world)
-        .filter(|(i, _)| **i == Interaction::Pressed)
-        .map(|(_, a)| (a.panel, a.action))
+        .filter(|(i, _, _)| **i == Interaction::Pressed)
+        .map(|(_, a, kids)| {
+            let kids: Vec<Entity> = kids.map(|k| k.iter().collect()).unwrap_or_default();
+            (a.panel, a.action, kids)
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        // `EmberInput` builds its `EmberTextInput` as a CHILD, so a widget's
+        // text is one level down from the entity carrying the action id.
+        .map(|(panel, action, kids)| {
+            let text = kids
+                .into_iter()
+                .find_map(|c| world.get::<EmberTextInput>(c).map(|t| t.value.clone()))
+                .unwrap_or_default();
+            (panel, action, text)
+        })
         .collect();
     if pressed.is_empty() {
         return;
@@ -607,15 +622,15 @@ fn dispatch_actions(world: &mut World) {
 
     // Resolved before the sink exists: the sink borrows `Commands`, which
     // borrows the world, so the registry has to be read first.
-    let fired: Vec<(sys::PanelActionEntry, usize, u32)> = {
+    let fired: Vec<(sys::PanelActionEntry, usize, u32, String)> = {
         let Some(reg) = world.get_resource::<RegisteredPanels>() else {
             return;
         };
         pressed
             .into_iter()
-            .filter_map(|(panel, action)| {
+            .filter_map(|(panel, action, text)| {
                 let p = reg.0.get(panel)?;
-                Some((p.action_entry?, p.user, action))
+                Some((p.action_entry?, p.user, action, text))
             })
             .collect()
     };
@@ -628,7 +643,7 @@ fn dispatch_actions(world: &mut World) {
     {
         let mut commands = Commands::new(&mut queue, world);
         let mut sink = renzora_plugin::host::HostCommandSink::new(&mut commands);
-        for (entry, user, action) in fired {
+        for (entry, user, action, text) in fired {
             let name = format!("{action}");
             let payload = sys::PanelAction {
                 name: sys::StrRef {
@@ -639,6 +654,13 @@ fn dispatch_actions(world: &mut World) {
                 user: user as *mut core::ffi::c_void,
                 iface,
                 commands: sink.as_ptr(),
+                // Borrowed, not copied: `text` outlives the call below, and the
+                // guest's `Action::text` hands back a `&str` so a plugin that
+                // wants to keep it has to say so.
+                text: sys::StrRef {
+                    ptr: text.as_ptr(),
+                    len: text.len(),
+                },
             };
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps
             // alive for the process lifetime, and every pointer above outlives

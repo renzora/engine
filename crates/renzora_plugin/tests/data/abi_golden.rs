@@ -543,6 +543,9 @@ const GOLDEN: &[Golden] = &[
             "user: *mut c_void",
             "iface: *const Interface",
             "commands: *mut CommandSink",
+            // Appended in MINOR 4.6. Host-allocated and passed by pointer to the
+            // plugin's thunk, so an older plugin never reads it.
+            "text: StrRef",
         ],
     },
     Golden {

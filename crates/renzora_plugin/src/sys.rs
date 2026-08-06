@@ -217,6 +217,8 @@ pub const VERSION_MAJOR: u32 = 4;
 /// 2 -> 3 appended `add_script_backend`.
 /// 3 -> 4 appended `HttpSource::poll_stream` and [`HttpChunkRead`], for
 ///          responses that arrive in pieces rather than all at once.
+/// 5 -> 6 appended `PanelAction::text`, so a panel's text inputs can reach the
+///          plugin at all — before it, `value: f32` was the only channel.
 /// 4 -> 5 appended `SystemCall::replies`, [`ReplySource`] and [`ReplyRead`] —
 ///          a generic host-to-plugin answer channel, so a domain needing a
 ///          reply no longer costs a bump of its own. Intended to be the LAST
@@ -252,7 +254,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 5;
+pub const VERSION_MINOR: u32 = 6;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -2729,6 +2731,22 @@ pub struct PanelAction {
     pub iface: *const Interface,
     /// Structural changes, same queue a system gets. Null if unavailable.
     pub commands: *mut CommandSink,
+
+    // ── Added in MINOR 4.6 ────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT.
+    /// The widget's text, for widgets that have any — a text input's current
+    /// contents. Empty for a button, a toggle or a slider.
+    ///
+    /// [`value`](Self::value) being an `f32` meant a panel could *show* a text
+    /// box and the plugin could never learn what was typed in it, which ruled
+    /// out every form, search field and prompt. A `StrRef` rather than a
+    /// [`Str256`] because a prompt has no natural cap and this borrows for the
+    /// duration of the call rather than copying.
+    ///
+    /// **Valid only until the handler returns.** It points into host memory that
+    /// the next frame may reuse; a plugin that wants to keep it must copy it,
+    /// which is what `Action::text` returning `&str` makes obvious.
+    pub text: StrRef,
 }
 
 /// A panel's action handler. Returns [`SystemStatus::Panicked`] if the plugin

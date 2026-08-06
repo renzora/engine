@@ -3241,6 +3241,9 @@ pub struct Action<'a> {
     name: &'a str,
     /// A toggle's 0 or 1, a slider's position, 0 for a button.
     pub value: f32,
+    /// A text input's contents; empty for widgets that have no text. Borrowed
+    /// for the duration of the handler — copy it to keep it.
+    text: &'a str,
     /// Structural changes, same queue a system gets.
     pub commands: Commands<'a>,
 }
@@ -3257,6 +3260,18 @@ impl Action<'_> {
     /// Convenience for the usual `match`-free single-action panel.
     pub fn is(&self, name: &str) -> bool {
         self.name == name
+    }
+
+    /// The widget's text — a text input's current contents, empty for anything
+    /// without any.
+    ///
+    /// Borrowed from host memory for the duration of this call only, which is
+    /// why it is a `&str` rather than a `String`: a plugin keeping the prompt
+    /// has to say so by copying it. A text input fires its action on every
+    /// change, so the usual shape is to stash this in a `static` and read it
+    /// back when a Send button fires.
+    pub fn text(&self) -> &str {
+        self.text
     }
 }
 
@@ -3284,6 +3299,7 @@ unsafe extern "C" fn panel_thunk<F: Fn(Action) + 'static>(
     let payload = Action {
         name: a.name.as_str(),
         value: a.value,
+        text: a.text.as_str(),
         commands: Commands {
             sink: a.commands,
             _p: PhantomData,
