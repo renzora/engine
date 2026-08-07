@@ -243,7 +243,7 @@ struct EditorPrefFile {
     /// Developer mode — unlocks dev/profiling tooling hidden from a normal
     /// editing session. Persisted here so a distribution plugin can read the
     /// host's dev-mode state via [`load_dev_mode`] at startup (the gated
-    /// `renzora_tracy` profiler bridge does exactly this). Generic host flag.
+    /// the `plugins/tracy` profiler bridge does exactly this). Generic host flag.
     #[serde(default)]
     dev_mode: bool,
     /// Auto-save: periodically re-save the open scene. On by default.
@@ -613,7 +613,7 @@ pub fn save_stats_refresh(settings: &StatsRefreshSettings) -> std::io::Result<()
 
 /// Load the persisted developer-mode flag (default `false`). The editor seeds
 /// `EditorSettings.dev_mode` from this at startup, and a distribution plugin can
-/// read it directly (e.g. `renzora_tracy` gates its profiler bridge on it).
+/// read it directly (e.g. `plugins/tracy`).
 pub fn load_dev_mode() -> bool {
     #[cfg(target_arch = "wasm32")]
     {

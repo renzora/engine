@@ -206,8 +206,8 @@ model above (marketplace rebuilds; devs rebuild from source). One feature to kee
 **out** of the normal build: `trace_tracy`. Bevy installs its Tracy layer in
 `LogPlugin` at boot whenever that feature is compiled in, with no runtime
 off-switch, so it would arm Tracy (and grow RAM) on every launch. Tracy is opt-in
-via the gated `renzora_tracy` plugin (frame marks + diagnostic plots, started
-only on its Dev-Mode + toggle gate); per-system CPU zones need a dedicated
+via `plugins/tracy`, a standalone C-ABI plugin (frame marks + diagnostic plots,
+started on its own Settings toggle); per-system CPU zones need a dedicated
 profiling build that re-adds `trace_tracy` and so moves the ABI.
 
 ---

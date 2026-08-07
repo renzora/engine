@@ -7,7 +7,7 @@ edition = "2021"
 renzora_ember = { path = "../renzora_ember" }
 # Toasts only — used once, to point an integrated-GPU user at the Graphics
 # Quality tier (see `graphics_quality::suggest_low_tier_on_integrated_gpu`).
-# Same single-purpose dependency `renzora_tracy` takes for its settings toast.
+# A single-purpose dependency, taken only for that one call.
 renzora_ui = { path = "../renzora_ui" }
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }

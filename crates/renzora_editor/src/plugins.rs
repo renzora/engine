@@ -87,7 +87,6 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_theme_status::ThemeStatusPlugin::default());
     app.add_plugins(renzora_tilemap_editor::TilemapEditorPlugin::default());
     app.add_plugins(renzora_tonemapping_editor::TonemappingEditorPlugin::default());
-    app.add_plugins(renzora_tracy::TracyPlugin::default());
     app.add_plugins(renzora_tutorial::TutorialPlugin::default());
     app.add_plugins(renzora_undo::UndoPlugin::default());
     app.add_plugins(renzora_viewport::ViewportPlugin::default());

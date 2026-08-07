@@ -478,7 +478,7 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
     // bloom, …) — but only when `RenderDiagnosticsPlugin` is present. `trace_tracy`
     // supplies the running Tracy client (via LogPlugin's layer) that the recorder
     // needs, so this is safe here. Guarded so it's a no-op if something already
-    // added it (e.g. the `renzora_tracy` plot bridge, if its toggle is on).
+    // added it — `renzora_debugger` does, unconditionally, in every editor build.
     #[cfg(feature = "profiling")]
     if !app.is_plugin_added::<bevy::render::diagnostic::RenderDiagnosticsPlugin>() {
         app.add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin);

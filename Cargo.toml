@@ -91,7 +91,7 @@ exclude = ["plugins"]
 #   trace_chrome, detailed_trace, track_location, dev/CI only — OFF (they tax every
 #     trace_tracy_memory, bevy_dev_tools,           frame and would skew a profile);
 #     bevy_ci_testing, bevy_debug_stepping,         all OFF — `trace_tracy` too
-#     bevy_ui_debug, debug, *glam_assert,           (gated via `renzora_tracy`).
+#     bevy_ui_debug, debug, *glam_assert,           (see `plugins/tracy`).
 #     embedded_watcher, hotpatching, schedule_data
 #   zstd_c, reflect_auto_register_static,         superseded by the chosen
 #     default_no_std / critical-section / libm / web   std + zstd_rust variants
@@ -272,7 +272,7 @@ bevy = { version = "0.19", default-features = false, features = [
     # tracing layer inside `LogPlugin` at boot whenever that feature is compiled
     # in, with no runtime off-switch — so it would arm Tracy on every launch and
     # grow RAM until a profiler connects, regardless of any in-app toggle. Tracy
-    # is instead opt-in via the gated `renzora_tracy` plugin (frame marks +
+    # is instead opt-in via the `plugins/tracy` C-ABI plugin (frame marks +
     # diagnostic plots, started only on its toggle). Per-system CPU zones need a
     # dedicated profiling build that re-adds `trace_tracy` — which MOVES the ABI
     # hash (CLAUDE.md §3) and so is kept out of the normal build.
@@ -352,7 +352,7 @@ static_plugins = ["dep:renzora_static_plugins"]
 # `plugins/` won't load against a profiling binary — everything built from source
 # in the same invocation (the editor bundle + all workspace plugins) still matches.
 # Keep the in-app "Tracy Profiler" toggle (Settings → Plugins) OFF in this build:
-# Bevy already frame-marks, and the `renzora_tracy` bridge marking too would
+# Bevy already frame-marks, and the `plugins/tracy` bridge marking too would
 # double-count every frame.
 profiling = ["bevy/trace", "bevy/trace_tracy", "renzora_runtime?/profiling"]
 wasm = [

@@ -7749,7 +7749,6 @@ dependencies = [
  "renzora_tilemap_editor",
  "renzora_tonemapping",
  "renzora_tonemapping_editor",
- "renzora_tracy",
  "renzora_tutorial",
  "renzora_undo",
  "renzora_viewport",
@@ -9001,19 +9000,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_tonemapping",
-]
-
-[[package]]
-name = "renzora_tracy"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_ember",
- "renzora_ui",
- "serde",
- "serde_json",
- "tracy-client",
 ]
 
 [[package]]

@@ -1973,7 +1973,7 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
         |w| w.resource::<EditorSettings>().dev_mode,
         |w, &v| {
             w.resource_mut::<EditorSettings>().dev_mode = v;
-            // Persist so dev mode (and plugins gated on it, e.g. renzora_tracy)
+            // Persist so dev mode (and plugins gated on it, e.g. plugins/tracy)
             // survive a restart.
             let _ = renzora::save_dev_mode(v);
         },
