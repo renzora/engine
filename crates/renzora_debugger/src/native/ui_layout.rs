@@ -41,6 +41,7 @@
 
 use std::time::Instant;
 
+use bevy::diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic};
 use bevy::prelude::*;
 use bevy::ui::UiSystems;
 
@@ -105,6 +106,65 @@ pub(super) fn register_ui_layout(app: &mut App) {
     // Counting walks every node, so it runs last and only when observed.
     app.add_systems(Last, count_nodes);
     app.register_panel_content(PANEL, true, build);
+
+    // Publish into Bevy's diagnostic store as well as the panel, so the split
+    // can be watched over time instead of only while staring at it — the Tracy
+    // bridge (`plugins/tracy`) plots every diagnostic it finds, and a spike that
+    // lasts one frame is exactly the kind this panel's live readout misses.
+    for path in [
+        &CONTENT_MS,
+        &LAYOUT_MS,
+        &NODES_TOTAL,
+        &NODES_HIDDEN,
+        &TEXT_NODES,
+        &TEXT_NODES_VISIBLE,
+    ] {
+        app.register_diagnostic(Diagnostic::new(path.clone()));
+    }
+    app.add_systems(Last, publish_ui_layout_diagnostics.after(count_nodes));
+}
+
+/// `Prepare` → `Content`: propagation and text measurement, ms.
+pub const CONTENT_MS: DiagnosticPath = DiagnosticPath::const_new("ui/content_ms");
+/// `Content` → `Layout`: taffy solving the tree, ms.
+pub const LAYOUT_MS: DiagnosticPath = DiagnosticPath::const_new("ui/layout_ms");
+/// Live `Node` count.
+pub const NODES_TOTAL: DiagnosticPath = DiagnosticPath::const_new("ui/nodes_total");
+/// Nodes at `Display::None`. Against `nodes_total` this is the share of the UI
+/// tree that exists but is never drawn — mostly widget chrome (carets, selection
+/// highlights, slider rails, popovers) built eagerly and hidden for its whole
+/// life. It is the ceiling on what lazy chrome could remove.
+pub const NODES_HIDDEN: DiagnosticPath = DiagnosticPath::const_new("ui/nodes_hidden");
+/// Live `Node` + `Text` count — what text measurement scales with.
+pub const TEXT_NODES: DiagnosticPath = DiagnosticPath::const_new("ui/text_nodes");
+/// Of those, the ones actually visible — the population text measurement runs
+/// over.
+pub const TEXT_NODES_VISIBLE: DiagnosticPath =
+    DiagnosticPath::const_new("ui/text_nodes_visible");
+
+/// Copy the pipeline split and the node counts into the diagnostic store.
+///
+/// The two timings are free: `mark_start`/`mark_mid`/`mark_end` already run
+/// every frame whether or not the panel is open, so this only forwards numbers
+/// that exist.
+///
+/// The two totals come straight from the queries because `iter().len()` is
+/// answered from archetype metadata without touching an entity — free every
+/// frame. The two filtered counts come from [`UiLayoutStats`], refreshed by
+/// [`count_nodes`] every 30th frame, because those are O(entities) and not worth
+/// paying for at full rate.
+fn publish_ui_layout_diagnostics(
+    mut diags: Diagnostics,
+    stats: Res<UiLayoutStats>,
+    nodes: Query<&Node>,
+    texts: Query<&Node, With<Text>>,
+) {
+    diags.add_measurement(&CONTENT_MS, || stats.content_ms as f64);
+    diags.add_measurement(&LAYOUT_MS, || stats.layout_ms as f64);
+    diags.add_measurement(&NODES_TOTAL, || nodes.iter().len() as f64);
+    diags.add_measurement(&TEXT_NODES, || texts.iter().len() as f64);
+    diags.add_measurement(&NODES_HIDDEN, || stats.nodes_hidden as f64);
+    diags.add_measurement(&TEXT_NODES_VISIBLE, || stats.text_nodes_visible as f64);
 }
 
 fn mark_start(mut stats: ResMut<UiLayoutStats>) {
@@ -146,17 +206,23 @@ fn mark_end(mut stats: ResMut<UiLayoutStats>) {
     s.history_ms.push(total);
 }
 
-/// Refresh the node counts, but only while someone is looking.
+/// Refresh the node counts.
+///
+/// Two of the four are `filter().count()` and so O(entities), which is why this
+/// is throttled to every 30th frame — over a few thousand nodes that amortises
+/// to well under a hundred visits a frame.
+///
+/// It used to *also* require the panel to be open. That gate is gone because the
+/// counts are now published as diagnostics, and the hidden-node fraction is one
+/// of the more useful numbers the editor produces: it is the size of the prize
+/// for spawning widget chrome lazily, and you cannot see it in a capture if it
+/// only exists while a panel is being looked at.
 fn count_nodes(
     mut stats: ResMut<UiLayoutStats>,
     nodes: Query<&Node>,
     texts: Query<&Node, With<Text>>,
-    dock: Option<Res<renzora_ember::dock::Dock>>,
-    windows: Option<Res<renzora_ember::dock::DockWindows>>,
 ) {
-    let open = dock.is_some_and(|d| d.tree.is_active_tab(PANEL))
-        || windows.is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(PANEL)));
-    if !open || !stats.frame.is_multiple_of(30) {
+    if !stats.frame.is_multiple_of(30) {
         return;
     }
     let s = &mut *stats;

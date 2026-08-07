@@ -21,6 +21,7 @@
 //! the data source for the editor's "UI Reactivity" debug panel. The
 //! overhead is two `Instant` reads per entry per frame (tens of ns each).
 
+use bevy::diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic};
 use std::time::Instant;
 
 use bevy::ecs::change_detection::{CheckChangeTicks, Tick};
@@ -53,7 +54,65 @@ impl Plugin for ReactivePlugin {
             // run_keyed_lists then adds to.
             .add_systems(Update, (run_reactions, run_keyed_lists).chain());
         app.add_observer(clamp_stored_ticks);
+
+        // Publish the same counters the Reactivity panel shows into Bevy's
+        // diagnostic store, so anything that reads diagnostics can see them —
+        // the Tracy bridge (`plugins/tracy`) plots every entry it finds, which
+        // turns "the editor gets slower when I select something" into a graph
+        // with a number on it.
+        //
+        // These already existed on `ReactiveStats`; they were simply invisible
+        // outside the one panel that draws them. Publishing costs a handful of
+        // `add_measurement` calls a frame, and Bevy skips the closure entirely
+        // for a diagnostic nothing has enabled.
+        for path in [
+            &BINDINGS_TOTAL,
+            &BINDINGS_PARKED,
+            &BINDINGS_SKIPPED,
+            &BINDINGS_CHANGED,
+            &REACTIONS_US,
+            &LISTS_US,
+            &ROWS_REBUILT,
+        ] {
+            app.register_diagnostic(Diagnostic::new(path.clone()));
+        }
+        // After the two drivers, so it reports this frame's numbers rather than
+        // last frame's — the whole point is to line the spike up with the frame
+        // that caused it.
+        app.add_systems(Update, publish_reactive_diagnostics.after(run_keyed_lists));
     }
+}
+
+/// Bindings walked this frame (excludes parked).
+pub const BINDINGS_TOTAL: DiagnosticPath = DiagnosticPath::const_new("ui/bindings_total");
+/// Bindings set aside behind a collapsed subtree, costing nothing per frame.
+pub const BINDINGS_PARKED: DiagnosticPath = DiagnosticPath::const_new("ui/bindings_parked");
+/// Bindings the dependency gate skipped without running.
+pub const BINDINGS_SKIPPED: DiagnosticPath = DiagnosticPath::const_new("ui/bindings_skipped");
+/// Bindings that produced a new value (a UI write happened).
+pub const BINDINGS_CHANGED: DiagnosticPath = DiagnosticPath::const_new("ui/bindings_changed");
+/// Binding recompute time this frame, µs.
+pub const REACTIONS_US: DiagnosticPath = DiagnosticPath::const_new("ui/reactions_us");
+/// Keyed-list snapshot + diff time this frame, µs.
+pub const LISTS_US: DiagnosticPath = DiagnosticPath::const_new("ui/lists_us");
+/// List rows built or rebuilt this frame.
+pub const ROWS_REBUILT: DiagnosticPath = DiagnosticPath::const_new("ui/rows_rebuilt");
+
+/// Copy [`ReactiveStats`] into the diagnostic store.
+///
+/// `bindings_total` against `bindings_skipped` is the number to read first: a
+/// large total with a near-equal skip count means the dependency gate is doing
+/// its job and the remaining cost is the per-entry walk itself (liveness check +
+/// collapsed-ancestor lookup), which is paid before the gate can skip anything
+/// and therefore scales with row count no matter how clean the rows are.
+fn publish_reactive_diagnostics(mut diags: Diagnostics, stats: Res<ReactiveStats>) {
+    diags.add_measurement(&BINDINGS_TOTAL, || stats.bindings_total as f64);
+    diags.add_measurement(&BINDINGS_PARKED, || stats.parked_total as f64);
+    diags.add_measurement(&BINDINGS_SKIPPED, || stats.skipped_this_frame as f64);
+    diags.add_measurement(&BINDINGS_CHANGED, || stats.changed_this_frame as f64);
+    diags.add_measurement(&REACTIONS_US, || stats.reactions_us as f64);
+    diags.add_measurement(&LISTS_US, || stats.lists_us as f64);
+    diags.add_measurement(&ROWS_REBUILT, || stats.rows_rebuilt_this_frame as f64);
 }
 
 /// Keep our parked `last_run` ticks inside the window `Tick::is_newer_than` can
