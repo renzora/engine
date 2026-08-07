@@ -301,22 +301,50 @@ fn dispatch_input_changes(world: &mut World) {
 /// which is exactly how it presented: settings that looked live and changed
 /// nothing.
 ///
-/// `Bound<usize>` is ember's own "this widget's value" component and is what
-/// `dropdown_select` writes on a pick, so watching it covers every widget built
-/// on the same binding rather than just dropdowns.
+/// `Bound<T>` is ember's own "this widget's value" component, so watching it
+/// covers every widget built on the same binding rather than any one kind.
 ///
-/// The index goes out in `value`, not `text`: text is for widgets holding a
-/// string, and a dropdown holds a position in its option list.
+/// **All three instantiations, not just `Bound<usize>`.** `Bound` is generic
+/// over the model type and each instantiation is a distinct component, so a
+/// query for one sees nothing of the others. Watching only `usize` was the
+/// original form of this function, and it fixed dropdowns while leaving the
+/// defect it describes fully intact for the widgets beside them: `EmberToggle`
+/// and `EmberCheckbox` carry `Bound<bool>`, `EmberSliderWidget` carries
+/// `Bound<f32>`, and all three rendered, animated on click, and reported
+/// nothing. A plugin could ship a settings toggle that did precisely as much as
+/// a painted one.
+///
+/// The value goes out in `value`, not `text`: text is for widgets holding a
+/// string. `bool` crosses as 0.0 or 1.0 — the ABI's action payload is one `f32`
+/// and adding a kind tag to distinguish "false" from "index 0" would mean a
+/// boundary change for something every caller already knows, since a plugin
+/// knows which widget it put behind that action id.
 fn dispatch_value_changes(world: &mut World) {
-    let changed: Vec<(usize, u32, f32)> = world
-        .query_filtered::<(&Bound<usize>, &ChildOf), Changed<Bound<usize>>>()
-        .iter(world)
-        .map(|(bound, parent)| (parent.parent(), bound.0))
-        .collect::<Vec<_>>()
+    let mut changed: Vec<(Entity, f32)> = Vec::new();
+    changed.extend(
+        world
+            .query_filtered::<(&Bound<usize>, &ChildOf), Changed<Bound<usize>>>()
+            .iter(world)
+            .map(|(bound, parent)| (parent.parent(), bound.0 as f32)),
+    );
+    changed.extend(
+        world
+            .query_filtered::<(&Bound<bool>, &ChildOf), Changed<Bound<bool>>>()
+            .iter(world)
+            .map(|(bound, parent)| (parent.parent(), if bound.0 { 1.0 } else { 0.0 })),
+    );
+    changed.extend(
+        world
+            .query_filtered::<(&Bound<f32>, &ChildOf), Changed<Bound<f32>>>()
+            .iter(world)
+            .map(|(bound, parent)| (parent.parent(), bound.0)),
+    );
+
+    let changed: Vec<(usize, u32, f32)> = changed
         .into_iter()
         .filter_map(|(parent, value)| {
             let id = world.get::<PanelActionId>(parent)?;
-            Some((id.panel, id.action, value as f32))
+            Some((id.panel, id.action, value))
         })
         .collect();
     if changed.is_empty() {
