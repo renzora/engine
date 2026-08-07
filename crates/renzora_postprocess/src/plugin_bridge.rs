@@ -19,6 +19,8 @@
 
 use bevy::core_pipeline::FullscreenShader;
 use bevy::ecs::component::ComponentId;
+use bevy::ecs::query::QueryBuilder;
+use bevy::ecs::world::FilteredEntityRef;
 use bevy::prelude::*;
 use bevy::render::render_resource::binding_types::{sampler, texture_2d};
 use bevy::render::render_resource::{
@@ -451,28 +453,74 @@ pub struct PluginEffectSettings(pub bevy::platform::collections::HashMap<Compone
 #[derive(Resource, Clone, Default)]
 pub struct PluginEffectComponents(pub Vec<(ComponentId, usize)>);
 
+/// One cached dynamic query per effect, so an unused effect costs nothing.
+///
+/// The queries are built once and kept, rather than rebuilt each frame, because
+/// building one walks the archetypes to work out what it matches — which is the
+/// cost this whole type exists to avoid paying 53 times a frame.
+#[derive(Resource, Default)]
+struct EffectSettingQueries(
+    bevy::platform::collections::HashMap<ComponentId, QueryState<FilteredEntityRef<'static, 'static>>>,
+);
+
 /// Copy each effect's settings out of the world.
 ///
 /// Takes the FIRST entity carrying the component. Per-camera effects would need
 /// this keyed by view entity and the uniform made dynamic-offset — worth doing,
 /// but it is a strictly larger change and a single global value is enough to
 /// prove the parameter path.
+///
+/// ## Why this uses a query rather than walking entities
+///
+/// It used to be `world.iter_entities().find_map(|e| e.get_by_id(id))` per
+/// effect, and that is a full linear scan of the world **per registered effect,
+/// per frame** — with no early exit in the case that matters, because `find_map`
+/// only short-circuits when it *finds* something and an unused effect's
+/// component is on nothing. So the cost was worst exactly when the work was
+/// pointless: 53 post-process plugins against a 4,300-entity scene is ~228,000
+/// entity visits a frame to conclude that none of them are in use.
+///
+/// That is the "a loaded plugin should be dormant" property failing in the one
+/// place it is least visible — there is no render pass, no plugin system and no
+/// GPU work to point at, just the host quietly scanning on their behalf.
+///
+/// A `QueryState` matches by archetype instead. An effect whose settings
+/// component exists on no entity matches no archetype and iterates nothing, so
+/// an unused effect costs a hash lookup and an empty iterator.
 fn collect_effect_settings(world: &mut World) {
     let Some(wanted) = world.get_resource::<PluginEffectComponents>().cloned() else {
         return;
     };
+    if wanted.0.is_empty() {
+        return;
+    }
+
+    world.init_resource::<EffectSettingQueries>();
+    let mut queries = world.remove_resource::<EffectSettingQueries>().unwrap_or_default();
+
     let mut out = bevy::platform::collections::HashMap::default();
     for (id, size) in wanted.0 {
-        let found = world
-            .iter_entities()
-            .find_map(|e| e.get_by_id(id).ok().map(|p| unsafe {
+        let state = queries.0.entry(id).or_insert_with(|| {
+            QueryBuilder::<FilteredEntityRef>::new(world).ref_id(id).build()
+        });
+        // Archetypes appear as the scene loads, and a `QueryState` only knows
+        // about the ones it has been shown. Without this an effect enabled after
+        // the query was built would never match — a settings panel that changes
+        // nothing, which is the same class of bug as the one above and harder to
+        // see.
+        state.update_archetypes(world);
+        let found = state.iter(world).next().and_then(|e| {
+            e.get_by_id(id).map(|p| unsafe {
                 // SAFETY: `size` is the size this component was registered with.
                 std::slice::from_raw_parts(p.as_ptr(), size).to_vec()
-            }));
+            })
+        });
         if let Some(bytes) = found {
             out.insert(id, bytes);
         }
     }
+
+    world.insert_resource(queries);
     world.insert_resource(PluginEffectSettings(out));
 }
 
