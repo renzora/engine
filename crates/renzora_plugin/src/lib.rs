@@ -150,6 +150,14 @@ pub mod dialog;
 /// not have to opt into a second name to change what is in it.
 pub mod panel;
 
+/// Diagnostics: read the host's frame time, FPS, entity count and per-pass GPU
+/// times from a system.
+///
+/// Not behind a feature, for the same reason as [`panel`] and a different one
+/// besides: the source it reads is a field of [`sys::SystemCall`] in every
+/// build, so gating the reader would gate access to something already there.
+pub mod diagnostics;
+
 /// Scripting: implement a language backend the engine can run scripts through.
 ///
 /// Opt in with `features = ["script"]`. The odd one out among the domains —

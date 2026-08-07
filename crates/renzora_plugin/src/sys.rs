@@ -225,6 +225,16 @@ pub const VERSION_MAJOR: u32 = 4;
 ///          a generic host-to-plugin answer channel, so a domain needing a
 ///          reply no longer costs a bump of its own. Intended to be the LAST
 ///          per-domain source ever added.
+/// 7 -> 8 appended `SystemCall::diagnostics`, [`DiagnosticSource`] and
+///          [`DiagnosticEntry`] — the host's measurement store, readable from a
+///          plugin system. It breaks the "last per-domain source" intent one
+///          line above, and the reason it is not a [`ReplySource`] domain is
+///          worth recording: replies are *answers to a call the plugin made*,
+///          delivered a frame later. Diagnostics are the opposite shape — a
+///          plugin wants this frame's numbers during this frame, and a
+///          request/response round trip would hand every reader values one
+///          frame stale. A profiler that plots last frame's frame time against
+///          this frame's marker is not a profiler.
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -256,7 +266,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 7;
+pub const VERSION_MINOR: u32 = 8;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -1070,6 +1080,67 @@ pub struct SystemCall {
     /// [`ReplySource`] keyed by its own service id, exactly as it rides
     /// `CommandKind::Service` going out, and adds no boundary surface at all.
     pub replies: *mut ReplySource,
+
+    // ── Added in MINOR 4.8 ────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT.
+    /// This frame's measurements — frame time, FPS, entity count, per-render-pass
+    /// GPU and CPU times, system CPU and memory. Null if the host keeps no
+    /// diagnostics (a shipped game usually does not).
+    ///
+    /// A source rather than an [`Interface`] function, for the reason given on
+    /// [`host`](Self::host): reading the store needs the world, and the `Host`
+    /// handle is null while a system runs.
+    ///
+    /// A source rather than a [`ReplySource`] domain despite that being the
+    /// designated home for new host-to-plugin data — see the MINOR 8 note on
+    /// [`VERSION_MINOR`]. Replies arrive a frame after the call that asked for
+    /// them, and a profiler reading one-frame-stale numbers is measuring the
+    /// wrong frame.
+    pub diagnostics: *mut DiagnosticSource,
+}
+
+/// One measurement, borrowed for the duration of the call that produced it.
+///
+/// The host writes these into a buffer the *plugin* owns, which is what keeps
+/// the two allocators apart — see [`DiagnosticSource::read`].
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct DiagnosticEntry {
+    /// The measurement's path, e.g. `"fps"` or `"render/main_opaque_pass_3d/elapsed_gpu"`.
+    ///
+    /// Borrowed from the host's store and valid **only until `read` returns** —
+    /// copy it if you need to keep it. This is the ordinary [`StrRef`] contract
+    /// and it bites harder here than elsewhere, because the obvious use is to
+    /// cache the path as a key and the obvious bug is to cache the pointer.
+    pub path: StrRef,
+    /// The most recent sample. `f64::NAN` if the measurement exists but has not
+    /// been taken yet, which is the normal state for the first frames.
+    pub value: f64,
+    /// The measurement's own smoothed average, or the same as `value` for a
+    /// diagnostic that does not keep a history.
+    pub smoothed: f64,
+}
+
+/// Reads the host's diagnostic store. Created for the call, dead when it returns.
+#[repr(C)]
+pub struct DiagnosticSource {
+    /// Copy up to `cap` entries into `out`, returning **how many the host has** —
+    /// which may exceed `cap`, so a caller that cares about completeness compares
+    /// the two and grows.
+    ///
+    /// `out` may be null when `cap` is 0, which is how you ask for the count
+    /// without allocating. The set is small (a few dozen) and stable after the
+    /// first frames, so one probe at startup and a reused buffer is the intended
+    /// shape rather than a probe every frame.
+    ///
+    /// Entry order is unspecified and not stable between calls. Diagnostics are
+    /// identified by path, and a plugin that indexes them positionally will read
+    /// FPS as GPU time the first time the host registers a new one.
+    pub read: unsafe extern "C" fn(
+        src: *mut DiagnosticSource,
+        out: *mut DiagnosticEntry,
+        cap: u32,
+    ) -> u32,
 }
 
 /// One answer to a service call, copied out for the plugin.

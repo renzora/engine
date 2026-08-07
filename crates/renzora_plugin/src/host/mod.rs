@@ -28,6 +28,7 @@ pub mod dev;
 pub mod input;
 pub mod loader;
 
+use bevy::diagnostic::DiagnosticsStore;
 use bevy::ecs::component::{ComponentDescriptor, ComponentId, StorageType};
 use bevy::ecs::lifecycle::{RemovedComponentEntity, RemovedComponentMessages};
 use bevy::ecs::message::MessageCursor;
@@ -1857,7 +1858,70 @@ const _: () = {
     assert!(core::mem::offset_of!(HttpSourceImpl, src) == 0);
     assert!(core::mem::offset_of!(RemovedSourceImpl, src) == 0);
     assert!(core::mem::offset_of!(ReplySourceImpl, src) == 0);
+    assert!(core::mem::offset_of!(DiagnosticSourceImpl, src) == 0);
 };
+
+/// Backs [`sys::DiagnosticSource`]. `src` must be the FIRST field — see the
+/// assertions above.
+#[repr(C)]
+struct DiagnosticSourceImpl<'a> {
+    src: sys::DiagnosticSource,
+    /// `None` when the host keeps no diagnostics, which is the normal state for
+    /// a shipped game — the plugin sees an empty store rather than a failure.
+    store: Option<&'a DiagnosticsStore>,
+}
+
+/// Copy this frame's measurements into a plugin-owned buffer.
+///
+/// One pass, unlike `http_poll` and `removed_read`, and the difference is worth
+/// stating: those two *consume*, so a probe that also took the data would lose it
+/// if the caller then failed to allocate. Reading a diagnostic takes nothing away,
+/// so the count pass is just a count and there is nothing to lose.
+///
+/// The `StrRef`s point into the store, which is borrowed for the whole system
+/// call — valid until this returns and not one instruction longer. The guest side
+/// copies them before the borrow ends; see `diagnostics::Diagnostics::iter`.
+unsafe extern "C" fn diagnostics_read(
+    src: *mut sys::DiagnosticSource,
+    out: *mut sys::DiagnosticEntry,
+    cap: u32,
+) -> u32 {
+    guard_host("diagnostics_read", 0, || {
+        let this = &mut *(src as *mut DiagnosticSourceImpl);
+        let Some(store) = this.store else {
+            return 0;
+        };
+
+        let mut total: u32 = 0;
+        for diag in store.iter() {
+            // Count everything, but only write while there is room. Returning the
+            // full total rather than what was written is what lets a caller
+            // detect a short buffer and grow — reporting the truncated count
+            // would make truncation invisible, which is the failure mode where a
+            // profiler silently stops plotting whatever sorts last.
+            if out.is_null() || total >= cap {
+                total = total.saturating_add(1);
+                continue;
+            }
+            let path = diag.path().as_str();
+            // `value()` is `None` before the first sample — a real state for the
+            // first frames, not an error. `NaN` carries that across the boundary
+            // without needing a second field to say "no value", and the guest's
+            // `Diagnostic::is_valid` is the documented check.
+            let value = diag.value().unwrap_or(f64::NAN);
+            out.add(total as usize).write(sys::DiagnosticEntry {
+                path: sys::StrRef {
+                    ptr: path.as_ptr(),
+                    len: path.len(),
+                },
+                value,
+                smoothed: diag.smoothed().unwrap_or(value),
+            });
+            total += 1;
+        }
+        total
+    })
+}
 
 /// The host's interface table.
 ///
@@ -3200,6 +3264,12 @@ fn build_dispatcher(
         // somewhere it can reach — past the threshold it starts returning wrong
         // answers, silently.
         ParamBuilder::of::<SystemChangeTick>(),
+        // This frame's measurements. `Option` because diagnostics are assembled
+        // by the host, not by Bevy's core: the editor adds them, a shipped game
+        // usually does not, and a plugin there reads an empty store rather than
+        // panicking. Read-only and not component storage, so like the removal
+        // messages above it can never conflict with the dynamic queries.
+        ParamBuilder::of::<Option<Res<DiagnosticsStore>>>(),
     )
         .build_state(world)
         .build_system(move |mut queries: Vec<Query<FilteredEntityMut>>,
@@ -3217,7 +3287,8 @@ fn build_dispatcher(
                             mut removed_cursors: Local<
             HashMap<ComponentId, MessageCursor<RemovedComponentEntity>>,
         >,
-                            system_ticks: SystemChangeTick| {
+                            system_ticks: SystemChangeTick,
+                            diagnostics_store: Option<Res<DiagnosticsStore>>| {
             if disabled.load(std::sync::atomic::Ordering::Relaxed) {
                 return;
             }
@@ -3338,6 +3409,12 @@ fn build_dispatcher(
                 messages: Some(removed_messages),
                 cursors: &mut removed_cursors,
             };
+            let mut diagnostic_src = DiagnosticSourceImpl {
+                src: sys::DiagnosticSource {
+                    read: diagnostics_read,
+                },
+                store: diagnostics_store.as_deref(),
+            };
             let mut sink = SinkImpl {
                 sink: sys::CommandSink {
                     reserve_entity: sink_reserve,
@@ -3376,6 +3453,7 @@ fn build_dispatcher(
                 http: (&mut http_src as *mut HttpSourceImpl).cast(),
                 removed: (&mut removed_src as *mut RemovedSourceImpl).cast(),
                 replies: (&mut reply_src as *mut ReplySourceImpl).cast(),
+                diagnostics: (&mut diagnostic_src as *mut DiagnosticSourceImpl).cast(),
             };
 
             // SAFETY: `entry` came from a `dlopen`'d library the loader keeps

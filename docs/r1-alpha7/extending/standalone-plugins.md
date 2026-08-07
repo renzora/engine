@@ -737,6 +737,33 @@ Four things to hold on to:
 
 Streaming and whole-body requests share one queue but never cross: a chunk is invisible to `poll`, and a completed body is invisible to `poll_stream`. Mixing both in one plugin, on different tags, is fine.
 
+## Diagnostics
+
+Not behind a feature. The host's own measurements — frame time, FPS, entity count, per-render-pass GPU and CPU times, process CPU and memory — readable from any system:
+
+```rust
+use renzora_plugin::diagnostics::Diagnostics;
+
+fn report(diags: Diagnostics) {
+    if let Some(fps) = diags.get("fps") {
+        info(&format!("{:.0} fps", fps.smoothed));
+    }
+}
+```
+
+`get` is a linear scan, which is right for the occasional lookup and wrong for reading twenty paths a frame — call `iter()` once and match against that instead.
+
+Two things the host does not promise, and both bite quietly:
+
+- **Which measurements exist.** An editor carries all of them; a shipped game usually carries none; a graphics backend without timestamp queries has the `render/*/elapsed_cpu` paths but not `elapsed_gpu`. That is why `get` returns `Option`, and why treating a missing diagnostic as zero is how you end up drawing a flat line and calling it data.
+- **That a present measurement has a value.** A diagnostic registers before its first sample is taken, so `value` is `NaN` for the first frames. `Diagnostic::is_valid()` is the check. `NaN` propagates silently through a sum and poisons an average without any comparison ever being false.
+
+Entry order is unspecified and not stable between calls — diagnostics are identified by path, and indexing them positionally reads FPS as GPU time the first time the host registers a new one.
+
+This is a system param rather than an interface function because reading the store needs the world, and `SystemCall::host` is null while a system runs — the same constraint that shapes `Meshes` and `Http`. It is not a *domain* like HTTP or animation, so there is no feature to enable: the source is a field of `SystemCall` in every build.
+
+`plugins/tracy` is the worked example — it streams every diagnostic to a Tracy profiler as a named plot. See [Profiling with Tracy](../editor-dev/profiling.md).
+
 ## File dialogs
 
 Behind `features = ["dialog"]`. Native file and folder pickers, asked for by tag and collected later — the same fire-and-tag shape as HTTP, and for the same reason: the boundary has no callbacks, and a function pointer handed over would have to survive a hot reload.
@@ -1247,7 +1274,20 @@ The ABI carries a `MAJOR.MINOR` version. A plugin loads into any host whose MAJO
 
 A plugin built against a newer MINOR than the host provides is refused with a message naming the versions, rather than being allowed to call a function the host doesn't have.
 
-**The current ABI is 4.0.** The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
+**The current ABI is 4.8.** The 4.x MINORs:
+
+- **4.1** — `RemovedComponents`
+- **4.2** — `Added` and `Changed` query filters
+- **4.3** — `add_script_backend`
+- **4.4** — [streaming HTTP responses](#streaming-responses)
+- **4.5** — `SystemCall::replies`, the generic host-to-plugin answer channel
+- **4.6** — `PanelAction::text`, so a panel's text inputs reach the plugin
+- **4.7** — [`add_settings_section`](#editor-panels)
+- **4.8** — the [`Diagnostics`](#diagnostics) system param
+
+4.8 breaks 4.5's stated intent of being the last per-domain source, and the reason is worth knowing before adding a ninth: replies are *answers to a call the plugin made*, delivered a frame later. Diagnostics are the opposite shape — a reader wants this frame's numbers during this frame, and a round trip would hand every consumer values one frame stale. A profiler plotting last frame's frame time against this frame's marker is not a profiler. If a new domain can tolerate a frame of latency, it should still ride `ReplySource` and cost no bump at all.
+
+The 2.x MINORs below are kept as history, because two of them broke the additive guarantee and that is why 3.0 exists:
 
 - **2.1** — editor panels
 - **2.2** — [input](#input)

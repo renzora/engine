@@ -175,6 +175,25 @@ const GOLDEN: &[Golden] = &[
             "removed: *mut RemovedSource",
             // Appended in MINOR 4.5 — the generic reply channel.
             "replies: *mut ReplySource",
+            // Appended in MINOR 4.8 — the host's measurement store.
+            "diagnostics: *mut DiagnosticSource",
+        ],
+    },
+    // Crosses the boundary: the host writes these into a plugin-allocated
+    // buffer. `path` borrows the host's string for the call only.
+    Golden {
+        name: "DiagnosticEntry",
+        fields: &[
+            "path: StrRef",
+            "value: f64",
+            "smoothed: f64",
+        ],
+    },
+    // Host-allocated, reached through `SystemCall::diagnostics`.
+    Golden {
+        name: "DiagnosticSource",
+        fields: &[
+            "read: unsafe extern \"C\" fn( src: *mut DiagnosticSource, out: *mut DiagnosticEntry, cap: u32, ) -> u32",
         ],
     },
     Golden {
