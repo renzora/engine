@@ -1655,6 +1655,7 @@ mod tests {
                 height: 1080,
                 resizable: false,
                 mode: WindowMode::Fullscreen,
+                vsync: true,
             },
             viewport: ViewportConfig::default(),
             rendering_2d: Rendering2dConfig::default(),

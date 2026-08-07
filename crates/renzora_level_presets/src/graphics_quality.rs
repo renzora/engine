@@ -39,14 +39,17 @@
 //! whatever the new tier still forbids.
 
 use bevy::anti_alias::taa::TemporalAntiAliasing;
-use bevy::pbr::ScreenSpaceAmbientOcclusion;
+use bevy::light::DirectionalLightShadowMap;
+use bevy::pbr::{AtmosphereMode, AtmosphereSettings, ScreenSpaceAmbientOcclusion};
 use bevy::post_process::auto_exposure::AutoExposure;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 
 use renzora::core::viewport_types::ViewportSettings;
 use renzora::core::ViewportCamera;
-use renzora::{EffectRouting, LumenLighting, LumenQuality, RtLighting, SplashState};
+use renzora::{
+    EffectRouting, LumenLighting, LumenQuality, ResolvedGraphicsQuality, RtLighting, SplashState,
+};
 
 /// Remembers the last tier so we can re-poke `EffectRouting` exactly once per
 /// change rather than every frame.
@@ -112,6 +115,7 @@ pub(crate) fn register(app: &mut App) {
 fn enforce_graphics_quality(
     settings: Option<Res<ViewportSettings>>,
     mut state: ResMut<GraphicsQualityState>,
+    mut resolved: ResMut<ResolvedGraphicsQuality>,
     routing: Option<ResMut<EffectRouting>>,
     mut commands: Commands,
     mut gi_rt: Query<&mut RtLighting, With<ViewportCamera>>,
@@ -120,11 +124,20 @@ fn enforce_graphics_quality(
     taa_cams: Query<Entity, (With<ViewportCamera>, With<TemporalAntiAliasing>)>,
     ae_cams: Query<Entity, (With<ViewportCamera>, With<AutoExposure>)>,
     ssao_cams: Query<Entity, (With<ViewportCamera>, With<ScreenSpaceAmbientOcclusion>)>,
+    mut atmo: Query<&mut AtmosphereSettings, With<ViewportCamera>>,
+    shadow_map: Option<ResMut<DirectionalLightShadowMap>>,
 ) {
     let Some(settings) = settings else {
         return;
     };
     let q = settings.graphics_quality;
+
+    // Publish the live tier as the shared resource so downstream renderer crates
+    // (clouds, environment-map IBL) apply the same tier in the editor viewport
+    // that a shipped game applies from project config.
+    if resolved.0 != q {
+        resolved.0 = q;
+    }
 
     // On a tier change, nudge the routers so any effect a lower tier had disabled
     // is re-applied from its (untouched) scene source. The per-frame force below
@@ -189,9 +202,31 @@ fn enforce_graphics_quality(
             commands.entity(e).remove::<AutoExposure>();
         }
     }
+    // SSAO — three full-res compute passes; dropped below `High` (the same
+    // fullscreen, resolution-bound cost class as SSGI).
     if !q.ssao() {
         for e in &ssao_cams {
             commands.entity(e).remove::<ScreenSpaceAmbientOcclusion>();
+        }
+    }
+    // Atmosphere — drop the raymarched sky (a 16-step per-pixel raymarch) to the
+    // ~40× cheaper LookupTexture path below `High`. `AtmosphereMode` isn't
+    // `PartialEq`, so gate the assignment on a `matches!` read to avoid
+    // re-flagging the component every frame.
+    if !q.atmosphere_raymarched() {
+        for mut s in &mut atmo {
+            if matches!(s.rendering_method, AtmosphereMode::Raymarched) {
+                s.rendering_method = AtmosphereMode::LookupTexture;
+            }
+        }
+    }
+    // Directional shadow-map resolution — a global resource shared by all cascades
+    // (the editor viewports render the same lights, so one setting covers them).
+    // Gated on difference to avoid re-flagging every frame.
+    if let Some(mut sm) = shadow_map {
+        let target = q.shadow_map_size();
+        if sm.size != target {
+            sm.size = target;
         }
     }
 }

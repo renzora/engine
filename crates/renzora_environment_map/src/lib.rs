@@ -21,7 +21,9 @@
 //! `EffectRouting`. `enabled = false` collapses intensity to 0 — visually
 //! "off" without touching the bindings.
 
-use bevy::light::{AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight};
+use bevy::light::{
+    Atmosphere, AtmosphereEnvironmentMapLight, EnvironmentMapLight, GeneratedEnvironmentMapLight,
+};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -108,108 +110,147 @@ fn sync_environment_map(
         Option<Ref<renzora_lighting::Sun>>,
     )>,
     mut env_lights: Query<&mut EnvironmentMapLight>,
-    probes: Query<(), With<AtmosphereEnvironmentMapLight>>,
+    probe_holders: Query<Entity, With<AtmosphereEnvironmentMapLight>>,
     routing: Res<renzora::EffectRouting>,
+    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
 ) {
     let routing_changed = routing.is_changed();
-    for (target, source_list) in routing.iter() {
-        // The IBL probe can't be added at runtime (Bevy specializes the layout
-        // at first render). Only *update* cameras that already carry it — the
-        // single environment/bake camera. Other routed cameras share its result
-        // (the baked cubemap is fanned out as a `Skybox`).
-        if probes.get(*target).is_err() {
-            continue;
-        }
-        // Find a source on the routing list that has the settings, and
-        // (optionally) a Sun on the same entity for day-night fading.
-        let source = source_list.iter().find_map(|&src| sources.get(src).ok());
+    // The probe face size MUST match what `renzora_engine::scene_io::rehydrate_cameras`
+    // (and the editor camera spawn) attached, or re-inserting this component here
+    // re-allocates the cubemap. Both derive it from the same tier. See the field's
+    // cost note in `GraphicsQuality::ibl_face_size`.
+    let ibl_size = UVec2::splat(quality.as_ref().map(|q| q.0.ibl_face_size()).unwrap_or(128));
 
-        match source {
-            Some((settings, sun)) => {
-                // Re-sync whenever routing, settings, or sun change so
-                // the IBL fades smoothly across the horizon.
-                let sun_changed = sun.as_ref().map(|s| s.is_changed()).unwrap_or(false);
-                if !routing_changed && !settings.is_changed() && !sun_changed {
-                    continue;
-                }
-                // Scale by sun elevation: at night the procedural sky
-                // cubemap is dark so IBL is already low, but applying
-                // the same horizon fade as the directional light keeps
-                // the scene from being "vaguely lit" by residual
-                // atmospheric scatter when there's no sun.
-                let sun_factor = sun
-                    .as_ref()
-                    .map(|s| renzora_lighting::sun_horizon_factor(s.elevation))
-                    .unwrap_or(1.0);
-                let intensity = if settings.enabled {
-                    settings.intensity * sun_factor
-                } else {
-                    0.0
-                };
-                // Replace the existing component in place — the camera
-                // spawn site attached it up front so the bind group
-                // layout stays stable across enables/disables.
-                commands
-                    .entity(*target)
-                    .insert(AtmosphereEnvironmentMapLight {
-                        intensity,
-                        ..default()
-                    });
-                // The PBR shader reads from `EnvironmentMapLight`, fed by the bake
-                // chain (AtmosphereEnvironmentMapLight → GeneratedEnvironmentMapLight
-                // → EnvironmentMapLight). Write it directly too so the editor case
-                // works, where the camera is spawned long before any WE exists.
-                if let Ok(mut env) = env_lights.get_mut(*target) {
-                    env.intensity = intensity;
-                }
-            }
-            None => {
-                // No source for this target — only push the "off" value
-                // when the routing actually changed (e.g. the WE was just
-                // removed). Otherwise we'd thrash the camera every frame.
-                if routing_changed {
-                    commands
-                        .entity(*target)
-                        .insert(AtmosphereEnvironmentMapLight {
-                            intensity: 0.0,
-                            ..default()
-                        });
-                    if let Ok(mut env) = env_lights.get_mut(*target) {
-                        env.intensity = 0.0;
-                    }
-                }
-            }
+    // Address the probe by the component that IS the probe, not by `EffectRouting`
+    // target. The holder differs by mode — the primary viewport camera in the
+    // editor, the active game camera in a shipped runtime — and routing doesn't
+    // always name it (a shipped game has no viewport routing at all, which left the
+    // probe unwritten and the runtime IBL stuck at its spawn intensity). So resolve
+    // the intensity from the routed `WorldEnvironment` source, then write it onto
+    // the probe holder(s) directly. The probe is only ever *updated* here, never
+    // added or removed, so the spawn-time bind-group layout stays stable.
+    let source = routing
+        .iter()
+        .flat_map(|(_, srcs)| srcs.iter())
+        .find_map(|&src| sources.get(src).ok());
+
+    let (intensity, changed) = match source {
+        Some((settings, sun)) => {
+            // Re-sync whenever routing, settings, or sun change so the IBL fades
+            // smoothly across the horizon.
+            let sun_changed = sun.as_ref().map(|s| s.is_changed()).unwrap_or(false);
+            let changed = routing_changed || settings.is_changed() || sun_changed;
+            // Scale by sun elevation: at night the procedural sky cubemap is dark
+            // so IBL is already low, but applying the same horizon fade as the
+            // directional light keeps the scene from being "vaguely lit" by
+            // residual atmospheric scatter when there's no sun.
+            let sun_factor = sun
+                .as_ref()
+                .map(|s| renzora_lighting::sun_horizon_factor(s.elevation))
+                .unwrap_or(1.0);
+            let intensity = if settings.enabled {
+                settings.intensity * sun_factor
+            } else {
+                0.0
+            };
+            (intensity, changed)
+        }
+        // No source — only push the "off" value when the routing actually changed
+        // (e.g. the WE was just removed); otherwise we'd thrash every frame.
+        None => (0.0, routing_changed),
+    };
+
+    if !changed {
+        return;
+    }
+
+    for entity in &probe_holders {
+        commands
+            .entity(entity)
+            .insert(AtmosphereEnvironmentMapLight {
+                intensity,
+                size: ibl_size,
+                ..default()
+            });
+        // The PBR shader reads from `EnvironmentMapLight`, fed by the bake chain
+        // (AtmosphereEnvironmentMapLight → GeneratedEnvironmentMapLight →
+        // EnvironmentMapLight). Write it directly too so the editor case works,
+        // where the camera is spawned long before any WE exists.
+        if let Ok(mut env) = env_lights.get_mut(entity) {
+            env.intensity = intensity;
         }
     }
 }
 
 /// When the source `EnvironmentMapComponentSettings` is removed (entity
-/// despawn or component removed via inspector), zero IBL intensity on
-/// every camera the routing currently targets. Without this the camera
-/// would keep its last-applied intensity until something else updated it.
+/// despawn or component removed via inspector), zero IBL intensity on the probe
+/// holder. Without this it would keep its last-applied intensity until something
+/// else updated it. Same targeting as [`sync_environment_map`]: whoever carries
+/// the probe, not whatever the routing happens to target.
 fn cleanup_environment_map(
     mut commands: Commands,
     mut removed: RemovedComponents<EnvironmentMapComponentSettings>,
     mut env_lights: Query<&mut EnvironmentMapLight>,
-    probes: Query<(), With<AtmosphereEnvironmentMapLight>>,
-    routing: Res<renzora::EffectRouting>,
+    probe_holders: Query<Entity, With<AtmosphereEnvironmentMapLight>>,
+    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
 ) {
     if removed.read().next().is_some() {
-        for (target, _) in routing.iter() {
-            // Only the bake camera carries the probe; never add it at runtime.
-            if probes.get(*target).is_err() {
-                continue;
-            }
+        // Keep the face size identical to the spawn/sync value — re-inserting with
+        // a different `size` would re-allocate the cubemap.
+        let ibl_size = UVec2::splat(quality.as_ref().map(|q| q.0.ibl_face_size()).unwrap_or(128));
+        for entity in &probe_holders {
             commands
-                .entity(*target)
+                .entity(entity)
                 .insert(AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
+                    size: ibl_size,
                     ..default()
                 });
-            if let Ok(mut env) = env_lights.get_mut(*target) {
+            if let Ok(mut env) = env_lights.get_mut(entity) {
                 env.intensity = 0.0;
             }
         }
+    }
+}
+
+/// Frames to keep re-baking the IBL after the sky last changed. The
+/// atmosphere→cubemap→prefilter chain produces a complete filtered map in a
+/// frame, so a small window comfortably covers convergence and the load-time
+/// routing kick; a static sky then freezes.
+const SKY_SETTLE_FRAMES: u32 = 8;
+
+/// Countdown that keeps the per-frame IBL prefilter running for a settle window
+/// after the sky last changed, then lets [`gate_environment_generation`] freeze
+/// it for a static sky.
+#[derive(Resource, Default)]
+struct SkyBakeDirty {
+    frames: u32,
+}
+
+/// Re-arm [`SkyBakeDirty`] whenever anything that determines the baked sky
+/// changes — the sun (day/night), the atmosphere params (`Atmosphere`, which
+/// `renzora_atmosphere::sync_atmosphere` rewrites only on change), the env-map
+/// intensity, or the effect routing (scene/source load, incl. the load-time
+/// kick). For a truly static sky none of these fire, the countdown reaches 0,
+/// and the dominant per-frame IBL cost — Bevy re-prefiltering the atmosphere
+/// cubemap into radiance/irradiance maps EVERY frame (`bevy_pbr::light_probe::generate`,
+/// which has no upstream bake-once, see bevyengine/bevy#24517) — stops until the
+/// sky next changes.
+fn mark_sky_dirty(
+    mut dirty: ResMut<SkyBakeDirty>,
+    routing: Res<renzora::EffectRouting>,
+    changed_sun: Query<(), Changed<renzora_lighting::Sun>>,
+    changed_env: Query<(), Changed<EnvironmentMapComponentSettings>>,
+    changed_atmosphere: Query<(), Changed<Atmosphere>>,
+) {
+    let sky_changed = routing.is_changed()
+        || !changed_sun.is_empty()
+        || !changed_env.is_empty()
+        || !changed_atmosphere.is_empty();
+    if sky_changed {
+        dirty.frames = SKY_SETTLE_FRAMES;
+    } else {
+        dirty.frames = dirty.frames.saturating_sub(1);
     }
 }
 
@@ -218,31 +259,33 @@ fn cleanup_environment_map(
 #[derive(Component)]
 struct DormantGeneratedEnvMap(GeneratedEnvironmentMapLight);
 
-/// Stop the per-frame environment-map (IBL) filtering when no environment is
-/// active, and resume it when one is.
+/// Stop the per-frame environment-map (IBL) filtering when it isn't earning its
+/// cost — when no environment is active **OR the sky is static** — and resume it
+/// while the environment is active and the sky is changing.
 ///
-/// Bevy 0.18 re-filters the atmosphere cubemap into radiance + irradiance maps
-/// EVERY frame for any camera carrying a `GeneratedEnvironmentMapLight`, with no
-/// bake-once / dirty mode (`bevy_pbr::light_probe::generate`). On a scene with no
-/// active `WorldEnvironment` that's pure waste — the `lightprobe_*` passes can be
-/// the majority of editor GPU time even though `intensity` is 0 (intensity only
-/// scales the lit result, it doesn't gate the generation).
+/// Bevy re-filters the atmosphere cubemap into radiance + irradiance maps EVERY
+/// frame for any camera carrying a `GeneratedEnvironmentMapLight`, with no
+/// bake-once / dirty mode (`bevy_pbr::light_probe::generate`; bevyengine/bevy#24517).
+/// That's the dominant per-frame IBL cost, and for a static sky it recomputes an
+/// identical map forever. Two independent triggers pause it:
+/// - **environment inactive** (`intensity ~ 0`): scaling the lit result to zero
+///   doesn't gate the generation, so we do — stash + remove the generator.
+/// - **sky static** ([`SkyBakeDirty`]`.frames == 0`, i.e. nothing that determines
+///   the baked sky has changed for `SKY_SETTLE_FRAMES` — see [`mark_sky_dirty`]):
+///   the last-baked map is already correct, so freeze it. This is the win for a
+///   normal scene at full intensity, where the old intensity-only gate never fired.
 ///
-/// We use `AtmosphereEnvironmentMapLight.intensity` (kept in sync by
-/// [`sync_environment_map`]) as the "is the environment active" signal:
-/// - **inactive** (`intensity ~ 0`): stash and remove `GeneratedEnvironmentMapLight`.
-///   The generate node then has nothing to do and the `lightprobe_*` passes stop.
-/// - **active** (`intensity > 0`): restore the stashed generator (with the live
-///   intensity) so IBL regenerates again.
+/// Restore (re-bake) as soon as the environment is active AND the sky is settling
+/// again after a change.
 ///
-/// This is safe w.r.t. the bind-group-layout lock that forces the probe to exist
-/// from spawn: the view's IBL *binding* comes from `EnvironmentMapLight` (left
+/// Safe w.r.t. the bind-group-layout lock that forces the probe to exist from
+/// spawn: the view's IBL *binding* comes from `EnvironmentMapLight` (left
 /// untouched, so the layout never changes) — `GeneratedEnvironmentMapLight` only
 /// drives the filtering that writes into it. While dormant the filtered maps just
-/// freeze (and at intensity 0 they're invisible anyway). `prepare_atmosphere_probe_components`
-/// won't re-add it because the camera keeps its `AtmosphereEnvironmentMap`.
+/// freeze at their last-baked (correct-for-a-static-sky) state.
 fn gate_environment_generation(
     mut commands: Commands,
+    dirty: Res<SkyBakeDirty>,
     active: Query<
         (Entity, &AtmosphereEnvironmentMapLight, &GeneratedEnvironmentMapLight),
         Without<DormantGeneratedEnvMap>,
@@ -253,10 +296,13 @@ fn gate_environment_generation(
     >,
 ) {
     const ACTIVE_EPS: f32 = 1e-4;
+    // Generate only while the environment is on AND the sky is still settling
+    // after a change; an off or static sky freezes the prefilter.
+    let settling = dirty.frames > 0;
 
-    // Active → inactive: pause generation.
+    // Active → dormant: pause generation when off or static.
     for (entity, probe, generated) in &active {
-        if probe.intensity <= ACTIVE_EPS {
+        if probe.intensity <= ACTIVE_EPS || !settling {
             commands
                 .entity(entity)
                 .insert(DormantGeneratedEnvMap(generated.clone()))
@@ -264,9 +310,9 @@ fn gate_environment_generation(
         }
     }
 
-    // Inactive → active: resume generation with the current intensity.
+    // Dormant → active: resume generation with the current intensity.
     for (entity, probe, stash) in &dormant {
-        if probe.intensity > ACTIVE_EPS {
+        if probe.intensity > ACTIVE_EPS && settling {
             let mut generated = stash.0.clone();
             generated.intensity = probe.intensity;
             commands
@@ -284,8 +330,10 @@ impl Plugin for EnvironmentMapPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] EnvironmentMapPlugin");
         app.register_type::<EnvironmentMapComponentSettings>();
+        app.init_resource::<SkyBakeDirty>();
         // `gate_environment_generation` runs after `sync_environment_map` so it
-        // sees the intensity that was just resolved this frame.
+        // sees the intensity that was just resolved this frame, and after
+        // `mark_sky_dirty` so it sees this frame's sky-dirty countdown.
         app.add_systems(
             Update,
             (
@@ -295,6 +343,7 @@ impl Plugin for EnvironmentMapPlugin {
                 kick_routing_on_environment_load,
                 sync_environment_map,
                 cleanup_environment_map,
+                mark_sky_dirty,
                 gate_environment_generation,
             )
                 .chain(),

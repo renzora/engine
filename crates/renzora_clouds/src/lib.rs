@@ -140,6 +140,11 @@ struct CloudsState {
     entity: Option<Entity>,
     material_handle: Option<Handle<CloudMaterial>>,
     mesh_handle: Option<Handle<Mesh>>,
+    /// Last camera position the dome was re-centred on. The dome is a radius-800
+    /// sphere centred on the camera, so it only needs re-centring when the camera
+    /// actually moves — re-inserting `Transform` every frame otherwise re-marks it
+    /// changed and forces transform propagation + a mesh re-extract for nothing.
+    last_cam_pos: Option<Vec3>,
 }
 
 // ============================================================================
@@ -153,12 +158,22 @@ fn sync_clouds(
     camera_query: Query<(&Transform, &Camera), With<Camera3d>>,
     sun_query: Query<&Transform, With<DirectionalLight>>,
     sun_data_query: Query<&renzora_lighting::Sun>,
+    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {
+    // The dome's full-screen FBM shader is the single largest scene-independent
+    // raster cost on a weak GPU, so the graphics-quality tier can switch it off
+    // entirely (the `Low` tier does). Treated exactly like the inspector toggle:
+    // no active clouds ⇒ the dome is despawned below.
+    let clouds_allowed = quality.as_ref().map(|q| q.0.clouds()).unwrap_or(true);
+
     // First *enabled* clouds component. Honors the inspector toggle — without
     // the `enabled` check, switching clouds off left the dome rendering.
-    let active_clouds = clouds_query.iter().find(|c| c.enabled);
+    let active_clouds = clouds_query
+        .iter()
+        .find(|c| c.enabled)
+        .filter(|_| clouds_allowed);
 
     let Some(clouds_data) = active_clouds else {
         // No active clouds — despawn dome if it exists.
@@ -166,6 +181,7 @@ fn sync_clouds(
             commands.entity(dome_entity).despawn();
             clouds_state.material_handle = None;
             clouds_state.mesh_handle = None;
+            clouds_state.last_cam_pos = None;
         }
         return;
     };
@@ -234,22 +250,51 @@ fn sync_clouds(
     if let Some(dome_entity) = clouds_state.entity {
         if commands.get_entity(dome_entity).is_ok() {
             if let Some(ref mat_handle) = clouds_state.material_handle {
-                if let Some(mut mat) = cloud_materials.get_mut(mat_handle) {
-                    mat.params_a = params_a;
-                    mat.params_b = params_b;
-                    mat.cloud_color = cloud_color;
-                    mat.shadow_color = shadow_color;
-                    mat.params_c = params_c;
-                    mat.params_d = params_d;
-                    mat.horizon_color = horizon_col;
+                // Only touch the material when a uniform actually changed. A bare
+                // `get_mut` marks the asset `Modified` every frame, which rebuilds
+                // the bind group + re-uploads the uniforms — pure waste on a static
+                // sky (the sun barely moves, the knobs don't move at all).
+                let changed = cloud_materials
+                    .get(mat_handle)
+                    .map(|m| {
+                        m.params_a != params_a
+                            || m.params_b != params_b
+                            || m.cloud_color != cloud_color
+                            || m.shadow_color != shadow_color
+                            || m.params_c != params_c
+                            || m.params_d != params_d
+                            || m.horizon_color != horizon_col
+                    })
+                    .unwrap_or(true);
+                if changed {
+                    if let Some(mut mat) = cloud_materials.get_mut(mat_handle) {
+                        mat.params_a = params_a;
+                        mat.params_b = params_b;
+                        mat.cloud_color = cloud_color;
+                        mat.shadow_color = shadow_color;
+                        mat.params_c = params_c;
+                        mat.params_d = params_d;
+                        mat.horizon_color = horizon_col;
+                    }
                 }
             }
-            let transform = Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
-            commands.entity(dome_entity).insert(transform);
+            // Re-centre the dome only when the camera has actually moved (the dome
+            // radius is 800, so sub-unit jitter never pushes the camera out of it).
+            let moved = clouds_state
+                .last_cam_pos
+                .map(|p| p.distance_squared(camera_pos) > 1.0)
+                .unwrap_or(true);
+            if moved {
+                let transform =
+                    Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
+                commands.entity(dome_entity).insert(transform);
+                clouds_state.last_cam_pos = Some(camera_pos);
+            }
         } else {
             clouds_state.entity = None;
             clouds_state.material_handle = None;
             clouds_state.mesh_handle = None;
+            clouds_state.last_cam_pos = None;
         }
     }
 
@@ -281,6 +326,7 @@ fn sync_clouds(
         clouds_state.entity = Some(dome_entity);
         clouds_state.mesh_handle = Some(mesh_handle);
         clouds_state.material_handle = Some(material_handle);
+        clouds_state.last_cam_pos = Some(camera_pos);
     }
 }
 

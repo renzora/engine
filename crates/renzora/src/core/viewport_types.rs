@@ -429,7 +429,7 @@ impl GraphicsQuality {
         !matches!(self, Self::Low)
     }
 
-    /// Screen-space ambient occlusion — on at `Medium` and `High`.
+    /// Screen-space ambient occlusion (GTAO) — on only at `High`.
     ///
     /// Gated for the same reason as the rest: it is a fullscreen,
     /// resolution-bound pass, and profiling put it **second only to the deferred
@@ -437,8 +437,56 @@ impl GraphicsQuality {
     /// card — proportionally far worse on the integrated GPUs `Low` exists for).
     /// It was previously ungated, so picking `Low` explicitly for frame rate
     /// still paid for it.
+    ///
+    /// It sits with SSGI at `High`-only rather than with bloom/TAA at `Medium`
+    /// because its three full-res compute passes are exactly the
+    /// "fullscreen, resolution-bound" cost class `Medium` — the weak-machine
+    /// default — exists to shed.
     pub fn ssao(&self) -> bool {
+        matches!(self, Self::High)
+    }
+
+    /// Whether the procedural cloud dome renders at all. Off at `Low` (its
+    /// full-screen FBM shader is the single largest scene-independent raster
+    /// cost on a weak GPU); on at `Medium` and `High`.
+    pub fn clouds(&self) -> bool {
         !matches!(self, Self::Low)
+    }
+
+    /// Atmosphere render method: `true` = Bevy's `Raymarched` sky (a 16-step,
+    /// ~80-fetch raymarch on every pixel), `false` = the `LookupTexture` sky
+    /// (~2 fetches/pixel). Only `High` pays for the raymarch; `Low`/`Medium`
+    /// get the ~40× cheaper lookup path, which for a static sky is visually
+    /// near-identical.
+    pub fn atmosphere_raymarched(&self) -> bool {
+        matches!(self, Self::High)
+    }
+
+    /// Cube-face size of the atmosphere-derived IBL probe that Bevy re-bakes and
+    /// re-prefilters **every frame** (there is no dirty check upstream, so the
+    /// cost is fixed per frame and scales with the square of this number). The
+    /// default `512` is far more than a blurry procedural-sky reflection needs;
+    /// dropping the tiers cuts the dominant fixed GPU cost 4–16×.
+    pub fn ibl_face_size(&self) -> u32 {
+        match self {
+            Self::High => 256,
+            Self::Medium => 128,
+            Self::Low => 64,
+        }
+    }
+
+    /// Per-cascade directional shadow-map resolution (`DirectionalLightShadowMap`).
+    /// Bevy's default is 2048, and each of the (up to 4) cascades allocates and
+    /// clears a `size × size` depth target **every frame regardless of geometry**
+    /// — pure bandwidth, which is exactly what a shared-memory iGPU chokes on.
+    /// Halving the size quarters the per-cascade depth traffic; `High` keeps the
+    /// crisp default.
+    pub fn shadow_map_size(&self) -> usize {
+        match self {
+            Self::High => 2048,
+            Self::Medium => 1024,
+            Self::Low => 512,
+        }
     }
 }
 

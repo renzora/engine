@@ -752,6 +752,16 @@ fn apply_window_config(
     window.title = project.config.name.clone();
     window.resizable = cfg.resizable;
     window.resolution.set(cfg.width as f32, cfg.height as f32);
+    // Vertical sync. The window is created with Bevy's default `PresentMode`
+    // (vsync); apply the project's choice here so a game can uncap its frame rate
+    // (and so the true per-frame cost is measurable on a fast GPU). `AutoNoVsync`
+    // rather than `Immediate` so wgpu falls back to a supported present mode on
+    // adapters that lack tear-free mailbox/immediate.
+    window.present_mode = if cfg.vsync {
+        bevy::window::PresentMode::AutoVsync
+    } else {
+        bevy::window::PresentMode::AutoNoVsync
+    };
 
     match cfg.mode {
         renzora::WindowMode::Windowed => {

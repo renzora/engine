@@ -38,9 +38,11 @@ const CIRRUS_H: f32 = 5.5;
 
 // Sun light-march: how many shadow samples and how far each steps through the
 // noise field. Kept small (this is a dome, not a full volume) but enough to
-// resolve a cloud's own thickness against the sun.
-const LIGHT_STEPS: i32 = 5;
-const LIGHT_STEP: f32 = 0.34;
+// resolve a cloud's own thickness against the sun. 3 steps reads
+// near-indistinguishably from 5 on a dome while cutting the light-march — the
+// single biggest slice of the per-pixel cost — by 40%.
+const LIGHT_STEPS: i32 = 3;
+const LIGHT_STEP: f32 = 0.57;
 
 // Multi-scatter octaves. Each successive octave scatters less, extincts less,
 // and has a more isotropic phase — the cheap stand-in for light that bounced
@@ -52,12 +54,31 @@ const MS_PHASE: f32 = 0.5;    // phase eccentricity falloff per octave
 
 // ── Gradient noise (quintic interpolation) ──
 
+// Integer bit-mix hash → two gradient components in [-1, 1].
+//
+// This replaces a `fract(sin(dot(p,k)) * 43758.5453)` hash that cost TWO `sin`
+// per call. `grad_noise` calls this 4× and a cloud pixel runs up to ~75
+// `grad_noise`, so the old hash was ~600 transcendental (`sin`) ops per pixel —
+// the dominant cost of the whole dome, and brutal on integrated GPUs whose
+// special-function unit throughput is a fraction of a discrete card's. A PCG-
+// style integer mix is a handful of ALU ops with equivalent noise quality.
+//
+// `grad_noise` only ever calls this on the integer lattice corners (`floor(p)`
+// plus 0/1 offsets), so truncating to `i32` is exact.
 fn hash_grad(p: vec2<f32>) -> vec2<f32> {
-    let k = vec2<f32>(
-        dot(p, vec2<f32>(127.1, 311.7)),
-        dot(p, vec2<f32>(269.5, 183.3)),
+    let qx = bitcast<u32>(i32(p.x));
+    let qy = bitcast<u32>(i32(p.y));
+    var h = (qx * 1597334677u) ^ (qy * 3812015801u);
+    h = h ^ (h >> 16u);
+    h = h * 2246822519u;
+    h = h ^ (h >> 13u);
+    let hx = h;
+    let hy = (h * 2654435761u) ^ (h >> 15u);
+    // Map the two u32 words to [-1, 1).
+    return vec2<f32>(
+        f32(hx) * (1.0 / 2147483647.5) - 1.0,
+        f32(hy) * (1.0 / 2147483647.5) - 1.0,
     );
-    return fract(sin(k) * 43758.5453) * 2.0 - 1.0;
 }
 
 fn grad_noise(p: vec2<f32>) -> f32 {

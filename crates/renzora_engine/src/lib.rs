@@ -11,6 +11,8 @@ pub mod camera;
 pub mod crash;
 pub mod debug_log;
 #[cfg(feature = "render_3d")]
+pub mod graphics_quality;
+#[cfg(feature = "render_3d")]
 pub mod mesh_lod;
 pub mod plugin_scene_bridge;
 pub mod procedural_meshes;
@@ -26,7 +28,7 @@ pub use renzora::{
     open_project, CurrentProject, DefaultCamera, EditorCamera, EditorCamera2d, EditorLocked,
     EffectRouting, HideInHierarchy, IsolatedCamera, MeshColor, MeshInstanceData, MeshPrimitive,
     PendingSceneLoad, Persistent, PlayModeCamera, PlayModeState, PlayState, ProjectConfig,
-    EnvironmentBakeCamera, PrimaryViewportCamera, RenderingMode, ResolvedRenderingMode, SceneCamera,
+    PrimaryViewportCamera, RenderingMode, ResolvedRenderingMode, SceneCamera,
     ShapeEntry, ShapeRegistry, ViewportCamera, ViewportCamera2d, ViewportRenderTarget, WindowConfig,
 };
 pub use vfs::Vfs;
@@ -268,6 +270,11 @@ impl Plugin for RuntimePlugin {
         let initial_mode = app.world().resource::<ResolvedRenderingMode>().0;
         info!("[runtime] default rendering mode: {:?}", initial_mode);
         apply_rendering_mode(app, initial_mode);
+        // The active graphics-quality tier, readable by every renderer crate
+        // (clouds, environment-map IBL, the enforcement below). Exists in both
+        // editor and game so downstream reads never miss it; the runtime seeds
+        // it from project config, the editor from live viewport settings.
+        app.init_resource::<renzora::ResolvedGraphicsQuality>();
         app.register_type::<MeshPrimitive>()
             .register_type::<MeshColor>()
             .register_type::<renzora::core::EditedMesh>()
@@ -927,6 +934,13 @@ impl Plugin for RuntimePlugin {
         // editor camera registration lives in `renzora_engine_editor`).
         if !is_editor {
             app.add_systems(Update, update_runtime_effect_routing);
+            // Resolve the shipped-game quality tier from project config and
+            // enforce it on the play camera — the editor's tier enforcement is
+            // Editor-scoped and never reaches a game, so without this the
+            // exported build runs the full fullscreen-pass stack at every tier.
+            #[cfg(feature = "render_3d")]
+            app.add_systems(Update, graphics_quality::sync_runtime_graphics_quality)
+                .add_systems(PostUpdate, graphics_quality::enforce_runtime_graphics_quality);
         }
 
         // Editor camera lifecycle, the save-scene observer and the 2D
@@ -990,11 +1004,19 @@ fn update_runtime_effect_routing(
         return;
     };
 
-    // Sources: default camera entity itself + all non-camera entities (World Environment etc.)
-    let mut sources: Vec<Entity> = vec![target];
-    for entity in &all_entities {
-        sources.push(entity);
-    }
+    // Sources: default camera entity itself + all non-camera entities (World
+    // Environment etc.). The non-camera set is sorted by a stable key so the
+    // route only compares unequal when the source *set* actually changes —
+    // without this, any archetype churn reshuffles the query order, flips
+    // `routing.routes != new_routes`, trips `is_changed()`, and forces every
+    // effect router to re-apply its component to the camera that frame (which
+    // re-marks ~15 components changed → re-extract/re-upload). The editor's
+    // `update_effect_routing` sorts for exactly this reason.
+    let mut extra: Vec<Entity> = all_entities.iter().collect();
+    extra.sort_unstable_by_key(|e| e.to_bits());
+    let mut sources: Vec<Entity> = Vec::with_capacity(extra.len() + 1);
+    sources.push(target);
+    sources.extend(extra);
 
     let new_routes = vec![(target, sources)];
     if routing.routes != new_routes {

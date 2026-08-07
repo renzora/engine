@@ -101,19 +101,25 @@ pub fn sync_voxel_cache_views(
             Option<&LumenLighting>,
             Option<&renzora::core::ViewportCamera>,
         ),
-        With<Camera3d>,
+        // Offscreen utility cameras (the environment bake camera, material/model
+        // thumbnails, studio previews, the game-UI canvas) never display Lumen GI.
+        // Giving them a `VoxelCacheView` makes every per-view Lumen resource
+        // allocate against their small targets — including `screen_reflection`'s
+        // HALF-RES, fixed-5-mip pyramid, which needs a view of at least 32px. That
+        // wastes VRAM + per-frame work at best, and hard-crashes wgpu at worst
+        // ("mip level count 5 is invalid, maximum allowed is 2"). Same
+        // `IsolatedCamera` exclusion `ensure_contact_shadows_on_forward_cameras`
+        // uses for the same class of camera.
+        (With<Camera3d>, Without<renzora::core::IsolatedCamera>),
     >,
     viewports: Option<Res<renzora::core::viewport_types::Viewports>>,
 ) {
     for (entity, settings, viewport) in &cameras {
-        // Editor viewport cameras only feed the voxel cache while their panel
-        // is actually visible. The slot-0 camera stays active even when its
-        // panel isn't docked (it hosts the atmosphere/IBL probe and only gets
-        // a token-size target — see renzora_viewport); without this gate it
-        // kept the full resolution-independent voxel pipeline (clear + inject
-        // + downsample + per-frame CPU sample upload) running behind
-        // viewport-less workspaces. Non-viewport cameras (game runtime) have
-        // no `ViewportCamera` and are unaffected.
+        // Editor viewport cameras only feed the voxel cache while their panel is
+        // actually visible — otherwise the resolution-independent voxel pipeline
+        // (clear + inject + downsample + per-frame CPU sample upload) would keep
+        // running behind viewport-less workspaces. Non-viewport cameras (the game
+        // runtime) have no `ViewportCamera` and are unaffected.
         let visible = match (viewport, viewports.as_ref()) {
             (Some(vc), Some(vp)) => vp.slots.get(vc.0).is_some_and(|s| s.docked),
             _ => true,

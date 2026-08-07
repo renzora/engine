@@ -2414,11 +2414,22 @@ pub fn rehydrate_cameras(
     play_mode: Option<Res<PlayModeState>>,
     render_target: Option<Res<ViewportRenderTarget>>,
     editor_session: Option<Res<renzora::EditorSession>>,
+    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
     mut mediums: Option<ResMut<Assets<ScatteringMedium>>>,
 ) {
     if query.is_empty() {
         return;
     }
+
+    // Atmosphere-derived IBL probe face size. Bevy re-bakes and re-prefilters
+    // this cubemap EVERY frame with no dirty check, so its cost (≈75 M cube
+    // fetches/frame at the 512² default — the single largest scene-independent
+    // GPU cost) scales with the square of the face size. A blurry procedural-sky
+    // reflection needs far less; the tier drops it to 256/128/64. Kept in lockstep
+    // with `renzora_environment_map::sync_environment_map`, which rewrites this
+    // component every frame — a mismatched size there would re-allocate the probe
+    // texture per frame.
+    let ibl_face = quality.as_ref().map(|q| q.0.ibl_face_size()).unwrap_or(128);
 
     let in_play_mode = play_mode.as_ref().is_some_and(|pm| pm.is_in_play_mode());
     // We're in editor mode when the runtime `EditorSession` flag is set.
@@ -2482,6 +2493,7 @@ pub fn rehydrate_cameras(
                 MotionVectorPrepass,
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
+                    size: UVec2::splat(ibl_face),
                     ..default()
                 },
                 // ContactShadows intentionally omitted — see camera.rs (bevy 0.19

@@ -48,8 +48,18 @@ pub fn spawn_editor_camera(
     mut commands: Commands,
     mut viewports: ResMut<renzora::core::viewport_types::Viewports>,
     mut images: ResMut<Assets<Image>>,
+    quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
 ) {
     use renzora::core::viewport_types::VIEWPORT_COUNT;
+
+    // IBL probe face size for the primary bake camera — kept in lockstep with
+    // `renzora_environment_map::sync_environment_map` (which rewrites the probe
+    // every time the sky changes) so the editor viewport gets the same cheaper
+    // bake a shipped game does. See `GraphicsQuality::ibl_face_size`.
+    let ibl_face = quality
+        .as_ref()
+        .map(|q| q.0.ibl_face_size())
+        .unwrap_or(128);
 
     // Valid placeholder cubemap so the secondary cameras can carry an
     // `EnvironmentMapLight` from spawn (the IBL bind-group slots can't be added
@@ -153,15 +163,25 @@ pub fn spawn_editor_camera(
         // maps, and `share_sky_to_secondary_viewports` gives them the primary's
         // baked cubemap as a Skybox.
         if i == 0 {
-            // 0.19: the `Atmosphere` itself lives on a separate stationary
-            // "planet" entity managed by `renzora_atmosphere` (putting it on the
-            // camera makes the sky rotate with the view). The camera only carries
-            // `AtmosphereSettings` (the per-view render mode) + the IBL bake.
+            // NOTE — a dedicated "environment bake camera" was tried here, to move
+            // the probe off slot-0 so slot-0 could DEACTIVATE when no viewport is
+            // docked. It crashes wgpu, and the comment above says why: a second
+            // atmosphere-bearing camera is a duplicated bake. Concretely, bevy 0.19
+            // derives the mesh-view layout key TWICE and independently — the
+            // pipeline side (`bevy_pbr::render::mesh`) sets `ATMOSPHERE` from mere
+            // component presence, while the bind-group side
+            // (`mesh_view_bindings::prepare_mesh_view_bind_groups`) sets it only
+            // once `AtmosphereTextures` + the atmosphere buffer/sampler are all
+            // ready. Any view where those two disagree dies with "Expected entry
+            // with binding 31 not found". Idle cost is instead reclaimed by
+            // shrinking slot-0's render target (`renzora_viewport`), which touches
+            // no layout at all.
             entity.insert((
                 PrimaryViewportCamera,
                 EditorCamera,
                 AtmosphereEnvironmentMapLight {
                     intensity: 0.0,
+                    size: UVec2::splat(ibl_face),
                     ..default()
                 },
             ));
@@ -186,7 +206,7 @@ pub fn spawn_editor_camera(
         viewports.slots[i].camera_entity = Some(id);
     }
 
-    info!("[camera] Spawned {VIEWPORT_COUNT} editor viewport cameras (primary bakes the shared environment)");
+    info!("[camera] Spawned {VIEWPORT_COUNT} editor viewport cameras");
 }
 
 /// Create a tiny valid Rgba16Float cubemap to seed the secondary cameras'
@@ -221,7 +241,7 @@ fn make_placeholder_cube(images: &mut Assets<Image>) -> Handle<Image> {
 /// copied. Runs when the primary's `EnvironmentMapLight` changes.
 pub fn share_ibl_to_secondary_viewports(
     primary: Query<Ref<EnvironmentMapLight>, With<PrimaryViewportCamera>>,
-    mut secondary: Query<
+    mut consumers: Query<
         &mut EnvironmentMapLight,
         (With<ViewportCamera>, Without<PrimaryViewportCamera>),
     >,
@@ -232,7 +252,7 @@ pub fn share_ibl_to_secondary_viewports(
     if !source.is_changed() {
         return;
     }
-    for mut env in secondary.iter_mut() {
+    for mut env in consumers.iter_mut() {
         env.diffuse_map = source.diffuse_map.clone();
         env.specular_map = source.specular_map.clone();
         env.intensity = source.intensity;
@@ -254,7 +274,7 @@ const SHARED_SKY_BRIGHTNESS: f32 = 1.0;
 /// is safe. We only (re)insert when the cubemap handle changes.
 pub fn share_sky_to_secondary_viewports(
     primary: Query<&GeneratedEnvironmentMapLight, With<PrimaryViewportCamera>>,
-    secondary: Query<
+    consumers: Query<
         (Entity, Option<&Skybox>),
         (With<ViewportCamera>, Without<PrimaryViewportCamera>),
     >,
@@ -264,7 +284,7 @@ pub fn share_sky_to_secondary_viewports(
         return;
     };
     let image = &generated.environment_map;
-    for (entity, skybox) in &secondary {
+    for (entity, skybox) in &consumers {
         // Bevy 0.19: `Skybox.image` is now `Option<Handle<Image>>`.
         let up_to_date = skybox.is_some_and(|s| s.image.as_ref() == Some(image));
         if !up_to_date {

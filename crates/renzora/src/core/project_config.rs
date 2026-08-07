@@ -62,9 +62,21 @@ pub struct WindowConfig {
     pub resizable: bool,
     #[serde(default)]
     pub mode: WindowMode,
+    /// Vertical sync for the **shipped game**. `true` caps the frame rate to the
+    /// monitor's refresh (no tearing); `false` uncaps it. Lives here (not the
+    /// editor-only `[editor]` block) so export keeps it — before r1-alpha7 a game
+    /// was hard-locked to vsync because the only `vsync` key was editor-only, so
+    /// the true frame cost couldn't be measured on a fast GPU. `apply_window_config`
+    /// maps this to the window's `PresentMode`.
+    #[serde(default = "default_vsync")]
+    pub vsync: bool,
 }
 
 fn default_resizable() -> bool {
+    true
+}
+
+fn default_vsync() -> bool {
     true
 }
 
@@ -79,6 +91,7 @@ impl Default for WindowConfig {
             height: 720,
             resizable: true,
             mode: WindowMode::Windowed,
+            vsync: true,
         }
     }
 }
@@ -1016,11 +1029,57 @@ impl RenderingMode {
 }
 
 /// Renderer-level settings stored in project.toml.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+///
+/// `Default` is hand-written, NOT derived: `render_scale` is an `f32` whose
+/// meaningful default is `1.0`, and a derived `Default` would zero it. That
+/// matters because `ProjectConfig.rendering` is `#[serde(default)]`, so a
+/// project.toml with no `[rendering]` table constructs `RenderingConfig::default()`
+/// — a zeroed `render_scale` there would size a degenerate (zero-pixel) offscreen
+/// render target.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct RenderingConfig {
     /// Forward vs. Deferred shading path. See [`RenderingMode`].
     #[serde(default)]
     pub mode: RenderingMode,
+    /// Graphics-quality tier for the **shipped game**. Lives in `[rendering]`
+    /// (not the editor-only `[editor]` block, which export strips) so it
+    /// survives packing. The runtime resolves it into [`ResolvedGraphicsQuality`]
+    /// and enforces it on the play camera — the same tier the editor's
+    /// `renzora_level_presets::graphics_quality` applies to its viewport cameras,
+    /// so a game no longer runs the full fullscreen-pass stack unconditionally.
+    /// Defaults to `Medium` (the weak-machine-friendly tier).
+    #[serde(default)]
+    pub graphics_quality: crate::core::viewport_types::GraphicsQuality,
+    /// 3D render-resolution scale for the **shipped game** — Godot-style "Scale
+    /// 3D". The active 3D camera renders into an offscreen image sized
+    /// `render_scale ×` the **logical** window, which is then upscaled to fill the
+    /// window with the UI composited on top at native (crisp) resolution.
+    ///
+    /// Because it's sized off the *logical* window, `1.0` renders at the design
+    /// resolution — which on a high-DPI display is fewer pixels than the physical
+    /// framebuffer (e.g. 1280×720 vs 1920×1080 at 150%), so **`1.0` undoes HiDPI
+    /// pixel-bloat automatically** with no per-machine tuning, and is a
+    /// zero-overhead no-op on a 1.0-DPI display (it renders straight to the
+    /// window). Below `1.0` it's a pure perf slider; at/above the display's DPI
+    /// factor it saturates to native (never super-samples). Runtime-only — the
+    /// editor uses the per-camera `CameraRenderResolution`; ignored while a
+    /// non-`Disabled` `[viewport] stretch_mode` is active.
+    #[serde(default = "default_render_scale")]
+    pub render_scale: f32,
+}
+
+fn default_render_scale() -> f32 {
+    1.0
+}
+
+impl Default for RenderingConfig {
+    fn default() -> Self {
+        Self {
+            mode: RenderingMode::default(),
+            graphics_quality: crate::core::viewport_types::GraphicsQuality::default(),
+            render_scale: default_render_scale(),
+        }
+    }
 }
 
 /// Resolved rendering mode for this run. Inserted as a resource at
@@ -1048,6 +1107,21 @@ impl ResolvedRenderingMode {
         matches!(self.0, RenderingMode::Forward)
     }
 }
+
+/// The graphics-quality tier in force **this session**, as a resource every
+/// renderer crate can read (clouds, atmosphere, IBL, the enforcement systems).
+///
+/// One source of truth for two callers:
+/// - **Runtime:** `renzora_engine` seeds it from
+///   [`RenderingConfig::graphics_quality`] at boot.
+/// - **Editor:** `renzora_level_presets::graphics_quality` mirrors the live
+///   `ViewportSettings.graphics_quality` (Settings → Viewport → Performance)
+///   onto it every time the user changes tier.
+///
+/// Defaults to `GraphicsQuality::Medium` so a crate that reads it before either
+/// seeder has run gets the safe, lighter tier rather than the full stack.
+#[derive(bevy::prelude::Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ResolvedGraphicsQuality(pub crate::core::viewport_types::GraphicsQuality);
 
 /// One entry in [`ProjectConfig::editor_open_tabs`] — a document tab the
 /// editor had open when the project was last used. Lives in the contract

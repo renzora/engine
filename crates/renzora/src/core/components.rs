@@ -71,15 +71,6 @@ pub struct ViewportCamera2d(pub usize);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PrimaryViewportCamera;
 
-/// Marker for the single hidden camera that bakes the procedural sky into a
-/// cubemap + prefilters it for IBL. Every visible viewport (and preview camera)
-/// shares that one bake's results — they carry only a `Skybox` + an
-/// `EnvironmentMapLight` referencing the shared textures, never their own
-/// `Atmosphere` pass. This is what makes all the views render an identical
-/// environment from a single bake.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct EnvironmentBakeCamera;
-
 /// Marker component tagging an entity as a 2D scene node.
 ///
 /// Currently semantically equivalent to a plain `Transform` parent, but

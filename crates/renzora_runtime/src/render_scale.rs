@@ -1,30 +1,42 @@
-//! Per-camera render-resolution downscale for the runtime.
+//! Render-resolution scale for the runtime.
 //!
-//! Honors [`renzora::core::CameraRenderResolution`] on the active game camera:
-//! when it asks for Half / Quarter, the camera is redirected to render into an
-//! **offscreen image sized at that fraction of the window**, and a second pass
-//! upscales that image to fill the OS window. Full resolution (or no component)
-//! leaves the camera rendering straight to the window — zero overhead.
+//! The active game camera is redirected to render into an **offscreen image
+//! sized `final_scale ×` the LOGICAL window**, and a window-facing blit camera
+//! upscales that image to fill the OS window with the UI composited on top at
+//! native resolution. `final_scale` is the project's `[rendering] render_scale`
+//! (a fraction of the design/logical window) times the per-camera
+//! [`renzora::core::CameraRenderResolution`] (Full/Half/Quarter).
 //!
-//! This is the runtime counterpart to the editor's viewport render-scale (which
-//! resizes the editor's own offscreen viewport image). It is only added for
-//! shipped builds (`!is_editor`).
+//! **Sizing off the LOGICAL window is deliberate — it makes the DPI fix free.**
+//! At `render_scale = 1.0` the offscreen is the *design* resolution (e.g.
+//! 1280×720). On a high-DPI display the physical framebuffer is larger (1920×1008
+//! at 150%), so rendering at the design resolution is ~2× fewer pixels — undoing
+//! HiDPI pixel-bloat with no per-machine tuning. On a 1.0-DPI display the design
+//! resolution *equals* the physical one, so the "offscreen ≥ physical on both
+//! axes" gate below renders straight to the window at zero overhead. Raising the
+//! slider to/past the display's DPI factor likewise saturates to native — we
+//! never super-sample on a weak GPU.
+//!
+//! Runtime-only (added under `!is_editor`); the editor uses its own per-slot
+//! viewport render-scale and never reads `[rendering] render_scale`.
 //!
 //! Composition with [`super::viewport_stretch`]: that plugin redirects the game
-//! `Camera2d` to its own offscreen image in `Viewport` stretch mode. When that
-//! has happened the camera no longer targets the window, so this plugin leaves
-//! it alone — render-scale and viewport-stretch don't stack (yet). In the
-//! default `Disabled` stretch mode (camera → window) render-scale applies to
-//! both 2D and 3D cameras.
+//! `Camera2d` and blits at order 999 with a full-window black clear. The two must
+//! never be co-active (999's clear would wipe our order-998 output, and in a 3D
+//! scene they'd grab different cameras). So this plugin **stands fully down**
+//! whenever `[viewport] stretch_mode` is not `Disabled` — hands its camera back to
+//! the window and tears its blit down — leaving viewport-stretch as the sole
+//! present pass.
 
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{ClearColorConfig, RenderTarget};
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
+use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{PrimaryWindow, WindowResized};
 
-use renzora::core::CameraRenderResolution;
+use renzora::core::{CameraRenderResolution, StretchMode};
 
 /// Render layer for the upscale blit sprite + camera. Distinct from
 /// `viewport_stretch`'s layer (31) so the two present passes never collide.
@@ -118,12 +130,49 @@ fn apply_render_scale(
     >,
     mut blit: Query<(&mut Sprite, &mut Transform), With<RsBlitSprite>>,
     mut resize_events: MessageReader<WindowResized>,
+    project: Option<Res<renzora::CurrentProject>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
     };
+
+    // The requested 3D render scale (a fraction of the LOGICAL window) plus whether
+    // viewport-stretch is inactive. Read once from the project config; an absent
+    // config → native (1.0) with stretch inactive.
+    let (mut render_scale, stretch_disabled) = project
+        .as_ref()
+        .map(|p| {
+            (
+                p.config.rendering.render_scale,
+                p.config.viewport.stretch_mode == StretchMode::Disabled,
+            )
+        })
+        .unwrap_or((1.0, true));
+    // A malformed value (0 / negative / NaN from a hand-edited toml) would size a
+    // degenerate offscreen; fall back to native, then clamp to a sane band.
+    if !render_scale.is_finite() || render_scale <= 0.0 {
+        render_scale = 1.0;
+    }
+    render_scale = render_scale.clamp(0.1, 2.0);
+
+    // Stand fully down while `viewport_stretch` owns the present: it redirects the
+    // game `Camera2d` and blits at order 999 with a full-window BLACK clear that
+    // would wipe our order-998 output, and in a 3D scene it grabs a *different*
+    // camera than we prefer (Camera3d) — so both would blit. Hand our camera back
+    // to the window and tear our blit down so exactly one present pass is live.
+    if !stretch_disabled {
+        if let Some(prev) = state.cam {
+            if cams.get(prev).is_ok() {
+                commands.entity(prev).insert(RenderTarget::default());
+            }
+        }
+        teardown_blit(&mut commands, &mut state);
+        return;
+    }
+
     let win = Vec2::new(window.width(), window.height());
-    if win.x < 1.0 || win.y < 1.0 {
+    let phys = window.physical_size();
+    if win.x < 1.0 || win.y < 1.0 || phys.x < 1 || phys.y < 1 {
         return;
     }
     let resized = !resize_events.is_empty();
@@ -156,25 +205,35 @@ fn apply_render_scale(
         }
     }
 
-    let Some((cam, scale)) = chosen else {
+    let Some((cam, cam_scale)) = chosen else {
         teardown_blit(&mut commands, &mut state);
         return;
     };
 
-    // Full resolution: make sure the camera renders straight to the window and
-    // nothing lingers.
-    if scale >= 1.0 {
+    // Effective scale = project `render_scale` × the per-camera
+    // `CameraRenderResolution` (Full/Half/Quarter). Sized off the LOGICAL window,
+    // so at `render_scale = 1.0` the offscreen is the *design* resolution
+    // (e.g. 1280×720) — which on a high-DPI display is fewer pixels than the
+    // physical framebuffer (1920×1008 at 150%). That's the DPI pixel-bloat fix,
+    // automatic and free.
+    let final_scale = (render_scale * cam_scale).clamp(0.05, 2.0);
+    let desired = UVec2::new(
+        ((win.x * final_scale).round() as u32).max(1),
+        ((win.y * final_scale).round() as u32).max(1),
+    );
+
+    // Render straight to the window whenever the offscreen would be at least the
+    // physical framebuffer on both axes — nothing is saved by an equal-or-larger
+    // intermediate, and we deliberately never super-sample on a weak GPU. This is
+    // the no-op for a 1.0-DPI display at `render_scale = 1.0` (logical == physical),
+    // and the native saturation when the slider is raised to/past the DPI factor.
+    if desired.x >= phys.x && desired.y >= phys.y {
         if state.cam == Some(cam) {
             commands.entity(cam).insert(RenderTarget::default());
         }
         teardown_blit(&mut commands, &mut state);
         return;
     }
-
-    let desired = UVec2::new(
-        ((win.x * scale).round() as u32).max(1),
-        ((win.y * scale).round() as u32).max(1),
-    );
 
     // Ensure the offscreen image exists at the right size.
     if state.image.is_none() {
@@ -227,6 +286,13 @@ fn apply_render_scale(
                 },
                 RenderLayers::layer(RS_BLIT_LAYER),
                 RsBlitCamera,
+                // Make the window-facing blit the game's default UI camera while
+                // it's live, so the FPS overlay / game canvases render on the
+                // WINDOW at native res instead of following the 3D camera into the
+                // downscaled offscreen (they'd blur). Torn down at native/no-op, and
+                // viewport-stretch can't be co-active, so the "exactly one
+                // IsDefaultUiCamera" invariant holds.
+                IsDefaultUiCamera,
                 Name::new("Render Scale Blit Camera"),
             ))
             .id();

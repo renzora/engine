@@ -183,11 +183,11 @@ pub fn update_camera_preview(
         (With<EditorCamera>, Without<CameraPreviewMarker>),
     >,
     // Sky + IBL source: the PRIMARY viewport camera holds the single baked
-    // atmosphere. We read it directly (not via the focused EditorCamera) because
-    // the primary renders sky through its own `Atmosphere` pass and carries NO
-    // `Skybox` component — only the baked `GeneratedEnvironmentMapLight`. Reading
-    // the focused EditorCamera meant the preview only saw a sky when a *secondary*
-    // viewport (which DOES get a synthesized `Skybox`) was focused.
+    // atmosphere. It renders sky through its own `Atmosphere` pass and carries NO
+    // `Skybox`, only the baked `GeneratedEnvironmentMapLight` +
+    // `EnvironmentMapLight`, which is exactly what the preview needs. (Reading the
+    // focused EditorCamera instead meant the preview only saw a sky when a
+    // *secondary* viewport — which DOES get a synthesized `Skybox` — was focused.)
     primary_env: Query<
         (
             Option<&Skybox>,
