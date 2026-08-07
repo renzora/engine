@@ -58,19 +58,37 @@ impl SelectionGranularity {
 pub enum InspectorExpandDefault {
     /// Only the most-edited components (Name, Transform, Scripts) start open;
     /// everything else starts collapsed so long inspectors stay scannable.
-    Essentials,
-    /// Every component starts open. The default — hiding fields behind a click
-    /// costs more than the extra scrolling, and the collapse-all button is one
-    /// click away for anyone who wants the scannable view.
+    ///
+    /// **The default**, and it is a performance decision as much as a legibility
+    /// one. A collapsed section is not merely hidden — `cull_offscreen_sections`
+    /// despawns its rows entirely and reserves the height with a placeholder — so
+    /// what it saves is real nodes, not hidden ones.
+    ///
+    /// Measured on a scene with a world environment, terrain and camera:
+    /// selecting an entity added **~1,082 bevy_ui nodes**, and bevy_ui charges
+    /// for every node in the tree every frame whether or not anything about it
+    /// changed. That cost ~3 ms/frame, taking the editor from ~72 fps to ~59.
+    /// Opening a section the user was not going to read is the most expensive
+    /// thing the inspector can do by default.
     #[default]
+    Essentials,
+    /// Every component starts open.
+    ///
+    /// This was the default, on the reasoning that hiding fields behind a click
+    /// costs more than the extra scrolling. That trade still holds for a small
+    /// selection; it stops holding once a component list is long enough that
+    /// most of what is built is never looked at. Still one click away via
+    /// expand-all, which is where the argument for it properly lives.
     AllOpen,
     /// Every component starts collapsed.
     AllClosed,
 }
 
 impl InspectorExpandDefault {
+    /// Default first — this drives the settings dropdown, and the option the
+    /// editor actually ships with should be the one at the top of the list.
     pub const ALL: &'static [InspectorExpandDefault] =
-        &[Self::AllOpen, Self::Essentials, Self::AllClosed];
+        &[Self::Essentials, Self::AllOpen, Self::AllClosed];
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -296,7 +314,7 @@ impl Default for EditorSettings {
             ui_font: UiFont::default(),
             mono_font: MonoFont::default(),
             // Seeded from the persisted contract flag so dev mode (and anything
-            // gated on it, e.g. the `renzora_tracy` profiler) survives restarts.
+            // gated on it, e.g. the `plugins/tracy` profiler) survives restarts.
             dev_mode: renzora::load_dev_mode(),
             script_rerun_on_ready_on_reload: true,
             hide_cursor_in_play_mode: true,

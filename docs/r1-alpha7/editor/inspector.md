@@ -38,11 +38,13 @@ At the very top is a **filter box** — start typing a component name to hide ev
 
 ### Which sections start open
 
-By default, every component section starts expanded when you select something, so nothing is hidden behind a click. If a busy object gets too long to scan, hit the collapse-all button — or change the starting state in **Settings → Interface → Inspector → Default Expand**:
+By default, Name, Transform and Scripts start expanded and everything else starts collapsed. Hit the expand-all button to open the rest, or change the starting state in **Settings → Interface → Inspector → Default Expand**:
 
-- **All Open** *(default)* — every section starts expanded.
-- **Essentials Only** — Name, Transform, and Scripts open; the rest closed.
+- **Essentials Only** *(default)* — Name, Transform, and Scripts open; the rest closed.
+- **All Open** — every section starts expanded.
 - **All Closed** — every section starts collapsed.
+
+**Why collapsed by default.** A collapsed section is not merely hidden — its rows are despawned and the space reserved with a placeholder, so it costs nothing to have. Expanding sections is genuinely expensive: on a scene with a world environment, terrain and camera, selecting an entity with everything open added ~1,082 bevy_ui nodes, and bevy_ui walks every node in the tree every frame whether or not anything changed. That measured ~3 ms/frame — about 72 fps down to 59. **All Open** is still the right choice if you routinely edit many components at once; it just shouldn't be what everyone pays for by default.
 
 This sets the *starting* state each time the Inspector rebuilds for a new selection — you can still fold any section by hand, and the expand/collapse-all button overrides it for the current object.
 
