@@ -20,7 +20,9 @@ use renzora_blueprint::{categories, node_def, nodes_in_category, BlueprintGraph}
 use renzora_editor_framework::{DocTabKind, EditorContext, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_view, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 
@@ -66,7 +68,7 @@ struct BpUndoShadow {
 }
 
 /// Cheap identity of the blueprint currently in the editor (scene entity or file).
-fn bp_doc_id(world: &World) -> String {
+fn bp_doc_id(world: &Rx) -> String {
     let s = world.get_resource::<BlueprintEditorState>();
     let (entity, path) = s
         .map(|s| (s.editing_entity, s.editing_file_path.clone()))
@@ -90,7 +92,7 @@ fn restore_blueprint_graph(world: &mut World, g: &BlueprintGraph) {
 /// edits) from one place. Per-frame scrub spam collapses via the merge key; the
 /// global gesture seal splits separate gestures.
 fn blueprint_undo_observer(world: &mut World) {
-    let Some(cur) = with_active_graph(world, |g| g.clone()) else {
+    let Some(cur) = with_active_graph(&Rx::new(&*world), |g| g.clone()) else {
         // No graph active (nothing selected) — drop the shadow so re-entering a
         // graph reseeds rather than diffing against a stale one.
         if let Some(mut sh) = world.get_resource_mut::<BpUndoShadow>() {
@@ -98,7 +100,7 @@ fn blueprint_undo_observer(world: &mut World) {
         }
         return;
     };
-    let doc_id = bp_doc_id(world);
+    let doc_id = bp_doc_id(&Rx::new(&*world));
     let (prev_id, prev_graph) = {
         let sh = world.resource::<BpUndoShadow>();
         (sh.doc_id.clone(), sh.graph.clone())
@@ -139,11 +141,11 @@ struct LayoutBtn;
 
 // ── Dual-mode graph access ──────────────────────────────────────────────────────
 
-fn is_asset(w: &World) -> bool {
+fn is_asset(w: &Rx) -> bool {
     matches!(w.get_resource::<EditorContext>(), Some(EditorContext::Asset { kind: DocTabKind::Blueprint, .. }))
 }
 
-fn with_active_graph<R>(w: &World, f: impl FnOnce(&BlueprintGraph) -> R) -> Option<R> {
+fn with_active_graph<R>(w: &Rx, f: impl FnOnce(&BlueprintGraph) -> R) -> Option<R> {
     let s = w.get_resource::<BlueprintEditorState>()?;
     if is_asset(w) {
         s.file_graph.as_ref().map(f)
@@ -226,7 +228,7 @@ type InputSpec = (PinTemplate, bool);
 type NodeData = (u64, String, (u8, u8, u8), [f32; 2], Vec<Port>, Vec<Port>, bool, Vec<InputSpec>);
 
 #[allow(clippy::type_complexity)]
-fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let sel = world.get_resource::<BlueprintEditorState>().and_then(|s| s.selected_node);
     let nodes: Vec<NodeData> = with_active_graph(world, |g| {
         g.nodes
@@ -288,7 +290,7 @@ fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapsh
 
 /// Comment boxes, keyed on id only — drag / resize / retitle mutate the box in
 /// place (and the model) without rebuilding, so the title field keeps focus.
-fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+fn comment_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let comments: Vec<(u64, String, [f32; 4], (u8, u8, u8))> = with_active_graph(world, |g| {
         g.comments.iter().map(|c| (c.id, c.text.clone(), c.rect, (c.color[0], c.color[1], c.color[2]))).collect()
     })
@@ -311,7 +313,7 @@ fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSna
     }
 }
 
-fn wire_snapshot(world: &World, viewport: Entity) -> KeyedSnapshot {
+fn wire_snapshot(world: &Rx, viewport: Entity) -> KeyedSnapshot {
     let wires: Vec<(u64, String, u64, String)> = with_active_graph(world, |g| g.connections.iter().map(|c| (c.from_node, c.from_pin.clone(), c.to_node, c.to_pin.clone())).collect()).unwrap_or_default();
     let items: Vec<(u64, u64)> = wires
         .iter()
@@ -379,8 +381,8 @@ fn bp_graph_sync(world: &mut World) {
         return;
     }
 
-    let asset = is_asset(world);
-    let mut graph = with_active_graph(world, |g| g.clone());
+    let asset = is_asset(&Rx::new(&*world));
+    let mut graph = with_active_graph(&Rx::new(&*world), |g| g.clone());
     let mut changed = false;
     let mut new_sel: Option<Option<u64>> = None;
     for edit in edits {
@@ -486,7 +488,7 @@ fn layout_click(
 /// Tidy the active graph (asset file or scene-entity component) with the shared
 /// layered auto-layout, then persist it the same way edits are saved.
 fn bp_auto_layout(world: &mut World) {
-    if is_asset(world) {
+    if is_asset(&Rx::new(&*world)) {
         let path = world.resource::<BlueprintEditorState>().editing_file_path.clone();
         let project = world.get_resource::<CurrentProject>().cloned();
         let Some(mut g) = world.resource::<BlueprintEditorState>().file_graph.clone() else {
@@ -506,7 +508,7 @@ fn bp_auto_layout(world: &mut World) {
 }
 
 fn bp_apply(world: &mut World) {
-    if is_asset(world) {
+    if is_asset(&Rx::new(&*world)) {
         return; // compile-to-Lua needs an entity context
     }
     let Some(entity) = world.resource::<BlueprintEditorState>().editing_entity else { return };
@@ -519,7 +521,7 @@ fn bp_apply(world: &mut World) {
 /// Mutate the active graph (asset file or scene-entity component), persisting +
 /// marking dirty the same way for both modes. Creates the component on demand.
 fn bp_apply_graph(world: &mut World, f: impl FnOnce(&mut BlueprintGraph)) {
-    if is_asset(world) {
+    if is_asset(&Rx::new(&*world)) {
         let path = world.resource::<BlueprintEditorState>().editing_file_path.clone();
         let project = world.get_resource::<CurrentProject>().cloned();
         let mut g = world.resource::<BlueprintEditorState>().file_graph.clone().unwrap_or_default();

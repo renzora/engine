@@ -13,9 +13,9 @@ use bevy::prelude::*;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_bg, bind_display, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, collapsible, drag_value, text_input, DragRange,
@@ -51,7 +51,7 @@ impl Plugin for NativeFoliage {
 
 // ── State accessors (mirror the egui panel's `get_resource` reads) ───────────
 
-fn tool_active(w: &World) -> bool {
+fn tool_active(w: &Rx) -> bool {
     w.get_resource::<FoliageToolState>().map(|t| t.active).unwrap_or_default()
 }
 
@@ -61,27 +61,27 @@ fn set_tool_active(w: &mut World, active: bool) {
     w.insert_resource(t);
 }
 
-fn settings(w: &World) -> FoliagePaintSettings {
+fn settings(w: &Rx) -> FoliagePaintSettings {
     w.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default()
 }
 
 fn set_settings(w: &mut World, f: impl FnOnce(&mut FoliagePaintSettings)) {
-    let mut s = settings(w);
+    let mut s = settings(&Rx::new(&*w));
     f(&mut s);
     w.insert_resource(s);
 }
 
-fn config(w: &World) -> FoliageConfig {
+fn config(w: &Rx) -> FoliageConfig {
     w.get_resource::<FoliageConfig>().cloned().unwrap_or_default()
 }
 
 fn set_config(w: &mut World, f: impl FnOnce(&mut FoliageConfig)) {
-    let mut c = config(w);
+    let mut c = config(&Rx::new(&*w));
     f(&mut c);
     w.insert_resource(c);
 }
 
-fn active_type(w: &World) -> usize {
+fn active_type(w: &Rx) -> usize {
     settings(w).active_type
 }
 
@@ -204,7 +204,7 @@ fn types_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn types_snapshot(world: &World) -> KeyedSnapshot {
+fn types_snapshot(world: &Rx) -> KeyedSnapshot {
     let cfg = config(world);
     // Key + hash on STRUCTURE (index + name) — not on the live selection — so
     // selecting a row (a bg change driven reactively) never rebuilds the list.
@@ -375,7 +375,7 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             config(w).types.get(i).map(|t| t.name.clone()).unwrap_or_default()
         },
         |w, v| {
-            let i = active_type(w);
+            let i = active_type(&Rx::new(&*w));
             set_config(w, |c| {
                 if let Some(t) = c.types.get_mut(i) {
                     t.name = v;
@@ -422,7 +422,7 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             config(w).types.get(i).map(|t| t.enabled).unwrap_or(true)
         },
         |w, v: &bool| {
-            let i = active_type(w);
+            let i = active_type(&Rx::new(&*w));
             set_config(w, |c| {
                 if let Some(t) = c.types.get_mut(i) {
                     t.enabled = *v;
@@ -486,7 +486,7 @@ fn labelled_drag<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let col = commands
@@ -515,7 +515,7 @@ fn num_field<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     // `min` is a transient seed — `bind_2way` corrects it from the live world on
@@ -563,7 +563,7 @@ fn action_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label:
 // ── Active-type get/set helpers (the egui panel's `types.get_mut(active_type)`)
 
 /// Build a getter that reads field `f` off the active foliage type.
-fn type_get<F>(f: F) -> impl Fn(&World) -> f32 + Send + Sync + 'static
+fn type_get<F>(f: F) -> impl Fn(&Rx) -> f32 + Send + Sync + 'static
 where
     F: Fn(&FoliageType) -> f32 + Send + Sync + 'static,
 {
@@ -580,7 +580,7 @@ where
     F: Fn(&mut FoliageType, f32) + Send + Sync + 'static,
 {
     move |w, v| {
-        let i = active_type(w);
+        let i = active_type(&Rx::new(&*w));
         set_config(w, |c| {
             if let Some(t) = c.types.get_mut(i) {
                 f(t, *v);

@@ -11,7 +11,7 @@
 //!     renzora_ember::inspector::inspector_body(world, |commands, fonts| {
 //!         let col = commands.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).id();
 //!         let dv = renzora_ember::widgets::drag_value(commands, &fonts.ui, "", (210,210,220), 0.0, 0.1);
-//!         renzora_ember::reactive::bind_2way(commands, dv,
+//!         renzora_ember::reactive::tracked::bind_2way(commands, dv,
 //!             move |w| w.get::<MyComp>(entity).map(|c| c.value).unwrap_or(0.0),
 //!             move |w, v: &f32| { if let Some(mut c) = w.get_mut::<MyComp>(entity) { c.value = *v; } });
 //!         commands.entity(col).add_child(dv);
@@ -24,8 +24,9 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
+use crate::reactive::Rx;
 use crate::font::{ui_font, EmberFonts};
-use crate::reactive::{bind_2way, bind_with};
+use crate::reactive::tracked::{bind_2way, bind_with};
 use crate::theme::*;
 use crate::widgets::{bind_hsv_picker, hsv_picker, slider, Popup};
 
@@ -141,7 +142,7 @@ pub fn inspector_body(
 /// The popup uses the generic [`Popup`] (click-outside dismiss + auto flip-up).
 pub fn color_field(
     commands: &mut Commands,
-    get: impl Fn(&World) -> [f32; 3] + Clone + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> [f32; 3] + Clone + Send + Sync + 'static,
     set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
 ) -> Entity {
     // Seed HSV; bind_hsv_picker re-syncs from the real value next frame.
@@ -211,7 +212,7 @@ pub fn color_field(
 /// all four channels are editable. Get/set use straight (unmultiplied) `[r,g,b,a]`.
 pub fn color_field_rgba(
     commands: &mut Commands,
-    get: impl Fn(&World) -> [f32; 4] + Clone + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> [f32; 4] + Clone + Send + Sync + 'static,
     set: impl Fn(&mut World, [f32; 4]) + Clone + Send + Sync + 'static,
 ) -> Entity {
     let picker = hsv_picker(commands, 0.0, 0.0, 0.5);
@@ -226,7 +227,7 @@ pub fn color_field_rgba(
                 [c[0], c[1], c[2]]
             },
             move |w, rgb: [f32; 3]| {
-                let a = g_a(w)[3];
+                let a = g_a(&Rx::new(&*w))[3];
                 s(w, [rgb[0], rgb[1], rgb[2], a]);
             },
         );
@@ -249,7 +250,9 @@ pub fn color_field_rgba(
             alpha,
             move |w| g_a(w)[3],
             move |w, a: &f32| {
-                let c = g_rgb(w);
+                // A setter holds `&mut World`; the getter now takes `&Rx`, so
+                // wrap. The dep set is discarded — a setter is not a reaction.
+                let c = g_rgb(&Rx::new(&*w));
                 s(w, [c[0], c[1], c[2], *a]);
             },
         );

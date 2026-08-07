@@ -10,7 +10,9 @@ use bevy::prelude::*;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, keyed_list};
 use renzora_ember::theme::*;
 
 use crate::state::CodeEditorState;
@@ -26,7 +28,7 @@ pub fn register_native_problems(app: &mut App) {
         .systems(Update, problems_goto_click.run_if(in_state(SplashState::Editor)));
 }
 
-fn has_problems(w: &World) -> bool {
+fn has_problems(w: &Rx) -> bool {
     w.get_resource::<CodeEditorState>().is_some_and(|s| s.open_files.iter().any(|f| f.error.is_some()))
 }
 
@@ -54,7 +56,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn problems_snapshot(world: &World) -> KeyedSnapshot {
+fn problems_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = world.get_resource::<CodeEditorState>() else { return empty() };
     // (file_idx, file_name, message first line, line, col)
     let problems: Vec<(usize, String, String, Option<usize>, Option<usize>)> = state

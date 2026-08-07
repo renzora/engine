@@ -9,7 +9,8 @@ use bevy::prelude::*;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::tracked::{bind_bg};
 use renzora_ember::theme::{accent, rgb, section_bg, text_muted, text_primary};
 
 use crate::highlight::Language;

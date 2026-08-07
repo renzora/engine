@@ -28,8 +28,9 @@
 use std::hash::{Hash, Hasher};
 
 use bevy::ecs::world::CommandQueue;
+use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
+use bevy::ui::{ComputedNode, FocusPolicy, ScrollPosition, UiGlobalTransform};
 
 use renzora_editor_framework::{
     EditorCommands, EditorSelection, EditorSettings, FieldType, FieldValue,
@@ -38,7 +39,8 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
     bind_text_input, drag_value, dropdown, dropdown_with_icons, scroll_view, set_section_open,
     text_input, toggle_switch, DragRange, EmberTextInput, Section,
@@ -316,7 +318,7 @@ struct FilterDropdownHost;
 
 /// The user's chosen component-filter presentation (defaults to the vertical
 /// menu if settings aren't available yet).
-fn filter_style(world: &World) -> InspectorComponentFilterStyle {
+fn filter_style(world: &Rx) -> InspectorComponentFilterStyle {
     world
         .get_resource::<EditorSettings>()
         .map(|s| s.inspector_component_filter_style)
@@ -432,7 +434,16 @@ pub fn register_native_inspector(app: &mut App) {
         // `rebuild_inspector` has just (re)created, so running it after in the
         // same frame means a rebuild lands with its open sections already filled
         // — no one-frame flash of empty bodies on selection change.
-        (rebuild_inspector, reconcile_section_bodies)
+        //
+        // Culling runs first and only sets flags; the reconciler is still the
+        // single place rows are built or thrown away. Putting it ahead of the
+        // rebuild also means a scroll and a selection change landing on the same
+        // frame resolve in one pass rather than two.
+        (
+            cull_offscreen_sections,
+            rebuild_inspector,
+            reconcile_section_bodies,
+        )
             .chain()
             .run_if(in_state(SplashState::Editor))
             .run_if(renzora_ember::dock::panel_active("inspector")),
@@ -484,10 +495,61 @@ struct FieldSpec {
     extensions: Vec<String>,
     /// `AssetCreatable` fields only: the "+" button's create-in-place action.
     create_fn: Option<Mutate>,
+    /// The component this field reads, when it could be resolved from the
+    /// section's type path.
+    ///
+    /// `get_fn` is a contract-crate `fn(&World, Entity)` and cannot take an
+    /// `&Rx`, so the binding around it would otherwise have to give up on
+    /// tracking entirely — which is what pinned most of the inspector dirty.
+    /// Naming the component lets the binding *declare* the dependency instead:
+    /// of 248 `get_fn` definitions in the workspace, 247 are literally
+    /// `|w, e| w.get::<C>(e).map(..)` and the one exception ignores both
+    /// arguments, so `(entity, component)` is what they read.
+    ///
+    /// `None` falls back to untracked — unchanged behaviour.
+    cid: Option<ComponentId>,
+}
+
+/// Call a contract `fn(&World, Entity)` while still declaring what it reads.
+///
+/// The two halves are deliberately in one place: `manually_tracked` is the only
+/// hatch where being wrong causes staleness rather than wasted work, so the
+/// `track_component_id` that justifies it sits immediately above the call.
+fn tracked_read<T>(
+    rx: &Rx,
+    entity: Entity,
+    cid: Option<ComponentId>,
+    f: impl FnOnce(&World) -> T,
+) -> T {
+    match cid {
+        Some(cid) => {
+            rx.track_component_id(entity, cid);
+            f(rx.manually_tracked())
+        }
+        // Unknown component: stay conservative, exactly as before.
+        None => f(rx.untracked()),
+    }
+}
+
+/// Resolve a reflected type path (`"bevy_transform::components::Transform"`) to
+/// the `ComponentId` the world knows it by, so a binding can depend on it.
+///
+/// `None` for anything not registered or not a component — the caller then
+/// falls back to untracked, which is always safe.
+fn component_id_for(world: &World, type_path: &str) -> Option<ComponentId> {
+    let registry = world.get_resource::<AppTypeRegistry>()?.clone();
+    let type_id = {
+        let r = registry.read();
+        r.get_with_type_path(type_path)?.type_id()
+    };
+    world.components().get_id(type_id)
 }
 
 struct SectionSpec {
     title: &'static str,
+    /// The component this section is for, when resolvable — lets the enable
+    /// toggle declare its dependency instead of pinning itself dirty.
+    cid: Option<ComponentId>,
     icon: &'static str, // phosphor icon name (resolved via icon_glyph)
     type_id: &'static str,
     custom: bool,
@@ -535,7 +597,7 @@ fn category_rgb(theme: &renzora_theme::Theme, category: &str) -> ((u8, u8, u8), 
 // ── Component filter ─────────────────────────────────────────────────────────
 
 /// The entity the inspector is showing (the lock wins over the live selection).
-fn inspected_entity(w: &World) -> Option<Entity> {
+fn inspected_entity(w: &Rx) -> Option<Entity> {
     let locked = w.get_resource::<NativeInspectorState>().and_then(|s| s.locked);
     locked.or_else(|| w.get_resource::<EditorSelection>().and_then(|s| s.get()))
 }
@@ -543,12 +605,12 @@ fn inspected_entity(w: &World) -> Option<Entity> {
 /// `(display_name, icon)` for every registered component currently on `entity`,
 /// in registry order — the source list for the filter dropdown (matches the set
 /// of sections `collect_sections` would show with no filter).
-fn present_components(world: &World, entity: Entity) -> Vec<(&'static str, &'static str)> {
+fn present_components(world: &Rx, entity: Entity) -> Vec<(&'static str, &'static str)> {
     let Some(reg) = world.get_resource::<InspectorRegistry>() else {
         return Vec::new();
     };
     reg.iter()
-        .filter(|e| (e.has_fn)(world, entity))
+        .filter(|e| (e.has_fn)(world.untracked(), entity))
         .map(|e| (e.display_name, e.icon))
         .collect()
 }
@@ -894,7 +956,7 @@ fn rebuild_inspector(
     // (e.g. selection changed) so we don't strand the inspector on an empty list.
     if let Some(sel) = world.resource::<NativeInspectorState>().selected.clone() {
         let still_present = entity
-            .map(|e| present_components(world, e).iter().any(|(n, _)| *n == sel))
+            .map(|e| present_components(&Rx::new(&*world), e).iter().any(|(n, _)| *n == sel))
             .unwrap_or(false);
         if !still_present {
             world.resource_mut::<NativeInspectorState>().selected = None;
@@ -905,12 +967,12 @@ fn rebuild_inspector(
         return;
     };
 
-    let sig = inspector_signature(world, container, entity, locked.is_some());
+    let sig = inspector_signature(&Rx::new(&*world), container, entity, locked.is_some());
     if world.resource::<NativeInspectorState>().sig == Some(sig) {
         return;
     }
 
-    let sections = collect_sections(world, entity);
+    let sections = collect_sections(&Rx::new(&*world), entity);
     let state = world.resource::<NativeInspectorState>();
     let filter_active = !state.filter.is_empty() || state.selected.is_some();
     let existing: Vec<Entity> = world
@@ -920,7 +982,7 @@ fn rebuild_inspector(
 
     // The component filter renders as either a left rail of icon buttons or a
     // top-bar dropdown; we rebuild whichever the user picked and clear the other.
-    let style = filter_style(world);
+    let style = filter_style(&Rx::new(&*world));
     let menu_host = {
         let mut hq = world.query_filtered::<Entity, With<ComponentMenuHost>>();
         hq.iter(world).next()
@@ -936,7 +998,7 @@ fn rebuild_inspector(
         .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
         .unwrap_or_default();
     let present: Vec<(&'static str, &'static str)> =
-        entity.map(|e| present_components(world, e)).unwrap_or_default();
+        entity.map(|e| present_components(&Rx::new(&*world), e)).unwrap_or_default();
     let selected_now = world.resource::<NativeInspectorState>().selected.clone();
 
     // Native-drawer sections: (body, drawer, entity) — filled after the queue
@@ -1030,7 +1092,7 @@ fn rebuild_inspector(
 /// cheap — it would only re-read the fields of one section — so this belongs with
 /// that work rather than as a standalone per-frame cost.
 fn inspector_signature(
-    world: &World,
+    world: &Rx,
     container: Entity,
     entity: Option<Entity>,
     locked: bool,
@@ -1054,7 +1116,7 @@ fn inspector_signature(
             e.to_bits().hash(&mut h);
             if let Some(reg) = world.get_resource::<InspectorRegistry>() {
                 for entry in reg.iter() {
-                    if (entry.has_fn)(world, e) {
+                    if (entry.has_fn)(world.untracked(), e) {
                         entry.type_id.hash(&mut h);
                         // Presence-toggled sections (their enable switch
                         // inserts/removes the underlying component, e.g. 2D
@@ -1062,7 +1124,7 @@ fn inspector_signature(
                         // changing the section set — fold the enabled bit in
                         // so flipping the switch rebuilds the body.
                         if let Some(is_enabled) = entry.is_enabled_fn {
-                            is_enabled(world, e).hash(&mut h);
+                            is_enabled(world.untracked(), e).hash(&mut h);
                         }
                         // A `DynamicEnum` field's options are computed from the
                         // world at build time, so a *mutation* that grows/shrinks
@@ -1072,7 +1134,7 @@ fn inspector_signature(
                         // Fold the options in so the list rebuilds when it changes.
                         for field in &entry.fields {
                             if let FieldType::DynamicEnum { options } = field.field_type {
-                                for opt in options(world, e) {
+                                for opt in options(world.untracked(), e) {
                                     opt.hash(&mut h);
                                 }
                             }
@@ -1086,7 +1148,7 @@ fn inspector_signature(
     h.finish()
 }
 
-fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
+fn collect_sections(world: &Rx, entity: Option<Entity>) -> Vec<SectionSpec> {
     let Some(entity) = entity else {
         return Vec::new();
     };
@@ -1120,7 +1182,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
 
     let mut out = Vec::new();
     for entry in reg.iter() {
-        if !(entry.has_fn)(world, entity) {
+        if !(entry.has_fn)(world.untracked(), entity) {
             continue;
         }
         // Exact component pick from the dropdown (ANDed with the text filter).
@@ -1140,13 +1202,14 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
             (Some(g), Some(s)) => Some((std::sync::Arc::new(g) as Pred, std::sync::Arc::new(s) as SetEnabled)),
             _ => None,
         };
-        let enabled_now = enable.as_ref().map(|(g, _)| g(world, entity)).unwrap_or(true);
+        let enabled_now = enable.as_ref().map(|(g, _)| g(world.untracked(), entity)).unwrap_or(true);
         // Priority: a registered native bevy_ui drawer > declarative `fields` >
         // placeholder note (component has neither a native drawer nor any fields).
         let native_drawer = native_reg.and_then(|r| r.get(entry.type_id));
         if native_drawer.is_some() {
             out.push(SectionSpec {
                 title: entry.display_name,
+            cid: component_id_for(world.untracked(), entry.type_id),
                 icon: entry.icon,
                 type_id: entry.type_id,
                 custom: false,
@@ -1164,6 +1227,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         if entry.fields.is_empty() {
             out.push(SectionSpec {
                 title: entry.display_name,
+                cid: component_id_for(world.untracked(), entry.type_id),
                 icon: entry.icon,
                 type_id: entry.type_id,
                 custom: true,
@@ -1180,7 +1244,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
         }
         let mut fields = Vec::new();
         for f in &entry.fields {
-            let val = (f.get_fn)(world, entity);
+            let val = (f.get_fn)(world.untracked(), entity);
             // A `None` read means "row not applicable right now" — the section's
             // component is toggled off, or the field only applies to some
             // states (e.g. occluder Width/Height on a polygon shape). Hide the
@@ -1225,7 +1289,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 // stored in the init so `FieldKind` stays `Copy`.
                 (FieldType::DynamicEnum { options }, Some(FieldValue::Float(v))) => (
                     FieldKind::DynamicEnum,
-                    FieldInit::DynEnum(options(world, entity), v.round().max(0.0) as usize),
+                    FieldInit::DynEnum(options(world.untracked(), entity), v.round().max(0.0) as usize),
                 ),
                 (FieldType::Asset { .. }, Some(FieldValue::Asset(_)))
                 | (FieldType::AssetCreatable { .. }, Some(FieldValue::Asset(_))) => {
@@ -1256,10 +1320,12 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
                 init,
                 extensions,
                 create_fn: create_fn.clone(),
+                cid: component_id_for(world.untracked(), entry.type_id),
             });
         }
         out.push(SectionSpec {
             title: entry.display_name,
+            cid: component_id_for(world.untracked(), entry.type_id),
             icon: entry.icon,
             type_id: entry.type_id,
             custom: false,
@@ -1293,7 +1359,7 @@ fn collect_sections(world: &World, entity: Option<Entity>) -> Vec<SectionSpec> {
 /// produced without any component naming an inspector type, which is what lets a
 /// component crate carry no editor dependency at all.
 fn append_reflected_sections(
-    world: &World,
+    world: &Rx,
     entity: Entity,
     reg: &InspectorRegistry,
     out: &mut Vec<SectionSpec>,
@@ -1324,7 +1390,7 @@ fn append_reflected_sections(
         }
     }
 
-    let generated = crate::reflect_source::reflect_sections(world, entity, &|short| {
+    let generated = crate::reflect_source::reflect_sections(world.untracked(), entity, &|short| {
         // Reflected type names carry noise words the curated names never do —
         // `AtmosphereComponentSettings` is the `Atmosphere` entry, `CloudsData`
         // is `Clouds`. Strip those before comparing, or every settings component
@@ -1361,7 +1427,7 @@ fn append_reflected_sections(
             });
             (pred, set)
         });
-        let enabled_now = enable.as_ref().map(|(g, _)| g(world, entity)).unwrap_or(true);
+        let enabled_now = enable.as_ref().map(|(g, _)| g(world.untracked(), entity)).unwrap_or(true);
         let mut fields = Vec::new();
         for f in section.fields {
             let (kind, init) = match (&f.field_type, &f.value) {
@@ -1408,10 +1474,12 @@ fn append_reflected_sections(
                 init,
                 extensions: Vec::new(),
                 create_fn: None,
+                cid: component_id_for(world.untracked(), type_path),
             });
         }
         out.push(SectionSpec {
             title: section.short_name,
+            cid: component_id_for(world.untracked(), type_path),
             icon: "cube",
             type_id: type_path,
             custom: false,
@@ -1598,12 +1666,19 @@ fn reconcile_section_bodies(
     };
 
     // (body, open) for every section whose body disagrees with its header.
+    //
+    // "Should hold rows" is the header's open flag AND the body being on screen
+    // — see [`cull_offscreen_sections`]. Folding culling in here rather than
+    // giving it its own despawn path means there is still exactly one place that
+    // builds and one that throws away, so the two can't drift.
     let mut todo: Vec<(Entity, bool)> = Vec::new();
     for sec in headers.iter(world) {
         let body = sec.body();
+        let culled = world.get::<SectionCull>(body).is_some_and(|c| c.culled);
+        let want = sec.is_open() && !culled;
         if let Some(spec) = world.get::<SectionBodySpec>(body) {
-            if spec.filled != sec.is_open() {
-                todo.push((body, sec.is_open()));
+            if spec.filled != want {
+                todo.push((body, want));
             }
         }
     }
@@ -1666,6 +1741,311 @@ fn reconcile_section_bodies(
         if let Some(mut spec) = world.get_mut::<SectionBodySpec>(body) {
             spec.filled = open;
         }
+    }
+}
+
+// ── Viewport culling ─────────────────────────────────────────────────────────
+
+/// How far outside the viewport a section body is kept built, as a fraction of
+/// the viewport's own height.
+///
+/// Culling exactly at the viewport edge would rebuild a section the instant one
+/// pixel of it scrolls into view, so a slow drag would pay a rebuild every frame.
+/// Half a screen of slack on each side means normal scrolling crosses the
+/// boundary rarely, and a section is built and laid out well before it is
+/// readable.
+///
+/// Relative rather than a fixed pixel count because both things it trades off
+/// scale with the panel: a tall inspector is scrolled in bigger jumps, and a
+/// fixed slack generous enough for a tall one would exceed a short panel's whole
+/// content — culling nothing at all.
+const CULL_OVERSCAN_FRAC: f32 = 0.5;
+
+/// Floor for the overscan, in logical px. A very short inspector (a docked strip)
+/// would otherwise get a slack of almost nothing and pop rows in and out under
+/// small scrolls.
+const CULL_OVERSCAN_MIN_PX: f32 = 200.0;
+
+/// Off-screen culling state for one section body, alongside its
+/// [`SectionBodySpec`].
+///
+/// Collapsing a section is already known to be the single biggest win available
+/// to this panel — measured at ~3.3 ms/frame, 60 fps → 50 fps, for one entity's
+/// worth of open components — because a collapsed body *builds nothing*
+/// ([`build_section`] explains why hiding is not enough). Scrolling a section out
+/// of view makes it exactly as invisible as collapsing it does, but the rows
+/// stayed built and kept charging taffy for a full tree walk every frame.
+///
+/// So this applies the same trick on a second axis: an open section whose body
+/// has scrolled far enough out of the viewport throws its rows away, and rebuilds
+/// them when it scrolls back. The section's *header* is untouched — it is one row
+/// and it is what you scroll past to find things.
+#[derive(Component, Default)]
+struct SectionCull {
+    /// The body's height in logical px, measured while it still held its rows.
+    ///
+    /// Pinned onto the body while culled. Without it an emptied body collapses to
+    /// its padding, which drags every section below it up the panel and shrinks
+    /// the scroll range under the user's thumb — the content would appear to
+    /// dissolve as you scrolled. Recording the height and reserving it keeps the
+    /// list's geometry byte-identical to the unculled version.
+    placeholder_h: f32,
+    /// True while the rows have been thrown away for being off screen.
+    culled: bool,
+}
+
+/// What [`cull_offscreen_sections`] decided to do with one section this frame.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CullAction {
+    /// Leave it alone.
+    Keep,
+    /// Throw the rows away and reserve `placeholder_h` in their place.
+    Cull,
+    /// Release the reservation; the reconciler rebuilds the rows.
+    Restore,
+    /// Still on screen and holding its rows — record its height for later.
+    Measure(f32),
+}
+
+/// The culling decision for one section, split out from the ECS plumbing.
+///
+/// Worth isolating because the two rules that make this safe are both "don't"
+/// rules, and a "don't" is exactly what silently stops happening after a
+/// refactor: never cull a section whose height was never measured (there would
+/// be nothing to reserve, and the list would collapse), and never measure a body
+/// that is not currently holding its rows (it would record its padding as the
+/// section's height and reserve *that* forever). Neither is observable from a
+/// screenshot until the panel is already wrong.
+fn cull_action(
+    state: &SectionCull,
+    filled: bool,
+    top: f32,
+    height: f32,
+    keep_top: f32,
+    keep_bot: f32,
+) -> CullAction {
+    // Half-open overlap against the keep band: a section touching it at all
+    // stays built.
+    let visible = top < keep_bot && top + height > keep_top;
+    if visible {
+        if state.culled {
+            CullAction::Restore
+        } else if filled && (state.placeholder_h - height).abs() > 0.5 {
+            CullAction::Measure(height)
+        } else {
+            CullAction::Keep
+        }
+    } else if !state.culled && state.placeholder_h > 0.0 {
+        CullAction::Cull
+    } else {
+        CullAction::Keep
+    }
+}
+
+/// Throw away the rows of open sections that have scrolled out of the inspector's
+/// viewport, and rebuild them when they scroll back.
+///
+/// Reads the *previous* frame's layout (`ComputedNode` / `UiGlobalTransform`),
+/// which is why [`CULL_OVERSCAN_PX`] exists — a frame of lag at scroll speed is
+/// well inside the slack.
+///
+/// Deliberately not built on [`renzora_ember::virtual_scroll`], which the rest of
+/// the editor's lists use. That windows a `keyed_list` by measuring one row stride
+/// and assuming every item shares it — exact for the asset grid and the hierarchy,
+/// and wrong here: a collapsed section is one header, an open one with a native
+/// drawer is hundreds of px, and no single stride describes both. Measuring each
+/// section's own height sidesteps the assumption instead of fighting it.
+fn cull_offscreen_sections(
+    root: Query<Entity, With<InspectorRoot>>,
+    parents: Query<&ChildOf>,
+    viewports: Query<(&ComputedNode, &UiGlobalTransform), With<ScrollPosition>>,
+    headers: Query<&Section, With<InspectorSectionHeader>>,
+    mut bodies: Query<(
+        &mut SectionCull,
+        &mut Node,
+        &ComputedNode,
+        &UiGlobalTransform,
+        &SectionBodySpec,
+    )>,
+) {
+    let Ok(root) = root.single() else {
+        return;
+    };
+    // Walk up to the enclosing scroll viewport. `scroll_view` puts the content
+    // directly under it, but going through the parent chain keeps this working if
+    // the panel ever gains an intermediate wrapper.
+    let mut e = root;
+    let mut viewport = None;
+    for _ in 0..8 {
+        let Ok(parent) = parents.get(e) else { break };
+        let parent = parent.parent();
+        if let Ok(v) = viewports.get(parent) {
+            viewport = Some(v);
+            break;
+        }
+        e = parent;
+    }
+    let Some((vp_node, vp_xf)) = viewport else {
+        return;
+    };
+
+    let inv = vp_node.inverse_scale_factor();
+    let vp_h = vp_node.size().y * inv;
+    // A zero-height viewport means the panel is in a collapsed tab or a hidden
+    // dock leaf. Culling against it would cull *everything*, and the rows would
+    // then all rebuild at once the moment the tab came back — the opposite of
+    // what this is for. Leave the panel exactly as it is.
+    if vp_h <= 0.0 {
+        return;
+    }
+    // `UiGlobalTransform` already carries the scroll offset, so viewport and
+    // section rects are directly comparable without consulting `ScrollPosition`.
+    let vp_top = vp_xf.translation.y * inv - vp_h * 0.5;
+    let overscan = (vp_h * CULL_OVERSCAN_FRAC).max(CULL_OVERSCAN_MIN_PX);
+    let keep_top = vp_top - overscan;
+    let keep_bot = vp_top + vp_h + overscan;
+
+    for sec in &headers {
+        // A collapsed section is already empty; there is nothing to cull, and its
+        // zero-height body would measure as a bogus placeholder.
+        if !sec.is_open() {
+            continue;
+        }
+        let Ok((mut cull, mut node, computed, xf, spec)) = bodies.get_mut(sec.body()) else {
+            continue;
+        };
+        let h = computed.size().y * inv;
+        let top = xf.translation.y * inv - h * 0.5;
+
+        // `Node` is only written on a real transition. Touching it unconditionally
+        // would dirty the very thing this exists to avoid: any `DerefMut` on a
+        // `Node` re-runs taffy for that subtree, so an unguarded write here would
+        // charge a relayout every frame per section to save relayouts.
+        match cull_action(&cull, spec.filled, top, h, keep_top, keep_bot) {
+            CullAction::Keep => {}
+            CullAction::Measure(h) => cull.placeholder_h = h,
+            CullAction::Restore => {
+                cull.culled = false;
+                node.height = Val::Auto;
+            }
+            CullAction::Cull => {
+                cull.culled = true;
+                node.height = Val::Px(cull.placeholder_h);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cull_tests {
+    use super::{cull_action, CullAction, SectionCull};
+
+    // A 600px viewport with half a screen of overscan each side. Spelled out
+    // rather than derived from the constants, so retuning the overscan can't
+    // quietly move the band these cases are pinned to.
+    const KEEP_TOP: f32 = -300.0;
+    const KEEP_BOT: f32 = 900.0;
+
+    fn measured(h: f32) -> SectionCull {
+        SectionCull { placeholder_h: h, culled: false }
+    }
+
+    #[test]
+    fn a_section_far_below_the_viewport_is_culled() {
+        let s = measured(150.0);
+        assert_eq!(
+            cull_action(&s, true, 3000.0, 150.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Cull
+        );
+    }
+
+    /// The rule that keeps the list from collapsing. A section built this frame
+    /// has no recorded height, so emptying it would reserve nothing and drag
+    /// everything below it up the panel.
+    #[test]
+    fn an_unmeasured_section_is_never_culled() {
+        let fresh = SectionCull::default();
+        assert_eq!(
+            cull_action(&fresh, true, 3000.0, 150.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Keep
+        );
+    }
+
+    #[test]
+    fn a_section_inside_the_overscan_band_stays_built() {
+        let s = measured(150.0);
+        // Entirely below the viewport, but within the overscan slack.
+        assert_eq!(
+            cull_action(&s, true, 800.0, 150.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Keep
+        );
+    }
+
+    /// A section straddling the bottom edge is half on screen; culling it would
+    /// blank rows the user is looking at.
+    #[test]
+    fn a_partially_visible_section_stays_built() {
+        let s = measured(400.0);
+        assert_eq!(
+            cull_action(&s, true, 500.0, 400.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Keep
+        );
+    }
+
+    #[test]
+    fn a_culled_section_scrolled_back_into_view_restores() {
+        let s = SectionCull { placeholder_h: 150.0, culled: true };
+        assert_eq!(
+            cull_action(&s, false, 100.0, 150.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Restore
+        );
+    }
+
+    /// The other "don't" rule. A culled body measures at its reserved height with
+    /// no rows in it; re-measuring an unfilled body would let a stale or padding
+    /// height overwrite the real one.
+    #[test]
+    fn an_unfilled_body_is_never_measured() {
+        let s = measured(150.0);
+        assert_eq!(
+            cull_action(&s, false, 100.0, 6.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Keep
+        );
+        // ...but the same body holding its rows is measured.
+        assert_eq!(
+            cull_action(&s, true, 100.0, 6.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Measure(6.0)
+        );
+    }
+
+    /// Sub-pixel drift must not re-record, or every frame writes `SectionCull`
+    /// for every section.
+    #[test]
+    fn an_unchanged_height_is_not_re_measured() {
+        let s = measured(150.0);
+        assert_eq!(
+            cull_action(&s, true, 100.0, 150.2, KEEP_TOP, KEEP_BOT),
+            CullAction::Keep
+        );
+    }
+
+    /// Culling must be a fixed point: a culled section reserves its own height, so
+    /// its rect does not move, so nothing below it moves either. If this ever
+    /// returned `Restore` the panel would thrash between built and empty forever.
+    #[test]
+    fn culling_does_not_oscillate() {
+        let mut s = measured(150.0);
+        assert_eq!(
+            cull_action(&s, true, 3000.0, 150.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Cull
+        );
+        s.culled = true;
+        // Same geometry next frame — the reserved height matches what the rows
+        // occupied, which is the whole point of recording it.
+        assert_eq!(
+            cull_action(&s, false, 3000.0, 150.0, KEEP_TOP, KEEP_BOT),
+            CullAction::Keep
+        );
     }
 }
 
@@ -1734,14 +2114,19 @@ fn build_section(
     // An entity with a dozen components and two sections open was laying out every
     // row of the other ten. Native drawers were worse: `drawer(world, ent)` ran and
     // built its whole content for a section nobody could see.
-    commands.entity(body).insert(SectionBodySpec {
-        fields: sec.fields.clone(),
-        entity,
-        type_id: sec.type_id,
-        native_drawer: sec.native_drawer,
-        custom: sec.custom,
-        filled: sec.open,
-    });
+    commands.entity(body).insert((
+        SectionBodySpec {
+            fields: sec.fields.clone(),
+            entity,
+            type_id: sec.type_id,
+            native_drawer: sec.native_drawer,
+            custom: sec.custom,
+            filled: sec.open,
+        },
+        // Starts unmeasured, so a freshly built section is never culled before
+        // it has a height to reserve. See `SectionCull::placeholder_h`.
+        SectionCull::default(),
+    ));
     if !sec.open {
         // nothing built — `reconcile_section_bodies` fills it on expand
     } else if sec.native_drawer.is_some() {
@@ -1777,7 +2162,7 @@ fn build_section(
         // consumer of `locked_here`, so under granular rebuilds nothing about the
         // panel would change when you click lock: the state would flip and the
         // icon would sit there, making the button look broken.
-        let locked_now = move |w: &World| {
+        let locked_now = move |w: &Rx| {
             w.get_resource::<NativeInspectorState>()
                 .and_then(|s| s.locked)
                 == Some(entity)
@@ -1806,10 +2191,11 @@ fn build_section(
         // (same reason the lock/trash glyphs above set FocusPolicy::Block).
         commands.entity(sw).insert(FocusPolicy::Block);
         let g = sec.enable.clone().unwrap().0;
+        let sec_cid = sec.cid;
         bind_2way(
             commands,
             sw,
-            move |w| g(w, entity),
+            move |w| tracked_read(w, entity, sec_cid, |world| g(world, entity)),
             move |w, v: &bool| {
                 let target = *v;
                 let ctx = renzora_undo::active_context(w);
@@ -2052,6 +2438,9 @@ fn build_field_value(
     entity: Entity,
     value_parent: Entity,
 ) {
+    // Which component this field reads, for the dependency the value closures
+    // declare — see [`tracked_read`].
+    let cid = field.cid;
     match field.kind {
         FieldKind::Float { speed, min, max } => {
             let init = if let FieldInit::Float(v) = field.init { v } else { 0.0 };
@@ -2064,7 +2453,7 @@ fn build_field_value(
             bind_2way(
                 commands,
                 dv,
-                move |w| match get_r(w, entity) {
+                move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                     Some(FieldValue::Float(v)) => v,
                     _ => 0.0,
                 },
@@ -2088,7 +2477,7 @@ fn build_field_value(
             bind_2way(
                 commands,
                 dv,
-                move |w| match get_r(w, entity) {
+                move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                     Some(FieldValue::Float(v)) => v,
                     _ => 0.0,
                 },
@@ -2115,7 +2504,7 @@ fn build_field_value(
                 bind_2way(
                     commands,
                     dv,
-                    move |w| match get_r(w, entity) {
+                    move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                         Some(FieldValue::Vec3(a)) => a[i],
                         _ => 0.0,
                     },
@@ -2138,7 +2527,7 @@ fn build_field_value(
             bind_2way(
                 commands,
                 sw,
-                move |w| matches!(get_r(w, entity), Some(FieldValue::Bool(true))),
+                move |w| matches!(tracked_read(w, entity, cid, |world| get_r(world, entity)), Some(FieldValue::Bool(true))),
                 move |w, v: &bool| record_field_change(w, entity, name, get_fn.clone(), set_fn.clone(), FieldValue::Bool(*v)),
             );
             commands.entity(value_parent).add_child(sw);
@@ -2148,7 +2537,7 @@ fn build_field_value(
             let get_r = get_fn.clone();
             let editor = renzora_ember::inspector::color_field(
                 commands,
-                move |w| match get_r(w, entity) {
+                move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                     Some(FieldValue::Color(c)) => c,
                     _ => [0.0; 3],
                 },
@@ -2161,7 +2550,7 @@ fn build_field_value(
             let get_r = get_fn.clone();
             let editor = renzora_ember::inspector::color_field_rgba(
                 commands,
-                move |w| match get_r(w, entity) {
+                move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                     Some(FieldValue::ColorRgba(c)) => c,
                     _ => [0.0; 4],
                 },
@@ -2181,7 +2570,7 @@ fn build_field_value(
             bind_text_input(
                 commands,
                 ti,
-                move |w| match get_r(w, entity) {
+                move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                     Some(FieldValue::String(s)) => s,
                     _ => String::new(),
                 },
@@ -2210,7 +2599,7 @@ fn build_field_value(
                 commands,
                 dd,
                 move |w| {
-                    let cur = match get_r(w, entity) {
+                    let cur = match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                         Some(FieldValue::Enum(s)) => s,
                         _ => String::new(),
                     };
@@ -2248,7 +2637,7 @@ fn build_field_value(
             bind_2way(
                 commands,
                 dd,
-                move |w| match get_r(w, entity) {
+                move |w| match tracked_read(w, entity, cid, |world| get_r(world, entity)) {
                     Some(FieldValue::Float(v)) => v.round().max(0.0) as usize,
                     _ => 0,
                 },
@@ -2323,7 +2712,7 @@ fn build_field_value(
             // the `bind_2way` fields there's no focus or in-progress drag to
             // destroy by writing to it.
             let get = field.get_fn.clone();
-            bind_text(commands, t, move |w| format_value((get)(w, entity).as_ref()));
+            bind_text(commands, t, move |w| format_value((get)(w.untracked(), entity).as_ref()));
             commands.entity(value_parent).add_child(t);
         }
     }
@@ -2420,7 +2809,7 @@ fn build_asset_field(
     bind_with(
         commands,
         path_text,
-        move |w| asset_display(get_r(w, entity)),
+        move |w| asset_display(get_r(w.untracked(), entity)),
         |w, e, (text, has): &(String, bool)| {
             if let Some(mut t) = w.get_mut::<Text>(e) {
                 if t.0 != *text {
@@ -2522,7 +2911,7 @@ fn build_asset_field(
         bind_with(
             commands,
             plus,
-            move |w| matches!(get_r2(w, entity), Some(FieldValue::Asset(Some(_)))),
+            move |w| matches!(get_r2(w.untracked(), entity), Some(FieldValue::Asset(Some(_)))),
             |w, e, has: &bool| {
                 if let Some(mut node) = w.get_mut::<Node>(e) {
                     let want = if *has { Display::None } else { Display::Flex };

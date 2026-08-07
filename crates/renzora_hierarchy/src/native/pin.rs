@@ -19,7 +19,8 @@ use bevy::window::SystemCursorIcon;
 use renzora_editor_framework::{EditorSelection, EditorSettings};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_bg, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_bg, bind_text_color};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{accent, border, header_bg, rgb, text_primary};
 
 use crate::cache::HierarchyTreeCache;
@@ -251,7 +252,7 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
         ))
         .id();
     let ent = p.entity;
-    bind_bg(commands, sel_tint, move |world: &World| {
+    bind_bg(commands, sel_tint, move |world: &Rx| {
         if world
             .get_resource::<EditorSelection>()
             .is_some_and(|sel| sel.is_selected(ent))
@@ -304,7 +305,7 @@ fn build_pinned_row(commands: &mut Commands, fonts: &EmberFonts, p: &PinnedRow) 
             Pickable::IGNORE,
         ))
         .id();
-    bind_text_color(commands, label, move |world: &World| {
+    bind_text_color(commands, label, move |world: &Rx| {
         if world
             .get_resource::<EditorSelection>()
             .is_some_and(|sel| sel.is_selected(ent))

@@ -18,7 +18,10 @@ use renzora_auth::account::{
 use renzora_auth::social::MeResponse;
 use renzora_auth::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_2way, bind_display, keyed_list_tokened, Bound, KeyedSnapshot};
+use renzora_ember::reactive::{Bound, KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display};
 use renzora_ember::settings_sections::RegisterSettingsSection;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
@@ -508,7 +511,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             TextColor(rgb(text_muted())),
         ))
         .id();
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     let body = commands
         .spawn(Node {
@@ -745,7 +748,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Snapshots ─────────────────────────────────────────────────────────────────
 
-fn connections_snapshot(w: &World) -> KeyedSnapshot {
+fn connections_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(acc) = w.get_resource::<AccountSettings>() else {
         return util::empty_snapshot();
     };
@@ -817,7 +820,7 @@ fn connections_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn grants_snapshot(w: &World) -> KeyedSnapshot {
+fn grants_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(acc) = w.get_resource::<AccountSettings>() else {
         return util::empty_snapshot();
     };

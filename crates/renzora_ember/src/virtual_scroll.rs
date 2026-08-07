@@ -22,7 +22,10 @@
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, ScrollPosition, UiGlobalTransform};
 
-use crate::reactive::{keyed_list, keyed_list_tokened, KeyedSnapshot};
+use crate::reactive::Rx;
+use crate::reactive::KeyedSnapshot;
+use crate::reactive::tracked::keyed_list_tokened;
+use crate::reactive::tracked::{keyed_list};
 
 /// Sentinel keys for the top/bottom spacer rows. Astronomically unlikely to
 /// collide with a real item key (an entity bits / path hash), and each list has
@@ -74,7 +77,7 @@ pub fn virtual_scroll<F>(
     overscan: usize,
     snapshot: F,
 ) where
-    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+    F: Fn(&Rx) -> KeyedSnapshot + Send + Sync + 'static,
 {
     virtual_scroll_impl(commands, container, overscan, None, snapshot);
 }
@@ -92,8 +95,8 @@ pub fn virtual_scroll_versioned<V, F>(
     version: V,
     snapshot: F,
 ) where
-    V: Fn(&World) -> u64 + Send + Sync + 'static,
-    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+    V: Fn(&Rx) -> u64 + Send + Sync + 'static,
+    F: Fn(&Rx) -> KeyedSnapshot + Send + Sync + 'static,
 {
     virtual_scroll_impl(commands, container, overscan, Some(Box::new(version)), snapshot);
 }
@@ -102,16 +105,16 @@ fn virtual_scroll_impl<F>(
     commands: &mut Commands,
     container: Entity,
     overscan: usize,
-    version: Option<Box<dyn Fn(&World) -> u64 + Send + Sync>>,
+    version: Option<Box<dyn Fn(&Rx) -> u64 + Send + Sync>>,
     snapshot: F,
 ) where
-    F: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+    F: Fn(&Rx) -> KeyedSnapshot + Send + Sync + 'static,
 {
     commands
         .entity(container)
         .insert((VirtualList { overscan }, VirtualMetrics::default()));
 
-    let windowed = move |world: &World| {
+    let windowed = move |world: &Rx| {
         let m = world
             .get::<VirtualMetrics>(container)
             .copied()
@@ -166,7 +169,7 @@ fn virtual_scroll_impl<F>(
         Some(v) => keyed_list_tokened(
             commands,
             container,
-            move |world: &World| {
+            move |world: &Rx| {
                 use std::hash::{Hash, Hasher};
                 let m = world
                     .get::<VirtualMetrics>(container)

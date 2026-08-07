@@ -24,7 +24,8 @@ use std::sync::Arc;
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
-use renzora_ember::reactive::bind_2way;
+use renzora_ember::reactive::tracked::bind_2way;
+use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
     bind_text_input, drag_value, icon_menu_button, section_with_header_icon_open, text_input,
     toggle_switch, HoverTooltip, Section,
@@ -153,7 +154,7 @@ struct ScriptSpec {
     vars: Vec<VarSpec>,
 }
 
-fn collect_script_specs(world: &World, entity: Entity) -> Vec<ScriptSpec> {
+fn collect_script_specs(world: &Rx, entity: Entity) -> Vec<ScriptSpec> {
     let Some(sc) = world.get::<ScriptComponent>(entity) else {
         return Vec::new();
     };
@@ -368,7 +369,7 @@ fn rebuild_scripts(world: &mut World) {
         q.iter(world).map(|(re, sr)| (re, sr.entity, sr.sig)).collect();
 
     for (root, entity, old_sig) in roots {
-        let specs = collect_script_specs(world, entity);
+        let specs = collect_script_specs(&Rx::new(&*world), entity);
         let sig = scripts_sig(&specs, root, index_hash);
         if old_sig == Some(sig) {
             continue;
@@ -625,7 +626,7 @@ fn build_var_row(
                     _ => [init.x, init.y, init.z],
                 },
                 move |w, rgb: [f32; 3]| {
-                    let alpha = match get_var(w, entity, id, &sn) {
+                    let alpha = match get_var(&Rx::new(&*w), entity, id, &sn) {
                         Some(ScriptValue::Color(c)) => c.w,
                         _ => 1.0,
                     };
@@ -979,7 +980,7 @@ fn add_script_drop_highlight(
 
 // ── Variable get/set helpers ─────────────────────────────────────────────────
 
-fn get_var(w: &World, entity: Entity, id: u32, name: &str) -> Option<ScriptValue> {
+fn get_var(w: &Rx, entity: Entity, id: u32, name: &str) -> Option<ScriptValue> {
     w.get::<ScriptComponent>(entity)?
         .scripts
         .iter()
@@ -997,7 +998,7 @@ fn set_var(w: &mut World, entity: Entity, id: u32, name: &str, val: ScriptValue)
     }
 }
 
-fn read_vec_axis(w: &World, entity: Entity, id: u32, name: &str, axis: usize) -> f32 {
+fn read_vec_axis(w: &Rx, entity: Entity, id: u32, name: &str, axis: usize) -> f32 {
     match get_var(w, entity, id, name) {
         Some(ScriptValue::Vec2(v)) => [v.x, v.y, 0.0][axis],
         Some(ScriptValue::Vec3(v)) => [v.x, v.y, v.z][axis],
@@ -1006,7 +1007,7 @@ fn read_vec_axis(w: &World, entity: Entity, id: u32, name: &str, axis: usize) ->
 }
 
 fn write_vec_axis(w: &mut World, entity: Entity, id: u32, name: &str, axis: usize, val: f32) {
-    let new = match get_var(w, entity, id, name) {
+    let new = match get_var(&Rx::new(&*w), entity, id, name) {
         Some(ScriptValue::Vec2(mut v)) => {
             match axis {
                 0 => v.x = val,
@@ -1027,7 +1028,7 @@ fn write_vec_axis(w: &mut World, entity: Entity, id: u32, name: &str, axis: usiz
     set_var(w, entity, id, name, new);
 }
 
-fn script_enabled(w: &World, entity: Entity, id: u32) -> bool {
+fn script_enabled(w: &Rx, entity: Entity, id: u32) -> bool {
     w.get::<ScriptComponent>(entity)
         .and_then(|sc| sc.scripts.iter().find(|s| s.id == id))
         .map(|s| s.enabled)

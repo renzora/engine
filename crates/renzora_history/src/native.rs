@@ -14,7 +14,9 @@ use bevy::prelude::*;
 use renzora_editor_framework::EditorCommands;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, keyed_list};
 use renzora_ember::theme::*;
 use renzora_undo::UndoStacks;
 
@@ -289,7 +291,7 @@ fn build_item(commands: &mut Commands, fonts: &EmberFonts, it: &Item) -> Entity 
 
 /// The keyed-list snapshot: index-keyed (the list reshuffles wholesale on
 /// undo/redo, which is rare), content-hashed so unchanged rows are kept.
-fn history_snapshot(world: &World) -> KeyedSnapshot {
+fn history_snapshot(world: &Rx) -> KeyedSnapshot {
     let data: Vec<Item> = match world.get_resource::<UndoStacks>() {
         Some(stacks) => {
             let (undo, redo) = stacks.labels(&stacks.active);

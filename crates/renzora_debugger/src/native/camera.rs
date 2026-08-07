@@ -12,7 +12,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::{rgb, selection, text_muted, text_primary};
 use renzora_ember::widgets::checkbox;
 use renzora::SplashState;
@@ -35,18 +37,18 @@ pub(super) fn register_camera(app: &mut App) {
     );
 }
 
-fn cam<R: Default>(w: &World, f: impl FnOnce(&CameraDebugState) -> R) -> R {
+fn cam<R: Default>(w: &Rx, f: impl FnOnce(&CameraDebugState) -> R) -> R {
     w.get_resource::<CameraDebugState>().map(f).unwrap_or_default()
 }
 
 /// Read a field off the selected camera (default if nothing's selected).
-fn sel<R: Default>(w: &World, f: impl Fn(&CameraInfo) -> R) -> R {
+fn sel<R: Default>(w: &Rx, f: impl Fn(&CameraInfo) -> R) -> R {
     w.get_resource::<CameraDebugState>()
         .and_then(|s| s.selected_camera_info().map(f))
         .unwrap_or_default()
 }
 
-fn is_active(w: &World, e: Entity) -> bool {
+fn is_active(w: &Rx, e: Entity) -> bool {
     cam(w, |s| s.cameras.iter().find(|c| c.entity == e).map(|c| c.is_active).unwrap_or(false))
 }
 
@@ -148,7 +150,7 @@ fn set(w: &mut World, f: impl FnOnce(&mut CameraDebugState)) {
 
 fn grid_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -172,7 +174,7 @@ where
 
 pub(super) fn checkbox_row<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: G, set_fn: S) -> Entity
 where
-    G: Fn(&World) -> bool + Send + Sync + 'static,
+    G: Fn(&Rx) -> bool + Send + Sync + 'static,
     S: Fn(&mut World, bool) + Send + Sync + 'static,
 {
     let row = commands
@@ -194,7 +196,7 @@ where
 
 // ── Camera list ──────────────────────────────────────────────────────────────
 
-fn camera_snapshot(world: &World) -> KeyedSnapshot {
+fn camera_snapshot(world: &Rx) -> KeyedSnapshot {
     let cams = cam(world, |s| s.cameras.clone());
     if cams.is_empty() {
         return KeyedSnapshot {

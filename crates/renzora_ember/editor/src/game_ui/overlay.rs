@@ -17,7 +17,9 @@ use bevy::window::SystemCursorIcon;
 
 use renzora::{EditorSelection, SplashState};
 use renzora_ember::cursor_icon::HoverCursor;
-use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{keyed_list};
 use renzora_ember::theme::*;
 
 use crate::game_ui::NativeCanvasState;
@@ -131,7 +133,7 @@ pub(crate) fn build(commands: &mut Commands) -> Entity {
     layer
 }
 
-fn selection_snapshot(world: &World) -> KeyedSnapshot {
+fn selection_snapshot(world: &Rx) -> KeyedSnapshot {
     let selected = world.get_resource::<EditorSelection>().map(|s| s.get_all()).unwrap_or_default();
     let present: Vec<Entity> = match world.get_resource::<NativeCanvasState>() {
         Some(state) => selected.into_iter().filter(|e| state.widgets.iter().any(|g| g.entity == *e)).collect(),

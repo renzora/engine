@@ -5,7 +5,8 @@ use bevy::prelude::*;
 
 use renzora::{EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{drag_value, DragRange};
 
@@ -115,7 +116,7 @@ fn icon_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, marker: Can
     (btn, ic)
 }
 
-fn toggle_color(w: &World, f: impl Fn(&NativeCanvasState) -> bool) -> Color {
+fn toggle_color(w: &Rx, f: impl Fn(&NativeCanvasState) -> bool) -> Color {
     let on = w.get_resource::<NativeCanvasState>().is_some_and(f);
     rgb(if on { accent() } else { text_muted() })
 }

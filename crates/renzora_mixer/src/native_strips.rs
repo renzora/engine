@@ -12,9 +12,11 @@ use bevy::prelude::*;
 
 use renzora_audio::{ChannelStrip, MixerState};
 use renzora::SplashState;
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, keyed_list, react, KeyedSnapshot};
+use renzora_ember::reactive::{react, KeyedSnapshot};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     fader, icon_popover, knob, mixer_button, text_input, vu_meter_bound, EmberTextInput,
@@ -246,13 +248,13 @@ where
     bind_2way(
         commands,
         vol,
-        move |w| read(w, sel, |s| ((s.volume / VOL_MAX) as f32).clamp(0.0, 1.0)),
+        move |w| read(w.untracked(), sel, |s| ((s.volume / VOL_MAX) as f32).clamp(0.0, 1.0)),
         move |w, v| {
             let nv = *v as f64 * VOL_MAX;
             write(w, sel_mut, move |s| s.volume = nv);
         },
     );
-    let vu = vu_meter_bound(commands, move |w| read(w, sel, |s| (s.peak_level / VOL_MAX as f32).clamp(0.0, 1.0)));
+    let vu = vu_meter_bound(commands, move |w| read(w.untracked(), sel, |s| (s.peak_level / VOL_MAX as f32).clamp(0.0, 1.0)));
     commands.entity(meters).add_children(&[vol, vu]);
 
     // Pan: -1..1 mapped to the knob's 0..1.
@@ -260,7 +262,7 @@ where
     bind_2way(
         commands,
         pan,
-        move |w| read(w, sel, |s| (((s.panning + 1.0) / 2.0) as f32).clamp(0.0, 1.0)),
+        move |w| read(w.untracked(), sel, |s| (((s.panning + 1.0) / 2.0) as f32).clamp(0.0, 1.0)),
         move |w, v| {
             let np = (*v as f64) * 2.0 - 1.0;
             write(w, sel_mut, move |s| s.panning = np);
@@ -281,7 +283,7 @@ where
     bind_2way(
         commands,
         mute,
-        move |w| read(w, sel, |s| s.muted),
+        move |w| read(w.untracked(), sel, |s| s.muted),
         move |w, v| {
             let nv = *v;
             write(w, sel_mut, move |s| s.muted = nv);
@@ -291,7 +293,7 @@ where
     bind_2way(
         commands,
         solo,
-        move |w| read(w, sel, |s| s.soloed),
+        move |w| read(w.untracked(), sel, |s| s.soloed),
         move |w, v| {
             let nv = *v;
             write(w, sel_mut, move |s| s.soloed = nv);
@@ -391,7 +393,7 @@ where
     // Highlight when selected.
     let dev_hi = device.clone();
     bind_bg(commands, row, move |w| {
-        if read_device(w, sel, input).as_deref() == dev_hi.as_deref() {
+        if read_device(w.untracked(), sel, input).as_deref() == dev_hi.as_deref() {
             rgb(accent()).with_alpha(0.30)
         } else {
             Color::NONE
@@ -422,7 +424,7 @@ where
     row
 }
 
-fn custom_snapshot(world: &World) -> KeyedSnapshot {
+fn custom_snapshot(world: &Rx) -> KeyedSnapshot {
     let names: Vec<String> = world
         .get_resource::<MixerState>()
         .map(|m| m.custom_buses.iter().map(|(n, _)| n.clone()).collect())

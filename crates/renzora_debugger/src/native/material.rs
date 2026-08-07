@@ -9,7 +9,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_shader::material::perf::{MaterialPerf, MaterialPerfStats, MAX_RECENT_FAILURES};
 use renzora_shader::material::resolver::MaterialCache;
@@ -23,13 +25,13 @@ pub(super) fn register_material_resolver(app: &mut App) {
     app.register_panel_content("material_resolver_diag", true, build_material_resolver);
 }
 
-fn present(w: &World) -> bool {
+fn present(w: &Rx) -> bool {
     w.get_resource::<MaterialCache>().is_some() && w.get_resource::<MaterialPerfStats>().is_some()
 }
-fn cache<R: Default>(w: &World, f: impl FnOnce(&MaterialCache) -> R) -> R {
+fn cache<R: Default>(w: &Rx, f: impl FnOnce(&MaterialCache) -> R) -> R {
     w.get_resource::<MaterialCache>().map(f).unwrap_or_default()
 }
-fn mperf<R: Default>(w: &World, f: impl FnOnce(&MaterialPerfStats) -> R) -> R {
+fn mperf<R: Default>(w: &Rx, f: impl FnOnce(&MaterialPerfStats) -> R) -> R {
     w.get_resource::<MaterialPerfStats>().map(f).unwrap_or_default()
 }
 
@@ -102,7 +104,7 @@ fn cell(commands: &mut Commands, fonts: &EmberFonts, text: &str, width: f32, col
 
 fn stat_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -339,7 +341,7 @@ fn make_row(path: &str, p: &MaterialPerf) -> MatRow {
     }
 }
 
-fn table_snapshot(world: &World) -> KeyedSnapshot {
+fn table_snapshot(world: &Rx) -> KeyedSnapshot {
     let snap = mperf(world, |p| p.snapshot());
     if snap.is_empty() {
         return KeyedSnapshot {
@@ -423,7 +425,7 @@ fn mat_row(commands: &mut Commands, fonts: &EmberFonts, r: &MatRow) -> Entity {
     col
 }
 
-fn failures_snapshot(world: &World) -> KeyedSnapshot {
+fn failures_snapshot(world: &Rx) -> KeyedSnapshot {
     let fails: Vec<(String, String)> = mperf(world, |p| p.recent_failures.iter().cloned().collect());
     let items: Vec<(u64, u64)> = fails
         .iter()

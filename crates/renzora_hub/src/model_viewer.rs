@@ -39,6 +39,7 @@ use bevy::camera::Hdr;
 use bevy::camera::RenderTarget;
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::prelude::*;
+use renzora_ember::reactive::Rx;
 use bevy::render::render_resource::{Extent3d, TextureFormat, TextureUsages};
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use crossbeam_channel::{unbounded, Receiver, TryRecvError};
@@ -162,12 +163,12 @@ pub(crate) fn is_model_category(category: &str) -> bool {
 }
 
 /// The RTT handle for the overlay's `ImageNode` binding.
-pub(crate) fn preview_image_handle(w: &World) -> Option<Handle<Image>> {
+pub(crate) fn preview_image_handle(w: &Rx) -> Option<Handle<Image>> {
     w.get_resource::<ModelPreviewImage>().map(|p| p.handle.clone())
 }
 
 /// True when the turntable has rendered its first framed frame — show the RTT.
-pub(crate) fn model_ready(w: &World) -> bool {
+pub(crate) fn model_ready(w: &Rx) -> bool {
     w.get_resource::<ModelPreview>()
         .map(|p| p.is_model && p.status == ModelStatus::Ready)
         .unwrap_or(false)
@@ -175,7 +176,7 @@ pub(crate) fn model_ready(w: &World) -> bool {
 
 /// True while a model asset's preview is still downloading / loading — show the
 /// "Loading 3D preview…" placeholder.
-pub(crate) fn model_loading(w: &World) -> bool {
+pub(crate) fn model_loading(w: &Rx) -> bool {
     w.get_resource::<ModelPreview>()
         .map(|p| p.is_model && matches!(p.status, ModelStatus::Loading))
         .unwrap_or(false)

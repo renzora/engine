@@ -31,6 +31,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use core::sync::atomic::{AtomicU32, Ordering};
 use renzora_ember::font::EmberFonts;
+use renzora_ember::reactive::Rx;
 use renzora_plugin::host::PluginComponentSchemas;
 use renzora_plugin::sys::FieldKind;
 
@@ -107,6 +108,30 @@ slots!(
 /// Unaligned because the offset came from `offset_of!` in the plugin: correct
 /// for that type's layout, but read here through a `*const u8` that carries no
 /// alignment guarantee of its own.
+/// A dependency-tracked reflection read.
+///
+/// The inspector reads every field it shows by `(ComponentId, offset)` rather
+/// than by type, so `Rx::get::<C>` cannot express what a field binding depends
+/// on — hence `track_component_id` plus the manual hatch. Keeping both halves in
+/// one helper is what stops them drifting apart, which matters because
+/// `manually_tracked` is the one place where getting it wrong shows up as a
+/// stale field rather than as wasted work.
+///
+/// The payoff is that a field re-reads only when *that component on that
+/// entity* is written — so selecting an entity and leaving the inspector open
+/// costs nothing per frame, where before every visible field ran a reflection
+/// read forever.
+fn tracked_read<T>(
+    rx: &Rx,
+    entity: Entity,
+    cid: ComponentId,
+    offset: usize,
+    read: impl Fn(&World, Entity, ComponentId, usize) -> T,
+) -> T {
+    rx.track_component_id(entity, cid);
+    read(rx.manually_tracked(), entity, cid, offset)
+}
+
 fn read_f32(world: &World, entity: Entity, cid: ComponentId, offset: usize) -> f32 {
     world
         .get_entity(entity)
@@ -287,10 +312,10 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                         r.min,
                         r.max,
                     );
-                    renzora_ember::reactive::bind_2way(
+                    renzora_ember::reactive::tracked::bind_2way(
                         &mut commands,
                         e,
-                        move |w: &World| read_f32(w, entity, cid, offset),
+                        move |rx: &Rx| tracked_read(rx, entity, cid, offset, read_f32),
                         move |w: &mut World, v: &f32| write_f32(w, entity, cid, offset, *v),
                     );
                     e
@@ -306,10 +331,10 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                         // fixed step.
                         range.map_or(0.01, |r| r.speed),
                     );
-                    renzora_ember::reactive::bind_2way(
+                    renzora_ember::reactive::tracked::bind_2way(
                         &mut commands,
                         e,
-                        move |w: &World| read_f32(w, entity, cid, offset),
+                        move |rx: &Rx| tracked_read(rx, entity, cid, offset, read_f32),
                         move |w: &mut World, v: &f32| write_f32(w, entity, cid, offset, *v),
                     );
                     e
@@ -323,10 +348,10 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                         seed,
                         1.0,
                     );
-                    renzora_ember::reactive::bind_2way(
+                    renzora_ember::reactive::tracked::bind_2way(
                         &mut commands,
                         e,
-                        move |w: &World| read_i32(w, entity, cid, offset) as f32,
+                        move |rx: &Rx| tracked_read(rx, entity, cid, offset, read_i32) as f32,
                         move |w: &mut World, v: &f32| {
                             write_i32(w, entity, cid, offset, v.round() as i32)
                         },
@@ -335,10 +360,10 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                 }
                 FieldKind::Bool => {
                     let e = renzora_ember::widgets::toggle_switch(&mut commands, seed != 0.0);
-                    renzora_ember::reactive::bind_2way(
+                    renzora_ember::reactive::tracked::bind_2way(
                         &mut commands,
                         e,
-                        move |w: &World| read_bool(w, entity, cid, offset),
+                        move |rx: &Rx| tracked_read(rx, entity, cid, offset, read_bool),
                         move |w: &mut World, v: &bool| write_bool(w, entity, cid, offset, *v),
                     );
                     e
@@ -350,10 +375,10 @@ fn draw_component(world: &mut World, entity: Entity, cid: ComponentId) -> Entity
                         "",
                         &read_str(world, entity, cid, offset),
                     );
-                    renzora_ember::reactive::bind_2way(
+                    renzora_ember::reactive::tracked::bind_2way(
                         &mut commands,
                         e,
-                        move |w: &World| read_str(w, entity, cid, offset),
+                        move |rx: &Rx| tracked_read(rx, entity, cid, offset, read_str),
                         move |w: &mut World, v: &String| write_str(w, entity, cid, offset, v),
                     );
                     e

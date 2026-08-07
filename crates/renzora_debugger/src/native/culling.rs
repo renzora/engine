@@ -6,7 +6,8 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_with};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{checkbox, slider};
 
@@ -22,7 +23,7 @@ pub(super) fn register_culling(app: &mut App) {
     app.register_panel_content("culling_debug", true, build);
 }
 
-fn cull<R: Default>(w: &World, f: impl FnOnce(&CullingDebugState) -> R) -> R {
+fn cull<R: Default>(w: &Rx, f: impl FnOnce(&CullingDebugState) -> R) -> R {
     w.get_resource::<CullingDebugState>().map(f).unwrap_or_default()
 }
 
@@ -149,7 +150,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn frac(w: &World, count: impl Fn(&CullingDebugState) -> u32, total: impl Fn(&CullingDebugState) -> u32) -> f32 {
+fn frac(w: &Rx, count: impl Fn(&CullingDebugState) -> u32, total: impl Fn(&CullingDebugState) -> u32) -> f32 {
     cull(w, |s| {
         let t = total(s).max(1) as f32;
         (count(s) as f32 / t).clamp(0.0, 1.0)
@@ -160,8 +161,8 @@ fn frac(w: &World, count: impl Fn(&CullingDebugState) -> u32, total: impl Fn(&Cu
 /// fraction binding).
 fn bar_row<C, F>(commands: &mut Commands, fonts: &EmberFonts, label: &str, color: (u8, u8, u8), count: C, frac: F) -> Entity
 where
-    C: Fn(&World) -> u32 + Send + Sync + 'static,
-    F: Fn(&World) -> f32 + Send + Sync + 'static,
+    C: Fn(&Rx) -> u32 + Send + Sync + 'static,
+    F: Fn(&Rx) -> f32 + Send + Sync + 'static,
 {
     let col = commands
         .spawn(Node {
@@ -250,7 +251,7 @@ fn checkbox_row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Ent
 
 fn slider_row<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, min: f32, max: f32, fmt: fn(f32) -> String, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> f32 + Copy + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Copy + Send + Sync + 'static,
     S: Fn(&mut World, f32) + Send + Sync + 'static,
 {
     let row = commands

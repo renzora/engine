@@ -15,27 +15,28 @@
 use bevy::prelude::*;
 
 use super::{CodeEditor, Highlighter};
+use crate::reactive::Rx;
 
 /// The host-supplied closures driving one bound [`CodeEditor`]. See the module
 /// docs for the contract. `doc_key` must NOT depend on the document *content*
 /// (only its identity, e.g. tab index + path) or every edit would reload.
 pub struct CodeBindingSpec {
-    pub doc_key: Box<dyn Fn(&World) -> u64 + Send + Sync>,
-    pub load: Box<dyn Fn(&World) -> String + Send + Sync>,
+    pub doc_key: Box<dyn Fn(&Rx) -> u64 + Send + Sync>,
+    pub load: Box<dyn Fn(&Rx) -> String + Send + Sync>,
     pub store: Box<dyn Fn(&mut World, &str) + Send + Sync>,
-    pub make_highlighter: Box<dyn Fn(&World) -> Highlighter + Send + Sync>,
+    pub make_highlighter: Box<dyn Fn(&Rx) -> Highlighter + Send + Sync>,
     /// Optional live code-font size (logical px), e.g. the host's zoom level. Read
     /// every sync and pushed onto the editor; `None` keeps the widget default.
-    pub font_size: Option<Box<dyn Fn(&World) -> f32 + Send + Sync>>,
+    pub font_size: Option<Box<dyn Fn(&Rx) -> f32 + Send + Sync>>,
     /// Live word-wrap toggle (host setting). `None` leaves wrap off.
-    pub word_wrap: Option<Box<dyn Fn(&World) -> bool + Send + Sync>>,
+    pub word_wrap: Option<Box<dyn Fn(&Rx) -> bool + Send + Sync>>,
     /// Live whitespace-marker toggle (host setting).
-    pub show_whitespace: Option<Box<dyn Fn(&World) -> bool + Send + Sync>>,
+    pub show_whitespace: Option<Box<dyn Fn(&Rx) -> bool + Send + Sync>>,
     /// Live auto-close-pairs toggle (host setting). `None` keeps the default on.
-    pub auto_close: Option<Box<dyn Fn(&World) -> bool + Send + Sync>>,
+    pub auto_close: Option<Box<dyn Fn(&Rx) -> bool + Send + Sync>>,
     /// The active document's line-comment token (`"//"`, `"--"`, `"#"`, …) for
     /// the Ctrl+/ toggle. `None` disables comment toggling.
-    pub line_comment: Option<Box<dyn Fn(&World) -> Option<String> + Send + Sync>>,
+    pub line_comment: Option<Box<dyn Fn(&Rx) -> Option<String> + Send + Sync>>,
 }
 
 #[derive(Component)]
@@ -66,13 +67,13 @@ pub(crate) fn code_sync(world: &mut World) {
         };
         let spec = &binding.0;
 
-        let key = (spec.doc_key)(world);
+        let key = (spec.doc_key)(&Rx::new(&*world));
         let last = world.get::<CodeEditor>(e).and_then(|c| c.last_key);
 
         if last != Some(key) {
             // Document switched (or first mount): reload the buffer.
-            let text = (spec.load)(world);
-            let hl = (spec.make_highlighter)(world);
+            let text = (spec.load)(&Rx::new(&*world));
+            let hl = (spec.make_highlighter)(&Rx::new(&*world));
             if let Some(mut ed) = world.get_mut::<CodeEditor>(e) {
                 ed.text = split(text);
                 ed.cursor_line = 0;
@@ -101,7 +102,7 @@ pub(crate) fn code_sync(world: &mut World) {
         // Push the host's live font size (zoom). `code_metrics` picks up the
         // change next and recomputes the derived metrics + flags a re-render.
         if let Some(fs) = spec.font_size.as_ref() {
-            let size = fs(world).clamp(6.0, 48.0);
+            let size = fs(&Rx::new(&*world)).clamp(6.0, 48.0);
             if let Some(mut ed) = world.get_mut::<CodeEditor>(e) {
                 if (ed.font_size - size).abs() > f32::EPSILON {
                     ed.font_size = size;
@@ -110,10 +111,10 @@ pub(crate) fn code_sync(world: &mut World) {
         }
 
         // Push the live view preferences (each read is a cheap resource lookup).
-        let wrap = spec.word_wrap.as_ref().map(|f| f(world));
-        let ws = spec.show_whitespace.as_ref().map(|f| f(world));
-        let ac = spec.auto_close.as_ref().map(|f| f(world));
-        let comment = spec.line_comment.as_ref().map(|f| f(world));
+        let wrap = spec.word_wrap.as_ref().map(|f| f(&Rx::new(&*world)));
+        let ws = spec.show_whitespace.as_ref().map(|f| f(&Rx::new(&*world)));
+        let ac = spec.auto_close.as_ref().map(|f| f(&Rx::new(&*world)));
+        let comment = spec.line_comment.as_ref().map(|f| f(&Rx::new(&*world)));
         if let Some(mut ed) = world.get_mut::<CodeEditor>(e) {
             if let Some(w) = wrap {
                 if ed.wrap != w {

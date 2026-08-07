@@ -10,7 +10,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::collapsible;
 
@@ -30,7 +32,7 @@ impl Plugin for NativeSceneDiagnostics {
     }
 }
 
-fn snap<R: Default>(w: &World, f: impl FnOnce(&SceneDiagSnapshot) -> R) -> R {
+fn snap<R: Default>(w: &Rx, f: impl FnOnce(&SceneDiagSnapshot) -> R) -> R {
     w.get_resource::<SceneDiagSnapshot>().map(f).unwrap_or_default()
 }
 
@@ -53,8 +55,8 @@ fn hash_str(s: &str) -> u64 {
 /// A `label …… value` row (label left, mono value right, both bindings).
 fn stat_row<V, C>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V, color: C) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
-    C: Fn(&World) -> Color + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
+    C: Fn(&Rx) -> Color + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -86,7 +88,7 @@ where
 /// A static `label …… value` row with a fixed color (no binding).
 fn neutral_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     stat_row(commands, fonts, label, value, |_| rgb(SECONDARY))
 }
@@ -198,7 +200,7 @@ fn entities_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
 
 // ── Lists ────────────────────────────────────────────────────────────────────
 
-fn missing_paths_snapshot(world: &World) -> KeyedSnapshot {
+fn missing_paths_snapshot(world: &Rx) -> KeyedSnapshot {
     let paths = snap(world, |s| s.material.missing_sample_paths.clone());
     let items: Vec<(u64, u64)> = paths.iter().map(|p| (hash_str(p), 0)).collect();
     KeyedSnapshot {
@@ -218,7 +220,7 @@ fn missing_paths_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn tabs_snapshot(world: &World) -> KeyedSnapshot {
+fn tabs_snapshot(world: &Rx) -> KeyedSnapshot {
     let tabs: Vec<TabPinSnapshot> = world
         .get_resource::<TabAssetCache>()
         .map(|c| c.snapshot_for_diagnostics())
@@ -286,7 +288,7 @@ fn tab_row(commands: &mut Commands, fonts: &EmberFonts, t: &TabPinSnapshot) -> E
     col
 }
 
-fn cameras_snapshot(world: &World) -> KeyedSnapshot {
+fn cameras_snapshot(world: &Rx) -> KeyedSnapshot {
     let cams = snap(world, |s| s.cameras.clone());
     if cams.is_empty() {
         return note_snapshot("(no cameras)");
@@ -394,7 +396,7 @@ fn camera_row(commands: &mut Commands, fonts: &EmberFonts, c: &CameraEntry) -> E
     col
 }
 
-fn warnings_snapshot(world: &World) -> KeyedSnapshot {
+fn warnings_snapshot(world: &Rx) -> KeyedSnapshot {
     let _ = world;
     let warnings = recent_warnings();
     if warnings.is_empty() {

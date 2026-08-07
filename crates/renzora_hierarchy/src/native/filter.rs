@@ -10,7 +10,9 @@ use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::ComponentIconRegistry;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_bg, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput, Popup};
 
@@ -153,7 +155,7 @@ enum FRow {
     Clear,
 }
 
-fn filter_snapshot(world: &World) -> KeyedSnapshot {
+fn filter_snapshot(world: &Rx) -> KeyedSnapshot {
     let mut list: Vec<FRow> = Vec::new();
     if let Some(reg) = world.get_resource::<ComponentIconRegistry>() {
         let mut t: Vec<(&'static str, &'static str, [u8; 3])> =

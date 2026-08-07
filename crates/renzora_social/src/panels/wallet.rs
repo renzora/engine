@@ -16,7 +16,10 @@ use renzora_auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list_tokened, Bound, KeyedSnapshot};
+use renzora_ember::reactive::{Bound, KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     accent_chip, accent_ghost, checkbox, elevation, gradient_badge, gradient_button,
@@ -540,7 +543,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Signed-out prompt in place of the form.
     let signed_out = muted_note(commands, fonts, "Sign in to donate.");
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     // Donor-badge tiers live at the foot of the support card.
     let tiers_row = commands
@@ -702,7 +705,7 @@ fn pack_button(
     card
 }
 
-fn leaderboard_snapshot(w: &World) -> KeyedSnapshot {
+fn leaderboard_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<WalletPanel>() else {
         return util::empty_snapshot();
     };

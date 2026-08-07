@@ -16,7 +16,10 @@ use renzora_auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::reactive::Bound;
 use renzora_ember::widgets::{
@@ -910,7 +913,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         "Sign in to join the feed",
         Some("See what the community is building — and show off your own work"),
     );
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     let body = commands
         .spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, min_height: Val::Px(0.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
@@ -962,7 +965,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             HoverTooltip::new("New posts appear live — click to pause".to_string()),
         ))
         .id();
-    renzora_ember::reactive::bind_bg(commands, toggle, |w| {
+    renzora_ember::reactive::tracked::bind_bg(commands, toggle, |w| {
         let live = w.get_resource::<FeedPanel>().map(|p| p.auto_follow).unwrap_or(true);
         if live { rgb(accent()).with_alpha(0.30) } else { rgba([255, 255, 255, 10]) }
     });
@@ -1071,7 +1074,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
                 HoverTooltip::new(format!("Show or hide {label}")),
             ))
             .id();
-        renzora_ember::reactive::bind_bg(commands, chip, move |w| {
+        renzora_ember::reactive::tracked::bind_bg(commands, chip, move |w| {
             let on = w
                 .get_resource::<FeedPanel>()
                 .map(|p| match idx {
@@ -1220,7 +1223,7 @@ fn build_channels_rail(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// The channel rail's keyed list: an "All" pseudo-channel then each live channel.
-fn channels_snapshot(w: &World) -> KeyedSnapshot {
+fn channels_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<FeedPanel>() else {
         return util::empty_snapshot();
     };
@@ -1263,7 +1266,7 @@ fn channel_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, row: &Op
     // each frame keeps active/hover live without a rebuild.
     {
         let slug = slug.clone();
-        renzora_ember::reactive::bind_bg(commands, row_e, move |w| {
+        renzora_ember::reactive::tracked::bind_bg(commands, row_e, move |w| {
             let is_active = w
                 .get_resource::<FeedPanel>()
                 .map(|p| p.active_channel == slug)
@@ -1354,7 +1357,7 @@ enum StreamRow {
     Market,
 }
 
-fn snapshot(w: &World) -> KeyedSnapshot {
+fn snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<FeedPanel>() else {
         return util::empty_snapshot();
     };

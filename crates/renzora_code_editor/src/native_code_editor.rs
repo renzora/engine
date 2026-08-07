@@ -22,7 +22,9 @@ use bevy::ui::RelativeCursorPosition;
 use renzora_editor_framework::{AssetDragPayload, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_code, code_editor, CodeBindingSpec, CodeToken, Highlighter};
 
@@ -147,7 +149,7 @@ fn binding_spec() -> CodeBindingSpec {
         // Identity = the active file's path. Excludes content (so edits don't
         // reload) and excludes the tab index (so closing another tab doesn't
         // reset the caret).
-        doc_key: Box::new(|w: &World| {
+        doc_key: Box::new(|w: &Rx| {
             let mut h = DefaultHasher::new();
             match w.get_resource::<CodeEditorState>().and_then(active_file) {
                 Some(f) => f.path.hash(&mut h),
@@ -155,7 +157,7 @@ fn binding_spec() -> CodeBindingSpec {
             }
             h.finish()
         }),
-        load: Box::new(|w: &World| {
+        load: Box::new(|w: &Rx| {
             w.get_resource::<CodeEditorState>().and_then(active_file).map(|f| f.content.clone()).unwrap_or_default()
         }),
         store: Box::new(|w: &mut World, text: &str| {
@@ -170,7 +172,7 @@ fn binding_spec() -> CodeBindingSpec {
                 }
             }
         }),
-        make_highlighter: Box::new(|w: &World| -> Highlighter {
+        make_highlighter: Box::new(|w: &Rx| -> Highlighter {
             let lang = w
                 .get_resource::<CodeEditorState>()
                 .and_then(active_file)
@@ -183,22 +185,22 @@ fn binding_spec() -> CodeBindingSpec {
             })
         }),
         // The editor's live zoom (Ctrl +/-, Settings code-font size).
-        font_size: Some(Box::new(|w: &World| {
+        font_size: Some(Box::new(|w: &Rx| {
             w.get_resource::<CodeEditorState>().map(|s| s.font_size).unwrap_or(14.0)
         })),
         // View preferences live on EditorSettings (written by the toolbar +
         // settings panel); read them straight through so the widget reacts live.
-        word_wrap: Some(Box::new(|w: &World| {
+        word_wrap: Some(Box::new(|w: &Rx| {
             w.get_resource::<renzora_editor_framework::EditorSettings>().is_some_and(|s| s.code_word_wrap)
         })),
-        show_whitespace: Some(Box::new(|w: &World| {
+        show_whitespace: Some(Box::new(|w: &Rx| {
             w.get_resource::<renzora_editor_framework::EditorSettings>().is_some_and(|s| s.code_show_whitespace)
         })),
-        auto_close: Some(Box::new(|w: &World| {
+        auto_close: Some(Box::new(|w: &Rx| {
             w.get_resource::<renzora_editor_framework::EditorSettings>().is_none_or(|s| s.code_auto_close_pairs)
         })),
         // The active file's language decides the Ctrl+/ comment token.
-        line_comment: Some(Box::new(|w: &World| {
+        line_comment: Some(Box::new(|w: &Rx| {
             let lang = w
                 .get_resource::<CodeEditorState>()
                 .and_then(active_file)
@@ -240,7 +242,7 @@ fn kind_color(k: TokenKind) -> Color {
 // Tab bar (keyed_list)
 // ---------------------------------------------------------------------------
 
-fn tabs_snapshot(world: &World) -> KeyedSnapshot {
+fn tabs_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = world.get_resource::<CodeEditorState>() else { return empty() };
     let active = state.active_tab;
     // (idx, name, modified, is_active)
@@ -375,7 +377,7 @@ fn code_drop(
 // Status bar
 // ---------------------------------------------------------------------------
 
-fn status_text(world: &World) -> String {
+fn status_text(world: &Rx) -> String {
     let Some(state) = world.get_resource::<CodeEditorState>() else { return String::new() };
     let Some(f) = active_file(state) else { return String::new() };
     let lang = match Language::from_extension(&f.path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase()) {

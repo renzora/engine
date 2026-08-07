@@ -8,7 +8,10 @@ use renzora::SplashState;
 use renzora_auth::social::{BlockedUser, MeResponse, PrivacySettings};
 use renzora_auth::AuthSession;
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text};
 use renzora_ember::settings_sections::RegisterSettingsSection;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{textarea, toggle_switch, EmberTextInput};
@@ -298,7 +301,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let signed_out = commands
         .spawn((Text::new("Sign in to manage privacy settings."), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted()))))
         .id();
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     let body = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(10.0), ..default() })
@@ -398,7 +401,7 @@ fn value_label(commands: &mut Commands, fonts: &EmberFonts, btn: Entity) -> Enti
     t
 }
 
-fn blocked_snapshot(w: &World) -> KeyedSnapshot {
+fn blocked_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(settings) = w.get_resource::<SocialSettings>() else {
         return util::empty_snapshot();
     };

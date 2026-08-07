@@ -92,7 +92,7 @@ fn build(commands: &mut Commands, url: &str) -> Entity {
         ))
         .id();
     let u = url.to_string();
-    renzora_ember::reactive::bind_with(
+    renzora_ember::reactive::tracked::bind_with(
         commands,
         img,
         move |w| w.get_resource::<HubThumbs>().and_then(|t| t.get(&u)),

@@ -12,7 +12,10 @@ use renzora_auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_display, bind_text, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     accent_banner, accent_button, accent_card, accent_ghost, accent_icon_button, empty_state,
@@ -445,7 +448,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         "Sign in to find your people",
         Some("Friends, requests, and who's online live here"),
     );
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     let body = commands
         .spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), ..default() })
@@ -593,7 +596,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Snapshots / rows ─────────────────────────────────────────────────────────
 
-fn friends_snapshot(w: &World) -> KeyedSnapshot {
+fn friends_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<FriendsPanel>() else {
         return util::empty_snapshot();
     };
@@ -639,7 +642,7 @@ fn friends_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn requests_snapshot(w: &World) -> KeyedSnapshot {
+fn requests_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<FriendsPanel>() else {
         return util::empty_snapshot();
     };
@@ -662,7 +665,7 @@ fn requests_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn search_snapshot(w: &World) -> KeyedSnapshot {
+fn search_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<FriendsPanel>() else {
         return util::empty_snapshot();
     };

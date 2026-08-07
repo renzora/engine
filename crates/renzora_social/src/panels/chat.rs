@@ -11,7 +11,10 @@ use renzora_auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::theme::{popup_bg, row_even, row_odd};
 use renzora_ember::widgets::{
@@ -759,7 +762,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         "Sign in to start talking",
         Some("DMs, group chats, and team rooms live here"),
     );
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     let body = commands
         .spawn(Node {
@@ -944,7 +947,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Snapshots / rows ─────────────────────────────────────────────────────────
 
-fn conversations_snapshot(w: &World) -> KeyedSnapshot {
+fn conversations_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<ChatPanel>() else {
         return util::empty_snapshot();
     };
@@ -1122,7 +1125,7 @@ fn conv_row(commands: &mut Commands, fonts: &EmberFonts, c: &ConversationPreview
     row
 }
 
-fn group_pick_snapshot(w: &World) -> KeyedSnapshot {
+fn group_pick_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(chat) = w.get_resource::<ChatPanel>() else {
         return util::empty_snapshot();
     };
@@ -1185,7 +1188,7 @@ fn group_pick_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn messages_snapshot(w: &World) -> KeyedSnapshot {
+fn messages_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<ChatPanel>() else {
         return util::empty_snapshot();
     };

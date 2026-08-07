@@ -13,7 +13,7 @@ use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition};
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::reactive::bind_bg;
+use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
 
 

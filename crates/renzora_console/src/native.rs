@@ -15,7 +15,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::{
     accent, close_red, divider, placeholder, play_green, rgb, section_bg, tab_hover, text_muted,
     text_primary, warn_amber,
@@ -170,7 +172,7 @@ fn text_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &
 }
 
 /// Current color of a toggle's glyph from the matching `ConsoleState` flag.
-fn toggle_color(world: &World, btn: ConsoleBtn) -> Color {
+fn toggle_color(world: &Rx, btn: ConsoleBtn) -> Color {
     let Some(s) = world.get_resource::<ConsoleState>() else {
         return rgb(placeholder());
     };
@@ -483,7 +485,7 @@ fn count_badge(commands: &mut Commands, fonts: &EmberFonts, count: u32) -> Entit
 /// Keyed-list snapshot for the log list: filtered entries (keyed by their
 /// monotonic push index so appends/trims/filter-changes are granular), trimmed
 /// to the last [`MAX_ROWS`], or a single "No log entries" placeholder.
-fn log_snapshot(world: &World) -> KeyedSnapshot {
+fn log_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = world.get_resource::<ConsoleState>() else {
         return KeyedSnapshot {
             items: Vec::new(),
@@ -571,7 +573,7 @@ fn build_chip(commands: &mut Commands, fonts: &EmberFonts, cat: &str, hidden: bo
 
 /// Keyed-list snapshot for the category chips (tag icon + one chip per seen
 /// category, keyed by name, rebuilt only when its hidden state flips).
-fn chips_snapshot(world: &World) -> KeyedSnapshot {
+fn chips_snapshot(world: &Rx) -> KeyedSnapshot {
     let mut data: Vec<ChipItem> = Vec::new();
     let mut items: Vec<(u64, u64)> = Vec::new();
     if let Some(state) = world.get_resource::<ConsoleState>() {

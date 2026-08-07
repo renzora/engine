@@ -18,7 +18,10 @@ use renzora_auth::AuthSession;
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list_tokened, Bound, KeyedSnapshot};
+use renzora_ember::reactive::{Bound, KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     accent_button, accent_ghost, accent_icon_button, checkbox, empty_state, markdown_view,
@@ -312,7 +315,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         "Sign in to become a creator",
         Some("Sell your assets on the Renzora Marketplace"),
     );
-    bind_display(commands, signed_out, |w| !util::signed_in(w));
+    bind_display(commands, signed_out, |w| !util::signed_in(&Rx::new(w.untracked())));
 
     // Signed-in body: header (title + refresh), error line, then the wizard.
     let body = commands
@@ -381,7 +384,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Wizard snapshot ──────────────────────────────────────────────────────────
 
-fn wizard_snapshot(w: &World) -> KeyedSnapshot {
+fn wizard_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<OnboardingPanel>() else {
         return util::empty_snapshot();
     };

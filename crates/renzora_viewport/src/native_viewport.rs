@@ -18,7 +18,7 @@ use bevy::window::PrimaryWindow;
 use renzora::core::viewport_types::Viewports;
 use renzora_ember::font::EmberFonts;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::bind_with;
+use renzora_ember::reactive::tracked::bind_with;
 
 use crate::ViewportResizeRequest;
 
@@ -155,11 +155,11 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         // the image STAYS visible: the 2D editor camera renders the 2D scene (grid
         // + sprites + tilemaps) into that same offscreen image, so hiding it would
         // hide the 2D editor. Only UI view swaps the image out.
-        renzora_ember::reactive::bind_display(commands, img, |w| {
+        renzora_ember::reactive::tracked::bind_display(commands, img, |w| {
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) != Some(ViewportView::Ui)
         });
         let editor = renzora_ember_editor::game_ui::build_ui_canvas(commands, fonts);
-        renzora_ember::reactive::bind_display(commands, editor, |w| {
+        renzora_ember::reactive::tracked::bind_display(commands, editor, |w| {
             w.get_resource::<ViewportSettings>().map(|s| s.viewport_view) == Some(ViewportView::Ui)
         });
         commands.entity(content).add_child(editor);

@@ -33,7 +33,9 @@ use renzora_auth::publish::{
 use renzora_auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, dropdown, text_input, textarea, tint};
 use renzora::SplashState;
@@ -230,7 +232,7 @@ impl Uploader {
     }
 }
 
-fn u(w: &World) -> Option<&Uploader> {
+fn u<'w>(w: &Rx<'w>) -> Option<&'w Uploader> {
     w.get_resource::<Uploader>()
 }
 
@@ -422,7 +424,7 @@ fn bind_banner_text(
     commands: &mut Commands,
     fonts: &EmberFonts,
     banner: Entity,
-    get: impl Fn(&World) -> String + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> String + Send + Sync + 'static,
     hue: (u8, u8, u8),
     icon: &str,
 ) {
@@ -791,7 +793,7 @@ fn build_step2(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     card
 }
 
-fn category_snapshot(world: &World) -> KeyedSnapshot {
+fn category_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = u(world) else {
         return note("");
     };
@@ -982,7 +984,7 @@ fn build_tags_field(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     wrap
 }
 
-fn tag_pills_snapshot(world: &World) -> KeyedSnapshot {
+fn tag_pills_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = u(world) else { return empty(); };
     if state.tags.is_empty() {
         return empty();
@@ -1029,7 +1031,7 @@ fn tag_pill(commands: &mut Commands, fonts: &EmberFonts, tag: &str, index: usize
     pill
 }
 
-fn tag_suggestions_snapshot(world: &World) -> KeyedSnapshot {
+fn tag_suggestions_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = u(world) else { return empty(); };
     if !state.is_asset() || state.tag_suggestions.is_empty() {
         return empty();
@@ -1183,7 +1185,7 @@ fn build_step4(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// A step-4 detail group, gated on a category/content-type predicate.
-fn group(commands: &mut Commands, pred: impl Fn(&World) -> bool + Send + Sync + 'static) -> Entity {
+fn group(commands: &mut Commands, pred: impl Fn(&Rx) -> bool + Send + Sync + 'static) -> Entity {
     let g = commands
         .spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(12.0), display: Display::None, ..default() })
         .id();
@@ -1197,11 +1199,11 @@ fn sub_head(commands: &mut Commands, fonts: &EmberFonts, text: &str) -> Entity {
         .id()
 }
 
-fn cat_in(w: &World, list: &[&str]) -> bool {
+fn cat_in(w: &Rx, list: &[&str]) -> bool {
     u(w).map(|s| s.is_asset() && list.contains(&s.category.as_str())).unwrap_or(false)
 }
 
-fn any_step4_visible(w: &World) -> bool {
+fn any_step4_visible(w: &Rx) -> bool {
     let Some(s) = u(w) else { return true; };
     match s.content_type {
         Some(ContentType::Asset) => true, // asset-wide group is always shown
@@ -1260,7 +1262,7 @@ fn file_pick_button<M: Component>(
     fonts: &EmberFonts,
     marker: M,
     empty_label: &str,
-    picked: impl Fn(&World) -> Option<String> + Send + Sync + 'static,
+    picked: impl Fn(&Rx) -> Option<String> + Send + Sync + 'static,
 ) -> Entity {
     let btn = commands
         .spawn((

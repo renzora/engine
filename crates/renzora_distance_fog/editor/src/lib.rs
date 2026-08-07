@@ -39,7 +39,7 @@ fn inspector_entry() -> InspectorEntry {
 /// numeric rows, all editing `WorldEnvironment::fog`.
 fn fog_native_ui(world: &mut World, entity: Entity) -> Entity {
     use renzora_ember::inspector::{color_field, inspector_body, inspector_row, inspector_stripe};
-    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::widgets::{drag_value, DragRange};
 
     // Read initial values up front (inspector_body borrows World).

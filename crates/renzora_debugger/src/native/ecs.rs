@@ -9,7 +9,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 use renzora::SplashState;
@@ -61,11 +63,11 @@ pub(super) fn register_ecs_stats(app: &mut App) {
         .systems(Update, toggle_click.run_if(in_state(SplashState::Editor)));
 }
 
-fn ecs<R: Default>(w: &World, f: impl FnOnce(&EcsStatsState) -> R) -> R {
+fn ecs<R: Default>(w: &Rx, f: impl FnOnce(&EcsStatsState) -> R) -> R {
     w.get_resource::<EcsStatsState>().map(f).unwrap_or_default()
 }
 
-fn expanded(w: &World, s: Section) -> bool {
+fn expanded(w: &Rx, s: Section) -> bool {
     w.get_resource::<EcsExpanded>().map(|e| s.get(e)).unwrap_or(false)
 }
 
@@ -161,7 +163,7 @@ fn small(commands: &mut Commands, fonts: &EmberFonts, text: &str, color: (u8, u8
 
 fn bound<T>(commands: &mut Commands, fonts: &EmberFonts, color: (u8, u8, u8), value: T) -> Entity
 where
-    T: Fn(&World) -> String + Send + Sync + 'static,
+    T: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let e = small(commands, fonts, "", color);
     bind_text(commands, e, value);
@@ -172,8 +174,8 @@ where
 /// body whose rows are a reactive `keyed_list` (empty + hidden when collapsed).
 fn collapsible<F, S>(commands: &mut Commands, fonts: &EmberFonts, sec: Section, title: F, snapshot: S) -> Entity
 where
-    F: Fn(&World) -> String + Send + Sync + 'static,
-    S: Fn(&World) -> KeyedSnapshot + Send + Sync + 'static,
+    F: Fn(&Rx) -> String + Send + Sync + 'static,
+    S: Fn(&Rx) -> KeyedSnapshot + Send + Sync + 'static,
 {
     let col = commands
         .spawn(Node {
@@ -288,7 +290,7 @@ fn count_row(commands: &mut Commands, fonts: &EmberFonts, count: &str, detail: &
     row
 }
 
-fn archetypes_snapshot(world: &World) -> KeyedSnapshot {
+fn archetypes_snapshot(world: &Rx) -> KeyedSnapshot {
     if !expanded(world, Section::Archetypes) {
         return empty();
     }
@@ -325,7 +327,7 @@ fn archetypes_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn components_snapshot(world: &World) -> KeyedSnapshot {
+fn components_snapshot(world: &Rx) -> KeyedSnapshot {
     if !expanded(world, Section::Components) {
         return empty();
     }
@@ -361,7 +363,7 @@ fn components_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn resources_snapshot(world: &World) -> KeyedSnapshot {
+fn resources_snapshot(world: &Rx) -> KeyedSnapshot {
     if !expanded(world, Section::Resources) {
         return empty();
     }

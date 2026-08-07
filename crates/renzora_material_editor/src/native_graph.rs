@@ -18,7 +18,9 @@ use renzora::core::CurrentProject;
 use renzora_editor_framework::{AssetDragPayload, DocTabKind, EditorContext, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, graph_comment_view, graph_node_view, graph_wire_view, icon_button, icon_label_button, node_graph_view, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_shader::material::codegen;
@@ -290,16 +292,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Comment / group boxes mount behind the nodes (their own canvas layer).
     let comments_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(canvas).add_child(comments_layer);
-    keyed_list(commands, comments_layer, move |w| comment_snapshot(w, canvas, viewport));
+    keyed_list(commands, comments_layer, move |w| comment_snapshot(&Rx::new(w.untracked()), canvas, viewport));
 
     // Wires draw in viewport space; nodes pan/zoom with the canvas.
     let wires_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(viewport).add_child(wires_layer);
-    keyed_list(commands, wires_layer, move |w| wire_snapshot(w, viewport));
+    keyed_list(commands, wires_layer, move |w| wire_snapshot(&Rx::new(w.untracked()), viewport));
 
     let nodes_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(canvas).add_child(nodes_layer);
-    keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
+    keyed_list(commands, nodes_layer, move |w| node_snapshot(&Rx::new(w.untracked()), canvas, viewport));
 
     commands.entity(root).add_child(handle.viewport);
     renzora_editor_framework::mark_drop_zone(commands, root);
@@ -349,7 +351,7 @@ struct NodeSnap {
     sample_idx: Option<usize>,
 }
 
-fn node_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+fn node_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let assets = world.get_resource::<AssetServer>();
     let sel = s.selected_node;
@@ -451,7 +453,7 @@ fn sample_switch_open(
 }
 
 /// Comment boxes, keyed on id only — drag / resize / retitle update in place.
-fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
+fn comment_snapshot(world: &Rx, canvas: Entity, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let comments: Vec<(u64, String, [f32; 4], (u8, u8, u8))> =
         s.graph.comments.iter().map(|c| (c.id, c.text.clone(), c.rect, (c.color[0], c.color[1], c.color[2]))).collect();
@@ -473,7 +475,7 @@ fn comment_snapshot(world: &World, canvas: Entity, viewport: Entity) -> KeyedSna
     }
 }
 
-fn wire_snapshot(world: &World, viewport: Entity) -> KeyedSnapshot {
+fn wire_snapshot(world: &Rx, viewport: Entity) -> KeyedSnapshot {
     let Some(s) = world.get_resource::<MaterialEditorState>() else { return empty() };
     let wires: Vec<(u64, String, u64, String)> = s.graph.connections.iter().map(|c| (c.from_node, c.from_pin.clone(), c.to_node, c.to_pin.clone())).collect();
     let items: Vec<(u64, u64)> = wires
@@ -523,7 +525,7 @@ fn mat_graph_load(world: &mut World) {
     // subtree. A bare model/group root has no material of its own — its meshes
     // (and their `MaterialRef`s) are children — so we walk descendants too.
     let selected = world.get_resource::<EditorSelection>().and_then(|s| s.get());
-    let desired = collect_material_tabs(world, selected);
+    let desired = collect_material_tabs(&Rx::new(&*world), selected);
 
     // Only rebuild when the tab SET actually changes (by entity + path), so
     // re-selecting the same entity or editing the active graph doesn't reset the
@@ -569,7 +571,7 @@ fn mat_graph_load(world: &mut World) {
 /// path); a mesh with no `MaterialRef` yet becomes a `None`-path tab that will
 /// save on first edit. No cap — the picker is a scrolling dropdown, so a model
 /// with many materials just gets a long (scrollable) list.
-fn collect_material_tabs(world: &World, root: Option<Entity>) -> Vec<MaterialTab> {
+fn collect_material_tabs(world: &Rx, root: Option<Entity>) -> Vec<MaterialTab> {
     let Some(root) = root else { return Vec::new() };
     let mut out: Vec<MaterialTab> = Vec::new();
     let mut seen_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1118,7 +1120,7 @@ fn rebuild_material_dropdown(world: &mut World) {
                 bind_2way(
                     &mut commands,
                     dd,
-                    |w: &World| w.get_resource::<MaterialEditorState>().and_then(|s| s.active_tab).unwrap_or(0),
+                    |w: &Rx| w.get_resource::<MaterialEditorState>().and_then(|s| s.active_tab).unwrap_or(0),
                     |w: &mut World, v: &usize| {
                         let v = *v;
                         if w.resource::<MaterialEditorState>().active_tab == Some(v) {

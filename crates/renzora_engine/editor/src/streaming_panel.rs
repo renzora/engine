@@ -12,7 +12,9 @@ use bevy::prelude::*;
 use std::hash::{Hash, Hasher};
 
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::collapsible;
 
@@ -81,7 +83,7 @@ pub struct StreamingDebugSnapshot {
     pub tex_demoted_sample: Vec<String>,
 }
 
-fn snap<R: Default>(w: &World, f: impl FnOnce(&StreamingDebugSnapshot) -> R) -> R {
+fn snap<R: Default>(w: &Rx, f: impl FnOnce(&StreamingDebugSnapshot) -> R) -> R {
     w.get_resource::<StreamingDebugSnapshot>()
         .map(f)
         .unwrap_or_default()
@@ -334,8 +336,8 @@ fn stat_row<V, C>(
     color: C,
 ) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
-    C: Fn(&World) -> Color + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
+    C: Fn(&Rx) -> Color + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -366,7 +368,7 @@ where
 
 fn neutral_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     stat_row(commands, fonts, label, value, |_| rgb(text_primary()))
 }
@@ -573,7 +575,7 @@ pub fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── List snapshots ───────────────────────────────────────────────────────────
 
-fn streams_snapshot(world: &World) -> KeyedSnapshot {
+fn streams_snapshot(world: &Rx) -> KeyedSnapshot {
     let streams = snap(world, |s| s.streams.clone());
     if streams.is_empty() {
         return note_snapshot("(no streams in flight)");
@@ -591,7 +593,7 @@ fn streams_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn instances_snapshot(world: &World) -> KeyedSnapshot {
+fn instances_snapshot(world: &Rx) -> KeyedSnapshot {
     let rows = snap(world, |s| s.instances.clone());
     if rows.is_empty() {
         return note_snapshot("(no streamed instances — tick \u{201c}Streamed\u{201d} on a Scene Instance)");
@@ -626,7 +628,7 @@ fn instances_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn terrains_snapshot(world: &World) -> KeyedSnapshot {
+fn terrains_snapshot(world: &Rx) -> KeyedSnapshot {
     let rows = snap(world, |s| s.terrains.clone());
     if rows.is_empty() {
         return note_snapshot("(no terrain in scene)");
@@ -662,7 +664,7 @@ fn terrains_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn lods_snapshot(world: &World) -> KeyedSnapshot {
+fn lods_snapshot(world: &Rx) -> KeyedSnapshot {
     let rows = snap(world, |s| s.lods.clone());
     if rows.is_empty() {
         return note_snapshot("(no models with _lodN.glb variants)");
@@ -693,7 +695,7 @@ fn lods_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn demoted_snapshot(world: &World) -> KeyedSnapshot {
+fn demoted_snapshot(world: &Rx) -> KeyedSnapshot {
     let paths = snap(world, |s| s.tex_demoted_sample.clone());
     if paths.is_empty() {
         return note_snapshot("(no textures demoted right now)");

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::dock::Dock;
 use crate::font::{icon_text, EmberFonts};
-use crate::reactive::{bind_bg, bind_display};
+use crate::reactive::tracked::{bind_bg, bind_display};
 use crate::theme::{panel_bg, rgb, text_primary};
 
 /// Height of the toolbar strip (matches the viewport header so the Scene

@@ -18,10 +18,12 @@ use bevy::prelude::*;
 
 use renzora::core::CurrentProject;
 use renzora_editor_framework::{DocTabKind, DocumentTabState, SplashState};
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_row};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, text_input, DragRange};
 
@@ -97,7 +99,7 @@ fn particle_doc_load(world: &mut World, mut last_tab: Local<Option<u64>>) {
 
 // ── Effect get/set ───────────────────────────────────────────────────────────
 
-fn getf<R>(w: &World, f: impl FnOnce(&HanabiEffectDefinition) -> R, default: R) -> R {
+fn getf<R>(w: &Rx, f: impl FnOnce(&HanabiEffectDefinition) -> R, default: R) -> R {
     w.get_resource::<ParticleEditorState>().and_then(|s| s.current_effect.as_ref()).map(f).unwrap_or(default)
 }
 
@@ -115,7 +117,7 @@ fn act(f: impl Fn(&mut HanabiEffectDefinition) + Send + Sync + 'static) -> Actio
     Arc::new(move |w: &mut World| setf(w, &f))
 }
 
-fn has_effect(w: &World) -> bool {
+fn has_effect(w: &Rx) -> bool {
     w.get_resource::<ParticleEditorState>().is_some_and(|s| s.current_effect.is_some())
 }
 
@@ -163,7 +165,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     }));
     commands.entity(wbtns).add_children(&[new_btn, open_btn]);
     commands.entity(welcome).add_children(&[w1, w2, wbtns]);
-    bind_display(commands, welcome, |w| !has_effect(w));
+    bind_display(commands, welcome, |w| !has_effect(&Rx::new(w.untracked())));
 
     // ── Editor body (effect present) ──
     let body = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
@@ -194,7 +196,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let s = section(commands, fonts);
         commands.entity(sections).add_child(s);
     }
-    bind_display(commands, sections, |w| !is_advanced(w));
+    bind_display(commands, sections, |w| !is_advanced(&Rx::new(w.untracked())));
 
     // Advanced (graph) mode shows the graph + its node inspector elsewhere.
     let adv_note = commands
@@ -209,7 +211,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn is_advanced(w: &World) -> bool {
+fn is_advanced(w: &Rx) -> bool {
     w.get_resource::<ParticleEditorState>().is_some_and(|s| s.editor_mode == EditorMode::Graph)
 }
 
@@ -235,7 +237,7 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), ActionBtn(Arc::new(toggle_advanced))))
         .id();
     let adv_t = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
-    bind_text(commands, adv_t, |w| if is_advanced(w) { "Switch to Simple".into() } else { "Switch to Advanced".into() });
+    bind_text(commands, adv_t, |w| if is_advanced(&Rx::new(w.untracked())) { "Switch to Simple".into() } else { "Switch to Advanced".into() });
     commands.entity(adv).add_child(adv_t);
     let spacer = commands.spawn(Node { flex_grow: 1.0, ..default() }).id();
     let save = action_button(commands, fonts, "Save", text_primary(), Arc::new(|w: &mut World| save_current(w, false)));
@@ -260,35 +262,35 @@ fn section_shape(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Radius (Circle | Sphere).
     let radius = row_num(commands, fonts, "Radius", 0.1, 0.001, 100.0,
-        |w| getf(w, |e| match &e.emit_shape { HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } => *radius, _ => 0.0 }, 0.0),
+        |w| getf(&Rx::new(w.untracked()), |e| match &e.emit_shape { HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } => *radius, _ => 0.0 }, 0.0),
         |w, v| setf(w, |e| if let HanabiEmitShape::Circle { radius, .. } | HanabiEmitShape::Sphere { radius, .. } = &mut e.emit_shape { *radius = *v; }));
-    bind_display(commands, radius, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Circle { .. } | HanabiEmitShape::Sphere { .. }), false));
+    bind_display(commands, radius, |w| getf(&Rx::new(w.untracked()), |e| matches!(e.emit_shape, HanabiEmitShape::Circle { .. } | HanabiEmitShape::Sphere { .. }), false));
     commands.entity(body).add_child(radius);
 
     // Cone fields.
     let base_r = row_num(commands, fonts, "Base Radius", 0.1, 0.0, 100.0,
-        |w| getf(w, |e| if let HanabiEmitShape::Cone { base_radius, .. } = &e.emit_shape { *base_radius } else { 0.0 }, 0.0),
+        |w| getf(&Rx::new(w.untracked()), |e| if let HanabiEmitShape::Cone { base_radius, .. } = &e.emit_shape { *base_radius } else { 0.0 }, 0.0),
         |w, v| setf(w, |e| if let HanabiEmitShape::Cone { base_radius, .. } = &mut e.emit_shape { *base_radius = *v; }));
     let top_r = row_num(commands, fonts, "Top Radius", 0.1, 0.0, 100.0,
-        |w| getf(w, |e| if let HanabiEmitShape::Cone { top_radius, .. } = &e.emit_shape { *top_radius } else { 0.0 }, 0.0),
+        |w| getf(&Rx::new(w.untracked()), |e| if let HanabiEmitShape::Cone { top_radius, .. } = &e.emit_shape { *top_radius } else { 0.0 }, 0.0),
         |w, v| setf(w, |e| if let HanabiEmitShape::Cone { top_radius, .. } = &mut e.emit_shape { *top_radius = *v; }));
     let height = row_num(commands, fonts, "Height", 0.1, 0.001, 100.0,
-        |w| getf(w, |e| if let HanabiEmitShape::Cone { height, .. } = &e.emit_shape { *height } else { 0.0 }, 0.0),
+        |w| getf(&Rx::new(w.untracked()), |e| if let HanabiEmitShape::Cone { height, .. } = &e.emit_shape { *height } else { 0.0 }, 0.0),
         |w, v| setf(w, |e| if let HanabiEmitShape::Cone { height, .. } = &mut e.emit_shape { *height = *v; }));
     for r in [base_r, top_r, height] {
-        bind_display(commands, r, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Cone { .. }), false));
+        bind_display(commands, r, |w| getf(&Rx::new(w.untracked()), |e| matches!(e.emit_shape, HanabiEmitShape::Cone { .. }), false));
         commands.entity(body).add_child(r);
     }
 
     // Rect / Box extents.
-    let rx = row_num(commands, fonts, "Extents X", 0.1, 0.001, 100.0, |w| shape_ext(w, 0), |w, v| set_shape_ext(w, 0, *v));
-    let ry = row_num(commands, fonts, "Extents Y", 0.1, 0.001, 100.0, |w| shape_ext(w, 1), |w, v| set_shape_ext(w, 1, *v));
+    let rx = row_num(commands, fonts, "Extents X", 0.1, 0.001, 100.0, |w| shape_ext(&Rx::new(w.untracked()), 0), |w, v| set_shape_ext(w, 0, *v));
+    let ry = row_num(commands, fonts, "Extents Y", 0.1, 0.001, 100.0, |w| shape_ext(&Rx::new(w.untracked()), 1), |w, v| set_shape_ext(w, 1, *v));
     for r in [rx, ry] {
-        bind_display(commands, r, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Rect { .. } | HanabiEmitShape::Box { .. }), false));
+        bind_display(commands, r, |w| getf(&Rx::new(w.untracked()), |e| matches!(e.emit_shape, HanabiEmitShape::Rect { .. } | HanabiEmitShape::Box { .. }), false));
         commands.entity(body).add_child(r);
     }
-    let rz = row_num(commands, fonts, "Extents Z", 0.1, 0.001, 100.0, |w| shape_ext(w, 2), |w, v| set_shape_ext(w, 2, *v));
-    bind_display(commands, rz, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Box { .. }), false));
+    let rz = row_num(commands, fonts, "Extents Z", 0.1, 0.001, 100.0, |w| shape_ext(&Rx::new(w.untracked()), 2), |w, v| set_shape_ext(w, 2, *v));
+    bind_display(commands, rz, |w| getf(&Rx::new(w.untracked()), |e| matches!(e.emit_shape, HanabiEmitShape::Box { .. }), false));
     commands.entity(body).add_child(rz);
 
     // Emit-from dimension (Circle | Sphere | Cone | Rect).
@@ -300,7 +302,7 @@ fn section_shape(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("Volume".into(), act(|e| set_dimension(e, ShapeDimension::Volume))),
         ("Surface".into(), act(|e| set_dimension(e, ShapeDimension::Surface))),
     ]);
-    bind_display(commands, dim, |w| getf(w, |e| matches!(e.emit_shape, HanabiEmitShape::Circle { .. } | HanabiEmitShape::Sphere { .. } | HanabiEmitShape::Cone { .. } | HanabiEmitShape::Rect { .. }), false));
+    bind_display(commands, dim, |w| getf(&Rx::new(w.untracked()), |e| matches!(e.emit_shape, HanabiEmitShape::Circle { .. } | HanabiEmitShape::Sphere { .. } | HanabiEmitShape::Cone { .. } | HanabiEmitShape::Rect { .. }), false));
     commands.entity(body).add_child(dim);
     root
 }
@@ -336,7 +338,7 @@ fn set_dimension(e: &mut HanabiEffectDefinition, d: ShapeDimension) {
     }
 }
 
-fn shape_ext(w: &World, i: usize) -> f32 {
+fn shape_ext(w: &Rx, i: usize) -> f32 {
     getf(w, |e| match &e.emit_shape {
         HanabiEmitShape::Rect { half_extents, .. } => half_extents.get(i).copied().unwrap_or(0.0),
         HanabiEmitShape::Box { half_extents } => half_extents.get(i).copied().unwrap_or(0.0),
@@ -358,10 +360,10 @@ fn set_shape_ext(w: &mut World, i: usize, v: f32) {
 
 fn section_conform(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("atom"), "Conform to Sphere", false);
-    let en = row_bool(commands, fonts, "Enabled", |w| getf(w, |e| e.conform_to_sphere.is_some(), false), |w, v| setf(w, |e| e.conform_to_sphere = if *v { Some(ConformToSphere::default()) } else { None }));
+    let en = row_bool(commands, fonts, "Enabled", |w| getf(&Rx::new(w.untracked()), |e| e.conform_to_sphere.is_some(), false), |w, v| setf(w, |e| e.conform_to_sphere = if *v { Some(ConformToSphere::default()) } else { None }));
     commands.entity(body).add_child(en);
     let origin = row_vec3(commands, fonts, "Origin",
-        Arc::new(|w, i| getf(w, |e| e.conform_to_sphere.as_ref().map(|c| c.origin[i]).unwrap_or(0.0), 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.conform_to_sphere.as_ref().map(|c| c.origin[i]).unwrap_or(0.0), 0.0)),
         Arc::new(|w, i, v| setf(w, |e| if let Some(c) = e.conform_to_sphere.as_mut() { c.origin[i] = v; })));
     let radius = cnf_num(commands, fonts, "Radius", 0.1, 0.1, 100.0, |c| c.radius, |c, v| c.radius = v);
     let infl = cnf_num(commands, fonts, "Influence Dist", 0.1, 0.0, 100.0, |c| c.influence_dist, |c, v| c.influence_dist = v);
@@ -370,7 +372,7 @@ fn section_conform(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let shell = cnf_num(commands, fonts, "Shell Thick.", 0.01, 0.0, 10.0, |c| c.shell_half_thickness, |c, v| c.shell_half_thickness = v);
     let sticky = cnf_num(commands, fonts, "Sticky Factor", 0.01, 0.0, 10.0, |c| c.sticky_factor, |c, v| c.sticky_factor = v);
     for r in [origin, radius, infl, accel, maxs, shell, sticky] {
-        bind_display(commands, r, |w| getf(w, |e| e.conform_to_sphere.is_some(), false));
+        bind_display(commands, r, |w| getf(&Rx::new(w.untracked()), |e| e.conform_to_sphere.is_some(), false));
         commands.entity(body).add_child(r);
     }
     root
@@ -378,25 +380,25 @@ fn section_conform(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn cnf_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, min: f32, max: f32, get: impl Fn(&ConformToSphere) -> f32 + Send + Sync + Copy + 'static, set: impl Fn(&mut ConformToSphere, f32) + Send + Sync + Copy + 'static) -> Entity {
     row_num(commands, fonts, label, step, min, max,
-        move |w| getf(w, |e| e.conform_to_sphere.as_ref().map(get).unwrap_or(0.0), 0.0),
+        move |w| getf(&Rx::new(w.untracked()), |e| e.conform_to_sphere.as_ref().map(get).unwrap_or(0.0), 0.0),
         move |w, v| setf(w, |e| if let Some(c) = e.conform_to_sphere.as_mut() { set(c, *v); }))
 }
 
 fn section_orbit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("planet"), "Orbit", false);
-    let en = row_bool(commands, fonts, "Enabled", |w| getf(w, |e| e.orbit.is_some(), false), |w, v| setf(w, |e| e.orbit = if *v { Some(OrbitSettings::default()) } else { None }));
+    let en = row_bool(commands, fonts, "Enabled", |w| getf(&Rx::new(w.untracked()), |e| e.orbit.is_some(), false), |w, v| setf(w, |e| e.orbit = if *v { Some(OrbitSettings::default()) } else { None }));
     commands.entity(body).add_child(en);
     let center = row_vec3(commands, fonts, "Center",
-        Arc::new(|w, i| getf(w, |e| e.orbit.as_ref().map(|o| o.center[i]).unwrap_or(0.0), 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.orbit.as_ref().map(|o| o.center[i]).unwrap_or(0.0), 0.0)),
         Arc::new(|w, i, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { o.center[i] = v; })));
     let axis = row_vec3(commands, fonts, "Axis",
-        Arc::new(|w, i| getf(w, |e| e.orbit.as_ref().map(|o| o.axis[i]).unwrap_or(0.0), 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.orbit.as_ref().map(|o| o.axis[i]).unwrap_or(0.0), 0.0)),
         Arc::new(|w, i, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { o.axis[i] = v; })));
     let speed = orb_num(commands, fonts, "Speed", 0.01, -20.0, 20.0, |o| o.speed, |o, v| o.speed = v);
     let pull = orb_num(commands, fonts, "Radial Pull", 0.01, 0.0, 20.0, |o| o.radial_pull, |o, v| o.radial_pull = v);
     let orad = orb_num(commands, fonts, "Orbit Radius", 0.1, 0.1, 100.0, |o| o.orbit_radius, |o, v| o.orbit_radius = v);
     for r in [center, axis, speed, pull, orad] {
-        bind_display(commands, r, |w| getf(w, |e| e.orbit.is_some(), false));
+        bind_display(commands, r, |w| getf(&Rx::new(w.untracked()), |e| e.orbit.is_some(), false));
         commands.entity(body).add_child(r);
     }
     root
@@ -404,7 +406,7 @@ fn section_orbit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 fn orb_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, min: f32, max: f32, get: impl Fn(&OrbitSettings) -> f32 + Send + Sync + Copy + 'static, set: impl Fn(&mut OrbitSettings, f32) + Send + Sync + Copy + 'static) -> Entity {
     row_num(commands, fonts, label, step, min, max,
-        move |w| getf(w, |e| e.orbit.as_ref().map(get).unwrap_or(0.0), 0.0),
+        move |w| getf(&Rx::new(w.untracked()), |e| e.orbit.as_ref().map(get).unwrap_or(0.0), 0.0),
         move |w, v| setf(w, |e| if let Some(o) = e.orbit.as_mut() { set(o, *v); }))
 }
 
@@ -412,13 +414,13 @@ fn orb_num(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, 
 
 fn section_color(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("palette"), "Color Over Lifetime", true);
-    let flat_check = row_bool(commands, fonts, "Flat Color", |w| getf(w, |e| e.use_flat_color, false), |w, v| setf(w, |e| e.use_flat_color = *v));
+    let flat_check = row_bool(commands, fonts, "Flat Color", |w| getf(&Rx::new(w.untracked()), |e| e.use_flat_color, false), |w, v| setf(w, |e| e.use_flat_color = *v));
     commands.entity(body).add_child(flat_check);
 
     let (flat_row, flat_cell) = base_row(commands, fonts, "Color");
-    let cf = color_field(commands, |w| getf(w, |e| [e.flat_color[0], e.flat_color[1], e.flat_color[2]], [1.0; 3]), |w, c| setf(w, |e| e.flat_color = [c[0], c[1], c[2], e.flat_color[3]]));
+    let cf = color_field(commands, |w| getf(&Rx::new(w.untracked()), |e| [e.flat_color[0], e.flat_color[1], e.flat_color[2]], [1.0; 3]), |w, c| setf(w, |e| e.flat_color = [c[0], c[1], c[2], e.flat_color[3]]));
     commands.entity(flat_cell).add_child(cf);
-    bind_display(commands, flat_row, |w| getf(w, |e| e.use_flat_color, false));
+    bind_display(commands, flat_row, |w| getf(&Rx::new(w.untracked()), |e| e.use_flat_color, false));
     commands.entity(body).add_child(flat_row);
 
     let grad = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
@@ -440,12 +442,12 @@ fn section_color(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ])),
     ]);
     commands.entity(grad).add_children(&[stops, actions]);
-    bind_display(commands, grad, |w| getf(w, |e| !e.use_flat_color, false));
+    bind_display(commands, grad, |w| getf(&Rx::new(w.untracked()), |e| !e.use_flat_color, false));
     commands.entity(body).add_child(grad);
 
-    let hdr_check = row_bool(commands, fonts, "HDR Color", |w| getf(w, |e| e.use_hdr_color, false), |w, v| setf(w, |e| e.use_hdr_color = *v));
-    let hdr_int = row_num(commands, fonts, "HDR Intensity", 0.1, 1.0, 100.0, |w| getf(w, |e| e.hdr_intensity, 1.0), |w, v| setf(w, |e| e.hdr_intensity = *v));
-    bind_display(commands, hdr_int, |w| getf(w, |e| e.use_hdr_color, false));
+    let hdr_check = row_bool(commands, fonts, "HDR Color", |w| getf(&Rx::new(w.untracked()), |e| e.use_hdr_color, false), |w, v| setf(w, |e| e.use_hdr_color = *v));
+    let hdr_int = row_num(commands, fonts, "HDR Intensity", 0.1, 1.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.hdr_intensity, 1.0), |w, v| setf(w, |e| e.hdr_intensity = *v));
+    bind_display(commands, hdr_int, |w| getf(&Rx::new(w.untracked()), |e| e.use_hdr_color, false));
     let blend = row_combo(commands, fonts, "Blend Mode", |w| match getf(w, |e| e.color_blend_mode, ParticleColorBlendMode::Modulate) {
         ParticleColorBlendMode::Modulate => "Modulate".into(),
         ParticleColorBlendMode::Overwrite => "Overwrite".into(),
@@ -459,8 +461,8 @@ fn section_color(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn gradient_snapshot(world: &World) -> KeyedSnapshot {
-    let len = getf(world, |e| e.color_gradient.len(), 0);
+fn gradient_snapshot(world: &Rx) -> KeyedSnapshot {
+    let len = getf(&Rx::new(world.untracked()), |e| e.color_gradient.len(), 0);
     let items: Vec<(u64, u64)> = (0..len)
         .map(|i| {
             let mut k = hasher();
@@ -476,10 +478,10 @@ fn gradient_snapshot(world: &World) -> KeyedSnapshot {
 fn stop_row(commands: &mut Commands, fonts: &EmberFonts, i: usize, can_remove: bool) -> Entity {
     let (row, cell) = base_row(commands, fonts, &format!("Stop {}", i + 1));
     let pos = num_field(commands, fonts, "", value_text(), 0.0, 0.01, 0.0, 1.0,
-        move |w| getf(w, |e| e.color_gradient.get(i).map(|s| s.position).unwrap_or(0.0), 0.0),
+        move |w| getf(&Rx::new(w.untracked()), |e| e.color_gradient.get(i).map(|s| s.position).unwrap_or(0.0), 0.0),
         move |w, v| setf(w, |e| if let Some(s) = e.color_gradient.get_mut(i) { s.position = v.clamp(0.0, 1.0); }));
     let cf = color_field(commands,
-        move |w| getf(w, |e| e.color_gradient.get(i).map(|s| [s.color[0], s.color[1], s.color[2]]).unwrap_or([1.0; 3]), [1.0; 3]),
+        move |w| getf(&Rx::new(w.untracked()), |e| e.color_gradient.get(i).map(|s| [s.color[0], s.color[1], s.color[2]]).unwrap_or([1.0; 3]), [1.0; 3]),
         move |w, c| setf(w, |e| if let Some(s) = e.color_gradient.get_mut(i) { s.color = [c[0], c[1], c[2], s.color[3]]; }));
     commands.entity(cell).add_children(&[pos, cf]);
     if can_remove {
@@ -501,8 +503,8 @@ fn section_kill_zones(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn kill_snapshot(world: &World) -> KeyedSnapshot {
-    let kinds: Vec<u8> = getf(world, |e| e.kill_zones.iter().map(|z| matches!(z, KillZone::Aabb { .. }) as u8).collect(), Vec::new());
+fn kill_snapshot(world: &Rx) -> KeyedSnapshot {
+    let kinds: Vec<u8> = getf(&Rx::new(world.untracked()), |e| e.kill_zones.iter().map(|z| matches!(z, KillZone::Aabb { .. }) as u8).collect(), Vec::new());
     let len = kinds.len();
     let items: Vec<(u64, u64)> = kinds
         .iter()
@@ -522,7 +524,7 @@ fn kill_zone_group(commands: &mut Commands, fonts: &EmberFonts, i: usize, is_aab
     let col = commands.spawn(Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, ..default() }).id();
     let title = commands.spawn((Text::new(format!("{} {}", if is_aabb == 1 { "AABB" } else { "Sphere" }, i + 1)), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { padding: UiRect::axes(Val::Px(8.0), Val::Px(2.0)), ..default() })).id();
     let center = row_vec3(commands, fonts, "Center",
-        Arc::new(move |w, k| getf(w, |e| match e.kill_zones.get(i) {
+        Arc::new(move |w, k| getf(&Rx::new(w), |e| match e.kill_zones.get(i) {
             Some(KillZone::Sphere { center, .. }) | Some(KillZone::Aabb { center, .. }) => center.get(k).copied().unwrap_or(0.0),
             _ => 0.0,
         }, 0.0)),
@@ -533,17 +535,17 @@ fn kill_zone_group(commands: &mut Commands, fonts: &EmberFonts, i: usize, is_aab
     commands.entity(col).add_children(&[title, center]);
     if is_aabb == 1 {
         let hs = row_vec3(commands, fonts, "Half Size",
-            Arc::new(move |w, k| getf(w, |e| if let Some(KillZone::Aabb { half_size, .. }) = e.kill_zones.get(i) { half_size.get(k).copied().unwrap_or(0.0) } else { 0.0 }, 0.0)),
+            Arc::new(move |w, k| getf(&Rx::new(w), |e| if let Some(KillZone::Aabb { half_size, .. }) = e.kill_zones.get(i) { half_size.get(k).copied().unwrap_or(0.0) } else { 0.0 }, 0.0)),
             Arc::new(move |w, k, v| setf(w, |e| if let Some(KillZone::Aabb { half_size, .. }) = e.kill_zones.get_mut(i) { if let Some(c) = half_size.get_mut(k) { *c = v; } })));
         commands.entity(col).add_child(hs);
     } else {
         let radius = row_num(commands, fonts, "Radius", 0.1, 0.1, 100.0,
-            move |w| getf(w, |e| if let Some(KillZone::Sphere { radius, .. }) = e.kill_zones.get(i) { *radius } else { 0.0 }, 0.0),
+            move |w| getf(&Rx::new(w.untracked()), |e| if let Some(KillZone::Sphere { radius, .. }) = e.kill_zones.get(i) { *radius } else { 0.0 }, 0.0),
             move |w, v| setf(w, |e| if let Some(KillZone::Sphere { radius, .. }) = e.kill_zones.get_mut(i) { *radius = *v; }));
         commands.entity(col).add_child(radius);
     }
     let inside = row_bool(commands, fonts, "Kill Inside",
-        move |w| getf(w, |e| match e.kill_zones.get(i) {
+        move |w| getf(&Rx::new(w.untracked()), |e| match e.kill_zones.get(i) {
             Some(KillZone::Sphere { kill_inside, .. }) | Some(KillZone::Aabb { kill_inside, .. }) => *kill_inside,
             _ => false,
         }, false),
@@ -569,8 +571,8 @@ fn section_variables(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn variables_snapshot(world: &World) -> KeyedSnapshot {
-    let mut vars: Vec<(String, u8)> = getf(world, |e| e.variables.iter().map(|(k, v)| (k.clone(), var_disc(v))).collect(), Vec::new());
+fn variables_snapshot(world: &Rx) -> KeyedSnapshot {
+    let mut vars: Vec<(String, u8)> = getf(&Rx::new(world.untracked()), |e| e.variables.iter().map(|(k, v)| (k.clone(), var_disc(v))).collect(), Vec::new());
     vars.sort_by(|a, b| a.0.cmp(&b.0));
     let items: Vec<(u64, u64)> = vars
         .iter()
@@ -601,14 +603,14 @@ fn var_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, disc: u8) ->
             let na = n.clone();
             let nb = n.clone();
             let cf = color_field(commands,
-                move |w| getf(w, |e| if let Some(EffectVariable::Color { value }) = e.variables.get(&na) { [value[0], value[1], value[2]] } else { [1.0; 3] }, [1.0; 3]),
+                move |w| getf(&Rx::new(w.untracked()), |e| if let Some(EffectVariable::Color { value }) = e.variables.get(&na) { [value[0], value[1], value[2]] } else { [1.0; 3] }, [1.0; 3]),
                 move |w, c| setf(w, |e| if let Some(EffectVariable::Color { value }) = e.variables.get_mut(&nb) { *value = [c[0], c[1], c[2], value[3]]; }));
             commands.entity(cell).add_child(cf);
         }
         2 => {
             let get = Arc::new({
                 let n = n.clone();
-                move |w: &World, k: usize| getf(w, |e| if let Some(EffectVariable::Vec3 { value }) = e.variables.get(&n) { value.get(k).copied().unwrap_or(0.0) } else { 0.0 }, 0.0)
+                move |w: &Rx, k: usize| getf(w, |e| if let Some(EffectVariable::Vec3 { value }) = e.variables.get(&n) { value.get(k).copied().unwrap_or(0.0) } else { 0.0 }, 0.0)
             });
             let set = Arc::new({
                 let n = n.clone();
@@ -618,7 +620,7 @@ fn var_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, disc: u8) ->
             for (k, &(axis, col)) in AXES3.iter().enumerate() {
                 let g = get.clone();
                 let s = set.clone();
-                let field = num_field(commands, fonts, axis, col, 0.0, 0.1, 0.0, 0.0, move |w| g(w, k), move |w, v| s(w, k, *v));
+                let field = num_field(commands, fonts, axis, col, 0.0, 0.1, 0.0, 0.0, move |w| g(&Rx::new(w.untracked()), k), move |w, v| s(w, k, *v));
                 commands.entity(cell).add_child(field);
             }
         }
@@ -626,7 +628,7 @@ fn var_row(commands: &mut Commands, fonts: &EmberFonts, name: &str, disc: u8) ->
             let na = n.clone();
             let nb = n.clone();
             let field = num_field(commands, fonts, "", value_text(), 0.0, 0.05, 0.0, 0.0,
-                move |w| getf(w, |e| if let Some(EffectVariable::Float { value, .. }) = e.variables.get(&na) { *value } else { 0.0 }, 0.0),
+                move |w| getf(&Rx::new(w.untracked()), |e| if let Some(EffectVariable::Float { value, .. }) = e.variables.get(&na) { *value } else { 0.0 }, 0.0),
                 move |w, v| setf(w, |e| if let Some(EffectVariable::Float { value, .. }) = e.variables.get_mut(&nb) { *value = *v; }));
             commands.entity(cell).add_child(field);
         }
@@ -692,9 +694,9 @@ fn section_general(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("gear"), "General", true);
     let name_row = base_row(commands, fonts, "Name");
     let ti = text_input(commands, &fonts.ui, "Effect name", "");
-    bind_text_input(commands, ti, |w| getf(w, |e| e.name.clone(), String::new()), |w, v| setf(w, |e| e.name = v));
+    bind_text_input(commands, ti, |w| getf(&Rx::new(w.untracked()), |e| e.name.clone(), String::new()), |w, v| setf(w, |e| e.name = v));
     commands.entity(name_row.1).add_child(ti);
-    let cap = row_num(commands, fonts, "Capacity", 10.0, 10.0, 100000.0, |w| getf(w, |e| e.capacity as f32, 0.0), |w, v| setf(w, |e| e.capacity = v.round().max(0.0) as u32));
+    let cap = row_num(commands, fonts, "Capacity", 10.0, 10.0, 100000.0, |w| getf(&Rx::new(w.untracked()), |e| e.capacity as f32, 0.0), |w, v| setf(w, |e| e.capacity = v.round().max(0.0) as u32));
     commands.entity(body).add_children(&[name_row.0, cap]);
     root
 }
@@ -710,26 +712,26 @@ fn section_spawning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("Single Burst".into(), act(|e| e.spawn_mode = SpawnMode::Burst)),
         ("Repeated Bursts".into(), act(|e| e.spawn_mode = SpawnMode::BurstRate)),
     ]);
-    let rate = row_num(commands, fonts, "Rate/sec", 1.0, 0.1, 10000.0, |w| getf(w, |e| e.spawn_rate, 0.0), |w, v| setf(w, |e| e.spawn_rate = *v));
-    bind_display(commands, rate, |w| getf(w, |e| e.spawn_mode == SpawnMode::Rate, false));
-    let count = row_num(commands, fonts, "Count", 1.0, 1.0, 10000.0, |w| getf(w, |e| e.spawn_count as f32, 0.0), |w, v| setf(w, |e| e.spawn_count = v.round().max(1.0) as u32));
-    bind_display(commands, count, |w| getf(w, |e| matches!(e.spawn_mode, SpawnMode::Burst | SpawnMode::BurstRate), false));
-    let bursts = row_num(commands, fonts, "Bursts/sec", 0.1, 0.1, 100.0, |w| getf(w, |e| e.spawn_rate, 0.0), |w, v| setf(w, |e| e.spawn_rate = *v));
-    bind_display(commands, bursts, |w| getf(w, |e| e.spawn_mode == SpawnMode::BurstRate, false));
-    let dur = row_num(commands, fonts, "Duration", 0.1, 0.0, 600.0, |w| getf(w, |e| e.spawn_duration, 0.0), |w, v| setf(w, |e| e.spawn_duration = *v));
-    let cycles = row_num(commands, fonts, "Cycles", 1.0, 0.0, 1000.0, |w| getf(w, |e| e.spawn_cycle_count as f32, 0.0), |w, v| setf(w, |e| e.spawn_cycle_count = v.round().max(0.0) as u32));
-    let active = row_bool(commands, fonts, "Starts Active", |w| getf(w, |e| e.spawn_starts_active, true), |w, v| setf(w, |e| e.spawn_starts_active = *v));
+    let rate = row_num(commands, fonts, "Rate/sec", 1.0, 0.1, 10000.0, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_rate, 0.0), |w, v| setf(w, |e| e.spawn_rate = *v));
+    bind_display(commands, rate, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_mode == SpawnMode::Rate, false));
+    let count = row_num(commands, fonts, "Count", 1.0, 1.0, 10000.0, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_count as f32, 0.0), |w, v| setf(w, |e| e.spawn_count = v.round().max(1.0) as u32));
+    bind_display(commands, count, |w| getf(&Rx::new(w.untracked()), |e| matches!(e.spawn_mode, SpawnMode::Burst | SpawnMode::BurstRate), false));
+    let bursts = row_num(commands, fonts, "Bursts/sec", 0.1, 0.1, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_rate, 0.0), |w, v| setf(w, |e| e.spawn_rate = *v));
+    bind_display(commands, bursts, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_mode == SpawnMode::BurstRate, false));
+    let dur = row_num(commands, fonts, "Duration", 0.1, 0.0, 600.0, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_duration, 0.0), |w, v| setf(w, |e| e.spawn_duration = *v));
+    let cycles = row_num(commands, fonts, "Cycles", 1.0, 0.0, 1000.0, |w| getf(&Rx::new(w.untracked()), |e| e.spawn_cycle_count as f32, 0.0), |w, v| setf(w, |e| e.spawn_cycle_count = v.round().max(0.0) as u32));
+    let active = row_bool(commands, fonts, "Starts Active", |w| getf(&Rx::new(w.untracked()), |e| e.spawn_starts_active, true), |w, v| setf(w, |e| e.spawn_starts_active = *v));
     commands.entity(body).add_children(&[mode, rate, count, bursts, dur, cycles, active]);
     root
 }
 
 fn section_lifetime(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("timer"), "Lifetime", true);
-    let min = row_num(commands, fonts, "Min", 0.1, 0.01, 60.0, |w| getf(w, |e| e.lifetime_min, 0.0), |w, v| setf(w, |e| {
+    let min = row_num(commands, fonts, "Min", 0.1, 0.01, 60.0, |w| getf(&Rx::new(w.untracked()), |e| e.lifetime_min, 0.0), |w, v| setf(w, |e| {
         e.lifetime_min = *v;
         if e.lifetime_min > e.lifetime_max { e.lifetime_max = e.lifetime_min; }
     }));
-    let max = row_num(commands, fonts, "Max", 0.1, 0.01, 60.0, |w| getf(w, |e| e.lifetime_max, 0.0), |w, v| setf(w, |e| {
+    let max = row_num(commands, fonts, "Max", 0.1, 0.01, 60.0, |w| getf(&Rx::new(w.untracked()), |e| e.lifetime_max, 0.0), |w, v| setf(w, |e| {
         e.lifetime_max = *v;
         if e.lifetime_max < e.lifetime_min { e.lifetime_min = e.lifetime_max; }
     }));
@@ -750,19 +752,19 @@ fn section_velocity(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("Tangent".into(), act(|e| e.velocity_mode = VelocityMode::Tangent)),
         ("Random".into(), act(|e| e.velocity_mode = VelocityMode::Random)),
     ]);
-    let speed = row_num(commands, fonts, "Speed", 0.1, 0.0, 100.0, |w| getf(w, |e| e.velocity_magnitude, 0.0), |w, v| setf(w, |e| e.velocity_magnitude = *v));
-    let smin = row_num(commands, fonts, "Speed Min", 0.1, 0.0, 100.0, |w| getf(w, |e| e.velocity_speed_min, 0.0), |w, v| setf(w, |e| e.velocity_speed_min = *v));
-    let smax = row_num(commands, fonts, "Speed Max", 0.1, 0.0, 100.0, |w| getf(w, |e| e.velocity_speed_max, 0.0), |w, v| setf(w, |e| e.velocity_speed_max = *v));
-    let spread = row_num(commands, fonts, "Spread", 0.05, 0.0, std::f32::consts::PI, |w| getf(w, |e| e.velocity_spread, 0.0), |w, v| setf(w, |e| e.velocity_spread = *v));
-    bind_display(commands, spread, |w| getf(w, |e| e.velocity_mode == VelocityMode::Directional, false));
+    let speed = row_num(commands, fonts, "Speed", 0.1, 0.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_magnitude, 0.0), |w, v| setf(w, |e| e.velocity_magnitude = *v));
+    let smin = row_num(commands, fonts, "Speed Min", 0.1, 0.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_speed_min, 0.0), |w, v| setf(w, |e| e.velocity_speed_min = *v));
+    let smax = row_num(commands, fonts, "Speed Max", 0.1, 0.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_speed_max, 0.0), |w, v| setf(w, |e| e.velocity_speed_max = *v));
+    let spread = row_num(commands, fonts, "Spread", 0.05, 0.0, std::f32::consts::PI, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_spread, 0.0), |w, v| setf(w, |e| e.velocity_spread = *v));
+    bind_display(commands, spread, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_mode == VelocityMode::Directional, false));
     let dir = row_vec3(commands, fonts, "Direction",
-        Arc::new(|w, i| getf(w, |e| e.velocity_direction[i], 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.velocity_direction[i], 0.0)),
         Arc::new(|w, i, v| setf(w, |e| e.velocity_direction[i] = v)));
-    bind_display(commands, dir, |w| getf(w, |e| e.velocity_mode == VelocityMode::Directional, false));
+    bind_display(commands, dir, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_mode == VelocityMode::Directional, false));
     let axis = row_vec3(commands, fonts, "Axis",
-        Arc::new(|w, i| getf(w, |e| e.velocity_axis[i], 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.velocity_axis[i], 0.0)),
         Arc::new(|w, i, v| setf(w, |e| e.velocity_axis[i] = v)));
-    bind_display(commands, axis, |w| getf(w, |e| e.velocity_mode == VelocityMode::Tangent, false));
+    bind_display(commands, axis, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_mode == VelocityMode::Tangent, false));
     commands.entity(body).add_children(&[mode, speed, smin, smax, spread, dir, axis]);
     root
 }
@@ -770,65 +772,65 @@ fn section_velocity(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 fn section_forces(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("wind"), "Forces", true);
     let accel = row_vec3(commands, fonts, "Accel",
-        Arc::new(|w, i| getf(w, |e| e.acceleration[i], 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.acceleration[i], 0.0)),
         Arc::new(|w, i, v| setf(w, |e| e.acceleration[i] = v)));
     let presets = row_actions(commands, fonts, "Presets", vec![
         ("None", act(|e| e.acceleration = [0.0, 0.0, 0.0])),
         ("Light", act(|e| e.acceleration = [0.0, -2.0, 0.0])),
         ("Normal", act(|e| e.acceleration = [0.0, -9.8, 0.0])),
     ]);
-    let drag = row_num(commands, fonts, "Drag", 0.05, 0.0, 10.0, |w| getf(w, |e| e.linear_drag, 0.0), |w, v| setf(w, |e| e.linear_drag = *v));
-    let radial = row_num(commands, fonts, "Radial Accel", 0.1, -100.0, 100.0, |w| getf(w, |e| e.radial_acceleration, 0.0), |w, v| setf(w, |e| e.radial_acceleration = *v));
-    let tangent = row_num(commands, fonts, "Tangent Accel", 0.1, -100.0, 100.0, |w| getf(w, |e| e.tangent_acceleration, 0.0), |w, v| setf(w, |e| e.tangent_acceleration = *v));
+    let drag = row_num(commands, fonts, "Drag", 0.05, 0.0, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.linear_drag, 0.0), |w, v| setf(w, |e| e.linear_drag = *v));
+    let radial = row_num(commands, fonts, "Radial Accel", 0.1, -100.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.radial_acceleration, 0.0), |w, v| setf(w, |e| e.radial_acceleration = *v));
+    let tangent = row_num(commands, fonts, "Tangent Accel", 0.1, -100.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.tangent_acceleration, 0.0), |w, v| setf(w, |e| e.tangent_acceleration = *v));
     let taxis = row_vec3(commands, fonts, "Tangent Axis",
-        Arc::new(|w, i| getf(w, |e| e.tangent_accel_axis[i], 0.0)),
+        Arc::new(|w, i| getf(&Rx::new(w), |e| e.tangent_accel_axis[i], 0.0)),
         Arc::new(|w, i, v| setf(w, |e| e.tangent_accel_axis[i] = v)));
-    bind_display(commands, taxis, |w| getf(w, |e| e.tangent_acceleration.abs() > 0.001, false));
+    bind_display(commands, taxis, |w| getf(&Rx::new(w.untracked()), |e| e.tangent_acceleration.abs() > 0.001, false));
     commands.entity(body).add_children(&[accel, presets, drag, radial, tangent, taxis]);
     root
 }
 
 fn section_size(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("resize"), "Size Over Lifetime", true);
-    let nonu = row_bool(commands, fonts, "Non-Uniform", |w| getf(w, |e| e.size_non_uniform, false), |w, v| setf(w, |e| e.size_non_uniform = *v));
-    let sx = row_num(commands, fonts, "Start X", 0.01, 0.001, 10.0, |w| getf(w, |e| e.size_start_x, 0.0), |w, v| setf(w, |e| e.size_start_x = *v));
-    let sy = row_num(commands, fonts, "Start Y", 0.01, 0.001, 10.0, |w| getf(w, |e| e.size_start_y, 0.0), |w, v| setf(w, |e| e.size_start_y = *v));
-    let ex = row_num(commands, fonts, "End X", 0.01, 0.0, 10.0, |w| getf(w, |e| e.size_end_x, 0.0), |w, v| setf(w, |e| e.size_end_x = *v));
-    let ey = row_num(commands, fonts, "End Y", 0.01, 0.0, 10.0, |w| getf(w, |e| e.size_end_y, 0.0), |w, v| setf(w, |e| e.size_end_y = *v));
+    let nonu = row_bool(commands, fonts, "Non-Uniform", |w| getf(&Rx::new(w.untracked()), |e| e.size_non_uniform, false), |w, v| setf(w, |e| e.size_non_uniform = *v));
+    let sx = row_num(commands, fonts, "Start X", 0.01, 0.001, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_start_x, 0.0), |w, v| setf(w, |e| e.size_start_x = *v));
+    let sy = row_num(commands, fonts, "Start Y", 0.01, 0.001, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_start_y, 0.0), |w, v| setf(w, |e| e.size_start_y = *v));
+    let ex = row_num(commands, fonts, "End X", 0.01, 0.0, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_end_x, 0.0), |w, v| setf(w, |e| e.size_end_x = *v));
+    let ey = row_num(commands, fonts, "End Y", 0.01, 0.0, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_end_y, 0.0), |w, v| setf(w, |e| e.size_end_y = *v));
     for r in [sx, sy, ex, ey] {
-        bind_display(commands, r, |w| getf(w, |e| e.size_non_uniform, false));
+        bind_display(commands, r, |w| getf(&Rx::new(w.untracked()), |e| e.size_non_uniform, false));
     }
-    let start = row_num(commands, fonts, "Start", 0.01, 0.001, 10.0, |w| getf(w, |e| e.size_start, 0.0), |w, v| setf(w, |e| e.size_start = *v));
-    let end = row_num(commands, fonts, "End", 0.01, 0.0, 10.0, |w| getf(w, |e| e.size_end, 0.0), |w, v| setf(w, |e| e.size_end = *v));
+    let start = row_num(commands, fonts, "Start", 0.01, 0.001, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_start, 0.0), |w, v| setf(w, |e| e.size_start = *v));
+    let end = row_num(commands, fonts, "End", 0.01, 0.0, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_end, 0.0), |w, v| setf(w, |e| e.size_end = *v));
     let presets = row_actions(commands, fonts, "Presets", vec![
         ("Constant", act(|e| e.size_end = e.size_start)),
         ("Shrink", act(|e| e.size_end = 0.0)),
         ("Grow", act(|e| e.size_end = e.size_start * 2.0)),
     ]);
     for r in [start, end, presets] {
-        bind_display(commands, r, |w| getf(w, |e| !e.size_non_uniform, false));
+        bind_display(commands, r, |w| getf(&Rx::new(w.untracked()), |e| !e.size_non_uniform, false));
     }
-    let rmin = row_num(commands, fonts, "Random Min", 0.01, 0.0, 10.0, |w| getf(w, |e| e.size_start_min, 0.0), |w, v| setf(w, |e| e.size_start_min = *v));
-    let rmax = row_num(commands, fonts, "Random Max", 0.01, 0.0, 10.0, |w| getf(w, |e| e.size_start_max, 0.0), |w, v| setf(w, |e| e.size_start_max = *v));
-    let screen = row_bool(commands, fonts, "Screen Space", |w| getf(w, |e| e.screen_space_size, false), |w, v| setf(w, |e| e.screen_space_size = *v));
-    let round = row_num(commands, fonts, "Roundness", 0.01, 0.0, 1.0, |w| getf(w, |e| e.roundness, 0.0), |w, v| setf(w, |e| e.roundness = v.clamp(0.0, 1.0)));
+    let rmin = row_num(commands, fonts, "Random Min", 0.01, 0.0, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_start_min, 0.0), |w, v| setf(w, |e| e.size_start_min = *v));
+    let rmax = row_num(commands, fonts, "Random Max", 0.01, 0.0, 10.0, |w| getf(&Rx::new(w.untracked()), |e| e.size_start_max, 0.0), |w, v| setf(w, |e| e.size_start_max = *v));
+    let screen = row_bool(commands, fonts, "Screen Space", |w| getf(&Rx::new(w.untracked()), |e| e.screen_space_size, false), |w, v| setf(w, |e| e.screen_space_size = *v));
+    let round = row_num(commands, fonts, "Roundness", 0.01, 0.0, 1.0, |w| getf(&Rx::new(w.untracked()), |e| e.roundness, 0.0), |w, v| setf(w, |e| e.roundness = v.clamp(0.0, 1.0)));
     commands.entity(body).add_children(&[nonu, sx, sy, ex, ey, start, end, presets, rmin, rmax, screen, round]);
     root
 }
 
 fn section_noise(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("spiral"), "Noise Turbulence", false);
-    let freq = row_num(commands, fonts, "Frequency", 0.1, 0.0, 100.0, |w| getf(w, |e| e.noise_frequency, 0.0), |w, v| setf(w, |e| e.noise_frequency = *v));
-    let amp = row_num(commands, fonts, "Amplitude", 0.1, 0.0, 100.0, |w| getf(w, |e| e.noise_amplitude, 0.0), |w, v| setf(w, |e| e.noise_amplitude = *v));
-    let oct = row_num(commands, fonts, "Octaves", 1.0, 1.0, 8.0, |w| getf(w, |e| e.noise_octaves as f32, 0.0), |w, v| setf(w, |e| e.noise_octaves = v.round().clamp(1.0, 8.0) as u32));
-    let lac = row_num(commands, fonts, "Lacunarity", 0.1, 1.0, 4.0, |w| getf(w, |e| e.noise_lacunarity, 0.0), |w, v| setf(w, |e| e.noise_lacunarity = *v));
+    let freq = row_num(commands, fonts, "Frequency", 0.1, 0.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.noise_frequency, 0.0), |w, v| setf(w, |e| e.noise_frequency = *v));
+    let amp = row_num(commands, fonts, "Amplitude", 0.1, 0.0, 100.0, |w| getf(&Rx::new(w.untracked()), |e| e.noise_amplitude, 0.0), |w, v| setf(w, |e| e.noise_amplitude = *v));
+    let oct = row_num(commands, fonts, "Octaves", 1.0, 1.0, 8.0, |w| getf(&Rx::new(w.untracked()), |e| e.noise_octaves as f32, 0.0), |w, v| setf(w, |e| e.noise_octaves = v.round().clamp(1.0, 8.0) as u32));
+    let lac = row_num(commands, fonts, "Lacunarity", 0.1, 1.0, 4.0, |w| getf(&Rx::new(w.untracked()), |e| e.noise_lacunarity, 0.0), |w, v| setf(w, |e| e.noise_lacunarity = *v));
     commands.entity(body).add_children(&[freq, amp, oct, lac]);
     root
 }
 
 fn section_velocity_limit(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let (root, body) = section(commands, fonts, Some("gauge"), "Velocity Limit", false);
-    let lim = row_num(commands, fonts, "Max Speed", 0.1, 0.0, 1000.0, |w| getf(w, |e| e.velocity_limit, 0.0), |w, v| setf(w, |e| e.velocity_limit = *v));
+    let lim = row_num(commands, fonts, "Max Speed", 0.1, 0.0, 1000.0, |w| getf(&Rx::new(w.untracked()), |e| e.velocity_limit, 0.0), |w, v| setf(w, |e| e.velocity_limit = *v));
     commands.entity(body).add_child(lim);
     root
 }
@@ -879,8 +881,8 @@ fn section_rendering(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("Mask".into(), act(|e| e.alpha_mode = ParticleAlphaMode::Mask)),
         ("Opaque".into(), act(|e| e.alpha_mode = ParticleAlphaMode::Opaque)),
     ]);
-    let thresh = row_num(commands, fonts, "Mask Threshold", 0.01, 0.0, 1.0, |w| getf(w, |e| e.alpha_mask_threshold, 0.0), |w, v| setf(w, |e| e.alpha_mask_threshold = v.clamp(0.0, 1.0)));
-    bind_display(commands, thresh, |w| getf(w, |e| e.alpha_mode == ParticleAlphaMode::Mask, false));
+    let thresh = row_num(commands, fonts, "Mask Threshold", 0.01, 0.0, 1.0, |w| getf(&Rx::new(w.untracked()), |e| e.alpha_mask_threshold, 0.0), |w, v| setf(w, |e| e.alpha_mask_threshold = v.clamp(0.0, 1.0)));
+    bind_display(commands, thresh, |w| getf(&Rx::new(w.untracked()), |e| e.alpha_mode == ParticleAlphaMode::Mask, false));
     let orient = row_combo(commands, fonts, "Orient Mode", |w| match getf(w, |e| e.orient_mode, ParticleOrientMode::ParallelCameraDepthPlane) {
         ParticleOrientMode::ParallelCameraDepthPlane => "Camera Plane".into(),
         ParticleOrientMode::FaceCameraPosition => "Face Camera".into(),
@@ -890,12 +892,12 @@ fn section_rendering(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ("Face Camera".into(), act(|e| e.orient_mode = ParticleOrientMode::FaceCameraPosition)),
         ("Along Velocity".into(), act(|e| e.orient_mode = ParticleOrientMode::AlongVelocity)),
     ]);
-    let rot = row_num(commands, fonts, "Rotation Speed", 0.1, -20.0, 20.0, |w| getf(w, |e| e.rotation_speed, 0.0), |w, v| setf(w, |e| e.rotation_speed = *v));
+    let rot = row_num(commands, fonts, "Rotation Speed", 0.1, -20.0, 20.0, |w| getf(&Rx::new(w.untracked()), |e| e.rotation_speed, 0.0), |w, v| setf(w, |e| e.rotation_speed = *v));
     let tex_row = base_row(commands, fonts, "Texture");
     let ti = text_input(commands, &fonts.ui, "textures/...", "");
-    bind_text_input(commands, ti, |w| getf(w, |e| e.texture_path.clone().unwrap_or_default(), String::new()), |w, v| setf(w, |e| e.texture_path = if v.is_empty() { None } else { Some(v) }));
+    bind_text_input(commands, ti, |w| getf(&Rx::new(w.untracked()), |e| e.texture_path.clone().unwrap_or_default(), String::new()), |w, v| setf(w, |e| e.texture_path = if v.is_empty() { None } else { Some(v) }));
     commands.entity(tex_row.1).add_child(ti);
-    let layer = row_num(commands, fonts, "Layer", 1.0, 0.0, 31.0, |w| getf(w, |e| e.render_layer as f32, 0.0), |w, v| setf(w, |e| e.render_layer = v.round().clamp(0.0, 31.0) as u8));
+    let layer = row_num(commands, fonts, "Layer", 1.0, 0.0, 31.0, |w| getf(&Rx::new(w.untracked()), |e| e.render_layer as f32, 0.0), |w, v| setf(w, |e| e.render_layer = v.round().clamp(0.0, 31.0) as u8));
     commands.entity(body).add_children(&[alpha, thresh, orient, rot, tex_row.0, layer]);
     root
 }
@@ -932,7 +934,7 @@ fn section(commands: &mut Commands, fonts: &EmberFonts, icon: Option<&str>, titl
 #[allow(clippy::too_many_arguments)]
 fn row_num<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, step: f32, min: f32, max: f32, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let (row, cell) = base_row(commands, fonts, label);
@@ -949,7 +951,7 @@ where
 
 fn row_bool<G, S>(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> bool + Send + Sync + 'static,
+    G: Fn(&Rx) -> bool + Send + Sync + 'static,
     S: Fn(&mut World, &bool) + Send + Sync + 'static,
 {
     let (row, cell) = base_row(commands, fonts, label);
@@ -965,7 +967,7 @@ fn row_vec3(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: Arc<d
     for (i, &(axis, col)) in AXES3.iter().enumerate() {
         let g = get.clone();
         let s = set.clone();
-        let field = num_field(commands, fonts, axis, col, 0.0, 0.1, 0.0, 0.0, move |w| g(w, i), move |w, v| s(w, i, *v));
+        let field = num_field(commands, fonts, axis, col, 0.0, 0.1, 0.0, 0.0, move |w| g(w.untracked(), i), move |w, v| s(w, i, *v));
         fields.push(field);
     }
     commands.entity(cell).add_children(&fields);
@@ -975,7 +977,7 @@ fn row_vec3(commands: &mut Commands, fonts: &EmberFonts, label: &str, get: Arc<d
 /// A labelled dropdown built on ember's `dropdown` widget. Keeps the original
 /// `(label, action)` option interface: the current selection is derived from
 /// `value`, and picking an option runs its action.
-fn row_combo(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: impl Fn(&World) -> String + Send + Sync + 'static, options: Vec<(String, Action)>) -> Entity {
+fn row_combo(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: impl Fn(&Rx) -> String + Send + Sync + 'static, options: Vec<(String, Action)>) -> Entity {
     let labels: Vec<String> = options.iter().map(|(l, _)| l.clone()).collect();
     let actions: Vec<Action> = options.into_iter().map(|(_, a)| a).collect();
     let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
@@ -985,7 +987,7 @@ fn row_combo(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: im
         commands,
         dd,
         move |w| {
-            let cur = value(w);
+            let cur = value(&Rx::new(w.untracked()));
             labels_get.iter().position(|l| *l == cur).unwrap_or(0)
         },
         move |w, idx: &usize| {
@@ -1025,7 +1027,7 @@ fn small_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, action
 #[allow(clippy::too_many_arguments)]
 fn num_field<G, S>(commands: &mut Commands, fonts: &EmberFonts, axis: &str, axis_color: (u8, u8, u8), init: f32, step: f32, min: f32, max: f32, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let dv = drag_value(commands, &fonts.ui, axis, axis_color, init, step);

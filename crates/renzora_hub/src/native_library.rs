@@ -10,7 +10,9 @@ use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
 use renzora::SplashState;
@@ -116,7 +118,7 @@ struct LibNextBtn;
 
 // ── Build ────────────────────────────────────────────────────────────────────
 
-fn signed_in(w: &World) -> bool {
+fn signed_in(w: &Rx) -> bool {
     w.get_resource::<AuthSession>().map(|s| s.is_signed_in()).unwrap_or(false)
 }
 
@@ -178,7 +180,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         let d = w.resource::<HubLibraryData>();
         if let Some(e) = &d.error { format!("\u{26a0} {e}") } else { d.status.clone().unwrap_or_default() }
     });
-    renzora_ember::reactive::bind_text_color(commands, status, |w| {
+    renzora_ember::reactive::tracked::bind_text_color(commands, status, |w| {
         let d = w.resource::<HubLibraryData>();
         if d.error.is_some() { rgb(RED) } else { rgb(GREEN) }
     });
@@ -228,7 +230,7 @@ fn pager_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &s
     btn
 }
 
-fn library_snapshot(world: &World) -> KeyedSnapshot {
+fn library_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubLibraryData>();
     if d.loading {
         return note_snapshot("Loading library...");

@@ -10,7 +10,8 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{menu_item, screen_menu, toggle_switch};
 
@@ -39,10 +40,10 @@ struct ShapeCombo;
 #[derive(Component)]
 struct OrbitTarget;
 
-fn orbit(w: &World) -> Option<&MaterialPreviewOrbit> {
+fn orbit<'w>(w: &Rx<'w>) -> Option<&'w MaterialPreviewOrbit> {
     w.get_resource::<MaterialPreviewOrbit>()
 }
-fn has_material(w: &World) -> bool {
+fn has_material(w: &Rx) -> bool {
     w.get_resource::<MaterialEditorState>().is_some_and(|s| s.compiled_wgsl.is_some())
 }
 

@@ -18,9 +18,9 @@ use renzora_auth::marketplace::{AssetSummary, MarketplaceListResponse};
 use renzora_auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_bg, bind_display, bind_text, bind_with, keyed_list, Bound, KeyedSnapshot,
-};
+use renzora_ember::reactive::{Bound, KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, text_input, tint, EmberTextInput};
 use renzora::SplashState;
@@ -336,7 +336,7 @@ struct HeroDotBtn(usize);
 #[derive(Component)]
 struct StoreSeeAllBtn(String);
 
-fn signed_in(w: &World) -> bool {
+fn signed_in(w: &Rx) -> bool {
     w.get_resource::<AuthSession>().map(|s| s.is_signed_in()).unwrap_or(false)
 }
 
@@ -597,7 +597,7 @@ fn build_pager(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     pager
 }
 
-fn categories_snapshot(world: &World) -> KeyedSnapshot {
+fn categories_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubStoreData>();
     let mut rows: Vec<(Option<String>, String)> = vec![(None, "All".to_string())];
     rows.extend(d.categories.iter().map(|(slug, name)| (Some(slug.clone()), name.clone())));
@@ -657,7 +657,7 @@ fn category_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, slug: O
     row
 }
 
-fn assets_snapshot(world: &World) -> KeyedSnapshot {
+fn assets_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubStoreData>();
     if d.loading {
         return note_snapshot("Loading assets...");
@@ -869,7 +869,7 @@ fn build_home(commands: &mut Commands) -> Entity {
 /// One-row keyed snapshot of the hero: the current featured slide, or a subtle
 /// placeholder while the featured set loads. The content hash folds in the slide
 /// index + `home_version` so advancing rebuilds it.
-fn hero_snapshot(world: &World) -> KeyedSnapshot {
+fn hero_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubStoreData>();
     if d.featured.is_empty() {
         return hero_placeholder_snapshot();
@@ -1101,7 +1101,7 @@ fn hero_arrow<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &
 
 /// Keyed snapshot of the home shelves: one row per non-empty category section,
 /// keyed by slug and rebuilt when the shelf's assets change.
-fn sections_snapshot(world: &World) -> KeyedSnapshot {
+fn sections_snapshot(world: &Rx) -> KeyedSnapshot {
     let d = world.resource::<HubStoreData>();
     let sections: Vec<(String, String, Vec<AssetSummary>)> =
         d.sections.iter().map(|s| (s.slug.clone(), s.name.clone(), s.assets.clone())).collect();

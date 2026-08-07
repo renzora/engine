@@ -99,7 +99,7 @@ use renzora_audio::AudioPlayer as ApComp;
 use renzora::AppEditorExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{inspector_row, inspector_stripe};
-use renzora_ember::reactive::{bind_2way, bind_display};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display};
 use renzora_ember::theme::{rgb, text_muted, text_primary};
 use renzora_ember::widgets::{drag_value, dropdown, slider, toggle_switch as ember_toggle, DragRange};
 use renzora_inspector::asset_drop_field;

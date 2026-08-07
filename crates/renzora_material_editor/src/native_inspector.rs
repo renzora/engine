@@ -16,7 +16,9 @@ use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, text_input, DragRange};
 use renzora_editor_framework::AssetDragPayload;
@@ -59,10 +61,10 @@ impl Plugin for NativeMaterialInspector {
     }
 }
 
-fn state(w: &World) -> Option<&MaterialEditorState> {
+fn state<'w>(w: &Rx<'w>) -> Option<&'w MaterialEditorState> {
     w.get_resource::<MaterialEditorState>()
 }
-fn has_selection(w: &World) -> bool {
+fn has_selection(w: &Rx) -> bool {
     state(w).is_some_and(|s| s.selected_node.is_some_and(|id| s.graph.get_node(id).is_some()))
 }
 
@@ -127,7 +129,7 @@ enum Item {
     Pin { node_id: u64, pin: PinTemplate, connected: bool },
 }
 
-fn node_snapshot(world: &World) -> KeyedSnapshot {
+fn node_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(s) = state(world) else { return empty() };
     let Some(sel) = s.selected_node else { return empty() };
     let Some(node) = s.graph.get_node(sel) else { return empty() };
@@ -255,7 +257,7 @@ fn pin_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, node_id: u64
                     let n = name.clone();
                     let d = default.clone();
                     move |w, v| {
-                        let mut arr = vec_arr(&pin_value(w, node_id, &n).unwrap_or(d.clone()));
+                        let mut arr = vec_arr(&pin_value(&Rx::new(&*w), node_id, &n).unwrap_or(d.clone()));
                         arr[i] = *v;
                         set_pin(w, node_id, &n, vec_value(ptype, arr));
                     }
@@ -363,7 +365,7 @@ fn editor_cell(commands: &mut Commands) -> Entity {
 #[allow(clippy::too_many_arguments)]
 fn num_field<G, S>(commands: &mut Commands, fonts: &EmberFonts, axis: &str, axis_color: (u8, u8, u8), init: f32, step: f32, min: f32, max: f32, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let dv = drag_value(commands, &fonts.ui, axis, axis_color, init, step);
@@ -514,7 +516,7 @@ fn tex_drop_highlight(payload: Option<Res<AssetDragPayload>>, mut zones: Query<(
 
 // ── State helpers ────────────────────────────────────────────────────────────────
 
-fn pin_value(w: &World, node_id: u64, pin: &str) -> Option<PinValue> {
+fn pin_value(w: &Rx, node_id: u64, pin: &str) -> Option<PinValue> {
     state(w).and_then(|s| s.graph.get_node(node_id)).and_then(|n| n.input_values.get(pin).cloned())
 }
 

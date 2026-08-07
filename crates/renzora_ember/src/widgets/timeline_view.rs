@@ -20,7 +20,8 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiTransform};
 
 use crate::font::{ui_font, EmberFonts};
-use crate::reactive::{bind_bg, keyed_list, KeyedSnapshot};
+use crate::reactive::{KeyedSnapshot, Rx};
+use crate::reactive::tracked::{bind_bg, keyed_list};
 use crate::style::{Rgba, Theme, TimelineStyle};
 use crate::theme::{border, header_bg, rgb, section_bg};
 
@@ -332,7 +333,7 @@ pub fn timeline_view(commands: &mut Commands, _fonts: &EmberFonts) -> TimelineHa
 
 // ── Generic snapshots (driven by the root's `TimelineView`) ───────────────────
 
-fn ruler_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
+fn ruler_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     let Some(v) = world.get::<TimelineView>(root) else { return empty() };
     let (zoom, scroll, dur) = (v.zoom.max(1.0), v.scroll, v.duration);
     let st = tl_style(world);
@@ -452,7 +453,7 @@ fn timeline_ticks(zoom: f32, scroll: f32, dur: f32) -> (Vec<(f32, bool)>, f32) {
 
 /// Vertical gridlines down the lanes, aligned with the ruler ticks. Major ticks
 /// are slightly brighter than minor ones; both are dim so keyframes stay legible.
-fn gridlines_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
+fn gridlines_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     let Some(v) = world.get::<TimelineView>(root) else { return empty() };
     let (zoom, scroll, dur) = (v.zoom.max(1.0), v.scroll, v.duration);
     let st = tl_style(world);
@@ -491,7 +492,7 @@ fn gridlines_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
     }
 }
 
-fn lane_bg_snapshot(world: &World, root: Entity) -> KeyedSnapshot {
+fn lane_bg_snapshot(world: &Rx, root: Entity) -> KeyedSnapshot {
     let Some(v) = world.get::<TimelineView>(root) else { return empty() };
     let (n, th) = (v.track_count, v.track_height.max(1.0));
     let st = tl_style(world);
@@ -593,7 +594,7 @@ impl Plugin for TimelineViewPlugin {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn tl_style(w: &World) -> TimelineStyle {
+fn tl_style(w: &Rx) -> TimelineStyle {
     w.get_resource::<Theme>().map(|t| t.timeline.clone()).unwrap_or_default()
 }
 

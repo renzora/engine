@@ -5,8 +5,9 @@
 
 use bevy::prelude::*;
 
+use crate::reactive::Rx;
 use crate::font::{EmberFonts, FontRegistry};
-use crate::reactive::bind_2way;
+use crate::reactive::tracked::bind_2way;
 
 /// Build a font picker dropdown.
 ///
@@ -25,7 +26,7 @@ pub fn font_picker<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> String + Send + Sync + 'static,
+    G: Fn(&Rx) -> String + Send + Sync + 'static,
     S: Fn(&mut World, String) + Send + Sync + 'static,
 {
     let names: Vec<String> = registry.entries.iter().map(|e| e.name.clone()).collect();

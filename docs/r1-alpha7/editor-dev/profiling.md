@@ -143,6 +143,33 @@ the viewport's play mode.
 
 Nothing about Tracy is hardcoded into the editor or the contract.
 
+## The UI Layout panel — bevy_ui cost without a Tracy build
+
+Tracy answers "which system", but standing up a profiling build to ask one
+question about the editor's own UI is a slow loop. The **UI Layout** panel
+(Debug → UI Layout) answers the specific question that kept coming up, live and
+with no rebuild: *where is bevy_ui's per-frame cost going?*
+
+It brackets the UI pipeline with three timestamps around the public system sets:
+
+```text
+  A ── UiSystems::Prepare ‥ Propagate ‥ Content ── B ── Layout ── C
+       └──────── content (text measurement) ──────┘   └─ taffy ─┘
+```
+
+and reports the two halves separately, plus a node census (total / hidden / text
+/ visible text). The split is the actionable part, because the two halves have
+opposite fixes: **content-bound** means fewer or cheaper labels, **taffy-bound**
+means fewer nodes. The census refreshes only while the tab is open, and then only
+every 30 frames — a panel about frame time should not cost frame time.
+
+Read it against **UI Reactivity**'s `ms/frame recompute`. Whichever is larger is
+the one worth optimising, and the answer is usually not the one you expect: the
+measured split was **0.23 ms of reactivity against 5.48 ms of UI layout**.
+
+> The stats resource is written *without* `bypass_change_detection`, deliberately
+> — see [Reactivity](reactivity.md#bypass_change_detection-is-now-a-staleness-bug).
+
 ## Standing findings — don't undo these
 
 Two results from the r1-alpha7 profiling pass are easy to reverse by accident,
@@ -166,8 +193,37 @@ even cached. This is why the dock despawns backgrounded panels rather than hidin
 them (see [Panels](panels.md)) — hiding a panel does not make it free, and nothing
 in the layout stage will make it free later.
 
+**The inspector culls its off-screen sections, and must keep doing so.** Because
+`bevy_ui` never prunes hidden subtrees (above), an open component section that has
+scrolled out of the panel still charges a full tree walk every frame. The
+inspector therefore throws a section's rows away once its body leaves the viewport
+by more than half a screen, and rebuilds them when it scrolls back — the same
+fill/unfill machinery collapsing a section already used, applied on a second axis.
+Measured on one entity with its components open:
+
+| | before | after |
+|---|---|---|
+| ms/frame UI layout | 5.48 | **3.36** |
+| Layout (taffy) | 4.05 | **2.34** |
+| Content (text measure) | 1.43 | **1.01** |
+| Nodes total | 2814 | 2433 |
+
+Two invariants hold it together, and both are "don't" rules that fail silently:
+a section is **never culled before its height has been measured** (the reserved
+height is what stops the list collapsing and the scroll range shifting under the
+user), and a body is **never measured while it is not holding its rows** (that
+records its padding as the section's height and reserves that forever). Both are
+covered by `cull_tests` in `renzora_inspector::native`.
+
+Note that this is *not* built on [`virtual_scroll`](widgets.md), which every other
+editor list uses. That windows a `keyed_list` by measuring one row stride and
+assuming every item shares it — exact for the asset grid and the hierarchy, and
+wrong for the inspector, where a collapsed section is one header and an open one
+with a native drawer is hundreds of px. Measuring each section's own height
+sidesteps the assumption instead of fighting it.
+
 A note on where to spend effort: across this pass, removing *discrete work*
-(a system, a rebuild, a subtree) predicted its measured win 4 times out of 4, while
+(a system, a rebuild, a subtree) predicted its measured win 5 times out of 5, while
 shaving *per-unit constants* on work that still ran predicted it 0 times out of 3.
 If a change doesn't remove something from the frame entirely, be sceptical of the
 estimate until Tracy confirms it.

@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy::ecs::world::CommandQueue;
 use bevy::ui::FocusPolicy;
 
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::{accent, border, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
@@ -72,7 +73,7 @@ fn native_auth_poll(world: &mut World) {
 
 // ── Modal lifecycle ──────────────────────────────────────────────────────────
 
-fn modal_wanted(world: &World) -> bool {
+fn modal_wanted(world: &Rx) -> bool {
     let open = world.get_resource::<AuthState>().is_some_and(|a| a.window_open);
     let signed = world.get_resource::<AuthSession>().is_some_and(|s| s.is_signed_in());
     open && !signed
@@ -88,7 +89,7 @@ fn manage_auth_modal(world: &mut World) {
         }
     }
 
-    let want = modal_wanted(world);
+    let want = modal_wanted(&Rx::new(&*world));
     let mut q = world.query_filtered::<Entity, With<AuthBackdrop>>();
     let existing: Vec<Entity> = q.iter(world).collect();
 
@@ -165,7 +166,7 @@ fn content_sig(a: &AuthState) -> u64 {
 }
 
 fn rebuild_auth_modal(world: &mut World) {
-    if !modal_wanted(world) {
+    if !modal_wanted(&Rx::new(&*world)) {
         return;
     }
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else { return };
@@ -254,7 +255,7 @@ fn field(
     fonts: &EmberFonts,
     label: &str,
     placeholder: &str,
-    get: fn(&World) -> String,
+    get: fn(&Rx) -> String,
     set: fn(&mut World, String),
     password: bool,
     first: bool,
@@ -340,13 +341,13 @@ fn link_row(commands: &mut Commands, fonts: &EmberFonts, prefix: Option<&str>, l
 
 // ── Field accessors ──────────────────────────────────────────────────────────
 
-fn g_email(w: &World) -> String { w.get_resource::<AuthState>().map(|a| a.email.clone()).unwrap_or_default() }
+fn g_email(w: &Rx) -> String { w.get_resource::<AuthState>().map(|a| a.email.clone()).unwrap_or_default() }
 fn s_email(w: &mut World, v: String) { if let Some(mut a) = w.get_resource_mut::<AuthState>() { a.email = v; } }
-fn g_password(w: &World) -> String { w.get_resource::<AuthState>().map(|a| a.password.clone()).unwrap_or_default() }
+fn g_password(w: &Rx) -> String { w.get_resource::<AuthState>().map(|a| a.password.clone()).unwrap_or_default() }
 fn s_password(w: &mut World, v: String) { if let Some(mut a) = w.get_resource_mut::<AuthState>() { a.password = v; } }
-fn g_username(w: &World) -> String { w.get_resource::<AuthState>().map(|a| a.username.clone()).unwrap_or_default() }
+fn g_username(w: &Rx) -> String { w.get_resource::<AuthState>().map(|a| a.username.clone()).unwrap_or_default() }
 fn s_username(w: &mut World, v: String) { if let Some(mut a) = w.get_resource_mut::<AuthState>() { a.username = v; } }
-fn g_confirm(w: &World) -> String { w.get_resource::<AuthState>().map(|a| a.confirm_password.clone()).unwrap_or_default() }
+fn g_confirm(w: &Rx) -> String { w.get_resource::<AuthState>().map(|a| a.confirm_password.clone()).unwrap_or_default() }
 fn s_confirm(w: &mut World, v: String) { if let Some(mut a) = w.get_resource_mut::<AuthState>() { a.confirm_password = v; } }
 
 // ── Interaction ──────────────────────────────────────────────────────────────

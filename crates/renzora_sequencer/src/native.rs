@@ -10,7 +10,9 @@ use bevy::prelude::*;
 use renzora::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{timeline_view, TimelineView, LANE_INSET};
 
@@ -44,7 +46,7 @@ fn track_color(kind: &TrackKind) -> (u8, u8, u8) {
     }
 }
 
-fn seq(w: &World) -> Option<&SequencerState> {
+fn seq<'w>(w: &Rx<'w>) -> Option<&'w SequencerState> {
     w.get_resource::<SequencerState>()
 }
 
@@ -163,7 +165,7 @@ fn label_btn<M: Component>(commands: &mut Commands, fonts: &EmberFonts, icon: &s
 
 // ── Snapshots ────────────────────────────────────────────────────────────────
 
-fn header_snapshot(world: &World) -> KeyedSnapshot {
+fn header_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(s) = seq(world) else { return empty() };
     let th = s.track_height;
     let tracks: Vec<(String, bool, bool, (u8, u8, u8))> = s
@@ -207,7 +209,7 @@ fn header_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &st
     row
 }
 
-fn clips_snapshot(world: &World) -> KeyedSnapshot {
+fn clips_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(s) = seq(world) else { return empty() };
     let (zoom, scroll, th) = (s.timeline_zoom, s.timeline_scroll, s.track_height);
     // (track_idx, color, is_marker, start, duration, name)

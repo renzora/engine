@@ -10,7 +10,7 @@ use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 
 use crate::font::{icon_glyph, ui_font, EmberFonts};
-use crate::reactive::bind_bg;
+use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
 
 use super::overlay::Overlay;

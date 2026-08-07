@@ -10,7 +10,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_scripting::perf::ScriptPerf;
 
@@ -25,7 +27,7 @@ pub(super) fn register_scripting(app: &mut App) {
     app.register_panel_content("scripting_diag", true, build_scripting);
 }
 
-fn scr<R: Default>(w: &World, f: impl FnOnce(&ScriptingDiagState) -> R) -> R {
+fn scr<R: Default>(w: &Rx, f: impl FnOnce(&ScriptingDiagState) -> R) -> R {
     w.get_resource::<ScriptingDiagState>().map(f).unwrap_or_default()
 }
 
@@ -75,7 +77,7 @@ fn duration_color(d: Duration, base: Color) -> Color {
 
 fn stat_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -323,7 +325,7 @@ fn make_row(path: &Path, perf: &ScriptPerf, current_frame: u64) -> ScriptRow {
     }
 }
 
-fn table_snapshot(world: &World) -> KeyedSnapshot {
+fn table_snapshot(world: &Rx) -> KeyedSnapshot {
     let scripts = scr(world, |s| s.per_script.clone());
     let frame = scr(world, |s| s.current_frame);
     if scripts.is_empty() {

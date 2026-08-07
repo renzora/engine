@@ -18,7 +18,9 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     checkbox, drag_value, dropdown, radio_group, scroll_area, spinner, OverlaySurface,
@@ -122,7 +124,7 @@ fn manage_import_modal(world: &mut World) {
         // Always open on the Files pane — the first thing the user does is add
         // files, and a stale section from a previous open would be confusing.
         world.resource_mut::<ImportNav>().active = ImportSection::Files;
-        let init = Init::read(world);
+        let init = Init::read(&Rx::new(&*world));
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
@@ -146,7 +148,7 @@ struct Init {
     dest_folders: Vec<(String, usize, String)>,
 }
 impl Init {
-    fn read(world: &World) -> Self {
+    fn read(world: &Rx) -> Self {
         let s = world.resource::<ImportOverlayState>();
         let dest_folders = world
             .get_resource::<renzora::core::CurrentProject>()
@@ -396,13 +398,13 @@ fn nav_item(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str
 
 #[derive(PartialEq)]
 struct Active(bool);
-fn active_flag(w: &World, sec: ImportSection) -> Active {
+fn active_flag(w: &Rx, sec: ImportSection) -> Active {
     Active(w.get_resource::<ImportNav>().is_some_and(|n| n.active == sec))
 }
 
 /// True if the queue holds at least one 3D model — the gate for the model-only
 /// sidebar sections (Settings / Extract / Optimize) and the model options.
-fn queue_has_model(w: &World) -> bool {
+fn queue_has_model(w: &Rx) -> bool {
     w.get_resource::<ImportOverlayState>().is_some_and(|s| {
         s.pending_files
             .iter()
@@ -412,7 +414,7 @@ fn queue_has_model(w: &World) -> bool {
 
 /// Header label reflecting the queue: uniform-kind queues get a specific title,
 /// empty / mixed queues get the generic "Import Assets".
-fn import_title(w: &World) -> String {
+fn import_title(w: &Rx) -> String {
     use crate::kinds::{detect_kind, AssetKind};
     let Some(state) = w.get_resource::<ImportOverlayState>() else {
         return "Import Assets".to_string();
@@ -771,7 +773,7 @@ fn build_footer(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) {
 
 // ── Keyed list (files) ─────────────────────────────────────────────────────────
 
-fn files_snapshot(world: &World) -> KeyedSnapshot {
+fn files_snapshot(world: &Rx) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let files: Vec<PathBuf> = world.get_resource::<ImportOverlayState>().map(|s| s.pending_files.clone()).unwrap_or_default();
     let items: Vec<(u64, u64)> = files
@@ -808,7 +810,7 @@ fn file_row(commands: &mut Commands, fonts: &EmberFonts, path: &std::path::Path)
     row
 }
 
-fn log_snapshot(world: &World) -> KeyedSnapshot {
+fn log_snapshot(world: &Rx) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let entries: Vec<(String, bool, String)> = world.get_resource::<ImportOverlayState>().map(|s| s.log_entries.iter().map(|e| (e.file_name.clone(), e.success, e.message.clone())).collect()).unwrap_or_default();
     let items: Vec<(u64, u64)> = entries
@@ -837,13 +839,13 @@ fn log_row(commands: &mut Commands, fonts: &EmberFonts, e: &(String, bool, Strin
 
 // ── Interaction ──────────────────────────────────────────────────────────────
 
-fn can_import(w: &World) -> bool {
+fn can_import(w: &Rx) -> bool {
     w.get_resource::<ImportOverlayState>().is_some_and(|s| !s.pending_files.is_empty() && s.active_task.is_none() && matches!(s.progress, ImportProgress::Idle | ImportProgress::Done(_) | ImportProgress::Error(_)))
 }
 
 #[derive(PartialEq)]
 struct OrderedF32(f32);
-fn progress_fraction(w: &World) -> OrderedF32 {
+fn progress_fraction(w: &Rx) -> OrderedF32 {
     let f = match w.get_resource::<ImportOverlayState>().map(|s| s.progress.clone()) {
         Some(ImportProgress::Working { current, total, .. }) if total > 0 => current as f32 / total as f32,
         _ => 0.0,
@@ -854,7 +856,7 @@ fn progress_fraction(w: &World) -> OrderedF32 {
 fn import_click(q: Query<&Interaction, (With<ImportBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
-            if can_import(w) {
+            if can_import(&Rx::new(&*w)) {
                 run_import(w);
                 // Dismiss the modal and hand progress off to the corner toast.
                 // We keep `active_task` / `progress` / `pending_files` intact so
@@ -1131,7 +1133,7 @@ fn wide_button(commands: &mut Commands, fonts: &EmberFonts, label: &str, bg: Col
     btn
 }
 
-fn g_settings<T>(w: &World, get: impl Fn(&renzora_import::settings::ImportSettings) -> T) -> T
+fn g_settings<T>(w: &Rx, get: impl Fn(&renzora_import::settings::ImportSettings) -> T) -> T
 where
     T: Default,
 {

@@ -19,7 +19,8 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::color_field;
-use renzora_ember::reactive::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_text, bind_text_color};
+use renzora_ember::reactive::Rx;
 use renzora_ember::settings_sections::SettingsSectionRegistry;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
@@ -565,7 +566,7 @@ fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) 
         .map(|tm| tm.available_themes.clone())
         .unwrap_or_default();
     let has_project = world.get_resource::<CurrentProject>().is_some();
-    let scenes = scan_scenes(world);
+    let scenes = scan_scenes(&Rx::new(&*world));
     let input = InputTabData {
         actions: world
             .get_resource::<InputMap>()
@@ -608,7 +609,7 @@ fn build_overlay(world: &mut World, tab: SettingsTab, active_sub: Option<&str>) 
 /// This looked for `.ron` alone, so every dropdown built from it came up empty
 /// for any project written since — including the boot-scene picker, leaving no
 /// way to change which scene a game starts on short of editing `project.toml`.
-fn scan_scenes(world: &World) -> Vec<String> {
+fn scan_scenes(world: &Rx) -> Vec<String> {
     let Some(cp) = world.get_resource::<CurrentProject>() else {
         return Vec::new();
     };
@@ -1037,7 +1038,7 @@ fn sidebar_tab(
         ))
         .id();
     // Active → highlighted; otherwise a themed hover wash.
-    renzora_ember::reactive::bind_bg(commands, row, move |w| {
+    renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
         if active {
             rgb(tab_active())
         } else if matches!(
@@ -1092,7 +1093,7 @@ fn sidebar_plugin_tab(
             Name::new("settings-plugin-tab"),
         ))
         .id();
-    renzora_ember::reactive::bind_bg(commands, row, move |w| {
+    renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| {
         if selected {
             rgb(tab_active())
         } else if matches!(
@@ -1154,7 +1155,7 @@ fn note_row(commands: &mut Commands, fonts: &EmberFonts, body: Entity, text: &st
 
 fn ctl_toggle<G, S>(commands: &mut Commands, init: bool, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> bool + Send + Sync + 'static,
+    G: Fn(&Rx) -> bool + Send + Sync + 'static,
     S: Fn(&mut World, &bool) + Send + Sync + 'static,
 {
     let sw = toggle_switch(commands, init);
@@ -1174,7 +1175,7 @@ fn ctl_drag<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let dv = drag_value(commands, &fonts.ui, "", renzora_ember::theme::value_text(), init, step);
@@ -1194,7 +1195,7 @@ fn ctl_dropdown<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> usize + Send + Sync + 'static,
+    G: Fn(&Rx) -> usize + Send + Sync + 'static,
     S: Fn(&mut World, &usize) + Send + Sync + 'static,
 {
     let dd = dropdown(commands, fonts, options, init);

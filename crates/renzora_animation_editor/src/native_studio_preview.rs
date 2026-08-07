@@ -10,9 +10,10 @@ use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
 use renzora_editor_framework::SplashState;
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, bind_with};
 use renzora_ember::theme::*;
 
 use crate::studio_preview::{
@@ -48,7 +49,7 @@ fn settings(w: &World) -> Option<&StudioPreviewSettings> {
 }
 
 /// True once the offscreen preview image has a real (non-default) handle.
-fn has_preview(w: &World) -> bool {
+fn has_preview(w: &Rx) -> bool {
     w.get_resource::<StudioPreviewImage>()
         .is_some_and(|p| p.handle != Handle::default())
 }
@@ -97,7 +98,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(empty)
         .add_children(&[empty_icon, empty_a, empty_b]);
-    bind_display(commands, empty, |w| !has_preview(w));
+    bind_display(commands, empty, |w| !has_preview(&Rx::new(w.untracked())));
 
     // ── Body: vertical toolbar + image ──
     let body = commands
@@ -274,7 +275,7 @@ fn tool_button(
         .id();
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 16.0);
     bind_text_color(commands, ic, move |w| {
-        let on = settings(w).is_some_and(active);
+        let on = settings(w.untracked()).is_some_and(active);
         rgb(if on { accent() } else { text_muted() })
     });
     commands.entity(btn).add_child(ic);

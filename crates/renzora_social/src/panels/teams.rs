@@ -16,7 +16,10 @@ use renzora::SplashState;
 use renzora_auth::teams::{Team, TeamDetail, TeamInvite};
 use renzora_auth::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     accent_button, accent_chip, accent_ghost, accent_icon_button, icon_badge, text_input,
@@ -471,7 +474,7 @@ pub(crate) fn build_section(commands: &mut Commands, fonts: &EmberFonts) -> Enti
 
 // ── Snapshots / rows ─────────────────────────────────────────────────────────
 
-fn invites_snapshot(w: &World) -> KeyedSnapshot {
+fn invites_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<TeamsPanel>() else {
         return util::empty_snapshot();
     };
@@ -507,7 +510,7 @@ fn invites_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn teams_snapshot(w: &World) -> KeyedSnapshot {
+fn teams_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<TeamsPanel>() else {
         return util::empty_snapshot();
     };
@@ -553,7 +556,7 @@ fn teams_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn detail_snapshot(w: &World) -> KeyedSnapshot {
+fn detail_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<TeamsPanel>() else {
         return util::empty_snapshot();
     };

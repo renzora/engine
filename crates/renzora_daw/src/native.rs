@@ -27,9 +27,9 @@ use renzora_audio::{ClipId, MixerState, TimelineState, TrackId};
 use renzora::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, drag_value_flat, dropdown, menu_item_styled, screen_menu, text_input,
@@ -67,11 +67,11 @@ impl Plugin for NativeDaw {
 
 // ── World accessors ────────────────────────────────────────────────────────────
 
-fn timeline(w: &World) -> Option<&TimelineState> {
+fn timeline<'w>(w: &Rx<'w>) -> Option<&'w TimelineState> {
     w.get_resource::<TimelineState>()
 }
 
-fn buffer(w: &World) -> DawIntentBuffer {
+fn buffer(w: &Rx) -> DawIntentBuffer {
     w.get_resource::<DawIntentBuffer>().cloned().unwrap_or_default()
 }
 
@@ -240,7 +240,7 @@ fn build_transport(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             c,
             dv,
             |w| timeline(w).map(|t| t.transport.bpm).unwrap_or(120.0),
-            |w, v| buffer(w).push(DawIntent::SetBpm(*v)),
+            |w, v| buffer(&Rx::new(&*w)).push(DawIntent::SetBpm(*v)),
         );
         dv
     });
@@ -255,7 +255,7 @@ fn build_transport(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             c,
             dd,
             |w| snap_to_index(timeline(w).map(|t| t.transport.snap_div).unwrap_or(4)),
-            |w, idx| buffer(w).push(DawIntent::SetSnapDiv(index_to_snap(*idx))),
+            |w, idx| buffer(&Rx::new(&*w)).push(DawIntent::SetSnapDiv(index_to_snap(*idx))),
         );
         dd
     });
@@ -270,7 +270,7 @@ fn build_transport(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             c,
             dv,
             |w| timeline(w).map(|t| t.pixels_per_second).unwrap_or(80.0),
-            |w, v| buffer(w).push(DawIntent::SetPixelsPerSecond(*v)),
+            |w, v| buffer(&Rx::new(&*w)).push(DawIntent::SetPixelsPerSecond(*v)),
         );
         dv
     });
@@ -282,7 +282,7 @@ fn build_transport(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// `bar.beat.ticks` readout (matches egui's `{:>3}.{:>1}.{:03}`).
-fn lcd_bars_text(w: &World) -> String {
+fn lcd_bars_text(w: &Rx) -> String {
     let Some(t) = timeline(w) else { return String::new() };
     let secs = t.transport.position;
     let beats = t.transport.seconds_to_beats(secs);
@@ -293,7 +293,7 @@ fn lcd_bars_text(w: &World) -> String {
 }
 
 /// `mm:ss.ss` readout.
-fn lcd_secs_text(w: &World) -> String {
+fn lcd_secs_text(w: &Rx) -> String {
     let Some(t) = timeline(w) else { return String::new() };
     let secs = t.transport.position;
     let mins = (secs / 60.0) as u32;
@@ -464,7 +464,7 @@ fn icon_btn<M: Component>(
 
 // ── Track header rows ──────────────────────────────────────────────────────────
 
-fn header_snapshot(world: &World) -> KeyedSnapshot {
+fn header_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(t) = timeline(world) else { return empty() };
     let buses = available_buses(world.get_resource::<MixerState>());
     // (id, name, bus, muted, soloed, color)
@@ -586,7 +586,7 @@ fn header_row(
             move |w, v| {
                 let v = v.trim().to_string();
                 if !v.is_empty() {
-                    buffer(w).push(DawIntent::SetTrackName(id, v));
+                    buffer(&Rx::new(&*w)).push(DawIntent::SetTrackName(id, v));
                 }
             }
         },
@@ -636,7 +636,7 @@ fn header_row(
         {
             move |w, idx| {
                 if let Some(name) = buses_owned.get(*idx) {
-                    buffer(w).push(DawIntent::SetTrackBus(id, name.clone()));
+                    buffer(&Rx::new(&*w)).push(DawIntent::SetTrackBus(id, name.clone()));
                 }
             }
         },
@@ -719,7 +719,7 @@ fn state_chip(
     chip
 }
 
-fn chip_active(w: &World, id: TrackId, kind: ChipKind) -> bool {
+fn chip_active(w: &Rx, id: TrackId, kind: ChipKind) -> bool {
     timeline(w)
         .and_then(|t| t.tracks.iter().find(|tr| tr.id == id))
         .map(|tr| match kind {
@@ -770,7 +770,7 @@ fn track_icon_btn(
 
 // ── Clips ───────────────────────────────────────────────────────────────────
 
-fn clips_snapshot(world: &World) -> KeyedSnapshot {
+fn clips_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(t) = timeline(world) else { return empty() };
     let pps = t.pixels_per_second.max(20.0);
     let selected = t.selected_clip;

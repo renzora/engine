@@ -8,7 +8,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::{rgb, section_bg, text_muted, text_primary, window_bg};
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
@@ -23,13 +25,13 @@ pub(super) fn register_system_profiler(app: &mut App) {
     app.register_panel_content("system_profiler", true, build_system_profiler);
 }
 
-fn diag<R: Default>(w: &World, f: impl FnOnce(&DiagnosticsState) -> R) -> R {
+fn diag<R: Default>(w: &Rx, f: impl FnOnce(&DiagnosticsState) -> R) -> R {
     w.get_resource::<DiagnosticsState>().map(f).unwrap_or_default()
 }
-fn rstats<R: Default>(w: &World, f: impl FnOnce(&RenderStats) -> R) -> R {
+fn rstats<R: Default>(w: &Rx, f: impl FnOnce(&RenderStats) -> R) -> R {
     w.get_resource::<RenderStats>().map(f).unwrap_or_default()
 }
-fn timing<R: Default>(w: &World, f: impl FnOnce(&SystemTimingState) -> R) -> R {
+fn timing<R: Default>(w: &Rx, f: impl FnOnce(&SystemTimingState) -> R) -> R {
     w.get_resource::<SystemTimingState>().map(f).unwrap_or_default()
 }
 
@@ -99,8 +101,8 @@ fn frame_status(ms: f32) -> (String, Color) {
 
 fn big<V, C>(commands: &mut Commands, fonts: &EmberFonts, unit: &str, value: V, color: C) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
-    C: Fn(&World) -> Color + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
+    C: Fn(&Rx) -> Color + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -149,7 +151,7 @@ fn faint_box(commands: &mut Commands) -> Entity {
 /// A `label   value` grid row (value is a binding, mono).
 fn grid_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -372,7 +374,7 @@ struct SchedRow {
     source: String,
 }
 
-fn schedule_snapshot(world: &World) -> KeyedSnapshot {
+fn schedule_snapshot(world: &Rx) -> KeyedSnapshot {
     let timings = timing(world, |t| t.schedule_timings.clone());
     if timings.is_empty() {
         return KeyedSnapshot {

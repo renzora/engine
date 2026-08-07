@@ -4,7 +4,8 @@
 
 use bevy::prelude::*;
 
-use crate::reactive::bind_with;
+use crate::reactive::Rx;
+use crate::reactive::tracked::bind_with;
 use crate::theme::*;
 
 const GREEN: (u8, u8, u8) = (90, 200, 110);
@@ -48,7 +49,7 @@ pub fn vu_meter_driven(commands: &mut Commands) -> Entity {
 /// way to feed it from another crate.
 pub fn vu_meter_bound<G>(commands: &mut Commands, get: G) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
 {
     let m = build_vu(commands, false);
     bind_with(commands, m, get, |world, e, v: &f32| {

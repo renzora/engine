@@ -183,7 +183,7 @@ pub(crate) fn thumb_image(
                 bevy::ui::FocusPolicy::Pass,
             ))
             .id();
-        renzora_ember::reactive::bind_with(
+        renzora_ember::reactive::tracked::bind_with(
             commands,
             img,
             move |w| w.get_resource::<AvatarCache>().and_then(|c| c.get(&url)),
@@ -233,7 +233,7 @@ pub(crate) fn fill_image(commands: &mut Commands, wrap: Entity, url: &str) {
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    renzora_ember::reactive::bind_with(
+    renzora_ember::reactive::tracked::bind_with(
         commands,
         img,
         move |w| w.get_resource::<AvatarCache>().and_then(|c| c.get(&url)),
@@ -353,7 +353,7 @@ pub(crate) fn avatar_image(
                 },
             ))
             .id();
-        renzora_ember::reactive::bind_with(
+        renzora_ember::reactive::tracked::bind_with(
             commands,
             img,
             move |w| w.get_resource::<AvatarCache>().and_then(|c| c.get(&url)),

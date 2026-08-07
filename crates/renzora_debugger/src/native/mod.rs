@@ -14,12 +14,14 @@ mod reactivity;
 mod render_toggles;
 mod scripting;
 mod system;
+mod ui_layout;
 
 use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
@@ -36,6 +38,7 @@ pub fn register_native_debug(app: &mut App) {
     scripting::register_scripting(app);
     material::register_material_resolver(app);
     culling::register_culling(app);
+    ui_layout::register_ui_layout(app);
     camera::register_camera(app);
     reactivity::register(app);
     render_toggles::register(app);
@@ -84,8 +87,8 @@ pub(super) fn section(commands: &mut Commands, fonts: &EmberFonts, label: &str) 
 /// A big colored value + a muted unit suffix (e.g. `28  FPS`).
 pub(super) fn big_stat<T, C>(commands: &mut Commands, fonts: &EmberFonts, unit: &str, value: T, color: C) -> Entity
 where
-    T: Fn(&World) -> String + Send + Sync + 'static,
-    C: Fn(&World) -> Color + Send + Sync + 'static,
+    T: Fn(&Rx) -> String + Send + Sync + 'static,
+    C: Fn(&Rx) -> Color + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -122,7 +125,7 @@ where
 /// A `label   value` row (value is a binding).
 pub(super) fn label_row<T>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: T) -> Entity
 where
-    T: Fn(&World) -> String + Send + Sync + 'static,
+    T: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -157,7 +160,7 @@ where
 /// A small inline stat (e.g. `Avg: 60`).
 fn small_stat<T>(commands: &mut Commands, fonts: &EmberFonts, value: T) -> Entity
 where
-    T: Fn(&World) -> String + Send + Sync + 'static,
+    T: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let t = commands
         .spawn((
@@ -228,10 +231,10 @@ fn gpu_time_color(ms: f32) -> Color {
 }
 
 // Resource readers (avoid cloning whole histories for scalar lookups).
-fn render_stats<R: Default>(w: &World, f: impl FnOnce(&RenderStats) -> R) -> R {
+fn render_stats<R: Default>(w: &Rx, f: impl FnOnce(&RenderStats) -> R) -> R {
     w.get_resource::<RenderStats>().map(f).unwrap_or_default()
 }
-fn diag<R: Default>(w: &World, f: impl FnOnce(&DiagnosticsState) -> R) -> R {
+fn diag<R: Default>(w: &Rx, f: impl FnOnce(&DiagnosticsState) -> R) -> R {
     w.get_resource::<DiagnosticsState>().map(f).unwrap_or_default()
 }
 

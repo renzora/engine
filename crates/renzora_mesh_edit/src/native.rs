@@ -13,7 +13,8 @@ use renzora_editor_framework::SplashState;
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text_color};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{drag_value, slider, DragRange};
 
@@ -309,7 +310,7 @@ fn build_edit_section(commands: &mut Commands, fonts: &EmberFonts, section: Enti
         bind_2way(
             commands,
             dv,
-            move |w: &World| {
+            move |w: &Rx| {
                 w.get_resource::<ModelingSettings>()
                     .map(|s| s.array_offset[axis])
                     .unwrap_or(0.0)
@@ -493,7 +494,7 @@ fn pill_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
     label: &str,
-    active: impl Fn(&World) -> bool + Send + Sync + 'static,
+    active: impl Fn(&Rx) -> bool + Send + Sync + 'static,
 ) -> Entity {
     let btn = commands
         .spawn((
@@ -557,7 +558,7 @@ fn labelled_drag<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let row = field_row(commands, fonts, label);
@@ -581,7 +582,7 @@ fn labelled_slider<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let row = field_row(commands, fonts, label);
@@ -592,7 +593,7 @@ where
         min_width: Val::Px(0.0),
         ..default()
     });
-    let get_n = move |w: &World| ((get(w) - min) / span).clamp(0.0, 1.0);
+    let get_n = move |w: &Rx| ((get(w) - min) / span).clamp(0.0, 1.0);
     let set_n = move |w: &mut World, v: &f32| {
         let real = min + v.clamp(0.0, 1.0) * span;
         set(w, &real);

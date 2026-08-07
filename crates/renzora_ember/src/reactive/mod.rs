@@ -23,11 +23,22 @@
 
 use std::time::Instant;
 
+use bevy::ecs::change_detection::{CheckChangeTicks, Tick};
 use bevy::ecs::world::CommandQueue;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 
 use crate::font::EmberFonts;
+
+pub mod rx;
+pub mod tracked;
+
+#[cfg(test)]
+mod bench;
+#[cfg(test)]
+mod tests;
+
+pub use rx::{DepSet, Rx};
 
 /// Registers the reactive drivers. Added by [`crate::EmberPlugin`].
 pub struct ReactivePlugin;
@@ -41,6 +52,35 @@ impl Plugin for ReactivePlugin {
             // Chained: run_reactions resets the per-frame stats that
             // run_keyed_lists then adds to.
             .add_systems(Update, (run_reactions, run_keyed_lists).chain());
+        app.add_observer(clamp_stored_ticks);
+    }
+}
+
+/// Keep our parked `last_run` ticks inside the window `Tick::is_newer_than` can
+/// reason about.
+///
+/// Bevy's tick counter is a `u32` that wraps, so it periodically walks every
+/// component, resource and system and clamps any tick that has drifted further
+/// than `MAX_CHANGE_AGE` into the past. It cannot know about the `last_run`
+/// ticks sitting in our two registries. Left alone, a long-lived reaction on a
+/// quiet dependency would eventually have its `last_run` fall outside that
+/// window, at which point the comparison saturates and the reaction reports
+/// **clean forever** — a panel that silently stops updating after the editor has
+/// been open long enough. Riding the same notification is the whole fix.
+fn clamp_stored_ticks(
+    check: On<CheckChangeTicks>,
+    reactions: Option<ResMut<ReactionRegistry>>,
+    lists: Option<ResMut<KeyedListRegistry>>,
+) {
+    if let Some(mut reactions) = reactions {
+        for entry in reactions.iter_all_mut() {
+            entry.last_run.check_tick(*check);
+        }
+    }
+    if let Some(mut lists) = lists {
+        for kl in &mut lists.0 {
+            kl.last_run.check_tick(*check);
+        }
     }
 }
 
@@ -81,11 +121,20 @@ pub struct ListReport {
 pub struct ReactiveStats {
     /// Frames counted by `run_reactions` since startup.
     pub frame: u64,
-    /// Registered bindings currently alive.
+    /// Bindings walked this frame. Excludes parked ones.
     pub bindings_total: usize,
+    /// Bindings set aside behind a collapsed subtree — alive and restorable,
+    /// but out of the per-frame walk entirely. A collapsed 200-row section
+    /// moves 200 entries here and costs one `Node` lookup a frame instead.
+    pub parked_total: usize,
     /// Bindings whose recompute produced a *new* value this frame (i.e. a UI
     /// write actually happened).
     pub changed_this_frame: usize,
+    /// Bindings the dependency gate skipped without running this frame —
+    /// nothing they read had changed. The headline number for tracking: against
+    /// `bindings_total` it is the fraction of the old per-frame cost that is no
+    /// longer being paid.
+    pub skipped_this_frame: usize,
     /// Total binding recompute time this frame, µs.
     pub reactions_us: f32,
     /// Registered keyed lists currently alive.
@@ -127,6 +176,11 @@ struct EntryMeta {
     changes_window: u32,
     /// Changes/sec measured over the last completed window.
     change_rate: f32,
+    /// Frames the dependency gate skipped this entry outright. Paired with
+    /// `runs`, this is the number that says whether tracking is earning its
+    /// keep for a given binding — a binding with a high `runs` and a zero
+    /// `skips` is either untracked or genuinely churning.
+    skips: u64,
 }
 
 impl EntryMeta {
@@ -139,7 +193,14 @@ impl EntryMeta {
             cost_ema_us: 0.0,
             changes_window: 0,
             change_rate: 0.0,
+            skips: 0,
         }
+    }
+
+    /// A frame the dependency gate answered "clean". Costs no time worth
+    /// measuring, so it is counted rather than timed.
+    fn record_skip(&mut self) {
+        self.skips += 1;
     }
 
     fn record(&mut self, us: f32, changed: bool) {
@@ -195,16 +256,26 @@ fn entry_label(world: &World, target: Option<Entity>) -> String {
 ///
 /// `cache` memoizes results for one frame so shared ancestors (a panel's whole
 /// subtree resolves to the same answer) aren't re-walked per binding.
-fn has_hidden_ancestor(world: &World, node: Entity, cache: &mut HashMap<Entity, bool>) -> bool {
-    let Some(parent) = world.get::<ChildOf>(node).map(|c| c.parent()) else {
-        return false;
-    };
+/// Returns **which** ancestor is collapsed, not merely whether one is.
+///
+/// The identity matters because a hidden entry is parked under that entity and
+/// only reconsidered when that one entity reopens — see [`ReactionRegistry`].
+fn collapsed_ancestor(
+    world: &World,
+    node: Entity,
+    cache: &mut HashMap<Entity, Option<Entity>>,
+) -> Option<Entity> {
+    let parent = world.get::<ChildOf>(node).map(|c| c.parent())?;
     in_collapsed_subtree(world, parent, cache)
 }
 
-/// True if `start` or any ancestor has `Display::None`. Memoized per frame; a
-/// despawned `start` has no `Node`/parent and resolves to `false`.
-fn in_collapsed_subtree(world: &World, start: Entity, cache: &mut HashMap<Entity, bool>) -> bool {
+/// The nearest `Display::None` ancestor at or above `start`, if any. Memoized
+/// per frame; a despawned `start` has no `Node`/parent and resolves to `None`.
+fn in_collapsed_subtree(
+    world: &World,
+    start: Entity,
+    cache: &mut HashMap<Entity, Option<Entity>>,
+) -> Option<Entity> {
     let mut path: Vec<Entity> = Vec::new();
     let mut e = start;
     let result = loop {
@@ -216,11 +287,11 @@ fn in_collapsed_subtree(world: &World, start: Entity, cache: &mut HashMap<Entity
             .get::<bevy::ui::Node>(e)
             .is_some_and(|n| n.display == bevy::ui::Display::None);
         if collapsed {
-            break true;
+            break Some(e);
         }
         match world.get::<ChildOf>(e) {
             Some(c) => e = c.parent(),
-            None => break false,
+            None => break None,
         }
     };
     for p in path {
@@ -241,13 +312,130 @@ enum ReactionOutcome {
     Changed,
 }
 
+type ReactionFn = Box<dyn FnMut(&mut World, &mut DepSet) -> ReactionOutcome + Send + Sync>;
+
 struct ReactionEntry {
-    f: Box<dyn FnMut(&mut World) -> ReactionOutcome + Send + Sync>,
+    /// Runs the reaction and overwrites `deps` with what it read. A legacy
+    /// `Fn(&World)` binding cannot record anything, so it simply leaves the set
+    /// alone — and an empty set means dirty, so it keeps running every frame
+    /// exactly as before. See [`rx`] for why that default is the safe one.
+    f: ReactionFn,
     meta: EntryMeta,
+    /// What the last run read. Checked against Bevy's change ticks to decide
+    /// whether this frame's run can be skipped outright.
+    deps: DepSet,
+    /// World change tick as of the end of the last run — the `last_run` half of
+    /// [`Tick::is_newer_than`], giving these reactions the same change-detection
+    /// semantics an ordinary Bevy system gets.
+    last_run: Tick,
 }
 
+impl ReactionEntry {
+    fn new(meta: EntryMeta, f: ReactionFn) -> Self {
+        Self {
+            f,
+            meta,
+            // Empty ⇒ dirty ⇒ every reaction runs at least once before it can
+            // ever be skipped, which is what seeds `deps` in the first place.
+            deps: DepSet::default(),
+            last_run: Tick::new(0),
+        }
+    }
+}
+
+/// Live bindings, plus the ones set aside while their UI is collapsed.
+///
+/// ## Why parked rather than dropped
+///
+/// A collapsed subtree is *hidden*, not gone: `bind_display` flips
+/// `Node::display` and the children keep their entities. There are ~357 of those
+/// toggles, and nothing rebuilds a subtree when it reopens — a panel's `build`
+/// runs once. So dropping a hidden binding would free the only copy of its
+/// closure and the section would come back permanently stale. Dropping is
+/// correct exactly when the target is *despawned*, which is a different
+/// question and handled separately.
+///
+/// Parking gets the same result the drop was after — a hidden binding is out of
+/// the per-frame walk entirely — without losing the closure.
+///
+/// ## Why keyed by the collapsed ancestor
+///
+/// The obvious shape, one flat list of parked entries, would still cost an
+/// ancestor walk per entry per frame to notice a reopen, which is what the skip
+/// already cost. Filing entries under the entity that *caused* the hiding turns
+/// that into one `Node` lookup per distinct collapsed root — typically a handful
+/// — no matter how many bindings are behind them. Collapsing a 200-row section
+/// then costs one lookup a frame instead of 200.
 #[derive(Resource, Default)]
-pub struct ReactionRegistry(Vec<ReactionEntry>);
+pub struct ReactionRegistry {
+    active: Vec<ReactionEntry>,
+    /// `collapsed ancestor -> entries hidden behind it`.
+    parked: HashMap<Entity, Vec<ReactionEntry>>,
+}
+
+impl ReactionRegistry {
+    /// Move entries back to `active` when the ancestor that hid them has
+    /// reopened — or has been despawned, in which case the active pass's
+    /// liveness check is what should decide their fate, not this map.
+    ///
+    /// Also sweeps parked entries for dead targets on a slow cadence. A reopen
+    /// normally covers that, but a row despawned *while* its section is
+    /// collapsed would otherwise sit here until the section is next opened,
+    /// which may be never.
+    fn unpark_revealed(&mut self, world: &World, sweep_dead: bool) {
+        let mut revive: Vec<ReactionEntry> = Vec::new();
+        self.parked.retain(|&anchor, entries| {
+            let still_hidden = world
+                .get_entity(anchor)
+                .is_ok_and(|_| {
+                    world
+                        .get::<bevy::ui::Node>(anchor)
+                        .is_some_and(|n| n.display == bevy::ui::Display::None)
+                });
+            if !still_hidden {
+                revive.append(entries);
+                return false;
+            }
+            if sweep_dead {
+                entries.retain(|e| {
+                    e.meta
+                        .target
+                        .is_none_or(|t| world.get_entity(t).is_ok())
+                });
+            }
+            !entries.is_empty()
+        });
+        self.active.append(&mut revive);
+    }
+
+    fn park(&mut self, anchor: Entity, entry: ReactionEntry) {
+        self.parked.entry(anchor).or_default().push(entry);
+    }
+
+    /// Bindings currently being walked each frame.
+    pub fn active_len(&self) -> usize {
+        self.active.len()
+    }
+
+    /// Bindings set aside behind a collapsed subtree.
+    pub fn parked_len(&self) -> usize {
+        self.parked.values().map(Vec::len).sum()
+    }
+
+    /// Every entry, parked or not.
+    ///
+    /// Only the `mut` direction exists: the one caller is the tick clamp, which
+    /// must reach parked entries too — a `last_run` left unclamped behind a
+    /// collapsed section would compare wrongly against the wrapped tick when the
+    /// section reopens. Read-only walks (the debug panel's reports) deliberately
+    /// cover the active set alone, since a parked binding has no current value to
+    /// report.
+    fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut ReactionEntry> {
+        self.active
+            .iter_mut()
+            .chain(self.parked.values_mut().flatten())
+    }
+}
 
 /// Generic binding: recompute `value` each frame and, when it differs from last
 /// frame, `apply` it to `target`. The named `bind_*` helpers are thin wrappers
@@ -276,9 +464,9 @@ fn bind_with_kind<V, F, A>(
     commands.queue(move |world: &mut World| {
         let mut last: Option<V> = None;
         if let Some(mut reg) = world.get_resource_mut::<ReactionRegistry>() {
-            reg.0.push(ReactionEntry {
-                meta: EntryMeta::new(Some(target), kind),
-                f: Box::new(move |world: &mut World| {
+            reg.active.push(ReactionEntry::new(
+                EntryMeta::new(Some(target), kind),
+                Box::new(move |world: &mut World, _deps: &mut DepSet| {
                     if world.get_entity(target).is_err() {
                         return ReactionOutcome::Dead;
                     }
@@ -291,7 +479,7 @@ fn bind_with_kind<V, F, A>(
                         ReactionOutcome::Unchanged
                     }
                 }),
-            });
+            ));
         }
     });
 }
@@ -341,16 +529,16 @@ where
     commands.queue(move |world: &mut World| {
         if let Some(mut reg) = world.get_resource_mut::<ReactionRegistry>() {
             let mut reaction = reaction;
-            reg.0.push(ReactionEntry {
-                meta: EntryMeta::new(anchor, "raw"),
-                f: Box::new(move |world: &mut World| {
+            reg.active.push(ReactionEntry::new(
+                EntryMeta::new(anchor, "raw"),
+                Box::new(move |world: &mut World, _deps: &mut DepSet| {
                     if reaction(world) {
                         ReactionOutcome::Unchanged
                     } else {
                         ReactionOutcome::Dead
                     }
                 }),
-            });
+            ));
         }
     });
 }
@@ -385,9 +573,9 @@ where
         }
         let mut last: Option<T> = None;
         if let Some(mut reg) = world.get_resource_mut::<ReactionRegistry>() {
-            reg.0.push(ReactionEntry {
-                meta: EntryMeta::new(Some(target), "2way"),
-                f: Box::new(move |world: &mut World| {
+            reg.active.push(ReactionEntry::new(
+                EntryMeta::new(Some(target), "2way"),
+                Box::new(move |world: &mut World, _deps: &mut DepSet| {
                     if world.get_entity(target).is_err() {
                         return ReactionOutcome::Dead;
                     }
@@ -414,7 +602,7 @@ where
                         ReactionOutcome::Unchanged
                     }
                 }),
-            });
+            ));
         }
     });
 }
@@ -480,42 +668,107 @@ pub(crate) fn run_reactions(world: &mut World) {
         .map(|t| t.delta_secs())
         .unwrap_or(0.0);
 
+    let this_run = world.change_tick();
+
     world.resource_scope(|world, mut reg: Mut<ReactionRegistry>| {
         let mut changed = 0usize;
+        let mut skipped = 0usize;
         let mut total_us = 0.0f32;
-        let mut hidden_cache: HashMap<Entity, bool> = HashMap::default();
-        reg.0.retain_mut(|entry| {
-            // Skip bindings whose pane is a hidden dock tab — they're not on
-            // screen, so recomputing them is wasted frame time. (Raw reactions
-            // with no target entity can't be located, so they always run.)
+        let mut hidden_cache: HashMap<Entity, Option<Entity>> = HashMap::default();
+
+        // Bring back anything whose collapsed ancestor has reopened (or gone).
+        // Once a second, also sweep parked entries whose target died while
+        // hidden — see [`ReactionRegistry::unpark_revealed`].
+        let sweep_dead = {
+            let f = world
+                .get_resource::<ReactiveStats>()
+                .map(|s| s.frame)
+                .unwrap_or(0);
+            f.is_multiple_of(60)
+        };
+        reg.unpark_revealed(world, sweep_dead);
+
+        // Taken by value so entries can be *moved* into the parked map; a
+        // `retain_mut` only ever hands out `&mut`, which cannot express "this
+        // one leaves the active list but must not be dropped".
+        let mut previous = core::mem::take(&mut reg.active);
+        let mut next: Vec<ReactionEntry> = Vec::with_capacity(previous.len());
+        let mut newly_parked: Vec<(Entity, ReactionEntry)> = Vec::new();
+
+        for mut entry in previous.drain(..) {
             if let Some(target) = entry.meta.target {
-                if has_hidden_ancestor(world, target, &mut hidden_cache) {
-                    return true;
+                // Liveness FIRST, before either gate below.
+                //
+                // The only thing that reports `Dead` is the reaction closure,
+                // and both gates below keep the entry without calling it. So a
+                // binding whose target has been despawned but whose recorded
+                // dependencies happen to be clean would never be looked at
+                // again, and its entry would sit in this registry for the rest
+                // of the session.
+                //
+                // That is not a corner case. `dock::sync_panes` keeps exactly
+                // one pane alive per leaf and **despawns every inactive one**,
+                // rebuilding on activation — so closing a panel and merely
+                // switching tabs are the same event here, and both happen
+                // constantly. Without this check the registry would grow with
+                // every tab switch and never shrink, which is the one way a
+                // dependency gate can end up *costing* more than it saves.
+                if world.get_entity(target).is_err() {
+                    continue;
+                }
+                // Hidden behind a collapsed subtree: park it under whichever
+                // ancestor did the hiding and stop walking it altogether. It
+                // comes back when that ancestor reopens.
+                //
+                // Only *ancestors* count, never the node itself — a binding may
+                // toggle its own target's `Display` (`bind_display` does), and
+                // parking it on its own collapse would strand it hidden with
+                // nothing left to run and un-hide it.
+                if let Some(anchor) = collapsed_ancestor(world, target, &mut hidden_cache) {
+                    newly_parked.push((anchor, entry));
+                    continue;
                 }
             }
+            // The dependency gate: nothing this reaction read has moved, so its
+            // closure cannot produce a different value and there is no reason to
+            // run it. An untracked or not-yet-seeded reaction always reports
+            // dirty here, so this can only ever remove work — see [`rx`].
+            if !entry.deps.is_dirty(world, entry.last_run, this_run) {
+                entry.meta.record_skip();
+                skipped += 1;
+                next.push(entry);
+                continue;
+            }
             let t0 = Instant::now();
-            let outcome = (entry.f)(world);
+            let outcome = (entry.f)(world, &mut entry.deps);
+            entry.last_run = this_run;
             let us = t0.elapsed().as_secs_f32() * 1e6;
             match outcome {
-                ReactionOutcome::Dead => false,
+                ReactionOutcome::Dead => continue,
                 ReactionOutcome::Unchanged => {
                     entry.meta.record(us, false);
                     total_us += us;
-                    true
+                    next.push(entry);
                 }
                 ReactionOutcome::Changed => {
                     entry.meta.record(us, true);
                     changed += 1;
                     total_us += us;
-                    true
+                    next.push(entry);
                 }
             }
-        });
+        }
+        reg.active = next;
+        for (anchor, entry) in newly_parked {
+            reg.park(anchor, entry);
+        }
 
         world.resource_scope(|world, mut stats: Mut<ReactiveStats>| {
             stats.frame += 1;
-            stats.bindings_total = reg.0.len();
+            stats.bindings_total = reg.active_len();
+            stats.parked_total = reg.parked_len();
             stats.changed_this_frame = changed;
+            stats.skipped_this_frame = skipped;
             stats.reactions_us = total_us;
             // Keyed lists reset here, accumulate in run_keyed_lists (chained).
             stats.lists_us = 0.0;
@@ -543,7 +796,7 @@ fn roll_rate_windows(stats: &mut ReactiveStats, reg: &mut ReactionRegistry, dt: 
     if stats.window_elapsed >= 1.0 {
         let elapsed = stats.window_elapsed;
         let mut total = 0u32;
-        for entry in &mut reg.0 {
+        for entry in reg.iter_all_mut() {
             total += entry.meta.changes_window;
             entry.meta.roll_window(elapsed);
         }
@@ -567,32 +820,28 @@ fn reactivity_panel_open(world: &World) -> bool {
             .is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(PANEL)))
 }
 
+/// Reports cover **active bindings only**. A parked one is behind a collapsed
+/// subtree and costs nothing this frame, so listing it among the most expensive
+/// bindings would point the reader at work that is not happening.
 fn build_reports(world: &World, reg: &ReactionRegistry, stats: &mut ReactiveStats) {
-    let mut by_cost: Vec<usize> = (0..reg.0.len()).collect();
-    by_cost.sort_by(|&a, &b| {
-        reg.0[b]
-            .meta
-            .cost_ema_us
-            .total_cmp(&reg.0[a].meta.cost_ema_us)
-    });
+    let mut by_cost: Vec<&EntryMeta> = reg.active.iter().map(|e| &e.meta).collect();
+    by_cost.sort_by(|a, b| b.cost_ema_us.total_cmp(&a.cost_ema_us));
     stats.top_cost = by_cost
         .iter()
         .take(ReactiveStats::TOP_N)
-        .map(|&i| report_row(world, &reg.0[i].meta))
+        .map(|m| report_row(world, m))
         .collect();
 
-    let mut by_churn: Vec<usize> = (0..reg.0.len()).collect();
-    by_churn.sort_by(|&a, &b| {
-        let ma = &reg.0[a].meta;
-        let mb = &reg.0[b].meta;
-        mb.change_rate
-            .total_cmp(&ma.change_rate)
-            .then(mb.changes.cmp(&ma.changes))
+    let mut by_churn: Vec<&EntryMeta> = reg.active.iter().map(|e| &e.meta).collect();
+    by_churn.sort_by(|a, b| {
+        b.change_rate
+            .total_cmp(&a.change_rate)
+            .then(b.changes.cmp(&a.changes))
     });
     stats.top_churn = by_churn
         .iter()
         .take(ReactiveStats::TOP_N)
-        .map(|&i| report_row(world, &reg.0[i].meta))
+        .map(|m| report_row(world, m))
         .filter(|r| r.changes > 0)
         .collect();
 }
@@ -618,13 +867,23 @@ pub struct KeyedSnapshot {
     pub build: Box<dyn Fn(&mut Commands, &EmberFonts, usize) -> Entity + Send + Sync>,
 }
 
+/// Builds this frame's snapshot, recording into the out-param what it read.
+/// Untracked lists ignore the `DepSet` and so stay permanently dirty, which is
+/// today's behaviour — see [`rx`].
+type SnapshotFn = Box<dyn Fn(&World, &mut DepSet) -> KeyedSnapshot + Send + Sync>;
+
 struct KeyedList {
     container: Entity,
     /// key -> (content hash, child entity)
     current: HashMap<u64, (u64, Entity)>,
     /// `(key, hash)` in display order — for a cheap "nothing changed" check.
     order: Vec<(u64, u64)>,
-    snapshot: Box<dyn Fn(&World) -> KeyedSnapshot + Send + Sync>,
+    snapshot: SnapshotFn,
+    /// What the last snapshot read, and when it ran. Same gate the bindings
+    /// use, and a strictly better one than `token` where it applies: a keyed
+    /// list's snapshot is usually the most expensive closure in a panel.
+    deps: DepSet,
+    last_run: Tick,
     /// Optional cheap check run before the snapshot each frame. When it returns
     /// the same value as the previous frame, the snapshot is skipped — so a list
     /// whose snapshot is expensive to produce doesn't pay for it on frames where
@@ -633,6 +892,44 @@ struct KeyedList {
     last_token: Option<u64>,
     meta: EntryMeta,
     rows_rebuilt: u64,
+}
+
+impl KeyedList {
+    fn new(
+        container: Entity,
+        token: Option<Box<dyn Fn(&World) -> u64 + Send + Sync>>,
+        snapshot: SnapshotFn,
+        kind: &'static str,
+    ) -> Self {
+        Self {
+            container,
+            current: HashMap::default(),
+            order: Vec::new(),
+            snapshot,
+            deps: DepSet::default(),
+            last_run: Tick::new(0),
+            token,
+            last_token: None,
+            meta: EntryMeta::new(Some(container), kind),
+            rows_rebuilt: 0,
+        }
+    }
+
+    /// A list whose snapshot records its own dependencies — see
+    /// [`tracked::keyed_list`].
+    pub(crate) fn new_tracked(container: Entity, snapshot: SnapshotFn) -> Self {
+        Self::new(container, None, snapshot, "list*")
+    }
+
+    /// Tracked, plus the caller's own value-hash gate — see
+    /// [`tracked::keyed_list_tokened`].
+    pub(crate) fn new_tracked_tokened(
+        container: Entity,
+        token: Box<dyn Fn(&World) -> u64 + Send + Sync>,
+        snapshot: SnapshotFn,
+    ) -> Self {
+        Self::new(container, Some(token), snapshot, "list*")
+    }
 }
 
 #[derive(Resource, Default)]
@@ -694,16 +991,15 @@ fn register_keyed_list<F>(
         world
             .get_resource_or_insert_with(PendingKeyedLists::default)
             .0
-            .push(KeyedList {
+            .push(KeyedList::new(
                 container,
-                current: HashMap::default(),
-                order: Vec::new(),
-                snapshot: Box::new(snapshot),
                 token,
-                last_token: None,
-                meta: EntryMeta::new(Some(container), "list"),
-                rows_rebuilt: 0,
-            });
+                // Legacy snapshots take `&World` and cannot record anything, so
+                // the dep set stays empty and the list keeps running every
+                // frame — unchanged behaviour.
+                Box::new(move |world: &World, _deps: &mut DepSet| snapshot(world)),
+                "list",
+            ));
     });
 }
 
@@ -725,10 +1021,11 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
             .0
             .extend(pending);
     }
+    let this_run = world.change_tick();
     world.resource_scope(|world, mut reg: Mut<KeyedListRegistry>| {
         let mut total_us = 0.0f32;
         let mut rows_rebuilt = 0usize;
-        let mut hidden_cache: HashMap<Entity, bool> = HashMap::default();
+        let mut hidden_cache: HashMap<Entity, Option<Entity>> = HashMap::default();
         reg.0.retain_mut(|kl| {
             if world.get_entity(kl.container).is_err() {
                 return false;
@@ -737,7 +1034,16 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
             // backgrounded list (e.g. the asset browser hashing every file in a
             // folder each frame) stops costing anything until it's shown again,
             // where the snapshot re-runs and catches up.
-            if has_hidden_ancestor(world, kl.container, &mut hidden_cache) {
+            if collapsed_ancestor(world, kl.container, &mut hidden_cache).is_some() {
+                return true;
+            }
+            // Dependency gate, same as the bindings'. For a tracked list this
+            // replaces the hand-rolled `token`: the question the token exists to
+            // answer is "did anything the snapshot reads change", and that is
+            // exactly what the recorded dep set answers, without the caller
+            // having to keep a version counter honest.
+            if !kl.deps.is_dirty(world, kl.last_run, this_run) {
+                kl.meta.record_skip();
                 return true;
             }
             let t0 = Instant::now();
@@ -753,7 +1059,8 @@ pub(crate) fn run_keyed_lists(world: &mut World) {
                 }
                 kl.last_token = Some(tok);
             }
-            let snap = (kl.snapshot)(world);
+            let snap = (kl.snapshot)(world, &mut kl.deps);
+            kl.last_run = this_run;
             // Cheap fast-path: same keys + hashes in the same order → nothing to do.
             if snap.items == kl.order {
                 let us = t0.elapsed().as_secs_f32() * 1e6;

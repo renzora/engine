@@ -11,7 +11,8 @@ use bevy::ui::ComputedNode;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_with};
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_editor_framework::SplashState;
 
@@ -28,7 +29,7 @@ pub fn register(app: &mut App) {
     app.add_systems(Update, report_geometry.run_if(in_state(SplashState::Editor)));
 }
 
-fn previewing(w: &World) -> Option<Entity> {
+fn previewing(w: &Rx) -> Option<Entity> {
     w.get_resource::<CameraPreviewState>().and_then(|s| s.previewing)
 }
 

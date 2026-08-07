@@ -26,8 +26,10 @@ use renzora_animation::{
     AnimClip, AnimClipSlot, AnimatorComponent, AnimatorState,
 };
 use renzora_editor_framework::{EditorCommands, EditorSelection, SplashState};
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::{bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 
 use crate::AnimationEditorState;
@@ -86,26 +88,26 @@ fn selected_model_path(w: &World) -> Option<String> {
 
 /// Whether the "Scan for clips" action applies: a selected entity with a model
 /// but no clip slots yet.
-pub fn can_scan_clips(w: &World) -> bool {
-    let Some(e) = selected_entity(w) else {
+pub fn can_scan_clips(w: &Rx) -> bool {
+    let Some(e) = selected_entity(w.untracked()) else {
         return false;
     };
-    selected_model_path(w).is_some()
+    selected_model_path(w.untracked()).is_some()
         && w.get::<AnimatorComponent>(e).is_none_or(|a| a.clips.is_empty())
 }
 
 /// Whether the "Create State Machine" action applies: an animator with clips
 /// but no `.animsm` assigned.
-pub fn can_create_sm(w: &World) -> bool {
-    selected_entity(w)
+pub fn can_create_sm(w: &Rx) -> bool {
+    selected_entity(w.untracked())
         .and_then(|e| w.get::<AnimatorComponent>(e))
         .is_some_and(|a| !a.clips.is_empty() && a.state_machine.is_none())
 }
 
 /// Whether the "Create Animation" action applies: a selected entity with no
 /// clip slots (no animator, or an animator that has none yet).
-pub fn can_create_anim(w: &World) -> bool {
-    let Some(e) = selected_entity(w) else {
+pub fn can_create_anim(w: &Rx) -> bool {
+    let Some(e) = selected_entity(w.untracked()) else {
         return false;
     };
     w.get::<AnimatorComponent>(e).is_none_or(|a| a.clips.is_empty())
@@ -174,10 +176,10 @@ pub fn feedback_label(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_text(commands, lbl, |w| {
-        feedback_message(w).map(|(m, _)| m).unwrap_or_default()
+        feedback_message(w.untracked()).map(|(m, _)| m).unwrap_or_default()
     });
     bind_text_color(commands, lbl, |w| {
-        let err = feedback_message(w).is_some_and(|(_, e)| e);
+        let err = feedback_message(w.untracked()).is_some_and(|(_, e)| e);
         rgb(if err { (220, 150, 100) } else { (120, 200, 120) })
     });
     lbl
@@ -234,8 +236,8 @@ fn collect_candidates(world: &World) -> Vec<(Entity, String, bool, usize)> {
     rows
 }
 
-fn candidates_snapshot(world: &World) -> KeyedSnapshot {
-    let rows = collect_candidates(world);
+fn candidates_snapshot(world: &Rx) -> KeyedSnapshot {
+    let rows = collect_candidates(world.untracked());
     let items: Vec<(u64, u64)> = rows
         .iter()
         .map(|(entity, name, has_animator, clips)| {

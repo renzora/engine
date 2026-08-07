@@ -15,6 +15,7 @@ use bevy::diagnostic::{
     EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin, SystemInformationDiagnosticsPlugin,
 };
 use bevy::prelude::*;
+use renzora_ember::reactive::Rx;
 
 use state::*;
 
@@ -290,7 +291,7 @@ fn build_stats_refresh_section(
     col
 }
 
-fn read_flag(world: &World, pick: fn(&renzora::StatsRefreshSettings) -> bool) -> bool {
+fn read_flag(world: &Rx, pick: fn(&renzora::StatsRefreshSettings) -> bool) -> bool {
     world
         .get_resource::<renzora::StatsRefreshSettings>()
         .map(pick)
@@ -345,7 +346,7 @@ fn toggle_row<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> bool + Send + Sync + 'static,
+    G: Fn(&Rx) -> bool + Send + Sync + 'static,
     S: Fn(&mut World, &bool) + Send + Sync + 'static,
 {
     let row = commands
@@ -366,7 +367,7 @@ where
         ))
         .id();
     let sw = renzora_ember::widgets::toggle_switch(commands, true);
-    renzora_ember::reactive::bind_2way(commands, sw, get, set);
+    renzora_ember::reactive::tracked::bind_2way(commands, sw, get, set);
     commands.entity(row).add_children(&[lbl, sw]);
     row
 }
@@ -412,7 +413,7 @@ fn refresh_row<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let row = commands
@@ -444,7 +445,7 @@ where
     commands
         .entity(dv)
         .insert(renzora_ember::widgets::DragRange { min, max });
-    renzora_ember::reactive::bind_2way(commands, dv, get, set);
+    renzora_ember::reactive::tracked::bind_2way(commands, dv, get, set);
     commands.entity(row).add_children(&[lbl, dv]);
     row
 }

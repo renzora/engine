@@ -11,6 +11,7 @@ use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 use bevy::window::SystemCursorIcon;
 
+use crate::reactive::Rx;
 use crate::theme::*;
 
 pub(crate) struct ColorPickerPlugin;
@@ -258,7 +259,7 @@ use bevy::color::{Hsva, Srgba};
 pub fn bind_hsv_picker(
     commands: &mut Commands,
     picker: Entity,
-    get: impl Fn(&World) -> [f32; 3] + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> [f32; 3] + Send + Sync + 'static,
     set: impl Fn(&mut World, [f32; 3]) + Send + Sync + 'static,
 ) {
     let mut last: Option<[f32; 3]> = None;
@@ -272,7 +273,7 @@ pub fn bind_hsv_picker(
             return true;
         };
         let rgb_picker = hsv01_to_rgb(h, s, v);
-        let rgb_state = get(world);
+        let rgb_state = get(&Rx::new(&*world));
         match last {
             None => {
                 apply_rgb_to_picker(world, picker, rgb_state);

@@ -33,7 +33,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::settings_sections::RegisterSettingsSection;
-use renzora_ember::reactive::Bound;
+use renzora_ember::reactive::{Bound, Rx};
 use renzora_ember::widgets::EmberTextInput;
 use renzora_plugin::host::PluginPanels;
 use renzora_plugin::sys;
@@ -554,7 +554,7 @@ fn apply_bindings(world: &mut World) {
         {
             let mut commands = Commands::new(&mut queue, world);
             for binding in &bindings {
-                match resolve(world, &binding.target) {
+                match resolve(&Rx::new(&*world), &binding.target) {
                     Ok(field) => bind_field(&mut commands, widget, field),
                     Err(why) => error!(
                         "[plugin] panel binding `{}` on {}.{}: {why}",
@@ -583,7 +583,7 @@ struct BoundField {
 /// plugin's state — the same failure the panel-index bug had. The message names
 /// the candidates, and qualifying with the crate (`bind(flock::FlockSettings.x)`)
 /// resolves it, since the full type path is matched too.
-fn resolve(world: &World, target: &str) -> Result<BoundField, String> {
+fn resolve(world: &Rx, target: &str) -> Result<BoundField, String> {
     let (type_name, field_name) = target
         .rsplit_once('.')
         .ok_or_else(|| "expected `Resource.field`".to_string())?;
@@ -649,26 +649,26 @@ fn resolve(world: &World, target: &str) -> Result<BoundField, String> {
 fn bind_field(commands: &mut Commands, widget: Entity, field: BoundField) {
     let BoundField { resource, offset, kind } = field;
     match kind {
-        sys::FieldKind::F32 => renzora_ember::reactive::bind_2way(
+        sys::FieldKind::F32 => renzora_ember::reactive::tracked::bind_2way(
             commands,
             widget,
-            move |w: &World| super::plugin_resources::read_f32(w, resource, offset),
+            move |rx: &Rx| super::plugin_resources::tracked_read(rx, resource, offset, super::plugin_resources::read_f32),
             move |w: &mut World, v: &f32| {
                 super::plugin_resources::write_f32(w, resource, offset, *v)
             },
         ),
-        sys::FieldKind::Bool => renzora_ember::reactive::bind_2way(
+        sys::FieldKind::Bool => renzora_ember::reactive::tracked::bind_2way(
             commands,
             widget,
-            move |w: &World| super::plugin_resources::read_bool(w, resource, offset),
+            move |rx: &Rx| super::plugin_resources::tracked_read(rx, resource, offset, super::plugin_resources::read_bool),
             move |w: &mut World, v: &bool| {
                 super::plugin_resources::write_bool(w, resource, offset, *v)
             },
         ),
-        sys::FieldKind::I32 => renzora_ember::reactive::bind_2way(
+        sys::FieldKind::I32 => renzora_ember::reactive::tracked::bind_2way(
             commands,
             widget,
-            move |w: &World| super::plugin_resources::read_i32(w, resource, offset) as f32,
+            move |rx: &Rx| super::plugin_resources::tracked_read(rx, resource, offset, super::plugin_resources::read_i32) as f32,
             move |w: &mut World, v: &f32| {
                 super::plugin_resources::write_i32(w, resource, offset, v.round() as i32)
             },

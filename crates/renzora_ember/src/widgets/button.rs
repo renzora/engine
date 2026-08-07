@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
+use crate::reactive::Rx;
 use crate::font::{icon_text, ui_font, EmberFonts};
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
@@ -119,7 +120,7 @@ pub fn icon_label_button_collapsing<F>(
     compact: F,
 ) -> Entity
 where
-    F: Fn(&World) -> bool + Clone + Send + Sync + 'static,
+    F: Fn(&Rx) -> bool + Clone + Send + Sync + 'static,
 {
     let (btn, _ic, text) = icon_label_button_parts(commands, fonts, icon, label);
     // This button drives its own padding below (square when collapsed), so the
@@ -128,9 +129,9 @@ where
     // cursor touched the button, and never came back.
     commands.entity(btn).insert(crate::style::StyleOwnsPadding);
     let hidden = compact.clone();
-    crate::reactive::bind_display(commands, text, move |w| !hidden(w));
+    crate::reactive::tracked::bind_display(commands, text, move |w| !hidden(w));
     let label = label.to_string();
-    crate::reactive::bind_with(commands, btn, compact, move |w, e, compact: &bool| {
+    crate::reactive::tracked::bind_with(commands, btn, compact, move |w, e, compact: &bool| {
         if let Some(mut n) = w.get_mut::<Node>(e) {
             // Even padding + a square footprint in the collapsed form, so it
             // reads as a key rather than a label-less pill.

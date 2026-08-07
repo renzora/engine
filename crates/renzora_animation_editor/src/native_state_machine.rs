@@ -28,12 +28,12 @@ use renzora_animation::{
     AnimatorComponent,
 };
 use renzora_editor_framework::{EditorCommands, SplashState};
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, drag_value, menu_item, screen_menu, text_input, DragRange,
@@ -125,38 +125,38 @@ struct CondKindCombo(usize);
 
 // ── Accessors ────────────────────────────────────────────────────────────────
 
-fn editor_state(w: &World) -> Option<&AnimationEditorState> {
+fn editor_state<'w>(w: &Rx<'w>) -> Option<&'w AnimationEditorState> {
     w.get_resource::<AnimationEditorState>()
 }
 
-fn selected_entity(w: &World) -> Option<Entity> {
+fn selected_entity(w: &Rx) -> Option<Entity> {
     editor_state(w)?.selected_entity
 }
 
-fn animator(w: &World) -> Option<&AnimatorComponent> {
+fn animator<'w>(w: &Rx<'w>) -> Option<&'w AnimatorComponent> {
     let e = selected_entity(w)?;
     w.get::<AnimatorComponent>(e)
 }
 
-fn sm(w: &World) -> Option<&SmEditorState> {
+fn sm<'w>(w: &Rx<'w>) -> Option<&'w SmEditorState> {
     w.get_resource::<SmEditorState>()
 }
 
 /// Whether the selected entity has an animator with an `.animsm` path assigned —
 /// gates the editor body vs the empty-state note (mirrors the egui guard chain).
-fn ready(w: &World) -> bool {
-    selected_entity(w).is_some()
-        && animator(w).is_some()
-        && animator(w).is_some_and(|a| a.state_machine.is_some())
-        && project_root(w).is_some()
+fn ready(w: &Rx) -> bool {
+    selected_entity(&Rx::new(w.untracked())).is_some()
+        && animator(&Rx::new(w.untracked())).is_some()
+        && animator(&Rx::new(w.untracked())).is_some_and(|a| a.state_machine.is_some())
+        && project_root(&Rx::new(w.untracked())).is_some()
 }
 
-fn project_root(w: &World) -> Option<PathBuf> {
+fn project_root(w: &Rx) -> Option<PathBuf> {
     w.get_resource::<renzora::CurrentProject>().map(|p| p.path.clone())
 }
 
-fn empty_msg(w: &World) -> String {
-    match selected_entity(w) {
+fn empty_msg(w: &Rx) -> String {
+    match selected_entity(&Rx::new(w.untracked())) {
         None => renzora::lang::t("animation.select_animated_entity"),
         Some(e) => match w.get::<AnimatorComponent>(e) {
             None => renzora::lang::t("animation.no_animator"),
@@ -166,7 +166,7 @@ fn empty_msg(w: &World) -> String {
             Some(a) if a.state_machine.is_none() => {
                 renzora::lang::t("animation.sm_description")
             }
-            Some(_) if project_root(w).is_none() => renzora::lang::t("animation.no_project_open"),
+            Some(_) if project_root(&Rx::new(w.untracked())).is_none() => renzora::lang::t("animation.no_project_open"),
             Some(_) => String::new(),
         },
     }
@@ -223,7 +223,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands
         .entity(note)
         .add_children(&[note_ic, note_lbl, create_btn, feedback]);
-    bind_display(commands, note, |w| !ready(w));
+    bind_display(commands, note, |w| !ready(&Rx::new(w.untracked())));
 
     // Editor body.
     let body = commands
@@ -293,12 +293,12 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_text(commands, path_lbl, |w| {
-        animator(w)
+        animator(&Rx::new(w.untracked()))
             .and_then(|a| a.state_machine.clone())
             .unwrap_or_else(|| renzora::lang::t("animation.no_animsm_assigned"))
     });
     bind_text_color(commands, path_lbl, |w| {
-        let has = animator(w).is_some_and(|a| a.state_machine.is_some());
+        let has = animator(&Rx::new(w.untracked())).is_some_and(|a| a.state_machine.is_some());
         rgb(if has { text_primary() } else { text_muted() })
     });
 
@@ -337,8 +337,8 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     frame
 }
 
-fn dirty_color(w: &World) -> Color {
-    let dirty = sm(w).is_some_and(|s| s.dirty);
+fn dirty_color(w: &Rx) -> Color {
+    let dirty = sm(&Rx::new(w.untracked())).is_some_and(|s| s.dirty);
     rgb(if dirty { accent() } else { text_muted() })
 }
 
@@ -352,10 +352,10 @@ fn build_error_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     bind_text(commands, lbl, |w| {
-        sm(w).and_then(|s| s.error.clone()).unwrap_or_default()
+        sm(&Rx::new(w.untracked())).and_then(|s| s.error.clone()).unwrap_or_default()
     });
     bind_display(commands, lbl, |w| {
-        sm(w).is_some_and(|s| s.error.is_some())
+        sm(&Rx::new(w.untracked())).is_some_and(|s| s.error.is_some())
     });
     lbl
 }
@@ -389,8 +389,8 @@ fn build_states_column(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     col
 }
 
-fn states_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(state) = sm(world) else {
+fn states_snapshot(world: &Rx) -> KeyedSnapshot {
+    let Some(state) = sm(&Rx::new(world.untracked())) else {
         return empty();
     };
     // (name, default?) keyed on structure: index + name + is_default.
@@ -463,7 +463,7 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
     {
         let i = idx;
         bind_text_color(commands, star_ic, move |w| {
-            let is_def = sm(w).is_some_and(|s| {
+            let is_def = sm(&Rx::new(w.untracked())).is_some_and(|s| {
                 s.sm
                     .states
                     .get(i)
@@ -475,11 +475,11 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
     // Resolve the star's target name reactively (state names can be renamed).
     {
         let i = idx;
-        renzora_ember::reactive::bind_with(
+        renzora_ember::reactive::tracked::bind_with(
             commands,
             star,
             move |w| {
-                sm(w)
+                sm(&Rx::new(w.untracked()))
                     .and_then(|s| s.sm.states.get(i))
                     .map(|st| st.name.clone())
                     .unwrap_or_default()
@@ -510,7 +510,7 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
         {
             let i = idx;
             move |w| {
-                sm(w)
+                sm(&Rx::new(w.untracked()))
                     .and_then(|s| s.sm.states.get(i))
                     .map(|st| st.name.clone())
                     .unwrap_or_default()
@@ -528,7 +528,7 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
     let clip_combo = combo_box(commands, fonts, StateClipCombo(idx), {
         let i = idx;
         move |w| {
-            sm(w)
+            sm(&Rx::new(w.untracked()))
                 .and_then(|s| s.sm.states.get(i))
                 .map(|st| match &st.motion {
                     StateMotion::Clip(n) | StateMotion::BlendTree(n) => n.clone(),
@@ -563,7 +563,7 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
         speed_dv,
         {
             let i = idx;
-            move |w| sm(w).and_then(|s| s.sm.states.get(i)).map(|st| st.speed).unwrap_or(1.0)
+            move |w| sm(&Rx::new(w.untracked())).and_then(|s| s.sm.states.get(i)).map(|st| st.speed).unwrap_or(1.0)
         },
         {
             let i = idx;
@@ -579,7 +579,7 @@ fn state_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> Entity 
         loop_cb,
         {
             let i = idx;
-            move |w| sm(w).and_then(|s| s.sm.states.get(i)).map(|st| st.looping).unwrap_or(true)
+            move |w| sm(&Rx::new(w.untracked())).and_then(|s| s.sm.states.get(i)).map(|st| st.looping).unwrap_or(true)
         },
         {
             let i = idx;
@@ -613,7 +613,7 @@ fn build_transitions_column(commands: &mut Commands, fonts: &EmberFonts) -> Enti
     let heading = section_heading(commands, fonts, &renzora::lang::t("animation.transitions"));
     // Add enabled only when there is at least one state.
     let add = add_button(commands, fonts, &renzora::lang::t("animation.add_transition"), AddTransitionBtn, |w| {
-        sm(w).is_some_and(|s| !s.sm.states.is_empty())
+        sm(&Rx::new(w)).is_some_and(|s| !s.sm.states.is_empty())
     });
 
     let list = commands
@@ -630,8 +630,8 @@ fn build_transitions_column(commands: &mut Commands, fonts: &EmberFonts) -> Enti
     col
 }
 
-fn transitions_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(state) = sm(world) else {
+fn transitions_snapshot(world: &Rx) -> KeyedSnapshot {
+    let Some(state) = sm(&Rx::new(world.untracked())) else {
         return empty();
     };
     // Key on index + condition discriminant so swapping the condition *kind*
@@ -693,7 +693,7 @@ fn transition_row(
     let from = combo_box(commands, fonts, TransFromCombo(idx), {
         let i = idx;
         move |w| {
-            sm(w)
+            sm(&Rx::new(w.untracked()))
                 .and_then(|s| s.sm.transitions.get(i))
                 .map(|t| t.from.clone())
                 .unwrap_or_default()
@@ -703,7 +703,7 @@ fn transition_row(
     let to = combo_box(commands, fonts, TransToCombo(idx), {
         let i = idx;
         move |w| {
-            sm(w)
+            sm(&Rx::new(w.untracked()))
                 .and_then(|s| s.sm.transitions.get(i))
                 .map(|t| t.to.clone())
                 .unwrap_or_default()
@@ -736,7 +736,7 @@ fn transition_row(
         {
             let i = idx;
             move |w| {
-                sm(w)
+                sm(&Rx::new(w.untracked()))
                     .and_then(|s| s.sm.transitions.get(i))
                     .map(|t| t.blend_duration)
                     .unwrap_or(0.2)
@@ -768,7 +768,7 @@ fn transition_row(
     let kind_combo = combo_box(commands, fonts, CondKindCombo(idx), {
         let i = idx;
         move |w| {
-            sm(w)
+            sm(&Rx::new(w.untracked()))
                 .and_then(|s| s.sm.transitions.get(i))
                 .map(|t| cond_label_tr(cond_kind_label(&t.condition)))
                 .unwrap_or_default()
@@ -800,7 +800,7 @@ fn condition_param_widgets(
                 dv,
                 {
                     let i = idx;
-                    move |w| cond_float(w, i)
+                    move |w| cond_float(&Rx::new(w.untracked()), i)
                 },
                 {
                     let i = idx;
@@ -823,7 +823,7 @@ fn condition_param_widgets(
                 dv,
                 {
                     let i = idx;
-                    move |w| cond_float(w, i)
+                    move |w| cond_float(&Rx::new(w.untracked()), i)
                 },
                 {
                     let i = idx;
@@ -856,7 +856,7 @@ fn cond_param_input(commands: &mut Commands, fonts: &EmberFonts, idx: usize) -> 
         input,
         {
             let i = idx;
-            move |w| cond_param_name(w, i)
+            move |w| cond_param_name(&Rx::new(w.untracked()), i)
         },
         {
             let i = idx;
@@ -923,10 +923,10 @@ fn add_button(
         ))
         .id();
     bind_text_color(commands, ic, move |w| {
-        rgb(if enabled(w) { accent() } else { text_muted() })
+        rgb(if enabled(w.untracked()) { accent() } else { text_muted() })
     });
     bind_text_color(commands, lbl, move |w| {
-        rgb(if enabled(w) { accent() } else { text_muted() })
+        rgb(if enabled(w.untracked()) { accent() } else { text_muted() })
     });
     commands.entity(btn).add_children(&[ic, lbl]);
     btn
@@ -960,7 +960,7 @@ fn combo_box(
     commands: &mut Commands,
     fonts: &EmberFonts,
     marker: impl Component,
-    get: impl Fn(&World) -> String + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> String + Send + Sync + 'static,
 ) -> Entity {
     let combo = commands
         .spawn((
@@ -1082,7 +1082,7 @@ fn shape_of(discriminant: u8) -> CondShape {
     }
 }
 
-fn cond_param_name(w: &World, idx: usize) -> String {
+fn cond_param_name(w: &Rx, idx: usize) -> String {
     sm(w)
         .and_then(|s| s.sm.transitions.get(idx))
         .map(|t| match &t.condition {
@@ -1096,7 +1096,7 @@ fn cond_param_name(w: &World, idx: usize) -> String {
         .unwrap_or_default()
 }
 
-fn cond_float(w: &World, idx: usize) -> f32 {
+fn cond_float(w: &Rx, idx: usize) -> f32 {
     sm(w)
         .and_then(|s| s.sm.transitions.get(idx))
         .map(|t| match &t.condition {

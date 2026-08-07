@@ -30,7 +30,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_row;
-use renzora_ember::reactive::bind_2way;
+use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::settings_sections::RegisterSettingsSection;
 use renzora_ember::theme::{rgb, text_muted};
 use renzora_ember::widgets::toggle_switch;

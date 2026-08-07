@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::reactive::{bind_bg, bind_with};
+use crate::reactive::tracked::{bind_bg, bind_with};
 use crate::style::Theme;
 use crate::theme::{rgb, text_primary};
 

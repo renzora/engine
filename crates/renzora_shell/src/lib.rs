@@ -6,6 +6,7 @@
 //! supplies the layout, the dock area, and editor-specific behavior.
 
 use bevy::prelude::*;
+use renzora_ember::reactive::Rx;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
 
 use renzora::NativePanelIds;
@@ -898,7 +899,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
                 Name::new("play-target-option"),
             ))
             .id();
-        renzora_ember::reactive::bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
+        renzora_ember::reactive::tracked::bind_bg(commands, row, move |w| match w.get::<Interaction>(row) {
             Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
                 rgb(renzora_ember::theme::hover_bg())
             }
@@ -940,7 +941,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
             Name::new("play-target-caret"),
         ))
         .id();
-    renzora_ember::reactive::bind_bg(commands, trigger, move |w| {
+    renzora_ember::reactive::tracked::bind_bg(commands, trigger, move |w| {
         match w.get::<Interaction>(trigger) {
             Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
                 Color::srgba(1.0, 1.0, 1.0, 0.09)
@@ -1730,6 +1731,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("lumen_diag", "Lumen Diag", "lightbulb", "Debug"),
     ("scripting_diag", "Scripting Diag", "bug", "Debug"),
     ("ui_reactivity", "UI Reactivity", "lightning", "Debug"),
+    ("ui_layout", "UI Layout", "layout", "Debug"),
     // Plugins
     ("plugin_resources", "Plugin Resources", "puzzle-piece", "Tools"),
 ];
@@ -2677,7 +2679,7 @@ fn build_resize_zones(commands: &mut Commands) -> Vec<Entity> {
                 ))
                 .id();
             // Resizing makes no sense while maximized — hide the grips then.
-            renzora_ember::reactive::bind_display(commands, id, |w| {
+            renzora_ember::reactive::tracked::bind_display(commands, id, |w| {
                 !w.get_resource::<WindowActionQueue>().map(|q| q.maximized).unwrap_or(false)
             });
             id
@@ -2987,7 +2989,7 @@ fn build_status_bar(
             Name::new("status-left"),
         ))
         .id();
-    renzora_ember::reactive::keyed_list(commands, left_content, status_snapshot_left);
+    renzora_ember::reactive::tracked::keyed_list(commands, left_content, status_snapshot_left);
 
     // The language + theme dropups — fixed elements on the right, before metrics.
     let lang_picker = language_dropup(commands, fonts);
@@ -3005,7 +3007,7 @@ fn build_status_bar(
             Name::new("status-right"),
         ))
         .id();
-    renzora_ember::reactive::keyed_list(commands, right_content, status_snapshot_right);
+    renzora_ember::reactive::tracked::keyed_list(commands, right_content, status_snapshot_right);
 
     commands.entity(bar).add_children(&[left_content, lang_picker, dropup, right_content]);
     bar
@@ -3226,14 +3228,14 @@ enum StatusRow {
 
 /// Status segments for one alignment, as keyed rows (each item's `render` is
 /// recomputed every frame).
-fn status_rows(world: &World, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
+fn status_rows(world: &Rx, align: renzora::ShellStatusAlign) -> Vec<StatusRow> {
     let mut rows: Vec<StatusRow> = Vec::new();
     if let Some(reg) = world.get_resource::<renzora::ShellStatusRegistry>() {
         let mut items: Vec<&renzora::ShellStatusItem> =
             reg.items.iter().filter(|i| i.align == align).collect();
         items.sort_by_key(|i| i.order);
         for it in items {
-            rows.extend((it.render)(world).into_iter().map(StatusRow::Seg));
+            rows.extend((it.render)(world.untracked()).into_iter().map(StatusRow::Seg));
         }
     }
     rows
@@ -3264,7 +3266,7 @@ fn rows_snapshot(rows: Vec<StatusRow>) -> renzora_ember::reactive::KeyedSnapshot
 
 /// Left side: a Ready label + left-aligned status items. A plugin can swap the
 /// "Ready" text via [`renzora::ShellReadyStatus`] (e.g. the auto-save countdown).
-fn status_snapshot_left(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+fn status_snapshot_left(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     let (label, color) = world
         .get_resource::<renzora::ShellReadyStatus>()
         .and_then(|r| r.label.clone().map(|t| (t, r.color)))
@@ -3276,7 +3278,7 @@ fn status_snapshot_left(world: &World) -> renzora_ember::reactive::KeyedSnapshot
 }
 
 /// Right side: the right-aligned metrics.
-fn status_snapshot_right(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+fn status_snapshot_right(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     rows_snapshot(status_rows(world, renzora::ShellStatusAlign::Right))
 }
 
@@ -3405,7 +3407,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
             Name::new("ribbon"),
         ))
         .id();
-    renzora_ember::reactive::keyed_list(commands, ribbon, ribbon_snapshot);
+    renzora_ember::reactive::tracked::keyed_list(commands, ribbon, ribbon_snapshot);
     let add = commands
         .spawn((
             Node {
@@ -3505,7 +3507,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
 
         // Hover fill on the button: minimize/maximize get a faint wash; close
         // goes the standard Windows close-red.
-        renzora_ember::reactive::bind_bg(commands, btn, move |w| match w.get::<Interaction>(btn) {
+        renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| match w.get::<Interaction>(btn) {
             Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
                 if is_close {
                     Color::srgb_u8(232, 17, 35)
@@ -3517,7 +3519,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
         });
         // Glyph color tracks the parent button's hover: the close × turns white
         // on its red fill; the other two brighten from muted to primary.
-        renzora_ember::reactive::bind_text_color(commands, g, move |w| {
+        renzora_ember::reactive::tracked::bind_text_color(commands, g, move |w| {
             match w.get::<Interaction>(btn) {
                 Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
                     if is_close {
@@ -3628,7 +3630,7 @@ fn ribbon_item(
 /// Keyed snapshot of the workspace ribbon (one button per `ShellLayouts` entry;
 /// the content hash carries the active flag so switching repaints just the two
 /// affected buttons).
-fn ribbon_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+fn ribbon_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let empty = || renzora_ember::reactive::KeyedSnapshot {
         items: Vec::new(),
@@ -3728,7 +3730,7 @@ fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> En
             Name::new("doc-tab-list"),
         ))
         .id();
-    renzora_ember::reactive::keyed_list(commands, tabs, doc_tab_snapshot);
+    renzora_ember::reactive::tracked::keyed_list(commands, tabs, doc_tab_snapshot);
 
     // "+" — add a new document (scene) tab.
     let plus = commands
@@ -3763,7 +3765,7 @@ struct DocTabClose(u64);
 
 /// Keyed snapshot of the open document tabs (id-keyed; the content hash carries
 /// active/modified state so a tab repaints only when it actually changes).
-fn doc_tab_snapshot(world: &World) -> renzora_ember::reactive::KeyedSnapshot {
+fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let empty = || renzora_ember::reactive::KeyedSnapshot {
         items: Vec::new(),
@@ -4192,7 +4194,7 @@ fn top_menu_item(
             Name::new(format!("menu:{name_id}")),
         ))
         .id();
-    renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
+    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
         Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
@@ -4226,7 +4228,7 @@ fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> 
             Name::new("menu:account"),
         ))
         .id();
-    renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
+    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
         Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
@@ -4238,7 +4240,7 @@ fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> 
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    renzora_ember::reactive::bind_text(commands, label, |w| {
+    renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
         w.get_resource::<renzora::core::AuthBridge>()
             .and_then(|b| b.signed_in_username.clone())
             .unwrap_or_else(|| renzora::lang::t("auth.sign_in"))
@@ -4272,11 +4274,11 @@ fn notification_bell_item(commands: &mut Commands, font: &bevy::text::FontSource
             Name::new("menu:notifications"),
         ))
         .id();
-    renzora_ember::reactive::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
+    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
         Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
-    renzora_ember::reactive::bind_display(commands, item, |w| {
+    renzora_ember::reactive::tracked::bind_display(commands, item, |w| {
         let enabled = w
             .get_resource::<renzora::core::SocialBridge>()
             .map(|b| b.notify_button_enabled)
@@ -4296,7 +4298,7 @@ fn notification_bell_item(commands: &mut Commands, font: &bevy::text::FontSource
             bevy::ui::FocusPolicy::Pass,
         ))
         .id();
-    renzora_ember::reactive::bind_text(commands, count, |w| {
+    renzora_ember::reactive::tracked::bind_text(commands, count, |w| {
         let n = w
             .get_resource::<renzora::core::SocialBridge>()
             .map(|b| b.unread_notifications)
@@ -4304,7 +4306,7 @@ fn notification_bell_item(commands: &mut Commands, font: &bevy::text::FontSource
         if n > 0 { n.to_string() } else { String::new() }
     });
     // Hide the count entirely at zero so the button doesn't reserve gap space.
-    renzora_ember::reactive::bind_display(commands, count, |w| {
+    renzora_ember::reactive::tracked::bind_display(commands, count, |w| {
         w.get_resource::<renzora::core::SocialBridge>()
             .map(|b| b.unread_notifications > 0)
             .unwrap_or(false)

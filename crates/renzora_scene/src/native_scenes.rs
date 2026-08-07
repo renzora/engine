@@ -10,7 +10,9 @@ use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{icon_label_button, menu_item, menu_item_styled, menu_sep, screen_menu};
 use renzora_editor_framework::{EditorCommands, SplashState};
@@ -48,12 +50,12 @@ struct SceneRow {
 
 // ── Scene path helpers (project-relative resolution) ─────────────────────────
 
-fn scenes_dir(w: &World) -> Option<PathBuf> {
+fn scenes_dir(w: &Rx) -> Option<PathBuf> {
     w.get_resource::<CurrentProject>().map(|p| p.resolve_path("scenes"))
 }
 
 /// Abs path of the scene the active document tab points at.
-fn current_scene_abs(w: &World) -> Option<PathBuf> {
+fn current_scene_abs(w: &Rx) -> Option<PathBuf> {
     let project = w.get_resource::<CurrentProject>()?;
     let tabs = w.get_resource::<renzora_ui::DocumentTabState>()?;
     tabs.tabs
@@ -62,7 +64,7 @@ fn current_scene_abs(w: &World) -> Option<PathBuf> {
         .map(|p| project.resolve_path(p))
 }
 
-fn boot_scene_abs(w: &World) -> Option<PathBuf> {
+fn boot_scene_abs(w: &Rx) -> Option<PathBuf> {
     let project = w.get_resource::<CurrentProject>()?;
     if project.config.main_scene.is_empty() {
         None
@@ -71,11 +73,11 @@ fn boot_scene_abs(w: &World) -> Option<PathBuf> {
     }
 }
 
-fn is_current(w: &World, path: &std::path::Path) -> bool {
+fn is_current(w: &Rx, path: &std::path::Path) -> bool {
     current_scene_abs(w).map(|c| paths_equal(&c, path)).unwrap_or(false)
 }
 
-fn is_boot(w: &World, path: &std::path::Path) -> bool {
+fn is_boot(w: &Rx, path: &std::path::Path) -> bool {
     boot_scene_abs(w).map(|c| paths_equal(&c, path)).unwrap_or(false)
 }
 
@@ -124,7 +126,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn scenes_snapshot(world: &World) -> KeyedSnapshot {
+fn scenes_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(dir) = scenes_dir(world) else {
         return note_snapshot("No project open.");
     };

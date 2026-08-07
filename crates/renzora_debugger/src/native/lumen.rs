@@ -8,7 +8,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 
 use crate::panels::lumen::{LumenCameraEntry, LumenDiagState};
@@ -22,7 +24,7 @@ pub(super) fn register_lumen(app: &mut App) {
     app.register_panel_content("lumen_diag", true, build_lumen);
 }
 
-fn lumen<R: Default>(w: &World, f: impl FnOnce(&LumenDiagState) -> R) -> R {
+fn lumen<R: Default>(w: &Rx, f: impl FnOnce(&LumenDiagState) -> R) -> R {
     w.get_resource::<LumenDiagState>().map(f).unwrap_or_default()
 }
 
@@ -75,7 +77,7 @@ fn saturated(s: &LumenDiagState) -> bool {
 /// A `label …… value` row (label left, mono value right-aligned).
 fn stat_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -206,7 +208,7 @@ fn build_lumen(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn cameras_snapshot(world: &World) -> KeyedSnapshot {
+fn cameras_snapshot(world: &Rx) -> KeyedSnapshot {
     let cams = lumen(world, |s| s.cameras.clone());
     if cams.is_empty() {
         return KeyedSnapshot {

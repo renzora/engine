@@ -98,13 +98,18 @@ The `bevy_dylib` sharing still applies to *distribution* plugins, which is why
   exactly. Mirror CI's exclude list from `.github/workflows/test.yml` (notably
   `polyanya`), and don't add `--all-targets` — CI doesn't, and the extra test
   targets pull in vendored crates CI never lints.
-- ❌ **`cargo test` does NOT link natively on Windows.** The test harness pushes
-  the `renzora` dylib's export count to ~875k against the PE format's 65,535
-  ceiling and rust-lld hard-errors (`too many exported symbols`). Verified
-  2026-07 on the pinned 1.95.0 toolchain — not a stale claim, and not fixable by
-  tweaking flags. **Run tests with `renzora test`** (the Linux container has no
-  PE export table, so the cap does not exist there). This is the one everyday
-  task that still wants a container on Windows.
+- ✅ **`cargo test -p <crate>` links and runs natively on Windows.** This used to
+  be false: the test harness pushed the `renzora` dylib's export count to ~875k
+  against the PE format's 65,535 ceiling and rust-lld hard-errored (`too many
+  exported symbols`). The C-ABI plugin work removed the dylib that caused it, so
+  the cap is no longer reached. Verified 2026-08 (`cargo test -p renzora_ember`
+  → links, runs, ~20 s warm). Prefer it for iterating — it is an order of
+  magnitude faster than a container round-trip.
+- ⚠️ **`cargo test --workspace` still fails**, but not on the export cap — on two
+  vendored XR crates whose *examples* never got the Bevy 0.19 `shadows_enabled`
+  → `shadow_maps_enabled` rename (`bevy_oxr`'s `3d_scene`, `bevy_xr_utils`'
+  `tracking_utils`). `--workspace` builds example targets; CI does not hit this
+  because it excludes those crates. Test per-crate, or use `renzora test`.
 - ✅ `renzora build [platform]` — **cross-compilation, the reason Docker is
   here.** Required for export templates and release artefacts.
 - ✅ `renzora check` / `renzora test` — reproduce CI exactly. Use when a result

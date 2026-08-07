@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
+use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::KeyedSnapshot;
 
 use crate::cache::HierarchyTreeCache;
@@ -179,7 +180,7 @@ pub(crate) fn update_flatten_cache(
 /// Dirty token for the hierarchy's virtualized list: the flatten version, which
 /// bumps whenever the visible rows are rebuilt. The scroll window is folded in
 /// by `virtual_scroll_versioned`, so this only needs to track content changes.
-pub(crate) fn hier_flat_version(world: &World) -> u64 {
+pub(crate) fn hier_flat_version(world: &Rx) -> u64 {
     world
         .get_resource::<HierFlatCache>()
         .map(|f| f.version)
@@ -191,7 +192,7 @@ pub(crate) fn hier_flat_version(world: &World) -> u64 {
 /// the rows in the scroll window — is handled generically by
 /// [`renzora_ember::virtual_scroll`], which wraps this. Cheap per frame: a clone
 /// of the cached `items` + an `Arc` clone of the row data.
-pub(crate) fn hierarchy_snapshot(world: &World) -> KeyedSnapshot {
+pub(crate) fn hierarchy_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(flat) = world.get_resource::<HierFlatCache>() else {
         return empty_snapshot();
     };

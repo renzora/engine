@@ -31,9 +31,9 @@ use bevy::prelude::*;
 use renzora::core::RenzoraShellExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_bg, bind_display, bind_text, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, keyed_list};
 use renzora_ember::settings_sections::RegisterSettingsSection;
 use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
 use renzora_ember::widgets::{
@@ -503,7 +503,7 @@ fn build_panel(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Name::new("send-stop"),
         ))
         .id();
-    fn streaming(w: &World) -> bool {
+    fn streaming(w: &Rx) -> bool {
         w.get_resource::<AiChat>().is_some_and(|c| c.stream.is_some())
     }
     bind_bg(commands, send, |w| {
@@ -782,7 +782,7 @@ fn grow(commands: &mut Commands, entity: Entity, factor: f32) {
 /// One-item keyed list whose hash is the model list: when the available
 /// models change, the dropdown is rebuilt with fresh options and a fresh
 /// two-way binding (index ↔ `AiChat::model`).
-fn model_dropdown_snapshot(world: &World) -> KeyedSnapshot {
+fn model_dropdown_snapshot(world: &Rx) -> KeyedSnapshot {
     let (models, current) = world
         .get_resource::<AiChat>()
         .map(|c| (c.models.clone(), c.model.clone()))
@@ -828,7 +828,7 @@ fn model_dropdown_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn message_snapshot(world: &World) -> KeyedSnapshot {
+fn message_snapshot(world: &Rx) -> KeyedSnapshot {
     let messages: Vec<ChatMsg> = world
         .get_resource::<AiChat>()
         .map(|c| c.messages.clone())

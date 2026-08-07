@@ -19,7 +19,9 @@ use renzora_editor_framework::{DocTabKind, EditorContext};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_stripe};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, text_input, DragRange};
 
@@ -39,11 +41,11 @@ impl Plugin for NativeBlueprintProperties {
 
 // ── Dual-mode graph access ──────────────────────────────────────────────────────
 
-fn asset_mode(w: &World) -> bool {
+fn asset_mode(w: &Rx) -> bool {
     matches!(w.get_resource::<EditorContext>(), Some(EditorContext::Asset { kind: DocTabKind::Blueprint, .. }))
 }
 
-fn with_graph<R>(w: &World, f: impl FnOnce(&BlueprintGraph) -> R) -> Option<R> {
+fn with_graph<R>(w: &Rx, f: impl FnOnce(&BlueprintGraph) -> R) -> Option<R> {
     let s = w.get_resource::<BlueprintEditorState>()?;
     if asset_mode(w) {
         s.file_graph.as_ref().map(f)
@@ -53,15 +55,15 @@ fn with_graph<R>(w: &World, f: impl FnOnce(&BlueprintGraph) -> R) -> Option<R> {
     }
 }
 
-fn selected(w: &World) -> Option<u64> {
+fn selected(w: &Rx) -> Option<u64> {
     w.get_resource::<BlueprintEditorState>().and_then(|s| s.selected_node)
 }
 
-fn node_type_of(w: &World, id: u64) -> Option<String> {
+fn node_type_of(w: &Rx, id: u64) -> Option<String> {
     with_graph(w, |g| g.get_node(id).map(|n| n.node_type.clone())).flatten()
 }
 
-fn resolvable(w: &World) -> bool {
+fn resolvable(w: &Rx) -> bool {
     selected(w).and_then(|id| node_type_of(w, id)).and_then(|t| node_def(&t).map(|_| ())).is_some()
 }
 
@@ -98,7 +100,7 @@ enum Item {
     OutputPin { label: String, ty: &'static str },
 }
 
-fn props_snapshot(world: &World) -> KeyedSnapshot {
+fn props_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(id) = selected(world) else { return empty() };
     let Some(node_type) = node_type_of(world, id) else { return empty() };
     let Some(def) = node_def(&node_type) else { return empty() };
@@ -269,7 +271,7 @@ pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u
                     let n = name.clone();
                     let d = default.clone();
                     move |w, v| {
-                        let cur = pin_value(w, node_id, &n).unwrap_or(d.clone());
+                        let cur = pin_value(&Rx::new(&*w), node_id, &n).unwrap_or(d.clone());
                         let mut a = [vec_comp(&cur, 0), vec_comp(&cur, 1), vec_comp(&cur, 2)];
                         a[i] = *v;
                         let nv = if comps == 2 { PinValue::Vec2([a[0], a[1]]) } else { PinValue::Vec3(a) };
@@ -292,7 +294,7 @@ pub(crate) fn pin_editor(commands: &mut Commands, fonts: &EmberFonts, node_id: u
                 let n = name.clone();
                 let d = default.clone();
                 move |w, rgb3| {
-                    let a = pin_value(w, node_id, &n).unwrap_or(d.clone()).as_color()[3];
+                    let a = pin_value(&Rx::new(&*w), node_id, &n).unwrap_or(d.clone()).as_color()[3];
                     set_pin(w, node_id, &n, PinValue::Color([rgb3[0], rgb3[1], rgb3[2], a]));
                 }
             });
@@ -369,7 +371,7 @@ fn editor_cell(commands: &mut Commands) -> Entity {
 #[allow(clippy::too_many_arguments)]
 fn num_field<G, S>(commands: &mut Commands, fonts: &EmberFonts, axis: &str, axis_color: (u8, u8, u8), init: f32, step: f32, min: f32, max: f32, get: G, set: S) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let dv = drag_value(commands, &fonts.ui, axis, axis_color, init, step);
@@ -382,12 +384,12 @@ where
 
 // ── State read/write ─────────────────────────────────────────────────────────────
 
-fn pin_value(w: &World, node_id: u64, pin: &str) -> Option<PinValue> {
+fn pin_value(w: &Rx, node_id: u64, pin: &str) -> Option<PinValue> {
     with_graph(w, |g| g.get_node(node_id).and_then(|n| n.get_input_value(pin).cloned())).flatten()
 }
 
 fn set_pin(w: &mut World, node_id: u64, pin: &str, value: PinValue) {
-    if !asset_mode(w) {
+    if !asset_mode(&Rx::new(&*w)) {
         let entity = w.get_resource::<BlueprintEditorState>().and_then(|s| s.editing_entity);
         if let Some(entity) = entity {
             if let Some(mut graph) = w.get_mut::<BlueprintGraph>(entity) {

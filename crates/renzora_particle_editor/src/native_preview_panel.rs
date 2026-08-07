@@ -4,9 +4,10 @@
 
 use bevy::prelude::*;
 
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_with};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_with};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::toggle_switch;
 
@@ -20,7 +21,7 @@ impl Plugin for NativeParticlePreview {
     }
 }
 
-fn ready(w: &World) -> bool {
+fn ready(w: &Rx) -> bool {
     w.get_resource::<ParticlePreviewImage>().is_some_and(|p| p.handle != Handle::default())
 }
 
@@ -34,7 +35,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
 
     let note = commands.spawn((Text::new("No preview available"), ui_font(&fonts.ui, 12.0), TextColor(rgb(text_muted())))).id();
-    bind_display(commands, note, |w| !ready(w));
+    bind_display(commands, note, |w| !ready(&Rx::new(w.untracked())));
 
     let img = commands
         .spawn((

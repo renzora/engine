@@ -7,7 +7,8 @@ use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
 use renzora_editor_framework::{EditorSelection, TreeDropZone};
 use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_bg, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_bg, bind_text_color};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::cursor_icon::HoverCursor;
 
@@ -115,7 +116,7 @@ fn over(base: Color, top: Color) -> Color {
 /// group stays lit as you move across its children. Only the middle of an
 /// *expandable* row resolves to that row itself (drop-into-this-group). `None`
 /// when no drag is active.
-fn drag_highlight_parent(world: &World) -> Option<Entity> {
+fn drag_highlight_parent(world: &Rx) -> Option<Entity> {
     let drag = world.get_resource::<HierDrag>()?;
     if !drag.active {
         return None;
@@ -142,7 +143,7 @@ fn drag_highlight_parent(world: &World) -> Option<Entity> {
 /// guide lines light up. Falls back to the normal `tree_line()` color otherwise.
 /// Value-diffed, so it's free on non-drag frames.
 fn highlight_line_on_drag(commands: &mut Commands, line: Entity, owner: Entity) {
-    bind_bg(commands, line, move |world: &World| {
+    bind_bg(commands, line, move |world: &Rx| {
         if drag_highlight_parent(world) == Some(owner) {
             Color::WHITE
         } else {
@@ -521,7 +522,7 @@ pub(crate) fn build_row(
     // Reactive selection/hover — value-diffed, so selecting only repaints the
     // rows whose computed color changed (no rebuild).
     let (ent, click, base) = (s.entity, click_layer, base_bg);
-    bind_bg(commands, bg_visual, move |world: &World| {
+    bind_bg(commands, bg_visual, move |world: &Rx| {
         // Drop-target tint while dragging onto this row (reparent).
         if let Some(drag) = world.get_resource::<HierDrag>() {
             if drag.active
@@ -546,7 +547,7 @@ pub(crate) fn build_row(
         }
     });
     if let Some(label) = label_ent {
-        bind_text_color(commands, label, move |world: &World| {
+        bind_text_color(commands, label, move |world: &Rx| {
             if world
                 .get_resource::<EditorSelection>()
                 .is_some_and(|sel| sel.is_selected(ent))

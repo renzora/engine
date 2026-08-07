@@ -17,7 +17,7 @@ use crossbeam_channel::{unbounded, Receiver};
 use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::bind_bg;
+use renzora_ember::reactive::tracked::bind_bg;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{button, overlay_sized, scroll_view};
 use renzora_theme::ThemeManager;

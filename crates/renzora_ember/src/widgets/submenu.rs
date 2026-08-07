@@ -26,7 +26,7 @@ use bevy::ui::{ComputedNode, FocusPolicy, RelativeCursorPosition, UiGlobalTransf
 use bevy::window::{PrimaryWindow, SystemCursorIcon};
 
 use crate::font::{icon_text, ui_font, EmberFonts};
-use crate::reactive::bind_bg;
+use crate::reactive::tracked::bind_bg;
 use crate::theme::*;
 
 use super::popup::{OverlaySurface, MENU_GAP, MENU_ICON, MENU_PAD_X, MENU_PAD_Y, MENU_TEXT};

@@ -15,7 +15,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{drag_value, DragRange};
 use renzora::SplashState;
@@ -126,7 +128,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         scale_dv,
-        |w: &World| w.resource::<LevelPresetsState>().scale,
+        |w: &Rx| w.resource::<LevelPresetsState>().scale,
         |w: &mut World, v: &f32| {
             if let Some(mut s) = w.get_resource_mut::<LevelPresetsState>() {
                 if s.scale != *v {
@@ -228,7 +230,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 /// The card grid is keyed only on the static preset list (selection tinting is
 /// reactive per-card via `bind_bg`/`bind_text_color`), so it builds exactly once.
-fn cards_snapshot(_world: &World) -> KeyedSnapshot {
+fn cards_snapshot(_world: &Rx) -> KeyedSnapshot {
     let presets = LevelPreset::ALL;
     let items: Vec<(u64, u64)> = presets
         .iter()
@@ -315,7 +317,7 @@ fn preset_card(commands: &mut Commands, fonts: &EmberFonts, preset: LevelPreset)
 /// Reactive accent border for a card: solid accent when selected, a dim accent
 /// on hover, transparent otherwise (mirrors the egui rect_stroke logic).
 fn bind_with_border(commands: &mut Commands, card: Entity, preset: LevelPreset) {
-    renzora_ember::reactive::bind_with(
+    renzora_ember::reactive::tracked::bind_with(
         commands,
         card,
         move |w| {

@@ -134,7 +134,7 @@ fn textfont_native(world: &mut World, entity: Entity) -> Entity {
                 &mut commands,
                 &fonts,
                 &registry,
-                move |w| current_font_name(w, entity),
+                move |w| current_font_name(w.untracked(), entity),
                 move |w, name| set_font(w, entity, &name),
             );
             let font_row = labeled_row(&mut commands, &fonts, &renzora::lang::t("comp.text_3d.font"), picker);

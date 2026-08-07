@@ -6,7 +6,8 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::{rgb, text_muted, text_primary, window_bg};
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
@@ -20,7 +21,7 @@ pub(super) fn register_memory(app: &mut App) {
     app.register_panel_content("memory_profiler", true, build_memory);
 }
 
-fn mem<R: Default>(w: &World, f: impl FnOnce(&MemoryProfilerState) -> R) -> R {
+fn mem<R: Default>(w: &Rx, f: impl FnOnce(&MemoryProfilerState) -> R) -> R {
     w.get_resource::<MemoryProfilerState>().map(f).unwrap_or_default()
 }
 
@@ -254,7 +255,7 @@ fn build_memory(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// Fill ratio (0..1) of one asset bucket against the largest bucket.
-fn asset_ratio(w: &World, pick: impl Fn(&crate::state::AssetMemoryStats) -> u64) -> f32 {
+fn asset_ratio(w: &Rx, pick: impl Fn(&crate::state::AssetMemoryStats) -> u64) -> f32 {
     mem(w, |s| {
         let a = &s.asset_memory;
         let max = a.meshes_bytes.max(a.textures_bytes).max(a.materials_bytes).max(1);
@@ -266,9 +267,9 @@ fn asset_ratio(w: &World, pick: impl Fn(&crate::state::AssetMemoryStats) -> u64)
 /// live ratio binding, with the byte size to the right.
 fn asset_bar<N, R, B>(commands: &mut Commands, fonts: &EmberFonts, color: (u8, u8, u8), name: N, ratio: R, bytes: B) -> Entity
 where
-    N: Fn(&World) -> String + Send + Sync + 'static,
-    R: Fn(&World) -> f32 + Send + Sync + 'static,
-    B: Fn(&World) -> String + Send + Sync + 'static,
+    N: Fn(&Rx) -> String + Send + Sync + 'static,
+    R: Fn(&Rx) -> f32 + Send + Sync + 'static,
+    B: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let col = commands
         .spawn(Node {

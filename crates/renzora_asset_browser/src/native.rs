@@ -19,9 +19,10 @@ use renzora_ember::dock::panel_active;
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::inspector_stripe;
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_bg, bind_display, bind_with, keyed_list, keyed_list_tokened, KeyedSnapshot,
-};
+use renzora_ember::reactive::KeyedSnapshot;
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_with, keyed_list};
 use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
@@ -55,7 +56,7 @@ fn thumb_kind(name: &str) -> Option<ThumbKind> {
 }
 
 /// The ready thumbnail handle for `path`, from whichever registry owns `kind`.
-fn handle_for(w: &World, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image>> {
+fn handle_for(w: &Rx, kind: ThumbKind, path: &PathBuf) -> Option<Handle<Image>> {
     match kind {
         ThumbKind::Image => w.get_resource::<ThumbnailCache>().and_then(|c| c.handle(path)),
         ThumbKind::Model => w.get_resource::<ModelThumbnailRegistry>().and_then(|r| r.handle(path)),
@@ -1732,7 +1733,7 @@ fn responsive_layout(
 }
 
 /// True once the panel is too tight for the toolbar's full action labels.
-fn is_compact(w: &World) -> bool {
+fn is_compact(w: &Rx) -> bool {
     w.get_resource::<NativeAssets>().is_some_and(|s| s.compact)
 }
 
@@ -1896,7 +1897,7 @@ fn reveal_in_explorer(path: &Path) {
     }
 }
 
-fn project_root(w: &World) -> Option<PathBuf> {
+fn project_root(w: &Rx) -> Option<PathBuf> {
     w.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
 }
 
@@ -1953,7 +1954,7 @@ fn scroll_grid_on_drop(
 }
 
 /// The folder being shown (the explicit nav target, else the project root).
-fn current_folder(w: &World) -> Option<PathBuf> {
+fn current_folder(w: &Rx) -> Option<PathBuf> {
     w.get_resource::<NativeAssets>()
         .and_then(|s| s.current.clone())
         .or_else(|| project_root(w))
@@ -2673,7 +2674,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// Clickable breadcrumb segments (project root + each path component).
-fn crumb_snapshot(world: &World) -> KeyedSnapshot {
+fn crumb_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(root) = project_root(world) else {
         return KeyedSnapshot {
             items: Vec::new(),
@@ -2806,7 +2807,7 @@ fn human_size(bytes: u64) -> String {
 
 /// The current folder's cached listing (see [`refresh_listing`]). Cheap — clones
 /// an `Arc`, never touches the filesystem.
-fn list_entries(w: &World) -> std::sync::Arc<Vec<Entry>> {
+fn list_entries(w: &Rx) -> std::sync::Arc<Vec<Entry>> {
     w.get_resource::<NativeAssets>()
         .map(|s| s.listing.clone())
         .unwrap_or_default()
@@ -2915,7 +2916,7 @@ fn read_sorted_entries(folder: &Path, search: &str, sort: SortMode, desc: bool) 
 /// are per-render overlays the snapshot folds into each item's hash. Combined
 /// with `virtual_scroll_versioned`'s scroll-window term, this skips the per-entry
 /// hashing on frames where nothing changed.
-fn grid_token(world: &World) -> u64 {
+fn grid_token(world: &Rx) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     if let Some(st) = world.get_resource::<NativeAssets>() {
@@ -2928,7 +2929,7 @@ fn grid_token(world: &World) -> u64 {
     h.finish()
 }
 
-fn grid_snapshot(world: &World) -> KeyedSnapshot {
+fn grid_snapshot(world: &Rx) -> KeyedSnapshot {
     let entries = list_entries(world);
     if entries.is_empty() {
         return KeyedSnapshot {
@@ -3196,7 +3197,7 @@ fn tile(commands: &mut Commands, fonts: &EmberFonts, entry: &Entry, zoom: f32, f
     // Star badge on favorited assets.
     if fav {
         let star = icon_text(commands, &fonts.phosphor, "star", (255, 200, 70), 12.0);
-        renzora_ember::reactive::bind_text_color(commands, star, |w| {
+        renzora_ember::reactive::tracked::bind_text_color(commands, star, |w| {
             w.resource::<renzora_ember::style::Theme>().asset_tile.star.color()
         });
         commands.entity(star).insert(Node {
@@ -3501,7 +3502,7 @@ fn hash_path_set<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> u64 {
 /// lets the (filesystem-walking) snapshot be skipped on frames where none of them
 /// changed. A whole-second bucket is mixed in so folders created on disk while the
 /// panel is open still appear within a second.
-fn tree_token(world: &World) -> u64 {
+fn tree_token(world: &Rx) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     if let Some(st) = world.get_resource::<NativeAssets>() {
@@ -3522,7 +3523,7 @@ fn tree_token(world: &World) -> u64 {
     h.finish()
 }
 
-fn tree_snapshot(world: &World) -> KeyedSnapshot {
+fn tree_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(root) = project_root(world) else {
         return KeyedSnapshot {
             items: Vec::new(),

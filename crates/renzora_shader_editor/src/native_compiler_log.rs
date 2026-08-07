@@ -8,7 +8,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display};
 use renzora_ember::theme::*;
 
 use crate::ShaderEditorState;
@@ -21,10 +23,10 @@ impl Plugin for NativeShaderCompilerLog {
     }
 }
 
-fn has_errors(w: &World) -> bool {
+fn has_errors(w: &Rx) -> bool {
     w.get_resource::<ShaderEditorState>().is_some_and(|s| !s.compile_errors.is_empty())
 }
-fn compiled(w: &World) -> bool {
+fn compiled(w: &Rx) -> bool {
     w.get_resource::<ShaderEditorState>().is_some_and(|s| s.compiled_wgsl.is_some())
 }
 
@@ -57,7 +59,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn error_snapshot(world: &World) -> KeyedSnapshot {
+fn error_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = world.get_resource::<ShaderEditorState>() else { return empty() };
     let errs: Vec<(String, Option<usize>, Option<usize>)> = state
         .compile_errors

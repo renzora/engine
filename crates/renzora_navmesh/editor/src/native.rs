@@ -15,9 +15,9 @@ use bevy::prelude::*;
 use renzora::SplashState;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{button, checkbox};
 
@@ -53,16 +53,16 @@ struct VolumeRebuildBtn(Entity);
 
 // ── Mirror helpers ─────────────────────────────────────────────────────────────
 
-fn mirror_volume_count(w: &World) -> usize {
+fn mirror_volume_count(w: &Rx) -> usize {
     w.get_resource::<NavMeshPanelMirror>().map(|m| m.volumes.len()).unwrap_or(0)
 }
 
-fn mirror_agent_count(w: &World) -> usize {
+fn mirror_agent_count(w: &Rx) -> usize {
     w.get_resource::<NavMeshPanelMirror>().map(|m| m.agent_count).unwrap_or(0)
 }
 
 /// Read one volume's live `debug_draw` flag from the mirror.
-fn volume_debug(w: &World, entity: Entity) -> bool {
+fn volume_debug(w: &Rx, entity: Entity) -> bool {
     w.get_resource::<NavMeshPanelMirror>()
         .and_then(|m| m.volumes.iter().find(|r| r.entity == entity))
         .map(|r| r.debug_draw)
@@ -70,7 +70,7 @@ fn volume_debug(w: &World, entity: Entity) -> bool {
 }
 
 /// Read one volume's live status from the mirror.
-fn volume_status(w: &World, entity: Entity) -> NavMeshStatus {
+fn volume_status(w: &Rx, entity: Entity) -> NavMeshStatus {
     w.get_resource::<NavMeshPanelMirror>()
         .and_then(|m| m.volumes.iter().find(|r| r.entity == entity))
         .map(|r| r.status)
@@ -78,7 +78,7 @@ fn volume_status(w: &World, entity: Entity) -> NavMeshStatus {
 }
 
 /// Read one volume's live polygon count from the mirror.
-fn volume_polys(w: &World, entity: Entity) -> Option<usize> {
+fn volume_polys(w: &Rx, entity: Entity) -> Option<usize> {
     w.get_resource::<NavMeshPanelMirror>()
         .and_then(|m| m.volumes.iter().find(|r| r.entity == entity))
         .and_then(|r| r.polygon_count)
@@ -237,7 +237,7 @@ fn labeled_checkbox<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> bool + Send + Sync + 'static,
+    G: Fn(&Rx) -> bool + Send + Sync + 'static,
     S: Fn(&mut World, &bool) + Send + Sync + 'static,
 {
     let row = commands
@@ -265,13 +265,13 @@ where
 /// `bind_2way` seeds the model itself, so the checkbox initial value is just a
 /// placeholder; default to `true` (matching the panel defaults) without world
 /// access at build time.
-fn get_initial<G: Fn(&World) -> bool>(_get: &G) -> bool {
+fn get_initial<G: Fn(&Rx) -> bool>(_get: &G) -> bool {
     true
 }
 
 // ── Volume list ────────────────────────────────────────────────────────────────
 
-fn volumes_snapshot(world: &World) -> KeyedSnapshot {
+fn volumes_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(mirror) = world.get_resource::<NavMeshPanelMirror>() else {
         return KeyedSnapshot { items: Vec::new(), build: Box::new(|c, _, _| c.spawn(Node::default()).id()) };
     };
@@ -393,7 +393,7 @@ fn volume_card(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, name
         move |w, v: &bool| {
             // Only queue when the user's edit actually differs from state —
             // the action toggles, so a redundant queue would flip it back.
-            if volume_debug(w, entity) != *v {
+            if volume_debug(&Rx::new(&*w), entity) != *v {
                 if let Some(s) = w.get_resource::<NavMeshPanelState>() {
                     s.queue_toggle_volume_debug(entity);
                 }

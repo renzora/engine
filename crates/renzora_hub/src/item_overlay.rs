@@ -27,9 +27,9 @@ use renzora_auth::marketplace::{
 };
 use renzora_auth::session::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{
-    bind_display, bind_text, bind_text_color, bind_with, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_text_color, bind_with, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     accent_button, accent_chip, audio_player, scroll_area, text_input, tint,
@@ -208,7 +208,7 @@ pub(crate) fn register(app: &mut App) {
 }
 
 /// True when a user is signed in — gates rating/commenting.
-fn signed_in(w: &World) -> bool {
+fn signed_in(w: &Rx) -> bool {
     w.get_resource::<AuthSession>().map(|s| s.is_signed_in()).unwrap_or(false)
 }
 
@@ -398,7 +398,8 @@ fn build_header(commands: &mut Commands, fonts: &EmberFonts, _asset: &AssetSumma
     // Gallery shows when neither live preview is active: the model viewer says so
     // (non-model / failed) AND no material preview is on.
     bind_display(commands, gallery_wrap, |w| {
-        crate::model_viewer::show_gallery(w) && !crate::material_viewer::material_active(w)
+        crate::model_viewer::show_gallery(w.untracked())
+            && !crate::material_viewer::material_active(&Rx::new(w.untracked()))
     });
     let img = commands
         .spawn((
@@ -749,7 +750,7 @@ fn build_body(commands: &mut Commands, fonts: &EmberFonts, asset: &AssetSummary)
 
 /// The image URLs for the gallery: the `/media` images in order, or — if none
 /// were returned — the asset's own single thumbnail as a one-item fallback.
-fn image_urls(w: &World) -> Vec<String> {
+fn image_urls(w: &Rx) -> Vec<String> {
     let Some(s) = w.get_resource::<ItemOverlay>() else {
         return Vec::new();
     };
@@ -770,7 +771,7 @@ fn image_urls(w: &World) -> Vec<String> {
 }
 
 /// The loaded texture for the currently-selected gallery image, if ready.
-fn selected_image_handle(w: &World) -> Option<Handle<Image>> {
+fn selected_image_handle(w: &Rx) -> Option<Handle<Image>> {
     let urls = image_urls(w);
     if urls.is_empty() {
         return None;
@@ -784,7 +785,7 @@ fn selected_image_handle(w: &World) -> Option<Handle<Image>> {
 }
 
 /// All media of a given type, in sorted order.
-fn media_by_type(w: &World, ty: &str) -> Vec<MediaItem> {
+fn media_by_type(w: &Rx, ty: &str) -> Vec<MediaItem> {
     w.get_resource::<ItemOverlay>()
         .map(|s| {
             s.media
@@ -816,7 +817,7 @@ fn build_strip(commands: &mut Commands) -> Entity {
 /// Keyed snapshot of the strip: one thumb per image, keyed by index, with the
 /// selected flag folded into the content hash so selecting rebuilds just the
 /// two affected thumbs (old + new) rather than the whole strip.
-fn strip_snapshot(world: &World) -> KeyedSnapshot {
+fn strip_snapshot(world: &Rx) -> KeyedSnapshot {
     let urls = image_urls(world);
     if urls.len() <= 1 {
         return empty_snapshot();
@@ -968,7 +969,7 @@ fn track_label(m: &MediaItem, index: usize) -> String {
 
 /// Keyed snapshot of the audio track selector — one row per track, highlighted
 /// when selected. Empty (hidden) unless there's more than one track.
-fn audio_selector_snapshot(world: &World) -> KeyedSnapshot {
+fn audio_selector_snapshot(world: &Rx) -> KeyedSnapshot {
     let tracks = media_by_type(world, "audio");
     if tracks.len() <= 1 {
         return empty_snapshot();
@@ -1042,7 +1043,7 @@ fn audio_track_row(
 /// Keyed snapshot of the one audio player. A constant key/hash means it's built
 /// exactly once when audio first appears and never rebuilt thereafter, so the
 /// live Kira binding survives image/track selection.
-fn audio_player_snapshot(world: &World) -> KeyedSnapshot {
+fn audio_player_snapshot(world: &Rx) -> KeyedSnapshot {
     if media_by_type(world, "audio").is_empty() {
         return empty_snapshot();
     }
@@ -1087,7 +1088,7 @@ fn build_video(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// Keyed snapshot of the video posters — one card per video, keyed by id.
-fn video_snapshot(world: &World) -> KeyedSnapshot {
+fn video_snapshot(world: &Rx) -> KeyedSnapshot {
     let videos = media_by_type(world, "video");
     if videos.is_empty() {
         return empty_snapshot();
@@ -1415,7 +1416,7 @@ fn comment_row(commands: &mut Commands, fonts: &EmberFonts, c: &AssetComment) ->
 
 /// Keyed snapshot of the comments list — a loading/empty note, or one row per
 /// comment keyed by id (rebuilt only when a comment's content changes).
-fn comments_snapshot(world: &World) -> KeyedSnapshot {
+fn comments_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = world.get_resource::<ItemOverlay>() else {
         return note_snapshot("");
     };
@@ -1466,7 +1467,7 @@ fn note_snapshot(text: &str) -> KeyedSnapshot {
 }
 
 /// The highest 1-based star index currently hovered/pressed, if any.
-fn hovered_star(w: &World, stars: &[Entity]) -> Option<i32> {
+fn hovered_star(w: &Rx, stars: &[Entity]) -> Option<i32> {
     stars.iter().enumerate().rev().find_map(|(i, &e)| {
         matches!(
             w.get::<Interaction>(e),

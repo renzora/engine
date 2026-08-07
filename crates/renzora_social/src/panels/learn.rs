@@ -12,7 +12,9 @@ use renzora_auth::docs::{DocPage, DocSearchResult, DocVersions, Sidebar};
 use renzora_ember::dock::panel_active;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{keyed_list_tokened, Bound, KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::{Bound, KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{dropdown, markdown_view, text_input, EmberTextInput, HoverTint};
 
@@ -369,7 +371,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Snapshots ────────────────────────────────────────────────────────────────
 
-fn sidebar_snapshot(w: &World) -> KeyedSnapshot {
+fn sidebar_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<LearnPanel>() else {
         return util::empty_snapshot();
     };
@@ -534,7 +536,7 @@ fn sidebar_snapshot(w: &World) -> KeyedSnapshot {
     }
 }
 
-fn page_snapshot(w: &World) -> KeyedSnapshot {
+fn page_snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<LearnPanel>() else {
         return util::empty_snapshot();
     };

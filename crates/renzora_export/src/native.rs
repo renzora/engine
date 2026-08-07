@@ -14,7 +14,9 @@ use renzora::core::WindowMode;
 use std::sync::atomic::Ordering;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, react};
+use renzora_ember::reactive::{react};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, radio_group, scroll_area, scroll_view_pinned, section, spinner, tabs, text_input, OverlaySurface};
 
@@ -930,13 +932,13 @@ fn build_fraction(s: &ExportOverlayState) -> f32 {
 fn bind_width_pct(
     commands: &mut Commands,
     target: Entity,
-    value: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    value: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
 ) {
     react(commands, move |w: &mut World| {
         if w.get_entity(target).is_err() {
             return false;
         }
-        let v = value(w).clamp(0.0, 1.0);
+        let v = value(&Rx::new(&*w)).clamp(0.0, 1.0);
         if let Some(mut n) = w.get_mut::<Node>(target) {
             n.width = Val::Percent(v * 100.0);
         }
@@ -1028,7 +1030,7 @@ fn build_export_btn(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) 
 
 // ── Interaction ──────────────────────────────────────────────────────────────
 
-fn can_export(w: &World) -> bool {
+fn can_export(w: &Rx) -> bool {
     let Some(s) = w.get_resource::<ExportOverlayState>() else { return false };
     let installed = w.get_resource::<TemplateManager>().is_some_and(|t| t.is_installed(s.platform));
     installed && !s.output_dir.is_empty() && s.active_task.is_none() && matches!(s.progress, ExportProgress::Idle | ExportProgress::Done(_) | ExportProgress::Error(_))
@@ -1130,7 +1132,7 @@ fn icon_clear_click(q: Query<&Interaction, (With<IconClearBtn>, Changed<Interact
 fn export_click(q: Query<&Interaction, (With<ExportBtn>, Changed<Interaction>)>, mut commands: Commands) {
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
-            if can_export(w) {
+            if can_export(&Rx::new(&*w)) {
                 let name = w.get_resource::<renzora::core::CurrentProject>().map(|p| p.config.name.clone()).unwrap_or_default();
                 run_export(w, &name);
             }

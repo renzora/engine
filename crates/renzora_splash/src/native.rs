@@ -19,7 +19,9 @@ use bevy::ui::{BackgroundGradient, ColorStop, FocusPolicy, Gradient, LinearGradi
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list, react, KeyedSnapshot};
+use renzora_ember::reactive::{react, KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::widgets::{bind_text_input, menu_item, scroll_area_keyed, text_input, Popup};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
@@ -720,7 +722,7 @@ fn win_button(commands: &mut Commands, fonts: &EmberFonts, kind: WinBtn, icon: &
     btn
 }
 
-fn is_hovered(w: &World, e: Entity) -> bool {
+fn is_hovered(w: &Rx, e: Entity) -> bool {
     matches!(w.get::<Interaction>(e), Some(Interaction::Hovered) | Some(Interaction::Pressed))
 }
 
@@ -813,7 +815,7 @@ struct RowData {
     exists: bool,
 }
 
-fn all_rows(world: &World) -> Vec<RowData> {
+fn all_rows(world: &Rx) -> Vec<RowData> {
     let Some(cfg) = world.get_resource::<AppConfig>() else {
         return Vec::new();
     };
@@ -831,7 +833,7 @@ fn all_rows(world: &World) -> Vec<RowData> {
         .collect()
 }
 
-fn filtered_rows(world: &World) -> Vec<RowData> {
+fn filtered_rows(world: &Rx) -> Vec<RowData> {
     let filter = world.get_resource::<SplashFilter>().map(|f| f.0.to_lowercase()).unwrap_or_default();
     let filter = filter.trim();
     let rows = all_rows(world);
@@ -843,7 +845,7 @@ fn filtered_rows(world: &World) -> Vec<RowData> {
         .collect()
 }
 
-fn recents_snapshot(world: &World) -> KeyedSnapshot {
+fn recents_snapshot(world: &Rx) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let rows = filtered_rows(world);
     let items: Vec<(u64, u64)> = rows
@@ -929,7 +931,7 @@ fn bind_text_color_on_hover(commands: &mut Commands, text_e: Entity, btn: Entity
         if world.get_entity(text_e).is_err() || world.get_entity(btn).is_err() {
             return false;
         }
-        let col = if is_hovered(world, btn) { error_color() } else { text_muted() };
+        let col = if is_hovered(&Rx::new(&*world), btn) { error_color() } else { text_muted() };
         if let Some(mut c) = world.get_mut::<TextColor>(text_e) {
             c.0 = col;
         }
@@ -1034,7 +1036,7 @@ fn resize_cursor(octant: CompassOctant) -> SystemCursorIcon {
 
 // ── Field accessors ──────────────────────────────────────────────────────────
 
-fn g_filter(w: &World) -> String {
+fn g_filter(w: &Rx) -> String {
     w.get_resource::<SplashFilter>().map(|f| f.0.clone()).unwrap_or_default()
 }
 fn s_filter(w: &mut World, v: String) {

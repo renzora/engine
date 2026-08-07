@@ -23,7 +23,9 @@ use renzora_editor_framework::{
 };
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field_rgba, inspector_row, inspector_stripe};
-use renzora_ember::reactive::{bind_2way, bind_with, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_with};
 use renzora_ember::virtual_scroll::{virtual_scroll_versioned, VirtualMetrics};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{checkbox, drag_value, scroll_area, text_input, Popup};
@@ -203,11 +205,11 @@ struct MatRevertBtn {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn material_path(w: &World, entity: Entity) -> String {
+fn material_path(w: &Rx, entity: Entity) -> String {
     w.get::<MaterialRef>(entity).map(|m| m.0.clone()).unwrap_or_default()
 }
 
-fn material_abs(w: &World, path: &str) -> Option<PathBuf> {
+fn material_abs(w: &Rx, path: &str) -> Option<PathBuf> {
     if path.is_empty() {
         return None;
     }
@@ -222,7 +224,7 @@ fn sig_of(entity: Entity, path: &str) -> u64 {
 }
 
 /// Current override value for a param (override if present, else master default).
-fn ov_get(w: &World, name: &str, kind: ParamKind, default_pin_param: &ParamValue) -> ParamValue {
+fn ov_get(w: &Rx, name: &str, kind: ParamKind, default_pin_param: &ParamValue) -> ParamValue {
     if let Some(cache) = w.get_resource::<MatCache>() {
         if let Some(inst) = &cache.instance {
             if let Some(v) = inst.overrides.get(name) {
@@ -289,14 +291,14 @@ fn rebuild_material(world: &mut World) {
     let mut q = world.query::<(Entity, &MatRoot)>();
     let roots: Vec<(Entity, Entity, Option<u64>)> = q.iter(world).map(|(r, d)| (r, d.entity, d.sig)).collect();
     for (root, entity, old_sig) in roots {
-        let path = material_path(world, entity);
+        let path = material_path(&Rx::new(&*world), entity);
         let sig = sig_of(entity, &path);
         if old_sig == Some(sig) {
             continue;
         }
         load_cache(world, entity, &path);
         // Request the current material's thumbnail.
-        if let Some(abs) = material_abs(world, &path) {
+        if let Some(abs) = material_abs(&Rx::new(&*world), &path) {
             if let Some(mut reg) = world.get_resource_mut::<MaterialThumbnailRegistry>() {
                 reg.request(abs);
             }
@@ -375,8 +377,8 @@ fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, path:
         commands,
         thumb,
         move |w| {
-            let path = material_path(w, entity);
-            material_abs(w, &path).and_then(|abs| w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(&abs)))
+            let path = material_path(&Rx::new(w.untracked()), entity);
+            material_abs(&Rx::new(w.untracked()), &path).and_then(|abs| w.get_resource::<MaterialThumbnailRegistry>().and_then(|r| r.handle(&abs)))
         },
         |w, e, h: &Option<Handle<Image>>| {
             if let Some(mut img) = w.get_mut::<ImageNode>(e) {
@@ -504,17 +506,17 @@ fn register_picker_rows(commands: &mut Commands, list: Entity, entity: Entity) {
         // Dirty token: re-snapshot only when the query text, the cached index, or
         // this entity's assigned material actually changes. `virtual_scroll_versioned`
         // folds the scroll window in on top of this, so scrolling still re-windows.
-        move |w: &World| {
+        move |w: &Rx| {
             let mut h = DefaultHasher::new();
             w.get_resource::<MatPickerFilter>()
                 .map(|f| f.text.as_str())
                 .unwrap_or("")
                 .hash(&mut h);
             w.get_resource::<MaterialIndex>().map(|i| i.generation).unwrap_or(0).hash(&mut h);
-            material_path(w, entity).hash(&mut h);
+            material_path(&Rx::new(w.untracked()), entity).hash(&mut h);
             h.finish()
         },
-        move |w: &World| picker_snapshot(w, entity),
+        move |w: &Rx| picker_snapshot(&Rx::new(w.untracked()), entity),
     );
     commands.entity(list).insert(VirtualMetrics {
         offset: 0.0,
@@ -527,7 +529,7 @@ fn register_picker_rows(commands: &mut Commands, list: Entity, entity: Entity) {
 
 /// This frame's filtered row set. Cheap: an `Arc` clone plus a substring test per
 /// candidate; no filesystem access (see [`MaterialIndex`]).
-fn picker_snapshot(w: &World, entity: Entity) -> KeyedSnapshot {
+fn picker_snapshot(w: &Rx, entity: Entity) -> KeyedSnapshot {
     let query = w.get_resource::<MatPickerFilter>().map(|f| f.text.clone()).unwrap_or_default();
     let current_path = material_path(w, entity);
     let materials = w
@@ -696,7 +698,7 @@ fn build_param_editor(commands: &mut Commands, fonts: &EmberFonts, name: String,
             bind_2way(
                 commands,
                 dv,
-                move |w| match ov_get(w, &n1, kind, &d1) {
+                move |w| match ov_get(&Rx::new(w.untracked()), &n1, kind, &d1) {
                     ParamValue::Float(f) => f,
                     _ => 0.0,
                 },
@@ -710,7 +712,7 @@ fn build_param_editor(commands: &mut Commands, fonts: &EmberFonts, name: String,
             bind_2way(
                 commands,
                 cb,
-                move |w| matches!(ov_get(w, &n1, kind, &d1), ParamValue::Bool(true)),
+                move |w| matches!(ov_get(&Rx::new(w.untracked()), &n1, kind, &d1), ParamValue::Bool(true)),
                 move |w, v: &bool| ov_set(w, &name, ParamValue::Bool(*v)),
             );
             cb
@@ -720,7 +722,7 @@ fn build_param_editor(commands: &mut Commands, fonts: &EmberFonts, name: String,
             let d1 = default_param.clone();
             color_field_rgba(
                 commands,
-                move |w| match ov_get(w, &n1, kind, &d1) {
+                move |w| match ov_get(&Rx::new(w.untracked()), &n1, kind, &d1) {
                     ParamValue::Color(c) => c,
                     _ => [1.0; 4],
                 },
@@ -745,9 +747,9 @@ fn build_param_editor(commands: &mut Commands, fonts: &EmberFonts, name: String,
                 bind_2way(
                     commands,
                     dv,
-                    move |w| vec_component(&ov_get(w, &n1, kind, &d1), i),
+                    move |w| vec_component(&ov_get(&Rx::new(w.untracked()), &n1, kind, &d1), i),
                     move |w, v: &f32| {
-                        let cur = ov_get(w, &n2, kind2, &default_param_value(kind2));
+                        let cur = ov_get(&Rx::new(&*w), &n2, kind2, &default_param_value(kind2));
                         let updated = set_vec_component(cur, kind2, i, *v);
                         ov_set(w, &n2, updated);
                     },
@@ -906,7 +908,7 @@ fn mat_edit_click(q: Query<(&Interaction, &MatEditBtn), Changed<Interaction>>, m
         }
         let e = b.entity;
         commands.queue(move |w: &mut World| {
-            let path = material_path(w, e);
+            let path = material_path(&Rx::new(&*w), e);
             if path.is_empty() {
                 return;
             }

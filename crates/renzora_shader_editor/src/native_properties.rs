@@ -11,7 +11,9 @@ use bevy::prelude::*;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field, inspector_stripe};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{checkbox, drag_value, DragRange};
 use renzora_shader::file::{ParamType, ParamValue, ShaderParam};
@@ -31,7 +33,7 @@ impl Plugin for NativeShaderProperties {
     }
 }
 
-fn no_params(w: &World) -> bool {
+fn no_params(w: &Rx) -> bool {
     w.get_resource::<ShaderEditorState>().is_none_or(|s| s.shader_file.params.is_empty())
 }
 
@@ -86,7 +88,7 @@ const GROUPS: [(&str, &str); 5] = [
     ("Boolean", "toggle-left"),
 ];
 
-fn props_snapshot(world: &World) -> KeyedSnapshot {
+fn props_snapshot(world: &Rx) -> KeyedSnapshot {
     let Some(state) = world.get_resource::<ShaderEditorState>() else { return empty() };
     let mut params: Vec<(String, ShaderParam)> =
         state.shader_file.params.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -262,7 +264,7 @@ fn editor(commands: &mut Commands, fonts: &EmberFonts, name: &str, param: &Shade
 #[allow(clippy::too_many_arguments)]
 fn num_field<G, S>(commands: &mut Commands, fonts: &EmberFonts, axis: &str, axis_color: (u8, u8, u8), init: f32, step: f32, min: f32, max: f32, set: S, get: G) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let dv = drag_value(commands, &fonts.ui, axis, axis_color, init, step);
@@ -275,7 +277,7 @@ where
 
 // ── State helpers ──────────────────────────────────────────────────────────────
 
-fn param_value(w: &World, name: &str) -> Option<ParamValue> {
+fn param_value(w: &Rx, name: &str) -> Option<ParamValue> {
     w.get_resource::<ShaderEditorState>().and_then(|s| s.shader_file.params.get(name)).map(|p| p.default_value.clone())
 }
 
@@ -289,7 +291,7 @@ fn vec_comp(v: &ParamValue, i: usize) -> f32 {
 }
 
 fn set_vec_comp(w: &mut World, name: &str, i: usize, val: f32) {
-    let Some(pv) = param_value(w, name) else { return };
+    let Some(pv) = param_value(&Rx::new(&*w), name) else { return };
     let nv = match pv {
         ParamValue::Vec2(mut a) => {
             if let Some(c) = a.get_mut(i) {

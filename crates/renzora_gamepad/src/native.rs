@@ -19,7 +19,9 @@ use bevy::ui_render::UiMaterialPlugin;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_text, bind_with, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_text, bind_with, keyed_list};
 use renzora_ember::theme::rgb;
 
 use crate::state::{GamepadButtonState, GamepadDebugState};
@@ -31,7 +33,7 @@ fn gray(v: u8) -> Color {
 }
 
 /// Read gamepad `pad` out of the debug state (or `None` if absent/disconnected).
-fn with_pad<R>(world: &World, pad: usize, f: impl FnOnce(&crate::state::GamepadInfo) -> R) -> Option<R> {
+fn with_pad<R>(world: &Rx, pad: usize, f: impl FnOnce(&crate::state::GamepadInfo) -> R) -> Option<R> {
     world
         .get_resource::<GamepadDebugState>()
         .and_then(|s| s.gamepads.get(pad))
@@ -162,7 +164,7 @@ fn row(commands: &mut Commands, gap: f32) -> Entity {
         .id()
 }
 
-fn stick_side(world: &World, pad: usize, side: Side) -> Vec2 {
+fn stick_side(world: &Rx, pad: usize, side: Side) -> Vec2 {
     with_pad(world, pad, |g| {
         if side == Side::Left {
             g.left_stick
@@ -173,7 +175,7 @@ fn stick_side(world: &World, pad: usize, side: Side) -> Vec2 {
     .unwrap_or(Vec2::ZERO)
 }
 
-fn trigger_side(world: &World, pad: usize, side: Side) -> f32 {
+fn trigger_side(world: &Rx, pad: usize, side: Side) -> f32 {
     with_pad(world, pad, |g| {
         if side == Side::Left {
             g.left_trigger
@@ -386,7 +388,7 @@ fn spacer(commands: &mut Commands, h: f32) -> Entity {
 }
 
 /// The non-zero raw-axes readout for `pad` (header + one line per axis).
-fn raw_axes_snapshot(pad: usize) -> impl Fn(&World) -> KeyedSnapshot + Send + Sync {
+fn raw_axes_snapshot(pad: usize) -> impl Fn(&Rx) -> KeyedSnapshot + Send + Sync {
     move |world| {
         let lines: Vec<String> = with_pad(world, pad, |g| {
             if g.raw_axes.is_empty() {
@@ -512,7 +514,7 @@ enum Slot {
 
 /// The keyed-list snapshot for the controller set: one row per connected pad
 /// (added/removed as controllers connect), or a single empty-state row.
-fn gamepad_snapshot(world: &World) -> KeyedSnapshot {
+fn gamepad_snapshot(world: &Rx) -> KeyedSnapshot {
     let count = world
         .get_resource::<GamepadDebugState>()
         .map(|s| s.gamepads.len())

@@ -27,6 +27,7 @@ use bevy::prelude::*;
 use renzora::core::viewport_types::ViewportSettings;
 use renzora::{IsolatedCamera, LumenLighting, LumenQuality, RenzoraShellExt, RtLighting, SplashState};
 use renzora_auto_exposure::AutoExposureSettings;
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_ember::theme::{rgb, text_muted};
@@ -145,7 +146,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn get(w: &World, f: impl Fn(&RenderToggles) -> bool) -> bool {
+fn get(w: &Rx, f: impl Fn(&RenderToggles) -> bool) -> bool {
     w.get_resource::<RenderToggles>().map(f).unwrap_or(true)
 }
 
@@ -156,7 +157,7 @@ fn set(w: &mut World, f: impl FnOnce(&mut RenderToggles)) {
 }
 
 /// Read a `ViewportSettings.render_toggles` flag (defaults to `true`/on).
-fn vp(w: &World, f: impl Fn(&renzora::core::viewport_types::RenderToggles) -> bool) -> bool {
+fn vp(w: &Rx, f: impl Fn(&renzora::core::viewport_types::RenderToggles) -> bool) -> bool {
     w.get_resource::<ViewportSettings>().map(|s| f(&s.render_toggles)).unwrap_or(true)
 }
 

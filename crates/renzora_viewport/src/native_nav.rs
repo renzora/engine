@@ -83,7 +83,7 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .add_children(&[pan, zoom, grid, icons]);
     // Hide the nav buttons during play mode for a clean game view, and in 2D
     // view (they're 3D-orbit pan/zoom controls).
-    renzora_ember::reactive::bind_display(commands, cluster, |w| {
+    renzora_ember::reactive::tracked::bind_display(commands, cluster, |w| {
         let in_play = w
             .get_resource::<renzora::core::PlayModeState>()
             .map(|p| p.is_in_play_mode())

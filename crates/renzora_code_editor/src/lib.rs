@@ -164,7 +164,7 @@ pub(crate) fn build_code_editor_toolbar(
 ) -> Entity {
     use renzora_editor_framework::EditorSettings;
     use renzora_ember::font::ui_font;
-    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::theme::{border, header_bg, rgb, text_muted, value_text};
     use renzora_ember::widgets::{drag_value, toggle_switch, DragRange};
 

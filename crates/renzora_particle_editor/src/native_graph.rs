@@ -15,7 +15,8 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::{keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{graph_comment_view, graph_node_view, graph_wire_view, menu_item, node_graph_view, screen_menu, search_menu, GraphEdit, NodeGraphView, SearchEntry};
 use renzora_hanabi::node_graph::{ParticleNodeGraph, ParticleNodeType, PinDir};
@@ -103,15 +104,15 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Comment / group boxes mount behind the nodes (their own canvas layer).
     let comments_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(canvas).add_child(comments_layer);
-    keyed_list(commands, comments_layer, move |w| comment_snapshot(w, canvas, viewport));
+    keyed_list(commands, comments_layer, move |w| comment_snapshot(w.untracked(), canvas, viewport));
 
     let wires_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(viewport).add_child(wires_layer);
-    keyed_list(commands, wires_layer, move |w| wire_snapshot(w, viewport));
+    keyed_list(commands, wires_layer, move |w| wire_snapshot(w.untracked(), viewport));
 
     let nodes_layer = commands.spawn(Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }).id();
     commands.entity(canvas).add_child(nodes_layer);
-    keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
+    keyed_list(commands, nodes_layer, move |w| node_snapshot(w.untracked(), canvas, viewport));
 
     commands.entity(root).add_children(&[bar, handle.viewport]);
     renzora_editor_framework::mark_drop_zone(commands, root);

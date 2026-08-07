@@ -22,7 +22,9 @@ use renzora_animation::{AnimClip, AnimatorComponent};
 use renzora_editor_framework::{EditorCommands, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{drag_value, menu_item, screen_menu, text_input, timeline_view, DragRange, EmberTextInput, TimelineView, LANE_INSET};
 
@@ -440,12 +442,12 @@ fn clip_entity(w: &World) -> Option<Entity> {
 }
 
 /// Whether the timeline has a clip to show (vs an empty-state message).
-fn ready(w: &World) -> bool {
-    cur_clip(w).is_some()
+fn ready(w: &Rx) -> bool {
+    cur_clip(w.untracked()).is_some()
 }
 
-fn empty_msg(w: &World) -> String {
-    let Some(s) = state(w) else { return String::new() };
+fn empty_msg(w: &Rx) -> String {
+    let Some(s) = state(w.untracked()) else { return String::new() };
     if s.selected_entity.is_none() {
         renzora::lang::t("animation.select_entity_to_animate")
     } else if s
@@ -463,9 +465,9 @@ fn empty_msg(w: &World) -> String {
 
 /// Toolbar readout for the selected keyframe: "Rotation @ 1.33s = (…)". Empty
 /// when nothing is selected. Rotation values are shown as Euler degrees.
-fn selected_key_label(w: &World) -> String {
+fn selected_key_label(w: &Rx) -> String {
     let Some(sel) = w.get_resource::<SelectedKey>().and_then(|s| s.0) else { return String::new() };
-    let Some(clip) = cur_clip(w) else { return String::new() };
+    let Some(clip) = cur_clip(w.untracked()) else { return String::new() };
     match sel.lane {
         Lane::Prop { track } => {
             let Some(pt) = clip.property_tracks.get(track) else { return String::new() };
@@ -535,7 +537,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let create_btn = crate::setup::action_button(commands, fonts, "plus-circle", &renzora::lang::t("animation.create_animation"), crate::setup::CreateAnimBtn);
     bind_display(commands, create_btn, crate::setup::can_create_anim);
     commands.entity(note).add_children(&[note_lbl, create_btn]);
-    bind_display(commands, note, |w| !ready(w));
+    bind_display(commands, note, |w| !ready(&Rx::new(w.untracked())));
 
     // Shared timeline shell.
     let tl = timeline_view(commands, fonts);
@@ -592,7 +594,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let (loop_b, loop_ic) = icon_btn(commands, fonts, "repeat", text_muted(), AnimBtn::Loop);
     bind_text_color(commands, loop_ic, |w| {
-        let on = state(w).is_some_and(|s| s.preview_looping);
+        let on = state(w.untracked()).is_some_and(|s| s.preview_looping);
         rgb(if on { accent() } else { text_muted() })
     });
 
@@ -611,7 +613,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let combo_v = commands.spawn((Text::new(""), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())), Node { min_width: Val::Px(96.0), max_width: Val::Px(150.0), overflow: Overflow::clip(), ..default() }, bevy::text::TextLayout::no_wrap())).id();
-    bind_text(commands, combo_v, |w| state(w).and_then(|s| s.selected_clip.clone()).unwrap_or_else(|| renzora::lang::t("timeline.select_clip")));
+    bind_text(commands, combo_v, |w| state(w.untracked()).and_then(|s| s.selected_clip.clone()).unwrap_or_else(|| renzora::lang::t("timeline.select_clip")));
     let combo_c = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 9.0);
     commands.entity(combo).add_children(&[combo_v, combo_c]);
     let _ = clip_ic;
@@ -647,7 +649,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             .id();
         let lbl = commands.spawn((Text::new(format!("{:.2}x", s)), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_primary())))).id();
         bind_text_color(commands, lbl, move |w| {
-            let active = state(w).is_some_and(|st| (st.preview_speed - s).abs() < 0.01);
+            let active = state(w.untracked()).is_some_and(|st| (st.preview_speed - s).abs() < 0.01);
             rgb(if active { accent() } else { text_primary() })
         });
         commands.entity(btn).add_child(lbl);
@@ -658,14 +660,14 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let (snap_b, snap_ic) = icon_btn(commands, fonts, "magnet-straight", text_muted(), AnimBtn::Snap);
     bind_text_color(commands, snap_ic, |w| {
-        let on = state(w).is_some_and(|s| s.snap_enabled);
+        let on = state(w.untracked()).is_some_and(|s| s.snap_enabled);
         rgb(if on { accent() } else { text_muted() })
     });
 
     // Record toggle (auto-key inspector edits) — red when armed.
     let (record_b, record_ic) = icon_btn(commands, fonts, "record", text_muted(), AnimBtn::Record);
     bind_text_color(commands, record_ic, |w| {
-        let on = state(w).is_some_and(|s| s.record_enabled);
+        let on = state(w.untracked()).is_some_and(|s| s.record_enabled);
         rgb(if on { (220, 70, 70) } else { text_muted() })
     });
     // Add a property track / insert a key at the playhead.
@@ -709,13 +711,13 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         len_dv,
-        |w: &World| cur_clip(w).map(|c| c.duration).unwrap_or(2.0),
+        |w: &Rx| cur_clip(w.untracked()).map(|c| c.duration).unwrap_or(2.0),
         |w: &mut World, v: &f32| set_clip_duration(w, *v),
     );
 
     let time = commands.spawn((Text::new(""), ui_font(&fonts.mono, 11.0), TextColor(rgb(text_primary())))).id();
     bind_text(commands, time, |w| {
-        let Some(s) = state(w) else { return String::new() };
+        let Some(s) = state(w.untracked()) else { return String::new() };
         let secs = s.scrub_time;
         let frame = (secs * 30.0) as u32;
         format!("{:02}:{:05.2}  f{}", (secs / 60.0) as u32, secs % 60.0, frame)
@@ -723,7 +725,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let zoom_out = icon_btn(commands, fonts, "magnifying-glass-minus", text_muted(), AnimBtn::ZoomOut).0;
     let zoom_lbl = commands.spawn((Text::new(""), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
-    bind_text(commands, zoom_lbl, |w| format!("{:.0}px/s", state(w).map(|s| s.timeline_zoom).unwrap_or(0.0)));
+    bind_text(commands, zoom_lbl, |w| format!("{:.0}px/s", state(w.untracked()).map(|s| s.timeline_zoom).unwrap_or(0.0)));
     let zoom_in = icon_btn(commands, fonts, "magnifying-glass-plus", text_muted(), AnimBtn::ZoomIn).0;
 
     let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, record_b, sep1, loop_b, sep2, combo, new_clip_field, new_clip_b, sep3, speed_lbl];
@@ -755,9 +757,9 @@ enum HeaderRow {
     Prop { track: usize, label: Option<String> },
 }
 
-fn header_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(clip) = cur_clip(world) else { return empty() };
-    let th = state(world).map(|s| s.track_height).unwrap_or(22.0);
+fn header_snapshot(world: &Rx) -> KeyedSnapshot {
+    let Some(clip) = cur_clip(world.untracked()) else { return empty() };
+    let th = state(world.untracked()).map(|s| s.track_height).unwrap_or(22.0);
     let mut rows: Vec<HeaderRow> = clip
         .tracks
         .iter()
@@ -977,9 +979,9 @@ fn elem_selected(e: &KeyElem, sel: Option<SelKey>) -> bool {
     }
 }
 
-fn keyframe_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(clip) = cur_clip(world) else { return empty() };
-    let Some(s) = state(world) else { return empty() };
+fn keyframe_snapshot(world: &Rx) -> KeyedSnapshot {
+    let Some(clip) = cur_clip(world.untracked()) else { return empty() };
+    let Some(s) = state(world.untracked()) else { return empty() };
     let sel = world.get_resource::<SelectedKey>().and_then(|s| s.0);
     let (zoom, scroll, th) = (s.timeline_zoom, s.timeline_scroll, s.track_height);
     let t_min = scroll - CULL_MARGIN_PX / zoom;
@@ -1135,9 +1137,9 @@ const MARKER: (u8, u8, u8) = (200, 140, 220);
 
 /// Renders each clip marker as a labeled flag + thin full-height line. Visual
 /// only (`FocusPolicy::Pass`); deletion is a math hit-test in `key_context_menu`.
-fn marker_snapshot(world: &World) -> KeyedSnapshot {
-    let Some(clip) = cur_clip(world) else { return empty() };
-    let Some(s) = state(world) else { return empty() };
+fn marker_snapshot(world: &Rx) -> KeyedSnapshot {
+    let Some(clip) = cur_clip(world.untracked()) else { return empty() };
+    let Some(s) = state(world.untracked()) else { return empty() };
     let (zoom, scroll) = (s.timeline_zoom, s.timeline_scroll);
     let markers: Vec<(f32, String)> = clip.markers.iter().map(|m| (m.time, m.name.clone())).collect();
     let items: Vec<(u64, u64)> = markers

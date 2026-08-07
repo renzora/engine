@@ -30,7 +30,9 @@ use renzora::core::viewport_types::{ViewportMode, ViewportSettings};
 use renzora::{RenzoraShellExt, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, keyed_list};
 use renzora_ember::theme::{accent, rgb, tab_active, text_muted, text_primary};
 use renzora_ember::widgets::{
     dropdown, icon_button, label, scroll_view_xy, toggle_switch, EmberScroll, HoverTooltip,
@@ -343,7 +345,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         grid_switch,
-        |world: &World| world.get_resource::<GridOn>().map(|g| g.0).unwrap_or(false),
+        |world: &Rx| world.get_resource::<GridOn>().map(|g| g.0).unwrap_or(false),
         |world: &mut World, v: &bool| {
             if let Some(mut g) = world.get_resource_mut::<GridOn>() {
                 g.0 = *v;
@@ -374,7 +376,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         shape_dd,
-        |world: &World| -> usize {
+        |world: &Rx| -> usize {
             current_pick_collider(world)
                 .map(|c| match c.shape {
                     renzora_physics::CollisionShapeType::Sphere => 1,
@@ -403,7 +405,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         zoom_dd,
-        |world: &World| {
+        |world: &Rx| {
             nearest_zoom_index(world.get_resource::<TilemapZoom>().map(|z| z.0).unwrap_or(1.0))
         },
         |world: &mut World, idx: &usize| {
@@ -506,7 +508,7 @@ fn tileset_drop_indicator(
 
 /// One tab per tilemap, keyed on entity + name + whether it's active (so a
 /// rename or an active-tilemap switch restyles just the affected tabs).
-fn tabs_snapshot(world: &World) -> KeyedSnapshot {
+fn tabs_snapshot(world: &Rx) -> KeyedSnapshot {
     let active = world.get_resource::<ActiveTilemap>().and_then(|a| a.0);
     let rows = world
         .get_resource::<TilemapList>()
@@ -604,7 +606,7 @@ fn mirror_paint_layer_list(
 
 /// Rows of the paint-layer list + the "+ add" row. Keyed on each row's full
 /// state so a rename/toggle/reorder restyles only the affected rows.
-fn paint_layers_snapshot(world: &World) -> KeyedSnapshot {
+fn paint_layers_snapshot(world: &Rx) -> KeyedSnapshot {
     let rows = world
         .get_resource::<PaintLayerList>()
         .map(|l| l.0.clone())
@@ -836,7 +838,7 @@ fn add_paint_layer_click(
 /// tilemap exists yet, the item is instead a hint that dropping a tileset here
 /// imports one. The grid overlay is intentionally NOT part of this — see
 /// [`sync_grid_overlay`].
-fn atlas_snapshot(world: &World) -> KeyedSnapshot {
+fn atlas_snapshot(world: &Rx) -> KeyedSnapshot {
     let mut items = Vec::new();
     let mut data: Option<(Handle<Image>, Vec2)> = None;
 
@@ -1335,7 +1337,7 @@ fn toggle_solid_cells(
 
 /// The authored collision box for the CURRENT palette pick, if any — the
 /// `&World` form the reactive dropdown bindings need.
-fn current_pick_collider(world: &World) -> Option<TileObjectCollider> {
+fn current_pick_collider(world: &Rx) -> Option<TileObjectCollider> {
     let active = world.get_resource::<ActiveTilemap>().and_then(|a| a.0)?;
     let brush = world.get_resource::<TilemapBrush>()?;
     if brush.selected.len() < 2 {

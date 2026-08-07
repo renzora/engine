@@ -164,9 +164,9 @@ pub fn register_native_hierarchy(app: &mut App) {
         });
         // While the scene has entities, show the tree; when empty, the starter
         // picker takes its place.
-        renzora_ember::reactive::bind_display(commands, scroll, |w| !scene_starter::scene_is_empty(w));
+        renzora_ember::reactive::tracked::bind_display(commands, scroll, |w| !scene_starter::scene_is_empty(w));
         let picker = scene_starter::build_picker(commands, fonts);
-        renzora_ember::reactive::bind_display(commands, picker, scene_starter::scene_is_empty);
+        renzora_ember::reactive::tracked::bind_display(commands, picker, scene_starter::scene_is_empty);
 
         commands.entity(root).add_children(&[header, scroll, picker]);
         root

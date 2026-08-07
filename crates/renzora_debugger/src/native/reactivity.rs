@@ -14,7 +14,9 @@ use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, ReactiveStats};
+use renzora_ember::reactive::{ReactiveStats};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::{rgb, text_muted, text_primary};
 use renzora_ember::widgets::{line_chart_live, ChartStyle};
 
@@ -25,7 +27,7 @@ pub(super) fn register(app: &mut App) {
     app.register_panel_content("ui_reactivity", true, build);
 }
 
-fn rs<R: Default>(w: &World, f: impl FnOnce(&ReactiveStats) -> R) -> R {
+fn rs<R: Default>(w: &Rx, f: impl FnOnce(&ReactiveStats) -> R) -> R {
     w.get_resource::<ReactiveStats>().map(f).unwrap_or_default()
 }
 
@@ -56,6 +58,43 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             }
         },
     );
+    // The headline number for dependency tracking: of the bindings that were
+    // eligible to run this frame, how many were skipped because nothing they
+    // read had moved. 0% means nothing on screen is migrated to `tracked::`
+    // yet — the machinery is inert, not broken.
+    let skip_big = big_stat(
+        commands,
+        fonts,
+        "% skipped (tracked)",
+        |w| {
+            rs(w, |s| {
+                if s.bindings_total == 0 {
+                    "—".to_string()
+                } else {
+                    format!(
+                        "{:.0}",
+                        100.0 * s.skipped_this_frame as f32 / s.bindings_total as f32
+                    )
+                }
+            })
+        },
+        |w| {
+            let pct = rs(w, |s| {
+                if s.bindings_total == 0 {
+                    0.0
+                } else {
+                    100.0 * s.skipped_this_frame as f32 / s.bindings_total as f32
+                }
+            });
+            if pct > 60.0 {
+                rgb((120, 210, 120))
+            } else if pct > 15.0 {
+                rgb((230, 200, 110))
+            } else {
+                rgb((230, 110, 110))
+            }
+        },
+    );
     let chart = line_chart_live(
         commands,
         ChartStyle {
@@ -74,6 +113,16 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let rows = [
         label_row(commands, fonts, &renzora::lang::t("reactivity.bindings_run"), |w| {
             rs(w, |s| s.bindings_total).to_string()
+        }),
+        label_row(commands, fonts, &renzora::lang::t("reactivity.skipped"), |w| {
+            rs(w, |s| {
+                format!("{} / {}", s.skipped_this_frame, s.bindings_total)
+            })
+        }),
+        // Parked bindings are alive and restorable but out of the walk
+        // entirely — collapse a big section and watch this take the load.
+        label_row(commands, fonts, &renzora::lang::t("reactivity.parked"), |w| {
+            rs(w, |s| s.parked_total).to_string()
         }),
         label_row(commands, fonts, &renzora::lang::t("reactivity.new_values"), |w| {
             rs(w, |s| s.changed_this_frame).to_string()
@@ -135,6 +184,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(root).add_children(&[
         big,
         cost_big,
+        skip_big,
         chart,
         totals_label,
         totals,
@@ -153,7 +203,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// `metric` formats the highlighted number for this table.
 fn binding_row<G, M>(commands: &mut Commands, fonts: &EmberFonts, get: G, metric: M) -> Entity
 where
-    G: Fn(&World) -> Option<renzora_ember::reactive::BindingReport>
+    G: Fn(&Rx) -> Option<renzora_ember::reactive::BindingReport>
         + Send
         + Sync
         + Copy
@@ -224,7 +274,7 @@ where
 
 /// One table row for a [`ListReport`] rank: `label  rows  µs  rebuilt`.
 fn list_row(commands: &mut Commands, fonts: &EmberFonts, i: usize) -> Entity {
-    let get = move |w: &World| rs(w, |s| s.list_reports.get(i).cloned());
+    let get = move |w: &Rx| rs(w, |s| s.list_reports.get(i).cloned());
 
     let row = commands
         .spawn(Node {

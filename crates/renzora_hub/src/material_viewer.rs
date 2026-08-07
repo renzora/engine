@@ -30,7 +30,9 @@ use renzora::core::{EditorLocked, HideInHierarchy, IsolatedCamera};
 use renzora::SplashState;
 use renzora_auth::marketplace::AssetSummary;
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_display, keyed_list, Bound, KeyedSnapshot};
+use renzora_ember::reactive::{Bound, KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::slider;
 use renzora_grid::{InfiniteGrid, InfiniteGridSettings};
@@ -158,19 +160,19 @@ pub(crate) fn is_material_category(category: &str) -> bool {
 }
 
 /// The RTT handle for the overlay's `ImageNode` binding.
-pub(crate) fn preview_image_handle(w: &World) -> Option<Handle<Image>> {
+pub(crate) fn preview_image_handle(w: &Rx) -> Option<Handle<Image>> {
     w.get_resource::<MaterialPreviewImage>().map(|p| p.handle.clone())
 }
 
 /// True once the material has compiled and is rendering — show the RTT.
-pub(crate) fn material_ready(w: &World) -> bool {
+pub(crate) fn material_ready(w: &Rx) -> bool {
     w.get_resource::<MaterialPreview>()
         .map(|p| p.is_material && p.status == MatStatus::Ready)
         .unwrap_or(false)
 }
 
 /// True while the shader is downloading / compiling — show the placeholder.
-pub(crate) fn material_loading(w: &World) -> bool {
+pub(crate) fn material_loading(w: &Rx) -> bool {
     w.get_resource::<MaterialPreview>()
         .map(|p| p.is_material && p.status == MatStatus::Loading)
         .unwrap_or(false)
@@ -178,7 +180,7 @@ pub(crate) fn material_loading(w: &World) -> bool {
 
 /// True when the overlay is showing a material preview (ready or loading) — used
 /// to hide the static image gallery. A failed compile falls back to the gallery.
-pub(crate) fn material_active(w: &World) -> bool {
+pub(crate) fn material_active(w: &Rx) -> bool {
     w.get_resource::<MaterialPreview>()
         .map(|p| p.is_material && p.status != MatStatus::Failed)
         .unwrap_or(false)
@@ -568,7 +570,7 @@ pub(crate) fn build_material_controls(commands: &mut Commands, fonts: &EmberFont
 /// One keyed row per extracted param. Keyed by `(name, version, type)` so the
 /// rows rebuild when a new shader loads — but NOT on a slider value change (which
 /// would recreate the slider mid-drag).
-fn params_snapshot(world: &World) -> KeyedSnapshot {
+fn params_snapshot(world: &Rx) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     let Some(p) = world.get_resource::<MaterialPreview>() else {
         return KeyedSnapshot { items: Vec::new(), build: Box::new(|_, _, _| Entity::PLACEHOLDER) };

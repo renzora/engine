@@ -19,7 +19,10 @@ use renzora_auth::feed::{FeedComment, FeedPost};
 use renzora_auth::social::{ProfileAsset, PublicProfile, UserForumPost, UserRef};
 use renzora_auth::AuthSession;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list_tokened, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::keyed_list_tokened;
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     accent_button, accent_chip, accent_ghost, accent_icon_button, empty_state, scroll_area,
@@ -823,7 +826,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
 // ── Snapshot / views ─────────────────────────────────────────────────────────
 
-fn snapshot(w: &World) -> KeyedSnapshot {
+fn snapshot(w: &Rx) -> KeyedSnapshot {
     let Some(panel) = w.get_resource::<ProfilePanel>() else {
         return util::empty_snapshot();
     };

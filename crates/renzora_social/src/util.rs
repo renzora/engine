@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 use renzora_auth::AuthSession;
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{accent, rgb, rgba, text_muted, text_primary};
 
@@ -28,7 +29,7 @@ pub(crate) fn role_icon(role: &str) -> Option<(&'static str, (u8, u8, u8))> {
 }
 
 /// True when a user is signed in.
-pub(crate) fn signed_in(w: &World) -> bool {
+pub(crate) fn signed_in(w: &Rx) -> bool {
     w.get_resource::<AuthSession>()
         .map(|s| s.is_signed_in())
         .unwrap_or(false)

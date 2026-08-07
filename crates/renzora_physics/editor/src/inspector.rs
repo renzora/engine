@@ -4,6 +4,7 @@
 //! editor bundle is present.
 
 use bevy::prelude::*;
+use renzora_ember::reactive::Rx;
 use renzora::{EditorSelection, InspectorEntry, ToolEntry, ToolSection};
 
 use renzora_physics::{
@@ -295,7 +296,7 @@ fn physics_body_entry() -> InspectorEntry {
             // inspector also drops in a default shape (auto-fit sizes it to the
             // mesh AABB next frame). Skipped when the entity or a descendant
             // already carries a shape — compound bodies keep shapes on children.
-            if !subtree_has_collision_shape(world, entity) {
+            if !subtree_has_collision_shape(&Rx::new(&*world), entity) {
                 world.entity_mut(entity).insert(CollisionShapeData::default());
             }
         }),
@@ -309,7 +310,7 @@ fn physics_body_entry() -> InspectorEntry {
 }
 
 /// True if `root` or any descendant carries a `CollisionShapeData`.
-fn subtree_has_collision_shape(world: &World, root: Entity) -> bool {
+fn subtree_has_collision_shape(world: &Rx, root: Entity) -> bool {
     let mut stack = vec![root];
     while let Some(e) = stack.pop() {
         if world.get::<CollisionShapeData>(e).is_some() {
@@ -326,7 +327,7 @@ fn subtree_has_collision_shape(world: &World, root: Entity) -> bool {
 fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
     use renzora_ember::font::ui_font;
     use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
-    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::theme::{rgb, text_muted};
     use renzora_ember::widgets::{drag_value, dropdown, DragRange};
 
@@ -431,7 +432,7 @@ fn physics_body_native(world: &mut World, entity: Entity) -> Entity {
 fn lock_row(commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, entity: Entity, label: &str, rotation: bool) -> Entity {
     use renzora_ember::font::ui_font;
     use renzora_ember::inspector::inspector_row;
-    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::theme::{rgb, text_muted};
     use renzora_ember::widgets::checkbox;
 
@@ -471,7 +472,7 @@ fn lock_row(commands: &mut Commands, fonts: &renzora_ember::font::EmberFonts, en
     inspector_row(commands, &fonts.ui, label, group)
 }
 
-fn read_lock(w: &World, e: Entity, rotation: bool, axis: usize) -> bool {
+fn read_lock(w: &Rx, e: Entity, rotation: bool, axis: usize) -> bool {
     w.get::<PhysicsBodyData>(e)
         .map(|b| {
             if rotation {
@@ -537,11 +538,11 @@ struct StripBtn {
     entity: Entity,
 }
 
-fn edit_active(w: &World) -> bool {
+fn edit_active(w: &Rx) -> bool {
     w.get_resource::<ColliderEditMode>().map(|c| c.active).unwrap_or(false)
 }
 
-fn shape_of(w: &World, e: Entity) -> Option<CollisionShapeType> {
+fn shape_of(w: &Rx, e: Entity) -> Option<CollisionShapeType> {
     w.get::<CollisionShapeData>(e).map(|s| s.shape_type)
 }
 
@@ -551,7 +552,7 @@ fn shape_of(w: &World, e: Entity) -> Option<CollisionShapeType> {
 fn collision_shape_native(world: &mut World, entity: Entity) -> Entity {
     use renzora_ember::font::{icon_text, ui_font};
     use renzora_ember::inspector::{inspector_body, inspector_row, inspector_stripe};
-    use renzora_ember::reactive::{bind_2way, bind_bg, bind_display, bind_text};
+    use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
     use renzora_ember::theme::{accent, card_bg, rgb, text_muted, text_primary};
     use renzora_ember::widgets::{drag_value, dropdown, toggle_switch, DragRange};
 

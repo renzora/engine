@@ -16,7 +16,8 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_text, bind_with};
+use renzora_ember::reactive::tracked::{bind_text, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::OverlaySurface;
 
 use crate::loading::{EditorLoadingOverlayActive, LoadingBytes, LoadingTasks, TextureLoadProgress};
@@ -136,7 +137,7 @@ fn manage_loading_screen(world: &mut World) {
             return;
         }
         let fonts = world.resource::<EmberFonts>().clone();
-        let (pname, ppath) = project_info(world);
+        let (pname, ppath) = project_info(&Rx::new(&*world));
         let mut queue = CommandQueue::default();
         {
             let mut commands = Commands::new(&mut queue, world);
@@ -151,7 +152,7 @@ fn manage_loading_screen(world: &mut World) {
 }
 
 /// The active project's display name and folder path (empty if none open yet).
-fn project_info(world: &World) -> (String, String) {
+fn project_info(world: &Rx) -> (String, String) {
     world
         .get_resource::<renzora::CurrentProject>()
         .map(|p| (p.config.name.clone(), p.path.display().to_string()))
@@ -493,7 +494,7 @@ fn build_terminal(
 #[derive(PartialEq)]
 struct OrderedF32(f32);
 
-fn aggregate(world: &World) -> (f32, u32) {
+fn aggregate(world: &Rx) -> (f32, u32) {
     let Some(tasks) = world.get_resource::<LoadingTasks>() else {
         return (1.0, 100);
     };
@@ -507,7 +508,7 @@ fn aggregate(world: &World) -> (f32, u32) {
 
 /// Display fraction. When we have real byte totals, use the eased [`LoadingAnim`]
 /// value (smooth motion); otherwise fall back to the task-count aggregate.
-fn progress_fraction(world: &World) -> (f32, u32) {
+fn progress_fraction(world: &Rx) -> (f32, u32) {
     let has_data = world.get_resource::<LoadingBytes>().is_some_and(|b| b.total > 0)
         || world.get_resource::<TextureLoadProgress>().is_some_and(|t| t.total > 0);
     if has_data {
@@ -518,7 +519,7 @@ fn progress_fraction(world: &World) -> (f32, u32) {
 }
 
 /// Real (loaded, total) bytes when the byte loader has data.
-fn real_bytes(world: &World) -> Option<(u64, u64)> {
+fn real_bytes(world: &Rx) -> Option<(u64, u64)> {
     world
         .get_resource::<LoadingBytes>()
         .filter(|b| b.total > 0)
@@ -526,22 +527,22 @@ fn real_bytes(world: &World) -> Option<(u64, u64)> {
 }
 
 /// Real (loaded, total) texture counts during the decode phase.
-fn real_textures(world: &World) -> Option<(u32, u32)> {
+fn real_textures(world: &Rx) -> Option<(u32, u32)> {
     world
         .get_resource::<TextureLoadProgress>()
         .filter(|t| t.total > 0)
         .map(|t| (t.loaded, t.total))
 }
 
-fn loading_fraction(world: &World) -> OrderedF32 {
+fn loading_fraction(world: &Rx) -> OrderedF32 {
     OrderedF32(aggregate(world).0)
 }
 
-fn loading_percent_text(world: &World) -> String {
+fn loading_percent_text(world: &Rx) -> String {
     format!("{}%", aggregate(world).1)
 }
 
-fn loading_detail_text(world: &World) -> String {
+fn loading_detail_text(world: &Rx) -> String {
     let Some(tasks) = world.get_resource::<LoadingTasks>() else {
         return String::new();
     };
@@ -556,7 +557,7 @@ fn loading_detail_text(world: &World) -> String {
         .unwrap_or_default()
 }
 
-fn loading_fill_color(world: &World) -> [u8; 3] {
+fn loading_fill_color(world: &Rx) -> [u8; 3] {
     let t = world.get_resource::<Time>().map(|t| t.elapsed_secs()).unwrap_or(0.0);
     let pulse = 0.5 + 0.5 * (t * 3.2).sin();
     [(90.0 + 40.0 * pulse) as u8, (180.0 - 30.0 * pulse) as u8, 255]
@@ -564,12 +565,12 @@ fn loading_fill_color(world: &World) -> [u8; 3] {
 
 /// Eased display fraction (the smooth [`LoadingAnim`] value), for the full-width
 /// terminal bar.
-fn loading_fraction_eased(world: &World) -> OrderedF32 {
+fn loading_fraction_eased(world: &Rx) -> OrderedF32 {
     OrderedF32(progress_fraction(world).0)
 }
 
 /// Eased percent readout for the full-width terminal bar.
-fn loading_percent_eased_text(world: &World) -> String {
+fn loading_percent_eased_text(world: &Rx) -> String {
     format!("{}%", progress_fraction(world).1)
 }
 
@@ -593,7 +594,7 @@ const BOOT_LINES: [&str; 12] = [
 
 /// Build the streaming terminal log: the first N boot lines (N scales with
 /// progress), then an active status line with a blinking cursor.
-fn terminal_text(world: &World) -> String {
+fn terminal_text(world: &Rx) -> String {
     let (frac, pct) = progress_fraction(world);
     let n = ((frac * BOOT_LINES.len() as f32).ceil() as usize).clamp(1, BOOT_LINES.len());
     let t = world.get_resource::<Time>().map(|t| t.elapsed_secs()).unwrap_or(0.0);

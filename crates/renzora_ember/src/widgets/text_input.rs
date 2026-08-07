@@ -7,6 +7,7 @@ use bevy::text::TextLayoutInfo;
 use bevy::ui::{ComputedNode, RelativeCursorPosition};
 use bevy::window::SystemCursorIcon;
 
+use crate::reactive::Rx;
 use crate::font::ui_font;
 use crate::style::{Role, Styled, WidgetState};
 use crate::theme::*;
@@ -250,7 +251,7 @@ fn build_input(
 pub fn bind_text_input(
     commands: &mut Commands,
     input: Entity,
-    get: impl Fn(&World) -> String + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> String + Send + Sync + 'static,
     set: impl Fn(&mut World, String) + Send + Sync + 'static,
 ) {
     // Anchored to the input: this clones the value, placeholder and the `get`
@@ -267,7 +268,7 @@ pub fn bind_text_input(
         else {
             return true;
         };
-        let state_val = get(world);
+        let state_val = get(&Rx::new(&*world));
         if focused {
             // User is editing → push to state.
             if widget_val != state_val {

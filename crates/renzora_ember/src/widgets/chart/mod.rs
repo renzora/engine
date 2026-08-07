@@ -15,8 +15,9 @@ use bevy::shader::ShaderRef;
 use bevy::ui_render::prelude::{MaterialNode, UiMaterial};
 use bevy::ui_render::UiMaterialPlugin;
 
+use crate::reactive::Rx;
 use crate::font::{ui_font, EmberFonts};
-use crate::reactive::bind_with;
+use crate::reactive::tracked::bind_with;
 use crate::theme::*;
 
 const MAX_SAMPLES: usize = 32;
@@ -245,7 +246,7 @@ impl Default for ChartStyle {
 /// unchanged). Use for rolling debug graphs.
 pub fn line_chart_live<F>(commands: &mut Commands, style: ChartStyle, sampler: F) -> Entity
 where
-    F: Fn(&World) -> Vec<f32> + Send + Sync + 'static,
+    F: Fn(&Rx) -> Vec<f32> + Send + Sync + 'static,
 {
     let (outer, plot) = chart_shell(
         commands,

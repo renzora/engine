@@ -24,9 +24,9 @@ use renzora::core::CurrentProject;
 use renzora_editor_framework::{ActiveTool, AssetDragPayload, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{
-    bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list, KeyedSnapshot,
-};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     collapsible, drag_value, menu_item, screen_menu, slider, DragRange,
@@ -81,25 +81,25 @@ impl Plugin for NativeTerrain {
 
 // ── State accessors (mirror the egui panel's `get_resource` reads) ───────────
 
-fn tool_active(w: &World) -> bool {
+fn tool_active(w: &Rx) -> bool {
     w.get_resource::<TerrainToolState>()
         .map(|t| t.active)
         .unwrap_or_default()
 }
 
-fn settings_tab(w: &World) -> TerrainTab {
+fn settings_tab(w: &Rx) -> TerrainTab {
     w.get_resource::<TerrainSettings>()
         .map(|s| s.tab)
         .unwrap_or_default()
 }
 
-fn brush_type(w: &World) -> TerrainBrushType {
+fn brush_type(w: &Rx) -> TerrainBrushType {
     w.get_resource::<TerrainSettings>()
         .map(|s| s.brush_type)
         .unwrap_or_default()
 }
 
-fn paint_brush_type(w: &World) -> PaintBrushType {
+fn paint_brush_type(w: &Rx) -> PaintBrushType {
     w.get_resource::<SurfacePaintSettings>()
         .map(|s| s.brush_type)
         .unwrap_or_default()
@@ -945,7 +945,7 @@ fn layers_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
     commands.entity(body).add_children(&[list, hint, add]);
 }
 
-fn layer_count(w: &World) -> usize {
+fn layer_count(w: &Rx) -> usize {
     // Real count only — no phantom placeholder rows. An empty painter shows
     // the "no layers" hint plus the Add Layer button.
     w.get_resource::<SurfacePaintState>()
@@ -953,13 +953,13 @@ fn layer_count(w: &World) -> usize {
         .unwrap_or(0)
 }
 
-fn active_layer(w: &World) -> usize {
+fn active_layer(w: &Rx) -> usize {
     w.get_resource::<SurfacePaintSettings>()
         .map(|s| s.active_layer)
         .unwrap_or(0)
 }
 
-fn layer_name(w: &World, i: usize) -> String {
+fn layer_name(w: &Rx, i: usize) -> String {
     if let Some(ps) = w.get_resource::<SurfacePaintState>() {
         if let Some(p) = ps.layers_preview.get(i) {
             return p.name.clone();
@@ -968,13 +968,13 @@ fn layer_name(w: &World, i: usize) -> String {
     format!("Layer {}", i + 1)
 }
 
-fn layer_material_source(w: &World, i: usize) -> Option<String> {
+fn layer_material_source(w: &Rx, i: usize) -> Option<String> {
     w.get_resource::<SurfacePaintState>()
         .and_then(|ps| ps.layers_preview.get(i))
         .and_then(|p| p.material_source.clone())
 }
 
-fn layers_snapshot(world: &World) -> KeyedSnapshot {
+fn layers_snapshot(world: &Rx) -> KeyedSnapshot {
     let count = layer_count(world).min(MAX_LAYERS);
     // Key + hash on STRUCTURE (index + name) — not on selection or the material
     // path — so selecting a row / dropping a material never rebuilds the list.
@@ -1261,7 +1261,7 @@ fn small_toggle(commands: &mut Commands) -> Entity {
         .id()
 }
 
-fn toggle_bg(w: &World, btn: Entity, active: bool) -> Color {
+fn toggle_bg(w: &Rx, btn: Entity, active: bool) -> Color {
     if active {
         rgb(accent())
     } else if matches!(
@@ -1336,7 +1336,7 @@ fn labelled_drag<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let row = field_row(commands, fonts, label);
@@ -1362,7 +1362,7 @@ fn labelled_slider<G, S>(
     set: S,
 ) -> Entity
 where
-    G: Fn(&World) -> f32 + Send + Sync + 'static,
+    G: Fn(&Rx) -> f32 + Send + Sync + 'static,
     S: Fn(&mut World, &f32) + Send + Sync + 'static,
 {
     let row = field_row(commands, fonts, label);
@@ -1375,7 +1375,7 @@ where
         min_width: Val::Px(0.0),
         ..default()
     });
-    let get_n = move |w: &World| ((get(w) - min) / span).clamp(0.0, 1.0);
+    let get_n = move |w: &Rx| ((get(w) - min) / span).clamp(0.0, 1.0);
     let set_n = move |w: &mut World, v: &f32| {
         let real = min + v.clamp(0.0, 1.0) * span;
         set(w, &real);
@@ -1437,7 +1437,7 @@ fn wide_button(
 fn enum_combo<M, L>(commands: &mut Commands, fonts: &EmberFonts, marker: M, label_fn: L) -> Entity
 where
     M: Component,
-    L: Fn(&World) -> String + Send + Sync + 'static,
+    L: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let combo = commands
         .spawn((

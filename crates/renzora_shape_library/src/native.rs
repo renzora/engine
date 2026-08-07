@@ -9,7 +9,9 @@ use renzora::core::ShapeRegistry;
 use renzora_editor_framework::{EditorCommands, ShapeDragState, SplashState};
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{text_input, EmberTextInput};
 use renzora_undo::{self, SpawnShapeCmd, UndoContext};
@@ -107,7 +109,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// Dirty token: the shape set is static, so only the search box changes which
 /// shapes show. Combined with the scroll-window term, the snapshot is skipped
 /// on frames where neither changed.
-fn shapes_token(world: &World) -> u64 {
+fn shapes_token(world: &Rx) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     world
@@ -118,7 +120,7 @@ fn shapes_token(world: &World) -> u64 {
     h.finish()
 }
 
-fn shapes_snapshot(world: &World) -> KeyedSnapshot {
+fn shapes_snapshot(world: &Rx) -> KeyedSnapshot {
     let search = world.get_resource::<ShapesState>().map(|s| s.search.to_lowercase()).unwrap_or_default();
     let Some(reg) = world.get_resource::<ShapeRegistry>() else {
         return KeyedSnapshot { items: Vec::new(), build: Box::new(|c, _, _| c.spawn(Node::default()).id()) };

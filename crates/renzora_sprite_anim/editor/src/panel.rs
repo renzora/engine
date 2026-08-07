@@ -15,7 +15,9 @@ use renzora::core::{SpriteImagePath, SpriteImages};
 use renzora::RenzoraShellExt;
 use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_2way, bind_text, keyed_list};
 use renzora_ember::theme::{rgb, text_muted};
 use renzora_ember::widgets::{
     drag_value, dropdown, icon_button, icon_label_button, label, scroll_view_xy, text_input,
@@ -71,7 +73,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // Header: the target sprite's name (or a hint) + zoom controls.
     let header = row(commands);
     let name = label(commands, &fonts.ui, "Select a 2D sprite");
-    bind_text(commands, name, |world: &World| {
+    bind_text(commands, name, |world: &Rx| {
         match world.get_resource::<SpriteTarget>().and_then(|t| t.0) {
             Some(e) => world
                 .get::<Name>(e)
@@ -119,7 +121,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         fps_dv,
-        |world: &World| world.get_resource::<SheetFps>().map(|f| f.0).unwrap_or(10.0),
+        |world: &Rx| world.get_resource::<SheetFps>().map(|f| f.0).unwrap_or(10.0),
         |world: &mut World, v: &f32| {
             if let Some(mut f) = world.get_resource_mut::<SheetFps>() {
                 f.0 = v.max(1.0);
@@ -158,7 +160,7 @@ fn file_name(path: &str) -> String {
 /// `SpriteImages.index` — the active sheet the palette shows and that new clips
 /// pin to. Keyed on the target + name list, so it rebuilds when a sheet is added
 /// (same reason the inspector's Image dropdown folds its options into the sig).
-fn sheet_dropdown_snapshot(world: &World) -> KeyedSnapshot {
+fn sheet_dropdown_snapshot(world: &Rx) -> KeyedSnapshot {
     let target = world.get_resource::<SpriteTarget>().and_then(|t| t.0);
     let (names, selected): (Vec<String>, usize) = target
         .map(|e| {
@@ -193,7 +195,7 @@ fn sheet_dropdown_snapshot(world: &World) -> KeyedSnapshot {
             bind_2way(
                 c,
                 dd,
-                |world: &World| {
+                |world: &Rx| {
                     world
                         .get_resource::<SpriteTarget>()
                         .and_then(|t| t.0)
@@ -231,7 +233,7 @@ fn row(commands: &mut Commands) -> Entity {
 
 /// Single-item snapshot: the current sheet image (or a hint), keyed on path +
 /// pixel size. The palette systems attach grid + selection marks as children.
-fn sheet_snapshot(world: &World) -> KeyedSnapshot {
+fn sheet_snapshot(world: &Rx) -> KeyedSnapshot {
     let path = world.get_resource::<CurrentSheet>().and_then(|s| s.0.clone());
     let mut items = Vec::new();
     let mut data: Option<Handle<Image>> = None;

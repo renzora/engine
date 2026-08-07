@@ -11,7 +11,9 @@ use bevy::prelude::*;
 use renzora_editor_framework::{EditorCommands, EditorSelection, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_bg, bind_display, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_bg, bind_display};
 use renzora_ember::theme::{accent, close_red, placeholder, rgb, section_bg, tab_hover, text_muted, text_primary};
 use renzora_scripting::ScriptComponent;
 
@@ -37,10 +39,10 @@ pub fn register_native_scripts_on_entity(app: &mut App) {
     );
 }
 
-fn selected(w: &World) -> Option<Entity> {
+fn selected(w: &Rx) -> Option<Entity> {
     w.get_resource::<EditorSelection>().and_then(|s| s.get())
 }
-fn project_root(w: &World) -> Option<PathBuf> {
+fn project_root(w: &Rx) -> Option<PathBuf> {
     w.get_resource::<renzora::core::CurrentProject>().map(|p| p.path.clone())
 }
 
@@ -117,7 +119,7 @@ enum Item {
     Row(RowData),
 }
 
-fn scripts_snapshot(world: &World) -> KeyedSnapshot {
+fn scripts_snapshot(world: &Rx) -> KeyedSnapshot {
     let items: Vec<Item> = build_items(world);
     let keyed: Vec<(u64, u64)> = items
         .iter()
@@ -140,7 +142,7 @@ fn scripts_snapshot(world: &World) -> KeyedSnapshot {
     }
 }
 
-fn build_items(world: &World) -> Vec<Item> {
+fn build_items(world: &Rx) -> Vec<Item> {
     let Some(entity) = selected(world) else {
         return vec![Item::Note(renzora::lang::t("code.select_entity_scripts"))];
     };

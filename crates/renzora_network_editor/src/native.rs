@@ -11,7 +11,9 @@ use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_network::status::ConnectionState;
 use renzora_network::{NetworkId, NetworkOwner, NetworkStatus, Networked, OwnerKind};
@@ -31,18 +33,18 @@ impl Plugin for NativeNetworkPanels {
 
 // ── Shared little builders ───────────────────────────────────────────────────
 
-fn nstat<R: Default>(w: &World, f: impl FnOnce(&NetworkStatus) -> R) -> R {
+fn nstat<R: Default>(w: &Rx, f: impl FnOnce(&NetworkStatus) -> R) -> R {
     w.get_resource::<NetworkStatus>().map(f).unwrap_or_default()
 }
 
-fn is_state(w: &World, want: ConnectionState) -> bool {
+fn is_state(w: &Rx, want: ConnectionState) -> bool {
     w.get_resource::<NetworkStatus>().map(|s| s.state) == Some(want)
 }
 
 /// A `label …… value` row (label left, mono value right; the value is a binding).
 fn stat_row<V>(commands: &mut Commands, fonts: &EmberFonts, label: &str, value: V) -> Entity
 where
-    V: Fn(&World) -> String + Send + Sync + 'static,
+    V: Fn(&Rx) -> String + Send + Sync + 'static,
 {
     let row = commands
         .spawn(Node {
@@ -205,7 +207,7 @@ fn build_monitor(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn clients_snapshot(world: &World) -> KeyedSnapshot {
+fn clients_snapshot(world: &Rx) -> KeyedSnapshot {
     let clients: Vec<(u64, f32)> = nstat(world, |s| {
         s.connected_clients.iter().map(|c| (c.client_id, c.rtt_ms)).collect()
     });
@@ -263,9 +265,9 @@ fn build_entities(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 }
 
 /// (entity, name, network id, owner) for every entity with `Networked`.
-fn networked(world: &World) -> Vec<(Entity, Option<String>, Option<u64>, Option<OwnerKind>)> {
+fn networked(world: &Rx) -> Vec<(Entity, Option<String>, Option<u64>, Option<OwnerKind>)> {
     let mut out = Vec::new();
-    for archetype in world.archetypes().iter() {
+    for archetype in world.untracked().archetypes().iter() {
         for arch_entity in archetype.entities() {
             let e = arch_entity.id();
             if world.get::<Networked>(e).is_some() {
@@ -279,7 +281,7 @@ fn networked(world: &World) -> Vec<(Entity, Option<String>, Option<u64>, Option<
     out
 }
 
-fn entities_snapshot(world: &World) -> KeyedSnapshot {
+fn entities_snapshot(world: &Rx) -> KeyedSnapshot {
     let ents = networked(world);
     if ents.is_empty() {
         return KeyedSnapshot {
@@ -333,7 +335,7 @@ fn entities_snapshot(world: &World) -> KeyedSnapshot {
 // ── Network Settings ─────────────────────────────────────────────────────────
 
 fn net_cfg<R: Default>(
-    w: &World,
+    w: &Rx,
     f: impl FnOnce(&renzora::core::NetworkProjectConfig) -> R,
 ) -> R {
     w.get_resource::<CurrentProject>()
@@ -342,7 +344,7 @@ fn net_cfg<R: Default>(
         .unwrap_or_default()
 }
 
-fn has_cfg(w: &World) -> bool {
+fn has_cfg(w: &Rx) -> bool {
     w.get_resource::<CurrentProject>()
         .map(|p| p.config.network.is_some())
         .unwrap_or(false)

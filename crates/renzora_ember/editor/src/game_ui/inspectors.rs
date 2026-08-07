@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use renzora::{AppEditorExt, SplashState};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{color_field_rgba, inspector_body, inspector_row, inspector_stripe};
-use renzora_ember::reactive::{bind_2way, bind_bg, bind_display};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{bind_text_input, checkbox, drag_value, dropdown, icon_label_button, text_input, DragRange};
 

@@ -24,7 +24,8 @@ use std::sync::Arc;
 
 use renzora_editor_framework::{EditorCommands, GizmoSpace, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::bind_2way;
+use renzora_ember::reactive::tracked::bind_2way;
+use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
     drag_value, drag_value_flat, scroll_area, toggle_switch, DragRange, OverlaySurface,
 };
@@ -279,8 +280,8 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
 
     // Track the live theme (the static BackgroundColor above only covers the
     // first frame), and hide during play mode like the header strip does.
-    renzora_ember::reactive::bind_bg(commands, cluster, |_| side_toolbar_bg());
-    renzora_ember::reactive::bind_display(commands, cluster, |w| {
+    renzora_ember::reactive::tracked::bind_bg(commands, cluster, |_| side_toolbar_bg());
+    renzora_ember::reactive::tracked::bind_display(commands, cluster, |w| {
         !w.get_resource::<renzora::core::PlayModeState>()
             .map(|p| p.is_in_play_mode())
             .unwrap_or(false)
@@ -306,7 +307,7 @@ fn grid_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         sw,
-        |w: &World| {
+        |w: &Rx| {
             w.get_resource::<ViewportSettings>()
                 .map(|s| s.show_grid_2d)
                 .unwrap_or(false)
@@ -329,7 +330,7 @@ fn grid_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_2way(
         commands,
         dv,
-        |w: &World| {
+        |w: &Rx| {
             w.get_resource::<ViewportSettings>()
                 .map(|s| s.grid_size_2d)
                 .unwrap_or(16.0)
@@ -1160,7 +1161,7 @@ macro_rules! toggle_row {
             $c,
             $f,
             $label,
-            |w: &World| {
+            |w: &Rx| {
                 w.get_resource::<ViewportSettings>()
                     .map(|s| s.$($field)+)
                     .unwrap_or(false)
@@ -1415,7 +1416,7 @@ fn check_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
     label: &str,
-    get: impl Fn(&World) -> bool + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> bool + Send + Sync + 'static,
     set: impl Fn(&mut World, bool) + Send + Sync + 'static,
 ) -> Entity {
     let cb = toggle_switch(commands, false);
@@ -1582,7 +1583,7 @@ fn update_header_chrome(
     }
 }
 
-fn snap_val(w: &World, f: impl Fn(&SnapSettings) -> f32) -> f32 {
+fn snap_val(w: &Rx, f: impl Fn(&SnapSettings) -> f32) -> f32 {
     w.get_resource::<ViewportSettings>()
         .map(|s| f(&s.snap))
         .unwrap_or(0.0)
@@ -1604,7 +1605,7 @@ fn snap_pair(
     min: f32,
     max: f32,
     step: f32,
-    get: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
     let glyph = icon_text(commands, &fonts.phosphor, icon, value_text(), 13.0);
@@ -1872,7 +1873,7 @@ macro_rules! drag_row {
     ($c:expr, $f:expr, $label:expr, $min:expr, $max:expr, $step:expr, $($field:tt)+) => {
         drag_row_build(
             $c, $f, $label, $min, $max, $step,
-            |w: &World| {
+            |w: &Rx| {
                 w.get_resource::<ViewportSettings>()
                     .map(|s| s.$($field)+)
                     .unwrap_or($min)
@@ -2037,7 +2038,7 @@ fn drag_row_build(
     min: f32,
     max: f32,
     step: f32,
-    get: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
     let lbl = commands
@@ -2185,7 +2186,7 @@ fn snap_dist_row(
     min: f32,
     max: f32,
     step: f32,
-    get: impl Fn(&World) -> f32 + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> f32 + Send + Sync + 'static,
     set: impl Fn(&mut World, f32) + Send + Sync + 'static,
 ) -> Entity {
     let btn = snap_button(commands, fonts, label, kind, click);

@@ -8,7 +8,7 @@
 //! ```ignore
 //! app.register_panel_content("my_panel", /* scroll */ true, |commands, fonts| {
 //!     let root = commands.spawn(Node { /* … */ }).id();
-//!     renzora_ember::reactive::keyed_list(commands, root, my_snapshot);
+//!     renzora_ember::reactive::tracked::keyed_list(commands, root, my_snapshot);
 //!     root
 //! });
 //! ```

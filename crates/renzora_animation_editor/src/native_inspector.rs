@@ -20,7 +20,7 @@ use renzora::{AppEditorExt, FieldValue};
 use renzora_animation::{AnimClipSlot, AnimatorComponent};
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{inspector_row, inspector_stripe};
-use renzora_ember::reactive::{bind_2way, bind_text_color};
+use renzora_ember::reactive::tracked::{bind_2way, bind_text_color};
 use renzora_ember::theme::{accent, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
     bind_text_input, checkbox, drag_value, dropdown, text_input, DragRange,
@@ -301,7 +301,7 @@ fn clip_block(
     {
         let name = slot.name.clone();
         bind_text_color(commands, play_ic, move |w| {
-            let playing = selected_is_playing(w, entity, &name);
+            let playing = selected_is_playing(w.untracked(), entity, &name);
             rgb(if playing { accent() } else { text_muted() })
         });
     }

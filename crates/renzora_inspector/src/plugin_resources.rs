@@ -23,6 +23,7 @@ use bevy::ecs::component::ComponentId;
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use renzora_ember::font::{ui_font, EmberFonts};
+use renzora_ember::reactive::Rx;
 use renzora_ember::panel::RegisterPanelContent;
 use renzora_plugin::host::PluginComponentSchemas;
 use renzora_plugin::sys::FieldKind;
@@ -49,6 +50,22 @@ struct ResourcePanelRoot {
 // `pub(crate)` so `plugin_panels` binds a panel widget to a resource field
 // through the same accessors the inspector rows use. Two implementations of
 // "poke this offset" would be two chances to get the `bool` case wrong.
+
+/// A dependency-tracked reflection read of a plugin resource field.
+///
+/// Same shape as the component-side helper in `plugin_fields`, and here for the
+/// same reason: these fields are addressed by `(ComponentId, offset)`, so the
+/// typed `Rx::resource::<R>` cannot name them. Declaring the dep and doing the
+/// read in one place keeps the pair from drifting.
+pub(crate) fn tracked_read<T>(
+    rx: &Rx,
+    cid: ComponentId,
+    offset: usize,
+    read: impl Fn(&World, ComponentId, usize) -> T,
+) -> T {
+    rx.track_resource_id(cid);
+    read(rx.manually_tracked(), cid, offset)
+}
 
 pub(crate) fn read_f32(world: &World, cid: ComponentId, offset: usize) -> f32 {
     world
@@ -151,10 +168,10 @@ fn draw_resource(
                     seed,
                     0.01,
                 );
-                renzora_ember::reactive::bind_2way(
+                renzora_ember::reactive::tracked::bind_2way(
                     commands,
                     e,
-                    move |w: &World| read_f32(w, cid, offset),
+                    move |rx: &Rx| tracked_read(rx, cid, offset, read_f32),
                     move |w: &mut World, v: &f32| write_f32(w, cid, offset, *v),
                 );
                 e
@@ -168,20 +185,20 @@ fn draw_resource(
                     seed,
                     1.0,
                 );
-                renzora_ember::reactive::bind_2way(
+                renzora_ember::reactive::tracked::bind_2way(
                     commands,
                     e,
-                    move |w: &World| read_i32(w, cid, offset) as f32,
+                    move |rx: &Rx| tracked_read(rx, cid, offset, read_i32) as f32,
                     move |w: &mut World, v: &f32| write_i32(w, cid, offset, v.round() as i32),
                 );
                 e
             }
             FieldKind::Bool => {
                 let e = renzora_ember::widgets::toggle_switch(commands, seed != 0.0);
-                renzora_ember::reactive::bind_2way(
+                renzora_ember::reactive::tracked::bind_2way(
                     commands,
                     e,
-                    move |w: &World| read_bool(w, cid, offset),
+                    move |rx: &Rx| tracked_read(rx, cid, offset, read_bool),
                     move |w: &mut World, v: &bool| write_bool(w, cid, offset, *v),
                 );
                 e

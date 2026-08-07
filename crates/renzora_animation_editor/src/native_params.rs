@@ -20,9 +20,11 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition};
 
 use renzora_animation::AnimatorState;
 use renzora_editor_framework::{EditorCommands, SplashState};
+use renzora_ember::reactive::Rx;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_2way, bind_display, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::tracked::{bind_2way, bind_display, keyed_list};
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, drag_value, menu_item, screen_menu, text_input,
@@ -102,12 +104,12 @@ fn selected_animator(w: &World) -> Option<(Entity, &AnimatorState)> {
 
 /// Whether there is a selected entity with an `AnimatorState` (so the body
 /// shows the editor vs the empty-state note).
-fn ready(w: &World) -> bool {
-    selected_animator(w).is_some()
+fn ready(w: &Rx) -> bool {
+    selected_animator(w.untracked()).is_some()
 }
 
-fn empty_msg(w: &World) -> String {
-    match state(w).and_then(|s| s.selected_entity) {
+fn empty_msg(w: &Rx) -> String {
+    match state(w.untracked()).and_then(|s| s.selected_entity) {
         None => renzora::lang::t("animation.select_animated_entity"),
         Some(_) => renzora::lang::t("animation.no_animator"),
     }
@@ -150,7 +152,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     bind_text_node(commands, note_lbl, empty_msg);
     commands.entity(note).add_children(&[note_ic, note_lbl]);
-    bind_display(commands, note, |w| !ready(w));
+    bind_display(commands, note, |w| !ready(&Rx::new(w.untracked())));
 
     // Editor body (header add-row + parameter list).
     let body = commands
@@ -289,7 +291,7 @@ fn build_add_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     let add_ic = icon_text(commands, &fonts.phosphor, "plus", accent(), 12.0);
-    renzora_ember::reactive::bind_text_color(commands, add_ic, |w| {
+    renzora_ember::reactive::tracked::bind_text_color(commands, add_ic, |w| {
         let can = w
             .get_resource::<NewParamScratch>()
             .is_some_and(|s| !s.name.trim().is_empty());
@@ -314,8 +316,8 @@ enum Item {
     Empty,
 }
 
-fn params_snapshot(world: &World) -> KeyedSnapshot {
-    let Some((_, st)) = selected_animator(world) else {
+fn params_snapshot(world: &Rx) -> KeyedSnapshot {
+    let Some((_, st)) = selected_animator(world.untracked()) else {
         return empty();
     };
 
@@ -445,7 +447,7 @@ fn float_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str
         bind_2way(
             commands,
             dv,
-            move |w| read_float(w, &n_get),
+            move |w| read_float(w.untracked(), &n_get),
             move |w, v: &f32| {
                 push_bridge(
                     w,
@@ -474,7 +476,7 @@ fn bool_row(commands: &mut Commands, fonts: &EmberFonts, idx: usize, name: &str)
         bind_2way(
             commands,
             cb,
-            move |w| read_bool(w, &n_get),
+            move |w| read_bool(w.untracked(), &n_get),
             move |w, v: &bool| {
                 push_bridge(
                     w,
@@ -603,9 +605,9 @@ fn hasher() -> std::collections::hash_map::DefaultHasher {
 fn bind_text_node(
     commands: &mut Commands,
     target: Entity,
-    get: impl Fn(&World) -> String + Send + Sync + 'static,
+    get: impl Fn(&Rx) -> String + Send + Sync + 'static,
 ) {
-    renzora_ember::reactive::bind_text(commands, target, get);
+    renzora_ember::reactive::tracked::bind_text(commands, target, get);
 }
 
 // ── Systems ──────────────────────────────────────────────────────────────────

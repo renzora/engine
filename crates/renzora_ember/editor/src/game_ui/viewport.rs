@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 
 use renzora_ember::font::{ui_font, EmberFonts};
-use renzora_ember::reactive::{bind_display, bind_with};
+use renzora_ember::reactive::tracked::{bind_display, bind_with};
 use renzora_ember::theme::*;
 use crate::game_ui::canvas::UiCanvasPreviewEnabled;
 use crate::game_ui::canvas_render::UiCanvasRender;

@@ -7,7 +7,9 @@ use bevy::prelude::*;
 
 use renzora_editor_framework::{EditorCommands, SceneStarterRegistry, SplashState};
 use renzora_ember::font::{icon_glyph, ui_font, EmberFonts};
-use renzora_ember::reactive::{keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{keyed_list};
 use renzora_ember::theme::*;
 
 use crate::cache::HierarchyTreeCache;
@@ -21,7 +23,7 @@ pub(crate) fn register(app: &mut App) {
 }
 
 /// True when the scene has no entities (the picker should show).
-pub(crate) fn scene_is_empty(world: &World) -> bool {
+pub(crate) fn scene_is_empty(world: &Rx) -> bool {
     world.get_resource::<HierarchyTreeCache>().is_none_or(|c| c.nodes.is_empty())
 }
 
@@ -75,7 +77,7 @@ pub(crate) fn build_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entit
     root
 }
 
-fn starter_snapshot(world: &World) -> KeyedSnapshot {
+fn starter_snapshot(world: &Rx) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
     // (id, title, description, icon-glyph).
     let cards: Vec<(&'static str, &'static str, &'static str, &'static str)> = world

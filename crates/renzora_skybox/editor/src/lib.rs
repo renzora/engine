@@ -46,7 +46,7 @@ mod native_inspector {
     use renzora::FieldValue;
     use renzora_ember::font::EmberFonts;
     use renzora_ember::inspector::{color_field, inspector_row, inspector_stripe};
-    use renzora_ember::reactive::bind_2way;
+    use renzora_ember::reactive::tracked::bind_2way;
     use renzora_ember::widgets::{drag_value, dropdown, icon_label_button, DragRange};
     use renzora_inspector::asset_drop_field;
     use renzora_skybox::{SkyMode, SkyboxData};

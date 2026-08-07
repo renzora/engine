@@ -73,7 +73,7 @@ pub(crate) fn open_clicks(
                 FocusPolicy::Pass,
             ))
             .id();
-        renzora_ember::reactive::bind_with(
+        renzora_ember::reactive::tracked::bind_with(
             &mut commands,
             img_e,
             move |w| w.get_resource::<AvatarCache>().and_then(|c| c.get(&url)),

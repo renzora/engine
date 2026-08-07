@@ -9,7 +9,9 @@ use bevy::prelude::*;
 use renzora_code_editor::CodeEditorState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, keyed_list, KeyedSnapshot};
+use renzora_ember::reactive::{KeyedSnapshot};
+use renzora_ember::reactive::Rx;
+use renzora_ember::reactive::tracked::{bind_display, bind_text, keyed_list};
 use renzora_ember::theme::*;
 use renzora_scripting::{ScriptEngine, ScriptValue, ScriptVariableDefinition};
 
@@ -23,7 +25,7 @@ pub fn register_native_script_variables(app: &mut App) {
 }
 
 /// Name of the active script tab (empty if none open).
-fn script_name(w: &World) -> String {
+fn script_name(w: &Rx) -> String {
     w.get_resource::<CodeEditorState>()
         .and_then(|s| s.active_tab.and_then(|i| s.open_files.get(i)))
         .map(|f| f.name.clone())
@@ -31,7 +33,7 @@ fn script_name(w: &World) -> String {
 }
 
 /// The active script's variable definitions.
-fn active_props(w: &World) -> Vec<ScriptVariableDefinition> {
+fn active_props(w: &Rx) -> Vec<ScriptVariableDefinition> {
     let (Some(state), Some(engine)) = (
         w.get_resource::<CodeEditorState>(),
         w.get_resource::<ScriptEngine>(),
@@ -168,7 +170,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     root
 }
 
-fn props_snapshot(world: &World) -> KeyedSnapshot {
+fn props_snapshot(world: &Rx) -> KeyedSnapshot {
     let props = active_props(world);
     if props.is_empty() {
         return KeyedSnapshot {

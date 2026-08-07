@@ -7,7 +7,8 @@ use bevy::prelude::*;
 use renzora::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{bind_display, bind_text, bind_with};
+use renzora_ember::reactive::tracked::{bind_display, bind_text, bind_with};
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{menu_item, screen_menu};
 
@@ -26,14 +27,14 @@ impl Plugin for NativeShaderPreview {
 #[derive(Component)]
 struct MeshComboBtn;
 
-fn has_shader(w: &World) -> bool {
+fn has_shader(w: &Rx) -> bool {
     w.get_resource::<ShaderEditorState>().is_some_and(|s| s.compiled_wgsl.is_some())
 }
-fn compatible(w: &World) -> bool {
+fn compatible(w: &Rx) -> bool {
     w.get_resource::<ShaderEditorState>().is_none_or(|s| s.preview_compatible)
 }
 
-fn incompat_msg(w: &World) -> String {
+fn incompat_msg(w: &Rx) -> String {
     use renzora_shader::file::ShaderType;
     match w.get_resource::<ShaderEditorState>().map(|s| s.shader_file.shader_type) {
         Some(ShaderType::Material) => renzora::lang::t("shader_preview.incompat_material"),
