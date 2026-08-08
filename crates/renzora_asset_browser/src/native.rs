@@ -155,7 +155,7 @@ pub(crate) struct NativeAssets {
     /// breadcrumb keeps a readable share of the row. Also set by
     /// `responsive_layout`.
     compact: bool,
-    /// Which list the narrow browser shows (Folders | Recent tabs).
+    /// Which list the narrow browser shows (Project | Recent | Favs tabs).
     tree_tab: TreeTab,
     /// Narrow-mode filename filter (the tree pane's own search box).
     tree_search: String,
@@ -2157,7 +2157,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // one header row: a search box of its own, plus a single "+ Add" dropdown (see
     // `tree_add`) folding in New Folder and Import — one control instead of a row
     // of three, so it costs no extra row and can never wrap.
-    // The Folders | Recent | Favs tabs stay visible in BOTH layouts, replacing the
+    // The Project | Recent | Favs tabs stay visible in BOTH layouts, replacing the
     // old collapsible FAVORITES / RECENT sections so each list gets the full pane
     // height.
 
@@ -2182,7 +2182,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     ));
 
-    // Folders | Recent | Favs tabs (accent underline marks the active one).
+    // Project | Recent | Favs tabs (accent underline marks the active one).
+    // `TreeTab::Folders` keeps its name — the tab is the folder tree; only its
+    // label reads "Project", since what it shows IS the project's asset root.
     let tree_tabs = commands
         .spawn((
             Node {
@@ -2196,7 +2198,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
     for (tab, label) in [
-        (TreeTab::Folders, "Folders"),
+        (TreeTab::Folders, "Project"),
         (TreeTab::Recent, "Recent"),
         (TreeTab::Favorites, "Favs"),
     ] {
