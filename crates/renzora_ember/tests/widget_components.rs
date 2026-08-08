@@ -105,7 +105,7 @@ fn a_ranged_slider_keeps_the_value_in_its_own_units() {
         .id();
     app.update();
 
-    let child = *app
+    let child = app
         .world()
         .entity(e)
         .get::<Children>()
@@ -134,7 +134,7 @@ fn a_slider_with_no_range_is_still_zero_to_one() {
         .id();
     app.update();
 
-    let child = *app
+    let child = app
         .world()
         .entity(e)
         .get::<Children>()
