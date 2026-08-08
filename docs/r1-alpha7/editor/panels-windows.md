@@ -33,7 +33,7 @@ All three honour **Settings → Interface → Scroll Speed**, a multiplier on th
 
 Panel toolbars stay on one row as you drag a panel narrower. Buttons never squash or split their labels across two lines — instead the labels drop away and the buttons become icon-only keys, with the name moving to a hover tooltip. Flexible controls (search boxes, the Assets breadcrumb) shrink around them, down to a floor that keeps them usable.
 
-- **Assets** — below roughly 820px the **Add**, **Import**, **New Folder** and **Sort** buttons go icon-only, the item count hides and the zoom slider slims, so the breadcrumb path keeps a readable share of the row. Narrower still (~310px) the panel drops the grid entirely and becomes a tree-only file browser, with the three actions right-aligned in a bar pinned along the **bottom** of the panel — labelled there, since that bar shares its row with nothing else, until the pane is squeezed below ~270px.
+- **Assets** — below roughly 820px the **Add**, **Import**, **New Folder** and **Sort** buttons go icon-only, the item count hides and the zoom slider slims, so the breadcrumb path keeps a readable share of the row. Narrower still (~310px) the panel drops the grid entirely and becomes a tree-only file browser; the toolbar goes with the grid, and its three actions fold into a single **+ Add** dropdown sat to the right of the tree's search box. Its menu carries **New Folder** and **Import** followed by the usual create-new list, so nothing is lost at any width and the actions cost no extra row.
 - **Hierarchy** — below roughly 210px **+ Add Entity** collapses to a **+** key so the entity search keeps its width.
 
 ## The bottom panel

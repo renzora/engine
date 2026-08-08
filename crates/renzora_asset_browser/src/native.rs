@@ -26,8 +26,8 @@ use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_wi
 use renzora_ember::virtual_scroll::virtual_scroll_versioned;
 use renzora_ember::theme::{accent, panel_bg, popup_bg, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{
-    icon_label_button_collapsing, menu_card, menu_header, menu_item, menu_item_styled,
-    menu_sep, screen_menu, screen_menu_flip, scroll_view, slider,
+    icon_label_button_collapsing, icon_label_button_parts, menu_card, menu_header, menu_item,
+    menu_item_styled, menu_sep, screen_menu, screen_menu_flip, scroll_view, slider,
     text_input, EmberScroll, EmberTextInput, ScrollbarBusy,
 };
 
@@ -155,10 +155,6 @@ pub(crate) struct NativeAssets {
     /// breadcrumb keeps a readable share of the row. Also set by
     /// `responsive_layout`.
     compact: bool,
-    /// The tree-only layout's bottom action bar can't fit all three labelled
-    /// buttons on one row, so they fall back to icon-only. A tighter breakpoint
-    /// than `compact` because that bar carries nothing else.
-    tree_actions_compact: bool,
     /// Which list the narrow browser shows (Folders | Recent tabs).
     tree_tab: TreeTab,
     /// Narrow-mode filename filter (the tree pane's own search box).
@@ -210,7 +206,6 @@ impl Default for NativeAssets {
             list_view: false,
             narrow: false,
             compact: false,
-            tree_actions_compact: false,
             tree_tab: TreeTab::Folders,
             tree_search: String::new(),
             selection: HashSet::new(),
@@ -314,6 +309,11 @@ struct DragGhost;
 /// The toolbar "Add" button — clicking it opens the new-asset menu.
 #[derive(Component)]
 struct AddMenuBtn;
+/// Marks the tree strip's "+" key (an [`AddMenuBtn`] too). Its menu also carries
+/// New Folder and Import, because the tree-only layout hides the toolbar that
+/// would otherwise offer them.
+#[derive(Component)]
+struct TreeAddBtn;
 #[derive(Component)]
 struct Splitter;
 
@@ -720,6 +720,32 @@ fn import_click(
         .unwrap_or_default();
     if !target_dir.is_empty() {
         commands.insert_resource(renzora::core::ImportTargetDir(target_dir));
+    }
+}
+
+/// Queue an import targeting the browser's current folder — the world-side twin
+/// of [`import_click`], for the tree "+" menu's Import row (menu rows run as
+/// world closures, not as buttons the click system can see).
+fn request_import(world: &mut World) {
+    world.insert_resource(renzora::core::ImportRequested);
+    let Some(root) = world
+        .get_resource::<renzora::core::CurrentProject>()
+        .map(|p| p.path.clone())
+    else {
+        return;
+    };
+    let folder = world
+        .get_resource::<NativeAssets>()
+        .and_then(|s| s.current.clone())
+        .unwrap_or_else(|| root.clone());
+    // PROJECT-RELATIVE, forward-slashed — the overlay prefixes it with "assets/".
+    let target_dir = folder
+        .strip_prefix(&root)
+        .ok()
+        .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_default();
+    if !target_dir.is_empty() {
+        world.insert_resource(renzora::core::ImportTargetDir(target_dir));
     }
 }
 
@@ -1190,14 +1216,17 @@ fn asset_context_menu(
     commands.entity(menu).add_children(&kids);
 }
 
-/// Click the toolbar "Add" button → open the shared ember menu of new-asset
-/// types at the cursor.
+/// Click an "Add" button → open the shared ember menu of new-asset types at the
+/// cursor. The tree strip's "+" ([`TreeAddBtn`]) leads that list with New Folder
+/// and Import: in the tree-only layout it is the *only* action key on screen, so
+/// the menu has to carry everything the hidden toolbar would have offered.
 fn add_menu_open(
     q: Query<
         (
             &Interaction,
             &bevy::ui::RelativeCursorPosition,
             &bevy::ui::ComputedNode,
+            Has<TreeAddBtn>,
         ),
         (With<AddMenuBtn>, Changed<Interaction>),
     >,
@@ -1208,7 +1237,7 @@ fn add_menu_open(
     let Some(fonts) = fonts else {
         return;
     };
-    let Some((_, rcp, cn)) = q.iter().find(|(i, _, _)| **i == Interaction::Pressed) else {
+    let Some((_, rcp, cn, file_actions)) = q.iter().find(|(i, ..)| **i == Interaction::Pressed) else {
         return;
     };
     let Some((win_h, cursor)) = windows
@@ -1227,7 +1256,27 @@ fn add_menu_open(
     } else {
         screen_menu(&mut commands, top_left.x, top_left.y + size.y + 2.0)
     };
-    let kids = new_asset_menu_items(&mut commands, &fonts);
+    let mut kids = Vec::new();
+    if file_actions {
+        kids.extend([
+            menu_item(
+                &mut commands,
+                &fonts,
+                "folder-plus",
+                &renzora::lang::t("assets.new_folder"),
+                |w| create_asset(w, NewAsset::Folder),
+            ),
+            menu_item(
+                &mut commands,
+                &fonts,
+                "download-simple",
+                &renzora::lang::t("assets.import"),
+                request_import,
+            ),
+            menu_sep(&mut commands),
+        ]);
+    }
+    kids.extend(new_asset_menu_items(&mut commands, &fonts));
     commands.entity(menu).add_children(&kids);
 }
 
@@ -1702,15 +1751,12 @@ fn finish_rename(world: &mut World, old: &Path, new_name: &str) {
 ///   The full row (Add + Import + New Folder + Sort + view + search + zoom) needs
 ///   roughly this much before the breadcrumb is left with a usable share; under
 ///   it, icon-only buttons buy back ~150px for the path.
-/// - below `TREE_ACTIONS_WIDTH` (inside tree-only mode), the bottom action bar's
-///   three labelled buttons stop fitting one row, so they too go icon-only.
 fn responsive_layout(
     root: Query<&bevy::ui::ComputedNode, With<AssetRoot>>,
     mut state: ResMut<NativeAssets>,
 ) {
     const TREE_ONLY_WIDTH: f32 = 310.0;
     const COMPACT_WIDTH: f32 = 820.0;
-    const TREE_ACTIONS_WIDTH: f32 = 272.0;
     let Ok(cn) = root.single() else {
         return;
     };
@@ -1726,10 +1772,6 @@ fn responsive_layout(
     if state.compact != compact {
         state.compact = compact;
     }
-    let tree_actions_compact = width < TREE_ACTIONS_WIDTH;
-    if state.tree_actions_compact != tree_actions_compact {
-        state.tree_actions_compact = tree_actions_compact;
-    }
 }
 
 /// True once the panel is too tight for the toolbar's full action labels.
@@ -1743,15 +1785,6 @@ fn is_compact(w: &Rx) -> bool {
 /// on one line.
 fn toolbar_action(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
     icon_label_button_collapsing(commands, fonts, icon, label, is_compact)
-}
-
-/// An action button for the tree-only layout's bottom bar. Labelled by default —
-/// the bar shares its row with nothing else, so there's room — and icon-only
-/// only once the pane is squeezed past what three labelled buttons need.
-fn tree_action(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label: &str) -> Entity {
-    icon_label_button_collapsing(commands, fonts, icon, label, |w| {
-        w.get_resource::<NativeAssets>().is_some_and(|s| s.tree_actions_compact)
-    })
 }
 
 /// Toggle grid/list view.
@@ -2117,61 +2150,30 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             BackgroundColor(rgb(panel_bg())),
         ))
         .id();
-    // ── Tree-pane actions (pinned bottom bar) ──
+    // ── Tree-pane actions ──
     // When the panel collapses to the tree-only file browser the main toolbar
     // (which carries Add / Import / New Folder and the search box) is hidden with
-    // the grid, so the browser lost its actions entirely. Rebuild them here: the
-    // same action buttons (same marker components, so the existing click systems
-    // drive both instances) plus a search box of its own — all display-gated on
-    // `narrow`. The Folders | Recent | Favs tabs stay visible in BOTH layouts,
-    // replacing the old collapsible FAVORITES / RECENT sections so each list gets
-    // the full pane height.
-    //
-    // The actions sit in a bar pinned to the pane's bottom edge, right-aligned,
-    // and keep their labels — at the bottom they never compete with the tree for
-    // width, so the old three-lines-of-wrapped-buttons problem is gone. Only when
-    // the pane is squeezed past the point where all three labelled buttons fit one
-    // row (`tree_actions_compact`) do they fall back to icon-only keys.
-    let narrow_actions = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::FlexEnd,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::all(Val::Px(6.0)),
-                flex_shrink: 0.0,
-                border: UiRect::top(Val::Px(1.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(renzora_ember::theme::header_bg())),
-            BorderColor::all(rgb(renzora_ember::theme::border())),
-            Name::new("assets-narrow-actions"),
-        ))
-        .id();
-    let n_add = tree_action(commands, fonts, "plus", &renzora::lang::t("common.add"));
-    commands
-        .entity(n_add)
-        .insert((AddMenuBtn, bevy::ui::RelativeCursorPosition::default()));
-    let n_import = tree_action(commands, fonts, "download-simple", &renzora::lang::t("assets.import"));
-    commands.entity(n_import).insert(ImportBtn);
-    let n_new_folder = tree_action(commands, fonts, "folder-plus", &renzora::lang::t("assets.new_folder"));
-    commands.entity(n_new_folder).insert(NewAssetBtn(NewAsset::Folder));
-    commands.entity(narrow_actions).add_children(&[n_add, n_import, n_new_folder]);
-    bind_display(commands, narrow_actions, |w| {
-        w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow)
-    });
+    // the grid, so the browser would lose both entirely. Both are rebuilt below as
+    // one header row: a search box of its own, plus a single "+ Add" dropdown (see
+    // `tree_add`) folding in New Folder and Import — one control instead of a row
+    // of three, so it costs no extra row and can never wrap.
+    // The Folders | Recent | Favs tabs stay visible in BOTH layouts, replacing the
+    // old collapsible FAVORITES / RECENT sections so each list gets the full pane
+    // height.
 
-    // Search box — full width (stretched by the column parent), own marker +
-    // state field so it can't fight the hidden toolbar search (see `TreeSearch`).
+    // Search box — takes whatever width the Add button beside it leaves, with its
+    // own marker + state field so it can't fight the hidden toolbar search (see
+    // `TreeSearch`).
     let tree_search_input = text_input(commands, &fonts.ui, &renzora::lang::t("common.search"), "");
     commands.entity(tree_search_input).insert((
         TreeSearch,
         Node {
+            // The flexible half of the header row: the button is `flex_shrink: 0`,
+            // so the box absorbs the whole remainder and shrinks to nothing rather
+            // than pushing the button off the pane.
+            flex_grow: 1.0,
+            flex_basis: Val::Px(0.0),
             min_width: Val::Px(0.0),
-            // Even margin all round: with the actions moved to the bottom bar
-            // this box now sits at the very top of the pane.
-            margin: UiRect::all(Val::Px(6.0)),
             padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
             align_items: AlignItems::Center,
             border: UiRect::all(Val::Px(1.0)),
@@ -2255,28 +2257,55 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         commands.entity(tree_tabs).add_child(btn);
     }
 
+    // The tree pane's whole action vocabulary in one labelled key, sat to the
+    // right of the search box: New Folder + Import + the create-asset list, as
+    // one menu. Carries `AddMenuBtn` so `add_menu_open` anchors and opens it, plus
+    // `TreeAddBtn` so that system knows to prepend the two file actions the narrow
+    // layout has no toolbar buttons for.
+    // Sized a shade under the standard button: it shares its row with the search
+    // box in a pane that can be ~180px wide, so trimming the padding leaves the
+    // search box more to work with. Type stays at the standard size — shrinking
+    // that too read as a different, smaller class of control. `StyleOwnsPadding`
+    // keeps the theme from restoring the standard padding on the first hover.
+    let (tree_add, ..) =
+        icon_label_button_parts(commands, fonts, "plus", &renzora::lang::t("common.add"));
+    commands.entity(tree_add).insert((
+        AddMenuBtn,
+        TreeAddBtn,
+        bevy::ui::RelativeCursorPosition::default(),
+        renzora_ember::style::StyleOwnsPadding,
+        Name::new("assets-tree-add"),
+    ));
+    commands.entity(tree_add).entry::<Node>().and_modify(|mut n| {
+        n.padding = UiRect::axes(Val::Px(9.0), Val::Px(4.0));
+    });
+
+    // Search + Add on one row. The header is display-gated on `narrow`, so the
+    // button inherits that gate — the wide layout keeps the toolbar's own
+    // Add / Import / New Folder buttons and would only duplicate them here.
     let narrow_header = commands
         .spawn((
             Node {
-                flex_direction: FlexDirection::Column,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
                 width: Val::Percent(100.0),
                 flex_shrink: 0.0,
+                padding: UiRect::all(Val::Px(6.0)),
+                column_gap: Val::Px(6.0),
                 ..default()
             },
             BackgroundColor(rgb(renzora_ember::theme::header_bg())),
             Name::new("assets-narrow-header"),
         ))
         .id();
-    commands.entity(narrow_header).add_children(&[tree_search_input]);
+    commands.entity(narrow_header).add_children(&[tree_search_input, tree_add]);
     bind_display(commands, narrow_header, |w| {
         w.get_resource::<NativeAssets>().is_some_and(|s| s.narrow)
     });
 
-    // Actions last so the bar sits under the (flex-shrinking) tree scroller,
-    // pinned to the pane's bottom edge.
     commands
         .entity(tree_pane)
-        .add_children(&[narrow_header, tree_tabs, tree_scroll, narrow_actions]);
+        .add_children(&[narrow_header, tree_tabs, tree_scroll]);
     bind_with(
         commands,
         tree_pane,
