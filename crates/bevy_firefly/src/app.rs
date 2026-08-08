@@ -19,7 +19,6 @@ use crate::{
     pipelines::PipelinePlugin,
     sprites::SpritesPlugin,
     visibility::VisibilityPlugin,
-    *,
 };
 use crate::{prelude::*, prepare::PreparePlugin};
 

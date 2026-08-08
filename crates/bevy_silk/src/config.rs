@@ -1,5 +1,5 @@
 use bevy::{
-    ecs::prelude::{Component, ReflectComponent, Resource},
+    ecs::prelude::{ReflectComponent, Resource},
     math::Vec3,
     reflect::Reflect,
 };

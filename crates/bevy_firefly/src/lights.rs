@@ -3,7 +3,6 @@ use bevy::{
     color::palettes::css::WHITE,
     core_pipeline::tonemapping::{DebandDither, Tonemapping},
     ecs::{
-        change_detection::Tick,
         query::ROQueryItem,
         system::{
             SystemParamItem,

@@ -220,8 +220,10 @@ impl NormalMap {
     ///
     /// You can use [`.handle()`](NormalMap::handle) to get the resulting image handle.
     pub fn from_file<'a>(path: impl Into<AssetPath<'a>>, asset_server: &AssetServer) -> Self {
-        let image: Handle<Image> =
-            asset_server.load_with_settings(path, |x: &mut ImageLoaderSettings| x.is_srgb = false);
+        let image: Handle<Image> = asset_server
+            .load_builder()
+            .with_settings(|x: &mut ImageLoaderSettings| x.is_srgb = false)
+            .load(path);
 
         Self { image }
     }

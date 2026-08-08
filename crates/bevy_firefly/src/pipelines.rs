@@ -22,7 +22,7 @@ use bevy::{
         },
         renderer::RenderDevice,
         view::{
-            COLOR_TARGET_FORMAT_MASK_BITS, ViewTarget, ViewUniform, texture_format_from_code,
+            COLOR_TARGET_FORMAT_MASK_BITS, ViewUniform, texture_format_from_code,
             texture_format_to_code,
         },
     },

@@ -1,13 +1,13 @@
 //! Module containg `Render Graph Nodes` used by Firefly.  
 
 use bevy::{
-    ecs::{query::QueryItem, system::lifetimeless::Read},
+    ecs::system::lifetimeless::Read,
     prelude::*,
     render::{
         render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
         render_resource::{
             BindGroupEntries, PipelineCache, RenderPassColorAttachment, RenderPassDescriptor,
-            TextureAspect, TextureFormat, TextureUsages, TextureViewDescriptor,
+            TextureAspect, TextureUsages, TextureViewDescriptor,
             TextureViewDimension,
         },
         renderer::{RenderContext, ViewQuery},

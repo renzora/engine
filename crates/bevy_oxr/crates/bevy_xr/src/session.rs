@@ -201,7 +201,7 @@ impl Plugin for XrSessionPlugin {
             XrFirst,
             exits_session_on_app_exit
                 .before(XrHandleEvents::ExitEvents)
-                .run_if(on_message::<AppExit>.and(session_running)),
+                .run_if(on_message::<AppExit>.and_then(session_running)),
         );
 
         let render_app = app.sub_app_mut(RenderApp);
