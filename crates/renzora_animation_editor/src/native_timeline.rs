@@ -26,7 +26,7 @@ use renzora_ember::reactive::{KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_display, bind_text, bind_text_color, keyed_list};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{drag_value, menu_item, screen_menu, text_input, timeline_view, DragRange, EmberTextInput, TimelineView, LANE_INSET};
+use renzora_ember::widgets::{drag_value, dropdown_compact, menu_item, screen_menu, text_input, timeline_view, DragRange, EmberTextInput, TimelineView, LANE_INSET};
 
 use crate::{AnimEditorAction, AnimEditorBridge, AnimationEditorState};
 
@@ -36,6 +36,9 @@ const SCALE: (u8, u8, u8) = (200, 120, 120);
 /// Color for property-animation lanes (distinct from bone T/R/S channels).
 const PROPERTY: (u8, u8, u8) = (230, 190, 90);
 const SPEEDS: [f32; 5] = [0.25, 0.5, 1.0, 2.0, 4.0];
+/// Index of `1.00x` in [`SPEEDS`] — what the dropdown falls back to when the
+/// live `preview_speed` isn't one of the presets (a speed set from a script, say).
+const DEFAULT_SPEED: usize = 2;
 
 pub struct NativeAnimTimeline;
 
@@ -78,7 +81,6 @@ impl Plugin for NativeAnimTimeline {
                 cache_native_clip,
                 publish_active_timeline,
                 anim_btn_click,
-                speed_btn_click,
                 clip_combo_open,
                 // key_drag must run before anim_sync so a freshly-started key
                 // drag suppresses the scrub layer the same frame.
@@ -397,8 +399,6 @@ struct AddMarkerBtn;
 #[derive(Component)]
 struct MarkerNameField;
 #[derive(Component)]
-struct SpeedBtn(f32);
-#[derive(Component)]
 struct ClipCombo;
 /// The "+" beside the clip selector: creates a new clip named from
 /// [`NewClipNameField`] on the selected entity's animator. This is the only way
@@ -640,21 +640,29 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     let sep3 = vsep(commands);
 
-    // Speed presets.
+    // Speed: one dropdown rather than five preset buttons in a row. Four of the
+    // five were always showing you an option you hadn't picked, for a setting
+    // that is usually left at 1.00x — a lot of bar for that. `bind_2way` keeps
+    // the box showing whatever `preview_speed` actually is, including a speed
+    // set from somewhere other than this control.
     let speed_lbl = commands.spawn((Text::new(renzora::lang::t("common.speed")), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_muted())))).id();
-    let mut speed_btns: Vec<Entity> = Vec::with_capacity(SPEEDS.len());
-    for &s in &SPEEDS {
-        let btn = commands
-            .spawn((Node { height: Val::Px(18.0), min_width: Val::Px(32.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, padding: UiRect::horizontal(Val::Px(4.0)), border_radius: BorderRadius::all(Val::Px(3.0)), flex_shrink: 0.0, ..default() }, BackgroundColor(rgb(card_bg())), Interaction::default(), SpeedBtn(s)))
-            .id();
-        let lbl = commands.spawn((Text::new(format!("{:.2}x", s)), ui_font(&fonts.ui, 10.0), TextColor(rgb(text_primary())))).id();
-        bind_text_color(commands, lbl, move |w| {
-            let active = state(w.untracked()).is_some_and(|st| (st.preview_speed - s).abs() < 0.01);
-            rgb(if active { accent() } else { text_primary() })
-        });
-        commands.entity(btn).add_child(lbl);
-        speed_btns.push(btn);
-    }
+    let speed_labels: Vec<String> = SPEEDS.iter().map(|s| format!("{s:.2}x")).collect();
+    let speed_refs: Vec<&str> = speed_labels.iter().map(|s| s.as_str()).collect();
+    let speed_dd = dropdown_compact(commands, fonts, &speed_refs, DEFAULT_SPEED, 62.0);
+    bind_2way(
+        commands,
+        speed_dd,
+        |w: &Rx| {
+            state(w.untracked())
+                .and_then(|st| SPEEDS.iter().position(|s| (st.preview_speed - s).abs() < 0.01))
+                .unwrap_or(DEFAULT_SPEED)
+        },
+        |w: &mut World, i: &usize| {
+            let Some(&speed) = SPEEDS.get(*i) else { return };
+            let Some(bridge) = w.get_resource::<AnimEditorBridge>() else { return };
+            push(bridge, AnimEditorAction::SetPreviewSpeed(speed));
+        },
+    );
 
     let sep4 = vsep(commands);
 
@@ -728,8 +736,7 @@ fn build_toolbar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     bind_text(commands, zoom_lbl, |w| format!("{:.0}px/s", state(w.untracked()).map(|s| s.timeline_zoom).unwrap_or(0.0)));
     let zoom_in = icon_btn(commands, fonts, "magnifying-glass-plus", text_muted(), AnimBtn::ZoomIn).0;
 
-    let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, record_b, sep1, loop_b, sep2, combo, new_clip_field, new_clip_b, sep3, speed_lbl];
-    kids.extend(speed_btns);
+    let mut kids = vec![skip_back, step_back, play, stop, step_fwd, skip_fwd, record_b, sep1, loop_b, sep2, combo, new_clip_field, new_clip_b, sep3, speed_lbl, speed_dd];
     kids.extend([sep4, add_prop_b, add_key_b, marker_field, add_marker_b, snap_b, save_b, keyinfo, gap, len_lbl, len_dv, time, zoom_out, zoom_lbl, zoom_in]);
     commands.entity(bar).add_children(&kids);
     bar
@@ -1414,15 +1421,6 @@ fn anim_btn_click(
             }
         };
         push(&bridge, action);
-    }
-}
-
-fn speed_btn_click(q: Query<(&Interaction, &SpeedBtn), Changed<Interaction>>, bridge: Option<Res<AnimEditorBridge>>) {
-    let Some(bridge) = bridge else { return };
-    for (interaction, btn) in &q {
-        if *interaction == Interaction::Pressed {
-            push(&bridge, AnimEditorAction::SetPreviewSpeed(btn.0));
-        }
     }
 }
 

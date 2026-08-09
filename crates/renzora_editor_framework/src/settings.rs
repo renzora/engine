@@ -59,26 +59,25 @@ pub enum InspectorExpandDefault {
     /// Only the most-edited components (Name, Transform, Scripts) start open;
     /// everything else starts collapsed so long inspectors stay scannable.
     ///
-    /// **The default**, and it is a performance decision as much as a legibility
-    /// one. A collapsed section is not merely hidden — `cull_offscreen_sections`
-    /// despawns its rows entirely and reserves the height with a placeholder — so
-    /// what it saves is real nodes, not hidden ones.
-    ///
-    /// Measured on a scene with a world environment, terrain and camera:
-    /// selecting an entity added **~1,082 bevy_ui nodes**, and bevy_ui charges
-    /// for every node in the tree every frame whether or not anything about it
-    /// changed. That cost ~3 ms/frame, taking the editor from ~72 fps to ~59.
-    /// Opening a section the user was not going to read is the most expensive
-    /// thing the inspector can do by default.
-    #[default]
+    /// Was the default, for measured reasons that still stand — see [`Self::AllOpen`].
+    /// Pick this one back up from Settings if a long component list starts
+    /// costing frames.
     Essentials,
     /// Every component starts open.
     ///
-    /// This was the default, on the reasoning that hiding fields behind a click
-    /// costs more than the extra scrolling. That trade still holds for a small
-    /// selection; it stops holding once a component list is long enough that
-    /// most of what is built is never looked at. Still one click away via
-    /// expand-all, which is where the argument for it properly lives.
+    /// **The default**: hiding fields behind a click costs more than the extra
+    /// scrolling, and an inspector you have to unfold before you can read it
+    /// doesn't answer "what is this entity" at a glance.
+    ///
+    /// Know what it costs, because a collapsed section is not merely hidden —
+    /// `cull_offscreen_sections` despawns its rows entirely and reserves the
+    /// height with a placeholder, so what collapsing saves is real nodes rather
+    /// than hidden ones. Measured on a scene with a world environment, terrain
+    /// and camera: selecting an entity added **~1,082 bevy_ui nodes**, and
+    /// bevy_ui charges for every node in the tree every frame whether or not
+    /// anything about it changed — ~3 ms/frame, taking the editor from ~72 fps
+    /// to ~59. [`Self::Essentials`] is the setting to reach for if that shows up.
+    #[default]
     AllOpen,
     /// Every component starts collapsed.
     AllClosed,
@@ -88,7 +87,7 @@ impl InspectorExpandDefault {
     /// Default first — this drives the settings dropdown, and the option the
     /// editor actually ships with should be the one at the top of the list.
     pub const ALL: &'static [InspectorExpandDefault] =
-        &[Self::Essentials, Self::AllOpen, Self::AllClosed];
+        &[Self::AllOpen, Self::Essentials, Self::AllClosed];
 
     pub fn label(&self) -> &'static str {
         match self {

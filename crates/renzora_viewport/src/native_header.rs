@@ -184,10 +184,6 @@ pub(crate) fn header_groups(
     );
     commands.entity(rotate).insert(ThreeDOnly);
     commands.entity(scale).insert(ThreeDOnly);
-    let pill_gap1 = gap(commands, 4.0);
-    let pill_gap2 = gap(commands, 4.0);
-    commands.entity(pill_gap1).insert(ThreeDOnly);
-    commands.entity(pill_gap2).insert(ThreeDOnly);
 
     // Fixed gap (not a flex spacer) so the whole toolbar reads as one centered
     // cluster rather than splitting to the left/right edges.
@@ -214,10 +210,11 @@ pub(crate) fn header_groups(
         (group(commands, "hdr-shapes", 2.0, &[shapes_dd]), "shapes"),
         (group(commands, "hdr-view", 2.0, &[view_dd, mode_dd]), "view"),
         (group(commands, "hdr-cam-speed", 2.0, &[cam_speed]), "cam_speed"),
-        (
-            group(commands, "hdr-snaps", 4.0, &[translate, pill_gap1, rotate, pill_gap2, scale]),
-            "snaps",
-        ),
+        // Spaced like the view dropdowns beside them (`hdr-view`, gap 2), not
+        // with the 4px spacers they used to carry between each pill: move,
+        // rotate and scale snap are one setting read three ways, so they should
+        // sit as tight together as `3D` and `Select` do.
+        (group(commands, "hdr-snaps", 2.0, &[translate, rotate, scale]), "snaps"),
         (
             group(commands, "hdr-display", 2.0, &[display_dd, gizmos_dd, snap_dd, camera_dd]),
             "display",
