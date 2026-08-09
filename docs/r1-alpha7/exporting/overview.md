@@ -377,7 +377,7 @@ renzora --server --rpak server.rpak --port 7636 --tick-rate 64 --max-clients 32
 The web build is **game-runtime only** — there is no WebAssembly editor. It runs on **WebGPU**, and several native-only subsystems compile to no-ops in the browser:
 
 - **Lua is not compiled** on `wasm32`; only **Rhai** (`.rhai`) scripts run. Author web-targeted logic in Rhai.
-- Audio (Kira), the DAW, and the mixer are stubs (no `cpal` on web).
+- The DAW and the mixer are editor-only. Audio itself needs a browser backend built against WebAudio — the bundled `plugins/audio` is native, because cpal cannot capture on the web. See [Audio backends](../extending/audio-backends.md).
 - Networking is a no-op stub (no native UDP), so multiplayer is unavailable on web.
 
 ### Android / iOS

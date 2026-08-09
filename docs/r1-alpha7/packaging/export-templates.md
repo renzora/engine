@@ -96,7 +96,7 @@ wasm-opt -Oz dist/web-wasm32/renzora-runtime_bg.wasm \
 
 This produces `renzora-runtime.js` + `renzora-runtime_bg.wasm`. The web template the editor consumes is a zip of those two files; the export step adds `game.rpak` and a generated `index.html` (which `fetch`es `game.rpak`, calls `set_rpak`, then `start()`). The `templates/web/` Vite scaffold is for local previewing of that bundle.
 
-> The `wasm` feature is the only build feature besides `runtime` (`[features]` in the root `Cargo.toml` is just `default = ["runtime"]`, `runtime`, and `wasm`). There are **no** `audio`/`physics`/`networking`/`scripting_lua`/`scripting_rhai`/`blueprints` feature flags — those subsystems are always on, and on `wasm32` the native-only ones (Lua, Kira audio, Lightyear networking) compile to no-op stubs automatically. Web games script in **Rhai** only.
+> The `wasm` feature is the only build feature besides `runtime` (`[features]` in the root `Cargo.toml` is just `default = ["runtime"]`, `runtime`, and `wasm`). There are **no** `audio`/`physics`/`networking`/`scripting_lua`/`scripting_rhai`/`blueprints` feature flags — those subsystems are always on, and on `wasm32` the native-only ones compile to no-op stubs automatically. Audio is not among them: it is a plugin, and a browser build needs a WebAudio backend. Web games script in **Rhai** only.
 
 ## Building the Android template
 

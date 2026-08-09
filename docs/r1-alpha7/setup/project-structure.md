@@ -137,7 +137,7 @@ The 164 top-level crates break down roughly as follows:
 | 3 | Platform | android, ios, xr |
 | 2 | UI / markup | ember (markup + widgets + dock), game_ui |
 | 2 | Dead / experimental | mcp_server_plugin, websocket_plugin (orphaned — outside the globs) |
-| 1 | Audio / media | audio (Kira) |
+| 1 | Audio / media | audio (plugin) |
 | 1 | Networking | network (Lightyear 0.26) |
 
 A few naming notes that trip people up reading the tree:

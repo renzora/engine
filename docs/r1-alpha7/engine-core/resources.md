@@ -130,7 +130,7 @@ pub struct CurrentProject {
 }
 ```
 
-`ProjectConfig` carries the real `project.toml` fields — note `main_scene` (a flat top-level field, **not** `default_scene`), plus `autoload`, `window`, `viewport`, `rendering`/`rendering_2d`, and optional `network`/`editor` sections:
+`ProjectConfig` carries the real `project.toml` fields — note `main_scene` (a flat top-level field, **not** `default_scene`), plus `autoload`, `window`, `viewport`, `rendering`/`rendering_2d`, `audio`, and optional `network`/`editor` sections:
 
 ```rust
 #[derive(Resource, Serialize, Deserialize)]
@@ -141,9 +141,49 @@ pub struct ProjectConfig {
     pub editor_last_scene: Option<String>, // editor-only, ignored by exports
     pub editor_open_tabs: Vec<EditorOpenTab>, // editor-only, ignored by exports
     pub autoload: Vec<String>,
+    pub audio: AudioConfig,            // the mixer bus graph — shipped, not stripped
     // window / viewport / rendering / network / editor sub-configs ...
 }
 ```
+
+### `[audio]` — the mixer bus graph
+
+`AudioConfig` is the project's mixer, saved so a shipped game has one. Each entry
+carries a **`key`** and a **`name`**, and the difference matters:
+
+```toml
+[[audio.buses]]
+key = "Master"
+volume = 1.0
+
+[[audio.buses]]
+key = "Bus 1"
+name = "Footsteps"      # what the mixer shows
+volume = 0.8
+panning = -0.25
+color = [120, 200, 80]
+```
+
+The **key is the routing key** — it is what `AudioPlayer.bus` stores, what a
+timeline track's `bus_name` holds, and what scripts name. It is fixed when the
+bus is created and never changes. The **name is a label**, shown only in the
+Mixer panel and free to edit.
+
+Keeping them apart is what makes renaming safe. When the name *was* the key,
+renaming a bus meant finding and re-pointing every `AudioPlayer` and timeline
+track aimed at the old one — and it could only ever fix the scene that happened
+to be open, so any closed scene's emitters were left routed to a name nothing
+answered to. Now a rename touches one string and nothing else.
+
+The four built-in buses keep their contractual keys (`Master`, `Sfx`, `Music`,
+`Ambient`) and can be neither renamed nor removed. A custom bus may not take a
+key already in use; requested keys are uniquified (`Voice`, `Voice 2`, …).
+
+A project.toml with no `[audio]` section loads the default board, so existing
+projects are unaffected. The editor rewrites the section when the mixer changes
+(throttled), and export ships it — without it, an exported game boots with only
+the four built-ins and every emitter routed to a custom bus falls through to the
+SFX fallback: right volume, wrong bus, no error.
 
 `editor_open_tabs` records every document tab that was open when the project was last used (`{ path, kind }` entries, in display order, `kind` one of `scene`/`material`/`particle`/`blueprint`/`script`/`shader`/`other`). The editor rewrites it whenever a pathed tab is added, closed, or reordered and restores the whole tab set on project load; the *active* scene still comes from `editor_last_scene`, which also updates as you switch between scene tabs. Both fields are stripped from exported builds.
 
@@ -237,7 +277,7 @@ fn use_handle(handle: NonSend<MyHandle>) {
 }
 ```
 
-> `renzora_audio`'s `KiraAudioManager` is a real example of a non-send resource.
+> Non-send resources are rarer than they were: `renzora_audio` used to keep its audio manager as one, because a `cpal::Stream` is `!Send`. The device now lives in the audio *plugin*, so what the engine holds is `AudioLink` — a name and a function pointer — which is an ordinary `Resource`.
 
 ## Change detection
 

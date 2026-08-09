@@ -241,7 +241,7 @@ Key `scene_io` entry points: `save_scene` / `save_current_scene`, `load_scene`, 
 
 ### Audio
 
-`.ogg`, `.mp3`, `.wav`, `.flac` — decoded by **Kira** (the engine's audio backend), **native only**. On WASM the audio crates compile to no-op stubs, so these don't decode in web builds. (The registry also tags `.opus` as audio, but it isn't in the enabled Kira feature set.)
+`.ogg`, `.mp3`, `.wav`, `.flac` — decoded by the **audio backend plugin**, not by the engine: the engine reads the bytes (through the `.rpak` loader in an export) and hands them over. The bundled backend enables `ogg` and `wav` by default, with `mp3` and `flac` as cargo features, so a project carries only the decoders it uses. With no backend present nothing decodes and nothing errors. (The registry also tags `.opus` as audio, but no backend enables it yet.)
 
 ### Scripts
 

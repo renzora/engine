@@ -256,7 +256,7 @@ All Audio nodes use `exec` → `then`.
 | Play Music | `audio/play_music` | `path` `String` = `"music/theme.ogg"`, `volume` `Float` = `0.8`, `fade_in` `Float` = `1.0` |
 | Stop Music | `audio/stop_music` | `fade_out` `Float` = `1.0` |
 
-> Audio is **native-only** (Kira). On the WASM/web export these nodes are no-ops.
+> Audio needs an audio backend plugin (`plugins/audio`). With none present these nodes are no-ops rather than errors — see [Audio backends](../extending/audio-backends.md).
 
 ## UI
 

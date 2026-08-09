@@ -103,9 +103,15 @@ On each channel strip you can drag the **fader** to set volume (the number under
 
 Click the **+** tile at the end of the row and you get a new channel immediately, already named (`Bus 1`, `Bus 2`, …) and already given a colour. Point an AudioPlayer's **Bus** field at it and it's wired up.
 
-To give it a better name, **double-click the name at the top of the strip**. An edit box opens over the strip — type over it and press **Enter** (or click away) to keep the change, **Escape** to abandon it. Renaming is safe: every AudioPlayer and audio-timeline track already pointing at that bus follows it to the new name.
+To give it a better name, **double-click the name at the top of the strip**. An edit box opens over the strip — type over it and press **Enter** (or click away) to keep the change, **Escape** to abandon it.
 
-The four built-in buses can't be renamed — the engine routes sound by those exact names, so `Master`, `SFX`, `Music` and `Ambient` are fixed.
+Renaming is always safe, and always has been free of consequences you can't see. A bus has a permanent **key** (the `Bus 1` it was born with) that never changes, and a **name** that's just a label. Sound is routed by the key, so renaming a bus can't strand an AudioPlayer pointing at it — including ones in scenes you don't currently have open. The Bus field on an AudioPlayer shows the key for that reason.
+
+The four built-in buses can't be renamed — `Master`, `SFX`, `Music` and `Ambient` are the keys the engine routes by, so they're fixed.
+
+### Your mixer is saved with the project
+
+The board is stored in your project's `project.toml`, so bus volumes, panning, mute/solo, colours and every custom channel you created come back when you reopen the project — and, more importantly, **ship with your game**. An exported game builds the same board before the first scene loads, so an AudioPlayer routed to `Footsteps` plays on `Footsteps` and not on some fallback. Saving happens on its own as you work; there's nothing to press.
 
 ### Colour-coding a channel
 
