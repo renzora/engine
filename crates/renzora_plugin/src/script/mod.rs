@@ -57,7 +57,11 @@
 pub mod command;
 pub mod context;
 pub mod value;
-pub mod wire;
+
+/// The byte codec. Re-exported rather than owned: it moved to the crate root
+/// when [`audio`](crate::audio) came to need it, and a plugin author should not
+/// have to learn that it did.
+pub use crate::wire;
 
 mod backend;
 mod reply;

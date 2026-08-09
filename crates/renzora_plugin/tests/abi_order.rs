@@ -1,4 +1,4 @@
-//! Every type in `sys.rs` whose memory layout is part of the ABI, pinned.
+//! Every type in `src/sys/` whose memory layout is part of the ABI, pinned.
 //!
 //! Both sides of this boundary compile their own copy of `sys.rs` from
 //! independent source trees. There is no link step between them, no symbol to
@@ -214,9 +214,51 @@ fn declared_types(src: &str) -> Vec<(String, Vec<String>)> {
     out
 }
 
+/// Every declaration in every file of `src/sys/`, parsed.
+///
+/// Read from disk at run time rather than with `include_str!`, and that is the
+/// load-bearing detail. `include_str!` needs a literal path, so a split module
+/// would mean a hand-written list of files here — and a new file left off that
+/// list is a file this test does not check, silently. That is precisely the
+/// omission failure the module doc above says a curated list always ends in.
+///
+/// Walking the directory means adding `sys/foo.rs` puts its types under the same
+/// guard as everything else, with nobody having to remember.
+fn sys_sources() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/sys");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .collect();
+    // Sorted so a failure reports the same way twice — directory order is not
+    // stable across filesystems.
+    files.sort();
+    assert!(!files.is_empty(), "no sources found in {}", dir.display());
+    files
+        .into_iter()
+        .map(|p| {
+            let name = p.file_name().unwrap().to_string_lossy().into_owned();
+            let text = std::fs::read_to_string(&p)
+                .unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()));
+            (name, text)
+        })
+        .collect()
+}
+
+/// Declarations across the whole `sys` module, with the file each came from.
+fn all_declared_types() -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    for (_file, src) in sys_sources() {
+        out.extend(declared_types(&src));
+    }
+    out
+}
+
 #[test]
 fn boundary_layouts_are_pinned() {
-    let actual = declared_types(include_str!("../src/sys.rs"));
+    let actual = all_declared_types();
     let mut problems = Vec::new();
 
     for (name, fields) in &actual {

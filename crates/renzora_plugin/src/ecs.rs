@@ -3212,6 +3212,37 @@ impl App {
         }
         self
     }
+
+    /// Register the audio backend.
+    ///
+    /// The descriptor comes from the `audio_backend!` macro, which owns the
+    /// entry point's state — see [`crate::audio`]. A bare descriptor rather than
+    /// the pair `add_script_backend` takes, because there is no borrowed
+    /// extension array to keep alive: an audio backend claims no file types.
+    ///
+    /// Only one backend loads. A second registration is refused and logged by
+    /// the host, because two backends would open the same output device and the
+    /// user would hear both mixes at once.
+    ///
+    /// ```ignore
+    /// renzora_plugin::audio_backend!(MyMixer);
+    ///
+    /// impl Plugin for MyAudioPlugin {
+    ///     fn build(&self, app: &mut App) {
+    ///         app.add_audio_backend(audio_backend::desc());
+    ///     }
+    /// }
+    /// ```
+    #[cfg(feature = "audio")]
+    pub fn add_audio_backend(&mut self, desc: sys::AudioBackendDesc) -> &mut Self {
+        // SAFETY: `desc` is alive for this call and the host copies the name
+        // before returning; `state` and `entry` are passed through untouched.
+        let status = unsafe { ((*self.ctx.iface).add_audio_backend)(self.ctx.host, &desc) };
+        if status != sys::RegisterStatus::Ok && self.rejected.is_none() {
+            self.rejected = Some(status);
+        }
+        self
+    }
 }
 
 /// An editor panel, before registration.

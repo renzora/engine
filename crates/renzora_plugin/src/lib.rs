@@ -99,6 +99,12 @@ pub mod ecs;
 pub mod static_link;
 pub mod sys;
 
+/// The byte codec every encoded boundary payload is written with.
+///
+/// Not behind a feature: it is shared by [`script`] and [`audio`], and the
+/// whole point of one codec is that there is one copy of it.
+pub mod wire;
+
 /// `f32` math for `no_std` plugins — the `std`-only methods, over `libm`.
 /// Exists only in a `no_std` build; see the module docs for why.
 #[cfg(not(feature = "std"))]
@@ -165,6 +171,14 @@ pub mod diagnostics;
 /// the module docs for the shape of a call.
 #[cfg(feature = "script")]
 pub mod script;
+
+/// Audio: implement the mixer the engine plays through.
+///
+/// Opt in with `features = ["audio"]`. Scripting's shape rather than a domain's
+/// — the host calls *into* the plugin here — so like [`script`] this one does
+/// touch [`sys`]. See the module docs for the shape of a call.
+#[cfg(feature = "audio")]
+pub mod audio;
 
 #[cfg(feature = "host")]
 pub mod host;

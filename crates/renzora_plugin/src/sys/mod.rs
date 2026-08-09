@@ -235,6 +235,12 @@ pub const VERSION_MAJOR: u32 = 4;
 ///          request/response round trip would hand every reader values one
 ///          frame stale. A profiler that plots last frame's frame time against
 ///          this frame's marker is not a profiler.
+/// 8 -> 9 appended `add_audio_backend`, [`AudioBackendDesc`], [`AudioCall`],
+///          [`AudioOp`] and [`AudioStatus`] — the audio engine as a plugin,
+///          which is the "some day" the note at the bottom of this block
+///          anticipated. It is boundary surface rather than a `crate::audio`
+///          domain for the reason `add_script_backend` is: the host calls into
+///          the backend and needs an answer, which a command queue cannot say.
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -266,7 +272,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 8;
+pub const VERSION_MINOR: u32 = 9;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -2739,6 +2745,26 @@ interface! {
     /// layout entry. `category` still groups sections in the sidebar.
     add_settings_section:
         unsafe extern "C" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus,
+
+    // ── Added in MINOR 4.9 ────────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
+    // the very end, under a new header. See `boundary_layouts_are_pinned` in
+    // `tests/abi_order.rs`.
+    /// Register the audio backend. See [`AudioBackendDesc`].
+    ///
+    /// Here rather than riding on [`CommandKind::Service`] for the same reason
+    /// [`Self::add_script_backend`] is: the direction of the call. Every domain
+    /// on the service command is a plugin asking the engine to do something,
+    /// which a queued opaque payload expresses perfectly. Audio is the reverse —
+    /// the engine asks the backend for the meters, for a clip's duration, for
+    /// the samples a microphone produced — and there is no way to express "call
+    /// me and answer" with a command queue.
+    ///
+    /// One backend at a time, unlike scripting: two languages coexist because a
+    /// script names one by its file extension, but there is only one pair of
+    /// speakers. The host keeps the first registration and logs the second.
+    add_audio_backend:
+        unsafe extern "C" fn(host: *mut Host, desc: *const AudioBackendDesc) -> RegisterStatus,
 }
 
 /// How the inspector should edit one numeric field.
@@ -3201,3 +3227,11 @@ pub struct ScriptBackendDesc {
 // host keeps registered descriptors in a Bevy resource.
 unsafe impl Send for ScriptBackendDesc {}
 unsafe impl Sync for ScriptBackendDesc {}
+
+// The audio boundary lives in `sys/audio.rs`. Same module path — `sys::AudioOp`
+// — but its own file, because the audio half is a self-contained group of five
+// types and `sys` was already three thousand lines. `tests/abi_order.rs` walks
+// this directory rather than naming one file, so a type here is pinned exactly
+// as one in this file is; see the note at the top of that test.
+mod audio;
+pub use audio::*;

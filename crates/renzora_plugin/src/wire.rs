@@ -1,4 +1,4 @@
-//! The byte codec both sides of the scripting boundary compile.
+//! The byte codec both sides of a boundary compile.
 //!
 //! ## Why this is hand-rolled
 //!
@@ -13,7 +13,10 @@
 //!
 //! This module sidesteps that by being compiled into **both** sides from the
 //! same source. There is one encoder and one decoder, they cannot drift, and
-//! the format is whatever this file says it is. That is also why the guest side
+//! the format is whatever this file says it is. It lives at the crate root
+//! rather than under [`script`](crate::script) — where it started — because
+//! [`audio`](crate::audio) needs the same guarantee, and a second copy would
+//! reintroduce precisely the drift the paragraph above is about. That is also why the guest side
 //! of `renzora_plugin` is allowed to stay dependency-free — see the note at the
 //! bottom of its `Cargo.toml`, which forbids exactly the dependency serde would
 //! have added.
@@ -35,8 +38,11 @@
 //! explicitly rather than inherited from the host's byte order because the two
 //! sides are separate binaries and "they're both x86" is a fact about today.
 
-use std::string::String;
-use std::vec::Vec;
+// `alloc`, not `std`: the codec is now reachable from a `no_std` plugin, and
+// `String`/`Vec` live in `alloc` either way — under `std` these are the very
+// same types re-exported.
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 /// Why a byte slice could not be decoded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +68,10 @@ impl core::fmt::Display for WireError {
     }
 }
 
+/// `std`-only: the trait does not exist in `core`, and a `no_std` plugin has no
+/// use for it — it matches on the variant or logs the `Display` form. Dropping
+/// it there costs nothing and is what lets the codec compile in both worlds.
+#[cfg(feature = "std")]
 impl std::error::Error for WireError {}
 
 /// Appends encoded values to a growable buffer.

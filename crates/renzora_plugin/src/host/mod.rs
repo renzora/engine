@@ -240,6 +240,16 @@ pub fn retire_slot(world: &mut World, slot: usize) {
     if let Some(mut backends) = world.get_resource_mut::<PluginScriptBackends>() {
         backends.0.retain(|b| b.owner != slot);
     }
+    // Same hazard, and worse consequences: an audio backend's entry is called
+    // from a frame loop that has no idea the library went away, and `state`
+    // points into the unmapped image too. Clearing it takes the game silent
+    // until a backend registers again, which is the correct outcome — the
+    // alternative is a call through a dangling pointer on the next frame.
+    if let Some(mut audio) = world.get_resource_mut::<PluginAudioBackend>() {
+        if audio.0.as_ref().is_some_and(|b| b.owner == slot) {
+            audio.0 = None;
+        }
+    }
 
     // GPU assets are the one thing that leaks visibly if this is skipped: a
     // reloaded plugin creates a fresh mesh and material every cycle, and
@@ -380,6 +390,7 @@ static IFACE: sys::Interface = sys::Interface {
     prefix_hashes: sys::INTERFACE_PREFIX_HASHES.as_ptr(),
     prefix_count: sys::INTERFACE_PREFIX_HASHES.len(),
     add_script_backend,
+    add_audio_backend,
     add_settings_section,
 };
 
@@ -837,6 +848,50 @@ unsafe extern "C" fn add_script_backend(
         backends.0.push(PluginScriptBackend {
             name,
             extensions,
+            entry: desc.entry,
+            owner,
+        });
+        sys::RegisterStatus::Ok
+    })
+}
+
+unsafe extern "C" fn add_audio_backend(
+    host: *mut sys::Host,
+    desc: *const sys::AudioBackendDesc,
+) -> sys::RegisterStatus {
+    guard_host("add_audio_backend", sys::RegisterStatus::Invalid, || {
+        if desc.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let desc = &*desc;
+        let name = desc.name.as_str().to_string();
+        if name.is_empty() {
+            error!("plugin registered an audio backend with no name");
+            return sys::RegisterStatus::Invalid;
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let owner = ctx.slot;
+        let mut backend = ctx
+            .world
+            .get_resource_or_insert_with(PluginAudioBackend::default);
+
+        // First claim wins, and unlike scripting there is no key to share. Two
+        // language plugins coexist because a script names one by its file
+        // extension; two audio backends would both open the default output
+        // device and the user would hear both mixes at once.
+        if let Some(existing) = &backend.0 {
+            error!(
+                "audio backend `{name}` is ignored — `{}` is already registered, and there is                  only one pair of speakers",
+                existing.name
+            );
+            return sys::RegisterStatus::Invalid;
+        }
+
+        info!("[audio] backend `{name}` registered");
+        backend.0 = Some(PluginAudioBackendEntry {
+            name,
+            state: desc.state as usize,
             entry: desc.entry,
             owner,
         });
@@ -2349,6 +2404,35 @@ pub struct PluginScriptBackend {
 /// name, some extensions and a function pointer.
 #[derive(Resource, Default)]
 pub struct PluginScriptBackends(pub Vec<PluginScriptBackend>);
+
+/// The audio backend a plugin registered.
+///
+/// `state` is stored as a `usize` rather than a `*mut c_void` so the resource
+/// stays `Send + Sync` without an unsafe impl. The host never dereferences it —
+/// it is handed straight back to the plugin on every call — so the pointer's
+/// only requirement is that it round-trips unchanged.
+pub struct PluginAudioBackendEntry {
+    /// Human-readable, for logs and the editor's audio settings.
+    pub name: String,
+    /// Opaque plugin state, passed back with every call.
+    pub state: usize,
+    pub entry: sys::AudioEntry,
+    /// Registering plugin slot — see [`retire_slot`].
+    pub owner: usize,
+}
+
+/// The one audio backend, if a plugin registered one.
+///
+/// `Option` rather than a `Vec`, unlike [`PluginScriptBackends`]: two languages
+/// coexist in one project because a script picks one by its file extension, and
+/// there is no equivalent for audio — a second backend would open the same
+/// output device and mix over the first.
+///
+/// `renzora_audio` drains this into its own engine, which is what keeps this
+/// crate from needing to know what a sound *is*. All it holds is a name, an
+/// opaque pointer and a function pointer.
+#[derive(Resource, Default)]
+pub struct PluginAudioBackend(pub Option<PluginAudioBackendEntry>);
 
 /// Turns BSN source into entities.
 ///

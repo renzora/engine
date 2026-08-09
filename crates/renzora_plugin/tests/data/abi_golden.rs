@@ -535,6 +535,11 @@ const GOLDEN: &[Golden] = &[
             // Appended in MINOR 4.7 — a settings section is a panel that
             // renders in the Settings overlay, hence the shared PanelDesc.
             "add_settings_section: unsafe extern \"C\" fn(host: *mut Host, desc: *const PanelDesc) -> RegisterStatus",
+            // Appended in MINOR 4.9 — the audio engine as a plugin. Here rather
+            // than on the service command because the host calls INTO the
+            // backend and needs an answer (meters, durations, captured samples),
+            // which a one-way queue cannot express.
+            "add_audio_backend: unsafe extern \"C\" fn(host: *mut Host, desc: *const AudioBackendDesc) -> RegisterStatus",
         ],
     },
     Golden {
@@ -664,6 +669,49 @@ const GOLDEN: &[Golden] = &[
             "extensions: *const Str256",
             "extension_count: usize",
             "entry: ScriptEntry",
+        ],
+    },
+    // ── Audio (MINOR 4.9) ────────────────────────────────────────────────
+    //
+    // All five cross. The op and status are read by value out of a struct the
+    // other side wrote; `AudioCall` is walked field-by-field by every backend;
+    // the descriptor is read once at registration but by the host, from plugin
+    // memory.
+    Golden {
+        name: "AudioOp",
+        fields: &[
+            "0: u32",
+        ],
+    },
+    Golden {
+        name: "AudioStatus",
+        fields: &[
+            "0: i32",
+        ],
+    },
+    Golden {
+        name: "AudioCall",
+        fields: &[
+            "op: AudioOp",
+            "_pad: u32",
+            "state: *mut c_void",
+            "payload: BlobRef",
+            "blob: BlobRef",
+            "out: *const ByteSink",
+        ],
+    },
+    Golden {
+        name: "AudioEntry",
+        fields: &[
+            "= unsafe extern \"C\" fn(call: *const AudioCall) -> AudioStatus",
+        ],
+    },
+    Golden {
+        name: "AudioBackendDesc",
+        fields: &[
+            "name: Str256",
+            "state: *mut c_void",
+            "entry: AudioEntry",
         ],
     },
 ];

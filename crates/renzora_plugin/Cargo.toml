@@ -112,6 +112,18 @@ static_link = []
 # language plugin is the case where the 90 KB of std is already noise.
 script = ["std"]
 
+# Audio is scripting's shape rather than animation's: the host calls into the
+# backend and needs an answer — the meters, a clip's duration, the samples a
+# microphone produced — so it too costs an `Interface` function and a
+# `sys::VERSION_MINOR` bump. The vocabulary here (requests, replies, the trait)
+# is behind this feature and costs a plugin nothing to leave off.
+#
+# Requires `std` for the same reasons `script` does, plus one of its own: an
+# audio backend owns a device callback and wants the panic firewall more than
+# most. A panic on the audio thread with `panic = "abort"` takes the game down
+# from a thread the game cannot see.
+audio = ["std"]
+
 # The ENGINE opts into `host`, which adds the other side of the boundary: the
 # interface implementation, the dynamic-query dispatcher, and the `dlopen`
 # loader. Split by feature rather than by crate so a plugin author depends on
