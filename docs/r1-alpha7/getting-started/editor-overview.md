@@ -17,7 +17,7 @@ From the screenshot above:
 - **Left** — your **Scene** tree (everything in the current level), with the **Assets** browser — a file explorer for your project — below it.
 - **Center** — the **3D viewport** where you see and move your world.
 - **Right** — the **Inspector**, which shows the settings of whatever you click.
-- **Bottom** — a collapsible strip under the viewport with the Console, Timeline, Mixer, Sequencer, and Shape Library (`Ctrl+Space` toggles it).
+- **Bottom** — a collapsible strip under the viewport with the Console, Timeline, Mixer, and Shape Library (`Ctrl+Space` toggles it).
 
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 

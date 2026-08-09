@@ -133,7 +133,7 @@ The 164 top-level crates break down roughly as follows:
 | 4 | Engine runtime | runtime, engine, dynamic_plugin_loader, input |
 | 4 | Support / misc | globals, spline, hot_demo, test_component |
 | 3 | Core / SDK | renzora, macros, postprocess (re-export shim) |
-| 3 | Scripting | scripting (Lua + Rhai), script_variables, blueprint |
+| 3 | Scripting | scripting (Lua + Rhai), blueprint |
 | 3 | Platform | android, ios, xr |
 | 2 | UI / markup | ember (markup + widgets + dock), game_ui |
 | 2 | Dead / experimental | mcp_server_plugin, websocket_plugin (orphaned — outside the globs) |

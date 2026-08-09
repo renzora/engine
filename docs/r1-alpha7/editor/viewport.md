@@ -117,7 +117,7 @@ Two things worth knowing:
 - **Colliders now have an off state.** The Selected Only / Always pair only ever decided *when* the wireframes appear. Turning the switch off hides them entirely; turning it back on returns to whichever of the two you were using. Picking either mode row also switches colliders back on.
 - **Skeleton is the one to reach for on heavy rigs.** Bone gizmos are real meshes rebuilt every frame, so a densely-boned character costs more than the line-based gizmos. Turning it off while you work on something else is the cheapest win in the list.
 
-The same switches live in **Settings → Viewport → Gizmos**, alongside the drag opacity and the all-viewports option. They're global, not per-viewport — the dropdown is in the shared toolbar for that reason.
+The same switches live in **Settings → Viewport → Gizmos**, alongside the drag opacity and the all-viewports option. They're global, not per-viewport, even though the dropdown sits on the viewport's own tool strip.
 
 ## If the viewport feels slow
 
@@ -203,7 +203,7 @@ The **active** viewport is whichever one your cursor is over, so camera controls
 - a **World / Local** toggle that sets the transform gizmo's axes for that viewport independently;
 - a **maximize** button that expands *that* viewport to fill the editor (click it again, or the maximize button on the now-full viewport, to restore your layout).
 
-The viewport's **own tool strip**, flush along its top edge, now holds all of it: Select / Move / Rotate / Scale, undo / redo / save, the shape menu, the move / rotate / scale snap steps, the display / gizmos / snap / camera menus, **Play**, and this viewport's view-angle, World/Local and maximize controls. (The shared toolbar strip under the top bar is still there for panels that use it — the code editor, the material graph — and hides itself when nothing on screen contributes to it.)
+The viewport's **own tool strip**, flush along its top edge, now holds all of it: Select / Move / Rotate / Scale, undo / redo / save, the shape menu, the move / rotate / scale snap steps, the display / gizmos / snap / camera menus, **Play**, and this viewport's view-angle, World/Local and maximize controls. (There is no longer a shared toolbar strip under the top bar: every panel that had tools there — the code editor, the material graph, the blueprint graph — now carries them inside itself.)
 
 It fills the bar from the left, and sits **above** the rendered scene rather than floating over it — so the scene starts below the bar and the axis gizmo, nav buttons and 2D rulers move down with it.
 
@@ -226,7 +226,7 @@ The **Camera Preview** panel shows the scene from one of your *game* cameras, so
 Press **Play** to play-test your game without leaving the editor. Edit mode and play mode **share the viewport panel**: when you press Play, the viewport switches from your editor camera to the running game (seen through the active game camera), constrained to the panel — your hierarchy, inspector, console, and the rest of the editor all stay on screen. Press **Stop** (or `Esc`) and the viewport flips straight back to the editor camera, right where you left it.
 
 - **Pressing Play brings the viewport tab to the front automatically**, so you see the game even if you were looking at another tab when you started.
-- Entering play gives a clean game view: it **clears your selection and hides the editor toolbars, the axis gizmo, and the viewport buttons**; Stop brings them back. (The Play/Stop control itself stays on the toolbar strip throughout.)
+- Entering play gives a clean game view: it **clears your selection and hides the editor toolbars, the axis gizmo, and the viewport buttons**; Stop brings them back. (The Play/Stop control itself lives in the top bar and stays put throughout.)
 - **Maximize on Play** (Settings → Viewport → Camera, **on by default**): pressing Play collapses the dock to just the viewport for a full-panel game view, and Stop restores your layout. Turn it off to keep the rest of your panels visible while playing.
 - If no viewport panel is open at all, play falls back to taking over the whole window.
 - The game's render resolution follows the active camera's resolution setting, just like the editor view.

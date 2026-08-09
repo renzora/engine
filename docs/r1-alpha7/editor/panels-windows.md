@@ -38,7 +38,7 @@ Panel toolbars stay on one row as you drag a panel narrower. Buttons never squas
 
 ## The bottom panel
 
-The strip of panels along the bottom of the Scene workspace — Console, Timeline, Mixer, Sequencer, Shape Library — is the **bottom panel**. By default it sits **under the viewport, not the full window width**, so the side columns (Hierarchy/Assets on the left, Inspector on the right) keep their full height. It starts **closed** when the editor launches, keeping the viewport unobstructed:
+The strip of panels along the bottom of the Scene workspace — Console, Timeline, Mixer, Shape Library — is the **bottom panel**. By default it sits **under the viewport, not the full window width**, so the side columns (Hierarchy/Assets on the left, Inspector on the right) keep their full height. It starts **closed** when the editor launches, keeping the viewport unobstructed:
 
 - **Closed doesn't mean gone**: while closed, the panel collapses to just its **header strip** — a tab-bar-height row in the same place showing its tabs in a muted state. A strip docked under one column collapses **under that column** (the side columns keep their full height); only a full-width strip collapses full-width. **Click any tab** to reopen the panel with that tab active.
 - **`Ctrl+Space`** toggles it open and closed. Closing remembers everything — tab order, active tab, height, even splits you made inside it — and reopening restores all of it, **in the same place**: a strip docked under one column reopens under that column, a full-width one reopens full-width.

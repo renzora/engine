@@ -38,13 +38,13 @@ At the very top is a **filter box** — start typing a component name to hide ev
 
 ### Which sections start open
 
-By default, Name, Transform and Scripts start expanded and everything else starts collapsed. Hit the expand-all button to open the rest, or change the starting state in **Settings → Interface → Inspector → Default Expand**:
+By default every section starts expanded. Hit the collapse-all button to fold them, or change the starting state in **Settings → Interface → Inspector → Default Expand**:
 
-- **Essentials Only** *(default)* — Name, Transform, and Scripts open; the rest closed.
-- **All Open** — every section starts expanded.
+- **All Open** *(default)* — every section starts expanded.
+- **Essentials Only** — Name, Transform, and Scripts open; the rest closed.
 - **All Closed** — every section starts collapsed.
 
-**Why collapsed by default.** A collapsed section is not merely hidden — its rows are despawned and the space reserved with a placeholder, so it costs nothing to have. Expanding sections is genuinely expensive: on a scene with a world environment, terrain and camera, selecting an entity with everything open added ~1,082 bevy_ui nodes, and bevy_ui walks every node in the tree every frame whether or not anything changed. That measured ~3 ms/frame — about 72 fps down to 59. **All Open** is still the right choice if you routinely edit many components at once; it just shouldn't be what everyone pays for by default.
+**What All Open costs.** A collapsed section is not merely hidden — its rows are despawned and the space reserved with a placeholder, so it genuinely costs nothing to have. Expanding is the expensive direction: on a scene with a world environment, terrain and camera, selecting an entity with everything open added ~1,082 bevy_ui nodes, and bevy_ui walks every node in the tree every frame whether or not anything changed. That measured ~3 ms/frame — about 72 fps down to 59. If a long component list starts costing you frames, **Essentials Only** is the setting to reach for.
 
 This sets the *starting* state each time the Inspector rebuilds for a new selection — you can still fold any section by hand, and the expand/collapse-all button overrides it for the current object.
 

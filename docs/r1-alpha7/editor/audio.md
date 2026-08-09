@@ -88,25 +88,52 @@ Rhai can play audio too, but with simpler function signatures, and the keyboard-
 
 The **Mixer** panel is your audio control board. Every sound flows through a "bus" — a channel you can adjust on its own — so you can turn music down without touching your sound effects, for example.
 
-![The Mixer panel showing channel strips for the Master, SFX, Music, and Ambient buses, each with a volume fader, a round pan knob, and Mute (M) / Solo (S) buttons. A New bus box on the right adds custom channels.](/assets/previews/mixer.png)
+![The Mixer panel showing colour-coded channel strips for the SFX, Music, and Ambient buses, each topped by a coloured bar and holding a pan knob, a tall volume fader with a dB readout, and Mute (M) / Solo (S) buttons. A + tile adds custom channels; Master sits apart on the right.](/assets/previews/mixer.png)
 
 Renzora starts you with four buses:
 
-- **Master** — controls everything at once.
+- **Master** — controls everything at once. It sits apart on the right, because everything else feeds into it.
 - **SFX** — your sound effects.
 - **Music** — background music.
 - **Ambient** — environmental loops like wind or rain.
 
-On each channel strip you can drag the **fader** to set volume, turn the **Pan** knob to move it left or right, and use **M** (mute) and **S** (solo) to quickly silence or isolate a channel. Need more channels? Type a name in the **New bus** box on the right and click **Create**, then point an AudioPlayer's **Bus** field at it.
+On each channel strip you can drag the **fader** to set volume (the number underneath is the gain in dB), turn the **Pan** knob to move it left or right, and use **M** (mute) and **S** (solo) to quickly silence or isolate a channel.
 
-> Bus volumes are set here in the Mixer, not from scripts. Advanced users can also add effects (FX) to a bus and even pipe in a live microphone — see the [Scripting API](/docs/r1-alpha5/api/scripting) for those features.
+### Adding and naming your own buses
+
+Click the **+** tile at the end of the row and you get a new channel immediately, already named (`Bus 1`, `Bus 2`, …) and already given a colour. Point an AudioPlayer's **Bus** field at it and it's wired up.
+
+To give it a better name, **double-click the name at the top of the strip**. An edit box opens over the strip — type over it and press **Enter** (or click away) to keep the change, **Escape** to abandon it. Renaming is safe: every AudioPlayer and audio-timeline track already pointing at that bus follows it to the new name.
+
+The four built-in buses can't be renamed — the engine routes sound by those exact names, so `Master`, `SFX`, `Music` and `Ambient` are fixed.
+
+### Colour-coding a channel
+
+Each strip carries a colour, shown as a bar across the top of the strip and a matching tint on its frame, so you can pick a channel out of a crowded board at a glance. New buses take the next colour in the palette automatically.
+
+**Right-click any strip** to open its menu and pick a different colour from the swatch grid. The strip's current colour is the one ringed in white.
+
+### The strip menu
+
+Right-clicking a strip is also how you reach everything that isn't a live control — at 74 pixels wide there is no room for it on the strip itself. The menu opens at your cursor and re-positions itself to stay on screen, so it works the same on a strip at the edge of the panel as one in the middle.
+
+| Menu entry | What it does |
+|---|---|
+| **Rename** | Same inline edit as double-clicking the name (custom buses only) |
+| **Colour** | The swatch grid described above |
+| **Input device** | Capture a live microphone into this bus |
+| **Output device** | Which device the bus plays out of |
+| **Delete bus** | Removes a custom bus (custom buses only) |
+
+Devices are listed fresh each time you open the menu, so a microphone you plugged in after starting the editor shows up straight away.
+
+> Bus volumes are set here in the Mixer, not from scripts. Advanced users can also add effects (FX) to a bus — see the [Scripting API](/docs/r1-alpha5/api/scripting) for those features.
 
 ## Recording and cinematics
 
 Two more panels live alongside the mixer:
 
 - **Record** — a timeline for recording and arranging audio clips.
-- **Sequencer** — a cinematics tool for scripting camera moves and timed events, saved as a `.renseq` file.
 
 These are optional tools for more advanced projects; you don't need them to add sound to a game.
 

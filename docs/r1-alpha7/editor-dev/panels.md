@@ -327,56 +327,68 @@ renzora::add!(FpsStatusPlugin, Editor);
 
 ## Where panels appear
 
-Registering a panel does **not** force it into a layout. The metadata makes it available in the dock tab strip's **+** (Add-Panel) picker, grouped by `category`; the user docks it where they like. Built-in workspaces (Scene, Blueprints, Scripting, Animation, Materials, Particles, Debug, Gallery) are eight separate `DockTree`s the shell ships and the user can reorder, rename, and add to. The live layout persists per workspace, and the whole set (every workspace's tree + the active index) is serialized to `~/.renzora/layout.json` so split sizes, panel placement, and active tabs survive a restart. On launch the shell restores that file and appends any built-in workspace the saved set predates; deleting the file resets to the shipped defaults.
+Registering a panel does **not** force it into a layout. The metadata makes it available in the dock tab strip's **+** (Add-Panel) picker, grouped by `category`; the user docks it where they like. Built-in workspaces (Scene, Scripting, Blueprints, Animation, Materials, Particles, Debug, Gallery) are eight separate `DockTree`s the shell ships and the user can reorder, rename, and add to. The live layout persists per workspace, and the whole set (every workspace's tree + the active index) is serialized to `~/.renzora/layout.json` so split sizes, panel placement, and active tabs survive a restart. On launch the shell restores that file and appends any built-in workspace the saved set predates; deleting the file resets to the shipped defaults.
 
 If you want a panel docked by default, add it to a workspace layout rather than relying on the picker; otherwise the **+** picker is how users bring it in (this is exactly what the tutorial's throwaway "Demo Panel" does — registered but deliberately not pre-docked).
 
 > Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` bundle (or shipped as a `--editor` distribution plugin). When the bundle is absent — the shipped game — none of this code runs, because `PluginScope::Editor` plugins are never installed into a runtime-only binary.
 
-## Panel toolbars — the shared strip below the top bar
+## Panel toolbars — a panel's tools live *in* that panel
 
-There is **one** toolbar strip, mounted by the shell just under the top bar, and its contents follow the **active panel**. A panel (or any plugin) registers toolbar items keyed by a dock panel id; the strip shows a panel's items only while that panel is the active (visible) tab in its leaf — so the toolbar swaps automatically as you move between the viewport, the code editor, the material graph, etc. Nothing is keyed to a *workspace*; it's purely which panels are on screen.
+There is no shared toolbar strip. There used to be: one row under the top bar
+whose contents followed whichever panel was the active dock tab, fed by
+`register_panel_toolbar*`. It's gone, along with `PanelToolbars`,
+`PanelToolbarExt` and `build_toolbar_host`.
 
-The whole strip hides while the game is playing, so the running game gets a clean view.
-
-There is a second, separate toolbar: the strip **overlaid on the viewport itself**. It carries Select / Move / Rotate / Scale, the session actions, the snap pills and the display dropdowns — everything that used to be the viewport's group in the shared strip — plus the per-view controls at its right end. `renzora_ember::toolbar::register_viewport_tool_trailing(build)` appends a widget between those two groups, right-aligned and ahead of the view-angle dropdown, primary viewport only; it's how the shell mounts the **Play** control there. That registry is a static rather than a resource because the in-viewport strip is built from a panel-content closure that receives only `Commands` + fonts, with no `World` in scope. The strip's *tools* hide during play; the trailing widgets do not, because Stop is the one control that has to outlive the toolbar it sits on.
-
-That strip is an `arrange_row` (see *Custom Widgets*): it wraps to a second line when a viewport is too narrow for everything, and each group carries a grip you can drag to reorder the bar.
-
-The API lives on `App` (trait `renzora_ember::toolbar::PanelToolbarExt`):
+**Build your toolbar inside your panel's content.** That's what the code editor
+always did — its tab strip and its font-size / minimap / whitespace row are both
+children of the `code_editor` panel — and it's where the material and blueprint
+graphs' toolbars moved. A row of controls for one panel, rendered somewhere else,
+has to answer "is my panel the visible tab?" every frame, and answers it in a bar
+that sits the same distance from every panel, the one it acts on included:
 
 ```rust
-use renzora_ember::toolbar::PanelToolbarExt;
+fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let root = commands.spawn(Node {
+        flex_direction: FlexDirection::Column, ..default()
+    }).id();
 
-// Simplest: an icon button. `on_click` runs (deferred) with `&mut World`.
-app.register_panel_toolbar_button(
-    "material_graph", "floppy-disk", "Save material",
-    |w| { /* save the open material */ },
-);
-
-// Full control: a builder closure with `&mut Commands` + `&EmberFonts`, so you
-// can spawn ANY ember widget — dropdown, slider, input, checkbox, toggle
-// switch, color picker — and wire reactivity with the `bind_*` helpers
-// (e.g. read `EditorSelection` to react when a mesh is picked).
-app.register_panel_toolbar("blueprint_graph", |commands, fonts| {
-    let row = commands.spawn(Node { /* a Row */ ..default() }).id();
-    // … add_node / auto_layout / apply buttons …
-    row // the item's root entity
-});
-
-// Show one item's group for SEVERAL panels (any-active). The main viewport
-// toolbar uses this so it shows for every viewport slot:
-app.register_panel_toolbar_multi(
-    &["viewport", "viewport-2", "viewport-3", "viewport-4"],
-    |commands, fonts| build_viewport_header(commands, fonts),
-);
+    let toolbar = build_toolbar(commands, fonts);   // your own row
+    let canvas = node_graph_view(commands, fonts);
+    commands.entity(root).add_children(&[toolbar, canvas.viewport]);
+    root
+}
 ```
 
-Notes:
-- The strip is **centered** by the host. If several panels are visible at once, their groups concatenate (in registration order) into that one centered cluster.
-- Built-in users of the strip: the **viewport header** (view/mode/snap/display/camera + gizmo tools + the 3D/2D/UI selector — shown for any of the 4 viewport slots), the **material graph** (Add Node / Apply / Fit / Center / Zoom + material picker), and the **blueprint graph** (Add Node / Auto Layout / Apply).
-- Items are built **once** when the shell spawns (and on a theme rebuild). Register at plugin-build time, before the chrome mounts.
-- A builder that needs a resource snapshot *at build time* (e.g. `font_picker`, which snapshots the `FontRegistry`) can't read it from this signature yet — bind reactively instead, or open an issue to widen the builder.
+Nothing else is needed: the panel is only built when it's docked, and only
+rendered when it's the visible tab, so visibility comes free.
+
+### The viewport is the exception, and why
+
+The viewport carries two mount points other crates can push widgets into, both
+in `renzora_ember::toolbar`:
+
+| Registry | Where it mounts |
+|---|---|
+| `register_viewport_tool_trailing(build)` | The right-hand end of the in-viewport tool strip — the one with Select / Move / Rotate / Scale on it |
+| `register_viewport_top_strip(build)` | A full-width bar inside the primary viewport panel, under that tool strip |
+
+These exist for a dependency reason, not a layout one. The editor **shell** needs
+to put things into the viewport — the scene tabs, historically Play — and it
+cannot call the viewport to do it: `renzora_shell` depends on `renzora_viewport`,
+not the other way round. The shell registers a builder; the viewport panel builds
+whatever it finds; no edge points the wrong way.
+
+Both are `static` registries rather than resources because the viewport panel is
+built from a panel-content closure that receives only `Commands` + `EmberFonts`,
+with no `World` in scope to read a resource from. Register at plugin-build time,
+before the chrome mounts.
+
+The in-viewport tool strip is an `arrange_row` (see *Custom Widgets*): it wraps
+to a second line when a viewport is too narrow for everything, and each group
+carries a grip you can drag to reorder the bar. Its *tools* hide during play; the
+trailing widgets do not, because Stop is the one control that has to outlive the
+toolbar it sits on.
 
 ### Or just put it in your panel
 
