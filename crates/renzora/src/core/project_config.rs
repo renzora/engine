@@ -1139,6 +1139,77 @@ pub struct EditorOpenTab {
     pub kind: String,
 }
 
+/// One mixer bus, as stored in `[[audio.buses]]` in project.toml.
+///
+/// # Why `key` and `name` are two fields
+///
+/// A bus name used to *be* the routing key: `AudioPlayer.bus` held a display
+/// string and playback matched it literally. That made renaming a bus a
+/// world-rewriting operation — every `AudioPlayer` and timeline track pointing
+/// at the old name had to be found and re-pointed in the same step, or it would
+/// silently fall through to the SFX fallback. And it could only ever rewrite the
+/// scene that happened to be *open*: rename a bus while another scene is closed
+/// and that scene's emitters keep pointing at a name nothing answers to.
+///
+/// So the key is fixed at creation and never changes, and the name is free to.
+/// Scenes and scripts store the key; only the mixer panel shows the name. The
+/// four built-ins are unaffected — their keys are the names they always had
+/// (see `BUILTIN_BUSES`), so no existing scene needs migrating.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct BusConfig {
+    /// Permanent routing key. What `AudioPlayer.bus` holds and what scripts
+    /// name. Never changes once the bus exists.
+    pub key: String,
+    /// Display name, shown in the mixer. Free to change; defaults to `key`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// Linear amplitude; 1.0 = unity.
+    pub volume: f64,
+    /// -1.0 hard left … 1.0 hard right.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub panning: f64,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub muted: bool,
+    /// Persisted so a board left with a bus soloed comes back that way in the
+    /// editor. A shipped game applies it like any other bus state — solo is a
+    /// mix decision, not an editor mode.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub soloed: bool,
+    /// Strip tint, RGB 0–255. Cosmetic; nothing in the audio path reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
+}
+
+/// The project's mixer bus graph, stored under `[audio]` in project.toml.
+///
+/// This exists because the graph had nowhere to live. `MixerState` was built
+/// with `MixerState::default()` at startup and died with the session, so an
+/// exported game booted with the four built-in buses at unity gain and none of
+/// the project's custom ones — every emitter routed to a custom bus hit the SFX
+/// fallback and played at the wrong level with no error. The mixer was, in
+/// effect, an editor-session toy.
+///
+/// Device routing is deliberately **not** here. A device name identifies
+/// hardware on one machine, so persisting "Blue Yeti" into a shipped game says
+/// nothing on a player's; a game that needs a specific device asks for it at
+/// runtime. Device choice stays session state.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct AudioConfig {
+    /// Every bus, built-ins included, in mixer order. Empty means "no `[audio]`
+    /// section was written yet", which is the same thing as the default board —
+    /// so an existing project keeps working untouched.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buses: Vec<BusConfig>,
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
+}
+
+fn audio_is_empty(a: &AudioConfig) -> bool {
+    a.buses.is_empty()
+}
+
 /// Project configuration stored in project.toml
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct ProjectConfig {
@@ -1195,6 +1266,10 @@ pub struct ProjectConfig {
     pub ui_font: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<NetworkProjectConfig>,
+    /// The mixer bus graph. Shipped (not the editor-stripped section) — a game
+    /// with no bus graph routes every custom-bus emitter to the SFX fallback.
+    #[serde(default, skip_serializing_if = "audio_is_empty")]
+    pub audio: AudioConfig,
     /// Editor-only preferences (viewport toggles, camera speed, snap, etc.).
     /// The runtime ignores this section; export strips it from shipped builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1218,6 +1293,7 @@ impl Default for ProjectConfig {
             console_logging: false,
             ui_font: None,
             network: None,
+            audio: AudioConfig::default(),
             editor: None,
         }
     }

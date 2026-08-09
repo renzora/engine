@@ -1662,6 +1662,17 @@ mod tests {
             rendering: RenderingConfig::default(),
             console_logging: false,
             network: None,
+            audio: AudioConfig {
+                buses: vec![BusConfig {
+                    key: "Footsteps".into(),
+                    name: "Foot FX".into(),
+                    volume: 0.8,
+                    panning: -0.25,
+                    muted: false,
+                    soloed: false,
+                    color: Some([120, 200, 80]),
+                }],
+            },
             editor: Some(crate::core::viewport_types::EditorPrefs::default()),
         };
         let s = toml::to_string_pretty(&original).expect("serialize");
