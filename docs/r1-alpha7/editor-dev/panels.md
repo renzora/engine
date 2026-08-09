@@ -333,9 +333,15 @@ If you want a panel docked by default, add it to a workspace layout rather than 
 
 > Editor panels only exist in the editor session. They live in editor-scope plugins linked into the `renzora_editor` bundle (or shipped as a `--editor` distribution plugin). When the bundle is absent — the shipped game — none of this code runs, because `PluginScope::Editor` plugins are never installed into a runtime-only binary.
 
-## Panel toolbars — the shared strip below the document tabs
+## Panel toolbars — the shared strip below the top bar
 
-There is **one** toolbar strip, mounted by the shell just under the document tabs, and its contents follow the **active panel**. A panel (or any plugin) registers toolbar items keyed by a dock panel id; the strip shows a panel's items only while that panel is the active (visible) tab in its leaf — so the toolbar swaps automatically as you move between the viewport, the code editor, the material graph, etc. Nothing is keyed to a *workspace*; it's purely which panels are on screen.
+There is **one** toolbar strip, mounted by the shell just under the top bar, and its contents follow the **active panel**. A panel (or any plugin) registers toolbar items keyed by a dock panel id; the strip shows a panel's items only while that panel is the active (visible) tab in its leaf — so the toolbar swaps automatically as you move between the viewport, the code editor, the material graph, etc. Nothing is keyed to a *workspace*; it's purely which panels are on screen.
+
+The whole strip hides while the game is playing, so the running game gets a clean view.
+
+There is a second, separate toolbar: the strip **overlaid on the viewport itself**. It carries Select / Move / Rotate / Scale, the session actions, the snap pills and the display dropdowns — everything that used to be the viewport's group in the shared strip — plus the per-view controls at its right end. `renzora_ember::toolbar::register_viewport_tool_trailing(build)` appends a widget between those two groups, right-aligned and ahead of the view-angle dropdown, primary viewport only; it's how the shell mounts the **Play** control there. That registry is a static rather than a resource because the in-viewport strip is built from a panel-content closure that receives only `Commands` + fonts, with no `World` in scope. The strip's *tools* hide during play; the trailing widgets do not, because Stop is the one control that has to outlive the toolbar it sits on.
+
+That strip is an `arrange_row` (see *Custom Widgets*): it wraps to a second line when a viewport is too narrow for everything, and each group carries a grip you can drag to reorder the bar.
 
 The API lives on `App` (trait `renzora_ember::toolbar::PanelToolbarExt`):
 

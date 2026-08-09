@@ -28,6 +28,12 @@ pub(crate) const PANEL_IDS: [&str; 4] = ["viewport", "viewport-2", "viewport-3",
 #[derive(Component)]
 struct NativeViewport(usize);
 
+/// The `ImageNode` showing the slot's rendered scene. Marked so
+/// [`round_scene_corners`] can round it: it covers the content area exactly, and
+/// its corners are the leaf's bottom corners.
+#[derive(Component)]
+struct ViewportImage;
+
 pub fn register_native_viewport(app: &mut App) {
     use renzora_editor_framework::SplashState;
     for (i, id) in PANEL_IDS.iter().enumerate() {
@@ -37,10 +43,12 @@ pub fn register_native_viewport(app: &mut App) {
     // panel-systems-ungated: the 3D viewport itself; camera lifetime is managed by sync_viewport_camera_activation
     app.add_systems(
         Update,
-        (report_viewport_geometry, simulate_border).run_if(in_state(SplashState::Editor)),
+        (report_viewport_geometry, simulate_border, round_scene_corners)
+            .run_if(in_state(SplashState::Editor)),
     );
     crate::native_header::register(app);
     crate::native_nav::register(app);
+    crate::native_height_ruler::register(app);
     crate::native_axis_gizmo::register(app);
 }
 
@@ -101,7 +109,8 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     let img = commands
         .spawn((
             ImageNode::default(),
-            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Percent(0.0), width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() },
+            ViewportImage,
             Name::new("native-viewport-image"),
         ))
         .id();
@@ -132,6 +141,14 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     // Axis-orientation gizmo, top-right — projected from this slot's own camera.
     let gizmo = crate::native_axis_gizmo::build(commands, fonts, index);
     commands.entity(content).add_child(gizmo);
+
+    // Height ruler, left edge — slides in while the Zoom button is being
+    // dragged. Primary slot only: it reads the shared `EditorCamera`'s
+    // altitude, which is the camera the Zoom drag actually moves.
+    if index == 0 {
+        let ruler = crate::native_height_ruler::build(commands, fonts);
+        commands.entity(content).add_child(ruler);
+    }
 
     // The primary viewport (slot 0) owns the shared header + the UI editor; the
     // extra slots are bare camera-angle views.
@@ -164,20 +181,57 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
         });
         commands.entity(content).add_child(editor);
     }
-    // In-viewport tool strip flush on the top edge — undo / redo / save, the
-    // registry tool buttons, snap pills, and maximize — on EVERY viewport, so each
-    // view has its own controls (the axis gizmo + nav overlay already reserve
-    // `VIEWPORT_TOOLBAR_H` on all slots for it). The driver systems in
-    // `native_header::register` locate every widget by component and iterate all
-    // instances, and `populate_tools` fills each `ToolContainer` in turn, so N
-    // strips all behave. Added last so it draws over the slot-0 UI-editor canvas.
+    // This viewport's toolbar — on EVERY viewport, so each view has its own
+    // controls. It sits **above** the rendered scene rather than overlaid on it:
+    // the bar wraps to a second line when it runs out of width, and a line of
+    // controls floating over the render would eat the view. The scene (and every
+    // overlay inside it — axis gizmo, nav buttons, 2D rulers) starts below the
+    // bar and moves down as the bar grows, which is why none of them offset for
+    // it any more. The driver systems in `native_header::register` locate every
+    // widget by component and iterate all instances, and `populate_tools` fills
+    // each `ToolContainer` in turn, so N bars all behave.
     let side_toolbar = crate::native_header::build_side_toolbar(commands, fonts, index);
-    commands.entity(content).add_child(side_toolbar);
-    // The rest of the viewport toolbar (header) lives in the shared toolbar strip
-    // below the document tabs (registered as the "viewport" panel's toolbar — see
-    // `native_header::register`).
-    commands.entity(root).add_child(content);
+    // Full-width bars registered by other crates — the editor shell's document
+    // tabs. Currently mounted *below* the tool strip, directly above the scene;
+    // moving them either side of `side_toolbar` in this vector is the whole
+    // change. Primary slot only: they're global to the editor, not per-view, so
+    // the extra camera-angle slots would each show a second copy of the same
+    // thing.
+    let mut stack = vec![side_toolbar];
+    if index == 0 {
+        stack.extend(renzora_ember::toolbar::build_viewport_top_strip(commands, fonts));
+    }
+    stack.push(content);
+    commands.entity(root).add_children(&stack);
     root
+}
+
+/// Round the scene area's bottom corners to match the dock's `leaf_radius`.
+///
+/// The viewport is the one panel whose content is a different colour from the
+/// leaf it sits in, so it's the one place where square content over a rounded
+/// leaf actually shows: everything else paints `panel_bg` on `panel_bg` and the
+/// mismatch is invisible. Both the content node and the image on top of it need
+/// it — bevy_ui clips to a `Rect`, so a rounded ancestor rounds nothing for you.
+///
+/// Bottom corners only: the top of this area butts against the viewport's own
+/// toolbar, which is square, and mid-panel curves would look like a mistake.
+fn round_scene_corners(
+    theme: Res<renzora_ember::style::Theme>,
+    mut q: Query<&mut Node, Or<(With<NativeViewport>, With<ViewportImage>)>>,
+) {
+    let r = Val::Px(theme.dock.leaf_radius);
+    let want = BorderRadius {
+        top_left: Val::Px(0.0),
+        top_right: Val::Px(0.0),
+        bottom_left: r,
+        bottom_right: r,
+    };
+    for mut node in &mut q {
+        if node.border_radius != want {
+            node.border_radius = want;
+        }
+    }
 }
 
 /// Publish each native viewport's on-screen rect + hover to

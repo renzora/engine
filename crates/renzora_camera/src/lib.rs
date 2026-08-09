@@ -873,16 +873,32 @@ fn camera_controller(
         if keyboard.pressed(KeyCode::KeyD) {
             move_delta += right_dir;
         }
+        // Q/E climb and descend at their own, ground-relative pace: near the
+        // floor a full-speed vertical stride overshoots straight through it or
+        // rockets away from what you were lining up, and the horizontal speed's
+        // `distance_mult` doesn't help — that scales with the orbit distance,
+        // not with how much room is left below you. Ease from a quarter speed at
+        // ground level up to full by `VERTICAL_FULL_SPEED_HEIGHT`, and treat
+        // "ground" as y=0 (the editor grid's plane, and where scenes are built).
+        let mut vertical = 0.0f32;
         if !edit_mode_active {
             if keyboard.pressed(KeyCode::KeyE) {
-                move_delta += Vec3::Y;
+                vertical += 1.0;
             }
             if keyboard.pressed(KeyCode::KeyQ) {
-                move_delta -= Vec3::Y;
+                vertical -= 1.0;
             }
         }
         if move_delta.length_squared() > 0.0 {
             target_velocity = move_delta.normalize() * move_speed;
+        }
+        if vertical != 0.0 {
+            const VERTICAL_FULL_SPEED_HEIGHT: f32 = 20.0;
+            const VERTICAL_MIN_MULT: f32 = 0.25;
+            let height = transform.translation.y.abs();
+            let t = (height / VERTICAL_FULL_SPEED_HEIGHT).clamp(0.0, 1.0);
+            let mult = VERTICAL_MIN_MULT + (1.0 - VERTICAL_MIN_MULT) * t;
+            target_velocity.y += vertical * move_speed * mult;
         }
     }
     // Frame-rate independent exponential smoothing — stiffness ~14 gives
@@ -1094,7 +1110,10 @@ fn apply_nav_overlay(
     if has_zoom {
         let zoom_speed = 0.02 * orbit.distance.max(0.5);
         orbit.distance -= zoom_dy * zoom_speed;
-        orbit.distance = orbit.distance.clamp(0.5, 100.0);
+        orbit.distance = orbit.distance.clamp(
+            renzora::core::viewport_types::EDITOR_ZOOM_MIN,
+            renzora::core::viewport_types::EDITOR_ZOOM_MAX,
+        );
     }
 
     if has_orbit {
@@ -1484,11 +1503,13 @@ fn apply_orbit_on_change(
     }
 }
 
-/// Copy orbit yaw/pitch into the shared snapshot so the viewport axis gizmo can read it.
+/// Copy orbit yaw/pitch/distance into the shared snapshot so the viewport's axis
+/// gizmo and height ruler can read them.
 fn sync_orbit_snapshot(orbit: Res<OrbitCameraState>, mut snapshot: ResMut<CameraOrbitSnapshot>) {
     if orbit.is_changed() {
         snapshot.yaw = orbit.yaw;
         snapshot.pitch = orbit.pitch;
+        snapshot.distance = orbit.distance;
     }
 }
 

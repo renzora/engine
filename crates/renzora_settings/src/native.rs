@@ -2295,27 +2295,59 @@ fn tab_viewport(
     let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.gizmos"), A_TEAL);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "gizmos");
-    let coll_opts = [tr("settings.opt.selected_only"), tr("common.always")];
+    // Three states, in enum order — `Off` is the same one the viewport toolbar's
+    // Gizmos dropdown reaches with its Colliders switch.
+    let coll_opts = [
+        tr("common.off"),
+        tr("settings.opt.selected_only"),
+        tr("common.always"),
+    ];
     let coll_refs: Vec<&str> = coll_opts.iter().map(|s| s.as_str()).collect();
+    let coll_index = |v: CollisionGizmoVisibility| match v {
+        CollisionGizmoVisibility::Off => 0,
+        CollisionGizmoVisibility::SelectedOnly => 1,
+        CollisionGizmoVisibility::Always => 2,
+    };
     let dd = ctl_dropdown(
         commands, fonts, &coll_refs,
-        match vp.collision_gizmo_visibility {
-            CollisionGizmoVisibility::SelectedOnly => 0,
-            CollisionGizmoVisibility::Always => 1,
-        },
-        |w| match w.resource::<ViewportSettings>().collision_gizmo_visibility {
-            CollisionGizmoVisibility::SelectedOnly => 0,
-            CollisionGizmoVisibility::Always => 1,
-        },
+        coll_index(vp.collision_gizmo_visibility),
+        move |w| coll_index(w.resource::<ViewportSettings>().collision_gizmo_visibility),
         |w, &i| {
-            w.resource_mut::<ViewportSettings>().collision_gizmo_visibility = if i == 1 {
-                CollisionGizmoVisibility::Always
-            } else {
-                CollisionGizmoVisibility::SelectedOnly
+            w.resource_mut::<ViewportSettings>().collision_gizmo_visibility = match i {
+                0 => CollisionGizmoVisibility::Off,
+                2 => CollisionGizmoVisibility::Always,
+                _ => CollisionGizmoVisibility::SelectedOnly,
             };
         },
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.colliders"), dd);
+    // The per-gizmo switches — the same four the viewport toolbar's Gizmos
+    // dropdown carries, mirrored here so Settings stays a complete view of
+    // what the editor draws.
+    let t = ctl_toggle(
+        commands, vp.show_selection_box,
+        |w| w.resource::<ViewportSettings>().show_selection_box,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_selection_box = v,
+    );
+    settings_row(commands, fonts, body, 1, &tr("viewport.gizmos.bounding_box"), t);
+    let t = ctl_toggle(
+        commands, vp.show_skeleton_gizmos,
+        |w| w.resource::<ViewportSettings>().show_skeleton_gizmos,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_skeleton_gizmos = v,
+    );
+    settings_row(commands, fonts, body, 2, &tr("viewport.gizmos.skeleton"), t);
+    let t = ctl_toggle(
+        commands, vp.show_light_gizmos,
+        |w| w.resource::<ViewportSettings>().show_light_gizmos,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_light_gizmos = v,
+    );
+    settings_row(commands, fonts, body, 3, &tr("viewport.gizmos.lights"), t);
+    let t = ctl_toggle(
+        commands, vp.show_camera_gizmos,
+        |w| w.resource::<ViewportSettings>().show_camera_gizmos,
+        |w, &v| w.resource_mut::<ViewportSettings>().show_camera_gizmos = v,
+    );
+    settings_row(commands, fonts, body, 4, &tr("viewport.gizmos.cameras"), t);
     // (The "Selection highlight" row was removed with `bevy_mod_outline` — the
     // wireframe bounding box is now the only highlight, so there is nothing to
     // choose. `settings.row.boundary_on_top` below still applies to it.)
@@ -2337,7 +2369,7 @@ fn tab_viewport(
             w.resource_mut::<EditorSettings>().selection_granularity = g;
         },
     );
-    settings_row(commands, fonts, body, 2, &tr("settings.row.click_selects"), dd);
+    settings_row(commands, fonts, body, 5, &tr("settings.row.click_selects"), dd);
     let boundary_opts = [tr("settings.opt.on_top"), tr("settings.opt.depth_tested")];
     let boundary_refs: Vec<&str> = boundary_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
@@ -2351,13 +2383,13 @@ fn tab_viewport(
         },
         |w, &i| w.resource_mut::<EditorSettings>().selection_boundary_on_top = i == 0,
     );
-    settings_row(commands, fonts, body, 3, &tr("settings.row.boundary"), dd);
+    settings_row(commands, fonts, body, 6, &tr("settings.row.boundary"), dd);
     let dv = ctl_drag(
         commands, fonts, vp.gizmo_drag_opacity, 0.0, 1.0, 0.05,
         |w| w.resource::<ViewportSettings>().gizmo_drag_opacity,
         |w, &v| w.resource_mut::<ViewportSettings>().gizmo_drag_opacity = v.clamp(0.0, 1.0),
     );
-    settings_row(commands, fonts, body, 4, &tr("settings.row.drag_opacity"), dv);
+    settings_row(commands, fonts, body, 7, &tr("settings.row.drag_opacity"), dv);
     note_row(commands, fonts, body, &tr("settings.hint.drag_opacity"));
     // Show the transform gizmo + selection outline in every viewport at once
     // (default: only the viewport the cursor is in).
@@ -2367,7 +2399,7 @@ fn tab_viewport(
         |w| w.resource::<ViewportSettings>().gizmos_all_viewports,
         |w, &v| w.resource_mut::<ViewportSettings>().gizmos_all_viewports = v,
     );
-    settings_row(commands, fonts, body, 5, &tr("settings.row.gizmos_all_viewports"), t);
+    settings_row(commands, fonts, body, 8, &tr("settings.row.gizmos_all_viewports"), t);
     note_row(commands, fonts, body, &tr("settings.hint.gizmos_all_viewports"));
 }
 

@@ -1,11 +1,11 @@
 # Community Panels
 
-The **Hub** workspace connects the editor to renzora.com: the community feed, forum, messages, friends, docs, the marketplace, your **Wallet** (credits & donations), and creator onboarding — all as dockable panels (category *Community* in the panel list). Sign in from the account menu to activate them. Your renzora.com **account settings** (profile, email, password, social links, communication, connected apps) live in *Settings → Account*.
+The **Hub** workspace connects the editor to renzora.com: the community feed, forum, messages, friends, docs, the marketplace, your **Wallet** (credits & donations), and creator onboarding — all as dockable panels (category *Community* in the panel list). Sign in from the account row at the top of the **☰** menu to activate them. Your renzora.com **account settings** (profile, email, password, social links, communication, connected apps) live in *Settings → Account*.
 
 Two things that used to be panels no longer are, because they duplicated surfaces you already have:
 
 - **Profiles** open as a shared **overlay** (a modal over whatever you're doing), so a username click anywhere pops the same view — see *Profiles* below.
-- **Notifications** live only in the **top-bar bell** and its dropdown; there's no separate panel.
+- **Notifications** live only in the **☰ → your username → Notifications** dropdown; there's no separate panel.
 - **Teams** were folded into the **Friends panel** as a *Teams* tab — see *Teams* below.
 
 ## The feed
@@ -47,7 +47,7 @@ Teams live in the **Friends panel**, under a *Teams* tab (there's no standalone 
 
 ## Notifications
 
-Notifications are the **top-bar bell** and its dropdown — there is no notifications panel. The dropdown is **centered** under the bar, lists your most recent notifications newest-first (unread ones marked with a dot), and has a **Mark all read** action in its header. Clicking a notification takes you to its content: a mention or comment opens the feed with that post's comments expanded, a forum reply opens the thread, a follow opens the profile overlay, a team invite opens the Friends → Teams tab.
+Notifications are the **☰ menu → your username → Notifications** dropdown — there is no notifications panel, and no top-bar bell any more. The dropdown opens under the top bar, lists your most recent notifications newest-first (unread ones marked with a dot), and has a **Mark all read** action in its header. Clicking a notification takes you to its content: a mention or comment opens the feed with that post's comments expanded, a forum reply opens the thread, a follow opens the profile overlay, a team invite opens the Friends → Teams tab.
 
 ## The forum
 

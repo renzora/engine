@@ -77,6 +77,7 @@ fn get_reflected_f32(world: &World, entity: Entity, type_substr: &str, field: &s
 /// draw their own affordances and would otherwise double up.
 pub fn draw_selection_bounding_box(
     selection: Res<EditorSelection>,
+    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     modal: Res<ModalTransformState>,
     play_mode: Option<Res<renzora::core::PlayModeState>>,
     collider_edit: Option<Res<renzora_physics::ColliderEditMode>>,
@@ -86,6 +87,11 @@ pub fn draw_selection_bounding_box(
     hidden: Query<(), With<HideInHierarchy>>,
     world: &World,
 ) {
+    // Gizmos dropdown → Selection → "Bounding Box". Optional resource so the
+    // drawer still works in any app that hasn't inserted ViewportSettings.
+    if !settings.map(|s| s.show_selection_box).unwrap_or(true) {
+        return;
+    }
     if modal.active {
         return;
     }

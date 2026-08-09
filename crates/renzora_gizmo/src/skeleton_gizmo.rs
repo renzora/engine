@@ -189,6 +189,7 @@ pub fn draw_skeleton_gizmo(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<GizmoMaterial>>,
     assets: Option<Res<BoneGizmoAssets>>,
+    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     selection: Res<EditorSelection>,
     bone_selection: Res<BoneSelection>,
     global_transforms: Query<&GlobalTransform>,
@@ -198,9 +199,17 @@ pub fn draw_skeleton_gizmo(
     name_q: Query<&Name>,
     existing: Query<Entity, With<BoneGizmoMesh>>,
 ) {
-    // Clear last frame's bone meshes first — immediate-mode.
+    // Clear last frame's bone meshes first — immediate-mode. This runs BEFORE
+    // the Gizmos-dropdown gate on purpose: turning "Skeleton" off has to sweep
+    // away the bones spawned by the last enabled frame, or they'd sit in the
+    // scene forever (they are real entities, not immediate-mode lines).
     for e in &existing {
         commands.entity(e).despawn();
+    }
+
+    // Gizmos dropdown → Rigging → "Skeleton".
+    if !settings.map(|s| s.show_skeleton_gizmos).unwrap_or(true) {
+        return;
     }
 
     let Some(selected) = selection.get() else {

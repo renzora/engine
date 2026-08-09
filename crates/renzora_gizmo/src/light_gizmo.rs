@@ -96,12 +96,18 @@ const PROBE_COLOR: Color = Color::srgb(0.45, 0.95, 0.85);
 pub fn draw_light_gizmos(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
+    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     point_lights: Query<(Entity, &GlobalTransform, &PointLight)>,
     spot_lights: Query<(Entity, &GlobalTransform, &SpotLight)>,
     dir_lights: Query<(Entity, &GlobalTransform, &DirectionalLight)>,
     rect_lights: Query<(Entity, &GlobalTransform, &RectLight)>,
     probes: Query<(Entity, &GlobalTransform, Option<&ParallaxCorrection>), With<LightProbe>>,
 ) {
+    // Gizmos dropdown → Scene → "Lights". Covers the always-drawn area-light
+    // rectangles below as well as the selection-only falloff wireframes.
+    if !settings.map(|s| s.show_light_gizmos).unwrap_or(true) {
+        return;
+    }
     let selected = selection.get();
 
     // Area lights have no mesh and no scene icon, so — unlike the other light

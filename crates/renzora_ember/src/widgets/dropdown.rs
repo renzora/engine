@@ -10,6 +10,11 @@ use crate::theme::*;
 /// Max height of an open dropdown list before it scrolls (≈ 8 rows).
 const DROPDOWN_MAX_HEIGHT: f32 = 220.0;
 
+/// Control height of a [`dropdown_compact`] — matches the 22px button height
+/// the editor's toolbar strips use, so a combobox lines up with the icon
+/// buttons and snap pills beside it.
+const COMPACT_HEIGHT: f32 = 22.0;
+
 #[derive(Component)]
 pub(crate) struct EmberDropdown {
     selected: usize,
@@ -34,10 +39,15 @@ fn set_icon_glyph(texts: &mut Query<&mut Text>, e: Entity, name: &str) {
     }
 }
 
+/// One selectable row in a dropdown's menu. Public so a consumer can reach an
+/// individual option — the editor's viewport toolbar hides the modes that don't
+/// apply to the current 2D/3D view by flipping `Node.display` on the rows whose
+/// `dropdown` is its Mode box. `value` is a stable index into the option list
+/// the dropdown was built with, so hiding rows never renumbers the rest.
 #[derive(Component)]
-pub(crate) struct EmberDropdownOption {
-    dropdown: Entity,
-    value: usize,
+pub struct EmberDropdownOption {
+    pub dropdown: Entity,
+    pub value: usize,
 }
 
 /// A dropdown / combobox: a box showing the current option; click to open a
@@ -48,7 +58,24 @@ pub fn dropdown(
     options: &[&str],
     selected: usize,
 ) -> Entity {
-    build_dropdown(commands, fonts, options, &[], selected)
+    build_dropdown(commands, fonts, options, &[], selected, None)
+}
+
+/// A [`dropdown`] sized for a toolbar strip: a fixed `width`, tighter padding,
+/// and the same 22px control height as the icon buttons it sits next to. Behaves
+/// identically otherwise — same `Bound<usize>`, same menu, same dismiss.
+///
+/// Exists because a toolbar can't spare the default's 140px minimum and 5px
+/// vertical padding; without it, callers hand-rolled their own comboboxes and
+/// then had to re-implement (and forget) things like overlay pointer-blocking.
+pub fn dropdown_compact(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    options: &[&str],
+    selected: usize,
+    width: f32,
+) -> Entity {
+    build_dropdown(commands, fonts, options, &[], selected, Some(width))
 }
 
 /// A dropdown whose options (and the selected box) carry a leading Phosphor
@@ -61,29 +88,42 @@ pub fn dropdown_with_icons(
 ) -> Entity {
     let labels: Vec<&str> = options.iter().map(|(_, l)| *l).collect();
     let icons: Vec<&str> = options.iter().map(|(i, _)| *i).collect();
-    build_dropdown(commands, fonts, &labels, &icons, selected)
+    build_dropdown(commands, fonts, &labels, &icons, selected, None)
 }
 
-/// Shared builder for [`dropdown`] / [`dropdown_with_icons`]. `icons` is either
-/// empty (no icons) or one Phosphor name per option.
+/// Shared builder for [`dropdown`] / [`dropdown_compact`] /
+/// [`dropdown_with_icons`]. `icons` is either empty (no icons) or one Phosphor
+/// name per option; `compact` is `Some(width)` for the toolbar size.
 fn build_dropdown(
     commands: &mut Commands,
     fonts: &EmberFonts,
     options: &[&str],
     icons: &[&str],
     selected: usize,
+    compact: Option<f32>,
 ) -> Entity {
     let sel = selected.min(options.len().saturating_sub(1));
     let with_icons = !icons.is_empty();
     let box_e = commands
         .spawn((
             Node {
-                min_width: Val::Px(140.0),
+                min_width: Val::Px(compact.unwrap_or(140.0)),
+                // Fixed size + no shrink in a toolbar: the strip is a flex row of
+                // fixed-size controls, and a combobox that grows with the length
+                // of the selected label (or squashes) breaks the line-up. The
+                // label clips instead — it already has `no_wrap` + `overflow`.
+                width: compact.map_or(Val::Auto, Val::Px),
+                height: compact.map_or(Val::Auto, |_| Val::Px(COMPACT_HEIGHT)),
+                flex_shrink: compact.map_or(1.0, |_| 0.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(8.0),
-                padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                column_gap: Val::Px(if compact.is_some() { 4.0 } else { 8.0 }),
+                padding: if compact.is_some() {
+                    UiRect::horizontal(Val::Px(6.0))
+                } else {
+                    UiRect::axes(Val::Px(10.0), Val::Px(5.0))
+                },
+                border_radius: BorderRadius::all(Val::Px(if compact.is_some() { 3.0 } else { 4.0 })),
                 position_type: PositionType::Relative,
                 ..default()
             },
@@ -135,7 +175,9 @@ fn build_dropdown(
                 position_type: PositionType::Absolute,
                 top: Val::Percent(100.0),
                 left: Val::Px(0.0),
-                min_width: Val::Px(140.0),
+                // A compact box can be narrower than its own option labels, so
+                // the menu keeps a readable floor of its own.
+                min_width: Val::Px(compact.map_or(140.0, |w| w.max(120.0))),
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(2.0)),
                 margin: UiRect::top(Val::Px(2.0)),
@@ -339,29 +381,60 @@ pub(crate) fn dropdown_apply(
     }
 }
 
-/// Press anywhere that isn't a dropdown box or one of its options → close every
-/// open dropdown. The toggle/select systems handle clicks that land on a box or
-/// option, so this only fires for true outside clicks.
+/// A left press closes every open dropdown **except** the one the press landed
+/// on (its own box or one of its option rows) — that one is left to
+/// [`dropdown_toggle`] / [`dropdown_select`].
+///
+/// The exemption used to be app-wide: a press on *any* box or *any* option made
+/// this bail entirely, so opening dropdown B left dropdown A hanging open
+/// forever. Invisible while dropdowns sat far apart, glaring the moment two of
+/// them share a toolbar strip.
 pub(crate) fn dropdown_dismiss(
     mouse: Res<ButtonInput<MouseButton>>,
-    mut dropdowns: Query<(&Interaction, &mut EmberDropdown)>,
-    options: Query<&Interaction, With<EmberDropdownOption>>,
+    mut dropdowns: Query<(Entity, &Interaction, &mut EmberDropdown)>,
+    options: Query<(&Interaction, &EmberDropdownOption)>,
     mut nodes: Query<&mut Node>,
 ) {
     if !mouse.just_pressed(MouseButton::Left) {
         return;
     }
-    let on_box = dropdowns.iter().any(|(i, _)| *i != Interaction::None);
-    let on_option = options.iter().any(|i| *i != Interaction::None);
-    if on_box || on_option {
-        return;
+    // The dropdown the press belongs to, if any: its box, or an option row
+    // (which points back at its box).
+    let pressed = dropdowns
+        .iter()
+        .find(|(_, i, _)| **i != Interaction::None)
+        .map(|(e, _, _)| e)
+        .or_else(|| {
+            options
+                .iter()
+                .find(|(i, _)| **i != Interaction::None)
+                .map(|(_, opt)| opt.dropdown)
+        });
+    for (e, _, mut dd) in &mut dropdowns {
+        if !dd.open || Some(e) == pressed {
+            continue;
+        }
+        dd.open = false;
+        if let Ok(mut n) = nodes.get_mut(dd.menu) {
+            n.display = Display::None;
+        }
     }
-    for (_, mut dd) in &mut dropdowns {
-        if dd.open {
-            dd.open = false;
-            if let Ok(mut n) = nodes.get_mut(dd.menu) {
-                n.display = Display::None;
-            }
+}
+
+/// Hover / open tint for the dropdown box itself, and the box's theme tracking.
+///
+/// The box painted `tab_active()` once at spawn, which left it the only control
+/// in a toolbar row that didn't react to the pointer — and left it stale after a
+/// theme switch. Repainting from the live theme each frame fixes both.
+pub(crate) fn dropdown_box_hover(mut q: Query<(&Interaction, &EmberDropdown, &mut BackgroundColor)>) {
+    for (interaction, dd, mut bg) in &mut q {
+        let want = if dd.open || *interaction != Interaction::None {
+            rgb(tab_hover())
+        } else {
+            rgb(tab_active())
+        };
+        if bg.0 != want {
+            bg.0 = want;
         }
     }
 }
@@ -377,5 +450,130 @@ pub(crate) fn dropdown_option_hover(
             Interaction::Hovered | Interaction::Pressed => rgb(tab_hover()),
             Interaction::None => Color::NONE,
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::font::EmberFonts;
+
+    fn fonts() -> EmberFonts {
+        EmberFonts {
+            ui: FontSource::default(),
+            phosphor: Handle::default(),
+            mono: FontSource::default(),
+            default_ui: FontSource::default(),
+            default_mono: FontSource::default(),
+        }
+    }
+
+    /// Picking an option must hide the menu. Regression guard: the viewport
+    /// toolbar's comboboxes stayed open after a pick.
+    #[test]
+    fn selecting_an_option_closes_the_menu() {
+        let mut world = World::new();
+        let f = fonts();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let box_e = {
+            let mut commands = Commands::new(&mut queue, &world);
+            dropdown(&mut commands, &f, &["A", "B", "C"], 0)
+        };
+        queue.apply(&mut world);
+
+        // Open it the way `dropdown_toggle` would.
+        let menu = world.get::<EmberDropdown>(box_e).unwrap().menu;
+        world.get_mut::<EmberDropdown>(box_e).unwrap().open = true;
+        world.get_mut::<Node>(menu).unwrap().display = Display::Flex;
+
+        // Press option index 2.
+        let mut q = world.query::<(Entity, &EmberDropdownOption)>();
+        let row = q
+            .iter(&world)
+            .find(|(_, o)| o.dropdown == box_e && o.value == 2)
+            .map(|(e, _)| e)
+            .expect("option row");
+        *world.get_mut::<Interaction>(row).unwrap() = Interaction::Pressed;
+
+        let mut sys = bevy::ecs::system::IntoSystem::into_system(dropdown_select);
+        sys.initialize(&mut world);
+        let _ = sys.run((), &mut world);
+
+        assert_eq!(world.get::<Node>(menu).unwrap().display, Display::None);
+        assert_eq!(world.get::<Bound<usize>>(box_e).unwrap().0, 2);
+        assert!(!world.get::<EmberDropdown>(box_e).unwrap().open);
+    }
+
+    /// Opening one dropdown must close any other that's already open. The
+    /// dismiss check used to exempt a press on *any* box, so two dropdowns in
+    /// one toolbar strip both stayed open.
+    #[test]
+    fn opening_one_dropdown_closes_another() {
+        let mut world = World::new();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        let f = fonts();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let (a, b) = {
+            let mut commands = Commands::new(&mut queue, &world);
+            (
+                dropdown(&mut commands, &f, &["A1", "A2"], 0),
+                dropdown(&mut commands, &f, &["B1", "B2"], 0),
+            )
+        };
+        queue.apply(&mut world);
+
+        // A is open; the user presses B's box.
+        let menu_a = world.get::<EmberDropdown>(a).unwrap().menu;
+        let menu_b = world.get::<EmberDropdown>(b).unwrap().menu;
+        world.get_mut::<EmberDropdown>(a).unwrap().open = true;
+        world.get_mut::<Node>(menu_a).unwrap().display = Display::Flex;
+        *world.get_mut::<Interaction>(b).unwrap() = Interaction::Pressed;
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Left);
+
+        let mut sys = bevy::ecs::system::IntoSystem::into_system(dropdown_dismiss);
+        sys.initialize(&mut world);
+        let _ = sys.run((), &mut world);
+
+        assert_eq!(
+            world.get::<Node>(menu_a).unwrap().display,
+            Display::None,
+            "the already-open dropdown should have closed"
+        );
+        assert!(!world.get::<EmberDropdown>(a).unwrap().open);
+        // B is left alone — `dropdown_toggle` owns the press that landed on it.
+        assert_eq!(world.get::<Node>(menu_b).unwrap().display, Display::None);
+    }
+
+    /// Pressing a dropdown's own option must not close it here — `dropdown_select`
+    /// owns that, and closing early would race it.
+    #[test]
+    fn pressing_an_option_does_not_dismiss_its_own_dropdown() {
+        let mut world = World::new();
+        world.init_resource::<ButtonInput<MouseButton>>();
+        let f = fonts();
+        let mut queue = bevy::ecs::world::CommandQueue::default();
+        let box_e = {
+            let mut commands = Commands::new(&mut queue, &world);
+            dropdown(&mut commands, &f, &["A", "B"], 0)
+        };
+        queue.apply(&mut world);
+
+        let menu = world.get::<EmberDropdown>(box_e).unwrap().menu;
+        world.get_mut::<EmberDropdown>(box_e).unwrap().open = true;
+        world.get_mut::<Node>(menu).unwrap().display = Display::Flex;
+        let mut q = world.query::<(Entity, &EmberDropdownOption)>();
+        let row = q.iter(&world).next().map(|(e, _)| e).unwrap();
+        *world.get_mut::<Interaction>(row).unwrap() = Interaction::Pressed;
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Left);
+
+        let mut sys = bevy::ecs::system::IntoSystem::into_system(dropdown_dismiss);
+        sys.initialize(&mut world);
+        let _ = sys.run((), &mut world);
+
+        assert!(world.get::<EmberDropdown>(box_e).unwrap().open);
     }
 }

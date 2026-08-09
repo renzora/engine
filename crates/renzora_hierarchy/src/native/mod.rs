@@ -4,13 +4,15 @@
 //! selection highlight, click/ctrl/shift select) reads the same
 //! `HierarchyTreeCache` + `EditorSelection` the egui panel uses. Layered on
 //! (one file each): drag-and-drop reparenting (`drag`), the right-click context
-//! menu (`context_menu`), Add Entity (`add_entity`), search + type filter
+//! menu (`context_menu`), its Attach-an-asset submenu + overlay
+//! (`create_asset`), Add Entity (`add_entity`), search + type filter
 //! (`filter`), inline rename (`rename`), the empty-scene starter picker
 //! (`scene_starter`), and the visibility/lock suffix toggles (`row`/`systems`).
 
 mod add_entity;
 mod components;
 mod context_menu;
+mod create_asset;
 mod drag;
 mod filter;
 mod marquee;
@@ -206,6 +208,7 @@ pub fn register_native_hierarchy(app: &mut App) {
             .run_if(renzora_ember::dock::panel_active(PANEL_ID)),
     );
     scene_starter::register(app);
+    create_asset::register(app);
 }
 
 /// Watch the panel width and flip [`HierCompact`] at the point where the header's

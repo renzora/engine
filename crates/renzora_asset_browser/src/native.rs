@@ -407,15 +407,19 @@ impl NewAsset {
             NewAsset::Bsn => "NewScene.bsn",
         }
     }
-    fn content(self) -> &'static str {
+    fn content(self) -> String {
         match self {
-            NewAsset::Folder => "",
-            NewAsset::Material | NewAsset::Blueprint => "{}",
-            NewAsset::Lua => "-- New Lua script\n",
-            NewAsset::Particle => "(name: \"New Particle\")",
-            NewAsset::Template => "<template>\n    <node></node>\n</template>\n",
+            NewAsset::Folder => String::new(),
+            NewAsset::Material => "{}".to_string(),
+            // Not `{}`: nothing in a blueprint runs unless it hangs off an
+            // event, so a new file starts with On Ready + On Update placed —
+            // see `renzora_blueprint::starter`.
+            NewAsset::Blueprint => renzora_blueprint::starter_blueprint_json(),
+            NewAsset::Lua => "-- New Lua script\n".to_string(),
+            NewAsset::Particle => "(name: \"New Particle\")".to_string(),
+            NewAsset::Template => "<template>\n    <node></node>\n</template>\n".to_string(),
             // An empty scene = just the interim-BSN header the parser expects.
-            NewAsset::Bsn => "// renzora interim bsn v1\n",
+            NewAsset::Bsn => "// renzora interim bsn v1\n".to_string(),
         }
     }
     /// Menu label.

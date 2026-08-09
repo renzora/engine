@@ -3684,7 +3684,18 @@ pub(crate) fn apply_dock_style(
             DockPart::TabBar => {
                 bg.0 = d.tabbar_bg.color();
                 node.border = UiRect::bottom(Val::Px(d.header_border_width));
-                node.border_radius = BorderRadius::all(Val::Px(d.header_radius));
+                // Top corners only. The tab bar is the top slice of the leaf, so
+                // its upper corners *are* the leaf's — and bevy_ui's clip is a
+                // plain `Rect`, so a rounded leaf does not round its children;
+                // each node has to round itself or it paints square over the
+                // corner. Rounding all four would put a curve halfway down the
+                // panel where the bar meets its content.
+                node.border_radius = BorderRadius {
+                    top_left: Val::Px(d.header_radius),
+                    top_right: Val::Px(d.header_radius),
+                    bottom_left: Val::Px(0.0),
+                    bottom_right: Val::Px(0.0),
+                };
                 node.padding = UiRect::axes(Val::Px(d.header_pad_x), Val::Px(d.header_pad_y));
                 if let Some(mut bc) = border {
                     *bc = BorderColor::all(d.header_border.color());

@@ -4,6 +4,10 @@
 //! closure run with `&mut World`; the menu closes itself afterward. Action
 //! bodies mirror the egui panel.
 //!
+//! The "Attach ▸" submenu (make a new script / material / particle / … for this
+//! entity) lives in [`super::create_asset`] — it owns an overlay as well as the
+//! rows, and this file is long enough already.
+//!
 //! Right-clicking the empty space under the tree gets a *different* menu: the
 //! header button's whole spawn list, one ember [`menu_submenu`] row per category
 //! (hover a category, click an entity), spawning at the scene root.
@@ -115,6 +119,10 @@ pub(crate) fn hier_context_menu(
     if multi {
         kids.push(menu_item(&mut commands, &fonts, "folder-simple", &renzora::lang::t("hierarchy.context.group_as_children"), group_selection));
     }
+
+    // Make a new project asset (and, for scripts/blueprints, attach it here).
+    kids.push(menu_sep(&mut commands));
+    kids.push(super::create_asset::create_submenu(&mut commands, &fonts, target));
 
     // Label-color (entity color-coding) section.
     kids.push(menu_sep(&mut commands));

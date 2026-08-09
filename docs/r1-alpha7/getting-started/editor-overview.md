@@ -12,7 +12,8 @@ When you open a project, the editor fills the window with a few main areas.
 
 From the screenshot above:
 
-- **Top bar** — menus (`File`, `Edit`, `View`, `Help`) on the left, the **workspace ribbon** in the center, and Play, Settings, and window buttons on the right.
+- **Top bar** — on the left, the **menu button** (☰) and everything that acts on the whole session: **Settings** (⚙), **undo / redo / save**, and the **Play** button. The **workspace ribbon** is in the center and the window buttons on the right. These sat in the viewport's own toolbar until recently; the top bar is on screen in every workspace, and none of them is a viewport action. Your open **document tabs** are not here either — they sit at the top of the viewport, above its toolbar.
+- **Toolbar** — the viewport's tools live on the viewport itself, in the strip along its top edge: Select / Move / Rotate / Scale, the snap steps, the shape and display menus, and the view-angle / World-Local controls. Undo, redo, save and **Play** are not here — they're session-wide, so they live in the top bar. The strip under the top bar is for other panels' tools, and hides when there are none.
 - **Left** — your **Scene** tree (everything in the current level), with the **Assets** browser — a file explorer for your project — below it.
 - **Center** — the **3D viewport** where you see and move your world.
 - **Right** — the **Inspector**, which shows the settings of whatever you click.
@@ -20,7 +21,11 @@ From the screenshot above:
 
 The window is borderless: drag the top bar to move it (double-click to maximize), and drag any edge to resize.
 
-The **Help** menu holds links to the documentation, YouTube, Discord, and the GitHub repo, plus **About Renzora Engine** — an overlay that shows the current version, a short description of the engine, and credits for the open-source community crates Renzora is built on. Each credit row links out to that project's repository; click anywhere outside the card (or press `Esc`) to close it.
+Click the **☰ menu button** to open the main menu. Your account is the first row — your username when you're signed in (hover it for **My Library** and **Sign Out**), or **Sign In** when you're not — followed by `File`, `Edit`, `View`, and `Help`. Hover one of those and its items slide out beside it, so everything that used to sit across the top bar is now one click away in a single dropdown. **Settings** is the last row — top-level, not buried in `File`; the gear button beside the hamburger opens the same panel in one click. **Notifications** moved in here too, under your username, now that the top bar has no bell.
+
+The workspace ribbon has a **fixed width** so it can't be pushed around: add a tenth workspace and the ribbon stays exactly where it was. The document tabs in the viewport get its full width instead. Either way, whatever no longer fits folds into a **caret button** (`⌄`) at the end of the strip, which opens a menu of the hidden tabs — click one to jump straight to it. The tab you're currently on never folds.
+
+The **Help** submenu holds links to the documentation, YouTube, Discord, and the GitHub repo, plus **About Renzora Engine** — an overlay that shows the current version, a short description of the engine, and credits for the open-source community crates Renzora is built on. Each credit row links out to that project's repository; click anywhere outside the card (or press `Esc`) to close it.
 
 ## Workspaces
 
@@ -35,7 +40,7 @@ The tabs in the center of the top bar are **workspaces**. Each one is a ready-ma
 - **Debug** — performance and diagnostics while you test.
 - **Hub** — the Marketplace, full screen: browse and install plugins, assets, and themes.
 
-Click a tab to switch. You can drag tabs to reorder them — a blue insertion line shows where the tab will land as you drag — right-click to rename or remove, and press `+` to add a new one. Your changes to each layout — split sizes, where panels sit, which tab is active, even workspaces you add or rename — are saved automatically and restored the next time you open the editor. (The layout is stored per-user in `~/.renzora/layout.json`; delete that file to reset every workspace to its default.)
+Click a tab to switch — and if you have more workspaces than the ribbon's width allows, the last ones fold into the caret menu at its end. You can drag tabs to reorder them — a blue insertion line shows where the tab will land as you drag — right-click to rename or remove, and press `+` to add a new one. Your changes to each layout — split sizes, where panels sit, which tab is active, even workspaces you add or rename — are saved automatically and restored the next time you open the editor. (The layout is stored per-user in `~/.renzora/layout.json`; delete that file to reset every workspace to its default.)
 
 Two reset actions live under the **View** menu: **Reset Layout** restores the *active* workspace's panel arrangement to its built-in default, and **Reset Workspace** rebuilds the *entire* ribbon — discarding any workspaces you added, removed, renamed, or reordered and restoring every default workspace's layout.
 

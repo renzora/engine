@@ -197,6 +197,28 @@ pub fn menu_item_styled<F>(
 where
     F: Fn(&mut World) + Send + Sync + 'static,
 {
+    let row = menu_row_visual(commands, fonts, icon, label, icon_color, text_color);
+    commands.entity(row).insert(MenuAction(Box::new(on_click)));
+    row
+}
+
+/// The *look* of a menu row — box, hover fill, icon and label — with no click
+/// behaviour attached.
+///
+/// Split out of [`menu_item_styled`] for the one caller that can't use
+/// [`MenuAction`]: a [`MenuAction`] fires on **press**, and a row that can also
+/// be dragged out of its menu has to wait for the button to come back up before
+/// it knows the press wasn't the start of a drag. Such a row supplies its own
+/// input handling but must still be indistinguishable from every other menu row,
+/// which is what this gives it.
+pub(crate) fn menu_row_visual(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    label: &str,
+    icon_color: (u8, u8, u8),
+    text_color: (u8, u8, u8),
+) -> Entity {
     let row = commands
         .spawn((
             Node {
@@ -210,7 +232,6 @@ where
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
-            MenuAction(Box::new(on_click)),
             crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
             Name::new("menu-item"),
         ))
@@ -494,6 +515,116 @@ impl Popup {
     pub fn new(panel: Entity) -> Self {
         Self { panel, open: false }
     }
+}
+
+/// The floating panel a toolbar/icon [`Popup`] opens: the standard popup
+/// surface (popup background, hairline border, 6px radius), starting hidden and
+/// already tagged [`OverlaySurface`] + `RelativeCursorPosition`.
+///
+/// Use this instead of spawning your own panel node. A hand-rolled panel is
+/// invisible to `correct_pointer_state`, so clicks on its rows *also* reach
+/// whatever is behind it — in the editor that meant a click in a viewport
+/// dropdown selecting a scene object and the viewport's crosshair showing
+/// through the panel.
+pub fn popup_panel(commands: &mut Commands, kids: &[Entity]) -> Entity {
+    popup_panel_aligned(commands, kids, PopupAlign::Right)
+}
+
+/// Which of the trigger's edges the panel lines up with. `Right` is the
+/// toolbar default (the panel grows leftward, staying on screen for controls
+/// near the right edge); use `Left` for a trigger at the *start* of a strip,
+/// where a right-aligned panel would hang off the left of the window.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PopupAlign {
+    Left,
+    Right,
+}
+
+/// [`popup_panel`] with an explicit edge alignment.
+pub fn popup_panel_aligned(commands: &mut Commands, kids: &[Entity], align: PopupAlign) -> Entity {
+    let (left, right) = match align {
+        PopupAlign::Left => (Val::Px(0.0), Val::Auto),
+        PopupAlign::Right => (Val::Auto, Val::Px(0.0)),
+    };
+    let panel = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(100.0),
+                left,
+                right,
+                margin: UiRect::top(Val::Px(4.0)),
+                min_width: Val::Px(220.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(3.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(popup_bg())),
+            BorderColor::all(rgb(border())),
+            GlobalZIndex(600),
+            OverlaySurface,
+            RelativeCursorPosition::default(),
+            Name::new("popup-panel"),
+        ))
+        .id();
+    commands.entity(panel).add_children(kids);
+    panel
+}
+
+/// A compact icon + caret trigger for `panel`, sized to sit in a toolbar strip
+/// beside 22px buttons. Carries the [`Popup`], so ember drives open/close and
+/// outside-click dismiss; the caller adds its own marker components for
+/// styling (accent when the feature it fronts is active, etc.).
+pub fn icon_popup_trigger(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    icon: &str,
+    panel: Entity,
+) -> Entity {
+    let glyph = icon_text(commands, &fonts.phosphor, icon, text_muted(), 15.0);
+    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
+    let trigger = commands
+        .spawn((
+            Node {
+                width: Val::Px(40.0),
+                height: Val::Px(22.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::SpaceBetween,
+                padding: UiRect::horizontal(Val::Px(8.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            crate::cursor_icon::HoverCursor(SystemCursorIcon::Pointer),
+            Popup::new(panel),
+            Name::new("icon-popup-trigger"),
+        ))
+        .id();
+    commands.entity(trigger).add_children(&[glyph, caret]);
+    trigger
+}
+
+/// The `position: relative` wrapper a trigger + its absolutely-positioned panel
+/// live in, so the panel anchors to the trigger rather than the window. Add the
+/// returned entity to your layout.
+pub fn popup_anchor(commands: &mut Commands, trigger: Entity, panel: Entity) -> Entity {
+    let wrap = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Relative,
+                ..default()
+            },
+            Name::new("popup-anchor"),
+        ))
+        .id();
+    commands.entity(wrap).add_children(&[trigger, panel]);
+    wrap
 }
 
 /// Close a popup by its trigger entity (e.g. after picking an option).

@@ -27,10 +27,12 @@ use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::tracked::bind_2way;
 use renzora_ember::reactive::Rx;
 use renzora_ember::widgets::{
-    drag_value, drag_value_flat, scroll_area, toggle_switch, DragRange, OverlaySurface,
+    drag_value, drag_value_flat, dropdown_compact, icon_popup_trigger, popup_anchor, popup_panel,
+    popup_panel_aligned, scroll_area, toggle_switch, DragRange, EmberDropdownOption, OverlaySurface,
+    Popup, PopupAlign,
 };
 use renzora_ember::theme::{
-    border, hover_bg, panel_bg, popup_bg, rgb, tab_active, text_muted, text_primary, value_text,
+    border, hover_bg, panel_bg, rgb, tab_active, text_muted, text_primary, value_text,
 };
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
@@ -103,41 +105,42 @@ fn loc_opt(s: &str) -> String {
     }
 }
 
-/// Build the header row.
+/// Build the header controls, as a list of self-contained clusters.
 ///
-/// Historically this was child 0 of the primary viewport panel; it is now
-/// lifted to the editor shell and rendered as a full-width strip directly
-/// below the document-tab bar (see `renzora_shell::spawn_shell`). The driver
-/// systems in [`register`] locate it by component, so it works regardless of
-/// where it is parented.
-pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                // Content-sized: the shared toolbar host centers the strip, so
-                // the header sizes to its widgets and the host does the centering.
-                height: Val::Px(HEADER_HEIGHT),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: UiRect::horizontal(Val::Px(8.0)),
-                column_gap: Val::Px(2.0),
-                flex_shrink: 0.0,
-                ..default()
-            },
-            BackgroundColor(rgb(panel_bg())),
-            HeaderBg,
-            Name::new("viewport-header"),
-        ))
-        .id();
-
-    // Session actions (undo / redo / save) — moved here from the per-viewport
-    // strip so they live in the single shared top toolbar. The World/Local space
-    // toggle and the per-viewport view-angle dropdown moved the OTHER way, into
-    // each viewport's own side toolbar (see [`build_side_toolbar`]).
-    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", BTN_W, BTN_H, SIDE_ICON);
-    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", BTN_W, BTN_H, SIDE_ICON);
-    let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk", BTN_W, BTN_H, SIDE_ICON);
-    let sep0 = tool_separator(commands);
+/// This was child 0 of the viewport panel, then a full-width strip in the shared
+/// toolbar host below the document tabs. It now lives back on the viewport's own
+/// tool bar, beside Select / Move / Rotate / Scale — one bar of chrome instead of
+/// two rows of it. The driver systems in [`register`] locate every widget by
+/// component, so where it's parented has never mattered to them.
+///
+/// The return is a `Vec` of *groups* rather than one row because that bar folds
+/// what it can't fit into a caret dropdown (see
+/// [`renzora_ember::widgets::overflow_row`]), and a group is the unit that
+/// folds. Grouping keeps clusters that are read together — the three snap pills,
+/// the four display dropdowns — from being split across the fold.
+pub(crate) fn header_groups(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+) -> Vec<(Entity, &'static str)> {
+    // One cluster of the header: a row of widgets that moves — and wraps — as a
+    // unit.
+    fn group(commands: &mut Commands, name: &'static str, gap_px: f32, kids: &[Entity]) -> Entity {
+        let g = commands
+            .spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(gap_px),
+                    flex_shrink: 0.0,
+                    ..default()
+                },
+                bevy::ui::FocusPolicy::Pass,
+                Name::new(name),
+            ))
+            .id();
+        commands.entity(g).add_children(kids);
+        g
+    }
 
     // "Add shape" menu — a dropdown listing every registered shape (the same
     // ShapeRegistry the shape-library panel reads), grouped by category.
@@ -146,8 +149,8 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(shapes_dd).insert(ThreeDOnly);
 
     let gap3 = gap(commands, 8.0);
-    let view_dd = dropdown(commands, fonts, DropKind::View, 56.0, 0);
-    let mode_dd = dropdown(commands, fonts, DropKind::Mode, 80.0, 0);
+    let view_dd = view_dropdown(commands, fonts);
+    let mode_dd = mode_dropdown(commands, fonts);
 
     // 2D-only Overlays dropdown — Grid (`show_grid_2d`, off by default; separate
     // from the 3D Display dropdown's "Grid", which drives the 3D floor grid),
@@ -190,23 +193,94 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // cluster rather than splitting to the left/right edges.
     let center_gap = gap(commands, 12.0);
     let display_dd = build_display_dropdown(commands, fonts);
+    // Per-gizmo visibility switches. Sits next to Display because the two are
+    // read together ("why can't I see X?"); 3D-only like Display, since the 2D
+    // view has its own single Gizmos switch in the Overlays dropdown.
+    let gizmos_dd = build_gizmos_dropdown(commands, fonts);
     let snap_dd = build_snap_dropdown(commands, fonts);
     let camera_dd = build_camera_dropdown(commands, fonts);
-    // The Display / Snap / Camera dropdowns are all 3D controls — hide in 2D.
-    for e in [display_dd, snap_dd, camera_dd] {
+    // The Display / Gizmos / Snap / Camera dropdowns are all 3D controls — hide in 2D.
+    for e in [display_dd, gizmos_dd, snap_dd, camera_dd] {
         commands.entity(e).insert(ThreeDOnly);
     }
-    commands.entity(row).add_children(&[
-        undo, redo, save, sep0, shapes_dd,
-        center_gap, view_dd, mode_dd, gap5, cam_speed,
-        snap_gap, translate, pill_gap1, rotate, pill_gap2, scale, gap3,
-        display_dd, snap_dd, camera_dd, overlay_2d_dd,
-    ]);
+    // The old fixed gaps between clusters are gone: the toolbar row spaces its
+    // children itself, and each group is announced by its grip.
+    for e in [gap3, gap5, snap_gap, center_gap] {
+        commands.entity(e).try_despawn();
+    }
+    // No "actions" group: undo / redo / save moved to the top bar, beside the
+    // hamburger — see [`build_session_actions`].
+    vec![
+        (group(commands, "hdr-shapes", 2.0, &[shapes_dd]), "shapes"),
+        (group(commands, "hdr-view", 2.0, &[view_dd, mode_dd]), "view"),
+        (group(commands, "hdr-cam-speed", 2.0, &[cam_speed]), "cam_speed"),
+        (
+            group(commands, "hdr-snaps", 4.0, &[translate, pill_gap1, rotate, pill_gap2, scale]),
+            "snaps",
+        ),
+        (
+            group(commands, "hdr-display", 2.0, &[display_dd, gizmos_dd, snap_dd, camera_dd]),
+            "display",
+        ),
+        (group(commands, "hdr-overlay-2d", 2.0, &[overlay_2d_dd]), "overlay_2d"),
+    ]
+}
+
+/// The Maximize toggle for one viewport slot.
+///
+/// Tagged with its slot so the click maximizes *that* viewport. Public because
+/// the editor shell mounts the primary one at the end of the scene-tab strip —
+/// the driver systems in [`register`] find it by component, so where it's
+/// parented has never mattered to whether it works.
+pub fn build_maximize(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
+    let btn = action_btn(
+        commands,
+        fonts,
+        HeaderAction::Maximize,
+        "arrows-out",
+        SIDE_BTN,
+        SIDE_BTN,
+        SIDE_ICON,
+    );
+    commands.entity(btn).insert(MaximizeSlot(slot));
+    btn
+}
+
+/// The session-action cluster: undo / redo / save.
+///
+/// Built here but mounted by the **editor shell**, in the top bar beside the
+/// hamburger. They're session-wide, not viewport-wide — you can undo and save
+/// from a workspace that has no viewport in it at all — so the top bar is where
+/// they belong, and it's the one place in the editor that's always on screen.
+/// They've previously sat in the shared toolbar strip and in the viewport's own
+/// tool bar; the driver systems in [`register`] find every widget by component
+/// and aren't gated on the viewport panel, so where they're parented has never
+/// mattered to whether they work.
+pub fn build_session_actions(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let undo = action_btn(commands, fonts, HeaderAction::Undo, "arrow-u-up-left", BTN_W, BTN_H, SIDE_ICON);
+    let redo = action_btn(commands, fonts, HeaderAction::Redo, "arrow-u-up-right", BTN_W, BTN_H, SIDE_ICON);
+    let save = action_btn(commands, fonts, HeaderAction::Save, "floppy-disk", BTN_W, BTN_H, SIDE_ICON);
+    let row = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(2.0),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            // Structural — gaps between the buttons fall through to the top
+            // bar's window-drag handle.
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("session-actions"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[undo, redo, save]);
     row
 }
 
 /// Build the toolbar strip overlaid flush on the primary viewport's top edge —
-/// the session actions (undo / redo / save), the registry-driven tool buttons
+/// the registry-driven tool buttons
 /// (Select/Translate/… + terrain + plugin tools, filled by [`populate_tools`]),
 /// the inline snap pills (translate / rotate / scale), and the maximize toggle
 /// pushed to the far right. These used to sit in the header strip; the driver
@@ -215,26 +289,30 @@ pub fn build_header(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 /// [`OverlaySurface`] so hovering it suppresses viewport hover (a click on a
 /// tool never bleeds into picking / box-select underneath).
 pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
-    let cluster = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(0.0),
-                right: Val::Px(0.0),
-                top: Val::Px(0.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::FlexStart,
-                column_gap: Val::Px(1.0),
-                padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
-                ..default()
-            },
-            BackgroundColor(side_toolbar_bg()),
-            bevy::ui::RelativeCursorPosition::default(),
-            OverlaySurface,
-            Name::new("vp-side-toolbar"),
-        ))
-        .id();
+    // A wrapping row, filling left to right: a group that doesn't fit on a line
+    // moves down whole rather than being squeezed or hidden behind an overflow
+    // menu. It sits *above* the rendered scene rather than over it, so a
+    // two-line toolbar costs the view nothing.
+    let bar = renzora_ember::widgets::arrange_row(commands, "vp-toolbar");
+    commands.entity(bar).insert((
+        Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::FlexStart,
+            align_content: AlignContent::FlexStart,
+            flex_wrap: FlexWrap::Wrap,
+            column_gap: Val::Px(2.0),
+            row_gap: Val::Px(2.0),
+            padding: UiRect::axes(Val::Px(4.0), Val::Px(2.0)),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        BackgroundColor(side_toolbar_bg()),
+        bevy::ui::RelativeCursorPosition::default(),
+        OverlaySurface,
+        Name::new("vp-side-toolbar"),
+    ));
 
     // Registry-driven tool buttons (Select/Translate/... + terrain + plugins).
     // Populated from ToolbarRegistry by a deferred system (predicates need
@@ -254,39 +332,130 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
         ))
         .id();
 
-    // Flex spacer pushes the per-viewport controls to the strip's right edge.
-    let spacer = commands
-        .spawn((Node { flex_grow: 1.0, ..default() }, Name::new("vp-toolbar-spacer")))
-        .id();
-
     // This viewport's own camera view-angle dropdown (Perspective / Front / Top /
     // …) — sets THIS slot's angle independently of the others. 3D-only.
-    let view_angle = dropdown(commands, fonts, DropKind::ViewAngle, 96.0, slot);
+    let view_angle = view_angle_menu(commands, fonts, slot);
     commands.entity(view_angle).insert(ThreeDOnly);
-    let gap_a = gap(commands, 4.0);
 
     // This viewport's own World/Local gizmo-space toggle (acts independently).
     let space_btn = space_toggle(commands, fonts, slot);
     commands.entity(space_btn).insert(ThreeDOnly);
-    let gap_b = gap(commands, 4.0);
 
-    // Maximize THIS viewport (tagged with the slot so the click knows which).
-    let maximize = action_btn(commands, fonts, HeaderAction::Maximize, "arrows-out", SIDE_BTN, SIDE_BTN, SIDE_ICON);
-    commands.entity(maximize).insert(MaximizeSlot(slot));
+    // No Maximize here: on the primary viewport it sits at the right-hand end
+    // of the scene-tab strip instead (see [`build_maximize`]), which is the one
+    // bar in the panel that runs its full width. The secondary slots have no tab
+    // strip, so they keep theirs in this group.
+    let maximize = (slot != 0).then(|| build_maximize(commands, fonts, slot));
 
-    commands.entity(cluster).add_children(&[
-        tools, spacer, view_angle, gap_a, space_btn, gap_b, maximize,
-    ]);
+    let view_group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(4.0),
+                ..default()
+            },
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("vp-view-controls"),
+        ))
+        .id();
+    let mut view_kids = vec![view_angle, space_btn];
+    view_kids.extend(maximize);
+    commands.entity(view_group).add_children(&view_kids);
+
+    // The shell's Play control. Primary viewport only, so a 4-way split doesn't
+    // sprout four Play buttons.
+    let play = (slot == 0)
+        .then(|| renzora_ember::toolbar::build_viewport_tool_trailing(commands, fonts))
+        .filter(|t| !t.is_empty())
+        .map(|trailing| {
+            let holder = commands
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(4.0),
+                        ..default()
+                    },
+                    bevy::ui::FocusPolicy::Pass,
+                    Name::new("vp-play-controls"),
+                ))
+                .id();
+            commands.entity(holder).add_children(&trailing);
+            holder
+        });
+
+    // Every group in the bar, in its default order, each with the stable key its
+    // position is saved under. Only the primary slot carries the header groups;
+    // the secondary viewports keep just their own tools, as they always did.
+    let mut groups: Vec<(Entity, &str)> = vec![(tools, "tools")];
+    if slot == 0 {
+        groups.extend(header_groups(commands, fonts));
+    }
+    let play_at = play.map(|p| {
+        groups.push((p, "play"));
+        groups.len() - 1
+    });
+    groups.push((view_group, "viewport"));
+    let holders = renzora_ember::widgets::arrange_row_items(commands, fonts, bar, &groups);
+    // Only the primary bar's arrangement is saved: the secondary slots carry a
+    // subset of the same groups, and letting each write the shared order would
+    // have them overwrite each other with partial lists.
+    if slot == 0 {
+        commands.entity(bar).insert(PrimaryToolbarRow);
+    }
+
+    // Play is the one control that has to outlive the toolbar it sits on — it's
+    // the Stop button. Everything else hides while the game runs. The bind goes
+    // on the *holder* so a hidden group doesn't leave its grip behind.
+    for (i, holder) in holders.iter().enumerate() {
+        if Some(i) == play_at {
+            continue;
+        }
+        renzora_ember::reactive::tracked::bind_display(commands, *holder, |w| {
+            !w.get_resource::<renzora::core::PlayModeState>()
+                .map(|p| p.is_in_play_mode())
+                .unwrap_or(false)
+        });
+    }
 
     // Track the live theme (the static BackgroundColor above only covers the
-    // first frame), and hide during play mode like the header strip does.
-    renzora_ember::reactive::tracked::bind_bg(commands, cluster, |_| side_toolbar_bg());
-    renzora_ember::reactive::tracked::bind_display(commands, cluster, |w| {
-        !w.get_resource::<renzora::core::PlayModeState>()
-            .map(|p| p.is_in_play_mode())
-            .unwrap_or(false)
-    });
-    cluster
+    // first frame).
+    renzora_ember::reactive::tracked::bind_bg(commands, bar, |_| side_toolbar_bg());
+    bar
+}
+
+/// Marks the primary viewport's toolbar row — the one whose arrangement is
+/// saved. See [`sync_toolbar_order`].
+#[derive(Component)]
+struct PrimaryToolbarRow;
+
+/// Keep the toolbar's arrangement and the persisted setting in step, both ways.
+///
+/// Dragging a group publishes a new [`ArrangeOrder`] on the row; that goes into
+/// `ViewportSettings`, which `persistence::save_on_change` writes to
+/// `project.toml`. Loading a project applies the saved list back onto the row,
+/// which reorders itself to match. Both directions compare before writing, so
+/// the two don't ping-pong through each other's change detection.
+fn sync_toolbar_order(
+    mut settings: ResMut<ViewportSettings>,
+    mut rows: Query<&mut renzora_ember::widgets::ArrangeOrder, With<PrimaryToolbarRow>>,
+) {
+    let Ok(mut order) = rows.single_mut() else {
+        return;
+    };
+    // A freshly built row publishes nothing until its first drag, so an empty
+    // order means "not arranged yet" — take the saved one rather than clobbering
+    // it with the default.
+    if order.0.is_empty() {
+        if !settings.toolbar_order.is_empty() {
+            order.0 = settings.toolbar_order.clone();
+        }
+        return;
+    }
+    if settings.toolbar_order != order.0 {
+        settings.toolbar_order = order.0.clone();
+    }
 }
 
 /// The side toolbar's solid panel fill — the theme's panel colour, so the
@@ -524,29 +693,24 @@ fn action_btn(
 
 pub(crate) fn register(app: &mut App) {
     use renzora_editor_framework::SplashState;
-    use renzora_ember::toolbar::PanelToolbarExt;
 
-    // The viewport header is the viewport's toolbar: it sits in the shared strip
-    // below the document tabs (centered by the host) and shows while ANY of the
-    // 4 viewport slots is the active dock tab. It still owns the 3D/2D/UI
-    // selector. Built once by the shell's toolbar host.
-    app.register_panel_toolbar_multi(
-        &["viewport", "viewport-2", "viewport-3", "viewport-4"],
-        build_header,
-    );
+    app.init_resource::<ColliderGizmoMemory>();
+
+    // The viewport header no longer registers with the shared toolbar host: its
+    // controls are built straight into the primary viewport's own tool bar by
+    // [`build_side_toolbar`]. The shared strip is still there for the panels
+    // that do use it (code editor, material graph, …).
 
     app.add_systems(
         Update,
         (
             update_header_visuals,
             header_action_click,
-            dropdown_toggle,
-            dropdown_option_click,
-            dropdown_dismiss,
             viewport_maximize_dock,
-            update_dropdown_visuals,
-            panel_toggle,
+            update_mode_options,
             display_option_click,
+            grid_div_click,
+            sync_toolbar_order,
             update_display_visuals,
             snap_toggle_click,
             update_snap_toggles,
@@ -564,7 +728,6 @@ pub(crate) fn register(app: &mut App) {
                 update_shape_menu,
                 space_toggle_click,
                 update_space_toggle,
-                panel_toggle_dismiss,
                 sanitize_mode_for_view,
                 update_two_d_only,
             ),
@@ -579,17 +742,15 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
-// ── View / Mode dropdowns (A2) ───────────────────────────────────────────────
-
-#[derive(Component, Clone, Copy, PartialEq, Eq)]
-enum DropKind {
-    View,
-    Mode,
-    /// Per-viewport camera view-angle preset (Perspective / Front / Top / …).
-    /// Unlike View/Mode this one carries a slot and writes that slot's own
-    /// `pending_view_angle`.
-    ViewAngle,
-}
+// ── View / Mode / view-angle controls (A2) ───────────────────────────────────
+//
+// These were three hand-rolled comboboxes (trigger + popup + four driver
+// systems). They are now ember widgets: the two real selections are
+// `dropdown_compact` bound to `ViewportSettings` with `bind_2way`, and the
+// per-viewport view angle — which is a list of *actions*, not a selection — is
+// an ember `Popup` of click rows. Besides deleting the duplicated open/close/
+// dismiss logic, this is what gives them `OverlaySurface` pointer-blocking and
+// the flip-up-when-clipped positioning for free.
 
 /// Per-viewport view-angle presets: (label, yaw, pitch). "Perspective" is the
 /// default free 3/4 angle; the rest are the orthographic-style snaps.
@@ -606,109 +767,130 @@ const VIEW_ANGLE_OPTIONS: &[(&str, f32, f32)] = {
     ]
 };
 
-impl DropKind {
-    /// Localized option labels for this dropdown, in `ALL` order (the enum's
-    /// `label()` identity stays English for index matching; only the displayed
-    /// string is translated via the shared `opt.<slug>` namespace).
-    fn labels(self) -> Vec<String> {
-        match self {
-            DropKind::View => ViewportView::ALL.iter().map(|v| loc_opt(v.label())).collect(),
-            DropKind::Mode => ViewportMode::ALL.iter().map(|m| loc_opt(m.label())).collect(),
-            DropKind::ViewAngle => {
-                VIEW_ANGLE_OPTIONS.iter().map(|(l, ..)| loc_opt(l)).collect()
+/// Marks the Mode combobox so [`update_mode_options`] can find its option rows.
+#[derive(Component)]
+struct ModeDropdown;
+
+/// A viewport's view-angle menu trigger: which slot it drives, and the `Text`
+/// entity showing the current pick. Picking a row writes that label and closes
+/// the menu — ember's `popup_dismiss` deliberately leaves a popup open when the
+/// click lands inside it (the Display/Snap/Camera panels want that, since you
+/// flip several switches in a row), but a one-shot action list should close.
+#[derive(Component)]
+struct ViewAngleTrigger {
+    slot: usize,
+    label: Entity,
+}
+
+/// The shared **View** combobox (3D / 2D / UI), bound to
+/// `ViewportSettings::viewport_view`.
+fn view_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let labels: Vec<String> = ViewportView::ALL.iter().map(|v| loc_opt(v.label())).collect();
+    let refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+    let dd = dropdown_compact(commands, fonts, &refs, 0, 56.0);
+    bind_2way(
+        commands,
+        dd,
+        |w: &Rx| {
+            w.get_resource::<ViewportSettings>()
+                .and_then(|s| ViewportView::ALL.iter().position(|v| *v == s.viewport_view))
+                .unwrap_or(0)
+        },
+        |w: &mut World, i: &usize| {
+            if let (Some(mut s), Some(v)) = (
+                w.get_resource_mut::<ViewportSettings>(),
+                ViewportView::ALL.get(*i).copied(),
+            ) {
+                if s.viewport_view != v {
+                    s.viewport_view = v;
+                }
             }
+        },
+    );
+    dd
+}
+
+/// The shared **Mode** combobox, bound to `ViewportSettings::viewport_mode`.
+/// Built from the full `ViewportMode::ALL` list; [`update_mode_options`] hides
+/// the rows that don't apply to the current view.
+fn mode_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let labels: Vec<String> = ViewportMode::ALL.iter().map(|m| loc_opt(m.label())).collect();
+    let refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+    let dd = dropdown_compact(commands, fonts, &refs, 0, 80.0);
+    commands.entity(dd).insert(ModeDropdown);
+    bind_2way(
+        commands,
+        dd,
+        |w: &Rx| {
+            w.get_resource::<ViewportSettings>()
+                .and_then(|s| ViewportMode::ALL.iter().position(|m| *m == s.viewport_mode))
+                .unwrap_or(0)
+        },
+        |w: &mut World, i: &usize| {
+            if let (Some(mut s), Some(m)) = (
+                w.get_resource_mut::<ViewportSettings>(),
+                ViewportMode::ALL.get(*i).copied(),
+            ) {
+                if s.viewport_mode != m {
+                    s.viewport_mode = m;
+                }
+            }
+        },
+    );
+    dd
+}
+
+/// The Mode list offers a per-view subset (no Sculpt in 2D, no Erase in 3D).
+/// Rows are built once from `ALL` and hidden per view, so
+/// `EmberDropdownOption::value` stays a stable index into `ALL`.
+fn update_mode_options(
+    settings: Option<Res<ViewportSettings>>,
+    mode_boxes: Query<Entity, With<ModeDropdown>>,
+    mut options: Query<(&EmberDropdownOption, &mut Node)>,
+) {
+    let Some(settings) = settings else { return };
+    let allowed = ViewportMode::for_view(settings.viewport_view);
+    for (opt, mut node) in &mut options {
+        if !mode_boxes.contains(opt.dropdown) {
+            continue;
+        }
+        let ok = ViewportMode::ALL.get(opt.value).is_some_and(|m| allowed.contains(m));
+        let want = if ok { Display::Flex } else { Display::None };
+        if node.display != want {
+            node.display = want;
         }
     }
 }
 
-/// The dropdown trigger button; owns its popup panel + label text entity.
-#[derive(Component)]
-struct DropTrigger {
-    kind: DropKind,
-    /// Viewport slot for a per-viewport dropdown (`ViewAngle`); 0 for the shared
-    /// View/Mode dropdowns.
-    slot: usize,
-    panel: Entity,
-    label: Entity,
-    open: bool,
-}
-
-/// A selectable row inside a dropdown popup (`index` into `kind.labels()`).
-#[derive(Component)]
-struct DropOption {
-    kind: DropKind,
-    slot: usize,
-    index: usize,
-}
-
-fn dropdown(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    kind: DropKind,
-    width: f32,
-    slot: usize,
-) -> Entity {
-    let labels = kind.labels();
-
-    // Popup panel (hidden until the trigger is clicked).
-    let mut rows = Vec::with_capacity(labels.len());
-    for (i, label) in labels.iter().enumerate() {
-        let txt = commands
-            .spawn((
-                Text::new(label.clone()),
-                ui_font(&fonts.ui, 12.0),
-                TextColor(rgb(text_primary())),
-            ))
-            .id();
-        let row = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(BTN_H),
-                    align_items: AlignItems::Center,
-                    padding: UiRect::left(Val::Px(8.0)),
-                    border_radius: BorderRadius::all(Val::Px(3.0)),
-                    ..default()
+/// A viewport's own **view-angle** menu (Perspective / Front / Top / …).
+///
+/// An ember [`Popup`] of click rows rather than a combobox, because these are
+/// actions: picking the angle you are already "on" must re-snap the camera
+/// (you have orbited away since), and a selection widget would swallow that as
+/// a no-op. The trigger still shows the last pick so it reads like a dropdown.
+fn view_angle_menu(commands: &mut Commands, fonts: &EmberFonts, slot: usize) -> Entity {
+    let kids: Vec<Entity> = VIEW_ANGLE_OPTIONS
+        .iter()
+        .enumerate()
+        .map(|(index, (label, yaw, pitch))| {
+            click_row(
+                commands,
+                fonts,
+                &loc_opt(label),
+                HeaderClick::SlotViewAngle {
+                    slot,
+                    index,
+                    yaw: *yaw,
+                    pitch: *pitch,
                 },
-                BackgroundColor(Color::NONE),
-                Interaction::default(),
-                DropOption { kind, slot, index: i },
-                HoverCursor(SystemCursorIcon::Pointer),
-                Name::new("vp-drop-option"),
-            ))
-            .id();
-        commands.entity(row).add_child(txt);
-        rows.push(row);
-    }
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(4.0)),
-                min_width: Val::Px(120.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(2.0),
-                padding: UiRect::all(Val::Px(4.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            GlobalZIndex(600),
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("vp-drop-panel"),
-        ))
-        .id();
-    commands.entity(panel).add_children(&rows);
+            )
+        })
+        .collect();
+    let panel = popup_panel(commands, &kids);
 
-    // Trigger button: current label + caret.
     let label_e = commands
         .spawn((
-            Text::new(labels.first().cloned().unwrap_or_default()),
+            Text::new(loc_opt(VIEW_ANGLE_OPTIONS[0].0)),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(text_primary())),
         ))
@@ -717,7 +899,7 @@ fn dropdown(
     let trigger = commands
         .spawn((
             Node {
-                width: Val::Px(width),
+                width: Val::Px(96.0),
                 height: Val::Px(BTN_H),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
@@ -729,117 +911,14 @@ fn dropdown(
             BackgroundColor(rgb(tab_active())),
             Interaction::default(),
             HoverCursor(SystemCursorIcon::Pointer),
-            DropTrigger {
-                kind,
-                slot,
-                panel,
-                label: label_e,
-                open: false,
-            },
-            Name::new("vp-dropdown"),
+            Popup::new(panel),
+            DisplayTrigger,
+            ViewAngleTrigger { slot, label: label_e },
+            Name::new("vp-view-angle"),
         ))
         .id();
     commands.entity(trigger).add_children(&[label_e, caret]);
-
-    let wrap = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            Name::new("vp-dropdown-wrap"),
-        ))
-        .id();
-    commands.entity(wrap).add_children(&[trigger, panel]);
-    wrap
-}
-
-fn dropdown_toggle(
-    mut triggers: Query<(&Interaction, &mut DropTrigger), Changed<Interaction>>,
-    mut nodes: Query<&mut Node>,
-) {
-    for (interaction, mut t) in &mut triggers {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        t.open = !t.open;
-        if let Ok(mut n) = nodes.get_mut(t.panel) {
-            n.display = if t.open { Display::Flex } else { Display::None };
-        }
-    }
-}
-
-fn dropdown_option_click(
-    options: Query<(&Interaction, &DropOption), Changed<Interaction>>,
-    mut triggers: Query<&mut DropTrigger>,
-    mut nodes: Query<&mut Node>,
-    mut texts: Query<&mut Text>,
-    cmds: Option<Res<EditorCommands>>,
-) {
-    let Some(cmds) = cmds else { return };
-    for (interaction, opt) in &options {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let idx = opt.index;
-        match opt.kind {
-            DropKind::View => cmds.push(move |w: &mut World| {
-                if let (Some(mut s), Some(v)) = (
-                    w.get_resource_mut::<ViewportSettings>(),
-                    ViewportView::ALL.get(idx).copied(),
-                ) {
-                    s.viewport_view = v;
-                }
-            }),
-            DropKind::Mode => cmds.push(move |w: &mut World| {
-                if let (Some(mut s), Some(m)) = (
-                    w.get_resource_mut::<ViewportSettings>(),
-                    ViewportMode::ALL.get(idx).copied(),
-                ) {
-                    s.viewport_mode = m;
-                }
-            }),
-            DropKind::ViewAngle => {
-                // Snap THIS viewport's camera to the chosen preset (per-slot
-                // channel consumed by `renzora_camera::apply_per_slot_view_angle`).
-                let slot = opt.slot;
-                if let Some((_, yaw, pitch)) = VIEW_ANGLE_OPTIONS.get(idx).copied() {
-                    cmds.push(move |w: &mut World| {
-                        if let Some(mut vps) =
-                            w.get_resource_mut::<renzora::core::viewport_types::Viewports>()
-                        {
-                            if let Some(s) = vps.slots.get_mut(slot) {
-                                s.pending_view_angle =
-                                    Some(renzora::core::viewport_types::ViewAngleCommand {
-                                        yaw,
-                                        pitch,
-                                    });
-                            }
-                        }
-                    });
-                }
-                // Reflect the pick on this dropdown's trigger label.
-                if let Some(label) = VIEW_ANGLE_OPTIONS.get(idx).map(|(l, ..)| loc_opt(l)) {
-                    for t in &triggers {
-                        if t.kind == DropKind::ViewAngle && t.slot == opt.slot {
-                            if let Ok(mut txt) = texts.get_mut(t.label) {
-                                txt.0 = label.clone();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // Close the dropdown this option belongs to (matching slot for per-slot ones).
-        for mut t in &mut triggers {
-            if t.kind == opt.kind && t.slot == opt.slot {
-                t.open = false;
-                if let Ok(mut n) = nodes.get_mut(t.panel) {
-                    n.display = Display::None;
-                }
-            }
-        }
-    }
+    popup_anchor(commands, trigger, panel)
 }
 
 /// Honor the viewport "maximize" toggle on the bevy_ui shell's ember dock: swap
@@ -876,115 +955,6 @@ fn viewport_maximize_dock(
         dock.tree = tree;
     }
     dirty.0 = true;
-}
-
-/// Close any open dropdown when the pointer presses outside its trigger + panel.
-fn dropdown_dismiss(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut triggers: Query<(&mut DropTrigger, &Interaction)>,
-    panels: Query<&bevy::ui::RelativeCursorPosition>,
-    mut nodes: Query<&mut Node>,
-) {
-    if !mouse.just_pressed(MouseButton::Left) {
-        return;
-    }
-    for (mut t, trig_inter) in &mut triggers {
-        if !t.open {
-            continue;
-        }
-        let over_trigger = !matches!(trig_inter, Interaction::None);
-        let over_panel = panels.get(t.panel).is_ok_and(|r| r.cursor_over);
-        if !over_trigger && !over_panel {
-            t.open = false;
-            if let Ok(mut n) = nodes.get_mut(t.panel) {
-                n.display = Display::None;
-            }
-        }
-    }
-}
-
-fn update_dropdown_visuals(
-    settings: Option<Res<ViewportSettings>>,
-    theme: Option<Res<ThemeManager>>,
-    triggers: Query<(&DropTrigger, &Interaction, &mut BackgroundColor)>,
-    options: Query<
-        (&DropOption, &Interaction, &mut BackgroundColor, &mut Node),
-        Without<DropTrigger>,
-    >,
-    mut texts: Query<&mut Text>,
-) {
-    let (Some(settings), Some(theme)) = (settings, theme) else {
-        return;
-    };
-    let t = &theme.active_theme;
-    let accent = col(t.semantic.accent);
-    let inactive = col(t.widgets.inactive_bg);
-    let hovered = col(t.widgets.hovered_bg);
-
-    let current_view = ViewportView::ALL
-        .iter()
-        .position(|v| *v == settings.viewport_view);
-    let current_mode = ViewportMode::ALL
-        .iter()
-        .position(|m| *m == settings.viewport_mode);
-    let current = |k: DropKind| match k {
-        DropKind::View => current_view,
-        DropKind::Mode => current_mode,
-        // The per-viewport angle isn't a single global index; its trigger label
-        // is set directly when an option is picked.
-        DropKind::ViewAngle => None,
-    };
-
-    for (trig, interaction, mut bg) in triggers {
-        // Trigger label tracks the live setting (View/Mode only — the ViewAngle
-        // label is written on click in `dropdown_option_click`).
-        if let Ok(mut text) = texts.get_mut(trig.label) {
-            let label = match trig.kind {
-                DropKind::View => Some(loc_opt(settings.viewport_view.label())),
-                DropKind::Mode => Some(loc_opt(settings.viewport_mode.label())),
-                DropKind::ViewAngle => None,
-            };
-            if let Some(label) = label {
-                if text.0 != label {
-                    text.0 = label;
-                }
-            }
-        }
-        let want = if trig.open || *interaction == Interaction::Hovered {
-            hovered
-        } else {
-            inactive
-        };
-        if bg.0 != want {
-            bg.0 = want;
-        }
-    }
-
-    for (opt, interaction, mut bg, mut node) in options {
-        // The Mode dropdown offers a per-view subset (no Sculpt in 2D, no
-        // Erase in 3D): rows are built once from `ALL` and hidden per view,
-        // so `DropOption::index` stays a stable index into `ALL`.
-        if opt.kind == DropKind::Mode {
-            let allowed = ViewportMode::ALL.get(opt.index).is_some_and(|m| {
-                ViewportMode::for_view(settings.viewport_view).contains(m)
-            });
-            let want = if allowed { Display::Flex } else { Display::None };
-            if node.display != want {
-                node.display = want;
-            }
-        }
-        let is_current = current(opt.kind) == Some(opt.index);
-        let want = if is_current {
-            accent
-        } else if *interaction == Interaction::Hovered {
-            hovered
-        } else {
-            Color::NONE
-        };
-        if bg.0 != want {
-            bg.0 = want;
-        }
-    }
 }
 
 /// Resolved header palette + the booleans that drive each button's glyph,
@@ -1133,13 +1103,6 @@ fn header_action_click(
 
 // ── Display dropdown (A3): visualization + render flags + overlays + collision ─
 
-/// Generic "click the trigger to show/hide its popup panel" for icon dropdowns.
-#[derive(Component)]
-struct PanelToggle {
-    panel: Entity,
-    open: bool,
-}
-
 /// Marks the Display dropdown's icon trigger (for hover / open background).
 #[derive(Component)]
 struct DisplayTrigger;
@@ -1175,51 +1138,6 @@ macro_rules! toggle_row {
     };
 }
 
-fn panel_toggle(
-    mut q: Query<(&Interaction, &mut PanelToggle), Changed<Interaction>>,
-    mut nodes: Query<&mut Node>,
-) {
-    for (interaction, mut t) in &mut q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        t.open = !t.open;
-        if let Ok(mut n) = nodes.get_mut(t.panel) {
-            n.display = if t.open { Display::Flex } else { Display::None };
-        }
-    }
-}
-
-/// Close any open icon dropdown (the Display / Snap / Camera / Shapes
-/// `PanelToggle` popups) when the pointer presses outside both its trigger and
-/// its panel. The hand-rolled `PanelToggle` (like ember's `popover`) only
-/// toggled on a trigger press, so these popups never closed on an outside click;
-/// this mirrors `dropdown_dismiss` for the View/Mode dropdowns. A press inside
-/// the panel (e.g. flipping a render-flag switch) leaves it open.
-fn panel_toggle_dismiss(
-    mouse: Res<ButtonInput<MouseButton>>,
-    mut triggers: Query<(&Interaction, &mut PanelToggle)>,
-    panels: Query<&bevy::ui::RelativeCursorPosition>,
-    mut nodes: Query<&mut Node>,
-) {
-    if !mouse.just_pressed(MouseButton::Left) {
-        return;
-    }
-    for (trig_inter, mut t) in &mut triggers {
-        if !t.open {
-            continue;
-        }
-        let over_trigger = !matches!(trig_inter, Interaction::None);
-        let over_panel = panels.get(t.panel).is_ok_and(|r| r.cursor_over);
-        if !over_trigger && !over_panel {
-            t.open = false;
-            if let Ok(mut n) = nodes.get_mut(t.panel) {
-                n.display = Display::None;
-            }
-        }
-    }
-}
-
 fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let mut kids: Vec<Entity> = Vec::new();
 
@@ -1238,14 +1156,102 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
 
     kids.push(separator_row(commands));
     kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.overlays")));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.grid"), show_grid));
-    kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.subgrid"), show_subgrid));
+    kids.push(grid_divisions_row(commands, fonts));
+    // Subgrid's switch used to sit here, but it never touched this grid — the
+    // flag only splits the *2D* editor's grid into major/minor lines. Dividing
+    // the 3D grid is what the -/+ above does, and the 2D flag keeps its home in
+    // Settings → Viewport.
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.axis_gizmo"), show_axis_gizmo));
+    // Scene Icons / Labels and the whole collision-gizmo picker used to live
+    // here; they moved to the Gizmos dropdown (`build_gizmos_dropdown`) so all
+    // the "what's drawn over the scene" switches sit in one place. Display keeps
+    // what the renderer produces — viz modes, render flags, and the grid.
+
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
+    commands.entity(trigger).insert(DisplayTrigger);
+    popup_anchor(commands, trigger, panel)
+}
+
+/// The **Gizmos** dropdown — one switch per editor overlay drawn *over* the
+/// scene, grouped by what it belongs to (selection / scene objects / rigging /
+/// physics).
+///
+/// Separate from Display on purpose: Display decides what the renderer
+/// produces (visualization mode, mesh/texture/lighting/shadow flags, the
+/// grid), while these decide what the *editor* draws on top of it. Several of
+/// these gizmos had no switch at all before — the skeleton bones, the light
+/// falloff wireframes and the camera frustum were unconditional — so this is
+/// the first way to get a dense rig or a wall of collider boxes out of the
+/// view without deselecting.
+///
+/// Lives in the shared header rather than a viewport's own side toolbar
+/// because `ViewportSettings` is one global resource: a per-slot placement
+/// would promise per-viewport control that doesn't exist.
+fn build_gizmos_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let mut kids: Vec<Entity> = Vec::new();
+
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.selection")));
+    kids.push(toggle_row!(
+        commands, fonts,
+        &renzora::lang::t("viewport.gizmos.bounding_box"),
+        show_selection_box
+    ));
+
+    kids.push(separator_row(commands));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.scene")));
+    kids.push(toggle_row!(
+        commands, fonts,
+        &renzora::lang::t("viewport.gizmos.lights"),
+        show_light_gizmos
+    ));
+    kids.push(toggle_row!(
+        commands, fonts,
+        &renzora::lang::t("viewport.gizmos.cameras"),
+        show_camera_gizmos
+    ));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.scene_icons"), show_scene_icons));
     kids.push(toggle_row!(commands, fonts, &renzora::lang::t("viewport.display.labels"), show_labels));
 
     kids.push(separator_row(commands));
-    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.display.collision_gizmos")));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.rigging")));
+    kids.push(toggle_row!(
+        commands, fonts,
+        &renzora::lang::t("viewport.gizmos.skeleton"),
+        show_skeleton_gizmos
+    ));
+
+    kids.push(separator_row(commands));
+    kids.push(section_label(commands, fonts, &renzora::lang::t("viewport.gizmos.physics")));
+    // The on/off half of `collision_gizmo_visibility`. Turning it back on
+    // restores the remembered Selected Only / Always choice rather than always
+    // snapping to Selected Only.
+    kids.push(check_row(
+        commands,
+        fonts,
+        &renzora::lang::t("viewport.gizmos.colliders"),
+        |w: &Rx| {
+            w.get_resource::<ViewportSettings>()
+                .map(|s| s.collision_gizmo_visibility != CollisionGizmoVisibility::Off)
+                .unwrap_or(false)
+        },
+        |w: &mut World, v: bool| {
+            let restore = w
+                .get_resource::<ColliderGizmoMemory>()
+                .map(|m| m.0)
+                .unwrap_or(CollisionGizmoVisibility::SelectedOnly);
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                s.collision_gizmo_visibility = if v {
+                    restore
+                } else {
+                    CollisionGizmoVisibility::Off
+                };
+            }
+        },
+    ));
+    // The two mode rows also act as an "on" — picking either while the switch
+    // is off turns colliders back on in that mode, which is what a click on a
+    // visible row is expected to do.
     kids.push(option_row(
         commands,
         fonts,
@@ -1259,68 +1265,24 @@ fn build_display_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity
         &renzora::lang::t("common.always"),
     ));
 
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                right: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(4.0)),
-                min_width: Val::Px(200.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(3.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            GlobalZIndex(600),
-            // Lets `panel_toggle_dismiss` tell an inside-panel click (toggling a
-            // render flag) from an outside click that should close the dropdown.
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("vp-display-panel"),
-        ))
-        .id();
-    commands.entity(panel).add_children(&kids);
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "bounding-box", panel);
+    commands.entity(trigger).insert(DisplayTrigger);
+    popup_anchor(commands, trigger, panel)
+}
 
-    let eye = icon_text(commands, &fonts.phosphor, "eye", text_muted(), 15.0);
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
-    let trigger = commands
-        .spawn((
-            Node {
-                width: Val::Px(40.0),
-                height: Val::Px(BTN_H),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::horizontal(Val::Px(8.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
-            HoverCursor(SystemCursorIcon::Pointer),
-            PanelToggle { panel, open: false },
-            DisplayTrigger,
-            Name::new("vp-display-dropdown"),
-        ))
-        .id();
-    commands.entity(trigger).add_children(&[eye, caret]);
+/// Remembers the last non-`Off` collider-gizmo mode so the Physics →
+/// "Colliders" switch can return to Selected Only *or* Always — whichever was
+/// in use. Editor UI state only: never persisted (a fresh session starts from
+/// whatever `collision_gizmo_visibility` loaded as) and never crosses the
+/// plugin boundary, so it stays here instead of in `ViewportSettings`.
+#[derive(Resource)]
+struct ColliderGizmoMemory(CollisionGizmoVisibility);
 
-    let wrap = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            Name::new("vp-display-wrap"),
-        ))
-        .id();
-    commands.entity(wrap).add_children(&[trigger, panel]);
-    wrap
+impl Default for ColliderGizmoMemory {
+    fn default() -> Self {
+        Self(CollisionGizmoVisibility::SelectedOnly)
+    }
 }
 
 /// The 2D **Overlays** dropdown — the 2D counterpart of the 3D Display
@@ -1342,12 +1304,10 @@ fn build_overlay_2d_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Ent
             show_gizmos_2d
         ),
     ];
-    let panel = dropdown_panel(commands, &kids);
-    let trigger = icon_trigger_node(commands, fonts, "eye");
-    commands
-        .entity(trigger)
-        .insert((PanelToggle { panel, open: false }, DisplayTrigger));
-    dropdown_wrap(commands, trigger, panel)
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "eye", panel);
+    commands.entity(trigger).insert(DisplayTrigger);
+    popup_anchor(commands, trigger, panel)
 }
 
 fn section_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity {
@@ -1449,6 +1409,145 @@ fn check_row(
     row
 }
 
+/// The Display dropdown's **Grid** row: the on/off switch, plus `-` / `+` that
+/// subdivide the floor grid.
+///
+/// Each press halves (or doubles) the squares — the grid is infinite and
+/// unitless, so a subdivision count is the only thing that means anything here;
+/// a cell size in world units would be a number with nothing to measure against.
+/// The readout is the divisor: `1` is the base grid, `4` is sixteenth-squares.
+fn grid_divisions_row(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let sw = toggle_switch(commands, false);
+    bind_2way(
+        commands,
+        sw,
+        |w: &Rx| {
+            w.get_resource::<ViewportSettings>()
+                .map(|s| s.show_grid)
+                .unwrap_or(false)
+        },
+        |w: &mut World, v: &bool| {
+            if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
+                s.show_grid = *v;
+            }
+        },
+    );
+
+    let lbl = commands
+        .spawn((
+            Text::new(renzora::lang::t("viewport.grid")),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(value_text())),
+        ))
+        .id();
+    let spacer = commands
+        .spawn(Node {
+            flex_grow: 1.0,
+            ..default()
+        })
+        .id();
+
+    let minus = grid_div_btn(commands, fonts, "minus", false);
+    let count = commands
+        .spawn((
+            Text::new("1"),
+            ui_font(&fonts.ui, 12.0),
+            TextColor(rgb(text_primary())),
+            Name::new("vp-grid-divisions"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_text(commands, count, |w| {
+        w.get_resource::<ViewportSettings>()
+            .map(|s| s.grid_divisions.to_string())
+            .unwrap_or_else(|| "1".into())
+    });
+    let plus = grid_div_btn(commands, fonts, "plus", true);
+
+    let stepper = commands
+        .spawn((
+            Node {
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            Name::new("vp-grid-stepper"),
+        ))
+        .id();
+    commands.entity(stepper).add_children(&[minus, count, plus]);
+
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(6.0),
+                ..default()
+            },
+            Name::new("vp-grid-row"),
+        ))
+        .id();
+    commands.entity(row).add_children(&[lbl, spacer, stepper, sw]);
+    row
+}
+
+/// One end of the grid stepper. `up` doubles the divisions, otherwise halves —
+/// powers of two, so the finer lines always land on the coarser ones.
+#[derive(Component, Clone, Copy)]
+struct GridDivBtn(bool);
+
+fn grid_div_btn(commands: &mut Commands, fonts: &EmberFonts, icon: &str, up: bool) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(18.0),
+                height: Val::Px(18.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(rgb(tab_active())),
+            Interaction::default(),
+            HoverCursor(SystemCursorIcon::Pointer),
+            GridDivBtn(up),
+            Name::new(if up { "vp-grid-div-up" } else { "vp-grid-div-down" }),
+        ))
+        .id();
+    let g = icon_text(commands, &fonts.phosphor, icon, text_muted(), 10.0);
+    commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+    commands.entity(btn).add_child(g);
+    renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
+        match w.get::<Interaction>(btn) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+            _ => rgb(tab_active()),
+        }
+    });
+    btn
+}
+
+/// `-` / `+` on the grid row → halve or double the subdivision, clamped to a
+/// range where the lines stay distinguishable at a sane camera height.
+fn grid_div_click(
+    buttons: Query<(&Interaction, &GridDivBtn), Changed<Interaction>>,
+    settings: Option<ResMut<ViewportSettings>>,
+) {
+    let Some(mut settings) = settings else { return };
+    for (interaction, btn) in &buttons {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let want = if btn.0 {
+            settings.grid_divisions.saturating_mul(2)
+        } else {
+            settings.grid_divisions / 2
+        }
+        .clamp(1, 64);
+        if settings.grid_divisions != want {
+            settings.grid_divisions = want;
+        }
+    }
+}
+
 fn display_option_click(
     options: Query<(&Interaction, &DisplayOption), Changed<Interaction>>,
     cmds: Option<Res<EditorCommands>>,
@@ -1467,13 +1566,17 @@ fn display_option_click(
                     s.visualization_mode = m;
                 }
             }),
+            // Picking a mode also turns colliders on if they were `Off` — the
+            // row is right there under the switch, so a click on it meaning
+            // "show me this" is the only sensible reading.
             DisplayOption::Collision(selected_only) => cmds.push(move |w: &mut World| {
+                let mode = if selected_only {
+                    CollisionGizmoVisibility::SelectedOnly
+                } else {
+                    CollisionGizmoVisibility::Always
+                };
                 if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
-                    s.collision_gizmo_visibility = if selected_only {
-                        CollisionGizmoVisibility::SelectedOnly
-                    } else {
-                        CollisionGizmoVisibility::Always
-                    };
+                    s.collision_gizmo_visibility = mode;
                 }
             }),
         }
@@ -1482,8 +1585,9 @@ fn display_option_click(
 
 fn update_display_visuals(
     settings: Option<Res<ViewportSettings>>,
+    mut collider_memory: ResMut<ColliderGizmoMemory>,
     theme: Option<Res<ThemeManager>>,
-    triggers: Query<(&Interaction, &PanelToggle, &mut BackgroundColor), With<DisplayTrigger>>,
+    triggers: Query<(&Interaction, &Popup, &mut BackgroundColor), With<DisplayTrigger>>,
     options: Query<(&DisplayOption, &Interaction, &mut BackgroundColor), Without<DisplayTrigger>>,
 ) {
     let (Some(settings), Some(theme)) = (settings, theme) else {
@@ -1508,13 +1612,24 @@ fn update_display_visuals(
     let viz_idx = VisualizationMode::ALL
         .iter()
         .position(|m| *m == settings.visualization_mode);
-    let collision_selected =
-        settings.collision_gizmo_visibility == CollisionGizmoVisibility::SelectedOnly;
+    // Keep the "turn colliders back on into what?" memory current. Doing it
+    // here (rather than in the switch's setter) also catches changes made from
+    // the Settings panel's Colliders dropdown.
+    let collision = settings.collision_gizmo_visibility;
+    if collision != CollisionGizmoVisibility::Off && collider_memory.0 != collision {
+        collider_memory.0 = collision;
+    }
 
     for (opt, interaction, mut bg) in options {
         let is_current = match *opt {
             DisplayOption::Viz(i) => viz_idx == Some(i),
-            DisplayOption::Collision(sel) => sel == collision_selected,
+            // Neither mode row is "current" while colliders are off — the
+            // switch above them is the thing that reads as off.
+            DisplayOption::Collision(sel) => match collision {
+                CollisionGizmoVisibility::Off => false,
+                CollisionGizmoVisibility::SelectedOnly => sel,
+                CollisionGizmoVisibility::Always => !sel,
+            },
         };
         let want = if is_current {
             accent
@@ -1831,6 +1946,15 @@ fn update_two_d_only(
 enum HeaderClick {
     Projection(ProjectionMode),
     ViewAngle { yaw: f32, pitch: f32 },
+    /// A per-viewport view-angle pick: snaps THIS slot's camera (the shared
+    /// `ViewAngle` above writes the global channel) and relabels its trigger.
+    /// `index` is into [`VIEW_ANGLE_OPTIONS`], for the label.
+    SlotViewAngle {
+        slot: usize,
+        index: usize,
+        yaw: f32,
+        pitch: f32,
+    },
     CamReset,
     ToggleObjectSnap,
     ToggleFloorSnap,
@@ -1885,75 +2009,6 @@ macro_rules! drag_row {
             },
         )
     };
-}
-
-/// The shared right-anchored popup panel for an icon dropdown.
-fn dropdown_panel(commands: &mut Commands, kids: &[Entity]) -> Entity {
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                right: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(4.0)),
-                min_width: Val::Px(220.0),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(3.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            GlobalZIndex(600),
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("vp-drop-panel"),
-        ))
-        .id();
-    commands.entity(panel).add_children(kids);
-    panel
-}
-
-/// A 40px icon + caret dropdown trigger (the caller adds its own marker bundle).
-fn icon_trigger_node(commands: &mut Commands, fonts: &EmberFonts, icon: &str) -> Entity {
-    let glyph = icon_text(commands, &fonts.phosphor, icon, text_muted(), 15.0);
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
-    let trigger = commands
-        .spawn((
-            Node {
-                width: Val::Px(40.0),
-                height: Val::Px(BTN_H),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::horizontal(Val::Px(8.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(hover_bg())),
-            Interaction::default(),
-            HoverCursor(SystemCursorIcon::Pointer),
-            Name::new("vp-icon-dropdown"),
-        ))
-        .id();
-    commands.entity(trigger).add_children(&[glyph, caret]);
-    trigger
-}
-
-fn dropdown_wrap(commands: &mut Commands, trigger: Entity, panel: Entity) -> Entity {
-    let wrap = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            Name::new("vp-dropdown-wrap"),
-        ))
-        .id();
-    commands.entity(wrap).add_children(&[trigger, panel]);
-    wrap
 }
 
 /// A label + click-to-fire row (view angles, reset).
@@ -2119,13 +2174,10 @@ fn build_camera_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     ));
     kids.push(click_row(commands, fonts, &renzora::lang::t("inspector.component.reset"), HeaderClick::CamReset));
 
-    let panel = dropdown_panel(commands, &kids);
-    let trigger = icon_trigger_node(commands, fonts, "cube");
-    commands.entity(trigger).insert((
-        PanelToggle { panel, open: false },
-        CameraTrigger,
-    ));
-    dropdown_wrap(commands, trigger, panel)
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "cube", panel);
+    commands.entity(trigger).insert(CameraTrigger);
+    popup_anchor(commands, trigger, panel)
 }
 
 #[allow(clippy::vec_init_then_push)]
@@ -2167,12 +2219,10 @@ fn build_snap_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         snap.scale_bottom_anchor
     ));
 
-    let panel = dropdown_panel(commands, &kids);
-    let trigger = icon_trigger_node(commands, fonts, "magnet");
-    commands
-        .entity(trigger)
-        .insert((PanelToggle { panel, open: false }, SnapTrigger));
-    dropdown_wrap(commands, trigger, panel)
+    let panel = popup_panel(commands, &kids);
+    let trigger = icon_popup_trigger(commands, fonts, "magnet", panel);
+    commands.entity(trigger).insert(SnapTrigger);
+    popup_anchor(commands, trigger, panel)
 }
 
 /// A snap toggle button + its bound distance/offset drag value, in one row.
@@ -2210,6 +2260,9 @@ fn snap_dist_row(
 
 fn header_click(
     q: Query<(&Interaction, &HeaderClick), Changed<Interaction>>,
+    mut angle_triggers: Query<(&ViewAngleTrigger, &mut Popup)>,
+    mut texts: Query<&mut Text>,
+    mut nodes: Query<&mut Node>,
     cmds: Option<Res<EditorCommands>>,
 ) {
     let Some(cmds) = cmds else { return };
@@ -2218,6 +2271,40 @@ fn header_click(
             continue;
         }
         match *click {
+            HeaderClick::SlotViewAngle {
+                slot,
+                index,
+                yaw,
+                pitch,
+            } => {
+                // Per-slot channel, consumed by `renzora_camera::apply_per_slot_view_angle`.
+                cmds.push(move |w: &mut World| {
+                    if let Some(mut vps) =
+                        w.get_resource_mut::<renzora::core::viewport_types::Viewports>()
+                    {
+                        if let Some(s) = vps.slots.get_mut(slot) {
+                            s.pending_view_angle = Some(ViewAngleCommand { yaw, pitch });
+                        }
+                    }
+                });
+                // Reflect the pick on this viewport's trigger label, and close
+                // the menu (a one-shot action, unlike the switch panels).
+                let name = VIEW_ANGLE_OPTIONS.get(index).map(|(l, ..)| loc_opt(l));
+                for (tag, mut popup) in &mut angle_triggers {
+                    if tag.slot != slot {
+                        continue;
+                    }
+                    if let (Some(name), Ok(mut text)) = (name.as_ref(), texts.get_mut(tag.label)) {
+                        if text.0 != *name {
+                            text.0 = name.clone();
+                        }
+                    }
+                    popup.open = false;
+                    if let Ok(mut n) = nodes.get_mut(popup.panel) {
+                        n.display = Display::None;
+                    }
+                }
+            }
             HeaderClick::Projection(mode) => cmds.push(move |w: &mut World| {
                 if let Some(mut s) = w.get_resource_mut::<ViewportSettings>() {
                     s.projection_mode = mode;
@@ -2318,11 +2405,11 @@ fn update_camera_snap_triggers(
     settings: Option<Res<ViewportSettings>>,
     theme: Option<Res<ThemeManager>>,
     mut cam: Query<
-        (&Interaction, &PanelToggle, &mut BackgroundColor),
+        (&Interaction, &Popup, &mut BackgroundColor),
         (With<CameraTrigger>, Without<SnapTrigger>),
     >,
     mut snap: Query<
-        (&Interaction, &PanelToggle, &mut BackgroundColor),
+        (&Interaction, &Popup, &mut BackgroundColor),
         (With<SnapTrigger>, Without<CameraTrigger>),
     >,
 ) {
@@ -2677,58 +2764,12 @@ fn build_shapes_dropdown(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
         .id();
     let scroll = scroll_area(commands, container, 360.0);
 
-    let panel = commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(100.0),
-                left: Val::Px(0.0),
-                margin: UiRect::top(Val::Px(4.0)),
-                width: Val::Px(200.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(6.0)),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
-                display: Display::None,
-                ..default()
-            },
-            BackgroundColor(rgb(popup_bg())),
-            BorderColor::all(rgb(border())),
-            GlobalZIndex(600),
-            // Floating popup: swallow scroll/click so the wheel scrolls the list
-            // instead of bleeding to the dock behind it (see ember `popup`).
-            OverlaySurface,
-            bevy::ui::RelativeCursorPosition::default(),
-            Name::new("vp-shapes-panel"),
-        ))
-        .id();
-    commands.entity(panel).add_child(scroll);
-
-    let glyph = icon_text(commands, &fonts.phosphor, "shapes", text_muted(), 15.0);
-    let caret = icon_text(commands, &fonts.phosphor, "caret-down", text_muted(), 8.0);
-    let trigger = commands
-        .spawn((
-            Node {
-                width: Val::Px(40.0),
-                height: Val::Px(BTN_H),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::horizontal(Val::Px(8.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(tab_active())),
-            Interaction::default(),
-            HoverCursor(SystemCursorIcon::Pointer),
-            PanelToggle { panel, open: false },
-            ShapeMenuTrigger,
-            Name::new("vp-shapes-dropdown"),
-        ))
-        .id();
-    commands.entity(trigger).add_children(&[glyph, caret]);
-
-    dropdown_wrap(commands, trigger, panel)
+    // Left-aligned: this is the leftmost toolbar control, so a right-aligned
+    // panel would grow off the left edge of the window.
+    let panel = popup_panel_aligned(commands, &[scroll], PopupAlign::Left);
+    let trigger = icon_popup_trigger(commands, fonts, "shapes", panel);
+    commands.entity(trigger).insert(ShapeMenuTrigger);
+    popup_anchor(commands, trigger, panel)
 }
 
 /// A label + icon row that spawns shape `id` when clicked.
@@ -2858,7 +2899,7 @@ fn shape_spawn_click(
 fn update_shape_menu(
     theme: Option<Res<ThemeManager>>,
     mut trigger: Query<
-        (&Interaction, &PanelToggle, &mut BackgroundColor),
+        (&Interaction, &Popup, &mut BackgroundColor),
         (With<ShapeMenuTrigger>, Without<ShapeSpawn>),
     >,
     mut rows: Query<(&Interaction, &mut BackgroundColor), With<ShapeSpawn>>,

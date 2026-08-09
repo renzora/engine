@@ -14,7 +14,7 @@
 //! to a *workspace* — purely to which panels are on screen.
 
 use bevy::prelude::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::dock::Dock;
 use crate::font::{icon_text, EmberFonts};
@@ -43,6 +43,74 @@ pub struct PanelToolbarItem {
     /// Sort order within the panel's group (lower = earlier).
     pub order: i32,
     pub build: ToolbarBuilder,
+}
+
+/// Builders mounted at the trailing (right) edge of the **in-viewport** tool
+/// strip — the one overlaid on the viewport itself, with Select / Move / Rotate
+/// / Scale on it. The editor shell puts the Play control there.
+///
+/// A static registry rather than a `Resource` because that strip is built from a
+/// panel-content closure that receives only `Commands` + [`EmberFonts`]; there
+/// is no `World` in scope to read a resource from. Registration happens at
+/// plugin-build time and the list is only ever appended to, so a plain `Mutex`
+/// costs nothing at the one point it's read.
+static VIEWPORT_TRAILING: OnceLock<Mutex<Vec<ToolbarBuilder>>> = OnceLock::new();
+
+fn viewport_trailing() -> &'static Mutex<Vec<ToolbarBuilder>> {
+    VIEWPORT_TRAILING.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Add a widget to the right-hand end of every primary in-viewport tool strip.
+pub fn register_viewport_tool_trailing<F>(build: F)
+where
+    F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static,
+{
+    if let Ok(mut items) = viewport_trailing().lock() {
+        items.push(Arc::new(build));
+    }
+}
+
+/// Build everything registered via [`register_viewport_tool_trailing`].
+pub fn build_viewport_tool_trailing(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
+    let builders: Vec<ToolbarBuilder> = viewport_trailing()
+        .lock()
+        .map(|items| items.clone())
+        .unwrap_or_default();
+    builders.iter().map(|b| b(commands, fonts)).collect()
+}
+
+/// Full-width bars mounted at the **top of the primary viewport panel, above its
+/// tool strip** — the shell's document tabs are the one that lives here.
+///
+/// Same static-registry shape, and for the same reason, as [`VIEWPORT_TRAILING`]:
+/// the viewport panel is built from a panel-content closure with no `World` in
+/// scope. It also gets the dependency direction right — `renzora_shell` depends
+/// on `renzora_viewport`, so the viewport can't reach into the shell to ask for
+/// its bar; the shell registers, and the viewport builds whatever it finds.
+static VIEWPORT_TOP_STRIP: OnceLock<Mutex<Vec<ToolbarBuilder>>> = OnceLock::new();
+
+fn viewport_top_strip() -> &'static Mutex<Vec<ToolbarBuilder>> {
+    VIEWPORT_TOP_STRIP.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Add a full-width bar at the top of the primary viewport panel, above its tool
+/// strip. Bars stack in registration order.
+pub fn register_viewport_top_strip<F>(build: F)
+where
+    F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static,
+{
+    if let Ok(items) = viewport_top_strip().lock().as_mut() {
+        items.push(Arc::new(build));
+    }
+}
+
+/// Build everything registered via [`register_viewport_top_strip`].
+pub fn build_viewport_top_strip(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
+    let builders: Vec<ToolbarBuilder> = viewport_top_strip()
+        .lock()
+        .map(|items| items.clone())
+        .unwrap_or_default();
+    builders.iter().map(|b| b(commands, fonts)).collect()
 }
 
 /// Registry of panel toolbar items. Populated at plugin-build time; consumed
@@ -276,6 +344,10 @@ pub fn build_toolbar_host(
                 // Center the whole toolbar; visible panels' groups append into
                 // this one centered cluster (in registration order).
                 justify_content: JustifyContent::Center,
+                // Breathing room above and below the controls, so the strip
+                // doesn't read as one cramped line between the top bar and the
+                // panels.
+                padding: UiRect::vertical(Val::Px(4.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
@@ -321,13 +393,29 @@ pub fn build_toolbar_host(
         });
         commands.entity(host).add_child(group);
     }
-    // Hide the whole toolbar strip during play mode so the running game gets a
-    // clean view (no editor toolbars). The per-group binds above still apply when
-    // not playing.
-    bind_display(commands, host, |w| {
-        !w.get_resource::<renzora::core::PlayModeState>()
+    // Hide the whole strip during play mode so the running game gets a clean
+    // view (no editor toolbars) — and whenever no visible panel contributes to
+    // it, so it doesn't sit there as an empty band. That's the common case now
+    // that the viewport's controls live on the viewport's own bar: a workspace
+    // showing only viewports has nothing to put here.
+    let all: Vec<&'static str> = registry
+        .panels()
+        .into_iter()
+        .flat_map(|p| registry.visible_panels_for(p))
+        .collect();
+    bind_display(commands, host, move |w| {
+        let playing = w
+            .get_resource::<renzora::core::PlayModeState>()
             .map(|p| p.is_in_play_mode())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        !playing
+            && all.iter().any(|id| {
+                crate::dock::panel_visible_anywhere(
+                    id,
+                    w.get_resource::<Dock>(),
+                    w.get_resource::<crate::dock::DockWindows>(),
+                )
+            })
     });
     host
 }

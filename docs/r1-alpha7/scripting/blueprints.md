@@ -29,7 +29,9 @@ Blueprints are edited in the **Blueprints** workspace (one of the editor's ribbo
 - **Scene mode** (default) — the editor edits the `BlueprintGraph` **component on the currently selected entity**. The graph follows your selection and is saved as part of the scene.
 - **Asset mode** — a standalone `.blueprint` file is open in a document tab; edits are written back to that file. Open one by double-clicking a `.blueprint` in the Assets browser.
 
-To create a new blueprint, use the Assets browser's **New → Blueprint** entry (it creates `NewBlueprint.blueprint`), then either open it in Asset mode or add a `BlueprintGraph` to an entity and author it in Scene mode.
+To create a new blueprint, use the Assets browser's **New → Blueprint** entry (it creates `NewBlueprint.blueprint`), or right-click an object in the Hierarchy and choose **Attach ▸ Blueprint** (which also lets you name it, pick its folder, and attach it to that object in one step — see [Scenes & Hierarchy](/docs/r1-alpha7/editor/scenes)). Then either open it in Asset mode or add a `BlueprintGraph` to an entity and author it in Scene mode.
+
+**A new blueprint isn't empty.** It arrives with the two lifecycle events already placed — **On Ready** (runs once when the entity initialises) above **On Update** (runs every frame) — because nothing in a blueprint runs unless it hangs off an event. They're unwired, so the first thing you do is drag a cable from one of them rather than right-clicking to add an event you were always going to need. An unused event is harmless: with nothing attached it compiles to an empty function.
 
 The toolbar has **Add Node**, **Auto Layout** (re-arranges the graph into tidy dependency-ordered columns), and **Apply** (compile to Lua — scene mode only).
 

@@ -92,6 +92,13 @@ fn sync_grid_from_viewport(vp: Res<ViewportSettings>, mut config: ResMut<GridCon
         return;
     }
     config.visible = vp.show_grid;
+    // `scale` multiplies the plane coordinates the shader takes `fract` of, so a
+    // bigger scale packs the lines closer: one step per division, halving the
+    // squares each time.
+    let scale = vp.grid_divisions.clamp(1, 64) as f32;
+    if config.scale != scale {
+        config.scale = scale;
+    }
 }
 
 /// Push `GridConfig` colors/scale + visibility onto the grid entity when they

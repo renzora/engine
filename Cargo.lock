@@ -7351,6 +7351,7 @@ dependencies = [
  "bevy",
  "image",
  "renzora",
+ "renzora_blueprint",
  "renzora_editor_framework",
  "renzora_ember",
  "zip",
@@ -7476,6 +7477,7 @@ dependencies = [
  "renzora",
  "renzora_globals",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -375,7 +375,8 @@ fn render_overlay_2d(
         let size = slot.screen_size;
         // Every viewport now carries the in-viewport toolbar strip flush on its
         // top edge, so the ruler chrome starts below it on all slots.
-        let top_offset = crate::VIEWPORT_TOOLBAR_H;
+        // No toolbar offset: the bar is above the scene now, not over it.
+        let top_offset = 0.0;
 
         if show_rulers {
             draw_rulers(

@@ -61,7 +61,20 @@ Drag a row to move it. Where you drop it decides what happens, based on the part
 
 Children move with their parent: rotate or move a parent and its children follow. The editor won't let you drop an object into one of its own children, and the whole move is one undo step.
 
-Right-click a row for more options: **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **label color** swatches, **Delete**, and (for cameras and scene instances) a few extra commands covered below.
+Right-click a row for more options: **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **Attach ▸**, **label color** swatches, **Delete**, and (for cameras and scene instances) a few extra commands covered below.
+
+### Attaching a new asset from the Hierarchy
+
+Hover **Attach** in a row's right-click menu and you get the same list of new files the Assets panel's **Add** button offers — **Lua Script**, **Blueprint**, **Material**, **Particle**, **Template**, **Scene (BSN)** — each in its own type color. Files start with sensible contents rather than blank: a new **Blueprint**, for instance, already has its **On Ready** and **On Update** event nodes placed.
+
+Pick one and an overlay asks the two questions that matter:
+
+- **Name** — pre-filled with a sensible default (`new_script`, `NewMaterial`, …). Type your own; the extension is added for you, and an existing file is never overwritten (you'd get `player 2.lua`).
+- **Destination folder** — your project's own folder tree, the same picker the marketplace installs assets into. It starts on the conventional folder for that type (`scripts/`, `materials/`, `particles/`, `blueprints/`, `ui/`, `scenes/`), creating it if your project doesn't have one yet, but you can drop the file anywhere — including the project root.
+
+For **scripts and blueprints** there's also an **Attach to &lt;object&gt;** tick, on by default: the new file is added to the object's Script component as it's created, so a fresh script is wired up in one step instead of a round-trip through the Assets panel and a drag onto the Inspector. Untick it to just create the file.
+
+`Escape`, the backdrop, or **Cancel** closes the overlay without creating anything.
 
 ### Showing, hiding & color-coding
 
@@ -103,15 +116,21 @@ Prefer to work with the keyboard? Press a key, move the mouse, then click to con
 
 ## Working with document tabs
 
-The strip of tabs across the top of the editor is your open documents — one per scene (plus any materials, scripts, shaders, particles, or blueprints you've opened). You can keep several scenes open at once and click between them; each remembers its own contents and camera.
+The strip of tabs **at the top of the viewport**, above its toolbar, is your open documents — one per scene (plus any materials, scripts, shaders, particles, or blueprints you've opened). Each is a square chip with an icon for what it is (a film slate for a scene, a palette for a material, a code glyph for a script, and so on) and the document's name. Tabs sit flush against each other, with no gap and no rounding. Both states are soft vertical gradients that land on the colour of whatever is beneath them: the active tab carries a breath of the accent under its top rule and fades into the panel colour it shares with the toolbar below, so it reads as *cut out* of the strip rather than highlighted on top of it; the inactive ones settle into a recessed shade, separated by a short hairline centred on each boundary. Inactive tabs are the plain ones — icon and name, no close button. A name too long for a tab is cut short with an ellipsis (`Big Level Sce…`) — hover it for the full name. You can keep several scenes open at once and click between them; each remembers its own contents and camera.
+
+> **The tab strip lives in the viewport panel**, so it's only there in workspaces that have one. Of the built-in workspaces, **Blueprints, Materials, Particles, Animation and Hub have no viewport**, and so no tab strip — switch documents from a workspace that has one (Scene, Scripting, Debug), or drag a **Viewport** panel into the layout.
+
+The strip spans the viewport's full width, so nothing folds away until the tabs genuinely fill it. The `+` button sits directly after the last tab and moves right as you open more; once they fill the bar the extras fold into a **caret button** (`⌄`) at the end: click it for a menu of the tabs currently hidden, and picking one activates it as if you'd clicked the tab itself. The active tab is never folded away.
 
 - **New scene** — press `Ctrl+N` (or use the **`+`** button at the end of the tab strip). This opens a fresh **Untitled Scene** in its *own* new tab and switches to it; whatever you were working on stays open in its old tab, untouched. New scene never wipes the scene you're currently in.
-- **Closing a tab** — click the **×** on a tab to close it. If that tab has **unsaved changes**, the editor brings it forward and asks first:
+- **Closing a tab** — only the **active** tab carries a **×**, so closing an inactive one means clicking it first. (Six close buttons across the strip was both noisy and a near-copy of the panel tab bar above it.) If the tab has **unsaved changes**, the editor brings it forward and asks first:
   - **Save & Close** — saves the scene (prompting for a location if it's never been saved), then closes the tab.
   - **Don't Save** — closes it and discards the edits.
   - **Cancel** (or `Escape`) — leaves the tab open.
   
   Closing a tab with no unsaved changes just closes it, with no prompt. The editor always keeps at least one scene tab open.
+- **Reordering** — drag a tab sideways to move it. An accent bar shows where it will land, and the move is applied when you let go. Tabs that have folded into the caret menu can be dragged too: press a row in the menu and pull it out, and it lands where you drop it in the strip (something else folds away to make room). A plain click in the menu still just activates the tab.
+- **Renaming** — double-click a tab to edit its name in place. `Enter` (or clicking away) commits, `Escape` cancels. For a saved document this **renames the file on disk**, keeping its extension and folder, and anything referencing the old path follows it — the same move the asset browser's rename performs. A brand-new unsaved tab has no file yet, so there it only changes the label. Renaming to a name that already exists in that folder is refused.
 
 A tab with unsaved edits shows a **`*`** after its name.
 

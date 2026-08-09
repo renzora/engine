@@ -6,6 +6,9 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 serde = { version = "1", features = ["derive"] }
+# `.blueprint` files are JSON-serialised graphs; the starter file is built here
+# so every "new blueprint" entry point writes the same thing.
+serde_json = "1"
 renzora = { path = "../renzora", default-features = false }
 renzora_globals = { path = "../renzora_globals" }
 log = "0.4"

@@ -1,12 +1,16 @@
-//! Native (bevy_ui) viewport nav overlay — pan/zoom drag-buttons + grid/scene-icon
-//! toggles stacked on the right side of each viewport. Replaces the egui
-//! `toolbar::render_nav_overlay`.
+//! Native (bevy_ui) viewport nav overlay — the pan and zoom drag-buttons on the
+//! right side of each viewport.
 //!
-//! Pan/Zoom are press-and-drag: while held they accumulate `MouseMotion` into
+//! Both are press-and-drag: while held they accumulate `MouseMotion` into
 //! [`NavOverlayState`]'s atomic deltas (the same ones the camera system already
-//! consumes). Grid/Icons are click toggles on [`ViewportSettings`]. The cluster
-//! is an [`OverlaySurface`] so hovering it suppresses viewport hover (the camera
-//! won't orbit / box-select won't start under the buttons).
+//! consumes). The cluster is an [`OverlaySurface`] so hovering it suppresses
+//! viewport hover (the camera won't orbit / box-select won't start under the
+//! buttons).
+//!
+//! Grid and Scene Icons used to have round toggles down here too. They were
+//! duplicates — both flags already have switches in the toolbar's Display and
+//! Gizmos dropdowns, and in Settings → Viewport — so the circles were two more
+//! things floating over the scene for no reach they added.
 
 use std::sync::atomic::Ordering;
 
@@ -14,9 +18,9 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use bevy::ui::RelativeCursorPosition;
 
-use renzora::core::viewport_types::{NavOverlayState, ViewportSettings};
+use renzora::core::viewport_types::NavOverlayState;
 use renzora_editor_framework::SplashState;
-use renzora_ember::font::{icon_glyph, icon_text, EmberFonts};
+use renzora_ember::font::{icon_text, EmberFonts};
 use renzora_ember::theme::{accent, hover_bg, panel_bg, rgb};
 use renzora_ember::widgets::OverlaySurface;
 
@@ -28,13 +32,7 @@ const BTN: f32 = 36.0;
 enum NavButton {
     Pan,
     Zoom,
-    Grid,
-    Icons,
 }
-
-/// Marks the glyph text of the Icons button so its eye/eye-slash can be swapped.
-#[derive(Component)]
-struct NavIconsGlyph;
 
 /// Which nav drag-button is currently latched (continues off the button until
 /// mouse release, mirroring egui's pointer-latched drag).
@@ -45,7 +43,7 @@ pub(crate) fn register(app: &mut App) {
     app.init_resource::<NavDragLatch>();
     app.add_systems(
         Update,
-        (nav_drag, nav_click, nav_visuals).run_if(in_state(SplashState::Editor)),
+        (nav_drag, nav_visuals).run_if(in_state(SplashState::Editor)),
     );
 }
 
@@ -63,7 +61,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Node {
                 position_type: PositionType::Absolute,
                 right: Val::Px(8.0),
-                top: Val::Px(crate::VIEWPORT_TOOLBAR_H + AXIS_GIZMO_SIZE + AXIS_GIZMO_MARGIN + 24.0),
+                // No toolbar offset: the bar is above the scene now, not over it.
+                top: Val::Px(AXIS_GIZMO_SIZE + AXIS_GIZMO_MARGIN + 24.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(1.0),
                 ..default()
@@ -74,13 +73,9 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    let pan = nav_btn(commands, fonts, NavButton::Pan, "hand", 0.0, false);
-    let zoom = nav_btn(commands, fonts, NavButton::Zoom, "magnifying-glass", 0.0, false);
-    let grid = nav_btn(commands, fonts, NavButton::Grid, "grid-four", 6.0, false);
-    let icons = nav_btn(commands, fonts, NavButton::Icons, "eye", 0.0, true);
-    commands
-        .entity(cluster)
-        .add_children(&[pan, zoom, grid, icons]);
+    let pan = nav_btn(commands, fonts, NavButton::Pan, "hand", 0.0);
+    let zoom = nav_btn(commands, fonts, NavButton::Zoom, "magnifying-glass", 0.0);
+    commands.entity(cluster).add_children(&[pan, zoom]);
     // Hide the nav buttons during play mode for a clean game view, and in 2D
     // view (they're 3D-orbit pan/zoom controls).
     renzora_ember::reactive::tracked::bind_display(commands, cluster, |w| {
@@ -103,7 +98,6 @@ fn nav_btn(
     kind: NavButton,
     icon: &str,
     top_margin: f32,
-    tag_glyph: bool,
 ) -> Entity {
     let b = commands
         .spawn((
@@ -126,34 +120,20 @@ fn nav_btn(
     // Let clicks fall through the glyph to the button, or a press on the icon
     // itself (dead-center of the button) never reaches the button's `Interaction`
     // and the Grid/Icons toggles silently do nothing.
-    commands
-        .entity(g)
-        .insert(bevy::picking::Pickable::IGNORE);
-    if tag_glyph {
-        commands.entity(g).insert(NavIconsGlyph);
-    }
+    commands.entity(g).insert(bevy::picking::Pickable::IGNORE);
     commands.entity(b).add_child(g);
     b
 }
 
-/// Recolor buttons from state and swap the Icons glyph (eye / eye-slash).
+/// Recolor the buttons: accent while their drag is latched, hover wash on hover.
 fn nav_visuals(
     nav: Res<NavOverlayState>,
-    settings: Option<Res<ViewportSettings>>,
     mut buttons: Query<(&NavButton, &Interaction, &mut BackgroundColor)>,
-    glyphs: Query<Entity, With<NavIconsGlyph>>,
-    mut texts: Query<&mut Text>,
 ) {
-    let (show_grid, show_icons) = settings
-        .map(|s| (s.show_grid, s.show_scene_icons))
-        .unwrap_or((true, true));
-
     for (kind, interaction, mut bg) in &mut buttons {
         let active = match kind {
             NavButton::Pan => nav.pan_dragging.load(Ordering::Relaxed),
             NavButton::Zoom => nav.zoom_dragging.load(Ordering::Relaxed),
-            NavButton::Grid => show_grid,
-            NavButton::Icons => show_icons,
         };
         bg.0 = if active {
             rgb(accent())
@@ -162,13 +142,6 @@ fn nav_visuals(
         } else {
             resting()
         };
-    }
-
-    let ch = icon_glyph(if show_icons { "eye" } else { "eye-slash" }).unwrap_or('\u{E4C6}');
-    for e in &glyphs {
-        if let Ok(mut t) = texts.get_mut(e) {
-            *t = Text::new(ch.to_string());
-        }
     }
 }
 
@@ -220,29 +193,12 @@ fn nav_drag(
                 .fetch_add((delta.y * 1000.0) as i32, Ordering::Relaxed);
         }
         NavButton::Zoom => {
+            // Negated: mouse Y grows downward, and the camera reads a positive
+            // delta as "come closer". Dragging **up** zooms in, which is the way
+            // round every other zoom in the editor works.
             nav.zoom_delta_y
-                .fetch_add((delta.y * 1000.0) as i32, Ordering::Relaxed);
+                .fetch_add((-delta.y * 1000.0) as i32, Ordering::Relaxed);
         }
-        _ => {}
     }
 }
 
-/// Grid / Icons click toggles.
-fn nav_click(
-    buttons: Query<(&NavButton, &Interaction), Changed<Interaction>>,
-    settings: Option<ResMut<ViewportSettings>>,
-) {
-    let Some(mut settings) = settings else {
-        return;
-    };
-    for (kind, interaction) in &buttons {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        match kind {
-            NavButton::Grid => settings.show_grid = !settings.show_grid,
-            NavButton::Icons => settings.show_scene_icons = !settings.show_scene_icons,
-            _ => {}
-        }
-    }
-}

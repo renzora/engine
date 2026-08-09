@@ -22,6 +22,7 @@ mod native_overlay_2d;
 mod native_drop;
 mod native_game;
 pub mod native_header;
+mod native_height_ruler;
 mod native_nav;
 mod native_viewport;
 pub mod particle_drop;
@@ -677,11 +678,6 @@ fn handle_play_shortcuts(
 
 pub(crate) const AXIS_GIZMO_SIZE: f32 = 100.0;
 pub(crate) const AXIS_GIZMO_MARGIN: f32 = 24.0; // extra margin to clear the resolution text
-/// Height of the in-viewport toolbar strip flush on the top edge (28px
-/// buttons plus 2px vertical padding each side). Top-anchored overlays (axis
-/// gizmo, and the nav cluster below it) offset by this to clear the strip.
-pub(crate) const VIEWPORT_TOOLBAR_H: f32 = 32.0;
-
 
 /// The scene view — 3D or 2D, never UI — the viewport most recently showed.
 /// While the viewport is in UI view this is the view the user came *from*,

@@ -16,22 +16,23 @@ use crossbeam_channel::{unbounded, Receiver};
 
 use renzora_auth::marketplace::AssetSummary;
 use renzora_auth::session::AuthSession;
-use renzora_ember::font::{icon_text, ui_font, EmberFonts};
-use renzora_ember::reactive::tracked::bind_bg;
+use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::*;
-use renzora_ember::widgets::{button, overlay_sized, scroll_view};
+use renzora_ember::widgets::{button, folder_picker, overlay_sized, FolderPick};
 use renzora_theme::ThemeManager;
 
 use crate::install;
 
-/// The asset awaiting install confirmation plus the folder the user has picked.
-/// Lives only while the confirm overlay is up; dismissing the overlay
-/// (Escape / backdrop / X) leaves it inert until the next "Get" replaces it.
+/// The asset awaiting install confirmation. Lives only while the confirm overlay
+/// is up; dismissing the overlay (Escape / backdrop / X) leaves it inert until
+/// the next "Get" replaces it. The chosen destination isn't here — it lives in
+/// ember's [`FolderPick`], owned by the shared picker widget.
 #[derive(Resource)]
 pub(crate) struct PendingInstall {
     asset: AssetSummary,
     overlay: Entity,
-    dest: PathBuf,
+    /// Where the picker was seeded, and the fallback if it somehow has no pick.
+    default_dest: PathBuf,
     /// Cloned signed-in session (if any) so the download thread can authenticate.
     session: Option<AuthSession>,
 }
@@ -50,14 +51,9 @@ pub(crate) struct InstallResult {
 pub(crate) struct InstallConfirmBtn;
 #[derive(Component)]
 pub(crate) struct InstallDismissBtn(Entity);
-#[derive(Component)]
-pub(crate) struct FolderRow(PathBuf);
 
 pub(crate) fn register(app: &mut App) {
-    app.add_systems(
-        Update,
-        (install_buttons, folder_click, poll_install_result),
-    );
+    app.add_systems(Update, (install_buttons, poll_install_result));
 }
 
 /// Open the confirm overlay for `asset`. Exclusive-world entry (queued from the
@@ -80,7 +76,6 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     // front so it shows in the tree even on a fresh project.
     let default_dest = root.join(install::install_dir_for_category(&asset.category));
     let _ = std::fs::create_dir_all(&default_dest);
-    let folders = scan_dirs(&root);
 
     let mut queue = CommandQueue::default();
     let mut commands = Commands::new(&mut queue, world);
@@ -100,42 +95,10 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
         section_label(&mut commands, &fonts, "Install into"),
     ];
 
-    // Folder picker: the project's own directory structure. The bordered box
-    // flex-grows to fill the overlay so the buttons stay pinned to the bottom
-    // (no dead space), and the rows scroll inside it.
-    let tree = commands
-        .spawn(Node {
-            width: Val::Percent(100.0),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(1.0),
-            ..default()
-        })
-        .id();
-    let mut rows = Vec::new();
-    for (path, depth, name) in &folders {
-        rows.push(folder_row(&mut commands, &fonts, path.clone(), *depth, name));
-    }
-    commands.entity(tree).add_children(&rows);
-    let tree_scroll = scroll_view(&mut commands, tree);
-    let tree_box = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                flex_grow: 1.0,
-                min_height: Val::Px(60.0),
-                flex_direction: FlexDirection::Column,
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                overflow: Overflow::clip(),
-                padding: UiRect::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(section_bg())),
-            BorderColor::all(rgb(border())),
-        ))
-        .id();
-    commands.entity(tree_box).add_child(tree_scroll);
-    kids.push(tree_box);
+    // Destination: the project's own directory structure, via ember's shared
+    // picker (the same widget the hierarchy's Create-asset overlay uses). It
+    // flex-grows to fill the overlay so the buttons stay pinned to the bottom.
+    kids.push(folder_picker(&mut commands, &fonts, &root, &default_dest, 1));
 
     kids.push(paragraph(
         &mut commands,
@@ -177,7 +140,7 @@ pub(crate) fn open(world: &mut World, asset: AssetSummary) {
     commands.entity(content).add_child(body);
 
     queue.apply(world);
-    world.insert_resource(PendingInstall { asset, overlay, dest: default_dest, session });
+    world.insert_resource(PendingInstall { asset, overlay, default_dest, session });
 }
 
 /// Confirm / cancel the install.
@@ -185,6 +148,7 @@ fn install_buttons(
     confirm: Query<&Interaction, (With<InstallConfirmBtn>, Changed<Interaction>)>,
     dismiss: Query<(&Interaction, &InstallDismissBtn), Changed<Interaction>>,
     pending: Option<Res<PendingInstall>>,
+    pick: Res<FolderPick>,
     mut commands: Commands,
 ) {
     for (interaction, btn) in &dismiss {
@@ -201,7 +165,7 @@ fn install_buttons(
     commands.entity(pending.overlay).despawn();
 
     let asset = pending.asset.clone();
-    let dest = pending.dest.clone();
+    let dest = pick.path().map(Path::to_path_buf).unwrap_or_else(|| pending.default_dest.clone());
     let session = pending.session.as_ref().map(clone_session);
     commands.remove_resource::<PendingInstall>();
 
@@ -209,19 +173,6 @@ fn install_buttons(
     let category = asset.category.clone();
     commands.insert_resource(InstallResult { rx, category });
     spawn_install(session, asset, dest, tx);
-}
-
-/// Click a folder row → it becomes the install destination.
-fn folder_click(
-    q: Query<(&Interaction, &FolderRow), Changed<Interaction>>,
-    pending: Option<ResMut<PendingInstall>>,
-) {
-    let Some(mut pending) = pending else { return };
-    for (interaction, row) in &q {
-        if *interaction == Interaction::Pressed && pending.dest != row.0 {
-            pending.dest = row.0.clone();
-        }
-    }
 }
 
 /// Raise the completion notice when the background install finishes.
@@ -322,75 +273,6 @@ fn run_install(session: Option<&AuthSession>, asset: &AssetSummary, dest: &Path)
         }
     }
     Ok(format!("Installed \"{}\" into {}", asset.name, path.display()))
-}
-
-// ── Folder tree ───────────────────────────────────────────────────────────────
-
-/// Recursively list the project's directories (two levels deep), skipping
-/// hidden / build / dependency folders, so the user can target any existing
-/// asset folder. Capped to keep the list bounded on huge projects.
-fn scan_dirs(root: &Path) -> Vec<(PathBuf, usize, String)> {
-    fn rec(dir: &Path, depth: usize, max: usize, out: &mut Vec<(PathBuf, usize, String)>) {
-        if depth > max || out.len() > 300 {
-            return;
-        }
-        let Ok(read) = std::fs::read_dir(dir) else { return };
-        let mut entries: Vec<PathBuf> = read
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .collect();
-        entries.sort();
-        for path in entries {
-            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            if name.starts_with('.') || name == "target" || name == "node_modules" {
-                continue;
-            }
-            out.push((path.clone(), depth, name));
-            rec(&path, depth + 1, max, out);
-        }
-    }
-    let mut out = Vec::new();
-    rec(root, 0, 1, &mut out);
-    out
-}
-
-fn folder_row(commands: &mut Commands, fonts: &EmberFonts, path: PathBuf, depth: usize, name: &str) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(22.0),
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(6.0),
-                padding: UiRect::left(Val::Px(8.0 + depth as f32 * 14.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            FolderRow(path.clone()),
-            Name::new("install-folder"),
-        ))
-        .id();
-    let p = path.clone();
-    bind_bg(commands, row, move |w| {
-        let selected = w.get_resource::<PendingInstall>().map(|pi| pi.dest == p).unwrap_or(false);
-        if selected {
-            rgb(accent()).with_alpha(0.20)
-        } else if matches!(w.get::<Interaction>(row), Some(Interaction::Hovered) | Some(Interaction::Pressed)) {
-            rgb(hover_bg())
-        } else {
-            Color::NONE
-        }
-    });
-    let icon = icon_text(commands, &fonts.phosphor, "folder", text_muted(), 12.0);
-    let lbl = commands
-        .spawn((Text::new(name.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary())))).id();
-    commands.entity(row).add_children(&[icon, lbl]);
-    row
 }
 
 // ── Small UI helpers (mirror `plugin_install`) ────────────────────────────────

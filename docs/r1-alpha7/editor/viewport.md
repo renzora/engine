@@ -14,13 +14,13 @@ The camera orbits around a *focus point* and zooms in and out toward it. Start w
 |-------|--------------|
 | **Right-click + drag** | Look around |
 | **Right-click + WASD** | Fly forward / back / left / right |
-| **Right-click + E / Q** | Fly up / down |
+| **Right-click + E / Q** | Fly up / down (slower the closer you are to the ground) |
 | **Middle-click + drag** | Orbit around the focus point |
 | **Shift + Right-click + drag** | Pan (slide the view sideways and up/down) |
 | **Scroll wheel** | Zoom in / out |
 | **Hold Ctrl while moving** | Move slowly, for fine adjustments |
 
-The camera moves slowly when you're close to something and faster when you're far away, so navigating both tiny props and huge levels feels natural.
+The camera moves slowly when you're close to something and faster when you're far away, so navigating both tiny props and huge levels feels natural. `E` / `Q` have their own version of that: they ease off as you approach ground level, so you can settle onto the floor instead of punching through it, and open back up to full speed once you're clear of it.
 
 > Tip: In **Edit mode** (mesh editing) the `E` and `Q` fly keys are used by the editing tools instead. WASD still flies — use scroll or Shift+Right-drag to move up and down.
 
@@ -34,9 +34,11 @@ The camera moves slowly when you're close to something and faster when you're fa
 | `End` | Move the focus point to wherever your cursor is pointing |
 | `[` / `]` | Slow down / speed up the camera |
 
-There's also a small button cluster on the right edge of each viewport for **Pan** and **Zoom** (press and drag) plus **Grid** and scene-**Icons** toggles, and an **orientation gizmo** in the top-right corner that shows which way the camera is facing.
+There's also a small button cluster on the right edge of each viewport for **Pan** and **Zoom** — press and drag them, dragging **up** on Zoom to move closer — and an **orientation gizmo** in the top-right corner that shows which way the camera is facing.
 
-Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain tools, and any tools plugins add: draw box, draw polyline, tilemap paint, …), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), and a **maximize** toggle at the far right. It floats over the scene and hides during play mode.
+While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Grid and Scene Icons circles that used to sit under them are gone: both already have switches in the toolbar's Display and Gizmos dropdowns, and in *Settings → Viewport*.)
+
+Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain tools, and any tools plugins add: draw box, draw polyline, tilemap paint, …), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. It hides during play mode, all except Play, which becomes Stop and stays where it is.
 
 ## Different views of your scene
 
@@ -56,7 +58,7 @@ The viewport header also has a **3D / 2D / UI** selector: **2D** switches the pa
 Pick **2D** in the header selector (or select any 2D node — the viewport switches automatically) to edit a 2D scene. The auto-switch only leaves 2D when you select something clearly 3D (a mesh, 3D camera, or light) — selecting an ambiguous entity like a freshly dropped scene instance keeps the view where it is:
 
 - **Rulers** along the top and left edges show world coordinates and track your cursor. Toggle them with the **Rulers** switch in the toolbar (on by default). The cursor's world coordinates show live in the **left side of the status bar** (next to "Ready") whenever the pointer is over the 2D view — with or without rulers. Turn the readout off under **Settings → Viewport → 2D Cursor Coordinates**.
-- **Grid** — off by default; flip the **Grid** switch in the toolbar (it only appears in 2D view) to show it. The grid draws as faint lines *behind* your sprites, so it never obscures the art. Its **cell size** is the number input that appears next to the switch while the grid is on (default **16** world units, matching the tilemap tile convention) — it is its own setting, deliberately independent of the translate-snap step, so tuning snap never restyles the grid. The grid adapts to your zoom: it draws at the configured size when you're zoomed in and automatically coarsens (doubling the spacing as needed) as you zoom out, so it stays readable at any zoom level instead of vanishing — every drawn line sits on a multiple of the configured size. Slightly brighter *section* lines mark every 8th cell (toggle with **Subgrid**). The switch is independent of the 3D view's grid toggle.
+- **Grid** — off by default; flip the **Grid** switch in the toolbar (it only appears in 2D view) to show it. The grid draws as faint lines *behind* your sprites, so it never obscures the art. Its **cell size** is the number input that appears next to the switch while the grid is on (default **16** world units, matching the tilemap tile convention) — it is its own setting, deliberately independent of the translate-snap step, so tuning snap never restyles the grid. The grid adapts to your zoom: it draws at the configured size when you're zoomed in and automatically coarsens (doubling the spacing as needed) as you zoom out, so it stays readable at any zoom level instead of vanishing — every drawn line sits on a multiple of the configured size. Slightly brighter *section* lines mark every 8th cell (toggle with **Subgrid**, in *Settings → Viewport*). The switch is independent of the 3D view's grid toggle.
 - The **amber rectangle** is your game's camera boundary — the exact area a Camera 2D at the origin shows at runtime, taken from the project's viewport resolution. World (0, 0) is its top-left corner, matching the runtime convention.
 - **Middle-mouse or right-mouse drag** pans, the **scroll wheel** zooms toward the cursor, and the header shows the current zoom percentage. **Shift+scroll** pans vertically and **Ctrl+scroll** pans horizontally (a trackpad's sideways scroll always pans horizontally).
 - **Selecting a sprite** shows a rotated-aware selection frame: the border and its eight resize handles follow the sprite's rotation. The cursor tells you what a drag will do — a **move** cursor over the sprite's body, **directional resize** cursors over the handles, and a **grab** cursor over the **rotate handle** (the circle floating above the top edge). Drag the rotate handle to spin the sprite; hold `Shift` to snap to 15° steps (the toolbar's rotate-snap step applies when its snap toggle is on).
@@ -87,6 +89,35 @@ It's the same shape list as the shape-library panel and the hierarchy's **Add En
 | `Ctrl + G` | Grid on / off |
 
 > These use `Alt` so they don't clash with `Ctrl+Z` (undo). Note that `H` hides the selected object.
+
+## The floor grid
+
+The **Display** dropdown's **Grid** row has the on/off switch and a **−  /  +** pair beside it. Each press of `+` divides the grid into smaller squares, and `−` goes back the other way — powers of two, so the finer lines always fall on the coarser ones. The number between them is the divisor: `1` is the base grid, `4` draws sixteenth-squares.
+
+It's a subdivision count rather than a cell size because this grid is infinite and unitless — there's nothing to measure a "16 units" against the way there is in the 2D view. (The old **Sub-grid** switch is no longer here: it only ever affected the *2D* editor's grid, and still lives in *Settings → Viewport*.)
+
+## Choosing which gizmos are drawn
+
+Next to the **Display** dropdown (the eye) in the viewport toolbar is the **Gizmos** dropdown (the bounding-box icon). Display controls what the *renderer* produces — visualization mode, mesh / textures / lighting / shadows, the grid. Gizmos controls what the *editor* draws on top of your scene:
+
+| Group | Switch | What it hides |
+|-------|--------|---------------|
+| **Selection** | Bounding Box | The orange wireframe box around the selected object |
+| **Scene** | Lights | Light falloff wireframes — point radius spheres, spot cones, the sun's direction arrow, area-light rectangles, probe boxes |
+| **Scene** | Cameras | The selected camera's frustum wireframe and forward arrow |
+| **Scene** | Scene Icons | The light-bulb / sun / camera glyphs (2D view; the 3D icon overlay is not drawn yet) |
+| **Scene** | Labels | Entity name labels floating above each object (off by default) |
+| **Rigging** | Skeleton | The octahedral bone meshes drawn over a selected rigged model |
+| **Physics** | Colliders | Collision-shape wireframes, plus a **Selected Only** / **Always** choice below the switch |
+
+Everything here is on by default except Labels, and each switch is saved with the project.
+
+Two things worth knowing:
+
+- **Colliders now have an off state.** The Selected Only / Always pair only ever decided *when* the wireframes appear. Turning the switch off hides them entirely; turning it back on returns to whichever of the two you were using. Picking either mode row also switches colliders back on.
+- **Skeleton is the one to reach for on heavy rigs.** Bone gizmos are real meshes rebuilt every frame, so a densely-boned character costs more than the line-based gizmos. Turning it off while you work on something else is the cheapest win in the list.
+
+The same switches live in **Settings → Viewport → Gizmos**, alongside the drag opacity and the all-viewports option. They're global, not per-viewport — the dropdown is in the shared toolbar for that reason.
 
 ## If the viewport feels slow
 
@@ -154,7 +185,7 @@ A small readout shows the current mode and any number you type.
 | **Click + drag** | Box-select everything inside the box |
 | **Click empty space** | Deselect everything |
 
-Selected objects get a glowing **outline** by default so you always know what's picked. Prefer the wireframe bounding box instead? Switch **Settings → Viewport → Gizmos → Selection** from Outline to Gizmo.
+Selected objects get an orange wireframe **bounding box** so you always know what's picked. Working on something where the box is in the way? Turn it off under **Gizmos → Selection → Bounding Box** in the viewport toolbar. Whether the box draws through geometry or is depth-tested is a separate choice, under **Settings → Viewport → Gizmos → Boundary** (On Top / Depth Tested).
 
 ## The grid
 
@@ -172,7 +203,15 @@ The **active** viewport is whichever one your cursor is over, so camera controls
 - a **World / Local** toggle that sets the transform gizmo's axes for that viewport independently;
 - a **maximize** button that expands *that* viewport to fill the editor (click it again, or the maximize button on the now-full viewport, to restore your layout).
 
-The shared **top toolbar** below the document tabs holds the things that aren't per-view: undo / redo / save, the move / rotate / scale snap steps, and the shape / display / camera menus.
+The viewport's **own tool strip**, flush along its top edge, now holds all of it: Select / Move / Rotate / Scale, undo / redo / save, the shape menu, the move / rotate / scale snap steps, the display / gizmos / snap / camera menus, **Play**, and this viewport's view-angle, World/Local and maximize controls. (The shared toolbar strip under the top bar is still there for panels that use it — the code editor, the material graph — and hides itself when nothing on screen contributes to it.)
+
+It fills the bar from the left, and sits **above** the rendered scene rather than floating over it — so the scene starts below the bar and the axis gizmo, nav buttons and 2D rulers move down with it.
+
+If the viewport is too narrow for everything, the toolbar **wraps onto a second line** (or a third) instead of hiding controls behind a menu. A group never splits across lines: one that doesn't fit moves down whole. Nothing is ever out of reach.
+
+Each group has a small **grip** on its left. Hover it and the group lights up; drag it to move that group somewhere else on the bar — a blue marker shows where it will land, and the groups around it shift aside as you go. The controls themselves stay clickable throughout, so there's no mode to switch in and out of. **Your arrangement is saved with the project** and comes back the next time you open it.
+
+The **Play** button and its target caret sit between the tools and the per-view controls — just left of the view-angle (Perspective) dropdown, centred with everything else. They stay put while the game runs: the tools and the per-view controls hide during play, but Stop is always exactly where Play was.
 
 **The selection gizmo follows your cursor.** When you select something, the transform gizmo (and, in 2D, the selection outline and resize handles) shows in the viewport your cursor is in, sized to that view — so the other views stay clean. Prefer to see it everywhere at once? Turn on **Settings → Viewport → Gizmos in All Viewports**, and every viewport draws its own correctly-sized handle; dragging still happens in whichever viewport you're pointing at. The grid, and the orientation cube in each corner, always reflect each viewport's own camera.
 
@@ -187,7 +226,7 @@ The **Camera Preview** panel shows the scene from one of your *game* cameras, so
 Press **Play** to play-test your game without leaving the editor. Edit mode and play mode **share the viewport panel**: when you press Play, the viewport switches from your editor camera to the running game (seen through the active game camera), constrained to the panel — your hierarchy, inspector, console, and the rest of the editor all stay on screen. Press **Stop** (or `Esc`) and the viewport flips straight back to the editor camera, right where you left it.
 
 - **Pressing Play brings the viewport tab to the front automatically**, so you see the game even if you were looking at another tab when you started.
-- Entering play gives a clean game view: it **clears your selection and hides the editor toolbars, the axis gizmo, and the viewport buttons**; Stop brings them back.
+- Entering play gives a clean game view: it **clears your selection and hides the editor toolbars, the axis gizmo, and the viewport buttons**; Stop brings them back. (The Play/Stop control itself stays on the toolbar strip throughout.)
 - **Maximize on Play** (Settings → Viewport → Camera, **on by default**): pressing Play collapses the dock to just the viewport for a full-panel game view, and Stop restores your layout. Turn it off to keep the rest of your panels visible while playing.
 - If no viewport panel is open at all, play falls back to taking over the whole window.
 - The game's render resolution follows the active camera's resolution setting, just like the editor view.

@@ -239,11 +239,32 @@ impl Default for NavOverlayState {
     }
 }
 
+/// The editor camera's zoom limits, in world units. The camera clamps its orbit
+/// distance to this range; the viewport's height ruler shows how much of it is
+/// left. Published here so both read the same numbers instead of each carrying
+/// its own copy.
+pub const EDITOR_ZOOM_MIN: f32 = 0.5;
+pub const EDITOR_ZOOM_MAX: f32 = 100.0;
+
 /// Camera orbit orientation, written by the camera system and read by the axis gizmo overlay.
-#[derive(Resource, Debug, Clone, Default)]
+#[derive(Resource, Debug, Clone)]
 pub struct CameraOrbitSnapshot {
     pub yaw: f32,
     pub pitch: f32,
+    /// Distance from the orbit focus, clamped to
+    /// [`EDITOR_ZOOM_MIN`]..[`EDITOR_ZOOM_MAX`]. Read by the height ruler to
+    /// show how close the zoom is to either end.
+    pub distance: f32,
+}
+
+impl Default for CameraOrbitSnapshot {
+    fn default() -> Self {
+        Self {
+            yaw: 0.0,
+            pitch: 0.0,
+            distance: 10.0,
+        }
+    }
 }
 
 /// Cached clip-from-world matrix of the editor camera, plus camera world position.
@@ -666,8 +687,15 @@ impl Default for RenderToggles {
 }
 
 /// Collision gizmo visibility mode.
+///
+/// `Off` exists because the other two only decide *when* collider wireframes
+/// appear, never whether they do — a scene full of static bodies had no way to
+/// get the green boxes out of the view. It is the state the Gizmos dropdown's
+/// "Colliders" switch turns off into; the Selected Only / Always pair below it
+/// picks between the remaining two.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CollisionGizmoVisibility {
+    Off,
     #[default]
     SelectedOnly,
     Always,
@@ -759,7 +787,18 @@ pub struct ViewAngleCommand {
 pub struct ViewportSettings {
     pub render_toggles: RenderToggles,
     pub visualization_mode: VisualizationMode,
+    /// The viewport toolbar's group order, by group key, as left by the last
+    /// drag. Empty means "the order the toolbar was built in" — the default, and
+    /// what a project that predates the setting gets.
+    pub toolbar_order: Vec<String>,
     pub show_grid: bool,
+    /// How finely the 3D floor grid is divided: 1 is the base cell, and each
+    /// step halves the squares (2 = quarters, 4 = sixteenths). Drives the
+    /// infinite grid's line frequency, stepped by the -/+ on the Display
+    /// dropdown's Grid row. A count rather than a size because the grid is
+    /// infinite and unitless — you subdivide what's there, you don't dial in a
+    /// cell width.
+    pub grid_divisions: u32,
     pub show_subgrid: bool,
     /// The 2D editor's own grid toggle — independent of the 3D `show_grid`
     /// so turning the 2D grid off doesn't also kill the 3D floor grid.
@@ -809,6 +848,21 @@ pub struct ViewportSettings {
     pub label_max_distance: f32,
     /// Which entities get a name label (all / top-level / meshes / selected).
     pub label_scope: LabelScope,
+    /// The selected entity's wireframe bounding box. On by default — it is the
+    /// primary "this is what you picked" cue — but it fights mesh-hugging work
+    /// (sculpting, UV inspection), so it gets its own switch in the Gizmos
+    /// dropdown rather than being unconditional.
+    pub show_selection_box: bool,
+    /// The octahedral bone meshes drawn for every `AnimatorComponent` entity.
+    /// On by default. Unlike the line gizmos these are real `Mesh3d` entities
+    /// re-spawned each frame, so hiding them is also the cheapest way to get a
+    /// dense rig out of the frame budget while working on something else.
+    pub show_skeleton_gizmos: bool,
+    /// Light falloff wireframes (point radius, spot cones, sun arrow, area
+    /// rect, probe box). On by default.
+    pub show_light_gizmos: bool,
+    /// The selected camera's frustum wireframe + forward arrow. On by default.
+    pub show_camera_gizmos: bool,
     pub collision_gizmo_visibility: CollisionGizmoVisibility,
     pub projection_mode: ProjectionMode,
     pub viewport_mode: ViewportMode,
@@ -844,7 +898,9 @@ impl Default for ViewportSettings {
         Self {
             render_toggles: RenderToggles::default(),
             visualization_mode: VisualizationMode::default(),
+            toolbar_order: Vec::new(),
             show_grid: true,
+            grid_divisions: 1,
             show_subgrid: true,
             show_grid_2d: false,
             // Matches the default tilemap tile size (16 units = 16 px art).
@@ -862,6 +918,10 @@ impl Default for ViewportSettings {
             label_color: [217, 230, 255],
             label_max_distance: 40.0,
             label_scope: LabelScope::default(),
+            show_selection_box: true,
+            show_skeleton_gizmos: true,
+            show_light_gizmos: true,
+            show_camera_gizmos: true,
             collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             projection_mode: ProjectionMode::default(),
             viewport_mode: ViewportMode::default(),
@@ -912,7 +972,15 @@ pub struct PersistedViewportSettings {
     #[serde(default = "default_true")]
     pub mesh: bool,
     pub visualization_mode: String,
+    /// Viewport toolbar group order. Absent for projects saved before the
+    /// toolbar could be rearranged, which get the built-in order.
+    #[serde(default)]
+    pub toolbar_order: Vec<String>,
     pub show_grid: bool,
+    /// Grid subdivision steps. Defaults to 1 (undivided) for projects saved
+    /// before the field existed.
+    #[serde(default = "default_grid_divisions")]
+    pub grid_divisions: u32,
     pub show_subgrid: bool,
     /// 2D-view grid toggle. Defaults off (`#[serde(default)]` = false), so
     /// projects saved before the switch existed open with the grid hidden.
@@ -952,6 +1020,24 @@ pub struct PersistedViewportSettings {
     pub label_max_distance: f32,
     #[serde(default)]
     pub label_scope: String,
+    /// Gizmo-visibility switches. All default on: every one of these gizmos
+    /// pre-dates its switch, so a project saved before the Gizmos dropdown
+    /// existed opens looking exactly as it did.
+    #[serde(default = "default_true")]
+    pub show_selection_box: bool,
+    #[serde(default = "default_true")]
+    pub show_skeleton_gizmos: bool,
+    #[serde(default = "default_true")]
+    pub show_light_gizmos: bool,
+    #[serde(default = "default_true")]
+    pub show_camera_gizmos: bool,
+    /// The collider gizmo's on/off half. Stored separately from
+    /// `collision_always` (rather than replacing both with one enum string) so
+    /// existing configs keep their Selected Only / Always choice: they simply
+    /// lack this key and default to on, which reproduces the old two-state
+    /// behaviour exactly.
+    #[serde(default = "default_true")]
+    pub show_collider_gizmos: bool,
     pub collision_always: bool,
     pub orthographic: bool,
     pub move_speed: f32,
@@ -1002,7 +1088,9 @@ impl PersistedViewportSettings {
             shadows: rt.shadows,
             mesh: rt.mesh,
             visualization_mode: format!("{:?}", s.visualization_mode),
+            toolbar_order: s.toolbar_order.clone(),
             show_grid: s.show_grid,
+            grid_divisions: s.grid_divisions,
             show_subgrid: s.show_subgrid,
             show_grid_2d: s.show_grid_2d,
             grid_size_2d: s.grid_size_2d,
@@ -1017,6 +1105,14 @@ impl PersistedViewportSettings {
             label_color: s.label_color,
             label_max_distance: s.label_max_distance,
             label_scope: format!("{:?}", s.label_scope),
+            show_selection_box: s.show_selection_box,
+            show_skeleton_gizmos: s.show_skeleton_gizmos,
+            show_light_gizmos: s.show_light_gizmos,
+            show_camera_gizmos: s.show_camera_gizmos,
+            show_collider_gizmos: !matches!(
+                s.collision_gizmo_visibility,
+                CollisionGizmoVisibility::Off
+            ),
             collision_always: matches!(
                 s.collision_gizmo_visibility,
                 CollisionGizmoVisibility::Always
@@ -1065,7 +1161,9 @@ impl PersistedViewportSettings {
             "UvChecker" => VisualizationMode::UvChecker,
             _ => VisualizationMode::None,
         };
+        s.toolbar_order = self.toolbar_order.clone();
         s.show_grid = self.show_grid;
+        s.grid_divisions = self.grid_divisions.clamp(1, 64);
         s.show_subgrid = self.show_subgrid;
         s.show_grid_2d = self.show_grid_2d;
         s.grid_size_2d = self.grid_size_2d;
@@ -1080,10 +1178,14 @@ impl PersistedViewportSettings {
         s.label_color = self.label_color;
         s.label_max_distance = self.label_max_distance;
         s.label_scope = LabelScope::from_debug(&self.label_scope);
-        s.collision_gizmo_visibility = if self.collision_always {
-            CollisionGizmoVisibility::Always
-        } else {
-            CollisionGizmoVisibility::SelectedOnly
+        s.show_selection_box = self.show_selection_box;
+        s.show_skeleton_gizmos = self.show_skeleton_gizmos;
+        s.show_light_gizmos = self.show_light_gizmos;
+        s.show_camera_gizmos = self.show_camera_gizmos;
+        s.collision_gizmo_visibility = match (self.show_collider_gizmos, self.collision_always) {
+            (false, _) => CollisionGizmoVisibility::Off,
+            (true, true) => CollisionGizmoVisibility::Always,
+            (true, false) => CollisionGizmoVisibility::SelectedOnly,
         };
         s.projection_mode = if self.orthographic {
             ProjectionMode::Orthographic
@@ -1126,6 +1228,10 @@ impl PersistedViewportSettings {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_grid_divisions() -> u32 {
+    1
 }
 
 fn default_grid_size_2d() -> f32 {
@@ -1188,7 +1294,9 @@ mod tests {
                 mesh: false,
             },
             visualization_mode: VisualizationMode::Normals,
+            toolbar_order: vec!["snaps".into(), "tools".into()],
             show_grid: false,
+            grid_divisions: 4,
             show_subgrid: false,
             // Non-default (defaults are false / true / true) so the round-trip
             // exercises all three 2D toggles.
@@ -1205,6 +1313,11 @@ mod tests {
             label_color: [10, 20, 30],
             label_max_distance: 99.0,
             label_scope: LabelScope::Selected,
+            // All four default to true, so false round-trips the new switches.
+            show_selection_box: false,
+            show_skeleton_gizmos: false,
+            show_light_gizmos: false,
+            show_camera_gizmos: false,
             collision_gizmo_visibility: CollisionGizmoVisibility::Always,
             projection_mode: ProjectionMode::Orthographic,
             viewport_mode: ViewportMode::default(),
@@ -1257,6 +1370,8 @@ mod tests {
             VisualizationMode::Normals
         ));
         assert_eq!(original.show_grid, restored.show_grid);
+        assert_eq!(original.grid_divisions, restored.grid_divisions);
+        assert_eq!(original.toolbar_order, restored.toolbar_order);
         assert_eq!(original.show_subgrid, restored.show_subgrid);
         assert_eq!(original.show_grid_2d, restored.show_grid_2d);
         assert_eq!(original.grid_size_2d, restored.grid_size_2d);
@@ -1270,6 +1385,10 @@ mod tests {
         assert_eq!(original.label_color, restored.label_color);
         assert_eq!(original.label_max_distance, restored.label_max_distance);
         assert_eq!(original.label_scope, restored.label_scope);
+        assert_eq!(original.show_selection_box, restored.show_selection_box);
+        assert_eq!(original.show_skeleton_gizmos, restored.show_skeleton_gizmos);
+        assert_eq!(original.show_light_gizmos, restored.show_light_gizmos);
+        assert_eq!(original.show_camera_gizmos, restored.show_camera_gizmos);
         assert!(matches!(
             restored.collision_gizmo_visibility,
             CollisionGizmoVisibility::Always
@@ -1323,6 +1442,42 @@ mod tests {
                 mode,
                 restored.visualization_mode,
             );
+        }
+    }
+
+    #[test]
+    fn collision_gizmo_visibility_round_trips_all_three_states() {
+        for mode in [
+            CollisionGizmoVisibility::Off,
+            CollisionGizmoVisibility::SelectedOnly,
+            CollisionGizmoVisibility::Always,
+        ] {
+            let mut s = ViewportSettings::default();
+            s.collision_gizmo_visibility = mode;
+            let p = PersistedViewportSettings::from_settings(&s);
+            let mut restored = ViewportSettings::default();
+            p.apply(&mut restored);
+            assert_eq!(
+                restored.collision_gizmo_visibility, mode,
+                "round trip lost {:?}",
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn configs_without_the_collider_switch_keep_their_old_two_state_choice() {
+        // `show_collider_gizmos` post-dates `collision_always`, so a project
+        // saved before the Off state existed must never come back as Off —
+        // it should land on whichever of the original two it had.
+        for (toml_src, want) in [
+            ("collision_always = false", CollisionGizmoVisibility::SelectedOnly),
+            ("collision_always = true", CollisionGizmoVisibility::Always),
+        ] {
+            let parsed: PersistedViewportSettings = toml::from_str(toml_src).expect("parse");
+            let mut restored = ViewportSettings::default();
+            parsed.apply(&mut restored);
+            assert_eq!(restored.collision_gizmo_visibility, want);
         }
     }
 

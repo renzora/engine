@@ -3,10 +3,17 @@
 //! Drawn every frame for every entity with a `CollisionShapeData` + `GlobalTransform`.
 //! Uses the same `OverlayGizmoGroup` config as the other line-based gizmos so it
 //! respects depth bias and render layer 1.
+//!
+//! Which entities get a wireframe comes from `ViewportSettings::
+//! collision_gizmo_visibility` (Gizmos dropdown → Physics). That setting had
+//! existed — and been persisted — for a while before anything read it: this
+//! drawer hard-coded selected-only, so picking "Always" in the UI silently did
+//! nothing. It is now honoured, including the `Off` state.
 
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
 
+use renzora::core::viewport_types::{CollisionGizmoVisibility, ViewportSettings};
 use renzora_editor_framework::EditorSelection;
 use renzora_physics::{CollisionShapeData, CollisionShapeType};
 
@@ -19,6 +26,7 @@ const COLOR_SENSOR: Color = Color::srgb(0.30, 0.70, 1.0);
 pub fn draw_collider_gizmos(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
+    settings: Option<Res<ViewportSettings>>,
     query: Query<(
         Entity,
         &CollisionShapeData,
@@ -27,8 +35,16 @@ pub fn draw_collider_gizmos(
         Option<&Aabb>,
     )>,
 ) {
+    let visibility = settings
+        .map(|s| s.collision_gizmo_visibility)
+        .unwrap_or_default();
+    if visibility == CollisionGizmoVisibility::Off {
+        return;
+    }
+    let selected_only = visibility == CollisionGizmoVisibility::SelectedOnly;
+
     for (entity, shape, gt, body, aabb) in &query {
-        if !selection.is_selected(entity) {
+        if selected_only && !selection.is_selected(entity) {
             continue;
         }
         let color = if shape.is_sensor {

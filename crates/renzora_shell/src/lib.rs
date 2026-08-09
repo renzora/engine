@@ -11,13 +11,14 @@ use bevy::ui::{ComputedNode, RelativeCursorPosition, UiGlobalTransform};
 
 use renzora::NativePanelIds;
 use renzora_ember::dock::{tab_pane, Dock, DockArea, DockDirty, DockLeaf, DockTab, TabPane};
-use renzora_ember::font::{glyph, icon_item, icon_text, ui_font, EmberFonts};
+use renzora_ember::font::{glyph, icon_text, ui_font, EmberFonts};
 use renzora_ember::widgets::{
     menu_item, scroll_area_keyed, screen_menu, text_input, EmberTextInput, Popup,
 };
+use bevy::ui::{BackgroundGradient, ColorStop, LinearGradient};
 use renzora_ember::theme::{
-    accent, divider, header_bg, placeholder, play_green, rgb, tab_active, text_muted, text_primary,
-    window_bg,
+    accent, border, divider, header_bg, panel_bg, placeholder, play_green, rgb, tab_active,
+    text_muted, text_primary, window_bg,
 };
 use renzora_ember::EmberPlugin;
 
@@ -88,7 +89,6 @@ impl Plugin for ShellPlugin {
             tree: layouts[active].1.clone(),
         });
         app.insert_resource(ShellLayouts { layouts, active });
-        app.add_systems(Update, notif_bell_click);
         // Reopen persisted floating dock windows. The spawn system queues the
         // requests until ember's fonts are ready, so pushing them this early is
         // safe. (Inserted after `EmberPlugin` above, so `DockPlugin`'s
@@ -112,8 +112,14 @@ impl Plugin for ShellPlugin {
         seed_panel_meta(app);
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
+        app.init_resource::<DocTabDrag>();
+        app.init_resource::<DocTabRename>();
+        app.add_observer(doc_tabs_follow_asset_path);
         app.init_resource::<OpenTopMenu>();
         app.init_resource::<ThemeMenuOpen>();
+        // The document tabs render inside the primary viewport panel (see
+        // [`build_doc_tabs`]); registering here is what puts them there.
+        renzora_ember::toolbar::register_viewport_top_strip(build_doc_tabs);
         app.add_systems(
             Update,
             (
@@ -125,7 +131,7 @@ impl Plugin for ShellPlugin {
                 ribbon_rename_commit,
                 content_dispatch,
                 (top_menu_open, top_menu_hover, top_menu_sync),
-                (settings_btn_click, play_btn_click, update_play_button, vr_active_overlay),
+                (play_btn_click, update_play_button, vr_active_overlay),
                 plugin_install::install_buttons,
                 palette_btn_click,
                 (theme_bridge, sync_theme_menu_open),
@@ -133,6 +139,9 @@ impl Plugin for ShellPlugin {
                 doc_add_click,
                 doc_tab_click,
                 (
+                    doc_tab_drag,
+                    doc_focus_rename,
+                    doc_rename_commit,
                     doc_tab_close,
                     process_tab_close_request,
                     close_tab_prompt_buttons,
@@ -153,6 +162,7 @@ impl Plugin for ShellPlugin {
                 about::about_credit_click,
                 about::about_credit_hover,
                 relocalize_on_language_change,
+                settings_btn_click,
                 (play_target_option_click, update_play_target_menu),
                 toggle_bottom_panel,
                 (
@@ -382,6 +392,7 @@ fn palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::Palette
     renzora_ember::theme::Palette {
         window_bg: tc(&t.surfaces.window),
         panel_bg: tc(&t.surfaces.panel),
+        faint_bg: tc(&t.surfaces.faint),
         header_bg: tc(&t.surfaces.extreme),
         tab_active: tc(&t.panels.tab_active),
         tab_hover: tc(&t.panels.tab_hover),
@@ -536,24 +547,34 @@ fn syntax_palette_from_theme(t: &renzora_theme::Theme) -> renzora_ember::theme::
     }
 }
 
-/// The top-bar gear button — toggles the Settings overlay.
-#[derive(Component)]
-struct TopBarSettingsBtn;
 
-fn settings_btn_click(
-    btns: Query<&Interaction, (Changed<Interaction>, With<TopBarSettingsBtn>)>,
-    settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
-) {
-    let Some(mut settings) = settings else { return };
-    for interaction in &btns {
-        if *interaction == Interaction::Pressed {
-            settings.show_settings = !settings.show_settings;
-        }
-    }
+/// Play + its target caret as one tight split button, in the top bar's left
+/// zone. Kept as its own group so the zone's item spacing doesn't pull the caret
+/// away from the pill it belongs to; a left margin sets it off from the session
+/// actions before it. It has previously lived at the trailing end of the
+/// viewport's own tool strip — the top bar wins because running the game is not
+/// a viewport action, and this bar is on screen in every workspace.
+fn build_play_group(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let play = build_play_button(commands, font);
+    let caret = build_play_target_caret(commands, font);
+    let group = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(1.0),
+                margin: UiRect::left(Val::Px(8.0)),
+                ..default()
+            },
+            Name::new("play-group"),
+        ))
+        .id();
+    commands.entity(group).add_children(&[play, caret]);
+    group
 }
 
-/// The top-bar Play / Stop button (icon + text). This is the editor's single
-/// play control now that the viewport toolbar's play/scripts buttons are gone.
+/// The Play / Stop button (icon + text). This is the editor's single play
+/// control now that the viewport toolbar's play/scripts buttons are gone.
 #[derive(Component)]
 struct TopBarPlayBtn;
 /// The play button's phosphor glyph (swaps play ↔ stop with state).
@@ -572,8 +593,8 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
             Node {
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                column_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(6.0), Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
@@ -584,14 +605,14 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
             Name::new("top-bar-play"),
         ))
         .id();
-    let icon = glyph(commands, "play", play_green(), 16.0);
+    let icon = glyph(commands, "play", play_green(), 13.0);
     commands
         .entity(icon)
         .insert((TopBarPlayIcon, bevy::ui::FocusPolicy::Pass));
     let label = commands
         .spawn((
             Text::new(renzora::lang::t("common.play")),
-            ui_font(font, 13.0),
+            ui_font(font, 11.0),
             TextColor(rgb(play_green())),
             TopBarPlayLabel,
             bevy::ui::FocusPolicy::Pass,
@@ -715,6 +736,7 @@ fn update_play_button(
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
     mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
     mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
+    mut fills: Query<(&mut BackgroundColor, &Interaction), With<TopBarPlayBtn>>,
 ) {
     let Some(theme) = theme else { return };
     let t = &theme.active_theme;
@@ -768,6 +790,21 @@ fn update_play_button(
         }
         if tcolor.0 != color {
             tcolor.0 = color;
+        }
+    }
+    // A tinted fill so the control reads as a *button*, not as green text on the
+    // toolbar. Derived from the same state color the icon and label use, so Play
+    // / Simulate / Stop each wash the pill in their own hue, and dimmed along
+    // with them when there's no scene camera to play through.
+    for (mut bg, interaction) in &mut fills {
+        let alpha = match interaction {
+            Interaction::Pressed => 0.34,
+            Interaction::Hovered => 0.26,
+            Interaction::None => 0.16,
+        };
+        let want = color.with_alpha(alpha);
+        if bg.0 != want {
+            bg.0 = want;
         }
     }
 }
@@ -928,7 +965,7 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
             Node {
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(3.0), Val::Px(5.0)),
+                padding: UiRect::axes(Val::Px(2.0), Val::Px(4.0)),
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 position_type: PositionType::Relative,
                 ..default()
@@ -1561,6 +1598,10 @@ struct WorkspaceDropZone;
 #[derive(Component)]
 struct CommandPaletteBtn;
 
+/// The top-bar gear — toggles the Settings panel.
+#[derive(Component)]
+struct SettingsBtn;
+
 /// In-progress ribbon drag (press-latch → reorder on release). `active` flips
 /// once the cursor moves past a small threshold so a plain click still switches.
 #[derive(Resource, Default)]
@@ -1582,6 +1623,35 @@ struct RibbonRename(Option<usize>);
 /// Marks the inline rename text field, carrying the workspace index it renames.
 #[derive(Component)]
 struct RibbonRenameInput(usize);
+
+/// In-progress document-tab reorder — the same press-latch shape as
+/// [`RibbonDrag`], so a plain click still activates the tab.
+#[derive(Resource, Default)]
+struct DocTabDrag(Option<DocTabDragState>);
+
+struct DocTabDragState {
+    /// The tab being carried, by **id**: a reorder shifts every index around it,
+    /// and a tab can be closed from elsewhere mid-drag.
+    id: u64,
+    start_cursor: Vec2,
+    /// Flips once the cursor has moved past a small threshold, so a click that
+    /// happens to wobble a pixel doesn't reorder anything. A drag started from
+    /// the overflow menu is born active — there was no click to tell it apart
+    /// from in the first place.
+    active: bool,
+    /// Insertion slot in `DocumentTabState::tabs` (`0..=len`) under the live
+    /// cursor; applied on release.
+    target: usize,
+}
+
+/// The document tab currently being inline-renamed (`None` = none). Read by
+/// [`doc_tab_snapshot`] so that tab renders an edit field in place of itself.
+#[derive(Resource, Default)]
+struct DocTabRename(Option<u64>);
+
+/// Marks the inline rename text field, carrying the tab id it renames.
+#[derive(Component)]
+struct DocTabRenameInput(u64);
 
 /// Marks the shell's root UI entity so it can be despawned when the backend
 /// switches back to egui.
@@ -2823,8 +2893,10 @@ fn spawn_shell(
         ))
         .id();
 
-    let top_bar = build_top_bar(commands, font);
-    let doctabs = build_doc_tabs(commands, font);
+    // No document-tab bar in this column: the tabs render inside the viewport
+    // panel now (see [`build_doc_tabs`]), so the shell chrome is top bar,
+    // toolbar strip, dock, status bar and nothing else.
+    let top_bar = build_top_bar(commands, font, fonts);
 
     // Dock area — ember reconciles the dock into this (tagged `DockArea`).
     let dock_area = commands
@@ -2847,7 +2919,7 @@ fn spawn_shell(
         ))
         .id();
 
-    // Shared panel-toolbar strip directly below the document tabs. Each panel
+    // Shared panel-toolbar strip directly below the top bar. Each panel
     // contributes its own toolbar items (via `register_panel_toolbar*`), and the
     // host shows the ones whose panel is the active dock tab — e.g. the viewport
     // header for the viewport, code-editor controls for the code editor, etc.
@@ -2894,7 +2966,7 @@ fn spawn_shell(
 
     commands
         .entity(root)
-        .add_children(&[top_bar, doctabs, toolbar, dock_area, collapsed_bottom, statusbar]);
+        .add_children(&[top_bar, toolbar, dock_area, collapsed_bottom, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     let grips = build_resize_zones(commands);
@@ -2903,18 +2975,22 @@ fn spawn_shell(
 
 /// Which chrome bar an entity is, so [`apply_chrome_style`] can repaint each from
 /// `Theme.chrome` (fill / height / separator edge / rounding / padding).
+///
+/// There's no `DocTabs` variant: the document tabs stopped being a bar of their
+/// own when they moved into the top bar, so they take the top bar's chrome.
+/// `Theme.chrome.doc_tabs` still exists (themes on disk set it, and the dock's
+/// own tab strips read it) — it just no longer paints a shell bar.
 #[derive(Component, Clone, Copy)]
 enum ChromeBar {
     Top,
-    DocTabs,
     Status,
 }
 
-/// Repaint the three chrome bars (top bar, document tabs, status bar) from the
-/// ember `Theme.chrome` whenever the theme changes — mirrors the dock's
-/// `apply_dock_style` so the bars are theme-driven (and live-editable in the
-/// Theme tab) rather than baking in palette colors. The status bar's separator
-/// sits on its top edge; the top bars' on the bottom.
+/// Repaint the chrome bars (top bar, status bar) from the ember `Theme.chrome`
+/// whenever the theme changes — mirrors the dock's `apply_dock_style` so the
+/// bars are theme-driven (and live-editable in the Theme tab) rather than baking
+/// in palette colors. The status bar's separator sits on its top edge; the top
+/// bar's on the bottom.
 fn apply_chrome_style(
     theme: Res<renzora_ember::style::Theme>,
     mut q: Query<(Ref<ChromeBar>, &mut BackgroundColor, &mut BorderColor, &mut Node)>,
@@ -2926,7 +3002,6 @@ fn apply_chrome_style(
         }
         let (s, edge_top) = match *kind {
             ChromeBar::Top => (&theme.top_bar, false),
-            ChromeBar::DocTabs => (&theme.doc_tabs, false),
             ChromeBar::Status => (&theme.status_bar, true),
         };
         bg.0 = s.bg.color();
@@ -3336,7 +3411,7 @@ fn status_row(commands: &mut Commands, fonts: &EmberFonts, row: &StatusRow) -> E
 
 /// The top bar: File/Edit/View/Help on the left, the layout ribbon centered,
 /// action buttons on the right.
-fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -3365,18 +3440,30 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
         ))
         .id();
 
-    let left = zone(commands, "top-left", JustifyContent::FlexStart, 2.0, 1.0);
-    let left_kids = vec![
-        top_menu_item(commands, font, &renzora::lang::t("menu.file"), TopMenuKind::File),
-        top_menu_item(commands, font, &renzora::lang::t("menu.edit"), TopMenuKind::Edit),
-        top_menu_item(commands, font, &renzora::lang::t("menu.view"), TopMenuKind::View),
-        top_menu_item(commands, font, &renzora::lang::t("menu.help"), TopMenuKind::Help),
-        account_menu_item(commands, font),
-        notification_bell_item(commands, font),
-    ];
-    commands.entity(left).add_children(&left_kids);
+    // `clip: false` — the Play button's target dropdown is a child of its caret,
+    // absolutely positioned below the bar, and bevy_ui clips absolutely
+    // positioned descendants like everything else (the trap that eats tooltips
+    // and submenu panels). A growing zone clips by default so its contents can't
+    // spill over the centered ribbon, which mattered while the document tabs
+    // lived here and could be arbitrarily wide; what's left is a fixed handful
+    // of buttons that will never reach half the window.
+    let left = zone(commands, "top-left", JustifyContent::FlexStart, 2.0, 1.0, false);
+    // Everything that acts on the *session* rather than on a panel: the
+    // hamburger, Settings, undo / redo / save, and Play. All of them used to be
+    // somewhere in the viewport's tool strip or its menus, which meant they were
+    // missing from any workspace without a viewport — and none of them is a
+    // viewport action. This bar is on screen in every workspace. The document
+    // tabs used to fill the rest of this zone; they now sit at the top of the
+    // viewport panel (see [`build_doc_tabs`]).
+    let hamburger = hamburger_menu_item(commands);
+    let session = renzora_viewport::native_header::build_session_actions(commands, fonts);
+    let settings = settings_button(commands);
+    let play = build_play_group(commands, font);
+    commands
+        .entity(left)
+        .add_children(&[hamburger, session, settings, play]);
 
-    let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0);
+    let center = zone(commands, "top-center", JustifyContent::Center, 2.0, 0.0, false);
     let magnifier = glyph(commands, "magnifying-glass", text_muted(), 14.0);
     // Search button — toggles the global command palette (Ctrl+P).
     commands.entity(magnifier).insert((
@@ -3391,22 +3478,17 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
         CommandPaletteBtn,
         renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
     ));
-    // Reactive ribbon — one button per workspace in `ShellLayouts`.
-    let ribbon = commands
-        .spawn((
-            Node {
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(2.0),
-                ..default()
-            },
-            bevy::ui::FocusPolicy::Pass,
-            WorkspaceDropZone,
-            RelativeCursorPosition::default(),
-            Name::new("ribbon"),
-        ))
-        .id();
+    // Reactive ribbon — one button per workspace in `ShellLayouts`. Capped the
+    // same way the document tabs are, so a project with a dozen workspaces folds
+    // the tail into a `»` menu instead of crowding out the bar's two ends.
+    let (ribbon_strip, ribbon) = renzora_ember::widgets::overflow_strip(
+        commands,
+        renzora_ember::widgets::OverflowBudget::Fixed(RIBBON_W),
+        "ribbon",
+    );
+    commands
+        .entity(ribbon)
+        .insert((WorkspaceDropZone, RelativeCursorPosition::default()));
     renzora_ember::reactive::tracked::keyed_list(commands, ribbon, ribbon_snapshot);
     let add = commands
         .spawn((
@@ -3430,31 +3512,12 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
         .spawn((Text::new("+"), ui_font(font, 12.0), TextColor(rgb(text_muted()))))
         .id();
     commands.entity(add).add_child(add_label);
-    commands.entity(center).add_children(&[magnifier, ribbon, add]);
+    commands.entity(center).add_children(&[magnifier, ribbon_strip, add]);
 
-    let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0);
-    let play = build_play_button(commands, font);
-    // Play + its target caret grouped tightly so they read as one split button
-    // (the zone's 8px gap would otherwise pull them apart).
-    let play_caret = build_play_target_caret(commands, font);
-    let play_group = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(1.0),
-                ..default()
-            },
-            Name::new("play-group"),
-        ))
-        .id();
-    commands.entity(play_group).add_children(&[play, play_caret]);
-    let settings = icon_item(commands, "gear", text_muted(), 16.0);
-    commands.entity(settings).insert((
-        Interaction::default(),
-        TopBarSettingsBtn,
-        renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-    ));
+    // The right zone is window controls only now: Play moved to the toolbar
+    // strip's trailing edge (see [`build_play_group`]) and the gear moved into
+    // the hamburger menu as its own top-level Settings row.
+    let right = zone(commands, "top-right", JustifyContent::FlexEnd, 8.0, 1.0, true);
 
     // Window controls: a fixed-size button with the glyph as a *child* so
     // `align_items`/`justify_content: Center` truly center it (text placed
@@ -3535,9 +3598,7 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource) -> Enti
     }
     commands.entity(window).add_children(&kids);
 
-    commands
-        .entity(right)
-        .add_children(&[play_group, settings, window]);
+    commands.entity(right).add_children(&[window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar
@@ -3623,8 +3684,54 @@ fn ribbon_item(
         ))
         .id();
     commands.entity(item).insert(RibbonItem { index, marker });
+    // What this workspace looks like in the ribbon's `»` menu once it folds —
+    // and, while it's the active one, the guarantee that it never folds at all.
+    commands.entity(item).insert(renzora_ember::widgets::OverflowEntry::new(
+        "browsers",
+        &renzora::lang::t_or(&format!("layout.{}", label.to_lowercase()), label),
+        move |w| select_workspace(w, index),
+    ));
+    if active {
+        commands.entity(item).insert(renzora_ember::widgets::OverflowKeep);
+    }
     commands.entity(item).add_children(&[text_wrap, underline, marker]);
     item
+}
+
+/// Switch to workspace `index` from a `&mut World` context (the ribbon's
+/// overflow menu, which has no system params of its own). The three resources
+/// [`apply_workspace`] mutates can't be borrowed at once, hence the nesting.
+fn select_workspace(w: &mut World, index: usize) {
+    w.resource_scope(|w, mut layouts: Mut<ShellLayouts>| {
+        w.resource_scope(|w, mut dock: Mut<Dock>| {
+            let mut dirty = w.resource_mut::<DockDirty>();
+            apply_workspace(index, &mut layouts, &mut dock, &mut dirty);
+        });
+    });
+}
+
+/// Activate document tab `id` from a `&mut World` context — the same work
+/// [`doc_tab_click`] does for a click on the tab itself, for the tabs that have
+/// folded into the strip's overflow menu.
+fn activate_doc_tab(w: &mut World, id: u64) {
+    let Some(mut state) = w.get_resource_mut::<renzora_ui::DocumentTabState>() else {
+        return;
+    };
+    let Some(idx) = state.tabs.iter().position(|t| t.id == id) else {
+        return;
+    };
+    let switch = state.activate_tab(idx);
+    let layout = state.tabs[idx].kind.layout_name().map(|n| n.to_string());
+    if let Some((old_tab_id, new_tab_id)) = switch {
+        w.insert_resource(renzora::TabSwitchRequest { old_tab_id, new_tab_id });
+    }
+    let Some(layout) = layout else { return };
+    let index = w
+        .get_resource::<ShellLayouts>()
+        .and_then(|l| l.layouts.iter().position(|(n, _)| *n == layout));
+    if let Some(index) = index {
+        select_workspace(w, index);
+    }
 }
 
 /// Keyed snapshot of the workspace ribbon (one button per `ShellLayouts` entry;
@@ -3691,7 +3798,25 @@ fn build_ribbon_rename_field(commands: &mut Commands, font: &bevy::text::FontSou
 
 /// The document tab strip: the open documents (`DocumentTabState`, shared with
 /// the egui editor) rendered reactively, plus an add-document button.
-fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> Entity {
+///
+/// **Where it lives.** Inside the primary viewport panel, under that panel's
+/// tool strip and directly above the rendered scene — mounted through
+/// [`renzora_ember::toolbar::register_viewport_top_strip`] rather than built
+/// here, because `renzora_shell` depends on `renzora_viewport` and not the other
+/// way round. It has been the editor's own full-width chrome bar and, before
+/// this, the left half of the top bar; the tabs now sit with the thing they
+/// switch between rather than at the far end of the window from it.
+///
+/// The consequence to know about: this bar exists only where a `viewport` panel
+/// does. Five of the nine default workspaces (Blueprints, Materials, Particles,
+/// Animation, Hub) have none, so there is no tab strip in them — switch
+/// documents from a workspace that has a viewport, or add one to the layout.
+///
+/// The bar spans the viewport's full width, so nothing folds until the tabs
+/// genuinely fill it. Inside it the tab list hugs its content, so the `+` button
+/// sits directly after the last tab and travels right as tabs are added; once
+/// they fill the bar the surplus folds into the caret menu and `+` stops moving.
+fn build_doc_tabs(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let bar = commands
         .spawn((
             Node {
@@ -3699,37 +3824,52 @@ fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> En
                 height: Val::Px(30.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
-                padding: UiRect::horizontal(Val::Px(8.0)),
-                border: UiRect::bottom(Val::Px(1.0)),
                 flex_shrink: 0.0,
+                min_width: Val::Px(0.0),
+                overflow: Overflow::clip(),
+                // Closed off underneath, against the scene. Dark rather than the
+                // toolbar's own separator colour: this edge is where the chrome
+                // stops and the render begins, which is a harder boundary than
+                // the ones *inside* the chrome.
+                border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
-            BackgroundColor(rgb(header_bg())),
+            // A half-step off `panel` toward the theme's contrasting surface —
+            // just enough to read as its own band rather than more toolbar.
+            // Mixing toward a second *theme* colour rather than toward white
+            // keeps it differentiated on light themes too, where "lighter" would
+            // walk it into the background instead of away from it.
+            //
+            // Graded rather than flat, and the direction matters: lit at the top
+            // where it meets the toolbar, settling back toward `panel` at the
+            // bottom where the dark rule closes it off against the scene. The
+            // band therefore reads as catching light from above rather than as a
+            // slab someone dropped between two darker things.
+            BackgroundColor(mix(panel_bg(), header_bg(), 0.55)),
+            BackgroundGradient::from(LinearGradient::to_bottom(vec![
+                ColorStop::auto(mix(panel_bg(), header_bg(), 0.85)),
+                ColorStop::auto(mix(panel_bg(), header_bg(), 0.20)),
+            ])),
             BorderColor::all(rgb(divider())),
-            ChromeBar::DocTabs,
-            renzora_ember::widgets::ThemeShaderSurface {
-                surface: renzora_ember::widgets::ThemeSurface::DocTabs,
-            },
+            // The bar sits over the viewport's picking area, so it has to swallow
+            // pointer events like the tool strip does — otherwise a click between
+            // two tabs falls through and deselects whatever is in the scene.
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::widgets::OverlaySurface,
             Name::new("doc-tabs"),
         ))
         .id();
 
-    // Reactive tab strip from the shared DocumentTabState.
-    let tabs = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                height: Val::Percent(100.0),
-                column_gap: Val::Px(2.0),
-                min_width: Val::Px(0.0),
-                overflow: Overflow::clip(),
-                ..default()
-            },
-            Name::new("doc-tab-list"),
-        ))
-        .id();
+    // Reactive tab strip from the shared DocumentTabState. The budget is the
+    // bar's own measured width, less room for the caret and `+` that share it.
+    // Gap 0: the tabs butt against each other, so the run of inactive ones reads
+    // as a single band with the active tab cut out of it.
+    let (strip, tabs) = renzora_ember::widgets::overflow_strip_gap(
+        commands,
+        renzora_ember::widgets::OverflowBudget::Fill { measure: bar, reserve: 66.0 },
+        0.0,
+        "doc-tab",
+    );
     renzora_ember::reactive::tracked::keyed_list(commands, tabs, doc_tab_snapshot);
 
     // "+" — add a new document (scene) tab.
@@ -3752,9 +3892,32 @@ fn build_doc_tabs(commands: &mut Commands, _font: &bevy::text::FontSource) -> En
         .id();
     let plus_icon = glyph(commands, "plus", text_muted(), 13.0);
     commands.entity(plus).add_child(plus_icon);
-    commands.entity(bar).add_children(&[tabs, plus]);
+
+    // Maximize, pushed to the far end. It acts on the whole viewport rather than
+    // on anything in the tool strip it used to sit in, and this is the one bar
+    // in the panel that runs its full width — so the right edge of it is where a
+    // "make this panel bigger" control belongs. Built by `renzora_viewport`, not
+    // here: its driver systems find it by component.
+    let spacer = commands
+        .spawn((
+            Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() },
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("doc-tabs-spacer"),
+        ))
+        .id();
+    let maximize = renzora_viewport::native_header::build_maximize(commands, fonts, 0);
+    commands
+        .entity(bar)
+        .add_children(&[strip, plus, spacer, maximize]);
     bar
 }
+
+/// Width budget for the workspace ribbon before workspaces start folding. Unlike
+/// the document tabs there's no container to measure — the ribbon is centered
+/// and content-sized, so it grows symmetrically out of the middle of the bar and
+/// a constant is what keeps it from meeting the two ends. Sized for the eight
+/// built-in workspaces plus a few of your own.
+const RIBBON_W: f32 = 700.0;
 
 #[derive(Component)]
 struct DocAddBtn;
@@ -3762,6 +3925,14 @@ struct DocAddBtn;
 struct DocTabClick(u64);
 #[derive(Component)]
 struct DocTabClose(u64);
+
+/// A document tab in the strip, carrying its id and the insertion marker shown
+/// at its edge during a reorder drag (mirrors [`RibbonItem`]).
+#[derive(Component)]
+struct DocTabItem {
+    id: u64,
+    marker: Entity,
+}
 
 /// Keyed snapshot of the open document tabs (id-keyed; the content hash carries
 /// active/modified state so a tab repaints only when it actually changes).
@@ -3775,30 +3946,81 @@ fn doc_tab_snapshot(world: &Rx) -> renzora_ember::reactive::KeyedSnapshot {
         return empty();
     };
     let can_close = state.tabs.len() > 1;
-    // (id, name, icon glyph, active, modified)
-    let tabs: Vec<(u64, String, &'static str, bool, bool)> = state
+    let renaming = world.get_resource::<DocTabRename>().and_then(|r| r.0);
+    let last = state.tabs.len().saturating_sub(1);
+    // (id, name, icon glyph, active, modified, renaming, trailing seam)
+    //
+    // The seam belongs to the *boundary*, not to either tab, so exactly one of
+    // the pair draws it: the left one. Every tab but the last, including either
+    // side of the active one — with no fill on any tab there is nothing else
+    // marking where one ends and the next begins.
+    let tabs: Vec<(u64, String, &'static str, bool, bool, bool, bool)> = state
         .tabs
         .iter()
         .enumerate()
-        .map(|(i, t)| (t.id, t.name.clone(), t.kind.icon(), i == state.active_tab, t.is_modified))
+        .map(|(i, t)| {
+            (
+                t.id,
+                t.name.clone(),
+                t.kind.icon(),
+                i == state.active_tab,
+                t.is_modified,
+                renaming == Some(t.id),
+                i != last,
+            )
+        })
         .collect();
     let items: Vec<(u64, u64)> = tabs
         .iter()
-        .map(|(id, name, icon, active, modified)| {
+        .map(|(id, name, icon, active, modified, editing, seam)| {
             let mut k = std::collections::hash_map::DefaultHasher::new();
             id.hash(&mut k);
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            (name, icon, active, modified, can_close).hash(&mut h);
+            (name, icon, active, modified, editing, seam, can_close).hash(&mut h);
             (k.finish(), h.finish())
         })
         .collect();
     renzora_ember::reactive::KeyedSnapshot {
         items,
         build: Box::new(move |c, f, i| {
-            let (id, name, icon, active, modified) = &tabs[i];
-            doc_tab_row(c, f, *id, name, icon, *active, *modified, can_close)
+            let (id, name, icon, active, modified, editing, seam) = &tabs[i];
+            if *editing {
+                build_doc_rename_field(c, &f.ui, *id, name)
+            } else {
+                doc_tab_row(c, f, *id, name, icon, *active, *modified, can_close, *seam)
+            }
         }),
     }
+}
+
+/// Inline rename field for a document tab, replacing the tab itself for as long
+/// as the edit is live (the same swap `ribbon_snapshot` does). Seeded with the
+/// current name — which for a saved document is its file stem, extension
+/// excluded; [`rename_doc_tab`] puts the extension back.
+fn build_doc_rename_field(
+    commands: &mut Commands,
+    font: &bevy::text::FontSource,
+    id: u64,
+    name: &str,
+) -> Entity {
+    let input = text_input(commands, font, &renzora::lang::t("common.name"), name);
+    commands.entity(input).insert((
+        DocTabRenameInput(id),
+        Node {
+            width: Val::Px(140.0),
+            height: Val::Px(22.0),
+            align_items: AlignItems::Center,
+            padding: UiRect::horizontal(Val::Px(6.0)),
+            border: UiRect::all(Val::Px(1.0)),
+            // Square, like the tab it stands in for.
+            flex_shrink: 0.0,
+            ..default()
+        },
+        // Folding the tab you're in the middle of renaming into the caret menu
+        // would take the field you're typing in off screen with it.
+        renzora_ember::widgets::OverflowKeep,
+    ));
+    input
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3811,44 +4033,118 @@ fn doc_tab_row(
     active: bool,
     modified: bool,
     can_close: bool,
+    seam: bool,
 ) -> Entity {
     let fg = if active { text_primary() } else { text_muted() };
     let tab = commands
         .spawn((
             Node {
+                // Full-height, square, and unfilled: with no background of
+                // its own, a tab is its icon and its name, and the padding is
+                // the only thing separating one from the next.
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(5.0),
-                padding: UiRect::axes(Val::Px(9.0), Val::Px(4.0)),
-                border: UiRect::top(Val::Px(2.0)),
+                column_gap: Val::Px(6.0),
+                padding: UiRect::axes(Val::Px(11.0), Val::Px(0.0)),
+                // Bottom edge, pointing at the scene the tab selects, and on
+                // EVERY tab rather than only the active one — the border eats
+                // into the content box, so handing it to one state and not the
+                // other would shift the label the moment you clicked. Inactive
+                // tabs simply paint theirs transparent.
+                border: UiRect::bottom(Val::Px(2.0)),
                 flex_shrink: 0.0,
                 ..default()
             },
-            BackgroundColor(if active { rgb(tab_active()) } else { Color::NONE }),
+            // No fill in either state. Fills and gradients both tried to say
+            // "these are separate objects", and each added more chrome to a
+            // strip whose job is to name six things. Marking the active tab is
+            // left to the accent rule under it and its brighter label — the same
+            // pairing, and the same token, as the workspace ribbon's underline.
+            BackgroundColor(Color::NONE),
             BorderColor::all(if active { rgb(accent()) } else { Color::NONE }),
             Interaction::default(),
             DocTabClick(id),
+            // The reorder drag hit-tests in the cursor's own space rather than
+            // against node centres, which drift under UI scaling — see
+            // `ribbon_interact`, which learned this the hard way.
+            RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            // How the tab appears in the strip's `»` menu once it folds. The
+            // active tab is pinned visible — folding the one you're editing into
+            // a menu is exactly the tab you can least afford to lose sight of.
+            // Dragging the row moves the tab instead of activating it, so a
+            // folded tab isn't stranded at the end of the strip with no way back.
+            renzora_ember::widgets::OverflowEntry::new(icon, name, move |w| activate_doc_tab(w, id))
+                .on_drag(move |w| start_doc_tab_drag(w, id)),
             Name::new(format!("doc:{name}")),
         ))
         .id();
-    // Kind icon — `icon` is a phosphor *name* (kebab-case); resolve to a glyph.
-    let ic = icon_text(commands, &fonts.phosphor, icon, fg, 13.0);
+    // Insertion marker: a thin accent bar at the tab's edge, hidden until a
+    // reorder drag points at this slot. Absolutely positioned, so it never
+    // affects the strip's layout (or its width budget).
+    let marker = commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(-2.0),
+                top: Val::Px(0.0),
+                height: Val::Percent(100.0),
+                width: Val::Px(2.0),
+                display: Display::None,
+                ..default()
+            },
+            BackgroundColor(rgb(accent())),
+            bevy::ui::FocusPolicy::Pass,
+            Name::new("doc-insert-marker"),
+        ))
+        .id();
+    commands.entity(tab).insert(DocTabItem { id, marker });
+    if active {
+        commands.entity(tab).insert(renzora_ember::widgets::OverflowKeep);
+    }
+    // Kind icon: scene vs material vs script at a glance, without reading the
+    // name. It was dropped while the strip was the top bar's fixed-width left
+    // zone, where every glyph cost a tab off the visible end; spanning the whole
+    // viewport there's room for it again.
+    //
+    // Coloured independently of the label: accent on the active tab, so the icon
+    // agrees with the rule beneath it, and muted on the rest. Matching `fg`
+    // exactly made each tab one flat block of a single colour.
+    let icon_fg = if active { accent() } else { text_muted() };
+    let kind_icon = icon_text(commands, &fonts.phosphor, icon, icon_fg, 12.0);
+    // Elide the *name*, then add the modified marker — eliding afterwards would
+    // eat the asterisk on exactly the tabs that most need it.
+    let shown = elide(name, DOC_TAB_CHARS);
+    if shown != name {
+        commands
+            .entity(tab)
+            .insert(renzora_ember::widgets::HoverTooltip::new(name));
+    }
+    // Semibold, not regular: the tab labels are the one place in the chrome
+    // that names what you're editing, and at this size the weight is what
+    // carries the active tab now that its fill is the same as the bar's.
+    let mut label_font = ui_font(&fonts.ui, 12.0);
+    label_font.weight = bevy::text::FontWeight::SEMIBOLD;
     let lbl = commands
         .spawn((
-            Text::new(if modified { format!("{name}*") } else { name.to_string() }),
-            ui_font(&fonts.ui, 12.0),
+            Text::new(if modified { format!("{shown}*") } else { shown }),
+            label_font,
             TextColor(rgb(fg)),
         ))
         .id();
-    let mut kids = vec![ic, lbl];
-    if can_close {
+    let mut kids = vec![kind_icon, lbl];
+    // Only the active tab carries a ✕. On every tab it was six close buttons
+    // competing for the eye, and it made the strip a near-copy of the dock's own
+    // panel tab bar directly above — same chips, same ✕, same trailing `+` — for
+    // two entirely different ideas. Closing an inactive scene is now click-then-✕,
+    // which is one extra click on the thing you were about to look at anyway.
+    if can_close && active {
         let close = commands
             .spawn((
                 Node {
                     align_items: AlignItems::Center,
-                    padding: UiRect::left(Val::Px(2.0)),
+                    padding: UiRect::left(Val::Px(1.0)),
                     ..default()
                 },
                 Interaction::default(),
@@ -3856,12 +4152,75 @@ fn doc_tab_row(
                 renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             ))
             .id();
-        let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 11.0);
+        let x = icon_text(commands, &fonts.phosphor, "x", text_muted(), 10.0);
         commands.entity(close).add_child(x);
         kids.push(close);
     }
+    // The boundary between two tabs: a short hairline centred on the trailing
+    // edge, not a full-height rule. Edge-to-edge lines on flush tabs read as a
+    // picket fence — the eye follows the verticals instead of the names.
+    // Absolutely positioned, so it costs the tab no width.
+    if seam {
+        let line = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    right: Val::Px(0.0),
+                    top: Val::Percent(30.0),
+                    height: Val::Percent(40.0),
+                    width: Val::Px(1.0),
+                    ..default()
+                },
+                BackgroundColor(doc_tab_divider()),
+                bevy::ui::FocusPolicy::Pass,
+                Name::new("doc-tab-seam"),
+            ))
+            .id();
+        kids.push(line);
+    }
+    kids.push(marker);
     commands.entity(tab).add_children(&kids);
     tab
+}
+
+/// Longest document-tab label kept intact, in characters.
+const DOC_TAB_CHARS: usize = 18;
+
+/// The hairline between two scene tabs.
+///
+/// The same token the viewport toolbar's own separators use (`border`, which the
+/// palette takes from the theme's `border_light`), so the two rows of chrome
+/// divide their contents the same way. It is deliberately NOT `divider`: that is
+/// the darker token, and it belongs to the hard edge under the whole strip, not
+/// to the soft boundaries between names inside it.
+fn doc_tab_divider() -> Color {
+    rgb(border())
+}
+
+/// `t` of the way from `a` to `b`, in sRGB.
+///
+/// Interpolating between two *theme* colours rather than toward an absolute
+/// black or white is what makes this work in light and dark themes alike: the
+/// result is always between two surfaces the theme author chose, so it can't
+/// invert the way "lighten by 10%" does when the palette flips.
+fn mix(a: (u8, u8, u8), b: (u8, u8, u8), t: f32) -> Color {
+    let c = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t) / 255.0;
+    Color::srgb(c(a.0, b.0), c(a.1, b.1), c(a.2, b.2))
+}
+
+/// Shorten `s` to `max` characters, ending in an ellipsis when it doesn't fit.
+///
+/// Done on the string because bevy_ui has no `text-overflow: ellipsis` — a `Text`
+/// wider than its node either wraps or spills, and neither is what a tab wants.
+/// Counting *characters* rather than measuring the laid-out width is
+/// approximate for a proportional font, but it's stable, costs nothing, and an
+/// elided tab carries the full name in a hover tooltip.
+fn elide(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let kept: String = s.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", kept.trim_end())
 }
 
 /// Swap the dock to workspace `index`, saving the current layout into the active
@@ -4017,6 +4376,7 @@ fn sync_workspace_to_active_doc(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn doc_tab_click(
     mut commands: Commands,
     q: Query<(&Interaction, &DocTabClick), Changed<Interaction>>,
@@ -4024,10 +4384,16 @@ fn doc_tab_click(
     mut layouts: ResMut<ShellLayouts>,
     mut dock: ResMut<Dock>,
     mut dirty: ResMut<DockDirty>,
+    rename: Res<DocTabRename>,
 ) {
     let Some(mut state) = state else { return };
     for (interaction, click) in &q {
         if *interaction != Interaction::Pressed {
+            continue;
+        }
+        // While this tab is being renamed its edit field owns clicks — a press
+        // really landing in there must not re-activate the tab underneath.
+        if rename.0 == Some(click.0) {
             continue;
         }
         let Some(idx) = state.tabs.iter().position(|t| t.id == click.0) else {
@@ -4047,6 +4413,330 @@ fn doc_tab_click(
         if let Some(name) = state.tabs[idx].kind.layout_name() {
             if let Some(wi) = layouts.layouts.iter().position(|(n, _)| n == name) {
                 apply_workspace(wi, &mut layouts, &mut dock, &mut dirty);
+            }
+        }
+    }
+}
+
+/// Press-latch reorder for the document tabs, plus the double-click that opens an
+/// inline rename: dragging a tab past a small threshold moves it in
+/// [`DocumentTabState`] on release, while two quick clicks that *didn't* drag
+/// start a rename. Mirrors [`ribbon_interact`].
+///
+/// The reorder is applied **once, on release** rather than live as the cursor
+/// crosses each neighbour: every mutation of `DocumentTabState` is a project.toml
+/// write (`persist_open_tabs`), and a live reorder would spend one per tab
+/// crossed. The insertion marker is what makes that deferral invisible.
+///
+/// The double-click lives here rather than in [`doc_tab_click`] for the same
+/// reason it keys off the *release*: this is the only place that knows whether
+/// the press in between turned into a drag. Arming the rename from presses alone
+/// would fire it on the click that follows a reorder.
+#[allow(clippy::too_many_arguments)]
+fn doc_tab_drag(
+    mut drag: ResMut<DocTabDrag>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    time: Res<Time>,
+    mut rename: ResMut<DocTabRename>,
+    pressed: Query<(&DocTabItem, &Interaction)>,
+    items: Query<(&DocTabItem, &RelativeCursorPosition, &Visibility)>,
+    mut nodes: Query<&mut Node>,
+    state: Option<ResMut<renzora_ui::DocumentTabState>>,
+    mut last_click: Local<Option<(u64, f64)>>,
+) {
+    let hide_markers = |items: &Query<(&DocTabItem, &RelativeCursorPosition, &Visibility)>,
+                        nodes: &mut Query<&mut Node>| {
+        for (it, _, _) in items {
+            if let Ok(mut n) = nodes.get_mut(it.marker) {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
+        }
+    };
+
+    // Don't drag while a tab is being renamed — the press belongs to the field.
+    if rename.0.is_some() {
+        drag.0 = None;
+        hide_markers(&items, &mut nodes);
+        return;
+    }
+    let Some(mut state) = state else {
+        drag.0 = None;
+        hide_markers(&items, &mut nodes);
+        return;
+    };
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+
+    if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
+        if let Some(cur) = cursor {
+            for (item, interaction) in &pressed {
+                if *interaction == Interaction::Pressed {
+                    let from = state.tabs.iter().position(|t| t.id == item.id).unwrap_or(0);
+                    drag.0 = Some(DocTabDragState {
+                        id: item.id,
+                        start_cursor: cur,
+                        active: false,
+                        target: from,
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    if let (Some(st), Some(cur)) = (drag.0.as_mut(), cursor) {
+        if (cur - st.start_cursor).length() > 5.0 {
+            st.active = true;
+        }
+    }
+
+    // Track the insertion slot under the cursor and show the matching edge
+    // marker: the cursor in a tab's left half inserts before it, right half
+    // after it. Folded tabs never report `cursor_over`, so they're skipped for
+    // free — a drag can only land among the tabs actually on screen.
+    match drag.0.as_mut() {
+        Some(st) if st.active => {
+            let mut shown: Option<(Entity, bool)> = None;
+            for (it, rcp, vis) in &items {
+                // A tab still being measured out of the flow sits at its static
+                // position and would hit-test over a real one — see the strip's
+                // `probe_new_item`. It isn't on screen; it can't be a drop target.
+                if !rcp.cursor_over || *vis == Visibility::Hidden {
+                    continue;
+                }
+                let Some(idx) = state.tabs.iter().position(|t| t.id == it.id) else {
+                    continue;
+                };
+                let before = rcp.normalized.is_none_or(|n| n.x < 0.0);
+                st.target = if before { idx } else { idx + 1 };
+                shown = Some((it.marker, !before));
+                break;
+            }
+            hide_markers(&items, &mut nodes);
+            if let Some((marker, right)) = shown {
+                if let Ok(mut n) = nodes.get_mut(marker) {
+                    n.display = Display::Flex;
+                    if right {
+                        n.left = Val::Auto;
+                        n.right = Val::Px(-2.0);
+                    } else {
+                        n.left = Val::Px(-2.0);
+                        n.right = Val::Auto;
+                    }
+                }
+            }
+        }
+        _ => hide_markers(&items, &mut nodes),
+    }
+
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    hide_markers(&items, &mut nodes);
+    let Some(st) = drag.0.take() else { return };
+    if !st.active {
+        // A click, not a drag: the second one within the double-click window
+        // opens the inline rename. The tab is already active from the press.
+        let now = time.elapsed_secs_f64();
+        if last_click.is_some_and(|(id, t)| id == st.id && now - t < 0.4) {
+            *last_click = None;
+            rename.0 = Some(st.id);
+        } else {
+            *last_click = Some((st.id, now));
+        }
+        return;
+    }
+    // A reorder invalidates the click that started it, so the next click on the
+    // tab you just moved isn't read as the second half of a double-click.
+    *last_click = None;
+    let Some(from) = state.tabs.iter().position(|t| t.id == st.id) else {
+        return;
+    };
+    // `reorder` takes an insertion slot in the *pre-removal* list, so both the
+    // tab's own slot and the one just past it are no-ops.
+    let to = st.target.min(state.tabs.len());
+    if to != from && to != from + 1 {
+        state.reorder(from, to);
+    }
+}
+
+/// Start carrying a document tab that has folded into the strip's `»` menu,
+/// from the drag the menu row hands over. Born active: the press that started it
+/// was inside the menu, so there's no click/drag ambiguity left to resolve, and
+/// no strip position to measure the threshold from.
+fn start_doc_tab_drag(world: &mut World, id: u64) {
+    let from = world
+        .get_resource::<renzora_ui::DocumentTabState>()
+        .and_then(|s| s.tabs.iter().position(|t| t.id == id))
+        .unwrap_or(0);
+    if let Some(mut drag) = world.get_resource_mut::<DocTabDrag>() {
+        drag.0 = Some(DocTabDragState {
+            id,
+            start_cursor: Vec2::ZERO,
+            active: true,
+            target: from,
+        });
+    }
+}
+
+/// Auto-focus the document-tab rename field the frame it spawns, with the whole
+/// name selected the way an OS rename does — a double-click means "replace this",
+/// not "put a caret somewhere in it".
+fn doc_focus_rename(mut q: Query<&mut EmberTextInput, Added<DocTabRenameInput>>) {
+    for mut inp in &mut q {
+        inp.focused = true;
+        inp.select_all = true;
+    }
+}
+
+/// Commit (Enter / click-away) or cancel (Escape) the active document-tab rename.
+///
+/// Commit-on-blur waits until the field has actually held focus: it's spawned by
+/// the keyed-list rebuild a frame or two after [`DocTabRename`] is set, so "no
+/// field yet" must not read as "gone", and the double-click that opened the
+/// rename must not immediately close it again.
+fn doc_rename_commit(
+    mut rename: ResMut<DocTabRename>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut inputs: Query<(
+        &mut EmberTextInput,
+        &RelativeCursorPosition,
+        &DocTabRenameInput,
+    )>,
+    mut commands: Commands,
+    mut had_focus: Local<bool>,
+) {
+    let Some(id) = rename.0 else {
+        *had_focus = false;
+        return;
+    };
+    if keys.just_pressed(KeyCode::Escape) {
+        rename.0 = None;
+        *had_focus = false;
+        return;
+    }
+    let Some((mut inp, rcp, _)) = inputs.iter_mut().find(|(_, _, r)| r.0 == id) else {
+        return;
+    };
+    // A click inside the field (to move the caret) must keep it editing; the
+    // strip's own click handling can otherwise steal focus the instant you click.
+    if mouse.just_pressed(MouseButton::Left) && rcp.cursor_over && !inp.focused {
+        inp.focused = true;
+    }
+    if inp.focused {
+        *had_focus = true;
+    }
+    if !*had_focus {
+        return;
+    }
+    let enter = keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::NumpadEnter);
+    let clicked_away = mouse.just_pressed(MouseButton::Left) && !rcp.cursor_over;
+    if !enter && !clicked_away {
+        return;
+    }
+    let new: String = inp.value.replace('\n', "").trim().to_string();
+    rename.0 = None;
+    *had_focus = false;
+    if new.is_empty() {
+        return;
+    }
+    commands.queue(move |world: &mut World| rename_doc_tab(world, id, &new));
+}
+
+/// Apply a document-tab rename.
+///
+/// A tab with a file behind it is renamed **on disk**. Its label is that file's
+/// stem and nothing else — `editor_open_tabs` persists only paths and kinds, and
+/// a reopened tab takes its name from the path again — so a label-only rename
+/// would silently undo itself on the next project load. The move is announced
+/// via [`renzora::AssetPathChanged`], the same event the asset browser fires, so
+/// every holder of the old path (this tab included, through
+/// [`doc_tabs_follow_asset_path`]) is patched by one code path.
+///
+/// An unsaved tab has no file, so there the label really is all there is.
+fn rename_doc_tab(world: &mut World, id: u64, new_name: &str) {
+    let old_rel = world
+        .get_resource::<renzora_ui::DocumentTabState>()
+        .and_then(|s| s.tabs.iter().find(|t| t.id == id))
+        .map(|t| t.scene_path.clone());
+    let Some(old_rel) = old_rel else { return };
+    let Some(old_rel) = old_rel else {
+        if let Some(mut state) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
+            if let Some(tab) = state.tabs.iter_mut().find(|t| t.id == id) {
+                tab.name = new_name.to_string();
+            }
+        }
+        return;
+    };
+
+    let Some(old_abs) = world
+        .get_resource::<renzora::CurrentProject>()
+        .map(|p| p.resolve_path(&old_rel))
+    else {
+        return;
+    };
+    // Keep the extension: the label the user edited never had one.
+    let file_name = match old_abs.extension().and_then(|e| e.to_str()) {
+        Some(ext) => format!("{new_name}.{ext}"),
+        None => new_name.to_string(),
+    };
+    let new_abs = old_abs.with_file_name(&file_name);
+    if new_abs == old_abs {
+        return;
+    }
+    if new_abs.exists() {
+        warn!("[tabs] rename refused — '{}' already exists", new_abs.display());
+        return;
+    }
+    if let Err(e) = std::fs::rename(&old_abs, &new_abs) {
+        warn!("[tabs] failed to rename '{}': {e}", old_abs.display());
+        return;
+    }
+    // Derived from the stored path rather than re-deriving it from the new
+    // absolute one: `make_relative` canonicalizes, and the tab's path is already
+    // project-relative with forward slashes.
+    let new_rel = match old_rel.rfind('/') {
+        Some(i) => format!("{}/{}", &old_rel[..i], file_name),
+        None => file_name,
+    };
+    world.trigger(renzora::AssetPathChanged {
+        old: old_rel,
+        new: new_rel,
+        is_dir: false,
+    });
+}
+
+/// Follow a renamed or moved asset in the open document tabs, so a rename from
+/// anywhere — this strip, the asset browser, a folder move — leaves every open
+/// tab pointing at the file it actually has open rather than at a dead path.
+fn doc_tabs_follow_asset_path(
+    trigger: On<renzora::AssetPathChanged>,
+    state: Option<ResMut<renzora_ui::DocumentTabState>>,
+    context: Option<ResMut<renzora_ui::EditorContext>>,
+) {
+    let ev = trigger.event();
+    if let Some(mut state) = state {
+        for tab in state.tabs.iter_mut() {
+            let Some(new_path) = tab.scene_path.as_ref().and_then(|p| ev.rewrite(p)) else {
+                continue;
+            };
+            if let Some(stem) = std::path::Path::new(&new_path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+            {
+                tab.name = stem.to_string();
+            }
+            tab.scene_path = Some(new_path);
+        }
+    }
+    // Asset-mode panels load straight from this path, so it has to move too.
+    if let Some(mut context) = context {
+        if let renzora_ui::EditorContext::Asset { path, .. } = &mut *context {
+            if let Some(new_path) = ev.rewrite(path) {
+                *path = new_path;
             }
         }
     }
@@ -4111,14 +4801,65 @@ fn doc_tab_close(
     }
 }
 
+/// The top bar's gear — opens (or closes) the Settings panel.
+///
+/// The bar carried a gear button once before; it was dropped when the menus were
+/// folded into the hamburger, which left the hamburger's own **Settings** row as
+/// the only way in. That row stays — this is the one-click path back, for the
+/// thing the menu's own comment admits is "reached far too often".
+fn settings_button(commands: &mut Commands) -> Entity {
+    let gear = glyph(commands, "gear", text_muted(), 14.0);
+    commands.entity(gear).insert((
+        Node {
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            padding: UiRect::axes(Val::Px(5.0), Val::Px(3.0)),
+            border_radius: BorderRadius::all(Val::Px(4.0)),
+            ..default()
+        },
+        Interaction::default(),
+        SettingsBtn,
+        renzora_ember::widgets::HoverTooltip::new(renzora::lang::t("common.settings")),
+        renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+    ));
+    gear
+}
+
+/// Gear → toggle the Settings panel. Same toggle the hamburger's Settings row
+/// runs, so clicking either while it's open closes it.
+fn settings_btn_click(
+    q: Query<&Interaction, (With<SettingsBtn>, Changed<Interaction>)>,
+    settings: Option<ResMut<renzora_editor_framework::EditorSettings>>,
+) {
+    let Some(mut settings) = settings else { return };
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        settings.show_settings = !settings.show_settings;
+    }
+}
+
 /// A full-height flex row used as a top-bar zone (left / center / right).
+///
+/// A growing zone gets `flex_basis: 0` — without it flexbox hands out only the
+/// *leftover* space equally, so the two side zones end up as wide as their own
+/// content plus a share, and the "centered" middle zone sits wherever the
+/// heavier side pushes it. From a zero basis both sides are dealt identical
+/// widths whatever they hold, which is what actually centers the ribbon in the
+/// window. They shrink rather than grow past that half.
+///
+/// `clip` is separate from `grow` because the two wants can conflict: clipping
+/// is what stops a zone's contents spilling over the ribbon, but it also cuts
+/// off anything a child hangs *outside* the bar — a dropdown panel, a tooltip.
+/// A zone holding a fixed, small set of buttons has nothing to contain and
+/// should not clip.
 fn zone(
     commands: &mut Commands,
     name: &str,
     justify: JustifyContent,
     gap: f32,
     grow: f32,
+    clip: bool,
 ) -> Entity {
+    let growing = grow > 0.0;
     commands
         .spawn((
             Node {
@@ -4128,6 +4869,9 @@ fn zone(
                 justify_content: justify,
                 column_gap: Val::Px(gap),
                 flex_grow: grow,
+                flex_basis: if growing { Val::Px(0.0) } else { Val::Auto },
+                min_width: Val::Px(0.0),
+                overflow: if clip { Overflow::clip() } else { Overflow::visible() },
                 ..default()
             },
             // Structural container — let clicks fall through to the bar's drag
@@ -4140,10 +4884,14 @@ fn zone(
 
 
 
-// ── Top-bar menus (File / Edit / View / Help) ────────────────────────────────
+// ── Top-bar menus (hamburger → File / Edit / View / Help) ────────────────────
 
 #[derive(Clone, Copy, PartialEq)]
 enum TopMenuKind {
+    /// The hamburger: one dropdown whose rows are the File/Edit/View/Help
+    /// submenus. The four kinds below are no longer top-bar titles of their own
+    /// — they only name the item list each submenu is filled with.
+    Main,
     File,
     Edit,
     View,
@@ -4162,107 +4910,19 @@ struct OpenTopMenu {
     kind: Option<TopMenuKind>,
 }
 
-/// An interactive top-bar menu title (File/Edit/View/Help).
-fn top_menu_item(
-    commands: &mut Commands,
-    font: &bevy::text::FontSource,
-    label: &str,
-    kind: TopMenuKind,
-) -> Entity {
-    // The debug Name is a stable identifier derived from the menu kind, NOT the
-    // (now localized) label — so translating the title doesn't rename the entity.
-    let name_id = match kind {
-        TopMenuKind::File => "file",
-        TopMenuKind::Edit => "edit",
-        TopMenuKind::View => "view",
-        TopMenuKind::Help => "help",
-        TopMenuKind::Account => "account",
-    };
-    let item = commands
-        .spawn((
-            Node {
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
-                align_items: AlignItems::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            TopMenu(kind),
-            Name::new(format!("menu:{name_id}")),
-        ))
-        .id();
-    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
-        _ => Color::NONE,
-    });
-    commands.entity(item).with_children(|p| {
-        p.spawn((
-            Text::new(label),
-            ui_font(font, 14.0),
-            TextColor(rgb(text_muted())),
-            bevy::ui::FocusPolicy::Pass,
-        ));
-    });
-    item
-}
-
-/// The account menu title (left bar, after Help). Identical styling to the other
-/// top menus, but its label is reactive (the signed-in username, or "Sign In").
-fn account_menu_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
-    let item = commands
-        .spawn((
-            Node {
-                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
-                align_items: AlignItems::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            bevy::ui::RelativeCursorPosition::default(),
-            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            TopMenu(TopMenuKind::Account),
-            Name::new("menu:account"),
-        ))
-        .id();
-    renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
-        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
-        _ => Color::NONE,
-    });
-    let label = commands
-        .spawn((
-            Text::new(renzora::lang::t("auth.sign_in")),
-            ui_font(font, 14.0),
-            TextColor(rgb(text_muted())),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-    renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
-        w.get_resource::<renzora::core::AuthBridge>()
-            .and_then(|b| b.signed_in_username.clone())
-            .unwrap_or_else(|| renzora::lang::t("auth.sign_in"))
-    });
-    commands.entity(item).add_child(label);
-    item
-}
-
-/// Marks the top-bar notification bell (right of the account item). Clicking
-/// it opens the Community Notifications panel via the social bridge.
-#[derive(Component)]
-struct NotifBellBtn;
-
-/// The top-bar notification bell: unread count from [`renzora::core::SocialBridge`],
-/// hidden when signed out or disabled in Settings → Social & Privacy.
-fn notification_bell_item(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+/// The hamburger that replaced the File/Edit/View/Help titles: one top-bar
+/// button opening a single dropdown, with those four now submenu rows inside it.
+///
+/// It's icon-only on purpose — the point of collapsing four titles into one was
+/// to give the left zone back to the account name and the bell, so a label here
+/// would spend most of the width we just reclaimed.
+fn hamburger_menu_item(commands: &mut Commands) -> Entity {
     let item = commands
         .spawn((
             Node {
                 padding: UiRect::axes(Val::Px(7.0), Val::Px(4.0)),
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(4.0),
+                justify_content: JustifyContent::Center,
                 border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
@@ -4270,82 +4930,37 @@ fn notification_bell_item(commands: &mut Commands, font: &bevy::text::FontSource
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
-            NotifBellBtn,
-            Name::new("menu:notifications"),
+            TopMenu(TopMenuKind::Main),
+            Name::new("menu:main"),
         ))
         .id();
     renzora_ember::reactive::tracked::bind_bg(commands, item, move |w| match w.get::<Interaction>(item) {
         Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(renzora_ember::theme::hover_bg()),
         _ => Color::NONE,
     });
-    renzora_ember::reactive::tracked::bind_display(commands, item, |w| {
-        let enabled = w
-            .get_resource::<renzora::core::SocialBridge>()
-            .map(|b| b.notify_button_enabled)
-            .unwrap_or(false);
-        let signed_in = w
-            .get_resource::<renzora::core::AuthBridge>()
-            .and_then(|b| b.signed_in_username.clone())
-            .is_some();
-        enabled && signed_in
-    });
-    let bell = glyph(commands, "bell", text_muted(), 13.0);
-    let count = commands
-        .spawn((
-            Text::new(""),
-            ui_font(font, 11.0),
-            TextColor(renzora_ember::theme::rgba([235, 180, 80, 255])),
-            bevy::ui::FocusPolicy::Pass,
-        ))
-        .id();
-    renzora_ember::reactive::tracked::bind_text(commands, count, |w| {
-        let n = w
-            .get_resource::<renzora::core::SocialBridge>()
-            .map(|b| b.unread_notifications)
-            .unwrap_or(0);
-        if n > 0 { n.to_string() } else { String::new() }
-    });
-    // Hide the count entirely at zero so the button doesn't reserve gap space.
-    renzora_ember::reactive::tracked::bind_display(commands, count, |w| {
-        w.get_resource::<renzora::core::SocialBridge>()
-            .map(|b| b.unread_notifications > 0)
-            .unwrap_or(false)
-    });
-    commands.entity(item).add_children(&[bell, count]);
+    let icon = glyph(commands, "list", text_muted(), 15.0);
+    commands.entity(item).add_child(icon);
     item
 }
 
-/// Bell click → toggle the notifications dropdown (consumed by `renzora_social`).
-/// Anchored below the button via [`anchor_below`], the same way the top menus
-/// position their popups.
-fn notif_bell_click(
-    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
-    bells: Query<
-        (&Interaction, &bevy::ui::RelativeCursorPosition, &ComputedNode),
-        (With<NotifBellBtn>, Changed<Interaction>),
-    >,
-    bridge: Option<ResMut<renzora::core::SocialBridge>>,
-) {
-    let Some(mut bridge) = bridge else { return };
-    for (i, rcp, cn) in &bells {
-        if *i == Interaction::Pressed {
-            if let Some(pos) = anchor_below(&windows, rcp, cn) {
-                bridge.notify_dropdown_request = Some((pos.x, pos.y));
-            }
-        }
-    }
-}
-
 /// Spawn a top-menu dropdown anchored at `pos` and return its root.
-fn spawn_top_menu(commands: &mut Commands, fonts: &EmberFonts, kind: TopMenuKind, pos: Vec2, signed_in: bool) -> Entity {
+fn spawn_top_menu(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    kind: TopMenuKind,
+    pos: Vec2,
+    account: Option<&str>,
+) -> Entity {
     let root = renzora_ember::widgets::screen_menu(commands, pos.x, pos.y);
-    let kids = build_menu_items(commands, fonts, kind, signed_in);
+    let kids = build_menu_items(commands, fonts, kind, account);
     commands.entity(root).add_children(&kids);
     root
 }
 
-fn signed_in(bridge: &Option<Res<renzora::core::AuthBridge>>) -> bool {
-    bridge.as_ref().and_then(|b| b.signed_in_username.clone()).is_some()
+/// The signed-in username, if any — read per menu-open so the hamburger's
+/// account row shows the current name without a reactive binding.
+fn account_name(bridge: &Option<Res<renzora::core::AuthBridge>>) -> Option<String> {
+    bridge.as_ref().and_then(|b| b.signed_in_username.clone())
 }
 
 /// Click a top-bar title → open its dropdown (anchored under the button), or
@@ -4369,7 +4984,7 @@ fn top_menu_open(
     let Some(fonts) = fonts else {
         return;
     };
-    let signed = signed_in(&bridge);
+    let account = account_name(&bridge);
     for (interaction, menu, rcp, cn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -4386,7 +5001,7 @@ fn top_menu_open(
             open.kind = None;
             continue;
         };
-        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, signed));
+        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref()));
         open.kind = Some(menu.0);
     }
 }
@@ -4408,7 +5023,7 @@ fn top_menu_hover(
 ) {
     let Some(open_kind) = open.kind else { return };
     let Some(fonts) = fonts else { return };
-    let signed = signed_in(&bridge);
+    let account = account_name(&bridge);
     for (interaction, menu, rcp, cn) in &q {
         if *interaction == Interaction::Hovered && menu.0 != open_kind {
             if let Some(e) = open.menu.take() {
@@ -4418,7 +5033,7 @@ fn top_menu_hover(
                 open.kind = None;
                 return;
             };
-            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, signed));
+            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref()));
             open.kind = Some(menu.0);
             return;
         }
@@ -4454,17 +5069,85 @@ fn anchor_below(
     Some(Vec2::new(top_left.x, top_left.y + size.y + 2.0))
 }
 
+/// Build one menu's rows. `account` is the signed-in username (`None` = signed
+/// out) — the menu needs the name itself now, not just the fact of being signed
+/// in, because the hamburger's first row *is* the username.
 fn build_menu_items(
     commands: &mut Commands,
     fonts: &EmberFonts,
     kind: TopMenuKind,
-    signed_in: bool,
+    account: Option<&str>,
 ) -> Vec<Entity> {
-    use renzora_ember::widgets::{menu_item, menu_sep};
+    use renzora_ember::widgets::{menu_item, menu_sep, menu_submenu};
     match kind {
+        // The hamburger's own dropdown: the account, then four submenu rows,
+        // each filled by recursing into the item list that used to be its own
+        // top-bar title.
+        TopMenuKind::Main => {
+            let mut rows: Vec<Entity> = Vec::new();
+            // The signed-in username, which lost its top-bar slot to the
+            // document tabs. Signed out there's nothing to nest, so it's a plain
+            // "Sign In" row rather than a submenu holding one item. No reactive
+            // binding needed either way: the menu is rebuilt on every open, so
+            // the label is read fresh each time.
+            if let Some(name) = account {
+                let (row, content) = menu_submenu(commands, fonts, "user", name);
+                let kids = build_menu_items(commands, fonts, TopMenuKind::Account, account);
+                commands.entity(content).add_children(&kids);
+                rows.push(row);
+            } else {
+                rows.extend(build_menu_items(commands, fonts, TopMenuKind::Account, account));
+            }
+            rows.push(menu_sep(commands));
+            rows.extend(
+                [
+                    ("file", renzora::lang::t("menu.file"), TopMenuKind::File),
+                    ("pencil-simple", renzora::lang::t("menu.edit"), TopMenuKind::Edit),
+                    ("eye", renzora::lang::t("menu.view"), TopMenuKind::View),
+                    ("question", renzora::lang::t("menu.help"), TopMenuKind::Help),
+                ]
+                .into_iter()
+                .map(|(icon, label, sub)| {
+                    let (row, content) = menu_submenu(commands, fonts, icon, &label);
+                    let kids = build_menu_items(commands, fonts, sub, account);
+                    commands.entity(content).add_children(&kids);
+                    row
+                }),
+            );
+            // Settings is top-level rather than buried at the bottom of File: it
+            // took the gear button's place when that left the top bar, and it's
+            // reached far too often to sit two hovers deep.
+            rows.push(menu_sep(commands));
+            rows.push(menu_item(
+                commands,
+                fonts,
+                "gear",
+                &renzora::lang::t("common.settings"),
+                |w| {
+                    if let Some(mut s) =
+                        w.get_resource_mut::<renzora_editor_framework::EditorSettings>()
+                    {
+                        s.show_settings = !s.show_settings;
+                    }
+                },
+            ));
+            rows
+        }
         TopMenuKind::Account => {
-            if signed_in {
+            if account.is_some() {
                 vec![
+                    // The notifications entry point. It used to be the top-bar
+                    // bell; that button is gone, and this is the only way in, so
+                    // the row opens the same dropdown `renzora_social` consumes
+                    // — anchored under the ☰ button rather than under a bell
+                    // that no longer exists.
+                    menu_item(commands, fonts, "bell", &renzora::lang::t_or("menu.account.notifications", "Notifications"), |w| {
+                        if let Some(mut b) = w.get_resource_mut::<renzora::core::SocialBridge>() {
+                            if b.notify_button_enabled {
+                                b.notify_dropdown_request = Some((8.0, 38.0));
+                            }
+                        }
+                    }),
                     menu_item(commands, fonts, "books", &renzora::lang::t("menu.account.my_library"), |w| {
                         if let Some(mut dock) = w.get_resource_mut::<Dock>() {
                             dock.tree.focus_or_add_panel("hub_library");
@@ -4518,12 +5201,6 @@ fn build_menu_items(
             menu_sep(commands),
             menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| {
                 crate::plugin_install::open_install_dialog(w)
-            }),
-            menu_sep(commands),
-            menu_item(commands, fonts, "gear", &renzora::lang::t("common.settings"), |w| {
-                if let Some(mut s) = w.get_resource_mut::<renzora_editor_framework::EditorSettings>() {
-                    s.show_settings = !s.show_settings;
-                }
             }),
         ],
         TopMenuKind::Edit => vec![

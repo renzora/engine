@@ -21,6 +21,7 @@ use bevy::prelude::Color;
 pub const WINDOW_BG: (u8, u8, u8) = (24, 24, 30); // chrome (top bar/doc tabs/status/dock gaps)
 pub const PANEL_BG: (u8, u8, u8) = (26, 26, 31); // leaf content (matches egui surfaces.panel)
 pub const HEADER_BG: (u8, u8, u8) = (30, 30, 36); // doc tabs + panel tab headers
+pub const FAINT_BG: (u8, u8, u8) = (20, 20, 24); // recessed surface, one step under panel
 pub const TAB_ACTIVE_BG: (u8, u8, u8) = (50, 50, 62); // active tab
 pub const TAB_HOVER_BG: (u8, u8, u8) = (42, 42, 52); // hovered (inactive) tab
 pub const CLOSE_RED: (u8, u8, u8) = (216, 84, 84); // close × on hover
@@ -41,6 +42,11 @@ pub const ON_ACCENT: (u8, u8, u8) = (245, 247, 250); // marks/knobs on an accent
 pub struct Palette {
     pub window_bg: (u8, u8, u8),
     pub panel_bg: (u8, u8, u8),
+    /// One step *under* `panel_bg` — the theme's recessed surface. Reliably
+    /// darker than the panel in light and dark themes alike, which no other
+    /// surface token is: `window` inverts (it's lighter than panel in a light
+    /// theme) and `extreme` means "furthest from window", not "darker".
+    pub faint_bg: (u8, u8, u8),
     pub header_bg: (u8, u8, u8),
     pub tab_active: (u8, u8, u8),
     pub tab_hover: (u8, u8, u8),
@@ -73,6 +79,7 @@ impl Default for Palette {
         Self {
             window_bg: WINDOW_BG,
             panel_bg: PANEL_BG,
+            faint_bg: FAINT_BG,
             header_bg: HEADER_BG,
             tab_active: TAB_ACTIVE_BG,
             tab_hover: TAB_HOVER_BG,
@@ -120,6 +127,9 @@ pub fn window_bg() -> (u8, u8, u8) {
 }
 pub fn panel_bg() -> (u8, u8, u8) {
     palette().panel_bg
+}
+pub fn faint_bg() -> (u8, u8, u8) {
+    palette().faint_bg
 }
 pub fn header_bg() -> (u8, u8, u8) {
     palette().header_bg

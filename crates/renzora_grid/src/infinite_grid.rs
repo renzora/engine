@@ -281,14 +281,36 @@ fn prepare_view_bind_groups(
     }
 }
 
+/// Pull the grids (and the cameras carrying a per-view settings override) into
+/// the render world.
+///
+/// A hidden grid must be **actively removed**, not merely skipped: render
+/// entities are retained between frames, so last frame's settings would sit
+/// there and the grid would keep drawing after the viewport's Grid toggle turned
+/// it off. That's exactly what made that toggle look dead.
+///
+/// `Option<&InheritedVisibility>` because a camera carrying an override has no
+/// visibility components at all — requiring them would drop every per-view
+/// override and take the per-camera fade with it.
 fn extract_infinite_grids(
     mut commands: Commands,
-    grids: Extract<Query<(RenderEntity, &InfiniteGridSettings, &GlobalTransform)>>,
+    grids: Extract<
+        Query<(
+            RenderEntity,
+            &InfiniteGridSettings,
+            &GlobalTransform,
+            Option<&InheritedVisibility>,
+        )>,
+    >,
 ) {
-    let extracted: Vec<_> = grids
-        .iter()
-        .map(|(entity, grid, transform)| (entity, (*grid, *transform)))
-        .collect();
+    let mut extracted = Vec::new();
+    for (entity, grid, transform, visibility) in grids.iter() {
+        if visibility.map(|v| v.get()).unwrap_or(true) {
+            extracted.push((entity, (*grid, *transform)));
+        } else {
+            commands.entity(entity).try_remove::<InfiniteGridSettings>();
+        }
+    }
     commands.try_insert_batch(extracted);
 }
 

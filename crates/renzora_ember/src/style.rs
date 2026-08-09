@@ -369,14 +369,18 @@ impl Default for DockStyle {
         Self {
             leaf_bg: c(panel_bg()),
             leaf_border: c(divider()),
-            leaf_border_width: 0.0,
-            leaf_radius: 0.0,
+            // Panels as rounded cards on the window background rather than
+            // tiles flush against each other. `leaf_margin` is what separates
+            // them — NOT `leaf_padding`, which insets a panel's *content* from
+            // its own edge and would stop the viewport filling its card.
+            leaf_border_width: 1.0,
+            leaf_radius: 4.0,
             leaf_padding: 0.0,
-            leaf_margin: 0.0,
+            leaf_margin: 0.5,
             tabbar_bg: c(header_bg()),
             header_border: c(divider()),
             header_border_width: 1.0,
-            header_radius: 0.0,
+            header_radius: 4.0,
             header_pad_x: 0.0,
             header_pad_y: 0.0,
             tab_active: c(tab_active()),
@@ -384,10 +388,17 @@ impl Default for DockStyle {
             tab_hover: c(tab_hover()),
             tab_text: c(text_muted()),
             tab_text_active: c(text_primary()),
-            tab_radius: 0.0,
+            tab_radius: 4.0,
             tab_pad_x: 9.0,
             tab_pad_y: 0.0,
-            divider: c(divider()),
+            // Transparent, because `leaf_margin` above already separates the
+            // panels: the gutter between two cards shows the window background,
+            // and a line drawn down the middle of it reads as a seam artefact.
+            // The 11px grab area either side of it is unaffected — the divider
+            // is still draggable, it just isn't drawn. A theme that sets
+            // `leaf_margin` back to 0 must give this a colour again, or its
+            // flush panels will have no visible boundary.
+            divider: Rgba::NONE,
             shadow: false,
             shadow_color: Rgba { r: 0, g: 0, b: 0, a: 255 },
             shadow_alpha: 0.4,

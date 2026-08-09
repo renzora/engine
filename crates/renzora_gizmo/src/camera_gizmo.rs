@@ -17,11 +17,16 @@ use crate::OverlayGizmoGroup;
 pub fn draw_camera_gizmo(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
     selection: Res<EditorSelection>,
+    settings: Option<Res<renzora::core::viewport_types::ViewportSettings>>,
     transform_q: Query<
         (&GlobalTransform, Option<&Projection>),
         (With<Camera3d>, Without<EditorCamera>),
     >,
 ) {
+    // Gizmos dropdown → Scene → "Cameras".
+    if !settings.map(|s| s.show_camera_gizmos).unwrap_or(true) {
+        return;
+    }
     let Some(selected) = selection.get() else {
         return;
     };

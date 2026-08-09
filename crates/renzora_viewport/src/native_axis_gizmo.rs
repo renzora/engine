@@ -98,7 +98,8 @@ pub(crate) fn build(commands: &mut Commands, fonts: &EmberFonts, slot: usize) ->
                 position_type: PositionType::Absolute,
                 right: Val::Px(AXIS_GIZMO_MARGIN),
                 // Dropped below the in-viewport toolbar strip on the top edge.
-                top: Val::Px(AXIS_GIZMO_MARGIN + crate::VIEWPORT_TOOLBAR_H),
+                // No toolbar offset: the bar is above the scene now, not over it.
+                top: Val::Px(AXIS_GIZMO_MARGIN),
                 width: Val::Px(AXIS_GIZMO_SIZE),
                 height: Val::Px(AXIS_GIZMO_SIZE),
                 ..default()

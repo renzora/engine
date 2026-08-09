@@ -6,6 +6,9 @@ edition = "2021"
 [dependencies]
 renzora_ember = { path = "../renzora_ember" }
 renzora_editor_framework = { path = "../renzora_editor_framework" }
+# For the starter graph a new `.blueprint` is created with — owned by the
+# blueprint crate so this and the Hierarchy's Create menu write the same file.
+renzora_blueprint = { path = "../renzora_blueprint" }
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }

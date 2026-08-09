@@ -109,7 +109,7 @@ the global UI font-size scale, so theming typography is additive and never
 fights existing sizing. All three are `serde(default)`, so themes saved before
 they existed still load.
 
-Beyond the per-`Role` tokens, `Theme` also has **bespoke multi-element styles** as direct fields — `node_graph` (`NodeGraphStyle`), `asset_tile` (`AssetTileStyle`), `dock` (`DockStyle`: leaf/tab-bar/divider/shadow chrome), `top_bar` / `doc_tabs` / `status_bar` (`BarStyle`), and `timeline` (`TimelineStyle`). These let one element (e.g. a node-graph cable) be retargeted without smearing across the rest of the widget.
+Beyond the per-`Role` tokens, `Theme` also has **bespoke multi-element styles** as direct fields — `node_graph` (`NodeGraphStyle`), `asset_tile` (`AssetTileStyle`), `dock` (`DockStyle`: leaf/tab-bar/divider/shadow chrome), `top_bar` / `doc_tabs` / `status_bar` (`BarStyle`), and `timeline` (`TimelineStyle`). These let one element (e.g. a node-graph cable) be retargeted without smearing across the rest of the widget. Note that `doc_tabs` (and the matching `effects.doc_tabs` shader surface) no longer paints anything in the shell: the document tabs moved out of the chrome column and into the viewport panel, where the bar takes the `panel` surface and the tabs are vertical gradients built from the same tokens: the active one runs from a 16% `accent` tint down to `panel` (the fill it shares with the tool strip below), the inactive ones from a `faint`/`panel` blend down to `faint`. The active tab also carries an `accent` rule on its top edge, and the boundary between two inactive tabs is a hairline from `divider`.
 
 > `Rgba` is the theme color type: sRGBA bytes serialized to/from `#RRGGBB` / `#RRGGBBAA`. `Rgba::rgb((r,g,b))` builds an opaque color; `.color()` converts to a bevy `Color`.
 
@@ -196,6 +196,16 @@ shadow      = true
 ```
 
 > Colors are hex strings. `#RRGGBB` is opaque; add a fourth byte (`#RRGGBBAA`) for alpha. Numbers (`radius`, `pad_x`, …) are plain floats in logical px. Any section you omit keeps its built-in default.
+
+#### Dock panels are cards, not tiles
+
+`DockStyle`'s defaults give every panel a **4px `leaf_margin`, a 6px `leaf_radius` and a 1px border**, so panels read as rounded cards floating on the window background rather than tiles butted flush against each other. Three things follow from that, and a theme changing any of them should change the others to match:
+
+- **`leaf_margin` is the separator, so `divider` defaults to transparent.** The gutter between two cards already shows the window background; a line drawn down the middle of it reads as a seam artefact. The divider is still *draggable* — its 11px grab strip is unaffected — it just isn't drawn. **A theme that sets `leaf_margin` back to `0.0` must give `divider` a colour again**, or its flush panels will have no visible boundary at all.
+- **`leaf_padding` is not the same thing.** It insets a panel's *content* from its own edge; the viewport would stop filling its card. Use `leaf_margin` for the gap between panels.
+- **A rounded leaf does not round its children.** bevy_ui clips to a plain `Rect`, so every node has to round itself or it paints square over the corner. That's why `header_radius` (the tab bar, top corners only) exists alongside `leaf_radius`, and why the viewport rounds its own bottom corners from `leaf_radius`. A panel whose content is the same colour as `leaf_bg` needs nothing — the mismatch is invisible. One whose content is a different colour (the viewport's rendered scene) has to follow suit.
+
+`shadow = true` adds a drop shadow under each card, which suits the look but costs a pass; it's off by default.
 
 ### Switching & editing themes — `renzora_theme::ThemeManager`
 

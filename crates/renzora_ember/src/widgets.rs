@@ -83,6 +83,7 @@ mod pagination;
 // Data display.
 mod avatar;
 mod chip;
+mod folder_picker;
 mod grid;
 mod image;
 mod table;
@@ -110,6 +111,8 @@ mod icon_menu;
 mod menu;
 mod multi_select;
 mod node_graph;
+mod overflow_row;
+mod overflow_strip;
 mod overlay;
 mod markdown;
 mod rich_text;
@@ -191,6 +194,7 @@ pub use pagination::*;
 
 pub use avatar::*;
 pub use chip::*;
+pub use folder_picker::*;
 pub use grid::*;
 pub use image::*;
 pub use table::*;
@@ -216,6 +220,10 @@ pub use multi_select::*;
 pub use node_graph::*;
 pub use markdown::*;
 pub use rich_text::*;
+pub use overflow_row::{arrange_row, arrange_row_items, ArrangeKey, ArrangeOrder, ArrangeRow};
+pub use overflow_strip::{
+    overflow_strip, overflow_strip_gap, OverflowBudget, OverflowEntry, OverflowKeep, OverflowStrip,
+};
 pub use overlay::*;
 pub use scroll_area::*;
 pub use section::{
@@ -254,6 +262,8 @@ impl Plugin for WidgetsPlugin {
         app.init_resource::<scroll_area::DraggedThumb>();
         app.init_resource::<scroll_area::ScrollbarBusy>();
         app.init_resource::<scroll_area::ScrollConfig>();
+        app.init_resource::<folder_picker::FolderPick>();
+        app.init_resource::<overflow_row::RowDrag>();
         // Compute the "pointer is on a scrollbar" flag before any panel's Update
         // press-handlers read it. After `UiSystems::Focus` so cursor-over state is
         // fresh this frame.
@@ -288,6 +298,7 @@ impl Plugin for WidgetsPlugin {
                     dropdown::dropdown_apply,
                     dropdown::dropdown_dismiss,
                     dropdown::dropdown_option_hover,
+                    dropdown::dropdown_box_hover,
                     // After dismiss so a press with a menu already open reaps
                     // the old menu first, then spawns the fresh one.
                     icon_menu::icon_menu_button_open
@@ -325,7 +336,6 @@ impl Plugin for WidgetsPlugin {
                 (
                     range::range_drag,
                     tooltip::hover_tooltip_system,
-                    popover::popover_toggle,
                     modal::modal_toggle,
                     popup::screen_menu_clamp,
                     popup::menu_action_run,
@@ -380,6 +390,16 @@ impl Plugin for WidgetsPlugin {
                     audio_player::audio_player_play_click,
                     audio_player::audio_player_scrub,
                     audio_player::audio_player_apply,
+                    folder_picker::folder_pick_click,
+                    // After the keyed lists that fill these strips: a row built
+                    // this frame must be folded (or not) before the layout that
+                    // would otherwise draw it in a strip it doesn't fit in.
+                    overflow_strip::overflow_fit.after(crate::reactive::run_keyed_lists),
+                    overflow_strip::overflow_more_click,
+                    overflow_strip::overflow_menu_row_input,
+                    overflow_row::arrange_drag,
+                    overflow_row::arrange_highlight,
+                    overflow_row::arrange_apply_order,
                 ),
             ),
         );

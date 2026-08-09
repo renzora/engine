@@ -86,12 +86,13 @@ app.register_panel_content("my_panel", true, |commands, fonts| {
 | Buttons | `button`, `icon_button`, `icon_label_button` |
 | Toggles | `checkbox`, `toggle`, `toggle_switch`, `radio`, `segmented` |
 | Numeric | `slider`, `drag_value`, `spin_slider`, `stepper`, `knob`, `fader`, `range`, `xy_pad` |
-| Selection | `dropdown`, `multi_select`, `search`, `tags_input` |
+| Selection | `dropdown`, `dropdown_compact`, `dropdown_with_icons`, `multi_select`, `search`, `tags_input` |
 | Text entry | `text_input`, `textarea`, `floating_label`, `input_group`, `validation` |
 | Color / curves | `color_picker`, `gradient` editor, `curve` editor |
 | Data viz | `gauge`, `line_chart`, `bar_chart`, `sparkline`, `line_chart_live`, `waveform`, `vu_meter`, `mixer` |
 | Containers | `card`, `section`, `accordion`, `collapsible`, `tabs`, `divider`, `scroll_area` |
 | Data display | `table`, `tree`, `grid`, `avatar`, `chip`, `badge`, `list_group`, `timeline_view` |
+| Pickers | `folder_picker`, `font_picker`, `asset_slot` |
 | Overlays | `modal`, `popover`, `tooltip`, `popup`, `menu`, `screen_menu`, `menu_submenu`, `context_menu`, `toast`, `alert` |
 | Navigation | `navbar`, `breadcrumb`, `pagination` |
 | Editors | `node_graph`, `code_editor`, `property_row`, `vec3_edit` |
@@ -116,6 +117,17 @@ let ng = node_graph(commands, fonts);
 
 Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
 
+### Dropdowns & popups — don't hand-roll them (`dropdown`, `Popup`)
+
+Two builders cover almost every "click a thing, a panel appears" case, and using them is not just about saving code:
+
+- **A selection** → `dropdown(commands, fonts, &options, selected)`, or `dropdown_compact(.., width)` for a toolbar strip (fixed width, tighter padding, 22px tall so it lines up with icon buttons). Both carry a `Bound<usize>`, so `bind_2way(commands, dd, get, set)` wires the box to a resource in both directions. `dropdown_with_icons` takes `(icon, label)` pairs. To hide options that don't apply right now, flip `Node.display` on the rows whose `EmberDropdownOption.dropdown` is your box — `value` stays a stable index, so hiding never renumbers the rest.
+- **A panel of mixed content** (switches, sliders, sections) → `popup_panel(commands, &rows)` for the surface, `icon_popup_trigger(commands, fonts, icon, panel)` for a toolbar-sized icon+caret trigger, and `popup_anchor(commands, trigger, panel)` for the wrapper you add to your layout. Add your own marker components to the trigger for styling. `popup_panel_aligned(.., PopupAlign::Left)` when the trigger sits at the *start* of a strip and a right-aligned panel would grow off-screen. For a plain button or icon trigger with one content node, `popover` / `labeled_icon_popover` / `icon_popover` wrap the same machinery in one call.
+
+Ember toggles the panel on trigger clicks, closes it on an outside click, and flips it above the trigger when opening below would run off the window.
+
+The reason to reach for these rather than rolling your own trigger + panel: **ember tags every popup panel and dropdown menu as an `OverlaySurface`**, which is what stops clicks, scrolls and hover from leaking through to whatever is behind the panel. A hand-rolled panel is invisible to that routing, so a click on one of its rows *also* lands in the viewport underneath (selecting an object, starting a box-select) and the viewport's crosshair cursor shows straight through the panel. That was the bug in the viewport toolbar's hand-rolled dropdowns, and — because it carried its own toggle component instead of `Popup` — in `popover` itself. If you must build a floating surface by hand, spawn it with `OverlaySurface` and a `RelativeCursorPosition`.
+
 ### Floating menus & submenus (`screen_menu`, `menu_submenu`)
 
 A right-click menu is a `screen_menu(commands, x, y)` at the cursor: ember keeps it on-screen, blocks pointer pass-through, and closes it when you click outside. Fill the entity it returns with `menu_item` / `menu_item_styled` / `menu_header` / `menu_sep` rows — each item carries a `Fn(&mut World)` closure that runs when it's clicked, after which the menu closes itself.
@@ -137,6 +149,73 @@ Three rules worth knowing when you touch this machinery:
 - **Never order a system against `screen_menu_dismiss`.** Any `.before`/`.after` on it makes bevy insert an `ApplyDeferred` in front of it, which flushes *every* pending command — including the menu a panel just spawned for the very press being handled. Dismiss would then see a brand-new menu while the opening click is still `just_pressed` and close it on the frame it appeared.
 - **A submenu panel is a parentless root node**, positioned in window pixels and despawned by an `on_remove` hook on its row. It can't be a child of the row: a `screen_menu` keeps its items in a height-capped scroll area, and a scroll area clips its children, so the panel would be sliced off at the menu's edge. Same clipping trap tooltips avoid — and the reason `GlobalZIndex` alone never fixes a vanishing popup.
 - **Read a UI node's placement from `UiGlobalTransform`, never `GlobalTransform`.** Bevy 0.19's layout writes the former (an `Affine2` whose `translation` is the node's **centre**, in *physical* px — multiply by `ComputedNode::inverse_scale_factor()` for the logical px that `Val::Px` speaks). A UI node's `GlobalTransform` is left at the origin, so anything positioned from it lands in the window's top-left corner.
+
+### Capped tab strips (`overflow_strip`)
+
+`overflow_strip(commands, budget, name)` is a horizontal strip that refuses to outgrow its width budget: items that don't fit are hidden and folded into a **caret button** (`⌄`) at its end, which opens a menu of exactly those items. It returns `(row, items)` — mount `row`, add your items (or point a `keyed_list` at `items`).
+
+```rust
+let (row, items) = overflow_strip(
+    commands,
+    OverflowBudget::Fill { measure: bar, reserve: 66.0 },
+    "doc-tab",
+);
+keyed_list(commands, items, doc_tab_snapshot);
+// …and on each item, so it can be reached once it folds:
+commands.entity(tab).insert(
+    OverflowEntry::new("file", name, move |w| activate(w, id))
+        .on_drag(move |w| start_drag(w, id)),   // optional: draggable out of the menu
+);
+commands.entity(tab).insert(OverflowKeep);      // active item: never folds
+```
+
+Two budgets. `OverflowBudget::Fill { measure, reserve }` takes whatever `measure` was laid out to, less `reserve` for the buttons sharing that container — use it wherever the strip has a container that fills its slot, so nothing folds while there's still room. `OverflowBudget::Fixed(px)` is a constant cap, for a strip with no container of its own to measure (the centered workspace ribbon). Either way the item container hugs its content, so a trailing button (the document tabs' `+`) stays glued to the last item instead of stranding itself at the far edge. Where the layout *around* a strip must not move, fix the width of the strip's container rather than the strip.
+
+The fold is computed from each item's **last width measured while visible**, cached on the item, not from live layout — a hidden node measures zero, so folding an item would shrink the measured content, unfold it, and oscillate every frame. Widths are remembered, so the decision doesn't depend on what's currently folded and settles in one pass.
+
+A **new** item has no remembered width, and the obvious answer — leave it in the flow for a frame so it can be measured — is one frame of an item visibly sitting in a strip it doesn't fit in before folding away. So an item is instead spawned `position: absolute` and `Visibility::Hidden`: taffy still measures it, invisibly and without pushing its neighbours, and `overflow_fit` puts it back the instant it has a width. The strip also caches widths **by `OverflowEntry::label`**, which survives the rebuild a `keyed_list` performs when a row's content changes — the row is a new entity, so its own cached width is gone, and without the label cache every tab activation would re-measure (and so blink) every row the rebuild touched. With it, a rebuilt row is decided in the same frame it was built. `overflow_fit` is ordered after `run_keyed_lists` for exactly that reason.
+
+`OverflowEntry::on_drag` makes the item's row in the caret menu draggable: press and move past a small threshold and the menu closes and the handler runs (the host takes over the drag), press and release without moving and the normal `action` runs. Setting it changes *when* the click fires — an ordinary menu row acts on press, which can't work when the press is also how a drag starts. The document tabs use it so a folded tab can be dragged back out into the strip.
+
+### Wrapping, rearrangeable toolbars (`arrange_row`)
+
+`arrange_row(commands, name)` is a toolbar row that **wraps** rather than hiding what it can't fit, and whose groups can be dragged into a different order.
+
+```rust
+let bar = arrange_row(commands, "vp-toolbar");
+let holders = arrange_row_items(commands, fonts, bar, &[(tools, "tools"), (snaps, "snaps")]);
+// Bind visibility on the returned holders, not on the groups: hiding a group
+// directly would leave its grip behind.
+```
+
+Each entry is a group plus the stable key its position is saved under. The row publishes its current order on itself as `ArrangeOrder(Vec<String>)`, rewritten after every drop — save that list and write it back to restore an arrangement; the row reorders to match and leaves keys it doesn't recognise where they already are. (The editor mirrors it into `ViewportSettings.toolbar_order`, which rides along to `project.toml`.)
+
+Each group gets a holder with a small **grip** on its left. A holder is one flex item, so a group never splits across lines — one that doesn't fit moves down whole. Hovering the grip highlights the group it belongs to; dragging it carries the group under the cursor with a blue marker opening at the drop point, so the neighbours visibly shift aside. Only the grip starts a drag, so the controls stay clickable at all times — there's no edit mode to enter and leave.
+
+Three earlier versions of this widget solved "more controls than bar" by taking controls *away* — into a dropdown, a floating panel, then a tray under the bar. Each needed a measure-and-fold pass with its own oscillation traps, and each meant the control you wanted might not be on screen. Wrapping has neither problem: the bar gets taller, everything stays visible, and flexbox does all the work. Pass **clusters**, not individual buttons — a group is what moves and what wraps.
+
+Two rules it depends on, both learned by crashing:
+
+- **Never orphan a live node to carry it.** The dragged holder is `position: absolute` but stays parented. Removing its `ChildOf` to float it makes it an untargeted layout root mid-frame and panics taffy inside `ui_layout_system`.
+- **Nothing in the chain may clip.** The dragged holder travels outside its container, and bevy_ui clips absolutely positioned descendants like everything else — the trap that eats tooltips and submenu panels.
+
+The drop index is counted against each group's own box in reading order (line, then x), never as a fraction of the row's width: once a row wraps, that fraction says nothing about where the groups actually are.
+
+### Folder picker (`folder_picker`)
+
+`folder_picker(commands, fonts, root, selected, max_depth)` is the shared "where should this land?" control: the project's own directory tree as a bordered, scrolling list of rows, one of them selected. It returns a single box entity that **flex-grows**, so drop it into an overlay body between the fixed content above and the buttons below and it fills the leftover height.
+
+```rust
+let picker = folder_picker(commands, fonts, &project_root, &default_dest, 2);
+// …later, when your overlay is confirmed:
+let dest = pick.path().unwrap_or(&default_dest);   // pick: Res<FolderPick>
+```
+
+The pick lives in **one `FolderPick` resource**, not in each caller's state. That's deliberate — a picker only ever appears inside a modal overlay, so at most one is on screen, and a shared resource is what lets the selected-row highlight be a plain reactive `bind_bg` rather than click plumbing rewritten per caller. Seed it by passing `selected`; read it with `FolderPick::path()`.
+
+`root` is always the first row (so "top level" needs no scrolling), `max_depth` bounds the walk below it, and the scan skips dotfolders, `target/` and `node_modules/` and caps out at 300 rows so a huge project can't stall the overlay opening. `folder_dirs(root, max_depth)` exposes the same walk if you want to render rows yourself.
+
+Used by the marketplace's **Install into** confirmation and the Hierarchy's **Attach ▸** overlay.
 
 ### Code editor (`code_editor`)
 

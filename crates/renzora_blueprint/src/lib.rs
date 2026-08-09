@@ -12,6 +12,7 @@ pub mod compiler;
 pub mod graph;
 pub mod layout;
 pub mod nodes;
+pub mod starter;
 
 use bevy::prelude::*;
 
@@ -21,6 +22,7 @@ pub use graph::{
     PinType, PinValue,
 };
 pub use nodes::{categories, node_def, nodes_in_category};
+pub use starter::{starter_blueprint_json, starter_graph};
 
 #[derive(Default)]
 pub struct BlueprintPlugin;
