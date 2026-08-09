@@ -606,7 +606,7 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
         animation_clips: world
             .get_resource::<Assets<AnimationClip>>()
             .map_or(0, Assets::len),
-        // `bevy_audio` is not compiled in (Renzora's audio is kira-based, via
+        // `bevy_audio` is not compiled in (Renzora's audio is a plugin, via
         // `renzora_audio`), so there is no `bevy::audio::AudioSource` asset to
         // count — always "n/a".
         audio_sources: None,

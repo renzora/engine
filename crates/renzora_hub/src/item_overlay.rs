@@ -41,13 +41,10 @@ use renzora::SplashState;
 // Kira stack (and the whole `renzora_audio` native module) doesn't compile on
 // wasm; the overlay still builds there, the audio player just stays silent.
 #[cfg(not(target_arch = "wasm32"))]
-use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
 #[cfg(not(target_arch = "wasm32"))]
-use kira::sound::PlaybackState;
 #[cfg(not(target_arch = "wasm32"))]
-use kira::Tween;
 #[cfg(not(target_arch = "wasm32"))]
-use renzora_audio::{KiraAudioManager, MixerState};
+use renzora_audio::{decode::DecodedAudio, AudioLink, VoiceId};
 
 use crate::thumbs::HubThumbs;
 
@@ -124,9 +121,22 @@ struct ItemOverlay {
 struct AudioPlayback {
     /// The audio-subset index currently loaded into `handle`, if any.
     track: Option<usize>,
-    /// The playing/paused Kira handle. Dropping it does NOT stop playback, so it
-    /// must be `stop()`ped explicitly (see [`stop_audio_inner`]).
-    handle: Option<StaticSoundHandle>,
+    /// The playing/paused voice. Dropping the id does NOT stop playback, so it
+    /// must be stopped explicitly (see [`stop_audio_inner`]).
+    voice: Option<VoiceId>,
+    /// The decoded sound in the backend, so a seek can replay it without
+    /// downloading or decoding again.
+    sound: u64,
+    /// Whether the widget was playing last frame, so a pause/resume is sent once
+    /// on the edge rather than every frame.
+    was_playing: bool,
+    /// Playhead, advanced from wall time while playing.
+    ///
+    /// Tracked here rather than read back from the backend because the boundary
+    /// has no position op — and deliberately so. A 30-second preview scrubber
+    /// does not need sample accuracy, and an op per frame per player to learn a
+    /// number this side can already compute would be a poor trade.
+    position: f32,
     duration: f32,
     /// Precomputed spectrogram: one [`EQ_BANDS`]-long column per time slice. The
     /// live EQ reads the column under the playhead each frame.
@@ -253,10 +263,18 @@ fn open(world: &mut World, asset: AssetSummary) {
         }
     }
     // Stop any clip from the previous overlay first: the state resource is about
-    // to be overwritten, and dropping a Kira handle doesn't stop playback.
+    // to be overwritten, and dropping a voice id doesn't stop playback.
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(mut old) = world.get_resource_mut::<ItemOverlay>() {
-        stop_audio_inner(&mut old.audio);
+    {
+        let mut link = world.remove_resource::<AudioLink>();
+        if let (Some(mut old), Some(link)) =
+            (world.get_resource_mut::<ItemOverlay>(), link.as_mut())
+        {
+            stop_audio_inner(&mut old.audio, link);
+        }
+        if let Some(link) = link {
+            world.insert_resource(link);
+        }
     }
 
     // Reuse the thumbnail the card already requested; request again in case this
@@ -1511,6 +1529,7 @@ fn item_close(
     close_btn: Query<&Interaction, (With<ItemCloseBtn>, Changed<Interaction>)>,
     lightbox: Res<crate::hub_lightbox::HubLightbox>,
     mut state: ResMut<ItemOverlay>,
+    mut link: Option<ResMut<AudioLink>>,
     mut commands: Commands,
 ) {
     let Some(root) = state.root else {
@@ -1521,10 +1540,12 @@ fn item_close(
     // first rather than tearing down the whole detail overlay underneath.
     let escape = keys.just_pressed(KeyCode::Escape) && lightbox.root.is_none();
     if pressed || escape {
-        // Stop the clip first — resetting the resource drops the handle, and a
-        // dropped Kira handle keeps playing.
+        // Stop the clip first — resetting the resource drops the voice id, and a
+        // dropped id keeps playing.
         #[cfg(not(target_arch = "wasm32"))]
-        stop_audio_inner(&mut state.audio);
+        if let Some(link) = link.as_mut() {
+            stop_audio_inner(&mut state.audio, link);
+        }
         commands.entity(root).try_despawn();
         *state = ItemOverlay::default();
         // Despawn the 3D preview model + idle its camera so a closed overlay
@@ -1847,16 +1868,58 @@ fn audio_urls(state: &ItemOverlay) -> Vec<String> {
 /// Stop the live clip and clear the playback state. Explicit `stop()` is
 /// required — dropping a Kira handle doesn't halt the sound.
 #[cfg(not(target_arch = "wasm32"))]
-fn stop_audio_inner(audio: &mut AudioPlayback) {
-    if let Some(mut h) = audio.handle.take() {
-        h.stop(Tween::default());
+fn stop_audio_inner(audio: &mut AudioPlayback, link: &mut AudioLink) {
+    if let Some(voice) = audio.voice.take() {
+        link.stop(&renzora_audio::StopRequest {
+            target: renzora_audio::StopTarget::Voice(voice.0),
+            fade: 0.02,
+        });
     }
+    audio.position = 0.0;
     audio.track = None;
     audio.rx = None;
     audio.loading = false;
     audio.duration = 0.0;
     audio.spectrum.clear();
     audio.levels.clear();
+}
+
+/// A preview play request: the whole clip on Master, starting `at` seconds in.
+#[cfg(not(target_arch = "wasm32"))]
+fn play_request(
+    voice: renzora_audio::VoiceId,
+    sound: renzora_audio::SoundId,
+    at: f64,
+) -> renzora_audio::PlayRequest {
+    renzora_audio::PlayRequest {
+        voice: voice.0,
+        clip: sound.0,
+        // Master rather than a preview bus of its own: an audition should be
+        // heard through the same board the game is, mute and solo included.
+        bus: String::from("Master"),
+        gain: 1.0,
+        pan: 0.0,
+        pitch: 1.0,
+        looping: None,
+        fade_in: 0.0,
+        start: at,
+        emitter: None,
+        reverb_send: 0.0,
+        delay_send: 0.0,
+    }
+}
+
+/// The file extension of a URL, as a decoding hint.
+#[cfg(not(target_arch = "wasm32"))]
+fn extension_of(url: &str) -> String {
+    url.rsplit('/')
+        .next()
+        .and_then(|name| name.rsplit_once('.'))
+        .map(|(_, ext)| {
+            // Trailing query strings are common on signed download URLs.
+            ext.split(['?', '#']).next().unwrap_or(ext).to_ascii_lowercase()
+        })
+        .unwrap_or_default()
 }
 
 /// Kick off a background download of the clip bytes for `url`.
@@ -1877,14 +1940,14 @@ fn spawn_audio_download(audio: &mut AudioPlayback, url: &str) {
 /// The live EQ reads the column under the playhead so the bars bounce with the
 /// music instead of showing one static envelope.
 #[cfg(not(target_arch = "wasm32"))]
-fn compute_spectrogram(data: &StaticSoundData) -> Vec<Vec<f32>> {
+fn compute_spectrogram(data: &DecodedAudio) -> Vec<Vec<f32>> {
     use std::f32::consts::PI;
-    let frames: &[kira::Frame] = &data.frames;
+    let total_frames = data.frames();
     let sr = data.sample_rate as f32;
-    if frames.is_empty() || sr <= 0.0 {
+    if total_frames == 0 || sr <= 0.0 {
         return Vec::new();
     }
-    let cap = (((PREVIEW_SECS * sr) as usize).min(frames.len())).max(1);
+    let cap = (((PREVIEW_SECS * sr) as usize).min(total_frames)).max(1);
     // Log-spaced band centers from 60 Hz up to just under Nyquist.
     let fmin = 60.0f32;
     let fmax = (sr * 0.45).clamp(fmin * 2.0, 14000.0);
@@ -1896,13 +1959,14 @@ fn compute_spectrogram(data: &StaticSoundData) -> Vec<Vec<f32>> {
     for c in 0..EQ_COLUMNS {
         let center = ((c as f32 + 0.5) / EQ_COLUMNS as f32 * cap as f32) as usize;
         let start = center.saturating_sub(win / 2).min(cap.saturating_sub(win));
-        let seg = &frames[start..(start + win).min(cap)];
+        let end = (start + win).min(cap);
         let mut col = vec![0.0f32; EQ_BANDS];
         for (bi, &f) in centers.iter().enumerate() {
             let coeff = 2.0 * (2.0 * PI * (f / sr)).cos();
             let (mut s1, mut s2) = (0.0f32, 0.0f32);
-            for fr in seg {
-                let x = (fr.left + fr.right) * 0.5;
+            for i in start..end {
+                let [left, right] = data.frame(i);
+                let x = (left + right) * 0.5;
                 let s0 = x + coeff * s1 - s2;
                 s2 = s1;
                 s1 = s0;
@@ -1954,16 +2018,17 @@ fn update_eq(audio: &mut AudioPlayback, playing: bool, position: f32) {
 #[cfg(not(target_arch = "wasm32"))]
 fn sync_audio(
     mut state: ResMut<ItemOverlay>,
-    manager: Option<NonSendMut<KiraAudioManager>>,
-    mixer: Option<Res<MixerState>>,
+    link: Option<ResMut<AudioLink>>,
+    time: Res<Time>,
     mut players: Query<&mut EmberAudioPlayer, With<HubAudioPlayer>>,
 ) {
     let Ok(mut ap) = players.single_mut() else {
         return; // no audio player on screen
     };
-    let (Some(mut mgr), Some(mixer)) = (manager, mixer) else {
-        return; // audio backend not up
-    };
+    let Some(mut link) = link else { return };
+    if !link.is_active() {
+        return; // no audio backend loaded
+    }
     let urls = audio_urls(&state);
     if urls.is_empty() {
         return;
@@ -1973,7 +2038,7 @@ fn sync_audio(
 
     // Selection moved away from the loaded track → stop it and reset the widget.
     if state.audio.track.is_some() && state.audio.track != Some(sel) {
-        stop_audio_inner(&mut state.audio);
+        stop_audio_inner(&mut state.audio, &mut link);
         ap.playing = false;
         ap.position = 0.0;
         ap.duration = 0.0;
@@ -1986,25 +2051,35 @@ fn sync_audio(
         match rx.try_recv() {
             Ok(Ok(bytes)) => {
                 state.audio.loading = false;
-                match StaticSoundData::from_cursor(std::io::Cursor::new(bytes)) {
+                // Decoded twice, on purpose: once here to draw the spectrogram,
+                // and once by the backend to play it. The alternative is shipping
+                // whole decoded files back across the plugin boundary so the
+                // editor can look at them.
+                let extension = extension_of(&cur_url);
+                match renzora_audio::decode::decode(bytes.clone(), &extension) {
                     Ok(data) => {
-                        // Cap the shown/scrubbable duration at 30s (the preview
-                        // length); compute the EQ spectrogram before `data` moves.
-                        state.audio.duration = data.duration().as_secs_f32().min(PREVIEW_SECS);
+                        // Cap the shown/scrubbable duration at the preview length.
+                        state.audio.duration = (data.duration() as f32).min(PREVIEW_SECS);
                         state.audio.spectrum = compute_spectrogram(&data);
                         state.audio.levels = vec![0.0; EQ_BANDS];
-                        match mgr.play_on_bus(data, "Master", &mixer) {
-                            Ok(handle) => {
-                                state.audio.handle = Some(handle);
-                                state.audio.track = Some(sel);
-                                // Honor a pause requested while the clip loaded.
-                                if !ap.playing {
-                                    if let Some(h) = state.audio.handle.as_mut() {
-                                        h.pause(Tween::default());
+                        state.audio.position = 0.0;
+                        match link.load_bytes(&extension, &bytes) {
+                            Some(sound) => {
+                                state.audio.sound = sound.0;
+                                let voice = link.next_voice();
+                                let request = play_request(voice, sound, 0.0);
+                                if let Err(e) = link.play(&request) {
+                                    state.error = Some(format!("Audio play failed: {e}"));
+                                } else {
+                                    state.audio.voice = Some(voice);
+                                    state.audio.track = Some(sel);
+                                    // Honour a pause requested while it loaded.
+                                    if !ap.playing {
+                                        link.set_paused(voice, true);
                                     }
                                 }
                             }
-                            Err(e) => state.error = Some(format!("Audio play failed: {e}")),
+                            None => state.error = Some(String::from("Audio decode failed")),
                         }
                     }
                     Err(e) => state.error = Some(format!("Audio decode failed: {e}")),
@@ -2020,38 +2095,55 @@ fn sync_audio(
     }
 
     // Play requested but nothing loaded/loading → start fetching the clip bytes.
-    if ap.playing && state.audio.handle.is_none() && !state.audio.loading {
+    if ap.playing && state.audio.voice.is_none() && !state.audio.loading {
         spawn_audio_download(&mut state.audio, &cur_url);
     }
 
-    // Apply intent to the live handle and read back its position.
+    // Apply intent to the live voice, and advance the playhead from wall time.
     let mut finished = false;
-    // Captured before the handle borrow so the 30s check below doesn't alias it.
     let cap_dur = state.audio.duration;
-    if let Some(handle) = state.audio.handle.as_mut() {
+    if let Some(voice) = state.audio.voice {
+        // A seek is a restart at an offset: the boundary has no seek op, and
+        // adding one to move a 30-second preview scrubber would be a poor trade
+        // against replaying a clip the backend has already decoded and cached.
         if let Some(t) = ap.seek_to.take() {
-            handle.seek_to(t as f64);
+            link.stop(&renzora_audio::StopRequest {
+                target: renzora_audio::StopTarget::Voice(voice.0),
+                fade: 0.0,
+            });
+            let fresh = link.next_voice();
+            let sound = renzora_audio::SoundId(state.audio.sound);
+            if link.play(&play_request(fresh, sound, t as f64)).is_ok() {
+                state.audio.voice = Some(fresh);
+                state.audio.position = t;
+                if !ap.playing {
+                    link.set_paused(fresh, true);
+                }
+            }
+        } else if ap.playing != state.audio.was_playing {
+            link.set_paused(voice, !ap.playing);
         }
-        let st = handle.state();
-        if st == PlaybackState::Stopped {
-            finished = true;
-        } else if ap.playing && st != PlaybackState::Playing {
-            handle.resume(Tween::default());
-        } else if !ap.playing && st == PlaybackState::Playing {
-            handle.pause(Tween::default());
+
+        if ap.playing {
+            state.audio.position += time.delta_secs();
         }
-        ap.position = handle.position() as f32;
-        // Enforce the 30s preview cap: stop the clip at the limit (dropping the
-        // handle alone wouldn't halt Kira). `finished` then resets the widget.
+        ap.position = state.audio.position;
+        // Enforce the preview cap: stop at the limit rather than letting the
+        // whole track play.
         if cap_dur > 0.0 && ap.position >= cap_dur {
-            handle.stop(Tween::default());
+            link.stop(&renzora_audio::StopRequest {
+                target: renzora_audio::StopTarget::Voice(voice.0),
+                fade: 0.0,
+            });
             finished = true;
         }
     }
+    state.audio.was_playing = ap.playing;
     if finished {
-        // Clip ran to the end (or hit the 30s cap): back to paused-at-zero.
-        state.audio.handle = None;
+        // Ran to the end (or hit the cap): back to paused-at-zero.
+        state.audio.voice = None;
         state.audio.track = None;
+        state.audio.position = 0.0;
         ap.playing = false;
         ap.position = 0.0;
     }

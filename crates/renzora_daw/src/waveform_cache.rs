@@ -13,7 +13,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use bevy::prelude::*;
-use kira::sound::static_sound::StaticSoundData;
 
 /// Number of peak buckets we render per clip. ~512 looks crisp on
 /// arrangement-view-sized clip rectangles up to ~1500px wide; cheap to keep
@@ -137,12 +136,14 @@ fn fingerprint(path: &Path) -> Option<FileFingerprint> {
 }
 
 fn decode_to_peaks(path: &Path) -> Result<WaveformPeaks, String> {
-    let data = StaticSoundData::from_file(path).map_err(|e| e.to_string())?;
-    let duration_secs = data.duration().as_secs_f64();
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    // The editor-only decoder — see `renzora_audio::decode` for why drawing a
+    // waveform and playing one go through different code.
+    let data = renzora_audio::decode::decode(bytes, extension)?;
+    let duration_secs = data.duration();
 
-    // Kira's `Frame` is `{ left, right }` 32-bit floats in -1..1.
-    let frames: &[kira::Frame] = &data.frames;
-    let total = frames.len();
+    let total = data.frames();
     if total == 0 {
         return Ok(WaveformPeaks {
             peaks: Vec::new(),
@@ -156,12 +157,12 @@ fn decode_to_peaks(path: &Path) -> Result<WaveformPeaks, String> {
     for b in 0..buckets {
         let lo = (b as f64 * frames_per).floor() as usize;
         let hi = (((b as f64 + 1.0) * frames_per).floor() as usize).min(total);
-        let slice = &frames[lo..hi.max(lo + 1)];
         let mut min = 0.0f32;
         let mut max = 0.0f32;
-        for f in slice {
+        for i in lo..hi.max(lo + 1) {
+            let [left, right] = data.frame(i);
             // Mono mix of L/R for visual purposes.
-            let s = (f.left + f.right) * 0.5;
+            let s = (left + right) * 0.5;
             if s < min {
                 min = s;
             }

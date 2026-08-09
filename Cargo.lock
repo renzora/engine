@@ -522,12 +522,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atomic-arena"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73e8ed45f88ed32e6827a96b62d8fd4086d72defc754c5c6bd08470c1aaf648e"
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4385,7 +4379,6 @@ dependencies = [
  "bytemuck",
  "encase",
  "libm",
- "mint",
  "rand 0.10.1",
  "serde_core",
 ]
@@ -5133,23 +5126,6 @@ name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
-
-[[package]]
-name = "kira"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22dc6835b2ca4b48601f11df172781f5e7677d40a6a466b1b873adcb34ec5d55"
-dependencies = [
- "atomic-arena",
- "cpal",
- "glam 0.32.1",
- "mint",
- "pastey",
- "rtrb",
- "send_wrapper",
- "symphonia",
- "triple_buffer",
-]
 
 [[package]]
 name = "kqueue"
@@ -6524,12 +6500,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "pastey"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b867cad97c0791bbd3aaa6472142568c6c9e8f71937e98379f584cfb0cf35bec"
-
-[[package]]
 name = "pbkdf2"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7390,12 +7360,10 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "cfg-if",
- "cpal",
- "kira",
- "mint",
  "renzora",
- "rtrb",
+ "renzora_plugin",
  "serde",
+ "symphonia",
 ]
 
 [[package]]
@@ -7590,7 +7558,6 @@ name = "renzora_daw"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "kira",
  "renzora",
  "renzora_audio",
  "renzora_ember",
@@ -8032,7 +7999,6 @@ dependencies = [
  "bevy",
  "crossbeam-channel",
  "image",
- "kira",
  "renzora",
  "renzora_audio",
  "renzora_auth",
@@ -9243,12 +9209,6 @@ dependencies = [
  "num-traits",
  "smallvec",
 ]
-
-[[package]]
-name = "rtrb"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7204ed6420f698836b76d4d5c2ec5dec7585fd5c3a788fd1cde855d1de598239"
 
 [[package]]
 name = "rustc-hash"
@@ -10517,15 +10477,6 @@ checksum = "c5f7c95348f20c1c913d72157b3c6dee6ea3e30b3d19502c5a7f6d3f160dacbf"
 dependencies = [
  "cc",
  "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "triple_buffer"
-version = "8.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "420466259f9fa5decc654c490b9ab538400e5420df8237f84ecbe20368bcf72b"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]

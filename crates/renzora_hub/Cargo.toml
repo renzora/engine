@@ -31,8 +31,7 @@ rfd = "0.15"
 # Native audio preview for the marketplace item overlay: the engine's Kira
 # manager plays the downloaded clip, and we name Kira's own handle/data types to
 # drive it. renzora_audio does NOT depend on renzora_hub, so this is acyclic.
-renzora_audio = { path = "../renzora_audio" }
-kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
+renzora_audio = { path = "../renzora_audio", features = ["decode"] }
 # Parse a downloaded theme `.toml` into a `renzora_theme::Theme` for live preview,
 # and serialize the installed-plugin metadata sidecar (`<crate>.plugin.toml`).
 toml = "0.8"

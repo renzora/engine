@@ -3,20 +3,23 @@ name = "renzora_audio"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# A PCM decoder, for drawing a waveform rather than playing one. OFF by default:
+# playback decoding lives in the audio backend plugin, and a shipped game should
+# carry no decoders at all. Only the editor-side crates that draw pictures of
+# audio files (`renzora_daw`, `renzora_hub`) turn it on, and both are stripped
+# from exports.
+decode = ["dep:symphonia"]
+
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
+# The audio boundary. `host` for the resource the plugin loader fills in when a
+# backend registers; `audio` for the request/reply vocabulary both sides compile.
+renzora_plugin = { path = "../renzora_plugin", features = ["host", "audio"] }
 cfg-if = "1"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-kira = { version = "0.12", features = ["cpal", "ogg", "mp3", "wav", "flac"] }
-mint = "0.5"
-# Direct deps for live mic input — both are already in the dep tree as
-# transitives of kira, listed explicitly here so we can implement a custom
-# `Sound` backed by a cpal input stream piped through an rtrb SPSC ringbuffer.
-cpal = "0.17"
-rtrb = "0.3"
+symphonia = { version = "0.5", default-features = false, features = ["ogg", "vorbis", "wav", "pcm", "mp3", "flac"], optional = true }
 
 [lints]
 workspace = true

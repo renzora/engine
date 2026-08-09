@@ -1,33 +1,18 @@
-//! Kira audio systems
+//! Turning queued commands and world state into calls on the backend.
 //!
-//! Processes audio commands, syncs spatial audio, prunes finished sounds,
-//! estimates VU meter levels, and manages preview playback.
+//! Nothing here knows what a sound card is. Commands name asset paths and
+//! entities; [`AudioLink`] takes handles and samples; this is the layer that
+//! turns one into the other.
 
 use bevy::prelude::*;
-use kira::{
-    sound::static_sound::StaticSoundData, sound::streaming::StreamingSoundData,
-    sound::PlaybackState, Panning, Tween,
-};
+
+use renzora_plugin::audio::{EmitterState, PlayRequest, StopRequest, StopTarget, UpdateRequest};
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
-use crate::manager::{amplitude_to_db, quat_to_mint, vec3_to_mint, KiraAudioManager, RolloffType};
-use crate::mixer::MixerState;
+use crate::components::{AudioPlayer, RolloffType};
+use crate::link::{AudioLink, VoiceId};
 use crate::preview::AudioPreviewState;
-
-/// Load a static sound for a project-relative `clip` path. Prefers the engine's
-/// VFS-aware byte loader (so `.rpak`-bundled assets in exported games work),
-/// falling back to a direct filesystem read at `disk_path` (editor / loose
-/// files, and when no loader is installed e.g. in tests).
-fn load_static_sound(
-    clip: &str,
-    disk_path: &std::path::Path,
-) -> Result<StaticSoundData, kira::sound::FromFileError> {
-    if let Some(bytes) = renzora::core::load_asset_bytes(clip) {
-        StaticSoundData::from_cursor(std::io::Cursor::new(bytes))
-    } else {
-        StaticSoundData::from_file(disk_path)
-    }
-}
+use crate::runtime::{ActiveVoices, SoundCache};
 
 /// Marker component for the audio listener entity (the "ears" in 3D space).
 #[derive(Component, Clone, Debug)]
@@ -49,16 +34,111 @@ pub enum AudioSet {
     Cleanup,
 }
 
-/// Process queued audio commands from the AudioCommandQueue using Kira.
+/// The music voice, if one is playing.
+///
+/// One voice rather than an entity's, because `play_music` has always meant
+/// "there is one soundtrack" — a second call replaces the first.
+#[derive(Resource, Default)]
+pub struct MusicVoice(pub Option<VoiceId>);
+
+/// A runtime volume multiplier applied on top of the mixer's master strip.
+///
+/// Separate from the strip because they mean different things: the strip is the
+/// project's mix, authored in the panel and saved to `project.toml`, while this
+/// is what a game's own volume slider drives. Folding them together would let a
+/// player's setting rewrite the developer's mix.
+#[derive(Resource)]
+pub struct MasterVolume(pub f32);
+
+impl Default for MasterVolume {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+/// A play request with everything at its neutral value.
+///
+/// An empty bus key becomes `Sfx` — that is what an `AudioPlayer` left untouched
+/// carries, and the backend would otherwise route it to master. An unknown
+/// *non-empty* key is passed through on purpose: a scene authored against a
+/// since-deleted bus should be audible and wrong rather than silent, which is a
+/// bug nobody can find.
+fn request(bus: &str) -> PlayRequest {
+    PlayRequest {
+        voice: 0,
+        clip: 0,
+        bus: if bus.is_empty() { "Sfx".into() } else { bus.into() },
+        gain: 1.0,
+        pan: 0.0,
+        pitch: 1.0,
+        looping: None,
+        fade_in: 0.0,
+        start: 0.0,
+        emitter: None,
+        reverb_send: 0.0,
+        delay_send: 0.0,
+    }
+}
+
+/// Emitter parameters from an `AudioPlayer`'s spatial fields.
+fn emitter_of(player: &AudioPlayer, position: Vec3) -> EmitterState {
+    EmitterState {
+        position: position.to_array(),
+        min_distance: player.spatial_min_distance,
+        max_distance: player.spatial_max_distance,
+        rolloff: match player.spatial_rolloff {
+            RolloffType::Linear => 1,
+            RolloffType::Logarithmic => 0,
+        },
+    }
+}
+
+/// Process queued audio commands.
+#[allow(clippy::too_many_arguments)]
 pub fn process_audio_commands(
     mut queue: ResMut<AudioCommandQueue>,
-    audio: Option<NonSendMut<KiraAudioManager>>,
-    mixer: Option<Res<MixerState>>,
+    mut link: ResMut<AudioLink>,
+    mut cache: ResMut<SoundCache>,
+    mut voices: ResMut<ActiveVoices>,
+    mut music: ResMut<MusicVoice>,
+    mut master: ResMut<MasterVolume>,
+    project: Option<Res<renzora::core::CurrentProject>>,
 ) {
-    let Some(mut audio) = audio else { return };
-    let Some(mixer) = mixer else { return };
     if queue.is_empty() {
         return;
+    }
+    let project = project.as_deref();
+    // Parameter changes are batched and sent once at the end: they all ride the
+    // same call, and a command issued this frame should be heard this frame.
+    let mut batch = UpdateRequest::default();
+    let master_volume = master.0;
+
+    // Load, start, and record. Takes its resources as arguments rather than
+    // capturing them, so the borrow checker can see that each arm below uses
+    // them one at a time.
+    fn start(
+        link: &mut AudioLink,
+        cache: &mut SoundCache,
+        voices: &mut ActiveVoices,
+        project: Option<&renzora::core::CurrentProject>,
+        master: f32,
+        path: &str,
+        entity: Option<Entity>,
+        mut r: PlayRequest,
+    ) -> Option<VoiceId> {
+        let sound = cache.get_or_load(link, project, path)?;
+        let voice = link.next_voice();
+        r.voice = voice.0;
+        r.clip = sound.0;
+        r.gain = (r.gain * master).clamp(0.0, 2.0);
+        if let Err(e) = link.play(&r) {
+            warn!("[audio] could not play `{path}`: {e}");
+            return None;
+        }
+        if let Some(entity) = entity {
+            voices.insert(entity, voice);
+        }
+        Some(voice)
     }
 
     for cmd in queue.drain() {
@@ -70,30 +150,21 @@ pub fn process_audio_commands(
                 bus,
                 entity,
             } => {
-                let full_path = audio.resolve_path(&path);
-                let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
-
-                match load_static_sound(&path, &full_path) {
-                    Ok(data) => {
-                        let data = data.volume(amplitude_to_db(effective_volume));
-                        let data = if looping {
-                            data.loop_region(0.0..)
-                        } else {
-                            data
-                        };
-
-                        match audio.play_on_bus(data, &bus, &mixer) {
-                            Ok(handle) => {
-                                if let Some(ent) = entity {
-                                    audio.track_sound(ent, handle);
-                                }
-                                debug!("[KiraAudio] Playing sound: {} on bus: {}", path, bus);
-                            }
-                            Err(e) => warn!("[KiraAudio] Failed to play {}: {}", path, e),
-                        }
-                    }
-                    Err(e) => warn!("[KiraAudio] Failed to load {}: {}", path, e),
-                }
+                let mut r = request(&bus);
+                r.gain = volume;
+                // `(0, 0)` is the idiom for "loop the whole clip": the backend
+                // clamps a degenerate region to the full length.
+                r.looping = looping.then_some((0.0, 0.0));
+                start(
+                    &mut link,
+                    &mut cache,
+                    &mut voices,
+                    project,
+                    master_volume,
+                    &path,
+                    entity,
+                    r,
+                );
             }
 
             AudioCommand::PlayEntity {
@@ -104,83 +175,33 @@ pub fn process_audio_commands(
                 if player.clip.is_empty() {
                     continue;
                 }
-                let full_path = audio.resolve_path(&player.clip);
-                let effective_volume =
-                    (player.volume as f64 * audio.master_volume).clamp(0.0, 2.0);
-
-                match load_static_sound(&player.clip, &full_path) {
-                    Ok(data) => {
-                        // Common settings: volume + pitch (playback rate).
-                        let mut data = data
-                            .volume(amplitude_to_db(effective_volume))
-                            .playback_rate(player.pitch.max(0.01) as f64);
-
-                        // Loop region: [loop_start, loop_end) — open-ended when
-                        // loop_end is 0 (loop to the natural end of the clip).
-                        if player.looping {
-                            data = if player.loop_end > 0.0 {
-                                data.loop_region(player.loop_start..player.loop_end)
-                            } else {
-                                data.loop_region(player.loop_start..)
-                            };
-                        }
-
-                        if player.fade_in > 0.0 {
-                            data = data.fade_in_tween(Tween {
-                                duration: std::time::Duration::from_secs_f32(player.fade_in),
-                                ..Default::default()
-                            });
-                        }
-
-                        if player.spatial {
-                            // 3D: route through a positioned spatial sub-track.
-                            // Panning is derived from listener geometry, so we
-                            // don't apply manual panning here.
-                            if let Some(spatial_track) = audio.get_or_create_spatial_track(
-                                entity,
-                                position,
-                                &player.bus,
-                                player.spatial_min_distance,
-                                player.spatial_max_distance,
-                                &player.spatial_rolloff,
-                                &mixer,
-                            ) {
-                                match spatial_track.play(data) {
-                                    Ok(handle) => {
-                                        audio.track_sound(entity, handle);
-                                        info!(
-                                            "[KiraAudio] AudioPlayer (3D) started: {} on bus {}",
-                                            player.clip, player.bus
-                                        );
-                                    }
-                                    Err(e) => warn!(
-                                        "[KiraAudio] Failed to play AudioPlayer {}: {}",
-                                        player.clip, e
-                                    ),
-                                }
-                            }
-                        } else {
-                            let data = data.panning(Panning(player.panning));
-                            match audio.play_on_bus(data, &player.bus, &mixer) {
-                                Ok(handle) => {
-                                    audio.track_sound(entity, handle);
-                                    info!(
-                                        "[KiraAudio] AudioPlayer started: {} on bus {}",
-                                        player.clip, player.bus
-                                    );
-                                }
-                                Err(e) => warn!(
-                                    "[KiraAudio] Failed to play AudioPlayer {}: {}",
-                                    player.clip, e
-                                ),
-                            }
-                        }
-                    }
-                    Err(e) => warn!(
-                        "[KiraAudio] Failed to load AudioPlayer clip {}: {}",
-                        player.clip, e
-                    ),
+                let mut r = request(&player.bus);
+                r.gain = player.volume;
+                r.pitch = player.pitch.max(0.01) as f64;
+                r.fade_in = player.fade_in;
+                r.reverb_send = player.reverb_send;
+                r.delay_send = player.delay_send;
+                if player.looping {
+                    r.looping = Some((player.loop_start, player.loop_end));
                 }
+                if player.spatial {
+                    // Pan comes from listener geometry for a positioned sound, so
+                    // the authored pan is left centred rather than fighting it —
+                    // which is what the spatial path always did.
+                    r.emitter = Some(emitter_of(&player, position));
+                } else {
+                    r.pan = player.panning;
+                }
+                start(
+                    &mut link,
+                    &mut cache,
+                    &mut voices,
+                    project,
+                    master_volume,
+                    &player.clip,
+                    Some(entity),
+                    r,
+                );
             }
 
             AudioCommand::PlaySound3D {
@@ -190,50 +211,24 @@ pub fn process_audio_commands(
                 bus,
                 entity,
             } => {
-                let full_path = audio.resolve_path(&path);
-                let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
-
-                match load_static_sound(&path, &full_path) {
-                    Ok(data) => {
-                        let data = data.volume(amplitude_to_db(effective_volume));
-
-                        if let Some(ent) = entity {
-                            if let Some(spatial_track) = audio.get_or_create_spatial_track(
-                                ent,
-                                position,
-                                &bus,
-                                1.0,
-                                50.0,
-                                &RolloffType::Logarithmic,
-                                &mixer,
-                            ) {
-                                match spatial_track.play(data) {
-                                    Ok(handle) => {
-                                        audio.track_sound(ent, handle);
-                                        debug!(
-                                            "[KiraAudio] Playing 3D sound: {} at {:?}",
-                                            path, position
-                                        );
-                                    }
-                                    Err(e) => {
-                                        warn!("[KiraAudio] Failed to play 3D sound {}: {}", path, e)
-                                    }
-                                }
-                            }
-                        } else {
-                            // No entity - fallback to non-spatial playback
-                            match audio.play_on_bus(data, &bus, &mixer) {
-                                Ok(_handle) => {
-                                    debug!("[KiraAudio] Playing 3D sound (no entity): {}", path);
-                                }
-                                Err(e) => {
-                                    warn!("[KiraAudio] Failed to play 3D sound {}: {}", path, e)
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => warn!("[KiraAudio] Failed to load {}: {}", path, e),
-                }
+                let mut r = request(&bus);
+                r.gain = volume;
+                r.emitter = Some(EmitterState {
+                    position: position.to_array(),
+                    min_distance: 1.0,
+                    max_distance: 50.0,
+                    rolloff: 0,
+                });
+                start(
+                    &mut link,
+                    &mut cache,
+                    &mut voices,
+                    project,
+                    master_volume,
+                    &path,
+                    entity,
+                    r,
+                );
             }
 
             AudioCommand::PlayMusic {
@@ -242,156 +237,36 @@ pub fn process_audio_commands(
                 fade_in,
                 bus,
             } => {
-                audio.stop_music(0.0);
-
-                let full_path = audio.resolve_path(&path);
-                let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
-
-                // Kira's streaming source needs a file path on disk. In an
-                // exported runtime the music typically lives inside the .rpak
-                // archive instead — pull the bytes via the VFS byte loader and
-                // materialise a temp file so streaming has something to mmap.
-                // Same clip + same temp path on every call so we don't pile
-                // up duplicates in `%TEMP%`.
-                let stream_path: std::path::PathBuf = if full_path.exists() {
-                    full_path.clone()
-                } else if let Some(bytes) = renzora::core::load_asset_bytes(&path) {
-                    let temp_dir = std::env::temp_dir().join("renzora_music");
-                    let _ = std::fs::create_dir_all(&temp_dir);
-                    let safe = path.replace(['/', '\\', ':'], "_");
-                    let temp_path = temp_dir.join(safe);
-                    if let Err(e) = std::fs::write(&temp_path, &bytes) {
-                        warn!(
-                            "[KiraAudio] Failed to stage music to temp `{}`: {}",
-                            temp_path.display(),
-                            e
-                        );
-                        continue;
-                    }
-                    temp_path
-                } else {
-                    warn!("[KiraAudio] Failed to locate music: {}", path);
-                    continue;
-                };
-
-                match StreamingSoundData::from_file(&stream_path) {
-                    Ok(data) => {
-                        let data = data
-                            .volume(amplitude_to_db(effective_volume))
-                            .loop_region(0.0..);
-
-                        let data = if fade_in > 0.0 {
-                            data.fade_in_tween(Tween {
-                                duration: std::time::Duration::from_secs_f32(fade_in),
-                                ..Default::default()
-                            })
-                        } else {
-                            data
-                        };
-
-                        match audio.play_on_bus(data, &bus, &mixer) {
-                            Ok(handle) => {
-                                audio.music_handle = Some(handle);
-                                info!("[KiraAudio] Playing music: {} on bus: {}", path, bus);
-                            }
-                            Err(e) => warn!("[KiraAudio] Failed to play music {}: {}", path, e),
-                        }
-                    }
-                    Err(e) => warn!("[KiraAudio] Failed to load music {}: {}", path, e),
+                if let Some(previous) = music.0.take() {
+                    link.stop(&StopRequest {
+                        target: StopTarget::Voice(previous.0),
+                        fade: 0.0,
+                    });
                 }
+                let mut r = request(&bus);
+                r.gain = volume;
+                r.fade_in = fade_in;
+                r.looping = Some((0.0, 0.0));
+                // No entity: music outlives whatever asked for it, and there is
+                // nothing for it to be cleaned up alongside.
+                music.0 = start(
+                    &mut link,
+                    &mut cache,
+                    &mut voices,
+                    project,
+                    master_volume,
+                    &path,
+                    None,
+                    r,
+                );
             }
 
             AudioCommand::StopMusic { fade_out } => {
-                audio.stop_music(fade_out);
-                info!("[KiraAudio] Music stopped (fade={}s)", fade_out);
-            }
-
-            AudioCommand::StopAllSounds => {
-                audio.stop_all_sounds();
-                audio.stop_music(0.0);
-                info!("[KiraAudio] All sounds stopped");
-            }
-
-            AudioCommand::SetMasterVolume { volume } => {
-                audio.master_volume = (volume as f64).clamp(0.0, 1.0);
-                debug!("[KiraAudio] Master volume set to {}", audio.master_volume);
-            }
-
-            AudioCommand::PauseSound { entity } => {
-                if let Some(entity) = entity {
-                    if let Some(handles) = audio.active_sounds.get_mut(&entity) {
-                        for handle in handles.iter_mut() {
-                            handle.pause(Tween::default());
-                        }
-                    }
-                } else {
-                    for handles in audio.active_sounds.values_mut() {
-                        for handle in handles.iter_mut() {
-                            handle.pause(Tween::default());
-                        }
-                    }
-                    if let Some(ref mut h) = audio.music_handle {
-                        h.pause(Tween::default());
-                    }
-                }
-            }
-
-            AudioCommand::ResumeSound { entity } => {
-                if let Some(entity) = entity {
-                    if let Some(handles) = audio.active_sounds.get_mut(&entity) {
-                        for handle in handles.iter_mut() {
-                            handle.resume(Tween::default());
-                        }
-                    }
-                } else {
-                    for handles in audio.active_sounds.values_mut() {
-                        for handle in handles.iter_mut() {
-                            handle.resume(Tween::default());
-                        }
-                    }
-                    if let Some(ref mut h) = audio.music_handle {
-                        h.resume(Tween::default());
-                    }
-                }
-            }
-
-            AudioCommand::SetSoundVolume {
-                entity,
-                volume,
-                fade,
-            } => {
-                if let Some(handles) = audio.active_sounds.get_mut(&entity) {
-                    let tween = if fade > 0.0 {
-                        Tween {
-                            duration: std::time::Duration::from_secs_f32(fade),
-                            ..Default::default()
-                        }
-                    } else {
-                        Tween::default()
-                    };
-                    for handle in handles.iter_mut() {
-                        handle.set_volume(amplitude_to_db(volume as f64), tween);
-                    }
-                }
-            }
-
-            AudioCommand::SetSoundPitch {
-                entity,
-                pitch,
-                fade,
-            } => {
-                if let Some(handles) = audio.active_sounds.get_mut(&entity) {
-                    let tween = if fade > 0.0 {
-                        Tween {
-                            duration: std::time::Duration::from_secs_f32(fade),
-                            ..Default::default()
-                        }
-                    } else {
-                        Tween::default()
-                    };
-                    for handle in handles.iter_mut() {
-                        handle.set_playback_rate(pitch as f64, tween);
-                    }
+                if let Some(voice) = music.0.take() {
+                    link.stop(&StopRequest {
+                        target: StopTarget::Voice(voice.0),
+                        fade: fade_out,
+                    });
                 }
             }
 
@@ -401,172 +276,159 @@ pub fn process_audio_commands(
                 duration,
                 bus,
             } => {
-                audio.stop_music(duration);
+                // The old track fades out over the same span the new one fades
+                // in, which is what makes this a crossfade rather than a gap.
+                if let Some(previous) = music.0.take() {
+                    link.stop(&StopRequest {
+                        target: StopTarget::Voice(previous.0),
+                        fade: duration,
+                    });
+                }
+                let mut r = request(&bus);
+                r.gain = volume;
+                r.fade_in = duration;
+                r.looping = Some((0.0, 0.0));
+                music.0 = start(
+                    &mut link,
+                    &mut cache,
+                    &mut voices,
+                    project,
+                    master_volume,
+                    &path,
+                    None,
+                    r,
+                );
+            }
 
-                let full_path = audio.resolve_path(&path);
-                let effective_volume = (volume as f64 * audio.master_volume).clamp(0.0, 2.0);
+            AudioCommand::StopAllSounds => {
+                link.stop(&StopRequest {
+                    target: StopTarget::All,
+                    fade: 0.0,
+                });
+                music.0 = None;
+                *voices = ActiveVoices::default();
+            }
 
-                match StreamingSoundData::from_file(&full_path) {
-                    Ok(data) => {
-                        let data = data
-                            .volume(amplitude_to_db(effective_volume))
-                            .loop_region(0.0..)
-                            .fade_in_tween(Tween {
-                                duration: std::time::Duration::from_secs_f32(duration),
-                                ..Default::default()
-                            });
+            AudioCommand::SetMasterVolume { volume } => {
+                master.0 = volume.clamp(0.0, 1.0);
+            }
 
-                        match audio.play_on_bus(data, &bus, &mixer) {
-                            Ok(handle) => {
-                                audio.music_handle = Some(handle);
-                                info!("[KiraAudio] Crossfading to: {} on bus: {}", path, bus);
-                            }
-                            Err(e) => warn!("[KiraAudio] Crossfade failed {}: {}", path, e),
-                        }
-                    }
-                    Err(e) => warn!(
-                        "[KiraAudio] Failed to load music for crossfade {}: {}",
-                        path, e
-                    ),
+            AudioCommand::PauseSound { entity } => {
+                for voice in targets(&voices, &music, entity) {
+                    batch.paused.push((voice.0, true));
+                }
+            }
+
+            AudioCommand::ResumeSound { entity } => {
+                for voice in targets(&voices, &music, entity) {
+                    batch.paused.push((voice.0, false));
+                }
+            }
+
+            AudioCommand::SetSoundVolume { entity, volume, .. } => {
+                // `fade` is accepted and ignored. The backend ramps a gain change
+                // over a block regardless, and a per-parameter tween would be a
+                // whole automation system for a value nothing in the editor
+                // animates. Taking the argument and not acting on the tween beats
+                // removing it and breaking every caller.
+                for voice in voices.of(entity) {
+                    batch.gains.push((voice.0, volume * master_volume));
+                }
+            }
+
+            AudioCommand::SetSoundPitch { entity, pitch, .. } => {
+                for voice in voices.of(entity) {
+                    batch.pitches.push((voice.0, pitch as f64));
                 }
             }
         }
     }
+
+    if !batch.gains.is_empty() || !batch.pitches.is_empty() || !batch.paused.is_empty() {
+        if let Err(e) = link.update(&batch) {
+            warn!("[audio] {e}");
+        }
+    }
 }
 
-/// Sync the Kira listener position/orientation and all spatial track positions each frame.
+/// Which voices a pause or resume applies to. `None` means everything, music
+/// included — that is what a global pause has always meant.
+fn targets(voices: &ActiveVoices, music: &MusicVoice, entity: Option<Entity>) -> Vec<VoiceId> {
+    match entity {
+        Some(entity) => voices.of(entity).to_vec(),
+        None => {
+            let mut all = voices.all();
+            all.extend(music.0);
+            all
+        }
+    }
+}
+
+/// Push moved emitters to the backend each frame.
 pub fn sync_spatial_audio(
-    audio: Option<NonSendMut<KiraAudioManager>>,
-    listener_query: Query<(&AudioListener, &GlobalTransform)>,
-    spatial_entities: Query<&GlobalTransform>,
+    mut link: ResMut<AudioLink>,
+    voices: Res<ActiveVoices>,
+    transforms: Query<&GlobalTransform>,
 ) {
-    let Some(mut audio) = audio else { return };
-
-    // Update listener from the first active AudioListener entity
-    if let Some(ref mut listener) = audio.listener {
-        for (data, transform) in &listener_query {
-            if data.active {
-                let pos = transform.translation();
-                let rot = transform.to_isometry().rotation;
-                listener.set_position(vec3_to_mint(pos), Tween::default());
-                listener.set_orientation(quat_to_mint(rot), Tween::default());
-                break;
-            }
-        }
+    if !link.is_active() || voices.is_empty() {
+        return;
     }
-
-    // Update emitter positions and clean up despawned entities
-    let despawned: Vec<Entity> = audio
-        .spatial_tracks
-        .keys()
-        .filter(|e| spatial_entities.get(**e).is_err())
-        .copied()
-        .collect();
-    for entity in despawned {
-        audio.spatial_tracks.remove(&entity);
-    }
-
-    for (entity, track) in audio.spatial_tracks.iter_mut() {
-        if let Ok(transform) = spatial_entities.get(*entity) {
-            track.set_position(vec3_to_mint(transform.translation()), Tween::default());
-        }
-    }
-}
-
-/// Prune finished sound handles every frame to avoid stale accumulation.
-pub fn prune_finished_sounds(audio: Option<NonSendMut<KiraAudioManager>>) {
-    let Some(mut audio) = audio else { return };
-    audio.prune_finished();
-}
-
-/// Update VU meter peak levels from active sound handles.
-/// Since Kira 0.12 doesn't expose per-track metering, we estimate activity
-/// from the number of playing sounds per bus.
-pub fn update_vu_meters(
-    audio: Option<NonSendMut<KiraAudioManager>>,
-    mut mixer: Option<ResMut<MixerState>>,
-    preview: Option<Res<AudioPreviewState>>,
-) {
-    let Some(audio) = audio else { return };
-    let Some(ref mut mixer) = mixer else { return };
-
-    // Decay all peak levels toward zero
-    const DECAY_RATE: f32 = 3.0; // per second approx (at 60fps: ~0.05 per frame)
-    let decay = DECAY_RATE / 60.0;
-
-    mixer.master.peak_level = (mixer.master.peak_level - decay).max(0.0);
-    mixer.sfx.peak_level = (mixer.sfx.peak_level - decay).max(0.0);
-    mixer.music.peak_level = (mixer.music.peak_level - decay).max(0.0);
-    mixer.ambient.peak_level = (mixer.ambient.peak_level - decay).max(0.0);
-    for (_, strip) in mixer.custom_buses.iter_mut() {
-        strip.peak_level = (strip.peak_level - decay).max(0.0);
-    }
-
-    // Estimate activity from playing sounds (without emitter query, assume SFX bus)
-    for handles in audio.active_sounds.values() {
-        let playing_count = handles
-            .iter()
-            .filter(|h| h.state() == PlaybackState::Playing)
-            .count();
-        if playing_count == 0 {
+    let mut moved = Vec::new();
+    for (entity, ids) in voices.iter() {
+        let Ok(transform) = transforms.get(entity) else {
             continue;
-        }
-
-        let level = 0.8_f32.min(1.5);
-        mixer.sfx.peak_level = mixer.sfx.peak_level.max(level);
+        };
+        let position = transform.translation().to_array();
+        moved.extend(ids.iter().map(|id| (id.0, position)));
     }
-
-    // Music handle - if music is actively playing, bump the Music bus meter
-    if let Some(ref handle) = audio.music_handle {
-        if handle.state() == PlaybackState::Playing {
-            mixer.music.peak_level = mixer.music.peak_level.max(0.6);
-        }
+    if moved.is_empty() {
+        return;
     }
-
-    // Preview handle - bump the bus meter for the preview sound
-    if let Some(ref preview) = preview {
-        if let Some(ref handle) = preview.handle {
-            if handle.state() == PlaybackState::Playing {
-                let level = 0.7_f32;
-                match preview.previewing_bus.as_deref().unwrap_or("Sfx") {
-                    "Music" => mixer.music.peak_level = mixer.music.peak_level.max(level),
-                    "Ambient" => mixer.ambient.peak_level = mixer.ambient.peak_level.max(level),
-                    "Master" => mixer.master.peak_level = mixer.master.peak_level.max(level),
-                    name => {
-                        if let Some(idx) = mixer.custom_buses.iter().position(|(n, _)| n == name) {
-                            mixer.custom_buses[idx].1.peak_level =
-                                mixer.custom_buses[idx].1.peak_level.max(level);
-                        } else {
-                            mixer.sfx.peak_level = mixer.sfx.peak_level.max(level);
-                        }
-                    }
-                }
-            }
-        }
+    let request = UpdateRequest {
+        moved,
+        ..Default::default()
+    };
+    if let Err(e) = link.update(&request) {
+        warn!("[audio] {e}");
     }
-
-    // Master reflects all activity
-    let max_sub = mixer
-        .sfx
-        .peak_level
-        .max(mixer.music.peak_level)
-        .max(mixer.ambient.peak_level);
-    mixer.master.peak_level = mixer.master.peak_level.max(max_sub);
 }
 
-/// Auto-stop preview when its sound handle finishes playing.
-pub fn preview_audio_system(mut preview: Option<ResMut<AudioPreviewState>>) {
-    let Some(ref mut preview) = preview else {
+/// Stop and forget voices whose entity has gone away.
+///
+/// Without this a despawned emitter plays to its natural end from wherever it
+/// died, and its bookkeeping never clears. A short fade rather than an abrupt
+/// stop, because a cut mid-waveform is a click.
+pub fn drop_despawned_voices(
+    mut link: ResMut<AudioLink>,
+    mut voices: ResMut<ActiveVoices>,
+    alive: Query<Entity>,
+) {
+    if voices.is_empty() {
+        return;
+    }
+    let gone: Vec<Entity> = voices.entities().filter(|e| alive.get(*e).is_err()).collect();
+    for entity in gone {
+        for voice in voices.forget(entity) {
+            link.stop(&StopRequest {
+                target: StopTarget::Voice(voice.0),
+                fade: 0.02,
+            });
+        }
+    }
+}
+
+/// Clear the preview once its voice has finished.
+pub fn preview_audio_system(
+    mut preview: Option<ResMut<AudioPreviewState>>,
+    voices: Res<ActiveVoices>,
+) {
+    let Some(preview) = preview.as_mut() else {
         return;
     };
-
-    // Clean up handle when sound finishes naturally
-    if let Some(ref handle) = preview.handle {
-        if handle.state() == PlaybackState::Stopped {
-            preview.handle = None;
-            preview.previewing_entity = None;
-            preview.previewing_path = None;
-            preview.previewing_bus = None;
-        }
+    let Some(voice) = preview.voice else { return };
+    // The backend reports finishes by dropping them from `ActiveVoices`, so
+    // "still tracked" and "still playing" are the same question.
+    if !voices.contains(voice) {
+        preview.clear();
     }
 }

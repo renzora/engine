@@ -3,7 +3,27 @@
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::manager::RolloffType;
+/// Spatial audio distance rolloff model.
+///
+/// Lives here rather than beside the backend because it is *authored* data — a
+/// field on `AudioPlayer` that scenes serialize. The backend has its own copy of
+/// the same choice; the two are the same decision seen from either side of the
+/// boundary, which is why neither owns the other.
+#[derive(Clone, Debug, Default, PartialEq, Reflect, serde::Serialize, serde::Deserialize)]
+pub enum RolloffType {
+    #[default]
+    Logarithmic,
+    Linear,
+}
+
+impl std::fmt::Display for RolloffType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RolloffType::Logarithmic => write!(f, "Logarithmic"),
+            RolloffType::Linear => write!(f, "Linear"),
+        }
+    }
+}
 
 /// Audio emitter component with full playback parameters.
 ///

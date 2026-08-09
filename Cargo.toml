@@ -126,7 +126,7 @@ bevy = { version = "0.19", default-features = false, features = [
     # ── The `2d` / `3d` / `ui` metas, EXPANDED LEAF BY LEAF ──────────────────
     # Bevy's default is the four metas `2d, 3d, ui, audio`. We take
     # `default-features = false` and re-add all but `audio` — Renzora's audio is
-    # kira-based (`renzora_audio`), so `bevy_audio` (and its rodio/cpal/symphonia
+    # its own (`plugins/audio`), so `bevy_audio` (and its rodio/cpal/symphonia
     # stack) is never used anywhere in the engine.
     #
     # The other three are written out leaf by leaf instead of named, because
@@ -226,7 +226,7 @@ bevy = { version = "0.19", default-features = false, features = [
     # this base build, which is also the editor.
     "bmp", "dds", "exr", "gif", "hdr", "jpeg", "tga",
     "webp", "zlib", "basis-universal",
-    # (audio formats intentionally dropped — Renzora uses kira, not bevy_audio)
+    # (audio formats intentionally dropped — decoding lives in the audio plugin)
     # (`compressed_image_saver` + `asset_processor` dropped below — unused.)
     # PBR / rendering detail — the texture-slot features below are all live in the
     # material system (`renzora_material`): transmission, clearcoat/multi-layer,

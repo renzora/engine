@@ -133,12 +133,6 @@ const CREDITS: &[Credit] = &[
         url: "https://github.com/Jondolf/glam_matrix_extras",
     },
     Credit {
-        name: "Kira",
-        by: "Tesselode (Andrew Minnich)",
-        desc: "Audio playback and mixing backend",
-        url: "https://github.com/tesselode/kira",
-    },
-    Credit {
         name: "Tracy Profiler",
         by: "Bartosz Taudul",
         desc: "Real-time frame and CPU profiler",

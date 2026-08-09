@@ -188,8 +188,10 @@ fn audio_player_native(world: &mut World, entity: Entity) -> Entity {
 fn bus_names(world: &World) -> Vec<String> {
     let mut buses = vec!["Master".to_string(), "Sfx".to_string(), "Music".to_string(), "Ambient".to_string()];
     if let Some(mixer) = world.get_resource::<MixerState>() {
-        for (name, _) in &mixer.custom_buses {
-            buses.push(name.clone());
+        // Keys, not display names: the chosen string lands in
+        // `AudioPlayer.bus`, which is a routing key.
+        for bus in &mixer.custom_buses {
+            buses.push(bus.key.clone());
         }
     }
     buses

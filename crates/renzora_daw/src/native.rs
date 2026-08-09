@@ -77,8 +77,8 @@ fn buffer(w: &Rx) -> DawIntentBuffer {
 
 fn pick_default_bus(mixer: Option<&MixerState>) -> String {
     if let Some(m) = mixer {
-        if !m.custom_buses.is_empty() {
-            return m.custom_buses[0].0.clone();
+        if let Some(bus) = m.custom_buses.first() {
+            return bus.key.clone();
         }
     }
     "Music".to_string()
@@ -92,8 +92,10 @@ fn available_buses(mixer: Option<&MixerState>) -> Vec<String> {
         "Ambient".to_string(),
     ];
     if let Some(m) = mixer {
-        for (name, _) in &m.custom_buses {
-            out.push(name.clone());
+        // Keys, not display names: this list is written straight into a
+        // track's `bus_name`, which is a routing key.
+        for bus in &m.custom_buses {
+            out.push(bus.key.clone());
         }
     }
     out

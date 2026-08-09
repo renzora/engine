@@ -82,7 +82,7 @@ impl BusRef {
             BusRef::Sfx => Some(&mixer.sfx),
             BusRef::Music => Some(&mixer.music),
             BusRef::Ambient => Some(&mixer.ambient),
-            BusRef::Custom(i) => mixer.custom_buses.get(i).map(|(_, s)| s),
+            BusRef::Custom(i) => mixer.custom_buses.get(i).map(|b| &b.strip),
         }
     }
 
@@ -92,7 +92,7 @@ impl BusRef {
             BusRef::Sfx => Some(&mut mixer.sfx),
             BusRef::Music => Some(&mut mixer.music),
             BusRef::Ambient => Some(&mut mixer.ambient),
-            BusRef::Custom(i) => mixer.custom_buses.get_mut(i).map(|(_, s)| s),
+            BusRef::Custom(i) => mixer.custom_buses.get_mut(i).map(|b| &mut b.strip),
         }
     }
 
@@ -210,7 +210,7 @@ fn bus_name(rx: &Rx, bus: BusRef) -> String {
         BusRef::Ambient => "Ambient".to_string(),
         BusRef::Custom(i) => rx
             .get_resource::<MixerState>()
-            .and_then(|m| m.custom_buses.get(i).map(|(n, _)| n.clone()))
+            .and_then(|m| m.custom_buses.get(i).map(|b| b.name.clone()))
             .unwrap_or_default(),
     }
 }
@@ -684,7 +684,7 @@ fn rename_focus(
     if let Some(index) = armed.take() {
         let name = mixer
             .as_deref()
-            .and_then(|m| m.custom_buses.get(index).map(|(n, _)| n.clone()))
+            .and_then(|m| m.custom_buses.get(index).map(|b| b.name.clone()))
             .unwrap_or_default();
         for (mut input, target) in &mut inputs {
             if target.0 != index {
@@ -773,6 +773,7 @@ fn strip_context_menu(
     windows: Query<&Window, With<PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
     mixer: Option<Res<MixerState>>,
+    devices: Option<Res<renzora_audio::AudioDevices>>,
     strips: Query<(&RelativeCursorPosition, &BusRef)>,
     mut commands: Commands,
 ) {
@@ -822,8 +823,9 @@ fn strip_context_menu(
     kids.push(swatch_grid(&mut commands, bus, color));
 
     kids.push(menu_sep(&mut commands));
-    kids.push(device_submenu(&mut commands, &fonts, bus, true, input_dev.as_deref()));
-    kids.push(device_submenu(&mut commands, &fonts, bus, false, output_dev.as_deref()));
+    let devices = devices.map(|d| d.clone()).unwrap_or_default();
+    kids.push(device_submenu(&mut commands, &fonts, &devices, bus, true, input_dev.as_deref()));
+    kids.push(device_submenu(&mut commands, &fonts, &devices, bus, false, output_dev.as_deref()));
 
     if let Some(index) = bus.custom() {
         kids.push(menu_sep(&mut commands));
@@ -906,6 +908,7 @@ fn swatch_grid(commands: &mut Commands, bus: BusRef, current: [u8; 3]) -> Entity
 fn device_submenu(
     commands: &mut Commands,
     fonts: &EmberFonts,
+    devices: &renzora_audio::AudioDevices,
     bus: BusRef,
     input: bool,
     current: Option<&str>,
@@ -917,10 +920,14 @@ fn device_submenu(
     };
     let (row, content) = menu_submenu(commands, fonts, icon, label);
 
+    // From the resource the audio API keeps, rather than by asking the backend
+    // here: enumerating is a system call, and this runs while a menu is being
+    // built. With no backend loaded the lists are empty and the menu offers only
+    // "(none)", which is the honest answer.
     let devices = if input {
-        renzora_audio::list_input_devices()
+        devices.inputs.clone()
     } else {
-        renzora_audio::list_output_devices()
+        devices.outputs.clone()
     };
     let mut items = vec![device_row(commands, fonts, "(none)", None, bus, input, current.is_none())];
     for name in devices {
@@ -969,13 +976,15 @@ fn device_row(
 }
 
 fn custom_snapshot(world: &Rx) -> KeyedSnapshot {
-    let names: Vec<String> = world
+    let keys: Vec<String> = world
         .get_resource::<MixerState>()
-        .map(|m| m.custom_buses.iter().map(|(n, _)| n.clone()).collect())
+        .map(|m| m.custom_buses.iter().map(|b| b.key.clone()).collect())
         .unwrap_or_default();
-    // Key by bus name (stable identity); hash by index so a reorder rebuilds the
-    // strip with fresh accessors.
-    let items: Vec<(u64, u64)> = names
+    // Key by the bus's routing key; hash by index so a reorder rebuilds the strip
+    // with fresh accessors. Keying on the key rather than the display name is
+    // what stops a rename respawning the strip mid-edit — the name changes, the
+    // identity does not.
+    let items: Vec<(u64, u64)> = keys
         .iter()
         .enumerate()
         .map(|(i, n)| {

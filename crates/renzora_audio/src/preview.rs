@@ -1,63 +1,89 @@
-//! In-editor audio preview state
+//! In-editor audio preview — auditioning a clip outside play mode.
 
 use bevy::prelude::*;
-use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
-use kira::sound::PlaybackState;
-use kira::Tween;
 
-use crate::manager::KiraAudioManager;
-use crate::mixer::MixerState;
+use renzora_plugin::audio::{PlayRequest, StopRequest, StopTarget};
 
-/// Resource tracking the current audio preview (plays outside of play mode)
+use crate::link::{AudioLink, VoiceId};
+use crate::runtime::{ActiveVoices, SoundCache};
+
+/// The clip currently being auditioned, if any.
 #[derive(Resource, Default)]
 pub struct AudioPreviewState {
-    pub handle: Option<StaticSoundHandle>,
+    /// The voice, so it can be stopped and so its end can be noticed.
+    pub voice: Option<VoiceId>,
     pub previewing_entity: Option<Entity>,
     pub previewing_path: Option<String>,
     pub previewing_bus: Option<String>,
 }
 
 impl AudioPreviewState {
+    /// Start auditioning `path`, replacing whatever was playing.
+    ///
+    /// The preview is a voice like any other, which is what lets the mixer meter,
+    /// mute and solo it exactly as it does game audio. Auditioning through a
+    /// separate path is how you end up shipping a mix that only sounded right in
+    /// the editor.
+    #[allow(clippy::too_many_arguments)]
     pub fn play(
         &mut self,
-        manager: &mut KiraAudioManager,
+        link: &mut AudioLink,
+        cache: &mut SoundCache,
+        voices: &mut ActiveVoices,
+        project: Option<&renzora::core::CurrentProject>,
         path: &str,
         bus: &str,
-        mixer: &MixerState,
         entity: Entity,
     ) {
-        // Stop previous preview
-        self.stop();
+        self.stop(link);
 
-        let full_path = manager.resolve_path(path);
-        if !full_path.exists() {
-            warn!("[AudioPreview] File not found: {}", full_path.display());
+        let Some(sound) = cache.get_or_load(link, project, path) else {
+            return;
+        };
+        let voice = link.next_voice();
+        let request = PlayRequest {
+            voice: voice.0,
+            clip: sound.0,
+            bus: bus.to_string(),
+            gain: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+            looping: None,
+            fade_in: 0.0,
+            start: 0.0,
+            emitter: None,
+            reverb_send: 0.0,
+            delay_send: 0.0,
+        };
+        if let Err(e) = link.play(&request) {
+            warn!("[audio] preview of `{path}` failed: {e}");
             return;
         }
-
-        match StaticSoundData::from_file(&full_path) {
-            Ok(data) => match manager.play_on_bus(data, bus, mixer) {
-                Ok(handle) => {
-                    self.handle = Some(handle);
-                    self.previewing_entity = Some(entity);
-                    self.previewing_path = Some(path.to_string());
-                    self.previewing_bus = Some(bus.to_string());
-                    info!("[AudioPreview] Playing: {}", path);
-                }
-                Err(e) => {
-                    warn!("[AudioPreview] Failed to play {}: {}", path, e);
-                }
-            },
-            Err(e) => {
-                warn!("[AudioPreview] Failed to load {}: {}", path, e);
-            }
-        }
+        // Tracked against the previewed entity, so a despawn cleans it up like
+        // anything else.
+        voices.insert(entity, voice);
+        self.voice = Some(voice);
+        self.previewing_entity = Some(entity);
+        self.previewing_path = Some(path.to_string());
+        self.previewing_bus = Some(bus.to_string());
     }
 
-    pub fn stop(&mut self) {
-        if let Some(mut handle) = self.handle.take() {
-            handle.stop(Tween::default());
+    /// Stop the preview. A short fade rather than a cut, because a stop
+    /// mid-waveform is a click.
+    pub fn stop(&mut self, link: &mut AudioLink) {
+        if let Some(voice) = self.voice.take() {
+            link.stop(&StopRequest {
+                target: StopTarget::Voice(voice.0),
+                fade: 0.02,
+            });
         }
+        self.clear();
+    }
+
+    /// Forget what was being previewed without stopping anything — for the case
+    /// where the voice has already ended on its own.
+    pub fn clear(&mut self) {
+        self.voice = None;
         self.previewing_entity = None;
         self.previewing_path = None;
         self.previewing_bus = None;
@@ -68,10 +94,6 @@ impl AudioPreviewState {
     }
 
     pub fn is_playing(&self) -> bool {
-        if let Some(ref handle) = self.handle {
-            handle.state() != PlaybackState::Stopped
-        } else {
-            false
-        }
+        self.voice.is_some()
     }
 }
