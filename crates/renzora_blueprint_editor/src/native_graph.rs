@@ -34,11 +34,9 @@ pub struct NativeBlueprintGraph;
 
 impl Plugin for NativeBlueprintGraph {
     fn build(&self, app: &mut App) {
-        use renzora_ember::toolbar::PanelToolbarExt;
         app.register_panel_content("blueprint_graph", false, build);
         // Toolbar actions live in the shared strip (shown when the blueprint
         // graph is the active panel).
-        app.register_panel_toolbar("blueprint_graph", build_toolbar);
         app.add_systems(
             Update,
             (apply_click, add_node_open, bp_context_menu_open, layout_click)
@@ -183,7 +181,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Canvas (the toolbar lives in the shared strip — see `build_toolbar`).
+    // This panel's own toolbar, above the canvas. It used to live in a shared
+    // strip below the top bar, which meant a row of controls for *this* graph
+    // rendered the same distance from it as from every other panel, and had to
+    // keep answering "am I the visible tab?" to know whether to show at all.
+    let toolbar = build_toolbar(commands, fonts);
+
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(BpGraph);
     let (canvas, viewport) = (handle.canvas, handle.viewport);
@@ -201,7 +204,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(canvas).add_child(nodes_layer);
     keyed_list(commands, nodes_layer, move |w| node_snapshot(w, canvas, viewport));
 
-    commands.entity(root).add_child(handle.viewport);
+    commands.entity(root).add_children(&[toolbar, handle.viewport]);
     renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }

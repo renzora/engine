@@ -72,7 +72,6 @@ impl Plugin for EmberPlugin {
         // module. (When markup IS present, it no longer installs them.)
         cursor_icon::plugin(app);
         icons::plugin(app);
-        toolbar::register(app);
         // Correct pointer state (clip + occlusion) — see `correct_pointer_state`.
         // Runs right after `UiSystems::Focus` (the sole writer of `Interaction` /
         // `RelativeCursorPosition`) so every consumer reads the corrected values.

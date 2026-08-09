@@ -77,11 +77,9 @@ pub struct NativeMaterialGraph;
 
 impl Plugin for NativeMaterialGraph {
     fn build(&self, app: &mut App) {
-        use renzora_ember::toolbar::PanelToolbarExt;
         app.register_panel_content("material_graph", false, build);
         // The graph's actions live in the shared toolbar strip (shown when the
         // material graph is the active panel), not inside the panel itself.
-        app.register_panel_toolbar("material_graph", build_toolbar);
         app.add_systems(
             Update,
             (apply_click, add_node_open, view_op_click, context_menu_open, mat_graph_image_drop, sample_switch_open)
@@ -284,7 +282,12 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         ))
         .id();
 
-    // Canvas (the toolbar lives in the shared strip — see `build_toolbar`).
+    // This panel's own toolbar, above the canvas. It used to live in a shared
+    // strip below the top bar, which meant a row of controls for *this* graph
+    // rendered the same distance from it as from every other panel, and had to
+    // keep answering "am I the visible tab?" to know whether to show at all.
+    let toolbar = build_toolbar(commands, fonts);
+
     let handle = node_graph_view(commands, fonts);
     commands.entity(handle.viewport).insert(MatGraph { canvas: handle.canvas });
     let (canvas, viewport) = (handle.canvas, handle.viewport);
@@ -303,7 +306,7 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     commands.entity(canvas).add_child(nodes_layer);
     keyed_list(commands, nodes_layer, move |w| node_snapshot(&Rx::new(w.untracked()), canvas, viewport));
 
-    commands.entity(root).add_child(handle.viewport);
+    commands.entity(root).add_children(&[toolbar, handle.viewport]);
     renzora_editor_framework::mark_drop_zone(commands, root);
     root
 }

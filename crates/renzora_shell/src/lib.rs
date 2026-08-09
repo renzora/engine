@@ -1681,7 +1681,6 @@ fn manage_shell_root(
     fonts: Option<Res<EmberFonts>>,
     tm: Option<Res<renzora_theme::ThemeManager>>,
     theme_menu_open: Res<ThemeMenuOpen>,
-    toolbars: Option<Res<renzora_ember::toolbar::PanelToolbars>>,
     asset_server: Res<AssetServer>,
     mut dirty: ResMut<DockDirty>,
     roots: Query<Entity, With<ShellRoot>>,
@@ -1708,8 +1707,7 @@ fn manage_shell_root(
         } else {
             (Vec::new(), String::new())
         };
-        let toolbars = toolbars.map(|t| t.clone()).unwrap_or_default();
-        spawn_shell(&mut commands, &fonts, &themes, &active, theme_menu_open.0, &toolbars);
+        spawn_shell(&mut commands, &fonts, &themes, &active, theme_menu_open.0);
         // Build the dock into the freshly-spawned `DockArea` (ember rebuilds it
         // from the persisted `Dock.tree`).
         dirty.0 = true;
@@ -1736,12 +1734,9 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("shape_library", "Shapes", "shapes", "Assets"),
     ("level_presets", "Level Presets", "globe", "Scene"),
     ("history", "History", "clock-counter-clockwise", "Editing"),
-    ("outline", "Outline", "list-dashes", "Editing"),
     ("code_editor", "Code", "code", "Editing"),
     ("console", "Console", "terminal", "Debug"),
     ("problems", "Problems", "warning-circle", "Debug"),
-    ("script_variables", "Variables", "brackets-curly", "Scripting"),
-    ("scripts_on_entity", "Scripts", "file-code", "Scripting"),
     // Viewports
     ("viewport", "Viewport", "perspective", "Scene"),
     ("viewport-2", "Viewport 2", "perspective", "Scene"),
@@ -1754,7 +1749,6 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("daw", "Record", "record", "Audio"),
     // Animation
     ("timeline", "Timeline", "film-strip", "Animation"),
-    ("sequencer", "Sequencer", "film-slate", "Animation"),
     ("animation", "Animation", "play-circle", "Animation"),
     ("studio_preview", "Studio Preview", "person", "Animation"),
     ("animator_state_machine", "State Machine", "graph", "Animation"),
@@ -2875,7 +2869,6 @@ fn spawn_shell(
     themes: &[String],
     active: &str,
     theme_menu_open: bool,
-    toolbars: &renzora_ember::toolbar::PanelToolbars,
 ) {
     let font = &fonts.ui;
     let root = commands
@@ -2919,12 +2912,6 @@ fn spawn_shell(
         ))
         .id();
 
-    // Shared panel-toolbar strip directly below the top bar. Each panel
-    // contributes its own toolbar items (via `register_panel_toolbar*`), and the
-    // host shows the ones whose panel is the active dock tab — e.g. the viewport
-    // header for the viewport, code-editor controls for the code editor, etc.
-    let toolbar = renzora_ember::toolbar::build_toolbar_host(commands, fonts, toolbars);
-
     // Collapsed bottom-panel strip: the closed bottom panel's header stays
     // visible in place (tabs included); [`sync_collapsed_bottom_bar`] shows it
     // and fills the tabs whenever the active workspace's bottom panel is
@@ -2966,7 +2953,7 @@ fn spawn_shell(
 
     commands
         .entity(root)
-        .add_children(&[top_bar, toolbar, dock_area, collapsed_bottom, statusbar]);
+        .add_children(&[top_bar, dock_area, collapsed_bottom, statusbar]);
 
     // Borderless-window edge/corner resize grips, overlaid on the perimeter.
     let grips = build_resize_zones(commands);
