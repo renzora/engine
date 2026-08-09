@@ -12,7 +12,7 @@
 //! the themeable [`crate::style::TimelineStyle`], so timelines re-skin with the
 //! active theme like the dock.
 //!
-//! Backing panels: the sequencer and the animation-editor timeline.
+//! Backing panel: the animation-editor timeline.
 
 use std::hash::{Hash, Hasher};
 

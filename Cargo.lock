@@ -7726,10 +7726,8 @@ dependencies = [
  "renzora_pool_water_editor",
  "renzora_procedural_tree_editor",
  "renzora_scene",
- "renzora_script_variables",
  "renzora_scripting",
  "renzora_scripting_editor",
- "renzora_sequencer",
  "renzora_settings",
  "renzora_shader_editor",
  "renzora_shape_library",
@@ -8630,17 +8628,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_script_variables"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_code_editor",
- "renzora_ember",
- "renzora_scripting",
-]
-
-[[package]]
 name = "renzora_scripting"
 version = "0.1.0"
 dependencies = [
@@ -8661,17 +8648,6 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_scripting",
-]
-
-[[package]]
-name = "renzora_sequencer"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_ember",
- "ron 0.8.1",
- "serde",
 ]
 
 [[package]]

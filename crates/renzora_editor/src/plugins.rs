@@ -68,9 +68,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_pool_water_editor::PoolWaterEditorPlugin::default());
     app.add_plugins(renzora_procedural_tree_editor::ProceduralTreeEditorPlugin::default());
     app.add_plugins(renzora_scene::ScenePlugin::default());
-    app.add_plugins(renzora_script_variables::ScriptVariablesPlugin::default());
     app.add_plugins(renzora_scripting_editor::ScriptingEditorPlugin::default());
-    app.add_plugins(renzora_sequencer::SequencerPlugin::default());
     app.add_plugins(renzora_settings::SettingsPlugin::default());
     app.add_plugins(renzora_shader_editor::ShaderEditorPlugin::default());
     app.add_plugins(renzora_shape_library::ShapeLibraryPlugin::default());

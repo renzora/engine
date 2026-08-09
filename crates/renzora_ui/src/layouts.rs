@@ -308,7 +308,6 @@ pub fn scene_layout() -> DockTree {
                         "console".into(),
                         "timeline".into(),
                         "mixer".into(),
-                        "sequencer".into(),
                         "shape_library".into(),
                         "record".into(),
                     ],
@@ -354,17 +353,13 @@ fn layout_blueprints() -> DockTree {
 
 /// Scripting: Hierarchy+Assets | CodeEditor+Console | Inspector+ScriptVariables
 fn layout_scripting() -> DockTree {
-    // Left column:   Hierarchy / Scripts / Assets               (~16%)
-    // Center column: Code editor / (Console+Problems tabbed)    (~59%)
-    // Right column:  Viewport / Outline / Script Variables      (~25%)
+    // Left column:   Hierarchy / Assets                         (~16%)
+    // Center column: Code editor / (Console+Problems tabbed)    (~57%)
+    // Right column:  Viewport                                   (~27%)
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::vertical(
-                DockTree::leaf("scripts_on_entity"),
-                DockTree::leaf("assets"),
-                0.4,
-            ),
+            DockTree::leaf("assets"),
             0.4,
         ),
         DockTree::horizontal(
@@ -374,18 +369,10 @@ fn layout_scripting() -> DockTree {
                     tabs: vec!["console".into(), "problems".into()],
                     active_tab: 0,
                 },
-                0.7,
+                0.72,
             ),
-            DockTree::vertical(
-                DockTree::leaf("viewport"),
-                DockTree::vertical(
-                    DockTree::leaf("outline"),
-                    DockTree::leaf("script_variables"),
-                    0.4,
-                ),
-                0.6,
-            ),
-            0.7,
+            DockTree::leaf("viewport"),
+            0.68,
         ),
         0.16,
     )

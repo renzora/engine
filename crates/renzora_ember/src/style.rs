@@ -449,7 +449,7 @@ impl BarStyle {
     }
 }
 
-/// Style for the reusable `timeline_view` widget (sequencer, animation editor,
+/// Style for the reusable `timeline_view` widget (the animation editor,
 /// any ruler/lanes/playhead panel). Every distinctive element is individually
 /// targetable — the playhead red, lane stripes, ruler tick marks and the fixed
 /// header-column geometry — so timelines re-skin with the theme like the dock.

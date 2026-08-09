@@ -2,7 +2,7 @@
 //! sequencing, audio regions and keyframe animation.
 //!
 //! A track is either a **clip** lane (ranged draggable blocks — video/audio
-//! regions, sequencer events) or a **keyframe** lane (draggable diamond markers).
+//! regions, timed events) or a **keyframe** lane (draggable diamond markers).
 //! A fixed left column holds the track headers; the right side is a horizontally
 //! pannable (middle-drag) / zoomable (wheel) time area sharing one time→pixel
 //! mapping. Scrub the playhead by dragging in the ruler; drag clips/keys to move

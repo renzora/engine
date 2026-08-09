@@ -159,6 +159,44 @@ impl DockTree {
         }
     }
 
+    /// Drop every tab named in `ids` from the tree, collapsing any leaf left
+    /// empty so the split around it closes up rather than leaving a blank pane.
+    ///
+    /// For panels that no longer exist. A saved layout outlives the build that
+    /// wrote it, and a retired panel id would otherwise sit in it forever as a
+    /// tab that opens a placeholder — the dock is happy to render an id it has
+    /// no builder for, which is what makes the ghost survivable *and* permanent.
+    pub fn retire_panels(&mut self, ids: &[&str]) {
+        match self {
+            DockTree::Split { first, second, .. } => {
+                first.retire_panels(ids);
+                second.retire_panels(ids);
+                // A split with nothing on one side is just its other side.
+                match (first.is_empty(), second.is_empty()) {
+                    (true, true) => *self = DockTree::Empty,
+                    (true, false) => *self = (**second).clone(),
+                    (false, true) => *self = (**first).clone(),
+                    (false, false) => {}
+                }
+            }
+            DockTree::Leaf { tabs, active_tab } => {
+                // Follow the active tab across the removal rather than resetting
+                // to 0: dropping a background tab shouldn't switch the panel the
+                // user was last looking at.
+                let active_id = tabs.get(*active_tab).cloned();
+                tabs.retain(|t| !ids.contains(&t.as_str()));
+                *active_tab = active_id
+                    .and_then(|id| tabs.iter().position(|t| *t == id))
+                    .unwrap_or(0)
+                    .min(tabs.len().saturating_sub(1));
+                if tabs.is_empty() {
+                    *self = DockTree::Empty;
+                }
+            }
+            DockTree::Empty => {}
+        }
+    }
+
     /// Is `panel` present anywhere in the tree (visible or as a background tab)?
     pub fn contains_panel(&self, panel: &str) -> bool {
         match self {

@@ -47,17 +47,38 @@ pub fn has_bottom_strip(tree: &DockTree) -> bool {
     )
 }
 
+/// Panel ids that used to exist and no longer do.
+///
+/// A saved `layout.json` outlives the build that wrote it, so a removed panel
+/// stays in it forever — the dock renders an id it has no builder for as a
+/// placeholder pane rather than failing, which makes the ghost harmless but
+/// permanent. Stripping them on load is the only thing that actually clears
+/// them. Append here whenever a panel is retired; entries can be removed again
+/// once no plausible saved layout still mentions them.
+const RETIRED_PANELS: &[&str] = &[
+    // Scripts-on-entity, the code outline and script variables. The code editor
+    // has its own tab strip and toolbar, and the three panels between them cost
+    // a whole column of the Scripting workspace for what they showed.
+    "scripts_on_entity",
+    "outline",
+    "script_variables",
+    // The cinematics sequencer: in-editor playback worked, but sequences never
+    // persisted and bake-to-video was a stub. Its job — keying a camera and
+    // other entities against one playhead, with markers — is what the animation
+    // Timeline already does, against clips that do save.
+    "sequencer",
+];
+
 /// Is `tree`'s leaf holding `console` the classic bottom strip? The strip is
 /// recognized by console being tabbed together with another strip panel —
-/// mixer/sequencer/timeline/shape_library in the shipped default, or
+/// mixer/timeline/shape_library in the shipped default, or
 /// assets/hub_store in layouts saved before those moved out of the strip.
 /// Requiring a companion keeps this from matching a standalone console leaf
 /// (Blueprints) or the console+problems pair (Scripting) — those stay open at
 /// launch, as before.
 fn is_strip_leaf(tree: &mut DockTree) -> bool {
-    const COMPANIONS: [&str; 7] = [
+    const COMPANIONS: [&str; 6] = [
         "mixer",
-        "sequencer",
         "timeline",
         "shape_library",
         "record",
@@ -195,11 +216,14 @@ pub fn load_dock_layouts() -> Option<(
         if data.workspaces.is_empty() {
             return None;
         }
-        let workspaces = data
+        let mut workspaces = data
             .workspaces
             .into_iter()
             .map(|w| (w.name, w.tree))
             .collect::<Vec<_>>();
+        for (_, tree) in &mut workspaces {
+            tree.retire_panels(RETIRED_PANELS);
+        }
         let active = data.active.min(workspaces.len() - 1);
         Some((workspaces, active, data.floating, data.closed_bottoms))
     }
@@ -259,8 +283,8 @@ pub fn write_layout(json: &str) -> std::io::Result<()> {
 pub fn workspace_layouts() -> Vec<(String, DockTree)> {
     vec![
         ("Scene".into(), scene_layout()),
-        ("Blueprints".into(), layout_blueprints()),
         ("Scripting".into(), layout_scripting()),
+        ("Blueprints".into(), layout_blueprints()),
         ("Animation".into(), layout_animation()),
         ("Materials".into(), layout_materials()),
         ("Particles".into(), layout_particles()),
@@ -290,34 +314,27 @@ fn layout_blueprints() -> DockTree {
     )
 }
 
-/// Scripting: Hierarchy/Scripts/Assets | CodeEditor+Console | Viewport/Outline/Vars
+/// Scripting: Hierarchy/Assets | CodeEditor + Console/Problems | Viewport
+///
+/// The Scripts, Outline and Variables panels are gone, so the right-hand column
+/// is the viewport alone and the code editor gets the width they were using. The
+/// editor carries its own tab strip for open files and its own toolbar, which is
+/// what those panels were mostly duplicating.
 fn layout_scripting() -> DockTree {
     DockTree::horizontal(
         DockTree::vertical(
             DockTree::leaf("hierarchy"),
-            DockTree::vertical(
-                DockTree::leaf("scripts_on_entity"),
-                DockTree::leaf("assets"),
-                0.4,
-            ),
+            DockTree::leaf("assets"),
             0.4,
         ),
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::leaf("code_editor"),
                 DockTree::tabs(&["console", "problems"]),
-                0.7,
+                0.72,
             ),
-            DockTree::vertical(
-                DockTree::leaf("viewport"),
-                DockTree::vertical(
-                    DockTree::leaf("outline"),
-                    DockTree::leaf("script_variables"),
-                    0.4,
-                ),
-                0.6,
-            ),
-            0.7,
+            DockTree::leaf("viewport"),
+            0.68,
         ),
         0.16,
     )
@@ -436,13 +453,7 @@ pub fn scene_layout() -> DockTree {
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::tabs(&["viewport", "code_editor", "social_learn"]),
-                DockTree::tabs(&[
-                    "console",
-                    "timeline",
-                    "mixer",
-                    "sequencer",
-                    "shape_library",
-                ]),
+                DockTree::tabs(&["console", "timeline", "mixer", "shape_library"]),
                 BOTTOM_PANEL_RATIO,
             ),
             DockTree::tabs(&["inspector", "gamepad", "history"]),
