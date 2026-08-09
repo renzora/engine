@@ -29,7 +29,9 @@ cfg_if::cfg_if! {
             list_input_devices, list_output_devices, open_microphone, MicError,
             MicrophoneSoundData, MicrophoneSoundHandle, OpenedMicrophone,
         };
-        pub use mixer::{ChannelStrip, MixerState};
+        pub use mixer::{
+            rename_custom_bus, ChannelStrip, MixerState, BUILTIN_BUSES, BUS_COLORS,
+        };
         pub use preview::AudioPreviewState;
         pub use systems::{AudioListener, AudioSet};
         pub use timeline::{

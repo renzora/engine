@@ -30,7 +30,36 @@ pub struct ChannelStrip {
     /// (currently unused by the audio pipeline; the field is here so the
     /// mixer panel can carry the value while the routing side is built out).
     pub output_device: Option<String>,
+    /// Strip tint, RGB 0–255. Purely cosmetic — nothing in the audio path reads
+    /// it. It lives on the strip rather than in the panel so the colour survives
+    /// the mixer's keyed-list rebuilds (a rename or a reorder respawns the whole
+    /// strip) and so any other panel showing a bus can match its colour.
+    pub color: [u8; 3],
 }
+
+/// Names the built-in buses own. `play_on_bus` (and its spatial twin) match
+/// these strings *literally* to pick a Kira track, so they are routing keys, not
+/// labels — a custom bus may never take one, and the four built-ins can't be
+/// renamed without breaking every `AudioPlayer` already pointing at them.
+pub const BUILTIN_BUSES: [&str; 4] = ["Master", "Sfx", "Music", "Ambient"];
+
+/// The colour palette the mixer offers in its swatch grid, and which new custom
+/// buses cycle through so a fresh bus is distinguishable from its neighbours
+/// without the user having to pick a colour first.
+pub const BUS_COLORS: [[u8; 3]; 12] = [
+    [220, 70, 70],   // red
+    [228, 132, 52],  // amber
+    [205, 192, 52],  // ochre
+    [120, 200, 80],  // green
+    [48, 196, 140],  // teal
+    [75, 162, 220],  // sky
+    [90, 110, 225],  // blue
+    [135, 90, 228],  // violet
+    [200, 80, 190],  // magenta
+    [220, 80, 130],  // rose
+    [160, 110, 75],  // brown
+    [130, 130, 140], // gray
+];
 
 impl Default for ChannelStrip {
     fn default() -> Self {
@@ -42,6 +71,7 @@ impl Default for ChannelStrip {
             peak_level: 0.0,
             input_device: None,
             output_device: None,
+            color: [130, 130, 140],
         }
     }
 }
@@ -61,7 +91,6 @@ impl ChannelStrip {
 
 /// Mixer resource - the single source of truth for all bus parameters
 #[derive(Resource)]
-#[derive(Default)]
 pub struct MixerState {
     pub master: ChannelStrip,
     pub sfx: ChannelStrip,
@@ -80,6 +109,120 @@ pub struct MixerState {
     pub dragging_bus: Option<usize>,
 }
 
+/// Hand-written (rather than derived) so the four built-in buses start on
+/// distinct colours — colour-coding is only useful if the default board is
+/// already colour-coded.
+impl Default for MixerState {
+    fn default() -> Self {
+        let tinted = |color: [u8; 3]| ChannelStrip {
+            color,
+            ..Default::default()
+        };
+        Self {
+            master: tinted([200, 200, 205]),
+            sfx: tinted(BUS_COLORS[1]),     // amber
+            music: tinted(BUS_COLORS[5]),   // sky
+            ambient: tinted(BUS_COLORS[4]), // teal
+            custom_buses: Vec::new(),
+            adding_bus: false,
+            new_bus_name: String::new(),
+            renaming_bus: None,
+            rename_buf: String::new(),
+            dragging_bus: None,
+        }
+    }
+}
+
+impl MixerState {
+    /// True when `name` is already spoken for, by a built-in or a custom bus.
+    /// Case-insensitive: two buses whose names differ only in case would be
+    /// indistinguishable in the panel and ambiguous to anyone typing one into an
+    /// `AudioPlayer`.
+    pub fn bus_name_taken(&self, name: &str) -> bool {
+        self.bus_name_taken_except(name, None)
+    }
+
+    /// [`Self::bus_name_taken`], ignoring the custom bus at `except`. A rename
+    /// must not collide with the bus doing the renaming, or changing only a
+    /// name's capitalisation would be rejected as a duplicate of itself.
+    pub fn bus_name_taken_except(&self, name: &str, except: Option<usize>) -> bool {
+        let name = name.trim();
+        BUILTIN_BUSES.iter().any(|b| b.eq_ignore_ascii_case(name))
+            || self
+                .custom_buses
+                .iter()
+                .enumerate()
+                .any(|(i, (n, _))| Some(i) != except && n.eq_ignore_ascii_case(name))
+    }
+
+    /// Append a custom bus that already has a unique name ("Bus 1", "Bus 2", …)
+    /// and the next palette colour; returns its index.
+    ///
+    /// Naming happens here rather than in the panel so "add a bus" is a single
+    /// click with an immediate, visible result — the name is one double-click
+    /// away from being changed, which is a cheaper thing to ask of the user than
+    /// a form they must fill in before anything appears.
+    pub fn add_bus(&mut self) -> usize {
+        let mut n = self.custom_buses.len() + 1;
+        let name = loop {
+            let candidate = format!("Bus {n}");
+            if !self.bus_name_taken(&candidate) {
+                break candidate;
+            }
+            n += 1;
+        };
+        let color = BUS_COLORS[self.custom_buses.len() % BUS_COLORS.len()];
+        self.custom_buses.push((
+            name,
+            ChannelStrip {
+                color,
+                ..Default::default()
+            },
+        ));
+        self.custom_buses.len() - 1
+    }
+}
+
+/// Rename custom bus `index`, re-pointing everything that routes by its old name
+/// at the new one.
+///
+/// A bus name *is* the routing key (see [`BUILTIN_BUSES`]), so a bare rename
+/// would silently drop every `AudioPlayer` and timeline track aimed at the old
+/// name onto the SFX fallback. Migrating the references in the same step is what
+/// makes renaming safe to offer in the UI at all — which is why this is a
+/// world-level function here rather than a method on the resource.
+///
+/// Returns `false`, changing nothing, when the name is empty, unchanged, or
+/// already taken.
+pub fn rename_custom_bus(world: &mut World, index: usize, new_name: &str) -> bool {
+    let new_name = new_name.trim();
+    let Some((old, taken)) = world.get_resource::<MixerState>().and_then(|m| {
+        let (old, _) = m.custom_buses.get(index)?;
+        Some((old.clone(), m.bus_name_taken_except(new_name, Some(index))))
+    }) else {
+        return false;
+    };
+    if new_name.is_empty() || new_name == old || taken {
+        return false;
+    }
+    let new_name = new_name.to_string();
+    world.resource_mut::<MixerState>().custom_buses[index].0 = new_name.clone();
+
+    let mut players = world.query::<&mut crate::components::AudioPlayer>();
+    for mut player in players.iter_mut(world) {
+        if player.bus == old {
+            player.bus = new_name.clone();
+        }
+    }
+    if let Some(mut timeline) = world.get_resource_mut::<crate::timeline::TimelineState>() {
+        for track in &mut timeline.tracks {
+            if track.bus_name == old {
+                track.bus_name = new_name.clone();
+            }
+        }
+    }
+    true
+}
 
 /// System: sync MixerState to Kira TrackHandles every frame when changed
 pub fn sync_mixer_to_kira(mixer: Res<MixerState>, audio: Option<NonSendMut<KiraAudioManager>>) {
