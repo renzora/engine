@@ -190,12 +190,35 @@ fn assets_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
 fn entities_section(commands: &mut Commands, fonts: &EmberFonts, body: Entity) {
     let total = neutral_row(commands, fonts, "Total entities", |w| snap(w, |s| s.entities.total_entities).to_string());
     let sp = spacer(commands, 4.0);
+    // Which material lane the meshes ended up in. `MaterialRef` can resolve
+    // to either a plain StandardMaterial (trivial graph) or a GraphMaterial
+    // (procedural), and the same file swinging between the two across a
+    // reload is a bug no single counter shows.
+    let gm = neutral_row(commands, fonts, "Meshes on GraphMaterial", |w| snap(w, |s| s.entities.mesh_with_graph_mat).to_string());
+    let cm = neutral_row(commands, fonts, "Meshes on CodeShaderMaterial", |w| snap(w, |s| s.entities.mesh_with_code_mat).to_string());
     let m = stat_row(commands, fonts, "Mesh3d without material", |w| snap(w, |s| s.entities.mesh3d_without_material).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.mesh3d_without_material)));
     let r = stat_row(commands, fonts, "MaterialRef unresolved", |w| snap(w, |s| s.entities.materialref_unresolved).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.materialref_unresolved)));
     let p = stat_row(commands, fonts, "PendingMeshInstanceRehydrate", |w| snap(w, |s| s.entities.pending_rehydrate).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.pending_rehydrate)));
     let e = stat_row(commands, fonts, "Empty SceneRoots", |w| snap(w, |s| s.entities.empty_scene_roots).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.empty_scene_roots)));
     let b = stat_row(commands, fonts, "B0004 (parent w/o GlobalTransform)", |w| snap(w, |s| s.entities.b0004_violations).to_string(), |w| ok_or_bad(snap(w, |s| s.entities.b0004_violations)));
-    commands.entity(body).add_children(&[total, sp, m, r, p, e, b]);
+    commands.entity(body).add_children(&[total, sp, gm, cm, m, r, p, e, b]);
+
+    // The count alone can't distinguish editor chrome (gizmo handles,
+    // entity labels — material types this query doesn't track) from scene
+    // geometry that genuinely lost its binding, so list the offenders.
+    let hdr = note(commands, fonts, "\u{26a0}  Meshes without material:", BAD);
+    bind_display(commands, hdr, |w| {
+        !snap(w, |s| s.entities.mesh3d_without_material_sample.is_empty())
+    });
+    let list = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(1.0),
+            ..default()
+        })
+        .id();
+    keyed_list(commands, list, mesh_no_material_snapshot);
+    commands.entity(body).add_children(&[hdr, list]);
 }
 
 // ── Lists ────────────────────────────────────────────────────────────────────
@@ -208,6 +231,26 @@ fn missing_paths_snapshot(world: &Rx) -> KeyedSnapshot {
         build: Box::new(move |c, f, i| {
             c.spawn((
                 Text::new(format!("\u{2022} {}", paths[i])),
+                ui_font(&f.mono, 11.0),
+                TextColor(rgb(BAD)),
+                Node {
+                    margin: UiRect::left(Val::Px(14.0)),
+                    ..default()
+                },
+            ))
+            .id()
+        }),
+    }
+}
+
+fn mesh_no_material_snapshot(world: &Rx) -> KeyedSnapshot {
+    let lines = snap(world, |s| s.entities.mesh3d_without_material_sample.clone());
+    let items: Vec<(u64, u64)> = lines.iter().map(|l| (hash_str(l), 0)).collect();
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| {
+            c.spawn((
+                Text::new(format!("\u{2022} {}", lines[i])),
                 ui_font(&f.mono, 11.0),
                 TextColor(rgb(BAD)),
                 Node {

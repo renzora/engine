@@ -424,7 +424,33 @@ pub struct EntityHealth {
     /// Entities with `Mesh3d` but no `MeshMaterial3d` of any tracked
     /// type (Standard / Graph / CodeShader). They render with the
     /// default white fallback.
+    ///
+    /// Note this counts editor-owned meshes too — gizmo handles
+    /// (`GizmoMaterial`), entity labels (`SdfTextMaterial`), water and
+    /// terrain surfaces all carry material types this query doesn't
+    /// know about, so a small non-zero baseline is normal. Read
+    /// [`Self::mesh3d_without_material_sample`] to tell those apart from
+    /// real scene geometry that lost its binding.
     pub mesh3d_without_material: usize,
+    /// A sample of the above, one line per entity: its `Name`, and its
+    /// `MaterialRef` path + resolved state when it has one. This is the
+    /// bit that makes the count actionable — an unnamed handful is
+    /// editor chrome, whereas glTF mesh names with a `MaterialRef` that
+    /// claims to be resolved mean the resolver stripped the old
+    /// material and never landed the new one.
+    pub mesh3d_without_material_sample: Vec<String>,
+    /// Mesh entities bound to `MeshMaterial3d<GraphMaterial>` — the
+    /// procedural path, one compiled shader per material.
+    ///
+    /// Paired with `MaterialDiagnostics::entities_with_std_mat`, this is
+    /// how you see a material *changing lanes*: the same `.material`
+    /// resolving to a plain `StandardMaterial` on one load and to a
+    /// `GraphMaterial` on the next is invisible in any single count, but
+    /// obvious as a swing between these two.
+    pub mesh_with_graph_mat: usize,
+    /// Mesh entities bound to `MeshMaterial3d<CodeShaderMaterial>` —
+    /// hand-written `.shader` / raw WGSL.
+    pub mesh_with_code_mat: usize,
     /// Entities with `MaterialRef` but no `MaterialResolved` marker —
     /// MaterialResolver hasn't finished binding them yet (or failed).
     /// Transient at scene-load time; lingering means the resolver
@@ -621,7 +647,12 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
             Query<
                 'w,
                 's,
-                Entity,
+                (
+                    Entity,
+                    Option<&'static Name>,
+                    Option<&'static renzora::core::MaterialRef>,
+                    Has<MaterialResolved>,
+                ),
                 (
                     With<Mesh3d>,
                     Without<MeshMaterial3d<StandardMaterial>>,
@@ -653,15 +684,49 @@ pub fn update_scene_diag_snapshot(world: &mut World) {
             Query<'w, 's, (Entity, &'static ChildOf), With<GlobalTransform>>,
             // Lookup query to validate the parent has GlobalTransform.
             Query<'w, 's, &'static GlobalTransform>,
+            // Which lane each mesh actually landed in — see
+            // `EntityHealth::mesh_with_graph_mat`.
+            Query<'w, 's, Entity, With<MeshMaterial3d<GraphMaterial>>>,
+            Query<'w, 's, Entity, With<MeshMaterial3d<CodeShaderMaterial>>>,
         );
 
         let mut state = SystemState::<EntityHealthParams>::new(world);
-        let (all_q, mesh_no_mat_q, unresolved_q, pending_q, empty_root_q, gt_children_q, gt_lookup_q) =
-            state.get(world).unwrap();
+        let (
+            all_q,
+            mesh_no_mat_q,
+            unresolved_q,
+            pending_q,
+            empty_root_q,
+            gt_children_q,
+            gt_lookup_q,
+            graph_mat_q,
+            code_mat_q,
+        ) = state.get(world).unwrap();
+
+        // Sample capped so a pathological scene can't turn the panel into
+        // a thousand-row wall; a dozen is plenty to classify the count.
+        const MESH_NO_MAT_SAMPLE: usize = 12;
+        let mut sample: Vec<String> = Vec::new();
+        for (entity, name, mat_ref, resolved) in mesh_no_mat_q.iter() {
+            if sample.len() >= MESH_NO_MAT_SAMPLE {
+                break;
+            }
+            let label = name
+                .map(|n| n.as_str().to_string())
+                .unwrap_or_else(|| format!("<unnamed {entity}>"));
+            sample.push(match mat_ref {
+                Some(m) if resolved => format!("{label} — MaterialRef {} (resolved)", m.0),
+                Some(m) => format!("{label} — MaterialRef {} (pending)", m.0),
+                None => format!("{label} — no MaterialRef"),
+            });
+        }
 
         let mut h = EntityHealth {
             total_entities: all_q.iter().count(),
             mesh3d_without_material: mesh_no_mat_q.iter().count(),
+            mesh3d_without_material_sample: sample,
+            mesh_with_graph_mat: graph_mat_q.iter().count(),
+            mesh_with_code_mat: code_mat_q.iter().count(),
             materialref_unresolved: unresolved_q.iter().count(),
             pending_rehydrate: pending_q.iter().count(),
             empty_scene_roots: empty_root_q.iter().count(),
