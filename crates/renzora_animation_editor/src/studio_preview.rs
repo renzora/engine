@@ -541,6 +541,28 @@ fn resolve_model_path(
 /// schedule just inserted), stamp it with `HideInHierarchy` + the preview
 /// `RenderLayers`. Runs synchronously with `ChildOf` insertion, so the entity
 /// never leaks to the main camera or the hierarchy panel for a frame.
+///
+/// **The ancestor test must key on [`StudioPreviewModel`] and nothing else.**
+/// This is a global observer — it fires for every `ChildOf` inserted anywhere
+/// in the world — so any other predicate here reaches straight into ordinary
+/// scene content. It used to also accept "parent already has
+/// `HideInHierarchy`" as a cheap way to stop walking, but that marker is the
+/// generic editor-chrome flag, and `model_flatten::hide_gltf_wrappers` puts it
+/// on the `SceneRoot` / `RootNode` wrapper of *every* imported model. So a GLB
+/// whose wrapper had already been tagged fed its whole subtree through here:
+/// each child got render layer 10 and `HideInHierarchy`, which made it a
+/// "hidden parent" for its own children, and the stamp cascaded down the model.
+/// The meshes stayed alive with their materials — just drawn on a layer the
+/// viewport camera ignores, absent from the hierarchy, and unpickable.
+///
+/// It only bit on a tab switch back, never a cold load: a cold load spends many
+/// frames fetching the GLB before instantiating it, whereas a switch finds the
+/// asset already pinned by `TabAssetCache` and instantiates back-to-back with
+/// `hide_gltf_wrappers` tagging the wrapper — so the two raced, and the model
+/// came back partly stamped.
+///
+/// Dropping the short-circuit costs nothing: the loop below already walks the
+/// full ancestor chain, so a preview root at any depth is still found.
 pub fn hide_new_preview_descendants(
     trigger: On<Insert, ChildOf>,
     parent_q: Query<&ChildOf>,
@@ -555,7 +577,7 @@ pub fn hide_new_preview_descendants(
     let mut cursor = entity;
     while let Ok(child_of) = parent_q.get(cursor) {
         let parent = child_of.parent();
-        if preview_root_q.contains(parent) || already_hidden.contains(parent) {
+        if preview_root_q.contains(parent) {
             commands
                 .entity(entity)
                 .try_insert((RenderLayers::layer(STUDIO_PREVIEW_LAYER), HideInHierarchy));

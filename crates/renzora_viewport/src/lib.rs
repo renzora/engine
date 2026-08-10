@@ -108,6 +108,10 @@ impl Plugin for ViewportPlugin {
             // GLB hierarchy. Drag-drop entities short-circuit this via the
             // `Without<ImportedRoot>` filter inside the observer.
             .add_observer(model_drop::decorate_rehydrated_scene_on_ready)
+            // Same signal, second consumer: clear the wrapper-hiding latch so
+            // the scan re-runs against the finished subtree instead of the
+            // bare mount point it saw first.
+            .add_observer(model_flatten::rearm_wrapper_hiding_on_ready)
             .init_resource::<renzora::core::EffectRouting>()
             .init_resource::<model_drop::PendingGltfLoads>()
             .init_resource::<model_drop::ModelDragPreviewState>()

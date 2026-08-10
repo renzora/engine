@@ -17,7 +17,7 @@
 
 use bevy::mesh::skinning::SkinnedMesh;
 use bevy::prelude::*;
-use bevy::world_serialization::{WorldAssetRoot, WorldInstance};
+use bevy::world_serialization::{WorldAssetRoot, WorldInstance, WorldInstanceReady};
 use std::collections::HashSet;
 
 /// Marker on the top-level entity of an imported model. The gizmo and
@@ -412,6 +412,58 @@ pub fn hide_gltf_wrappers(
 
         commands.entity(root).try_insert(WrappersHidden);
         commands.entity(root).remove::<WrappersPending>();
+    }
+}
+
+/// Observer: re-arm [`hide_gltf_wrappers`] once a glTF subtree is actually
+/// committed to the world.
+///
+/// `hide_gltf_wrappers` latches `WrappersHidden` the moment its root has *any*
+/// children — but on the load path `finish_mesh_instance_rehydrate` gives the
+/// root exactly one child (the `SceneRoot` mount point carrying
+/// `WorldAssetRoot`) frames before the glTF instantiates under it. So the walk
+/// used to see a subtree of one, tag `SceneRoot`, stamp `WrappersHidden`, and
+/// never run again — leaving the real wrapper (`RootNode.001` → `rootnode_001`)
+/// untagged and visible. That matters beyond hierarchy clutter: `resolve_pick`
+/// selects the topmost *visible* named ancestor below the `SelectionStop`, so a
+/// visible wrapper swallows every click and the model can only be selected as
+/// one lump.
+///
+/// This is the same in-flight-spawn race `decorate_rehydrated_scene_on_ready`
+/// documents, and it wants the same answer: `WorldInstanceReady` fires once,
+/// after every entity in the instance exists, so clearing the latch here makes
+/// the next `hide_gltf_wrappers` pass walk the finished subtree.
+///
+/// It went unnoticed because the animation editor's studio-preview observer
+/// used to cascade `HideInHierarchy` down from the already-hidden `SceneRoot`,
+/// incidentally hiding the wrapper — while also cascading the preview
+/// `RenderLayers`, which made whole models vanish from the viewport on a tab
+/// switch. Fixing that observer removed the accidental cover.
+pub fn rearm_wrapper_hiding_on_ready(
+    trigger: On<WorldInstanceReady>,
+    mut commands: Commands,
+    parents: Query<&ChildOf>,
+    mesh_instances: Query<(), With<renzora::MeshInstanceData>>,
+) {
+    let mut cursor = trigger.event().entity;
+    if cursor == Entity::PLACEHOLDER {
+        return;
+    }
+    // Walk up rather than assuming the mount point is a direct child: by the
+    // time this fires, `flatten_pending_scenes` may already have collapsed
+    // pass-through nodes and re-parented the subtree.
+    loop {
+        if mesh_instances.contains(cursor) {
+            commands
+                .entity(cursor)
+                .remove::<WrappersHidden>()
+                .remove::<WrappersPending>();
+            return;
+        }
+        let Ok(child_of) = parents.get(cursor) else {
+            return;
+        };
+        cursor = child_of.parent();
     }
 }
 
