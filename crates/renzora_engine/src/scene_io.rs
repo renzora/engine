@@ -4,8 +4,7 @@
 
 use bevy::core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy::ecs::world::FilteredEntityRef;
-use bevy::light::atmosphere::ScatteringMedium;
-use bevy::light::{Atmosphere, AtmosphereEnvironmentMapLight};
+use bevy::light::AtmosphereEnvironmentMapLight;
 // Interim BSN scene IR + format (replaces Bevy 0.18's deleted DynamicScene/RON).
 use renzora_bsn::bsn::{BsnSerializer, SceneSerializer};
 use renzora_bsn::{DynamicEntity, DynamicScene, DynamicSceneBuilder};
@@ -250,6 +249,12 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         Without<HideInHierarchy>,
         Without<EditorCamera>,
         Without<bevy::input::gamepad::Gamepad>,
+        // `Persistent` entities belong to a global/autoload scene, not to this
+        // one — they were already in the world before it loaded and outlive it.
+        // Saving them would bake a copy into every scene that happened to be
+        // open, so the next load spawns two of each: two music players, two
+        // HUD roots.
+        Without<renzora::Persistent>,
     )>();
     for entity in query.iter(world) {
         entities.push(entity);
@@ -482,6 +487,8 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         Without<HideInHierarchy>,
         Without<EditorCamera>,
         Without<bevy::input::gamepad::Gamepad>,
+        // Global/autoload scene content — see the matching filter above.
+        Without<renzora::Persistent>,
     )>();
     for entity in query.iter(world) {
         entities.push(entity);
@@ -1466,7 +1473,7 @@ pub fn is_self_reference(host_scene_path: &Path, source_path: &Path) -> bool {
     paths_equal(host_scene_path, source_path)
 }
 
-fn paths_equal(a: &Path, b: &Path) -> bool {
+pub fn paths_equal(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(ca), Ok(cb)) => ca == cb,
         _ => a == b,
@@ -2415,7 +2422,6 @@ pub fn rehydrate_cameras(
     render_target: Option<Res<ViewportRenderTarget>>,
     editor_session: Option<Res<renzora::EditorSession>>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
-    mut mediums: Option<ResMut<Assets<ScatteringMedium>>>,
 ) {
     if query.is_empty() {
         return;
@@ -2482,10 +2488,6 @@ pub fn rehydrate_cameras(
         // 3D-only setup. (See `renzora_engine::camera::spawn_editor_camera`
         // for why all other prepass markers must be attached at spawn.)
         if is_active {
-            let medium_handle = mediums
-                .as_mut()
-                .map(|m| m.add(ScatteringMedium::default()))
-                .unwrap_or_default();
             commands.entity(entity).try_insert((
                 Hdr,
                 NormalPrepass,
@@ -2505,25 +2507,24 @@ pub fn rehydrate_cameras(
             commands
                 .entity(entity)
                 .insert(AtmosphereSettings::default());
-            // 0.19: `Atmosphere` belongs on a dedicated world entity, never the
-            // camera (else `world_to_atmosphere` rotates with the view and the
-            // sky glitches on pan). Spawn a runtime sky for the active camera.
-            // The entity's `GlobalTransform` IS the planet center, so place it
-            // 6,360 km below the origin (surface at Y=0) and give it NO
-            // `Transform` — a `Transform` would let propagation overwrite this
-            // back to the origin (camera underground → no sky). Named-but-not-
-            // `HideInHierarchy` so a scene clear recycles it instead of leaking
-            // one per load. See `renzora_atmosphere::AtmospherePlanet`.
-            commands.spawn((
-                Atmosphere {
-                    inner_radius: 6_360_000.0,
-                    outer_radius: 6_460_000.0,
-                    ground_albedo: Vec3::splat(0.3),
-                    medium: medium_handle,
-                },
-                GlobalTransform::from(Transform::from_translation(Vec3::NEG_Y * 6_360_000.0)),
-                Name::new("Sky Atmosphere"),
-            ));
+            // NOTE: no `Atmosphere` entity is spawned here. `renzora_atmosphere`
+            // owns the sky: `sync_atmosphere` maintains exactly one
+            // `AtmospherePlanet` entity, spawns it when missing, and drives its
+            // medium from the World Environment's enabled state.
+            //
+            // This used to spawn its own "Sky Atmosphere" — a second entity
+            // carrying `Atmosphere` but neither `AtmospherePlanet` nor
+            // `HideInHierarchy`. 0.19 re-extracts `Atmosphere` from every entity
+            // that has one, so the two skies fought, and the duplicate was
+            // unmanaged: `sync_atmosphere` only ever touches the entity it owns,
+            // so the copy kept a default medium and ignored the environment's
+            // on/off state entirely.
+            //
+            // It was also lifetime-coupled to the camera respawning with the
+            // scene ("a scene clear recycles it"). A camera in a global/autoload
+            // scene is `Persistent`, so it never re-enters this query's
+            // `Without<Camera3d>` filter — the duplicate got scene-cleared once
+            // and never came back.
         }
 
         // During play mode, configure the default camera as the play mode camera

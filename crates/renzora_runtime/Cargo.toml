@@ -222,7 +222,6 @@ renzora_input = { path = "../renzora_input" }
 # OpenXR/VR boot mode — desktop only, behind the `xr` feature (see [features]).
 renzora_xr = { path = "../renzora_xr", optional = true }
 renzora_physics = { path = "../renzora_physics", optional = true }
-renzora_globals = { path = "../renzora_globals" }
 renzora_terrain = { path = "../renzora_terrain", optional = true }
 renzora_spline = { path = "../renzora_spline", optional = true }
 renzora_lighting = { path = "../renzora_lighting" }

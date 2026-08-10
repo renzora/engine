@@ -37,7 +37,7 @@ Confirmed against the 0.19 release notes. **Effort** is incremental work *after*
 | **Text Gizmos** | World-space debug labels for `renzora_debugger`/gizmo overlays (light/camera/skeleton names). | Low | T2-R |
 | **Cancellable Web Tasks** | WASM-only: cancel in-flight asset loads on the web build (nav-away / tab switch). | Low | Tier 3 |
 | **Asset Saving** | Runtime asset serialization — candidate to back the import/bake write path (`.rmip`, prefab/material writes). | Med | Tier 3 |
-| **Resources as Components** | Cleanup for `GlobalStore`/`SceneLoadState` (hooks/observers on resources). | Low | Tier 3 |
+| **Resources as Components** | Cleanup for `SceneLoadState` (hooks/observers on resources). *(The `GlobalStore` half is moot — `renzora_globals` was deleted with the lifecycle graph.)* | Low | Tier 3 |
 | **Built-in Infinite Grid** | A/B vs `renzora_grid` mesh grid (fixes horizon aliasing). | Low | Tier 3 |
 | **White Furnace Test** | Free IBL correctness (no env-map seams / metallic darkening). | None | Tier 2 |
 | **Observer Run Conditions** | Conditional observers — minor cleanup where observers self-gate today. | Low | Tier 3 |
@@ -112,13 +112,13 @@ Goal: delete hand-rolled code that 0.19 now provides upstream. **But "built-in" 
 | Workaround | Lines | 0.19 replacement | Verdict |
 | --- | --- | --- | --- |
 | `scene_io.rs` string-path asset handles (`model_path`, `SpriteImagePath`, rehydration observers) | ~500–600 | Serializable asset handles | **SWAP — biggest deletion** (T1.1). Also the BSN on-ramp. |
-| `renzora_globals` `GlobalStore` manual `changed_keys` + `emit_global_changed` | ~25 | Resources-as-Components hooks | **SWAP — clean**, self-contained. |
+| `renzora_globals` `GlobalStore` manual `changed_keys` + `emit_global_changed` | ~25 | Resources-as-Components hooks | **MOOT — deleted.** The crate went with the lifecycle graph; nothing produced or consumed the store. |
 | `renzora_scripting` `ScriptTimers` polling (`timers.rs`) | ~98 | Delayed Commands | **PARTIAL** — adopt for fire-and-forget; keep named-timer tracking for cancellable cases (0.19 delayed commands have no built-in cancel). *(Note: the audit found the broken blueprint `flow/delay` node referenced earlier doesn't actually exist as a node — delays live only in `ScriptTimers`. Correct T1.2 accordingly.)* |
 | `renzora_scripting` `http.rs` `std::thread` HTTP (no cancel, no WASM) | ~91 | Cancellable Web Tasks + task pool | **PARTIAL** — port to the task pool to unblock WASM + add cancellation; low urgency. |
 | observer early-return guards (sprite/mesh-path observers) | ~15–20 | Observer Run Conditions | **SWAP — cosmetic**, batch with other refactors. |
 | `.rmip` baking (`renzora_rmip`), `PendingAssemblyWrites` | ~360 | (Asset Saving is unrelated) | **KEEP** — these aren't 0.18 workarounds; Asset Saving doesn't replace them. |
 
-**Bottom line:** the genuinely deletable luggage is **vignette + lens-distortion custom shaders**, the **`scene_io` string-path handle workaround** (big), **`GlobalStore` manual events**, the **observer guards**, and — pending the T1.4-R decision — the **lumen SSR trio**. Everything else is either already-the-built-in (post-process routers) or value-add that replacement would regress (gizmo, debugger, code editor, skybox/sun/atmosphere).
+**Bottom line:** the genuinely deletable luggage is **vignette + lens-distortion custom shaders**, the **`scene_io` string-path handle workaround** (big), the **observer guards**, and — pending the T1.4-R decision — the **lumen SSR trio**. Everything else is either already-the-built-in (post-process routers) or value-add that replacement would regress (gizmo, debugger, code editor, skybox/sun/atmosphere).
 
 ---
 
@@ -362,14 +362,14 @@ These don't remove code; they expose 0.19 capabilities the engine simply lacked.
 
 - **Infinite Grid** vs `renzora_grid` (a single per-vertex-colored `LineList` mesh + unlit `GridMaterial` distance fade): 0.19's fullscreen-shader grid avoids the "mesh has to end somewhere" horizon-aliasing problem. A/B test; possibly retire the mesh grid.
 - **`bevy_settings`** vs `renzora_settings`: persistence is currently decentralized (per-resource, delegated to theme/input/project crates). `SettingsGroup` + `PreferencesPlugin` + `SavePreferencesDeferred` (debounced) gives one consistent TOML-backed mechanism + cross-platform `preferences_dir()`. A consolidation refactor, not a gap-filler.
-- **Resources as Components**: 0.19 allows hooks/observers directly on resources — a nice cleanup for `GlobalStore` (which today manually fires `GlobalChanged`) and `SceneLoadState`, not urgent.
+- **Resources as Components**: 0.19 allows hooks/observers directly on resources — a nice cleanup for `SceneLoadState`, not urgent. (`GlobalStore` was the other candidate; its crate has since been deleted.)
 - **Vignette / LensDistortion built-ins**: you already have `renzora_vignette` / `renzora_distortion` wired into the inspector/macro/`EffectRouting` system, and `renzora_motion_blur` already proves the "wrap a Bevy-native effect" pattern. Little upside to rerouting unless you want to stop maintaining the shaders.
 - **Solari (hardware ray tracing)**: this is the natural fit for Lumen's **`Hwrt` tier**, which is the *only* unbuilt GI tier. The voxel-cone tiers already ship — `LumenQuality::SdfLow`/`SdfHigh` drive the voxel-cone trace in `renzora_lumen`, and `ScreenSpace` delegates to `renzora_rt` SSGI. **`Hwrt` currently renders nothing**: `platform_wgpu_settings()` (`renzora_runtime/src/lib.rs`) requests only `POLYGON_MODE_LINE`, wgpu ray tracing is not enabled, and `bevy_solari` is not wired in. Solari is still experimental — watch it for the `Hwrt` tier *later*; don't build on it yet.
 - **Contiguous query access (SIMD)**: only `renzora_physics` plausibly benefits. (There is no `renzora_physics_playground` crate — it's just `renzora_physics`.) Profile first.
 - **BSN / next-gen scenes**: promoted out of Tier 3 — it's a **committed Tier-1 initiative**, see **§BSN above**. Replaces RON via a Renzora-built interim `.bsn` loader, swapped for the first-party loader when [bevy#23576] lands.
 - **Asset Saving**: 0.19's runtime asset serialization is a candidate to back the import/bake **write** path — `.rmip` texture baking, prefab/material source writes (`PendingAssemblyWrites`, `save_prefab_source`, material override caches). Today these are hand-rolled writers; migrating onto the official saver is a consolidation, not a gap-fill. Evaluate after the forced port.
 - **Cancellable Web Tasks**: WASM-only. The web build currently can't cancel an in-flight asset load when the user navigates away / switches scene; 0.19 cancellation closes that. Low priority unless the web target is active.
-- **Resources as Components**: hooks/observers directly on resources — cleans up `GlobalStore` (manually fires `GlobalChanged`) and `SceneLoadState`. Not urgent.
+- **Resources as Components**: hooks/observers directly on resources — cleans up `SceneLoadState`. Not urgent.
 - **Observer Run Conditions**: where observers currently self-gate with an early `return`, a run condition is tidier. Pure cleanup.
 - **Self-Referential Relationships**: only relevant if a relationship in the graph/hierarchy needs to legitimately point at itself — rare in the current model. Note and move on.
 - **Accessible Label Component**: attach a11y labels to editor widgets (buttons, panels, inspector fields) independent of their visible text. Aligns with the photosensitivity/accessibility notes already in T1.4; do it as an editor-wide pass, not per-feature.

@@ -267,6 +267,11 @@ fn enter_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
     // rebuild = none of the recurring wgpu surface/buffer crashes).
     world.entity_mut(cam_entity).insert(PlayModeCamera);
 
+    // Bring in the project's global (autoload) scenes so an editor play session
+    // matches a shipped game, which loads them at Startup. Fired before script
+    // reset so their scripts get the same `on_ready` as everything else.
+    world.trigger(renzora::core::LoadAutoloadScenes);
+
     // Reset script states and unpause physics (via decoupled events).
     world.trigger(renzora::core::ResetScriptStates);
     world.trigger(renzora::core::UnpausePhysics);
@@ -338,6 +343,10 @@ fn exit_play_mode(world: &mut World, play_mode: &mut PlayModeState) {
             .0 = prev.0;
     }
 
+    // Drop the global (autoload) scenes this session brought in, so the editor
+    // returns to exactly the content the open scene file describes.
+    world.trigger(renzora::core::UnloadAutoloadScenes);
+
     // Re-pause physics (via decoupled event).
     world.trigger(renzora::core::PausePhysics);
 
@@ -369,6 +378,12 @@ fn enter_simulate_mode(world: &mut World, play_mode: &mut PlayModeState) {
     // untouched, pre-simulate pose.
     world.trigger(renzora::core::SnapshotSceneForSimulate);
 
+    // Global scenes, same as Play. Loaded AFTER the snapshot deliberately: the
+    // snapshot is what Stop restores the scene to, and these entities are torn
+    // down separately by `UnloadAutoloadScenes`. Capturing them would have the
+    // restore respawn copies that teardown no longer knows about.
+    world.trigger(renzora::core::LoadAutoloadScenes);
+
     // Run scripts (and the physics/animation they drive) — same wake-up as Play,
     // minus the camera/chrome changes.
     world.trigger(renzora::core::ResetScriptStates);
@@ -397,6 +412,10 @@ fn exit_simulate_mode(world: &mut World, play_mode: &mut PlayModeState) {
         cursor.grab_mode = CursorGrabMode::None;
         cursor.visible = true;
     }
+
+    // Drop the global scenes before restoring, so the restore lands on the same
+    // world shape it was captured from.
+    world.trigger(renzora::core::UnloadAutoloadScenes);
 
     // Revert every mutation the simulation made (observed by renzora_engine).
     world.trigger(renzora::core::RestoreSimulateSnapshot);

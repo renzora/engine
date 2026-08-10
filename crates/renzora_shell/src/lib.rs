@@ -114,6 +114,8 @@ impl Plugin for ShellPlugin {
         app.init_resource::<RibbonRename>();
         app.init_resource::<DocTabDrag>();
         app.init_resource::<DocTabRename>();
+        app.init_resource::<GlobalSceneHasCamera>();
+        app.add_systems(Update, track_global_scene_cameras);
         app.add_observer(doc_tabs_follow_asset_path);
         app.init_resource::<OpenTopMenu>();
         app.init_resource::<ThemeMenuOpen>();
@@ -622,6 +624,42 @@ fn build_play_button(commands: &mut Commands, font: &bevy::text::FontSource) -> 
     btn
 }
 
+/// Whether any global (autoload) scene supplies a camera.
+///
+/// The Play gate asks "is there a scene camera", and until now asked it of the
+/// *live world*. Global scenes don't load until Play, so a project whose only
+/// camera lives in one could never start: the camera isn't there to open the
+/// gate, and the gate is what would load it.
+///
+/// Answered from the scene files rather than the world, since that is the only
+/// place the information exists while editing.
+#[derive(Resource, Default)]
+struct GlobalSceneHasCamera(bool);
+
+/// Recompute [`GlobalSceneHasCamera`] when the autoload list changes.
+///
+/// A substring test for the component's type name, not a parse: the answer only
+/// gates a button, both scene formats spell the type the same way, and a wrong
+/// answer degrades safely — a false positive lets Play start and
+/// `enter_play_mode` reports "no scene camera found" as it already does for an
+/// empty scene.
+fn track_global_scene_cameras(
+    project: Option<Res<renzora::CurrentProject>>,
+    mut state: ResMut<GlobalSceneHasCamera>,
+    mut last: Local<Option<Vec<String>>>,
+) {
+    let Some(project) = project else { return };
+    if last.as_ref() == Some(&project.config.autoload) {
+        return;
+    }
+    *last = Some(project.config.autoload.clone());
+    state.0 = project.config.autoload.iter().any(|rel| {
+        std::fs::read_to_string(project.resolve_path(rel))
+            .map(|text| text.contains("SceneCamera"))
+            .unwrap_or(false)
+    });
+}
+
 /// Click the top-bar Play button → launch the mode picked in the play-target
 /// dropdown (full play, or Simulate when that's the selection) from Editing
 /// with a scene camera; or stop (while playing, simulating, or while an
@@ -632,10 +670,12 @@ fn play_btn_click(
     runtime: Option<Res<renzora_viewport::external_runtime::ExternalRuntime>>,
     scene_cams: Query<(), With<renzora::core::SceneCamera>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
+    global_cam: Option<Res<GlobalSceneHasCamera>>,
 ) {
     let Some(mut pm) = play_mode else { return };
     let runtime_alive = runtime.is_some_and(|r| r.is_alive());
-    let has_cam = !scene_cams.is_empty();
+    // A camera in a global scene counts even though it isn't loaded yet.
+    let has_cam = !scene_cams.is_empty() || global_cam.is_some_and(|g| g.0);
     let simulate = settings.is_some_and(|s| s.play_launch_simulate);
     for interaction in &btns {
         if *interaction != Interaction::Pressed {
@@ -734,6 +774,7 @@ fn update_play_button(
     theme: Option<Res<renzora_theme::ThemeManager>>,
     scene_cams: Query<(), With<renzora::core::SceneCamera>>,
     settings: Option<Res<renzora_editor_framework::EditorSettings>>,
+    global_cam: Option<Res<GlobalSceneHasCamera>>,
     mut icons: Query<&mut renzora_ember::icons::Icon, With<TopBarPlayIcon>>,
     mut labels: Query<(&mut Text, &mut TextColor), With<TopBarPlayLabel>>,
     mut fills: Query<(&mut BackgroundColor, &Interaction), With<TopBarPlayBtn>>,
@@ -752,7 +793,9 @@ fn update_play_button(
         || play_mode
             .as_ref()
             .is_some_and(|p| p.is_in_play_mode() || p.is_simulating());
-    let has_cam = !scene_cams.is_empty();
+    // Matches `play_btn_click`: a global scene's camera counts, so the button
+    // doesn't read as disabled while the click handler would accept it.
+    let has_cam = !scene_cams.is_empty() || global_cam.is_some_and(|g| g.0);
     let simulate = settings.is_some_and(|s| s.play_launch_simulate);
 
     // `icon_name` is a phosphor glyph name (not localized); the label IS localized.
@@ -1796,6 +1839,7 @@ const PANEL_META: &[(&str, &str, &str, &str)] = &[
     ("scripting_diag", "Scripting Diag", "bug", "Debug"),
     ("ui_reactivity", "UI Reactivity", "lightning", "Debug"),
     ("ui_layout", "UI Layout", "layout", "Debug"),
+    ("resources", "Resources", "database", "Debug"),
     // Plugins
     ("plugin_resources", "Plugin Resources", "puzzle-piece", "Tools"),
 ];
@@ -4651,11 +4695,12 @@ fn rename_doc_tab(world: &mut World, id: u64, new_name: &str) {
         .map(|t| t.scene_path.clone());
     let Some(old_rel) = old_rel else { return };
     let Some(old_rel) = old_rel else {
-        if let Some(mut state) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
-            if let Some(tab) = state.tabs.iter_mut().find(|t| t.id == id) {
-                tab.name = new_name.to_string();
-            }
-        }
+        // No path yet — this is a `+` tab ("Untitled Scene"). Naming it used to
+        // relabel the tab and nothing else, so the scene the user had just built
+        // and named still existed nowhere on disk, with no prompt to say so.
+        // Naming an untitled scene now creates it, which also matches what
+        // renaming a *saved* tab does: the tab label IS the file name.
+        name_untitled_scene(world, id, new_name);
         return;
     };
 
@@ -4694,6 +4739,80 @@ fn rename_doc_tab(world: &mut World, id: u64, new_name: &str) {
         new: new_rel,
         is_dir: false,
     });
+}
+
+/// Give a never-saved scene tab a name, and create the file to match.
+///
+/// Only the **active** tab writes a file: an inactive tab's contents live in
+/// `SceneTabBuffers`, not in the world, so saving here would write whatever
+/// scene happens to be open into somebody else's file. An inactive tab just
+/// takes the label and stays untitled until it is focused and saved.
+fn name_untitled_scene(world: &mut World, id: u64, new_name: &str) {
+    let file_stem: String = new_name
+        .trim()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+    if file_stem.is_empty() {
+        return;
+    }
+
+    let (is_active_scene, _) = world
+        .get_resource::<renzora_ui::DocumentTabState>()
+        .and_then(|s| {
+            let active_id = s.tabs.get(s.active_tab).map(|t| t.id);
+            s.tabs
+                .iter()
+                .find(|t| t.id == id)
+                .map(|t| {
+                    (
+                        active_id == Some(id) && t.kind == renzora_ui::DocTabKind::Scene,
+                        (),
+                    )
+                })
+        })
+        .unwrap_or((false, ()));
+
+    // Relabel regardless; only the active scene tab also gains a file.
+    if let Some(mut state) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
+        if let Some(tab) = state.tabs.iter_mut().find(|t| t.id == id) {
+            tab.name = new_name.to_string();
+        }
+    }
+    if !is_active_scene {
+        return;
+    }
+
+    let rel = format!("scenes/{file_stem}.bsn");
+    let abs = match world.get_resource::<renzora::CurrentProject>() {
+        Some(p) => p.resolve_path(&rel),
+        None => return,
+    };
+    if abs.exists() {
+        warn!("[tabs] '{}' already exists — scene not created", abs.display());
+        renzora::core::console_log::console_error(
+            "Scene",
+            format!("A scene named '{file_stem}' already exists"),
+        );
+        return;
+    }
+    if let Some(dir) = abs.parent() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            warn!("[tabs] failed to create {}: {e}", dir.display());
+            return;
+        }
+    }
+
+    // Point the tab at the new path, then let the normal save path write it —
+    // `save_scene_system` sees a scene tab WITH a path and targets exactly this
+    // file, so there is one scene-writing code path rather than two.
+    if let Some(mut state) = world.get_resource_mut::<renzora_ui::DocumentTabState>() {
+        if let Some(tab) = state.tabs.iter_mut().find(|t| t.id == id) {
+            tab.scene_path = Some(rel.clone());
+        }
+    }
+    world.insert_resource(renzora::core::SaveSceneRequested);
+    renzora::core::console_log::console_success("Scene", format!("Created {rel}"));
 }
 
 /// Follow a renamed or moved asset in the open document tabs, so a rename from

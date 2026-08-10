@@ -131,7 +131,7 @@ The 164 top-level crates break down roughly as follows:
 | 7 | Asset / scene / import | import, asset_registry, rmip, rpak, scene, shape_library, preview |
 | 6 | Vendored Bevy | bevy_hanabi, bevy_hui, bevy_mod_outline, bevy_silk, vleue_navigator, bevy_oxr |
 | 4 | Engine runtime | runtime, engine, dynamic_plugin_loader, input |
-| 4 | Support / misc | globals, spline, hot_demo, test_component |
+| 3 | Support / misc | spline, hot_demo, test_component |
 | 3 | Core / SDK | renzora, macros, postprocess (re-export shim) |
 | 3 | Scripting | scripting (Lua + Rhai), blueprint |
 | 3 | Platform | android, ios, xr |

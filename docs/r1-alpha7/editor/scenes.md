@@ -150,12 +150,20 @@ version = "0.1.0"
 main_scene = "scenes/main.ron"
 ```
 
-You can also list **autoload** scenes that load *before* the main scene and stay alive the whole time — handy for a loading screen, background music, or saved game state that should never be cleared:
+### Global scenes
+
+You can also mark scenes **global**: they load *before* the main scene and stay alive the whole time, surviving every later scene change. Use one per concern — a HUD scene, a music scene, a networking scene — rather than duplicating that content in every level.
+
+Set them in **Settings → Global Scenes** (a toggle per scene in `scenes/`), which writes the `autoload` list:
 
 ```toml
 main_scene = "scenes/main.ron"
-autoload = ["scenes/loader.ron"]
+autoload = ["scenes/ui.ron", "scenes/music.ron"]
 ```
+
+Every entity a global scene spawns is marked persistent, so scene loads skip it — and scene *saves* skip it too, so it never gets baked into the level you happen to have open. Play and Simulate load them in the editor and Stop unloads them, so you can test without exporting.
+
+This is also the only place a **loading screen** can work: everything in the outgoing scene is despawned partway through a scene change, so only a global scene's script is still running to show progress. See [Scripting → lifecycle hooks](/docs/r1-alpha7/scripting/lua#lifecycle-hooks) for `on_scene_loaded` and `scene_load_state()`.
 
 ### Your tabs come back
 

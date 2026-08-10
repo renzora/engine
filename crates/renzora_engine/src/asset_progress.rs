@@ -229,3 +229,38 @@ pub fn publish_asset_progress_to_bridge(
         fraction: progress.fraction(),
     });
 }
+
+/// No-op stand-in when scripting is stripped; see
+/// [`publish_asset_progress_to_bridge`].
+#[cfg(not(feature = "scripting"))]
+pub fn publish_scene_load_to_bridge() {}
+
+/// Mirror [`crate::scene_io::SceneLoadState`] into the scripting crate's
+/// `SceneLoadBridge` so `scene_load_state()` reads can find it.
+///
+/// Separate from [`publish_asset_progress_to_bridge`] because the two track
+/// different things: this is how far through *spawning the scene* we are,
+/// that one is how many of its **models** have finished loading. A scene
+/// reaches `ready` while its meshes are still streaming in.
+#[cfg(feature = "scripting")]
+pub fn publish_scene_load_to_bridge(
+    state: Option<Res<crate::scene_io::SceneLoadState>>,
+    bridge: Option<ResMut<renzora_scripting::SceneLoadBridge>>,
+) {
+    use crate::scene_io::SceneLoadPhase;
+
+    let (Some(state), Some(mut bridge)) = (state, bridge) else {
+        return;
+    };
+    let phase = match state.phase {
+        SceneLoadPhase::Idle => "idle",
+        SceneLoadPhase::Loading => "loading",
+        SceneLoadPhase::Ready => "ready",
+        SceneLoadPhase::Failed => "failed",
+    };
+    bridge.snapshot = Some(renzora_scripting::SceneLoadSnapshot {
+        phase,
+        current_path: state.current_path.clone(),
+        progress: state.progress,
+    });
+}

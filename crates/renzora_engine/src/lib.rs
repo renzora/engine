@@ -332,6 +332,8 @@ impl Plugin for RuntimePlugin {
         // AnimatorComponent, etc.) listen and patch stored asset-relative
         // paths so moved assets don't leave dangling references in the scene.
         app.add_observer(apply_asset_path_changes_to_mesh_instances);
+        // Keep project.toml's scene paths pointing at the files they name.
+        app.add_observer(follow_project_scene_paths);
 
         // Camera2d viewport_origin override (Godot convention: world (0,0)
         // renders at the top-left of the viewport instead of the centre).
@@ -649,9 +651,22 @@ impl Plugin for RuntimePlugin {
                 (
                     asset_progress::tick_asset_load_progress,
                     asset_progress::publish_asset_progress_to_bridge,
+                    asset_progress::publish_scene_load_to_bridge,
                 )
                     .chain(),
             );
+        // Scene-load completion → scripts. Observers rather than edits at each
+        // `world.trigger` site: the streamer, the synchronous loader and the
+        // failure paths all fire these events from four different places, and
+        // a future fifth would silently miss the inbox.
+        app.add_observer(push_scene_loaded_to_scripts);
+        app.add_observer(push_scene_load_failed_to_scripts);
+        // Global (autoload) scenes in an editor play session — a game build
+        // loads them at Startup instead. See the `autoload` module docs.
+        app.init_resource::<autoload::AutoloadedEntities>()
+            .add_observer(autoload::on_load_autoload_scenes)
+            .add_observer(autoload::on_unload_autoload_scenes)
+            .add_systems(Update, autoload::propagate_persistent_to_children);
         {
             use bevy::prelude::*;
             use procedural_meshes as pm;
@@ -1047,6 +1062,25 @@ fn process_pending_scene_loads(world: &mut World) {
         return;
     };
 
+    // A global (autoload) scene is already resident and exempt from the despawn
+    // sweep below, so loading it again would spawn a second copy alongside the
+    // first — ids deduped to `camera_1`, `player_1` and so on. Refuse instead:
+    // "go to the scene that is permanently loaded" has no meaningful outcome,
+    // and silently doubling it is the worst available answer.
+    if world
+        .get_resource::<autoload::AutoloadedEntities>()
+        .is_some_and(|a| a.is_resident(&scene_path))
+    {
+        renzora::console_log::console_warn(
+            "Scene",
+            format!(
+                "'{}' is a global scene and is already loaded — ignoring load_scene()",
+                scene_name
+            ),
+        );
+        return;
+    }
+
     renzora::console_log::console_info(
         "Scene",
         format!("Loading scene '{}' → {}", scene_name, scene_path.display()),
@@ -1095,6 +1129,40 @@ fn process_pending_scene_loads(world: &mut World) {
     // expect a fully-populated world on the next frame) keep the synchronous
     // `scene_io::load_scene`.
     scene_stream::start_scene_stream(world, &scene_path);
+}
+
+/// Queue `on_scene_loaded(path)` for every live script.
+///
+/// The scripts that hear this are the ones the load did **not** destroy —
+/// `Persistent` entities from an autoload scene. A script in the outgoing
+/// scene is already despawned by the time this fires.
+fn push_scene_loaded_to_scripts(
+    trigger: On<scene_io::SceneLoaded>,
+    inbox: Option<ResMut<renzora::ScriptSceneInbox>>,
+) {
+    if let Some(mut inbox) = inbox {
+        inbox.pending.push(renzora::SceneEvent {
+            path: trigger.event().path.clone(),
+            error: None,
+        });
+    }
+}
+
+/// Queue `on_scene_load_failed(path, error)` for every live script.
+///
+/// Without this a failed load is invisible to game code: the loading screen
+/// has no way to tell "still working" from "never arriving", so it hangs.
+fn push_scene_load_failed_to_scripts(
+    trigger: On<scene_io::SceneLoadFailed>,
+    inbox: Option<ResMut<renzora::ScriptSceneInbox>>,
+) {
+    if let Some(mut inbox) = inbox {
+        let ev = trigger.event();
+        inbox.pending.push(renzora::SceneEvent {
+            path: ev.path.clone(),
+            error: Some(ev.error.clone()),
+        });
+    }
 }
 
 /// Whether any ancestor of `e` is marked [`HideInHierarchy`] (editor-internal —
@@ -1177,6 +1245,54 @@ fn parse_project_arg() -> Option<std::path::PathBuf> {
 /// Rewrites [`MeshInstanceData::model_path`] on every entity when an asset
 /// is renamed or moved, so scene references stay valid without a user-
 /// initiated save. Animation paths are handled analogously in `renzora_animation`.
+/// Follow a renamed or moved scene in `project.toml`.
+///
+/// Renaming a scene used to leave `main_scene` (and now `autoload`) pointing at
+/// the old file. The tab strip and the world followed the rename, so it looked
+/// like it had worked — until the next project load found nothing at the
+/// recorded path and produced a fresh empty scene, which reads as "renaming
+/// created a new scene instead of renaming one".
+///
+/// Runs for renames from anywhere — the tab strip, the asset browser, a folder
+/// move — because it observes the same event they all fire.
+fn follow_project_scene_paths(
+    trigger: On<renzora::AssetPathChanged>,
+    project: Option<ResMut<CurrentProject>>,
+) {
+    let (ev, Some(mut project)) = (trigger.event(), project) else {
+        return;
+    };
+    let mut changed = false;
+
+    if let Some(new_main) = ev.rewrite(&project.config.main_scene) {
+        info!(
+            "[asset-move] project main_scene '{}' → '{}'",
+            project.config.main_scene, new_main
+        );
+        project.config.main_scene = new_main;
+        changed = true;
+    }
+
+    // Global scenes are listed by path too, so a renamed global scene would
+    // otherwise silently stop loading.
+    for i in 0..project.config.autoload.len() {
+        if let Some(new_path) = ev.rewrite(&project.config.autoload[i]) {
+            info!(
+                "[asset-move] autoload '{}' → '{}'",
+                project.config.autoload[i], new_path
+            );
+            project.config.autoload[i] = new_path;
+            changed = true;
+        }
+    }
+
+    if changed {
+        if let Err(e) = project.save_config() {
+            warn!("failed to save project.toml after scene rename: {e}");
+        }
+    }
+}
+
 fn apply_asset_path_changes_to_mesh_instances(
     trigger: On<renzora::AssetPathChanged>,
     mut query: Query<&mut MeshInstanceData>,

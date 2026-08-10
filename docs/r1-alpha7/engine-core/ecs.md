@@ -253,7 +253,6 @@ Almost every engine feature is its own Bevy `Plugin`. `renzora_runtime::add_engi
 | Plugin | Crate | Role |
 |--------|-------|------|
 | `RuntimePlugin` | `renzora_engine` | VFS, asset reader, scene I/O, autoload |
-| `GlobalsPlugin` | `renzora_globals` | shared global state |
 | `InputPlugin` | `renzora_input` | input mapping |
 | `ScriptingPlugin` | `renzora_scripting` | Lua + Rhai backends |
 | `PhysicsPlugin` | `renzora_physics` | physics integration + script bindings |

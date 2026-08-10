@@ -902,8 +902,6 @@ pub fn add_engine_plugins(app: &mut App, is_editor: bool) {
     // ── Foundation (explicit, ordered) ─────────────────────────────────
     info!("[runtime] foundation: RuntimePlugin");
     app.add_plugins(renzora_engine::RuntimePlugin);
-    info!("[runtime] foundation: GlobalsPlugin");
-    app.add_plugins(renzora_globals::GlobalsPlugin);
     info!("[runtime] foundation: InputPlugin");
     app.add_plugins(renzora_input::InputPlugin);
     // The scripting host: hooks, the command vocabulary and the queue that applies

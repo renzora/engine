@@ -1402,6 +1402,68 @@ fn tab_project(
     );
     settings_row(commands, fonts, body, 2, &tr("settings.row.game_ui_font"), dd);
 
+    // Global scenes — the `autoload` list. Each scene toggled on here loads
+    // before the boot scene and every entity it spawns is tagged `Persistent`,
+    // so subsequent scene loads skip it. That's how a project keeps one UI
+    // scene, one music scene and one networking scene alive across every
+    // transition instead of respawning them per level.
+    //
+    // A toggle per scene rather than an add/remove list: the set of candidates
+    // is just `scenes/`, and "which of my scenes are global" is the question
+    // being answered. Order follows `scan_scenes` (directory order), which
+    // matters only if two global scenes race to touch the same thing at boot.
+    let (sec, body) = section(
+        commands,
+        fonts,
+        "layers",
+        &tr("settings.cat.global_scenes"),
+        A_BLUE,
+    );
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "global_scenes");
+    if scenes.is_empty() {
+        let lbl = commands
+            .spawn((
+                Text::new(tr("settings.hint.no_scenes")),
+                ui_font(&fonts.ui, 12.0),
+                TextColor(rgb(text_muted())),
+                Node {
+                    margin: UiRect::all(Val::Px(12.0)),
+                    ..default()
+                },
+            ))
+            .id();
+        commands.entity(body).add_child(lbl);
+    }
+    for (i, scene) in scenes.iter().enumerate() {
+        let get_name = scene.clone();
+        let set_name = scene.clone();
+        let t = ctl_toggle(
+            commands,
+            false,
+            move |w| {
+                w.get_resource::<CurrentProject>()
+                    .is_some_and(|c| c.config.autoload.contains(&get_name))
+            },
+            move |w, on| {
+                if let Some(mut cp) = w.get_resource_mut::<CurrentProject>() {
+                    let list = &mut cp.config.autoload;
+                    match (*on, list.iter().position(|a| *a == set_name)) {
+                        // Guard against a double-add: the entry is the load
+                        // instruction, so a duplicate spawns the scene twice.
+                        (true, None) => list.push(set_name.clone()),
+                        (false, Some(idx)) => {
+                            list.remove(idx);
+                        }
+                        _ => {}
+                    }
+                }
+                save_project(w);
+            },
+        );
+        settings_row(commands, fonts, body, i, scene, t);
+    }
+
     // Rendering (3D pipeline).
     let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.rendering"), A_BLUE);
     commands.entity(col).add_child(sec);

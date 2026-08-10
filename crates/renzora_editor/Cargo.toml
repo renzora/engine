@@ -178,8 +178,8 @@ renzora_engine_editor      = { path = "../renzora_engine/editor", optional = tru
 # the `renzora_x/editor` feature refs in `[features].editor` resolvable and
 # lets the keepalive cover them. They re-link as rlibs (accepted bloat from
 # decision (a)); they install nothing extra at runtime (Editor-scope filter).
-# Dual-mode crates NOT referenced by any `/editor` cascade (renzora_globals,
-# renzora_input, renzora_blueprint, renzora_spline, renzora_audio,
+# Dual-mode crates NOT referenced by any `/editor` cascade (renzora_input,
+# renzora_blueprint, renzora_spline, renzora_audio,
 # renzora_shader, renzora_postprocess) are omitted — they arrive transitively
 # and hold no Editor-scope plugins for the bundle to install.
 renzora_engine          = { path = "../renzora_engine" }

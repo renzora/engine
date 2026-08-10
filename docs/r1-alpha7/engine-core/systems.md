@@ -66,12 +66,11 @@ Because a `Runtime` plugin's systems run inside the editor viewport too, your ga
 | Order | Plugin | Crate | Role |
 |-------|--------|-------|------|
 | 1 | `RuntimePlugin` | `renzora_engine` | VFS, asset reader, scene I/O, autoload |
-| 2 | `GlobalsPlugin` | `renzora_globals` | shared global state |
-| 3 | `InputPlugin` | `renzora_input` | input mapping |
-| 4 | `ScriptingPlugin` | `renzora_scripting` | Lua + Rhai backends |
-| 5 | `PhysicsPlugin` | `renzora_physics` | physics integration + script bindings |
-| 6 | `ViewportStretchPlugin` | `renzora_runtime` | pixel-art scaling — **game builds only** (`!is_editor`) |
-| 7+ | every `Runtime`-scope `add!` plugin | various | fanned out via `for_each_static_plugin(Runtime)` |
+| 2 | `InputPlugin` | `renzora_input` | input mapping |
+| 3 | `ScriptingPlugin` | `renzora_scripting` | Lua + Rhai backends |
+| 4 | `PhysicsPlugin` | `renzora_physics` | physics integration + script bindings |
+| 5 | `ViewportStretchPlugin` | `renzora_runtime` | pixel-art scaling — **game builds only** (`!is_editor`) |
+| 6+ | every `Runtime`-scope `add!` plugin | various | fanned out via `for_each_static_plugin(Runtime)` |
 
 `Editor`-scope plugins are **not** installed here. They arrive only through the editor bundle's `plugin_install_scope` entry point, called with `host_scope = Editor` when an editor session is detected. There is no compile-time `editor` feature.
 

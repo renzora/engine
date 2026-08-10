@@ -273,6 +273,25 @@ pub struct SnapshotSceneForSimulate;
 #[derive(bevy::prelude::Event)]
 pub struct RestoreSimulateSnapshot;
 
+/// Load the project's global (autoload) scenes so an editor play session sees
+/// the same persistent HUD / music / networking content a shipped game does.
+///
+/// A game build loads these once at `Startup`; the editor has no such moment,
+/// so Play fires this and Stop fires [`UnloadAutoloadScenes`]. Observed by
+/// `renzora_engine` (which owns scene loading) — the editor only fires it, so
+/// the dependency stays one-way, the same arrangement as
+/// [`SnapshotSceneForSimulate`].
+#[derive(bevy::prelude::Event)]
+pub struct LoadAutoloadScenes;
+
+/// Despawn everything [`LoadAutoloadScenes`] spawned, on Stop.
+///
+/// Teardown is by recorded entity id, not by "despawn all `Persistent`" — a
+/// user can hand-tag `Persistent` from the inspector, and a blanket sweep would
+/// delete authored scene content that merely shares the marker.
+#[derive(bevy::prelude::Event)]
+pub struct UnloadAutoloadScenes;
+
 /// Fired by the editor immediately after a document tab is closed, with
 /// the closed tab's id. Lets per-tab caches (asset handles, undo stacks,
 /// etc.) drop their entries without coupling the editor to every
@@ -712,6 +731,64 @@ pub struct UiCallback {
 #[derive(Resource, Default)]
 pub struct ScriptUiInbox {
     pub pending: Vec<UiCallback>,
+}
+
+/// A broadcast game event: a name plus arguments, sent by anyone, heard by
+/// anyone who cares.
+///
+/// The counterpart to addressing an entity by id. `set_on("music", …)` is right
+/// when you know exactly what you're talking to; an event is right when the
+/// sender shouldn't have to — "the boss died" may interest a quest tracker, an
+/// achievement check and a save trigger, and the boss should not have to know
+/// that any of them exist.
+///
+/// Triggered as an observer event, so Rust systems listen with
+/// `app.add_observer(|t: On<GameEvent>| …)`. Scripts get the same events
+/// through `on_event(name, args)`.
+#[derive(bevy::prelude::Event, Clone, Debug)]
+pub struct GameEvent {
+    pub name: String,
+    pub args: std::collections::HashMap<String, ScriptActionValue>,
+    /// The entity that emitted it, when a script did. `None` for engine- or
+    /// Rust-side emits.
+    pub from: Option<bevy::ecs::entity::Entity>,
+}
+
+/// Queue of events awaiting dispatch, drained once per frame.
+///
+/// Emits are deferred by a frame rather than delivered inline, for two reasons:
+/// a script emitting from inside a hook would otherwise re-enter the VM
+/// mid-call, and an event handler that emits could otherwise recurse without
+/// bound. The same reasoning as the `ScriptCommand` queue.
+#[derive(Resource, Default)]
+pub struct GameEventQueue {
+    pub pending: Vec<GameEvent>,
+}
+
+/// A scene finishing (or failing) to load, awaiting dispatch to scripts'
+/// `on_scene_loaded(path)` / `on_scene_load_failed(path, error)` hook.
+#[derive(Clone, Debug)]
+pub struct SceneEvent {
+    /// The scene path, as the load was requested (project-relative).
+    pub path: String,
+    /// `None` on success; the failure reason otherwise.
+    pub error: Option<String>,
+}
+
+/// Inbox bridge for scene-load completion.
+///
+/// `renzora_engine`'s scene streamer pushes a [`SceneEvent`] when the main
+/// scene finishes or fails; `renzora_scripting` drains it each frame and
+/// invokes the hook on every live script (broadcast, same semantics as
+/// [`ScriptRpcInbox`]).
+///
+/// The point of the hook is that it reaches scripts the load did **not**
+/// destroy: a script in the outgoing scene is despawned partway through, so
+/// only a `Persistent` one (an autoload scene) is still alive to hear that the
+/// new scene arrived. That is what makes a loading screen possible.
+#[derive(Resource, Default)]
+pub struct ScriptSceneInbox {
+    pub pending: Vec<SceneEvent>,
 }
 
 /// An animation event fired when playback crosses a clip marker, awaiting

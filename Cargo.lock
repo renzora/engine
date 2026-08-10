@@ -7443,7 +7443,6 @@ dependencies = [
  "bevy",
  "log",
  "renzora",
- "renzora_globals",
  "serde",
  "serde_json",
 ]
@@ -7933,14 +7932,6 @@ dependencies = [
  "renzora_physics",
  "renzora_terrain",
  "renzora_undo",
-]
-
-[[package]]
-name = "renzora_globals"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
 ]
 
 [[package]]
@@ -8536,7 +8527,6 @@ dependencies = [
  "renzora_environment_map",
  "renzora_forward_decal",
  "renzora_gaussian_splatting",
- "renzora_globals",
  "renzora_hanabi",
  "renzora_input",
  "renzora_lang",

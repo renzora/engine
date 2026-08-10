@@ -131,7 +131,7 @@ This emits a single `extern "C" fn plugin_install_scope(*mut App, host_scope: u8
 For a normal launch, `renzora_runtime::add_engine_plugins(app, is_editor)` inserts the `EditorSession(is_editor)` marker, then installs an ordered foundation:
 
 ```
-RuntimePlugin → GlobalsPlugin → InputPlugin → ScriptingPlugin → PhysicsPlugin
+RuntimePlugin → InputPlugin → ScriptingPlugin → PhysicsPlugin
    (+ ViewportStretchPlugin when !is_editor)
 ```
 

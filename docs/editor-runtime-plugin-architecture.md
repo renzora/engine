@@ -185,7 +185,6 @@ extern "C" fn plugin_bevy_hash() -> [u64; 2];
 ```text
 EditorSession(is_editor)        // runtime editor-vs-game signal for dual-mode crates
 RuntimePlugin                   // renzora_engine
-GlobalsPlugin                   // renzora_globals
 InputPlugin                     // renzora_input
 ScriptingPlugin                 // renzora_scripting (Lua + Rhai)
 PhysicsPlugin                   // renzora_physics
