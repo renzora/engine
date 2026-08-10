@@ -8,6 +8,7 @@
 mod camera_presets;
 mod native;
 pub mod reflect_source;
+mod resources;
 mod richtext;
 mod scripts;
 mod textfont;
@@ -38,6 +39,7 @@ impl Plugin for InspectorPanelPlugin {
         camera_presets::register(app);
         textfont::register(app);
         plugin_resources::register(app);
+        resources::register(app);
         richtext::register(app);
         // Plugin components only exist after `load_global_plugins` has run, so
         // their sections cannot be registered at plugin-build time. A startup

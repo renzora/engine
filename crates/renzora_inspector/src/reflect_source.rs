@@ -30,6 +30,7 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
+use bevy::ecs::component::ComponentId;
 use bevy::prelude::*;
 use bevy::reflect::enums::{DynamicEnum, DynamicVariant, VariantInfo};
 // `GetPath` is what turns a dotted string into a reflected field. Note its impl
@@ -331,37 +332,79 @@ fn walk(
     registry: &bevy::reflect::TypeRegistry,
     out: &mut Vec<ReflectField>,
 ) {
-    let ReflectRef::Struct(s) = value.reflect_ref() else {
-        return;
-    };
-    // The *value* view (`ReflectRef`) carries field names and data; the *schema*
-    // view (`TypeInfo`) additionally carries `#[reflect(@..)]` custom attributes.
-    // Both are needed: the value to read, the schema to know how to present it.
-    let struct_info = match value.get_represented_type_info() {
-        Some(TypeInfo::Struct(info)) => Some(info),
-        _ => None,
-    };
-    for i in 0..s.field_len() {
-        let Some(name) = s.name_at(i) else { continue };
-        let Some(field) = s.field_at(i) else { continue };
-        // `#[reflect(@0.0f32..=5.0f32)]` — the clamp, declared on the component
-        // in Bevy's own vocabulary. This is the whole point: the owning crate
-        // says what the range is without naming a single Renzora type.
-        let range = struct_info
-            .and_then(|info| info.field_at(i))
-            .and_then(|f| f.get_attribute::<core::ops::RangeInclusive<f32>>())
-            .map(|r| (*r.start(), *r.end()));
+    // One entry per member to draw: the path segment that addresses it, the
+    // label it contributes, the value, and any declared range. Collected first
+    // so named structs and newtypes share the single row-building loop below —
+    // the two differ only in how a member is named.
+    type Member<'a> = (String, String, &'a dyn bevy::reflect::PartialReflect, Option<(f32, f32)>);
+    let mut members: Vec<Member<'_>> = Vec::new();
+    match value.reflect_ref() {
+        ReflectRef::Struct(s) => {
+            // The *value* view (`ReflectRef`) carries field names and data; the
+            // *schema* view (`TypeInfo`) additionally carries `#[reflect(@..)]`
+            // custom attributes. Both are needed: the value to read, the schema
+            // to know how to present it.
+            let struct_info = match value.get_represented_type_info() {
+                Some(TypeInfo::Struct(info)) => Some(info),
+                _ => None,
+            };
+            for i in 0..s.field_len() {
+                let Some(name) = s.name_at(i) else { continue };
+                let Some(field) = s.field_at(i) else { continue };
+                // `#[reflect(@0.0f32..=5.0f32)]` — the clamp, declared on the
+                // component in Bevy's own vocabulary. This is the whole point:
+                // the owning crate says what the range is without naming a
+                // single Renzora type.
+                let range = struct_info
+                    .and_then(|info| info.field_at(i))
+                    .and_then(|f| f.get_attribute::<core::ops::RangeInclusive<f32>>())
+                    .map(|r| (*r.start(), *r.end()));
+                members.push((name.to_string(), prettify(name), field, range));
+            }
+        }
+        // A newtype (`struct Score(u32)`) is as common a shape as a named
+        // struct — especially for resources — and reflection addresses its
+        // members by index, which `GetPath` parses from a bare `0` segment.
+        // Skipping these was why a resource browser showed nothing at all for a
+        // large share of what it listed.
+        ReflectRef::TupleStruct(t) => {
+            let tuple_info = match value.get_represented_type_info() {
+                Some(TypeInfo::TupleStruct(info)) => Some(info),
+                _ => None,
+            };
+            for i in 0..t.field_len() {
+                let Some(field) = t.field(i) else { continue };
+                let range = tuple_info
+                    .and_then(|info| info.field_at(i))
+                    .and_then(|f| f.get_attribute::<core::ops::RangeInclusive<f32>>())
+                    .map(|r| (*r.start(), *r.end()));
+                // A single unnamed member has no name of its own to show, so it
+                // takes the containing field's (or "Value" at the root).
+                let label = if t.field_len() == 1 {
+                    String::new()
+                } else {
+                    i.to_string()
+                };
+                members.push((i.to_string(), label, field, range));
+            }
+        }
+        _ => return,
+    }
+
+    for (segment, own_label, field, range) in members {
         let path = if prefix.is_empty() {
-            name.to_string()
+            segment.clone()
         } else {
-            format!("{prefix}.{name}")
+            format!("{prefix}.{segment}")
         };
         // Nested labels carry their parent so two `intensity` rows under
         // different sub-structs stay distinguishable.
-        let label = if prefix.is_empty() {
-            prettify(name)
-        } else {
-            format!("{} {}", prettify(prefix.rsplit('.').next().unwrap_or(prefix)), prettify(name))
+        let parent = prettify(prefix.rsplit('.').next().unwrap_or(prefix));
+        let label = match (prefix.is_empty(), own_label.is_empty()) {
+            (true, true) => "Value".to_string(),
+            (true, false) => own_label,
+            (false, true) => parent,
+            (false, false) => format!("{parent} {own_label}"),
         };
 
         if let Some((field_type, val)) = leaf_to_field(field, &label, range) {
@@ -382,7 +425,12 @@ fn walk(
             });
             continue;
         }
-        if depth < MAX_DEPTH && matches!(field.reflect_ref(), ReflectRef::Struct(_)) {
+        if depth < MAX_DEPTH
+            && matches!(
+                field.reflect_ref(),
+                ReflectRef::Struct(_) | ReflectRef::TupleStruct(_)
+            )
+        {
             walk(field, &path, depth + 1, registry, out);
             continue;
         }
@@ -740,4 +788,126 @@ fn apply_value(target: &mut dyn bevy::reflect::PartialReflect, value: FieldValue
         // Read-only rows have no write path, and `Asset` is not generated.
         FieldValue::ReadOnly(_) | FieldValue::Asset(_) => false,
     }
+}
+
+// ── resources ────────────────────────────────────────────────────────────
+//
+// Everything above is written for a component on an entity, and a resource
+// reuses all of it unchanged. That is not a coincidence: Bevy 0.19 made
+// `Resource: Component`, so a resource's value now lives as a component on a
+// hidden entity that `World::resource_entities` maps its `ComponentId` to, and
+// `#[reflect(Resource)]` registers `ReflectComponent` alongside the
+// `ReflectResource` marker (which in 0.19 carries no functions of its own).
+// Hand [`read_field`] / [`write_field`] the entity from that map and they read
+// and write the resource — there is no resource-specific twin to keep in sync.
+
+/// A reflected resource that currently exists in the world.
+pub struct ResourceEntry {
+    /// The entity holding this resource's value — the handle [`read_field`] and
+    /// [`write_field`] take.
+    pub entity: Entity,
+    /// The resource's own `ComponentId`, for declaring a reactive dependency.
+    pub cid: ComponentId,
+    /// Full Rust type path, from the type registry.
+    pub type_path: &'static str,
+}
+
+/// What [`world_resources`] found.
+pub struct WorldResources {
+    /// Every resource this build can name and read, unsorted and unfiltered.
+    pub reflected: Vec<ResourceEntry>,
+    /// How many resources exist that are **not** reflected, so a caller can say
+    /// so rather than quietly presenting a partial list as the whole picture.
+    ///
+    /// Counted rather than listed because there is nothing to list: naming a
+    /// component without going through the type registry means
+    /// `ComponentInfo::name()`, which returns the literal string
+    /// `"<Enable the debug feature to see the name>"` unless Bevy's `debug`
+    /// feature is on — and this workspace does not enable it. Rows for these
+    /// would be indistinguishable from each other and openable to nothing.
+    pub unreflected: usize,
+}
+
+/// Every resource present in the world.
+///
+/// Cheap by design: it resolves each resource's type but never walks its
+/// fields, so a caller can run it periodically to notice the set changing and
+/// only pay for the rows it is actually about to draw.
+pub fn world_resources(world: &World) -> WorldResources {
+    let app_registry = world.get_resource::<AppTypeRegistry>().cloned();
+    let registry = app_registry.as_ref().map(|r| r.read());
+
+    let mut reflected = Vec::new();
+    let mut unreflected = 0usize;
+    for (cid, entity) in world.resource_entities().iter() {
+        let Some(info) = world.components().get_info(cid) else {
+            continue;
+        };
+        // Reflectability is `ReflectComponent`, not `ReflectResource`: the
+        // latter is a bare marker in 0.19 and cannot read anything.
+        let type_path = info
+            .type_id()
+            .and_then(|tid| registry.as_ref().and_then(|r| r.get(tid)))
+            .filter(|reg| reg.data::<ReflectComponent>().is_some())
+            .map(|reg| reg.type_info().type_path());
+        match type_path {
+            Some(type_path) => reflected.push(ResourceEntry {
+                entity,
+                cid,
+                type_path,
+            }),
+            None => unreflected += 1,
+        }
+    }
+    WorldResources {
+        reflected,
+        unreflected,
+    }
+}
+
+/// The rows for one resource — the resource counterpart of a
+/// [`ReflectSection`]'s fields.
+///
+/// A resource is often a newtype or a bare enum rather than a named struct, so
+/// this also handles the case where the resource *itself* is the value: those
+/// get one row addressed by the empty path, which `GetPath` resolves to the
+/// root.
+pub fn resource_fields(world: &World, entity: Entity, type_path: &str) -> Vec<ReflectField> {
+    let Some(app_registry) = world.get_resource::<AppTypeRegistry>().cloned() else {
+        return Vec::new();
+    };
+    let registry = app_registry.read();
+    let Some(registration) = registry.get_with_type_path(type_path) else {
+        return Vec::new();
+    };
+    let Some(reflect_component) = registration.data::<ReflectComponent>() else {
+        return Vec::new();
+    };
+    let Ok(entity_ref) = world.get_entity(entity) else {
+        return Vec::new();
+    };
+    let Some(reflected) = reflect_component.reflect(entity_ref) else {
+        return Vec::new();
+    };
+    let value = reflected.as_partial_reflect();
+
+    let mut fields = Vec::new();
+    walk(value, "", 0, &registry, &mut fields);
+    if !fields.is_empty() {
+        return fields;
+    }
+
+    // Not a struct-shaped resource: `enum GameMode` and `struct Paused(bool)`
+    // are both perfectly ordinary resources, and both walk to nothing.
+    if let Some((field_type, val)) = leaf_to_field(value, "value", None)
+        .or_else(|| enum_field(value, &registry))
+    {
+        fields.push(ReflectField {
+            label: "Value",
+            path: "",
+            field_type,
+            value: val,
+        });
+    }
+    fields
 }

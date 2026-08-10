@@ -16,6 +16,8 @@ Don't have anything to inspect yet? Open the **Add Entity** menu to drop a new o
 
 > Want the Inspector to stay on one object while you click around elsewhere? Use the **lock** toggle in a section header. It pins the Inspector to the current object until you unlock it.
 
+Some state isn't attached to any object — the time, the editor's own settings, a plugin's configuration. That is a **resource**, and because there is nothing to select, it never shows up here. Open the **Resources** panel instead (Add-Panel picker → *Debug*): it lists every resource in the running world and edits it the same way this panel edits a component. See [Resources & State](/docs/r1-alpha7/engine-core/resources).
+
 ## Reading the panel
 
 Each object is made of **components** — small bundles of settings like *Transform* (position/rotation/scale), *Directional Light*, or *Visibility*. The Inspector shows one collapsible section per component.

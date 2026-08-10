@@ -61,7 +61,6 @@ These are the **contract resources/types** that live in `renzora` for exactly th
 | Type | Module | Role |
 |---|---|---|
 | `EditorSession(bool)` | `renzora` (`core`) | Editor-vs-game flag, set once at startup |
-| `GlobalStore` | `renzora_globals` | Cross-system key/value store (uses `renzora::PinValue`) |
 | `CurrentProject` / `ProjectConfig` | `renzora` (`core`) | The open project and its `project.toml` |
 | `PlayModeState` | `renzora` (`core`) | Editing / Playing / Paused |
 | `EffectRouting` | `renzora` (`core`) | Maps post-process settings entities onto active cameras |
@@ -93,30 +92,34 @@ fn only_in_game(session: Res<EditorSession>) {
 
 `EditorSession(bool)` defaults to `false` (a plain game) when the resource is absent. `RuntimePlugin` reads it to decide whether to run the rpak/project/scene game-startup itself or defer to the editor's splash flow.
 
-## Globals — the cross-system key/value store
+## Cross-scene state
 
-`renzora_globals` is the small support crate that backs script and blueprint globals. Its `GlobalsPlugin` is installed as a foundation plugin by `add_engine_plugins`, and it provides one resource, `GlobalStore`, plus a per-key change event.
+There is currently **no engine-provided global key/value store**. The `renzora_globals` crate and its `GlobalStore` were the surviving half of the removed lifecycle graph and were deleted with it; the `global_set` / `global_get` script verbs they backed had already lost their handlers and are gone too. A replacement lifecycle system is being designed.
 
-```rust
-use bevy::prelude::*;
-use renzora::PinValue;
-use renzora_globals::{GlobalStore, GlobalChanged};
+Until it lands, state that must outlive a scene load goes in your own `Resource` (scene loads despawn entities, never resources), or on an entity in a **global scene**.
 
-fn set_phase(mut globals: ResMut<GlobalStore>) {
-    globals.set("phase", PinValue::String("boss".into()));
-    globals.set("wave", PinValue::Int(3));
-}
+### Global scenes
 
-fn read_phase(globals: Res<GlobalStore>) {
-    if let Some(v) = globals.get("phase") {
-        info!("phase = {}", v.as_string());
-    }
-}
+A global scene is an ordinary scene listed in `project.toml`'s `autoload`. It loads *before* the boot scene, and every entity it spawns is tagged `renzora::Persistent` — which the scene-load despawn filter (`Without<Persistent>`) skips. The result is content that survives every subsequent `load_scene()`: one scene for your HUD, one for music, one for networking, rather than rebuilding them per level.
+
+Set them in **Settings → Global Scenes**: a toggle per scene in `scenes/`. The list is ordered, which matters only if two global scenes touch the same thing at boot.
+
+```toml
+# project.toml
+autoload = ["scenes/ui.bsn", "scenes/music.bsn", "scenes/net.bsn"]
 ```
 
-Values are stored as `renzora::PinValue` — the same tagged value type used on blueprint pins (`None`, `Float`, `Int`, `Bool`, `String`, `Vec2`, `Vec3`, `Color`, `Entity`). `GlobalStore` exposes `get`, `set`, `has`, `clear`, and `iter`. Whenever a key is written or cleared, the `GlobalsPlugin` drains the dirty set in the `First` schedule and fires a `GlobalChanged { key }` observer trigger once per changed key, so reactive UI and systems can respond without polling.
+Reaching their entities needs no special API — script entity lookup by id is world-wide, not scene-scoped, so a script in level 3 can address a global scene's entity directly:
 
-From scripts these globals are reached through the action verbs `global_set` / `global_get`, e.g. `action("global_set", { key = "score", value = 100 })`.
+```lua
+set_on("music_player", "AudioSink.volume", 0.5)
+```
+
+Three things to know:
+
+- **A global scene's script is the only thing still running during a scene swap.** Everything in the outgoing scene is despawned partway through the load, which is why `on_scene_loaded` / `scene_load_state()` (see [Scripting API](../api/scripting#assets)) are only useful from here. A loading screen has to live in a global scene.
+- **They run in the editor too.** A game build loads them at `Startup`; in the editor, Play (and Simulate) loads them and Stop despawns them again, so you can test a global HUD or loading screen without an export. Teardown removes exactly what Play spawned — a `Persistent` marker you applied by hand in the inspector is left alone.
+- **They are excluded from scene saves.** `Persistent` entities are live in the world but belong to another scene file, so saving the open scene skips them — otherwise every save would bake in a duplicate copy and the next load would spawn two music players.
 
 ## Project & play-mode state
 
@@ -236,6 +239,33 @@ The big engine subsystems each expose their state as a resource you can read fro
 | `LumenDiagState` | `renzora` (`gi`) | Per-frame GI diagnostics snapshot |
 
 > `ScriptEngine` is a registry of backends, not a `rhai_engine`/`lua_state` pair — scripts dispatch to a backend by extension (`.lua` → Lua, `.rhai` → Rhai). And several `NetworkStatus` fields (`rtt_ms`, `jitter_ms`, `packet_loss`, `client_id`) are defined but not yet populated by the networking layer, so they currently read as zero/`None`.
+
+### Browsing them: the Resources panel
+
+The editor ships a **Resources** panel (Add-Panel picker → *Debug* → *Resources*) that lists every reflected resource in the running world and lets you read and edit its fields live. It is the resource counterpart of the Inspector: the Inspector draws what is on the selected *entity*, and a resource has no entity to select, so global state had nowhere else to be looked at.
+
+It is master/detail — a searchable list of resource names on top, the selected resource's fields below — because a world holds several hundred resources and only one of them is ever being read at a time. Selecting a row is what walks that resource through reflection; nothing else is inspected, and nothing else costs anything.
+
+Rows are generated from `bevy_reflect`, so a resource needs no editor code to appear:
+
+```rust
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource)]          // <- this is the whole opt-in
+struct Wind {
+    speed: f32,
+    #[reflect(@0.0f32..=1.0f32)]   // a declared range becomes a clamped drag
+    gustiness: f32,
+}
+```
+
+Named structs, newtypes (`struct Score(i32)`) and bare enums (`enum Mode { .. }`) all draw; a field reflection can describe but not edit shows as a read-only row rather than being dropped, so what you see is the whole resource.
+
+Two limits worth knowing:
+
+- **A resource without `#[reflect(Resource)]` is counted, not listed.** The panel's count reads e.g. `412  (+38 unreflected)`. There is nothing to list them under: naming a component outside the type registry means `ComponentInfo::name()`, which returns a placeholder string unless Bevy's `debug` feature is compiled in, and this workspace does not enable it. Derive `Reflect` and the resource appears.
+- **Edits here are not undoable.** Undo stacks are per-document and the active one is almost always the scene's; a global poked from a debug panel does not belong in the scene's edit history.
+
+Resources declared by a C-ABI plugin are a separate case — they are not Rust types this build knows, so reflection cannot see them at all. Those have their own **Plugin Resources** panel, driven by the plugin's field schema.
 
 ### The runtime-warnings buffer (the exception)
 
