@@ -347,6 +347,25 @@ pub fn apply_script_commands(
                 });
             }
 
+            // Broadcast event — queued rather than triggered inline. We're
+            // inside the command-apply pass that follows a script's hook, and
+            // dispatching now would let one script's `emit` re-enter the VM
+            // while another's hook is still on the stack; queuing lands it on
+            // the next frame's drain instead.
+            ScriptCommand::Emit { name, args } => {
+                let from = Some(source_entity);
+                let args = args
+                    .into_iter()
+                    .map(|(k, v)| (k, to_engine_action(v)))
+                    .collect();
+                commands.queue(move |world: &mut World| {
+                    world
+                        .get_resource_or_insert_with(renzora::GameEventQueue::default)
+                        .pending
+                        .push(renzora::GameEvent { name, args, from });
+                });
+            }
+
             // Async HTTP — fire on a background thread; the result lands in
             // `HttpInbox` and the executor dispatches `on_http` next frame.
             ScriptCommand::HttpRequest {

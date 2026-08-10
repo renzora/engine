@@ -36,6 +36,11 @@ Define any of these free functions; the engine calls the ones that exist. None a
 | `on_http(callback, status, body)` | An HTTP response returned. `status` is the HTTP code; **`status == 0` means the request failed** and `body` holds the error text | Lua |
 | `on_player_joined(id)` | A player connected (**server/host only**) | Lua |
 | `on_player_left(id)` | A player disconnected (server/host only) | Lua |
+| `on_scene_loaded(path)` | A scene finished loading. Only scripts that **survive** the load hear this — see below | Lua |
+| `on_scene_load_failed(path, error)` | A scene load failed. `error` is the reason | Lua |
+| `on_event(name, args)` | A broadcast game event was emitted, by any script, blueprint or Rust system | Lua |
+
+> **The scene hooks only reach `Persistent` scripts.** A scene load despawns the outgoing scene's entities partway through, so a script that lives in the scene being replaced is already gone when its successor arrives. Put scene-transition logic on a global scene (see [Global scenes](../engine-core/resources#cross-scene-state)) — that is the entire reason a loading screen has to live outside the scene it is covering.
 
 > There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup and read the `is_colliding` global for overlap state. Collision *events* exist only as [Blueprint](/docs/r1-alpha5/scripting/blueprints) nodes. Rhai scripts get `props`, `on_ready`, and `on_update` only — the other hooks fall through to no-ops.
 
@@ -359,6 +364,27 @@ end
 | `asset_progress()` | Both | Returns a table `{ state, total_files, loaded_files, total_bytes, loaded_bytes, fraction, current_path, elapsed_secs }`, or `nil` when idle |
 | `is_loading()` | Both | Convenience: `state == "loading"` |
 | `is_loaded()` | Both | Convenience: `state == "done"` |
+| `scene_load_state()` | Lua | Returns `{ phase, current_path, progress }`, or `nil` before any scene load has been observed. `phase` is `"idle"` / `"loading"` / `"ready"` / `"failed"` |
+
+> **These two measure different things and a loading screen usually needs both.** `scene_load_state()` tracks the *scene* — parsed off-thread, spawned across frames by the streamer, reaching `ready` when the last entity lands. `asset_progress()` tracks how many of that scene's **models** have finished loading, which keeps running after the scene is fully spawned. Wait only on `scene_load_state()` and you will uncover a world whose meshes are still popping in.
+>
+> Two limits on `asset_progress()` worth knowing before you promise a percentage: it counts glTF model loads (via `PendingMeshInstanceRehydrate`), not textures, audio or materials outside that path; and `total_bytes`/`loaded_bytes` come from the rpak index, so they are **zero in the editor or a `--project` run** — fall back to the file-count ratio there.
+
+## Events
+
+| Function | Backends | Description |
+|----------|----------|-------------|
+| `emit(name, args)` | Lua | Broadcast an event; every script's `on_event(name, args)` fires next frame, as do Rust observers of `renzora::GameEvent` |
+
+Delivery is deferred by one frame, so a script never sees its own emit within the same hook — dispatching inline would re-enter the VM mid-call and let a handler that emits recurse unbounded. An event with no listeners is a normal outcome, unlike an unclaimed `action()` name.
+
+From Rust, listen with an observer and send by queueing:
+
+```rust
+app.add_observer(|trigger: On<renzora::GameEvent>| {
+    if trigger.event().name == "boss_died" { /* … */ }
+});
+```
 
 ## Math helpers
 
@@ -392,7 +418,7 @@ Verbs that are actually observed in the current code:
 | Physics (`renzora_physics`) | `kinematic_slide`, `apply_force`, `apply_impulse`, `set_velocity` |
 | Navmesh (`renzora_navmesh`) | `nav_set_destination`, `nav_clear_destination` |
 
-> For widget *data* (a slider value, a bar fill), prefer reflection: `set_on("VolumeSlider", "SliderData.value", 0.5)`. Variable get/set across nodes (`global_set`/`global_get`) is a [Blueprint](/docs/r1-alpha5/scripting/blueprints) feature, not a text-script `action()` verb.
+> For widget *data* (a slider value, a bar fill), prefer reflection: `set_on("VolumeSlider", "SliderData.value", 0.5)`. There is **no** cross-scene variable store: `global_set` / `global_get` were removed along with the lifecycle graph that backed them, and a replacement is being designed.
 
 ## Extension functions
 

@@ -3005,9 +3005,14 @@ impl ScriptOp {
     pub const Eval: Self = Self(10);
     /// Drop cached state for this `(path, entity)` — the entity went away.
     pub const Evict: Self = Self(11);
+    /// A scene finished loading, or failed to. Carries
+    /// [`crate::script::HookArgs::SceneEvent`].
+    pub const OnSceneEvent: Self = Self(12);
+    /// A broadcast game event. Carries [`crate::script::HookArgs::Event`].
+    pub const OnEvent: Self = Self(13);
 
     pub const fn is_known(self) -> bool {
-        self.0 < 12
+        self.0 < 14
     }
 
     pub const fn name(self) -> &'static str {
@@ -3024,6 +3029,8 @@ impl ScriptOp {
             9 => "OnPlayerEvent",
             10 => "Eval",
             11 => "Evict",
+            12 => "OnSceneEvent",
+            13 => "OnEvent",
             _ => "?",
         }
     }
@@ -3152,6 +3159,14 @@ pub struct ScriptHostCalls {
     pub asset_progress: unsafe extern "C" fn(ctx: *mut c_void, reply: *const ByteSink),
     /// Localization lookup. Replies with an encoded `String`.
     pub translate: unsafe extern "C" fn(ctx: *mut c_void, key: StrRef, reply: *const ByteSink),
+    /// Scene-load phase/path/progress. Replies with an encoded
+    /// `Option<SceneLoad>`.
+    ///
+    /// **Append only**, same rule as [`ScriptOp`]: a plugin built before a
+    /// field existed reads the ones it knows at unchanged offsets and never
+    /// calls the new pointer. Inserting one in the middle would repoint an
+    /// already-built plugin's `translate` at somebody else's function.
+    pub scene_load_state: unsafe extern "C" fn(ctx: *mut c_void, reply: *const ByteSink),
 }
 
 /// One invocation of a language backend.

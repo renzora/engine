@@ -280,6 +280,21 @@ impl Backend for LuaBackend {
                 body,
             } => self.call_hook(script, ctx, reply, name, (callback, status, body)),
             Hook::PlayerEvent { id, .. } => self.call_hook(script, ctx, reply, name, id),
+            // `fn_name` already picked on_scene_loaded vs on_scene_load_failed,
+            // so the failure case just carries the extra reason argument.
+            Hook::SceneEvent { path, error } => match error {
+                None => self.call_hook(script, ctx, reply, name, path),
+                Some(err) => self.call_hook(script, ctx, reply, name, (path, err)),
+            },
+            Hook::Event { name: ev, args } => self.with_vm(script, ctx, reply, |lua| {
+                let globals = lua.globals();
+                let Ok(func) = globals.get::<LuaFunction>("on_event") else {
+                    return Ok(());
+                };
+                let table = args_table(lua, args).map_err(|e| e.to_string())?;
+                func.call::<()>((ev, table))
+                    .map_err(|e| format!("on_event: {e}"))
+            }),
         }
     }
 
@@ -1427,6 +1442,29 @@ fn register_api(lua: &Lua) {
         .unwrap(),
     );
 
+    // -- Broadcast events --
+    // emit("name", { key = value, ... }) — every script's on_event(name, args)
+    // fires next frame, as do Rust observers of `renzora::GameEvent`.
+    //
+    // Use this when the sender shouldn't have to know who is listening ("the
+    // boss died"); use set_on/get_on when you know exactly which entity you
+    // mean ("turn the music down"). Delivery is next-frame, so a script cannot
+    // observe its own emit within the same hook.
+    let _ = globals.set(
+        "emit",
+        lua.create_function(|_, (name, args): (String, Option<LuaTable>)| {
+            let mut map = Vec::new();
+            if let Some(tbl) = args {
+                for (k, v) in tbl.pairs::<String, LuaValue>().flatten() {
+                    map.push((k, lua_to_action_value(&v)));
+                }
+            }
+            push_command(ScriptCommand::Emit { name, args: map });
+            Ok(())
+        })
+        .unwrap(),
+    );
+
     // -- HTTP (async) --
     // http_get(url [, callback]) — fire a GET; the response is delivered to
     // on_http(callback, status, body) next frame. callback defaults to "get".
@@ -1678,6 +1716,43 @@ fn register_api(lua: &Lua) {
             t.set("loaded_bytes", snapshot.loaded_bytes as f64)?;
             t.set("fraction", snapshot.fraction)?;
             t.set("elapsed_secs", snapshot.elapsed_secs)?;
+            match snapshot.current_path {
+                Some(p) => t.set("current_path", p)?,
+                None => t.set("current_path", LuaValue::Nil)?,
+            }
+            Ok(LuaValue::Table(t))
+        })
+        .unwrap(),
+    );
+
+    // scene_load_state() — which scene is loading and how far through spawning
+    // it is, as a table. Returns nil before any scene load has been observed.
+    // Fields: phase ("idle"/"loading"/"ready"/"failed"), current_path, progress.
+    //
+    // Distinct from asset_progress(): this tracks the *scene* being spawned,
+    // that tracks how many of its models have finished loading. A scene hits
+    // "ready" while its meshes are still streaming, so a loading screen that
+    // waits only on this one will uncover an unfinished world.
+    //
+    // Only scripts that survive the load see the transition — put this on a
+    // Persistent entity (an autoload/global scene), not in the scene itself:
+    //   function on_update()
+    //     local s = scene_load_state()
+    //     if s and s.phase == "loading" then
+    //       action("ui_show", { name = "LoadingScreen" })
+    //     end
+    //   end
+    //   function on_scene_loaded(path) action("ui_hide", { name="LoadingScreen" }) end
+    //   function on_scene_load_failed(path, err) print("load failed: "..err) end
+    let _ = globals.set(
+        "scene_load_state",
+        lua.create_function(|lua, ()| {
+            let Some(snapshot) = host::call_scene_load_state() else {
+                return Ok(LuaValue::Nil);
+            };
+            let t = lua.create_table()?;
+            t.set("phase", snapshot.phase)?;
+            t.set("progress", snapshot.progress)?;
             match snapshot.current_path {
                 Some(p) => t.set("current_path", p)?,
                 None => t.set("current_path", LuaValue::Nil)?,

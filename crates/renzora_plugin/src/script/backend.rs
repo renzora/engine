@@ -13,7 +13,9 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::vec::Vec;
 
-use super::context::{decode_bindings, AssetProgress, Binding, EntityContext, FrameContext, HookArgs};
+use super::context::{
+    decode_bindings, AssetProgress, Binding, EntityContext, FrameContext, HookArgs, SceneLoad,
+};
 use super::reply::ScriptReply;
 use super::value::{ActionValue, PropValue, ScriptValue, VarDef};
 use super::wire::Reader;
@@ -61,6 +63,16 @@ pub enum Hook<'a> {
         id: u64,
         joined: bool,
     },
+    /// A scene finished loading, or failed to. `error` is `None` on success.
+    SceneEvent {
+        path: &'a str,
+        error: Option<&'a str>,
+    },
+    /// A broadcast game event, from `emit(name, args)` or a Rust-side send.
+    Event {
+        name: &'a str,
+        args: &'a [(String, ActionValue)],
+    },
 }
 
 impl Hook<'_> {
@@ -80,6 +92,9 @@ impl Hook<'_> {
             Self::Http { .. } => "on_http",
             Self::PlayerEvent { joined: true, .. } => "on_player_joined",
             Self::PlayerEvent { joined: false, .. } => "on_player_left",
+            Self::SceneEvent { error: None, .. } => "on_scene_loaded",
+            Self::SceneEvent { error: Some(_), .. } => "on_scene_load_failed",
+            Self::Event { .. } => "on_event",
         }
     }
 }
@@ -227,6 +242,17 @@ impl<'a> HostCalls<'a> {
         let mut r = Reader::new(&buf);
         match r.bool() {
             Ok(true) => AssetProgress::decode(&mut r).ok(),
+            _ => None,
+        }
+    }
+
+    /// Which scene is loading and how far along it is. See [`SceneLoad`] for
+    /// how this differs from [`Self::asset_progress`].
+    pub fn scene_load_state(&self) -> Option<SceneLoad> {
+        let buf = self.ask(|sink| unsafe { (self.raw.scene_load_state)(self.raw.ctx, sink) });
+        let mut r = Reader::new(&buf);
+        match r.bool() {
+            Ok(true) => SceneLoad::decode(&mut r).ok(),
             _ => None,
         }
     }
@@ -515,6 +541,8 @@ fn hook_of(op: ScriptOp) -> Option<()> {
             | ScriptOp::OnAnimationEvent
             | ScriptOp::OnHttp
             | ScriptOp::OnPlayerEvent
+            | ScriptOp::OnSceneEvent
+            | ScriptOp::OnEvent
     )
     .then_some(())
 }
@@ -552,6 +580,11 @@ fn hook_with_args<'a>(op: ScriptOp, args: &'a HookArgs) -> Option<Hook<'a>> {
             id: *id,
             joined: *joined,
         },
+        (ScriptOp::OnSceneEvent, HookArgs::SceneEvent { path, error }) => Hook::SceneEvent {
+            path,
+            error: error.as_deref(),
+        },
+        (ScriptOp::OnEvent, HookArgs::Event { name, args }) => Hook::Event { name, args },
         // An op that is a hook but whose arguments did not match it. The two
         // came from the same host in the same call, so this means the payload
         // was corrupt rather than that a version drifted.

@@ -71,7 +71,7 @@ pub use command::{decode_list, encode_list, ScriptCommand, VARIANT_COUNT};
 pub use context::{
     decode_bindings, encode_bindings, AssetProgress, Binding, BindingKind, ChildNode,
     EntityContext, FrameContext, GamepadSnapshot, HookArgs, Param, ParamKind, RaycastHit,
-    substitute, ScriptTime, GAMEPAD_BUTTON_NAMES,
+    substitute, SceneLoad, ScriptTime, GAMEPAD_BUTTON_NAMES,
 };
 pub use reply::ScriptReply;
 pub use value::{ActionValue, DrawCmd, PropValue, ScriptValue, VarDef};
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn known_ops_are_contiguous_and_named() {
-        for i in 0..12u32 {
+        for i in 0..14u32 {
             let op = ScriptOp(i);
             assert!(op.is_known(), "op {i} should be known");
             assert_ne!(op.name(), "?", "op {i} has no name");

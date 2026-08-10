@@ -25,6 +25,8 @@ pub use component::*;
 pub use context::*;
 pub use engine::*;
 pub use extension::*;
-pub use get_handler::{AssetProgressBridge, AssetProgressSnapshot};
+pub use get_handler::{
+    AssetProgressBridge, AssetProgressSnapshot, SceneLoadBridge, SceneLoadSnapshot,
+};
 pub use input::*;
 pub use plugin::*;

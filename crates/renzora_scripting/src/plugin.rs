@@ -88,6 +88,9 @@ impl Plugin for ScriptingPlugin {
             .init_resource::<ScriptReloadEvents>()
             .init_resource::<crate::extension::ScriptExtensions>()
             .init_resource::<crate::get_handler::AssetProgressBridge>()
+            .init_resource::<crate::get_handler::SceneLoadBridge>()
+            .init_resource::<renzora::ScriptSceneInbox>()
+            .init_resource::<renzora::GameEventQueue>()
             .init_resource::<crate::perf::ScriptPerfStats>()
             .init_resource::<crate::http::HttpInbox>()
             // The C-ABI surface: standalone plugins issuing HTTP requests.

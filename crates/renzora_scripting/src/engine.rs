@@ -283,6 +283,47 @@ impl ScriptEngine {
         Ok(())
     }
 
+    /// Dispatch a broadcast game event to a script's `on_event(name, args)`.
+    pub fn call_on_event(
+        &self,
+        path: &Path,
+        name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        let commands = backend.call_on_event(&resolved, name, args, ctx, vars)?;
+        for cmd in commands {
+            ctx.process_command(cmd);
+        }
+        Ok(())
+    }
+
+    /// Dispatch a scene-load result to a script's `on_scene_loaded(path)` /
+    /// `on_scene_load_failed(path, error)` hook.
+    pub fn call_on_scene_event(
+        &self,
+        path: &Path,
+        scene: &str,
+        error: Option<&str>,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<(), String> {
+        let resolved = self.resolve_path(path);
+        let backend = self
+            .backend_for(path)
+            .ok_or_else(|| format!("No backend for {:?}", path.extension()))?;
+        let commands = backend.call_on_scene_event(&resolved, scene, error, ctx, vars)?;
+        for cmd in commands {
+            ctx.process_command(cmd);
+        }
+        Ok(())
+    }
+
     pub fn needs_reload(&self, path: &Path) -> bool {
         let resolved = self.resolve_path(path);
         self.backend_for(path)

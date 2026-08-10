@@ -78,6 +78,56 @@ fn on_update_data(_c: &mut Compiler, _n: NodeId, pin: &str) -> String {
     }
 }
 
+static ON_EVENT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "event/on_event",
+    display_name: "On Event",
+    category: "Event",
+    description: "A broadcast event with this name was emitted by anything, anywhere",
+    pins: || {
+        vec![
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("my_event".into())),
+            PinTemplate::exec_out("exec", ""),
+            PinTemplate::output("value", "Value", PinType::Any),
+        ]
+    },
+    color: CLR_EVENT,
+};
+
+/// The payload arrives as the hook's `args` table; `value` is the one key
+/// [`EMIT`] writes, so the two nodes pair up without the user having to know
+/// the table's shape.
+fn on_event_data(_c: &mut Compiler, _n: NodeId, pin: &str) -> String {
+    match pin {
+        "value" => "args.value".to_string(),
+        _ => "nil".to_string(),
+    }
+}
+
+static EMIT: BlueprintNodeDef = BlueprintNodeDef {
+    node_type: "event/emit",
+    display_name: "Emit Event",
+    category: "Event",
+    description: "Broadcast an event by name to every script and blueprint",
+    pins: || {
+        vec![
+            PinTemplate::exec_in("exec", ""),
+            PinTemplate::input("name", "Name", PinType::String)
+                .with_default(PinValue::String("my_event".into())),
+            PinTemplate::input("value", "Value", PinType::Any),
+            PinTemplate::exec_out("then", ""),
+        ]
+    },
+    color: CLR_EVENT,
+};
+
+fn emit_exec(c: &mut Compiler, n: NodeId) {
+    let name = c.inline(n, "name");
+    let value = c.data(n, "value");
+    c.emit(&format!("emit({name}, {{ value = {value} }})"));
+    c.exec(n, "then");
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Math (pure)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -357,6 +407,8 @@ fn crossfade_exec(c: &mut Compiler, n: NodeId) {
 pub(crate) static REGISTRY: &[NodeEntry] = &[
     NodeEntry { def: &ON_READY, data: data_none, exec: None },
     NodeEntry { def: &ON_UPDATE, data: on_update_data, exec: None },
+    NodeEntry { def: &ON_EVENT, data: on_event_data, exec: None },
+    NodeEntry { def: &EMIT, data: data_none, exec: Some(emit_exec) },
     NodeEntry { def: &ADD, data: add_data, exec: None },
     NodeEntry { def: &MULTIPLY, data: multiply_data, exec: None },
     NodeEntry { def: &COMBINE_VEC3, data: combine_vec3_data, exec: None },

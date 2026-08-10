@@ -89,6 +89,35 @@ impl<'a> Compiler<'a> {
             sections.push(format!("function {fn_name}()\n{body}\nend\n"));
         }
 
+        // `on_event` is the one hook that can appear more than once in a graph —
+        // each node listens for a different event name — but a script may only
+        // define the function once. So the nodes fold into a single function
+        // with a name test per listener, rather than one function each.
+        let listeners: Vec<NodeId> = event_nodes
+            .iter()
+            .filter(|(_, ty)| ty == "event/on_event")
+            .map(|(id, _)| *id)
+            .collect();
+        if !listeners.is_empty() {
+            let mut body = String::from("    args = args or {}\n");
+            for node_id in listeners {
+                // `inline` already renders the pin as a Lua literal, so a string
+                // name arrives quoted and escaped.
+                let wanted = self.inline(node_id, "name");
+                self.lines.clear();
+                self.expr_cache.clear();
+                self.temp_counter = 0;
+                self.indent = 2;
+                self.compile_exec_chain(node_id, "exec");
+                body.push_str(&format!(
+                    "    if event_name == {} then\n{}\n    end\n",
+                    wanted,
+                    self.lines.join("\n")
+                ));
+            }
+            sections.push(format!("function on_event(event_name, args)\n{body}end\n"));
+        }
+
         sections.join("\n")
     }
 
@@ -314,6 +343,61 @@ mod tests {
         g.connect(ev, "exec", rot, "exec");
         let lua = compile_to_lua(&g);
         assert!(lua.contains("rotate(") && lua.contains("delta") && lua.contains("90"), "{lua}");
+    }
+
+    #[test]
+    fn emit_compiles_to_emit_call() {
+        let mut g = BlueprintGraph::new();
+        let ev = g.add_node("event/on_ready", [0.0, 0.0]);
+        let em = g.add_node("event/emit", [200.0, 0.0]);
+        set(&mut g, em, "name", PinValue::String("boss_died".into()));
+        set(&mut g, em, "value", PinValue::Float(3.0));
+        g.connect(ev, "exec", em, "exec");
+        let lua = compile_to_lua(&g);
+        assert!(lua.contains("emit(\"boss_died\""), "missing emit:\n{lua}");
+        assert!(lua.contains("value = 3"), "payload dropped:\n{lua}");
+    }
+
+    /// Several listeners must fold into ONE `on_event`, since a script can only
+    /// define the function once — the whole reason this hook is special-cased.
+    #[test]
+    fn multiple_on_event_listeners_share_one_function() {
+        let mut g = BlueprintGraph::new();
+        let a = g.add_node("event/on_event", [0.0, 0.0]);
+        set(&mut g, a, "name", PinValue::String("alpha".into()));
+        let log_a = g.add_node("debug/log", [200.0, 0.0]);
+        set(&mut g, log_a, "message", PinValue::String("A".into()));
+        g.connect(a, "exec", log_a, "exec");
+
+        let b = g.add_node("event/on_event", [0.0, 200.0]);
+        set(&mut g, b, "name", PinValue::String("beta".into()));
+        let log_b = g.add_node("debug/log", [200.0, 200.0]);
+        set(&mut g, log_b, "message", PinValue::String("B".into()));
+        g.connect(b, "exec", log_b, "exec");
+
+        let lua = compile_to_lua(&g);
+        assert_eq!(
+            lua.matches("function on_event(").count(),
+            1,
+            "on_event must be defined exactly once:\n{lua}"
+        );
+        assert!(lua.contains("event_name == \"alpha\""), "{lua}");
+        assert!(lua.contains("event_name == \"beta\""), "{lua}");
+    }
+
+    /// The payload reaches the graph as `args.value`, pairing `event/emit`'s
+    /// Value pin with `event/on_event`'s.
+    #[test]
+    fn on_event_value_reads_args_table() {
+        let mut g = BlueprintGraph::new();
+        let ev = g.add_node("event/on_event", [0.0, 0.0]);
+        set(&mut g, ev, "name", PinValue::String("score".into()));
+        let log = g.add_node("debug/log", [200.0, 0.0]);
+        g.connect(ev, "exec", log, "exec");
+        g.connect(ev, "value", log, "message");
+        let lua = compile_to_lua(&g);
+        assert!(lua.contains("args.value"), "value pin not wired:\n{lua}");
+        assert!(lua.contains("args = args or {}"), "no nil guard:\n{lua}");
     }
 
     #[test]

@@ -27,7 +27,7 @@ use super::wire::{Reader, WireError, Writer};
 
 /// How many variants this build knows. A decoded tag at or above this came from
 /// a plugin built against a newer engine.
-pub const VARIANT_COUNT: u16 = 115;
+pub const VARIANT_COUNT: u16 = 116;
 
 /// Commands scripts issue, applied by the engine after the hook returns.
 ///
@@ -293,6 +293,7 @@ pub enum ScriptCommand {
     },
 
     // === HTTP ===
+    // === HTTP ===
     /// Fire an async request. The result arrives at the script's
     /// `on_http(callback, status, body)` hook.
     HttpRequest {
@@ -300,6 +301,20 @@ pub enum ScriptCommand {
         url: String,
         body: Option<String>,
         callback: String,
+    },
+
+    // === Events ===
+    /// Broadcast a game event. Every script's `on_event(name, args)` fires next
+    /// frame, and Rust observers of `renzora::GameEvent` see it too.
+    ///
+    /// Distinct from [`Self::Action`], which it superficially resembles: an
+    /// action names a *verb the engine performs*, consumed by whichever domain
+    /// crate implements it, so an unclaimed name silently does nothing. An event
+    /// names *something that happened*, goes to everyone, and having no
+    /// listeners is a normal outcome rather than a misconfiguration.
+    Emit {
+        name: String,
+        args: Vec<(String, ActionValue)>,
     },
 }
 
@@ -423,6 +438,7 @@ impl ScriptCommand {
             C::SetComponentField { .. } => 112,
             C::Action { .. } => 113,
             C::HttpRequest { .. } => 114,
+            C::Emit { .. } => 115,
         }
     }
 
@@ -931,6 +947,14 @@ impl ScriptCommand {
                 w.opt_str(body.as_deref());
                 w.str(callback);
             }
+            C::Emit { name, args } => {
+                w.str(name);
+                w.count(args.len());
+                for (k, v) in args {
+                    w.str(k);
+                    v.encode(w);
+                }
+            }
         }
     }
 
@@ -1321,6 +1345,10 @@ impl ScriptCommand {
                 url: r.string()?,
                 body: r.opt_string()?,
                 callback: r.string()?,
+            },
+            115 => C::Emit {
+                name: r.string()?,
+                args: r.list(|r| Ok((r.string()?, ActionValue::decode(r)?)))?,
             },
             t => return Err(WireError::UnknownTag(t as u32)),
         })

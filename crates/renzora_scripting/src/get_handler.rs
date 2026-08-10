@@ -39,6 +39,26 @@ pub struct AssetProgressBridge {
     pub snapshot: Option<AssetProgressSnapshot>,
 }
 
+/// Snapshot of scene-load state, decoupled from `renzora_engine` for the same
+/// reason as [`AssetProgressSnapshot`] — the dependency runs engine → scripting.
+///
+/// Answers "which scene, how far through spawning", which is a different
+/// question from [`AssetProgressSnapshot`]'s "how many models have finished".
+/// A scene can be fully spawned (`ready`) while its models are still streaming.
+#[derive(Clone, Debug, Default)]
+pub struct SceneLoadSnapshot {
+    /// `"idle"`, `"loading"`, `"ready"` or `"failed"`.
+    pub phase: &'static str,
+    pub current_path: Option<String>,
+    pub progress: f32,
+}
+
+/// Bridge resource for [`SceneLoadSnapshot`]; see [`AssetProgressBridge`].
+#[derive(Resource, Default, Clone, Debug)]
+pub struct SceneLoadBridge {
+    pub snapshot: Option<SceneLoadSnapshot>,
+}
+
 /// Signature for the get-field handler: (entity_name, component_type, field_path) → Option<PropertyValue>.
 type GetFn = Box<dyn Fn(Option<&str>, &str, &str) -> Option<PropertyValue>>;
 
@@ -56,6 +76,8 @@ thread_local! {
     /// each script tick and cleared after. `None` when no progress data is
     /// available (e.g. running outside the standard scene-load pipeline).
     static ASSET_PROGRESS: RefCell<Option<AssetProgressSnapshot>> = const { RefCell::new(None) };
+    /// Latest scene-load state, refreshed alongside [`ASSET_PROGRESS`].
+    static SCENE_LOAD: RefCell<Option<SceneLoadSnapshot>> = const { RefCell::new(None) };
 }
 
 /// Set the get-field handler for the current script execution.
@@ -79,6 +101,7 @@ pub fn clear_get_handler() {
     GET_COMPONENT_HANDLER.with(|h| *h.borrow_mut() = None);
     GET_COMPONENTS_HANDLER.with(|h| *h.borrow_mut() = None);
     ASSET_PROGRESS.with(|p| *p.borrow_mut() = None);
+    SCENE_LOAD.with(|p| *p.borrow_mut() = None);
 }
 
 /// Stash the current asset-load progress for the script that's about to run.
@@ -89,6 +112,16 @@ pub fn set_asset_progress(snapshot: AssetProgressSnapshot) {
 /// Read the asset-load progress snapshot stashed for this script tick.
 pub fn call_asset_progress() -> Option<AssetProgressSnapshot> {
     ASSET_PROGRESS.with(|p| p.borrow().clone())
+}
+
+/// Stash the current scene-load state for the script that's about to run.
+pub fn set_scene_load(snapshot: SceneLoadSnapshot) {
+    SCENE_LOAD.with(|p| *p.borrow_mut() = Some(snapshot));
+}
+
+/// Read the scene-load snapshot stashed for this script tick.
+pub fn call_scene_load() -> Option<SceneLoadSnapshot> {
+    SCENE_LOAD.with(|p| p.borrow().clone())
 }
 
 /// Read a single field from a component.

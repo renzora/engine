@@ -39,6 +39,9 @@ Define any of these free functions; the engine calls the ones that exist. None a
 | `on_http(callback, status, body)` | An HTTP response came back. `status` is the HTTP code; **`status == 0` means the request failed and `body` holds the error text** |
 | `on_player_joined(id)` | A player connected (fires on the **server/host only**) |
 | `on_player_left(id)` | A player disconnected (server/host only) |
+| `on_scene_loaded(path)` | A scene finished loading. Reaches only scripts that survived the load — i.e. `Persistent` ones on a global scene |
+| `on_scene_load_failed(path, error)` | A scene load failed; `error` is the reason. Without this a loading screen cannot tell "still working" from "never arriving" |
+| `on_event(name, args)` | A broadcast game event was emitted (see [Events](#events)) |
 
 > There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup, and read the `is_colliding` global for overlap state. Collision *events* are available only as [Blueprint](/docs/r1-alpha5/scripting/blueprints) nodes.
 
@@ -173,7 +176,8 @@ end
 | Environment | `set_sun_angles(azimuth, elevation)`, `set_fog(enabled, start, end)` |
 | Cursor | `lock_cursor()`, `unlock_cursor()` |
 | Math | `vec2(x, y)`, `vec3(x, y, z)`, `lerp(a, b, t)`, `clamp(v, min, max)` |
-| Assets | `asset_progress()`, `is_loading()`, `is_loaded()` |
+| Assets | `asset_progress()`, `is_loading()`, `is_loaded()`, `scene_load_state()` |
+| Events | `emit(name, args)` — broadcast to every `on_event` (see [Events](#events)) |
 | Logging | `print(...)` (stdlib), `print_log(msg)` (engine console) |
 
 ## Reading and writing components
@@ -260,17 +264,44 @@ end
 
 `http_get(url[, callback])`, `http_post(url, body[, callback])`, and `json_parse(str)` are the full surface. The callback defaults to `"get"` / `"post"`.
 
+## Events
+
+`emit(name, args)` broadcasts an event. Every script's `on_event(name, args)` hears it, as does any Rust system observing `renzora::GameEvent`.
+
+```lua
+-- the boss, on death
+emit("boss_died", { room = "crypt", xp = 500 })
+
+-- anywhere else — a quest tracker, an achievement check, a save trigger
+function on_event(name, args)
+    if name == "boss_died" then
+        print_log("cleared " .. args.room)
+    end
+end
+```
+
+Use an event when the sender **shouldn't have to know who is listening**. Use `set_on("music_player", …)` when you know exactly what you're addressing. The boss shouldn't need to learn that three unrelated systems care that it died; that coupling is what events remove.
+
+Two properties worth knowing:
+
+- **Delivery is next-frame.** An emit is queued and dispatched on the following frame's pass, so a script never observes its own emit inside the same hook. This is deliberate: dispatching inline would re-enter the script VM mid-hook, and a handler that emits could recurse without bound.
+- **Nobody listening is normal.** An event with no handlers is not an error — unlike `action()`, where an unclaimed name means a missing observer.
+
+Events are also available visually: the **On Event** and **Emit Event** blueprint nodes compile to exactly these calls.
+
 ## The action() escape hatch
 
-`action(name, args)` fires a generic `ScriptAction` event that domain crates observe. It's how scripts reach a large catalog of verbs that have no dedicated function — UI widgets, markup, audio players, globals, networking, and more:
+`action(name, args)` fires a generic `ScriptAction` event that domain crates observe. It's how scripts reach a large catalog of verbs that have no dedicated function — UI widgets, markup, audio players, networking, and more:
 
 ```lua
 action("ui_set_text", { name = "score_label", text = "Score: 100" })
 action("hui_spawn", { template = "ui/hud.html" })
-action("global_set", { key = "coins", value = 5 })
+action("net_connect", { address = "127.0.0.1", port = 7636 })
 ```
 
-`action_on(target, name, args)` targets a named entity instead of self. Common families include 40+ `ui_*` widget verbs, `hui_*` markup verbs, `global_set`/`global_get`, `net_connect`/`net_disconnect`, and `play_audio_player`.
+`action_on(target, name, args)` targets a named entity instead of self. Common families include 40+ `ui_*` widget verbs, `hui_*` markup verbs, `net_connect`/`net_disconnect`, and `play_audio_player`.
+
+> An unrecognised verb is silently ignored — `ScriptAction` is a broadcast, and a name no crate observes simply reaches nobody. The removed `global_set` / `global_get` verbs were in exactly that state before being deleted, so treat a "working" action call that does nothing as a missing observer.
 
 ## Extension functions
 

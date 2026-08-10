@@ -472,6 +472,18 @@ pub enum HookArgs {
     PlayerEvent { id: u64, joined: bool },
     /// An expression to evaluate, for the console REPL.
     Eval { expr: String },
+    /// `on_scene_loaded(path)` when `error` is `None`, else
+    /// `on_scene_load_failed(path, error)`.
+    ///
+    /// One variant rather than two because the failure carries the same
+    /// `path` and differs only in whether there is a reason — the same shape
+    /// [`Self::PlayerEvent`] uses for joined/left.
+    SceneEvent { path: String, error: Option<String> },
+    /// `on_event(name, args)` — a broadcast game event.
+    Event {
+        name: String,
+        args: Vec<(String, ActionValue)>,
+    },
 }
 
 impl HookArgs {
@@ -523,6 +535,16 @@ impl HookArgs {
                 w.u16(7);
                 w.str(expr);
             }
+            Self::SceneEvent { path, error } => {
+                w.u16(8);
+                w.str(path);
+                w.opt_str(error.as_deref());
+            }
+            Self::Event { name, args } => {
+                w.u16(9);
+                w.str(name);
+                encode_args(w, args);
+            }
         }
     }
 
@@ -558,6 +580,14 @@ impl HookArgs {
                 joined: r.bool()?,
             },
             7 => Self::Eval { expr: r.string()? },
+            8 => Self::SceneEvent {
+                path: r.string()?,
+                error: r.opt_string()?,
+            },
+            9 => Self::Event {
+                name: r.string()?,
+                args: decode_args(r)?,
+            },
             t => return Err(WireError::UnknownTag(t as u32)),
         })
     }
@@ -573,6 +603,40 @@ fn encode_args(w: &mut Writer, args: &[(String, ActionValue)]) {
 
 fn decode_args(r: &mut Reader) -> Result<Vec<(String, ActionValue)>, WireError> {
     r.list(|r| Ok((r.string()?, ActionValue::decode(r)?)))
+}
+
+/// Scene-load state, for a script driving a loading screen.
+///
+/// Distinct from [`AssetProgress`], and the two answer different questions.
+/// This is *which scene, and how far through spawning it* — driven by the
+/// scene streamer as it parses off-thread and spawns across frames.
+/// `AssetProgress` is *how many models have finished loading*, which keeps
+/// running after the scene itself is fully spawned. A loading screen usually
+/// wants both: this one to know the scene arrived, that one for the bar.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SceneLoad {
+    /// `"idle"`, `"loading"`, `"ready"` or `"failed"`.
+    pub phase: String,
+    /// The scene being loaded (or most recently loaded), project-relative.
+    pub current_path: Option<String>,
+    /// `[0.0, 1.0]`.
+    pub progress: f32,
+}
+
+impl SceneLoad {
+    pub fn encode(&self, w: &mut Writer) {
+        w.str(&self.phase);
+        w.opt_str(self.current_path.as_deref());
+        w.f32(self.progress);
+    }
+
+    pub fn decode(r: &mut Reader) -> Result<Self, WireError> {
+        Ok(Self {
+            phase: r.string()?,
+            current_path: r.opt_string()?,
+            progress: r.f32()?,
+        })
+    }
 }
 
 /// Asset-load progress, for a script's loading screen.

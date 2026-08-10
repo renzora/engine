@@ -172,6 +172,28 @@ pub fn run_scripts(world: &mut World) {
         .map(|mut inbox| std::mem::take(&mut inbox.pending))
         .unwrap_or_default();
 
+    // Broadcast game events queued since last frame (from `emit()` or a Rust
+    // send). Each fires every script's `on_event(name, args)`. Drained here so
+    // dispatch happens between hooks rather than inside one.
+    let pending_events: Vec<renzora::GameEvent> = world
+        .get_resource_mut::<renzora::GameEventQueue>()
+        .map(|mut q| std::mem::take(&mut q.pending))
+        .unwrap_or_default();
+    // Rust-side observers see the same events. Fired before the script pass so
+    // both halves of the engine observe one event in the same frame.
+    for ev in &pending_events {
+        world.trigger(ev.clone());
+    }
+
+    // Scene-load completions/failures since last frame. Each fires every
+    // *surviving* script's `on_scene_loaded(path)` / `on_scene_load_failed(
+    // path, error)` hook — in practice the `Persistent` ones, since a script
+    // in the outgoing scene was despawned partway through the load.
+    let pending_scene_events: Vec<renzora::SceneEvent> = world
+        .get_resource_mut::<renzora::ScriptSceneInbox>()
+        .map(|mut inbox| std::mem::take(&mut inbox.pending))
+        .unwrap_or_default();
+
     // Animation events fired when playback crosses a clip marker since last
     // frame. Each fires every script's `on_animation_event(name, entity)` hook.
     let pending_anim_events: Vec<renzora::AnimEvent> = world
@@ -580,6 +602,12 @@ pub fn run_scripts(world: &mut World) {
                         crate::get_handler::set_asset_progress(snapshot);
                     }
                 }
+                // Same indirection for `scene_load_state()`.
+                if let Some(bridge) = world_ref.get_resource::<crate::SceneLoadBridge>() {
+                    if let Some(snapshot) = bridge.snapshot.clone() {
+                        crate::get_handler::set_scene_load(snapshot);
+                    }
+                }
             }
 
             // Execute script
@@ -733,6 +761,37 @@ pub fn run_scripts(world: &mut World) {
                 ) {
                     warn!(
                         "Script on_player_event error [{}]: {}",
+                        script_path.display(),
+                        e
+                    );
+                }
+            }
+
+            // Deliver broadcast events to `on_event(name, args)`.
+            for ev in &pending_events {
+                if let Err(e) = engine.call_on_event(
+                    &script_path,
+                    &ev.name,
+                    &ev.args,
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!("Script on_event error [{}]: {}", script_path.display(), e);
+                }
+            }
+
+            // Deliver scene-load results to `on_scene_loaded(path)` /
+            // `on_scene_load_failed(path, error)`.
+            for ev in &pending_scene_events {
+                if let Err(e) = engine.call_on_scene_event(
+                    &script_path,
+                    &ev.path,
+                    ev.error.as_deref(),
+                    &mut ctx,
+                    &mut entry.variables,
+                ) {
+                    warn!(
+                        "Script on_scene_event error [{}]: {}",
                         script_path.display(),
                         e
                     );

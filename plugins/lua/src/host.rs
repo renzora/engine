@@ -23,7 +23,7 @@
 
 use std::cell::Cell;
 
-use renzora_plugin::script::{AssetProgress, HostCalls, PropValue, ScriptHostCalls};
+use renzora_plugin::script::{AssetProgress, HostCalls, PropValue, SceneLoad, ScriptHostCalls};
 
 thread_local! {
     static HOST: Cell<*const ScriptHostCalls> = const { Cell::new(std::ptr::null()) };
@@ -77,6 +77,10 @@ pub fn call_get_components(entity: Option<&str>) -> Vec<String> {
 
 pub fn call_asset_progress() -> Option<AssetProgress> {
     with(|h| h.asset_progress()).flatten()
+}
+
+pub fn call_scene_load_state() -> Option<SceneLoad> {
+    with(|h| h.scene_load_state()).flatten()
 }
 
 /// Localization lookup. Falls back to the key itself, matching the engine's

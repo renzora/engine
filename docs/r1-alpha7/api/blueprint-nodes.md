@@ -1,6 +1,8 @@
 # Blueprint Node API
 
-Every built-in blueprint node, its `node_type` string, and its pins — generated from the `ALL_NODES` registry in `renzora_blueprint`.
+Every built-in blueprint node, its `node_type` string, and its pins.
+
+> **⚠ This page documents the pre-rebuild node set and is largely stale.** `renzora_blueprint` was rewritten around a single compile-to-Lua path — the live interpreter and the original ~190 hand-written node defs were deleted, and nodes are being re-added to the `REGISTRY` in `crates/renzora_blueprint/src/nodes/mod.rs` one tested unit at a time. Today that registry holds **15** nodes: `event/on_ready`, `event/on_update`, `event/on_event`, `event/emit`, `math/add`, `math/multiply`, `math/combine_vec3`, `transform/set_position`, `transform/set_rotation`, `transform/rotate`, `flow/branch`, `variable/get`, `variable/set`, `debug/log`, `animation/crossfade`. Anything below that is not in that list does not exist yet. The former `Lifecycle` category (`on_scene_loaded`, `global_get`, `global_set`) was removed outright; cross-scene content is handled by [global scenes](/docs/r1-alpha7/editor/scenes#global-scenes) instead.
 
 This is the per-node reference for [Visual Blueprints](/docs/r1-alpha5/scripting/blueprints). For the data model (pins, wires, the `.blueprint` file format) start there; to register node types of your own see [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes).
 
@@ -42,10 +44,21 @@ Entry points. Each has an `exec` output and no exec input; the interpreter start
 | On Timer | `event/on_timer` | — (input `timer_name` `String` = `"my_timer"`) | A named timer (from `flow/start_timer`) completes |
 | On Message | `event/on_message` | — (input `message` `String` = `"my_message"`) | A named message arrives (from `flow/send_message`; fires the frame after the send) |
 | Custom Event | `event/custom` | — (input `name` `String` = `"my_event"`) | Invoked by a `flow/call_event` node naming it (a reusable subgraph; never auto-fires) |
+| On Event | `event/on_event` | `value` `Any` (the emitted payload) — input `name` `String` = `"my_event"` | A broadcast event of that name was emitted, from anywhere |
 
-Three more entry-style nodes live in other categories (they also have an `exec` output and no exec input): [`animation/on_finished`](#animation), [`network/on_message`](#network), and [`lifecycle/on_scene_loaded`](#lifecycle).
+Two more entry-style nodes live in other categories (they also have an `exec` output and no exec input): [`animation/on_finished`](#animation) and [`network/on_message`](#network).
 
-> **Runtime status.** The live interpreter (`interpreter::run_blueprints`) dispatches **On Ready**, **On Update**, **On Timer**, **On Message**, **On Collision Enter/Exit**, **On Animation Finished**, and **On Scene Loaded**. Collision events are sourced from `CollisionReadState` (populated by `renzora_physics` from Avian contact pairs) and surface a single `other` per frame. **Custom Event** only runs via `flow/call_event`. `network/on_message` is still palette-only.
+> **Runtime status.** There is no live interpreter any more — graphs compile to Lua and run through the script VM. Of the rows above, **On Ready**, **On Update** and **On Event** are in the registry; the rest await re-adding.
+>
+> `On Event` is the one entry point that may appear several times in a graph, each listening for a different name. A Lua script can only define `on_event` once, so the compiler folds every listener into a single function with a name test per branch — you don't have to think about it, but that is what the generated code looks like.
+
+Broadcasting is the matching action node:
+
+| Node | `node_type` | Inputs | Outputs |
+|------|-------------|--------|---------|
+| Emit Event | `event/emit` | `name` `String` = `"my_event"`, `value` `Any` | — standard `exec` → `then` |
+
+`Emit Event` compiles to `emit(name, { value = … })`, and `On Event`'s `value` output reads `args.value`, so the two pair up without you knowing the payload table's shape. For richer payloads use a script — `emit()` takes an arbitrary table.
 
 ## Flow
 
@@ -336,16 +349,6 @@ Acts on **this entity's** animator. Setters use `exec` → `then`; reads are pur
 | On Message | `network/on_message` | `channel` `String` = `"default"` | **Event node:** `exec` output + `data` `String` + `sender` `Int` (sender ID) |
 
 > **Network nodes are minimal today.** The blueprint interpreter does not read the networking crate, so `Is Server` / `Is Connected` evaluate to `false`, and `Send Message` / `Net Spawn` map onto the same TODO/stub network actions as the scripting API. Treat the Network category as forward-looking. See [Multiplayer](/docs/r1-alpha5/multiplayer) for the real status.
-
-## Lifecycle
-
-| Node | `node_type` | Inputs | Outputs |
-|------|-------------|--------|---------|
-| On Scene Loaded | `lifecycle/on_scene_loaded` | — | **Event node:** `exec` output + `scene` `String` (loaded scene path) |
-| Global Get | `lifecycle/global_get` | `key` `String` | `value` `String` (reads the cross-system global store) |
-| Global Set | `lifecycle/global_set` | `key` `String`, `value` `String` | — standard `exec` → `then` |
-
-`global_get` / `global_set` share the same global store as the scripting `global_get` / `global_set` actions, so blueprints and Lua/Rhai scripts can exchange values.
 
 ## Navigation
 

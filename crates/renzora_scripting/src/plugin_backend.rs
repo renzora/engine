@@ -133,6 +133,8 @@ fn is_hook(op: sys::ScriptOp) -> bool {
             | sys::ScriptOp::OnAnimationEvent
             | sys::ScriptOp::OnHttp
             | sys::ScriptOp::OnPlayerEvent
+            | sys::ScriptOp::OnSceneEvent
+            | sys::ScriptOp::OnEvent
     )
 }
 
@@ -268,6 +270,28 @@ unsafe extern "C" fn host_asset_progress(
 
 /// # Safety
 /// Called only by a plugin, during a call this crate made.
+unsafe extern "C" fn host_scene_load_state(
+    _ctx: *mut std::ffi::c_void,
+    out: *const sys::ByteSink,
+) {
+    let mut w = Writer::new();
+    match crate::get_handler::call_scene_load() {
+        Some(s) => {
+            w.bool(true);
+            renzora_plugin::script::SceneLoad {
+                phase: s.phase.to_string(),
+                current_path: s.current_path,
+                progress: s.progress,
+            }
+            .encode(&mut w);
+        }
+        None => w.bool(false),
+    }
+    reply(out, &w);
+}
+
+/// # Safety
+/// Called only by a plugin, during a call this crate made.
 unsafe extern "C" fn host_translate(
     _ctx: *mut std::ffi::c_void,
     key: sys::StrRef,
@@ -283,7 +307,8 @@ unsafe extern "C" fn host_translate(
 /// A `const` bound to a local rather than a `static`, because the struct holds
 /// a raw pointer and so is not `Sync`. Blanket-impl'ing `Sync` on it would be a
 /// claim about every use of the type, including a plugin that puts real state
-/// behind `ctx`; six pointers built per call costs nothing and claims nothing.
+/// behind `ctx`; a handful of pointers built per call costs nothing and claims
+/// nothing.
 const HOST_CALLS: sys::ScriptHostCalls = sys::ScriptHostCalls {
     ctx: std::ptr::null_mut(),
     get: host_get,
@@ -291,6 +316,7 @@ const HOST_CALLS: sys::ScriptHostCalls = sys::ScriptHostCalls {
     get_components: host_get_components,
     asset_progress: host_asset_progress,
     translate: host_translate,
+    scene_load_state: host_scene_load_state,
 };
 
 fn str_ref(s: &str) -> sys::StrRef {
@@ -878,6 +904,40 @@ impl ScriptBackend for PluginScriptBackend {
         let hook = HookArgs::PlayerEvent { id, joined };
         Ok(self
             .call(sys::ScriptOp::OnPlayerEvent, path, &hook, ctx, vars)?
+            .commands)
+    }
+
+    fn call_on_event(
+        &self,
+        path: &Path,
+        name: &str,
+        args: &HashMap<String, renzora::ScriptActionValue>,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let hook = HookArgs::Event {
+            name: name.to_string(),
+            args: wire_args(args),
+        };
+        Ok(self
+            .call(sys::ScriptOp::OnEvent, path, &hook, ctx, vars)?
+            .commands)
+    }
+
+    fn call_on_scene_event(
+        &self,
+        path: &Path,
+        scene: &str,
+        error: Option<&str>,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let hook = HookArgs::SceneEvent {
+            path: scene.to_string(),
+            error: error.map(str::to_string),
+        };
+        Ok(self
+            .call(sys::ScriptOp::OnSceneEvent, path, &hook, ctx, vars)?
             .commands)
     }
 

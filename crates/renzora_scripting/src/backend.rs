@@ -150,6 +150,35 @@ pub trait ScriptBackend: Send + Sync {
         Ok(Vec::new())
     }
 
+    /// Execute a scene-load hook — `on_scene_loaded(path)` when `error` is
+    /// `None`, else `on_scene_load_failed(path, error)`. Default is a no-op so
+    /// backends without scene-event support compile unchanged.
+    fn call_on_scene_event(
+        &self,
+        path: &Path,
+        scene: &str,
+        error: Option<&str>,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, scene, error, ctx, vars);
+        Ok(Vec::new())
+    }
+
+    /// Execute a broadcast game event — `on_event(name, args)`. Default is a
+    /// no-op so backends without event support compile unchanged.
+    fn call_on_event(
+        &self,
+        path: &Path,
+        name: &str,
+        args: &std::collections::HashMap<String, renzora::ScriptActionValue>,
+        ctx: &mut ScriptContext,
+        vars: &mut ScriptVariables,
+    ) -> Result<Vec<ScriptCommand>, String> {
+        let _ = (path, name, args, ctx, vars);
+        Ok(Vec::new())
+    }
+
     /// Check if a script file has changed and needs reloading
     fn needs_reload(&self, path: &Path) -> bool;
 

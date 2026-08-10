@@ -111,7 +111,6 @@ The palette is organised into these categories (in editor display order). Node-t
 | **Rendering** | `set_visibility`, `set_material_color` |
 | **Animation** | `play`, `crossfade`, `stop`/`pause`/`resume`, `set_speed`, `set_param`/`set_bool_param`/`trigger`, `set_layer_weight`, `tween_position`, plus reads (`get_time`, `get_length`, `is_playing`) |
 | **Network** | `is_server`, `is_connected`, `send_message`, `spawn` |
-| **Lifecycle** | `on_scene_loaded`, `global_get`, `global_set` |
 | **Navigation** | `set_destination`, `clear_destination`, `has_path`, `has_target`, `is_at_destination`, `distance_to_destination` |
 | **Debug** | `log`, `draw_line` |
 
@@ -133,13 +132,15 @@ Event nodes are the graph's entry points — they have an exec **output** but no
 | `event/on_message` | On Message | A named message arrives (UI, scripts, other blueprints) | — |
 | `animation/on_finished` | On Animation Finished | A non-looping clip finishes | `name` (Clip Name) |
 | `network/on_message` | On Message | A named network message is received | `data`, `sender` (Sender ID) |
-| `lifecycle/on_scene_loaded` | On Scene Loaded | A scene finishes loading | `scene` (path) |
+| `event/on_event` | On Event | A broadcast event of that name was emitted, from any script, blueprint or Rust system | `value` (the payload) |
 
-> **Runtime status.** The interpreter drives `on_ready`, `on_update`, `on_timer`, `on_message`, `on_collision_enter`/`on_collision_exit`, `animation/on_finished`, and `lifecycle/on_scene_loaded`. `on_ready` re-fires whenever play mode (re)starts. Collision events come from `CollisionReadState` (populated by `renzora_physics` from Avian contact pairs) and report one `other` entity per frame. `network/on_message` is still palette-only.
+> **Runtime status.** Only `event/on_ready`, `event/on_update` and `event/on_event` are in the node registry today — graphs compile to Lua, and those two are the hooks the compiler emits. The other rows are from the pre-rebuild node set and await re-adding. The former `lifecycle/on_scene_loaded` entry point was removed outright, along with the rest of the lifecycle graph; a replacement lifecycle system is being designed.
 
 ## Variables
 
-Blueprint variables are read and written with the **Variable** nodes (`variable/get`, `variable/set`). They are stored per blueprint **instance** in the interpreter's runtime state and reset when play mode restarts, so a freshly started entity always begins from a clean slate. Reference a variable by its string name from any node in the graph.
+Blueprint variables are read and written with the **Variable** nodes (`variable/get`, `variable/set`). They compile to plain assignments in the graph's generated Lua chunk, so they are per blueprint **instance** and reset when play mode restarts — a freshly started entity always begins from a clean slate. Reference a variable by its string name from any node in the graph.
+
+> These are **not** shared state. A variable is local to the one graph that declares it; it is not visible to other entities, other blueprints, or text scripts, and it does not survive a scene load. To reach *across* graphs, broadcast an event (`event/emit` → `event/on_event`); to keep state across scene loads, put it on a [global scene](/docs/r1-alpha7/editor/scenes#global-scenes).
 
 ## Data and execution flow
 
