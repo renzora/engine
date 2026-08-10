@@ -106,6 +106,16 @@ impl Plugin for AudioPlugin {
                 systems::AudioSet, timeline::TimelineState, timeline_scheduler,
             };
 
+            // Reflection registration is what makes a component serializable:
+            // `save_scene` walks `AppTypeRegistry` and silently skips anything
+            // absent from it. Both of these were missing, so neither an emitter
+            // nor a listener survived a save — `RolloffType` too, because a
+            // nested type has to be registered for the field around it to
+            // round-trip.
+            _app.register_type::<components::AudioPlayer>()
+                .register_type::<components::RolloffType>()
+                .register_type::<systems::AudioListener>();
+
             _app.init_resource::<runtime::SoundCache>()
                 .init_resource::<runtime::ActiveVoices>()
                 .init_resource::<timeline_scheduler::ActiveClips>()
@@ -135,6 +145,12 @@ impl Plugin for AudioPlugin {
                     systems::process_audio_commands.in_set(AudioSet::Commands),
                 )
                 .add_systems(Update, systems::sync_spatial_audio.in_set(AudioSet::Sync))
+                // After the command pass, so a restart it queues is picked up on
+                // the next frame rather than racing this one's playback.
+                .add_systems(
+                    Update,
+                    systems::apply_audio_player_edits.in_set(AudioSet::Sync),
+                )
                 // Load the board before syncing it, so a freshly-opened project
                 // reaches the backend on the same frame; save after, so a change
                 // made this frame is what gets written.
@@ -151,6 +167,12 @@ impl Plugin for AudioPlugin {
                 // The per-frame conversation last: it collects the meters and the
                 // finished voices, which every system above may have added to.
                 .add_systems(Update, runtime::audio_update.in_set(AudioSet::Cleanup))
+                // After the update that drops finished voices, so the marker
+                // clears on the same frame a sound ends rather than a frame late.
+                .add_systems(
+                    Update,
+                    runtime::mark_emitting_entities.after(runtime::audio_update),
+                )
                 .add_systems(Update, systems::preview_audio_system)
                 .add_systems(
                     Update,

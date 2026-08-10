@@ -166,6 +166,20 @@ pub struct UpdateRequest {
     pub gains: Vec<(u64, f32)>,
     /// `(voice, pitch)` for every voice that was retuned.
     pub pitches: Vec<(u64, f64)>,
+    /// `(voice, bus key)` for every voice re-routed.
+    ///
+    /// A voice moves between buses rather than being restarted for it — changing
+    /// where a sound goes is not a reason to hear it from the top again.
+    pub buses: Vec<(u64, String)>,
+    /// `(voice, pan)` for every voice re-panned.
+    pub pans: Vec<(u64, f32)>,
+    /// `(voice, emitter)` for every positioned voice whose spatial parameters
+    /// changed — distances or rolloff, not just position.
+    ///
+    /// Separate from `moved` because that one carries a position per frame for
+    /// every live emitter and wants to stay three floats; this one is rare and
+    /// replaces the whole thing.
+    pub emitters: Vec<(u64, EmitterState)>,
     /// `(voice, paused)` for every voice held or released.
     ///
     /// Batched here with the rest rather than given ops of their own: pausing is
@@ -297,14 +311,14 @@ pub fn read_buses(r: &mut Reader) -> Result<Vec<BusState>, WireError> {
 }
 
 impl EmitterState {
-    fn encode(&self, w: &mut Writer) {
+    pub(crate) fn encode(&self, w: &mut Writer) {
         w.f32x3(self.position);
         w.f32(self.min_distance);
         w.f32(self.max_distance);
         w.u32(self.rolloff);
     }
 
-    fn decode(r: &mut Reader) -> Result<Self, WireError> {
+    pub(crate) fn decode(r: &mut Reader) -> Result<Self, WireError> {
         Ok(Self {
             position: [r.f32()?, r.f32()?, r.f32()?],
             min_distance: r.f32()?,
@@ -483,6 +497,21 @@ impl UpdateRequest {
             w.u64(*voice);
             w.bool(*paused);
         }
+        w.count(self.buses.len());
+        for (voice, bus) in &self.buses {
+            w.u64(*voice);
+            w.str(bus);
+        }
+        w.count(self.pans.len());
+        for (voice, pan) in &self.pans {
+            w.u64(*voice);
+            w.f32(*pan);
+        }
+        w.count(self.emitters.len());
+        for (voice, emitter) in &self.emitters {
+            w.u64(*voice);
+            emitter.encode(w);
+        }
     }
 
     pub fn decode(r: &mut Reader) -> Result<Self, WireError> {
@@ -511,12 +540,30 @@ impl UpdateRequest {
         for _ in 0..n {
             paused.push((r.u64()?, r.bool()?));
         }
+        let n = r.count()?;
+        let mut buses = Vec::with_capacity(n.min(4096));
+        for _ in 0..n {
+            buses.push((r.u64()?, r.string()?));
+        }
+        let n = r.count()?;
+        let mut pans = Vec::with_capacity(n.min(4096));
+        for _ in 0..n {
+            pans.push((r.u64()?, r.f32()?));
+        }
+        let n = r.count()?;
+        let mut emitters = Vec::with_capacity(n.min(4096));
+        for _ in 0..n {
+            emitters.push((r.u64()?, EmitterState::decode(r)?));
+        }
         Ok(Self {
             listener,
             moved,
             gains,
             pitches,
             paused,
+            buses,
+            pans,
+            emitters,
         })
     }
 }
@@ -765,6 +812,17 @@ mod tests {
             gains: vec![(1, 0.5)],
             pitches: vec![(2, core::f64::consts::PI)],
             paused: vec![(1, true), (2, false)],
+            buses: vec![(1, String::from("Music"))],
+            pans: vec![(1, -0.75)],
+            emitters: vec![(
+                2,
+                EmitterState {
+                    position: [1.0, 2.0, 3.0],
+                    min_distance: 2.0,
+                    max_distance: 40.0,
+                    rolloff: 1,
+                },
+            )],
         };
         assert_eq!(
             roundtrip(&req, UpdateRequest::encode, UpdateRequest::decode),

@@ -99,16 +99,19 @@ use renzora_audio::AudioPlayer as ApComp;
 use renzora::AppEditorExt;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::inspector::{inspector_row, inspector_stripe};
-use renzora_ember::reactive::tracked::{bind_2way, bind_display};
-use renzora_ember::theme::{rgb, text_muted, text_primary};
-use renzora_ember::widgets::{drag_value, dropdown, slider, toggle_switch as ember_toggle, DragRange};
+use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, bind_text};
+use renzora_ember::theme::{hover_bg, rgb, text_muted, text_primary, value_text};
+use renzora_ember::widgets::{
+    drag_value, dropdown, knob_pivoted, slider, toggle_switch as ember_toggle, DragRange,
+    HoverTooltip,
+};
 use renzora_inspector::asset_drop_field;
 
 pub fn register_audio_native(app: &mut App) {
     app.register_native_inspector_ui("audio_player", audio_player_native);
     app.add_systems(
         Update,
-        (rebuild_audio, audio_remove_clip_click).run_if(in_state(renzora::SplashState::Editor)),
+        (rebuild_audio, audio_remove_clip_click, audio_reset_click).run_if(in_state(renzora::SplashState::Editor)),
     );
 }
 
@@ -236,6 +239,158 @@ fn audio_header(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Ent
     h
 }
 
+/// Restores one `AudioPlayer` field to the value a fresh component has.
+///
+/// The setter and the default travel in the component because both are plain
+/// data — a `fn` pointer and an `f32` — which lets one system reset any field
+/// rather than needing one marker type per field.
+#[derive(Component)]
+struct AudioFieldReset {
+    entity: Entity,
+    set: fn(&mut ApComp, f32),
+    default: f32,
+}
+
+/// Click a reset arrow, put the field back to its default.
+fn audio_reset_click(
+    q: Query<(&Interaction, &AudioFieldReset), Changed<Interaction>>,
+    mut commands: Commands,
+) {
+    for (interaction, reset) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let (entity, set, default) = (reset.entity, reset.set, reset.default);
+        commands.queue(move |world: &mut World| {
+            if let Some(mut data) = world.get_mut::<ApComp>(entity) {
+                set(&mut data, default);
+            }
+        });
+    }
+}
+
+/// A small reset arrow, shown only while the field differs from its default.
+///
+/// Hidden at the default rather than merely greyed out: a column of dead arrows
+/// is noise on a drawer this long, and their appearing is itself the useful
+/// signal — it marks which fields have been touched.
+fn reset_button(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    getf: fn(&ApComp) -> f32,
+    setf: fn(&mut ApComp, f32),
+    // Not named `default`: that shadows bevy's `default()` inside the `Node`
+    // literals below, and the error it produces points at the struct rather
+    // than at the parameter.
+    reset_to: f32,
+) -> Entity {
+    let btn = commands
+        .spawn((
+            Node {
+                width: Val::Px(16.0),
+                height: Val::Px(16.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            AudioFieldReset { entity, set: setf, default: reset_to },
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            HoverTooltip::new("Reset to default"),
+            Name::new("audio-field-reset"),
+        ))
+        .id();
+    let glyph = icon_text(commands, &fonts.phosphor, "arrow-counter-clockwise", text_muted(), 11.0);
+    commands.entity(btn).add_child(glyph);
+    bind_bg(commands, btn, move |rx| match rx.get::<Interaction>(btn) {
+        Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(hover_bg()),
+        _ => Color::NONE,
+    });
+    bind_display(commands, btn, move |rx| {
+        rx.get::<ApComp>(entity)
+            .map(getf)
+            .is_some_and(|v| (v - reset_to).abs() > f32::EPSILON)
+    });
+    btn
+}
+
+/// The live value beside a control.
+///
+/// A slider with no number tells you where the handle is, not what the value is,
+/// and "somewhere near the middle" is not a setting anyone can reproduce or talk
+/// about. Mono-spaced so the row does not jitter as digits change width.
+fn value_label(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    getf: fn(&ApComp) -> f32,
+    fmt: fn(f32) -> String,
+) -> Entity {
+    let t = commands
+        .spawn((
+            Node { min_width: Val::Px(34.0), flex_shrink: 0.0, ..default() },
+            Text::new(""),
+            ui_font(&fonts.mono, 10.0),
+            TextColor(rgb(value_text())),
+        ))
+        .id();
+    bind_text(commands, t, move |rx| {
+        fmt(rx.get::<ApComp>(entity).map(getf).unwrap_or_default())
+    });
+    t
+}
+
+/// Wrap a control with its readout and reset arrow.
+#[allow(clippy::too_many_arguments)]
+fn with_readout(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    entity: Entity,
+    control: Entity,
+    getf: fn(&ApComp) -> f32,
+    setf: fn(&mut ApComp, f32),
+    reset_to: f32,
+    fmt: fn(f32) -> String,
+) -> Entity {
+    let row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(6.0),
+            width: Val::Percent(100.0),
+            ..default()
+        })
+        .id();
+    let readout = value_label(commands, fonts, entity, getf, fmt);
+    let reset = reset_button(commands, fonts, entity, getf, setf, reset_to);
+    commands.entity(row).add_children(&[control, readout, reset]);
+    row
+}
+
+fn fmt_plain(v: f32) -> String {
+    format!("{v:.2}")
+}
+
+/// Panning as a mixing desk writes it: `C`, `L42`, `R100`.
+///
+/// A bare `-0.42` has to be decoded every time it is read; which side it is on
+/// is the thing you actually want to know.
+fn fmt_pan(v: f32) -> String {
+    let pct = (v.abs() * 100.0).round() as i32;
+    if pct == 0 {
+        String::from("C")
+    } else if v < 0.0 {
+        format!("L{pct}")
+    } else {
+        format!("R{pct}")
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn audio_slider_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
@@ -245,6 +400,7 @@ fn audio_slider_row(
     setf: fn(&mut ApComp, f32),
     min: f32,
     max: f32,
+    reset_to: f32,
 ) -> Entity {
     let s = slider(commands, 0.0);
     bind_2way(
@@ -260,7 +416,38 @@ fn audio_slider_row(
             }
         },
     );
-    inspector_row(commands, &fonts.ui, label, s)
+    let control = with_readout(commands, fonts, entity, s, getf, setf, reset_to, fmt_plain);
+    inspector_row(commands, &fonts.ui, label, control)
+}
+
+/// The panning row: a knob rather than a slider, matching the mixer.
+///
+/// Pan is the one control here that is not a magnitude — it has a centre and two
+/// directions away from it. A knob says that; a left-to-right slider says "more
+/// of something".
+fn audio_pan_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity) -> Entity {
+    let k = knob_pivoted(commands, 0.5, 0.5);
+    commands.queue(move |w: &mut World| {
+        if let Some(mut n) = w.get_mut::<Node>(k) {
+            n.width = Val::Px(28.0);
+            n.height = Val::Px(28.0);
+        }
+    });
+    bind_2way(
+        commands,
+        k,
+        move |w| {
+            let v = w.get::<ApComp>(entity).map(g_panning).unwrap_or(0.0);
+            ((v + 1.0) / 2.0).clamp(0.0, 1.0)
+        },
+        move |w, t: &f32| {
+            if let Some(mut d) = w.get_mut::<ApComp>(entity) {
+                s_panning(&mut d, *t * 2.0 - 1.0);
+            }
+        },
+    );
+    let control = with_readout(commands, fonts, entity, k, g_panning, s_panning, 0.0, fmt_pan);
+    inspector_row(commands, &fonts.ui, "Panning", control)
 }
 
 fn audio_drag_row(
@@ -372,15 +559,15 @@ fn build_audio_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, e
 
     // ── Mix ──
     children.push(audio_header(commands, fonts, "Mix"));
-    let r = audio_slider_row(commands, fonts, entity, "Volume", g_volume, s_volume, 0.0, 2.0);
+    let r = audio_slider_row(commands, fonts, entity, "Volume", g_volume, s_volume, 0.0, 2.0, 1.0);
     children.push(field(commands, r, &mut stripe));
-    let r = audio_slider_row(commands, fonts, entity, "Vol Jitter", g_vol_jitter, s_vol_jitter, 0.0, 1.0);
+    let r = audio_slider_row(commands, fonts, entity, "Vol Jitter", g_vol_jitter, s_vol_jitter, 0.0, 1.0, 0.0);
     children.push(field(commands, r, &mut stripe));
-    let r = audio_slider_row(commands, fonts, entity, "Pitch", g_pitch, s_pitch, 0.1, 4.0);
+    let r = audio_slider_row(commands, fonts, entity, "Pitch", g_pitch, s_pitch, 0.1, 4.0, 1.0);
     children.push(field(commands, r, &mut stripe));
-    let r = audio_slider_row(commands, fonts, entity, "Pitch Jitter", g_pitch_jitter, s_pitch_jitter, 0.0, 0.5);
+    let r = audio_slider_row(commands, fonts, entity, "Pitch Jitter", g_pitch_jitter, s_pitch_jitter, 0.0, 0.5, 0.0);
     children.push(field(commands, r, &mut stripe));
-    let r = audio_slider_row(commands, fonts, entity, "Panning", g_panning, s_panning, -1.0, 1.0);
+    let r = audio_pan_row(commands, fonts, entity);
     children.push(field(commands, r, &mut stripe));
     // Bus dropdown.
     let labels: Vec<&str> = buses.iter().map(|s| s.as_str()).collect();
@@ -434,9 +621,9 @@ fn build_audio_body(commands: &mut Commands, fonts: &EmberFonts, root: Entity, e
 
     // ── Sends ──
     children.push(audio_header(commands, fonts, "Sends"));
-    let r = audio_slider_row(commands, fonts, entity, "Reverb", g_reverb, s_reverb, 0.0, 1.0);
+    let r = audio_slider_row(commands, fonts, entity, "Reverb", g_reverb, s_reverb, 0.0, 1.0, 0.0);
     children.push(field(commands, r, &mut stripe));
-    let r = audio_slider_row(commands, fonts, entity, "Delay", g_delay, s_delay, 0.0, 1.0);
+    let r = audio_slider_row(commands, fonts, entity, "Delay", g_delay, s_delay, 0.0, 1.0, 0.0);
     children.push(field(commands, r, &mut stripe));
 
     commands.entity(root).add_children(&children);

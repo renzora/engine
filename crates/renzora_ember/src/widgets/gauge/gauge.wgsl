@@ -1,5 +1,10 @@
-// Arc dial: a ring band swept from `a0` over `sweep` radians; the portion up to
-// `value` is the fill color, the rest the track color. Used by gauges and knobs.
+// Arc dial: a ring band swept from `a0` over `sweep` radians. The fill color
+// spans from `pivot` to `value`, the rest is track. Used by gauges and knobs.
+//
+// `pivot` is 0.0 for a gauge — a level filling from the low end — and 0.5 for a
+// bipolar control like a pan knob, where the meaningful thing is the distance
+// either side of centre and a fill from one end reads as "mostly left" when the
+// value is dead centre.
 
 #import bevy_ui::ui_vertex_output::UiVertexOutput
 
@@ -8,6 +13,8 @@ struct ArcUniforms {
     fill: vec4<f32>,
     // x = value (0..1), y = start angle, z = sweep, w = thickness fraction of radius
     params: vec4<f32>,
+    // x = pivot (0..1) the fill spans from; y/z/w unused
+    extra: vec4<f32>,
 };
 
 @group(1) @binding(0)
@@ -42,6 +49,10 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     if (alpha <= 0.0) {
         discard;
     }
-    let rgb = select(u.track.rgb, u.fill.rgb, t <= value);
+    let pivot = clamp(u.extra.x, 0.0, 1.0);
+    let lo = min(pivot, value);
+    let hi = max(pivot, value);
+    let filled = t >= lo && t <= hi;
+    let rgb = select(u.track.rgb, u.fill.rgb, filled);
     return vec4<f32>(rgb, alpha);
 }

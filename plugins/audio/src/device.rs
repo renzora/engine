@@ -89,6 +89,18 @@ pub enum Command {
         id: VoiceId,
         gain: f32,
     },
+    SetVoiceBus {
+        id: VoiceId,
+        key: String,
+    },
+    SetVoicePan {
+        id: VoiceId,
+        pan: f32,
+    },
+    SetVoiceEmitter {
+        id: VoiceId,
+        emitter: crate::spatial::Emitter,
+    },
     SetVoicePaused {
         id: VoiceId,
         paused: bool,
@@ -322,6 +334,9 @@ fn apply(engine: &mut Engine, command: Command) {
         Command::SetListener(l) => engine.set_listener(l),
         Command::SetVoicePosition { id, position } => engine.set_voice_position(id, position),
         Command::SetVoiceGain { id, gain } => engine.set_voice_gain(id, gain),
+        Command::SetVoiceBus { id, key } => engine.set_voice_bus(id, &key),
+        Command::SetVoicePan { id, pan } => engine.set_voice_pan(id, pan),
+        Command::SetVoiceEmitter { id, emitter } => engine.set_voice_emitter(id, emitter),
         Command::SetVoicePaused { id, paused } => engine.set_voice_paused(id, paused),
         Command::SetVoicePitch { id, pitch } => engine.set_voice_pitch(id, pitch),
         Command::PushFrames { bus, samples } => engine.push_frames(&bus, &samples),

@@ -45,6 +45,10 @@ pub(crate) struct ArcMaterial {
     pub(crate) fill: Vec4,
     #[uniform(0)]
     pub(crate) params: Vec4,
+    /// `x` = the 0..1 point the fill spans from. `0.0` fills from the low end
+    /// (a gauge); `0.5` fills either side of centre (a pan knob).
+    #[uniform(0)]
+    pub(crate) extra: Vec4,
 }
 
 impl UiMaterial for ArcMaterial {
@@ -58,15 +62,18 @@ impl UiMaterial for ArcMaterial {
 #[derive(Component)]
 pub(crate) struct ArcData {
     pub(crate) value: f32,
+    /// Where the fill starts. See [`ArcMaterial::extra`].
+    pub(crate) pivot: f32,
 }
 
-fn make_arc(value: f32) -> ArcMaterial {
+fn make_arc(value: f32, pivot: f32) -> ArcMaterial {
     let track = rgb(card_bg()).to_linear();
     let fill = rgb(accent()).to_linear();
     ArcMaterial {
         track: Vec4::new(track.red, track.green, track.blue, 1.0),
         fill: Vec4::new(fill.red, fill.green, fill.blue, 1.0),
         params: Vec4::new(value.clamp(0.0, 1.0), A0, SWEEP, THICK),
+        extra: Vec4::new(pivot.clamp(0.0, 1.0), 0.0, 0.0, 0.0),
     }
 }
 
@@ -91,6 +98,9 @@ pub(crate) fn make_arc_params(
         track: Vec4::new(t.red, t.green, t.blue, t.alpha),
         fill: Vec4::new(f.red, f.green, f.blue, f.alpha),
         params: Vec4::new(value.clamp(0.0, 1.0), start, sweep, thick_frac),
+        // Markup-driven arcs fill from the low end; a bipolar one is a knob,
+        // which builds its own.
+        extra: Vec4::ZERO,
     }
 }
 
@@ -103,7 +113,7 @@ pub(crate) fn gauge_attach(
         // try_insert: the gauge entity may be despawned this same frame (panel teardown).
         commands
             .entity(e)
-            .try_insert(MaterialNode(materials.add(make_arc(d.value))));
+            .try_insert(MaterialNode(materials.add(make_arc(d.value, d.pivot))));
     }
 }
 
@@ -114,6 +124,7 @@ pub(crate) fn arc_sync(
     for (d, mat) in &arcs {
         if let Some(mut m) = materials.get_mut(&mat.0) {
             m.params.x = d.value.clamp(0.0, 1.0);
+            m.extra.x = d.pivot.clamp(0.0, 1.0);
         }
     }
 }
@@ -131,6 +142,8 @@ pub fn gauge(commands: &mut Commands, fonts: &EmberFonts, value: f32) -> Entity 
             },
             ArcData {
                 value: value.clamp(0.0, 1.0),
+                // A gauge is a level: it fills from the low end.
+                pivot: 0.0,
             },
             Pickable::IGNORE,
             Name::new("gauge"),

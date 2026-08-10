@@ -15,7 +15,14 @@ use crate::preview::AudioPreviewState;
 use crate::runtime::{ActiveVoices, SoundCache};
 
 /// Marker component for the audio listener entity (the "ears" in 3D space).
-#[derive(Component, Clone, Debug)]
+///
+/// `Reflect` + `#[reflect(Component)]` are what make it survive a save: the
+/// scene serializer walks `AppTypeRegistry`, so a component that is not
+/// registered is simply not written — no warning, no error, it is just gone when
+/// the scene comes back. This one had none of the derives and nothing registered
+/// it, so attaching a listener never outlived the session.
+#[derive(Component, Clone, Debug, Reflect, serde::Serialize, serde::Deserialize)]
+#[reflect(Component)]
 pub struct AudioListener {
     pub active: bool,
 }
@@ -430,5 +437,89 @@ pub fn preview_audio_system(
     // "still tracked" and "still playing" are the same question.
     if !voices.contains(voice) {
         preview.clear();
+    }
+}
+
+/// Apply edits made to a live `AudioPlayer` to the voices it is already playing.
+///
+/// Without this the component is read exactly once, when `autoplay` fires
+/// `PlayEntity`, and every slider moved afterwards writes to the component and is
+/// never looked at again — the field changes in the inspector and nothing
+/// happens, which is indistinguishable from the control being broken.
+///
+/// Volume, pitch, pan, bus and the spatial parameters are applied to the running
+/// voice, so dragging a slider is continuous and re-routing does not restart the
+/// sound. Only `clip` and the `spatial` *toggle* restart it: a new file is
+/// obviously a new sound, and a voice started without an emitter has nowhere to
+/// put one — turning spatial on has to build the voice again.
+pub fn apply_audio_player_edits(
+    mut link: ResMut<AudioLink>,
+    mut voices: ResMut<ActiveVoices>,
+    mut queue: ResMut<AudioCommandQueue>,
+    master: Res<MasterVolume>,
+    changed: Query<(Entity, &AudioPlayer, Option<&GlobalTransform>), Changed<AudioPlayer>>,
+    mut last: Local<std::collections::HashMap<Entity, (String, bool)>>,
+) {
+    if changed.is_empty() {
+        return;
+    }
+    let mut batch = UpdateRequest::default();
+    let mut restart: Vec<(Entity, AudioPlayer, Vec3)> = Vec::new();
+
+    for (entity, player, transform) in &changed {
+        // Only the two things a live voice cannot be talked into. `bus` is not
+        // among them any more — see `UpdateRequest::buses`.
+        let structural = (player.clip.clone(), player.spatial);
+        let rebuilt = last
+            .get(&entity)
+            .is_some_and(|previous| previous != &structural);
+        last.insert(entity, structural);
+
+        let live = voices.of(entity);
+        if live.is_empty() {
+            continue;
+        }
+        if rebuilt {
+            let position = transform.map(|t| t.translation()).unwrap_or(Vec3::ZERO);
+            restart.push((entity, player.clone(), position));
+            continue;
+        }
+        for voice in live {
+            batch.gains.push((voice.0, player.volume * master.0));
+            batch.pitches.push((voice.0, player.pitch.max(0.01) as f64));
+            batch.buses.push((voice.0, player.bus.clone()));
+            // A spatial voice takes its pan from listener geometry, so pushing
+            // the authored pan at one would fight the position every frame.
+            if !player.spatial {
+                batch.pans.push((voice.0, player.panning));
+            } else if let Some(transform) = transform {
+                batch
+                    .emitters
+                    .push((voice.0, emitter_of(player, transform.translation())));
+            }
+        }
+    }
+
+    if !batch.gains.is_empty() {
+        if let Err(e) = link.update(&batch) {
+            warn!("[audio] {e}");
+        }
+    }
+
+    // Restarts go through the command queue rather than being played here, so
+    // they take exactly the path a fresh `PlayEntity` does — one place decides
+    // what a play means.
+    for (entity, player, position) in restart {
+        for voice in voices.forget(entity) {
+            link.stop(&StopRequest {
+                target: StopTarget::Voice(voice.0),
+                fade: 0.02,
+            });
+        }
+        queue.push(AudioCommand::PlayEntity {
+            entity,
+            player,
+            position,
+        });
     }
 }

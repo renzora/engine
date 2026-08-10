@@ -14,6 +14,16 @@ pub(crate) struct EmberKnob;
 /// A rotary knob (drag vertically to change `value` 0..1). The filled arc shows
 /// the value. Carries `Bound<f32>` so it can be two-way bound with `bind_2way`.
 pub fn knob(commands: &mut Commands, value: f32) -> Entity {
+    knob_pivoted(commands, value, 0.0)
+}
+
+/// A knob whose fill spans out from `pivot` rather than from the low end.
+///
+/// `pivot: 0.5` is the one worth knowing about: it makes a **pan** knob. Pan has
+/// a centre and two directions away from it, so a fill that always starts at the
+/// left end draws a half-full dial for dead centre — which reads as "panned
+/// left", and was reported as exactly that.
+pub fn knob_pivoted(commands: &mut Commands, value: f32, pivot: f32) -> Entity {
     let v = value.clamp(0.0, 1.0);
     commands
         .spawn((
@@ -22,7 +32,7 @@ pub fn knob(commands: &mut Commands, value: f32) -> Entity {
                 height: Val::Px(46.0),
                 ..default()
             },
-            ArcData { value: v },
+            ArcData { value: v, pivot: pivot.clamp(0.0, 1.0) },
             EmberKnob,
             Bound::<f32>(v),
             Interaction::default(),

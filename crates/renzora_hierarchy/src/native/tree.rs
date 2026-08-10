@@ -76,6 +76,7 @@ fn flatten(
             has_script: node.has_script,
             has_blueprint: node.has_blueprint,
             has_material: node.has_material,
+            is_emitting: node.is_emitting,
             depth: parent_lines.len(),
             is_last,
             parent_lines: parent_lines.clone(),

@@ -49,6 +49,10 @@ pub(crate) struct RowSnapshot {
     pub has_script: bool,
     pub has_blueprint: bool,
     pub has_material: bool,
+    /// A sound this entity owns is audible right now — drawn as animated bars
+    /// left of the eye. In the hash below because the indicator must appear and
+    /// vanish with playback.
+    pub is_emitting: bool,
     pub depth: usize,
     pub is_last: bool,
     pub parent_lines: Vec<bool>,
@@ -85,6 +89,7 @@ impl RowSnapshot {
         self.has_script.hash(&mut h);
         self.has_blueprint.hash(&mut h);
         self.has_material.hash(&mut h);
+        self.is_emitting.hash(&mut h);
         self.label_color.hash(&mut h);
         self.parent_lines.hash(&mut h);
         self.ancestors.hash(&mut h);
@@ -376,6 +381,10 @@ pub(crate) fn build_row(
         }
     }
 
+    if s.is_emitting {
+        kids.push(audio_bars(commands));
+    }
+
     kids.push(suffix_toggle(
         commands,
         fonts,
@@ -650,4 +659,78 @@ fn suffix_toggle(
         .id();
     commands.entity(btn).add_child(g);
     btn
+}
+
+
+/// One bar of the playing indicator, with the phase that offsets its bounce.
+#[derive(Component)]
+pub struct AudioBar {
+    phase: f32,
+}
+
+/// Three little bars that bounce while a sound plays on this entity.
+///
+/// Animated rather than a static speaker glyph because the question it answers is
+/// "is this one making noise *now*", and a still icon answers "this entity has an
+/// AudioPlayer" — which the inspector already says, and which stays true when the
+/// sound has stopped.
+fn audio_bars(commands: &mut Commands) -> Entity {
+    let row = commands
+        .spawn((
+            Node {
+                width: Val::Px(14.0),
+                height: Val::Px(14.0),
+                flex_shrink: 0.0,
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                column_gap: Val::Px(1.0),
+                ..default()
+            },
+            // The row is a status light, not a control: a click belongs to the
+            // row underneath it, which is what selects the entity.
+            Pickable::IGNORE,
+            Name::new("hier-audio-bars"),
+        ))
+        .id();
+    // Thirds of a cycle apart, so the three never rise together and the group
+    // reads as movement rather than as one blinking block.
+    let bars: Vec<Entity> = [0.0f32, 0.33, 0.66]
+        .iter()
+        .map(|phase| {
+            commands
+                .spawn((
+                    Node {
+                        width: Val::Px(2.0),
+                        height: Val::Px(4.0),
+                        border_radius: BorderRadius::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgb_u8(120, 200, 140)),
+                    AudioBar { phase: *phase },
+                    Pickable::IGNORE,
+                ))
+                .id()
+        })
+        .collect();
+    commands.entity(row).add_children(&bars);
+    row
+}
+
+/// Bounce the bars.
+///
+/// Driven from wall time rather than from real levels: the hierarchy has no
+/// meter to read, and a row indicator only has to say "this is playing". Reading
+/// per-entity levels would mean a boundary call per row per frame to animate
+/// fourteen pixels.
+pub fn animate_audio_bars(time: Res<Time>, mut bars: Query<(&AudioBar, &mut Node)>) {
+    if bars.is_empty() {
+        return;
+    }
+    let t = time.elapsed_secs();
+    for (bar, mut node) in &mut bars {
+        // 3 Hz — fast enough to read as audio, slow enough not to strobe.
+        let wave = ((t * 3.0 + bar.phase * std::f32::consts::TAU).sin() + 1.0) * 0.5;
+        node.height = Val::Px(3.0 + wave * 8.0);
+    }
 }

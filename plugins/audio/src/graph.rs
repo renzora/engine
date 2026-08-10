@@ -544,6 +544,40 @@ impl Engine {
         }
     }
 
+    /// Move a playing voice to another bus.
+    ///
+    /// An unknown key leaves it where it is rather than dropping it to master:
+    /// a re-route to a bus that does not exist is a mistake, and silently moving
+    /// the sound somewhere else would hide it.
+    pub fn set_voice_bus(&mut self, id: VoiceId, key: &str) {
+        let Some(index) = self.bus_index(key) else {
+            return;
+        };
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.bus = index;
+        }
+    }
+
+    /// Re-pan a playing voice.
+    pub fn set_voice_pan(&mut self, id: VoiceId, pan: f32) {
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            v.pan = pan.clamp(-1.0, 1.0);
+        }
+    }
+
+    /// Replace a voice's spatial parameters.
+    ///
+    /// Ignored for a 2D voice: a sound authored without `spatial` has no emitter
+    /// to update, and inventing one here would make it positional the moment
+    /// somebody dragged an unrelated slider.
+    pub fn set_voice_emitter(&mut self, id: VoiceId, emitter: Emitter) {
+        if let Some(v) = self.voices.iter_mut().find(|v| v.id == id) {
+            if v.emitter.is_some() {
+                v.emitter = Some(emitter);
+            }
+        }
+    }
+
     /// Retune a playing voice.
     ///
     /// Recomputed against the *source's* rate rather than scaled from the

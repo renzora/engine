@@ -52,6 +52,22 @@ pub struct RenzoraAudio {
     device_buses: Vec<String>,
 }
 
+/// The mixer's emitter for a boundary one. Anything this build does not
+/// recognise as a rolloff is logarithmic — the default, and the one that sounds
+/// like distance.
+fn emitter_from(e: &renzora_plugin::audio::EmitterState) -> Emitter {
+    Emitter {
+        position: e.position,
+        min_distance: e.min_distance,
+        max_distance: e.max_distance,
+        rolloff: if e.rolloff == 1 {
+            Rolloff::Linear
+        } else {
+            Rolloff::Logarithmic
+        },
+    }
+}
+
 /// Push a whole board at a device: create every bus, then set every strip.
 ///
 /// `order` mirrors the device's own bus list and is updated to match — see
@@ -202,18 +218,7 @@ impl Backend for RenzoraAudio {
                 start: request.start,
                 reverb_send: request.reverb_send,
                 delay_send: request.delay_send,
-                emitter: request.emitter.map(|e| Emitter {
-                    position: e.position,
-                    min_distance: e.min_distance,
-                    max_distance: e.max_distance,
-                    // Anything this build does not recognise is logarithmic —
-                    // the default, and the one that sounds like distance.
-                    rolloff: if e.rolloff == 1 {
-                        Rolloff::Linear
-                    } else {
-                        Rolloff::Logarithmic
-                    },
-                }),
+                emitter: request.emitter.as_ref().map(emitter_from),
             },
         );
         Ok(())
@@ -263,6 +268,24 @@ impl Backend for RenzoraAudio {
             device.send(Command::SetVoicePitch {
                 id: VoiceId(*voice),
                 pitch: *pitch,
+            });
+        }
+        for (voice, key) in &request.buses {
+            device.send(Command::SetVoiceBus {
+                id: VoiceId(*voice),
+                key: key.clone(),
+            });
+        }
+        for (voice, pan) in &request.pans {
+            device.send(Command::SetVoicePan {
+                id: VoiceId(*voice),
+                pan: *pan,
+            });
+        }
+        for (voice, e) in &request.emitters {
+            device.send(Command::SetVoiceEmitter {
+                id: VoiceId(*voice),
+                emitter: emitter_from(e),
             });
         }
         for (voice, paused) in &request.paused {

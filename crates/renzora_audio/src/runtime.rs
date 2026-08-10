@@ -214,6 +214,31 @@ impl ActiveVoices {
     }
 }
 
+/// Mark entities that are currently sounding, so other panels can show it.
+///
+/// A component rather than a resource other crates read, because the hierarchy
+/// asks the question per row and a marker is what an ECS query is for — and
+/// because it keeps `renzora::AudioEmitting` the only thing they need to know
+/// about audio at all.
+pub fn mark_emitting_entities(
+    voices: Res<ActiveVoices>,
+    marked: Query<Entity, With<renzora::AudioEmitting>>,
+    mut commands: Commands,
+) {
+    for entity in voices.entities() {
+        if marked.get(entity).is_err() {
+            // `try_insert`: a voice can outlive its entity by a frame, and
+            // inserting onto a despawned entity is an error rather than a no-op.
+            commands.entity(entity).try_insert(renzora::AudioEmitting);
+        }
+    }
+    for entity in &marked {
+        if voices.of(entity).is_empty() {
+            commands.entity(entity).try_remove::<renzora::AudioEmitting>();
+        }
+    }
+}
+
 /// Take a backend the plugin host registered, and open its device.
 ///
 /// Separate from the loader because registration and readiness are different
@@ -258,14 +283,29 @@ pub fn adopt_backend(
     }
 }
 
-/// Push the mixer's board to the backend whenever it changes.
-pub fn sync_mixer_to_backend(mixer: Res<MixerState>, mut link: ResMut<AudioLink>) {
-    if !mixer.is_changed() || !link.is_active() {
+/// Push the mixer's board to the backend when it actually differs.
+///
+/// Compared rather than gated on `is_changed()`, because the meters are written
+/// into `MixerState` every frame and that marks it changed every frame — see
+/// [`audio_update`]. Peak levels are not part of the board, so an equal snapshot
+/// means there is nothing to send.
+pub fn sync_mixer_to_backend(
+    mixer: Res<MixerState>,
+    mut link: ResMut<AudioLink>,
+    mut sent: Local<Vec<BusState>>,
+) {
+    if !link.is_active() {
         return;
     }
-    if let Err(e) = link.set_buses(&board(&mixer)) {
-        warn!("[audio] could not send the bus graph: {e}");
+    let current = board(&mixer);
+    if *sent == current {
+        return;
     }
+    if let Err(e) = link.set_buses(&current) {
+        warn!("[audio] could not send the bus graph: {e}");
+        return;
+    }
+    *sent = current;
 }
 
 /// The mixer as the backend sees it: built-ins in their contractual order, then
@@ -307,24 +347,66 @@ pub fn audio_update(
     mut mixer: ResMut<MixerState>,
     mut voices: ResMut<ActiveVoices>,
     listener: Query<(&GlobalTransform, &crate::systems::AudioListener)>,
+    editor_camera: Query<&GlobalTransform, With<renzora::core::EditorCamera>>,
+    play_mode: Option<Res<renzora::PlayModeState>>,
+    mut warned: Local<bool>,
 ) {
     if !link.is_active() {
         return;
     }
 
-    let listener_state = listener
-        .iter()
-        .find(|(_, l)| l.active)
-        .map(|(transform, _)| {
-            let t = transform.compute_transform();
-            ListenerState {
-                position: t.translation.to_array(),
-                // The right vector, not forward: the pan calculation only needs
-                // to know which side a source is on, and deriving that from
-                // forward means rebuilding this for every emitter.
-                right: (t.rotation * Vec3::X).to_array(),
-            }
-        });
+    // Whose ears? While editing, the viewpoint you are moving is the *editor*
+    // camera, so that is where sound has to be heard from — otherwise spatial
+    // audio can only be auditioned by entering play mode, and flying around an
+    // emitter in the viewport does nothing at all. That was reported as spatial
+    // audio being broken, and it was the right complaint: an `AudioListener` on a
+    // scene camera sits still while you fly past it.
+    //
+    // In play mode the game's own `AudioListener` wins, because then the scene is
+    // driving the camera and its ears are the ones that mean anything.
+    let editing = play_mode
+        .as_ref()
+        .is_some_and(|pm| !pm.is_in_play_mode());
+    let ears = |transform: &GlobalTransform| {
+        let t = transform.compute_transform();
+        ListenerState {
+            position: t.translation.to_array(),
+            // The right vector, not forward: the pan calculation only needs to
+            // know which side a source is on, and deriving that from forward
+            // means rebuilding it for every emitter.
+            right: (t.rotation * Vec3::X).to_array(),
+        }
+    };
+    let from_component = || {
+        listener
+            .iter()
+            .find(|(_, l)| l.active)
+            .map(|(transform, _)| ears(transform))
+    };
+    let listener_state = if editing {
+        editor_camera.iter().next().map(ears).or_else(from_component)
+    } else {
+        from_component()
+    };
+
+    // Spatial audio with no listener is the single most confusing state this
+    // system has: the backend keeps its default ears at the origin facing +X, so
+    // every positioned sound pans by where it happens to sit relative to the
+    // world origin and never moves however the camera does. It sounds broken
+    // rather than absent, so say so — once, because it is a scene-setup mistake
+    // and not a per-frame event.
+    // Only worth saying while playing: in the editor the camera stands in, so a
+    // scene with no listener yet is an ordinary in-progress scene rather than a
+    // mistake.
+    if !editing && listener_state.is_none() && !voices.is_empty() && !*warned {
+        *warned = true;
+        warn!(
+            "[audio] sound is playing but no entity has an AudioListener —              spatial audio has no ears, so positioned sounds will pan by their              distance from the world origin and ignore the camera"
+        );
+    }
+    if listener_state.is_some() {
+        *warned = false;
+    }
 
     let request = UpdateRequest {
         listener: listener_state,
@@ -347,11 +429,16 @@ pub fn audio_update(
     }
 
     // Meters come back in the order `board` sent them, so the offsets are fixed.
-    // Written through `bypass_change_detection` because levels move every single
-    // frame and marking the mixer changed would re-push the whole bus graph to
-    // the backend sixty times a second — and re-save project.toml with it.
+    //
+    // Written through normal change detection *on purpose*, even though levels
+    // move every frame. The mixer panel's VU is a reactive binding that only
+    // recomputes on frames where `MixerState` changed, so writing these behind
+    // `bypass_change_detection` — which is what this did first, to avoid
+    // re-syncing the board sixty times a second — froze every meter after the
+    // first frame. `sync_mixer_to_backend` compares before it sends instead, so
+    // the cost this was avoiding is gone.
     let peaks = reply.peaks;
-    let mixer = mixer.bypass_change_detection();
+    let mixer = mixer.as_mut();
     let set = |index: usize, strip: &mut crate::mixer::ChannelStrip| {
         strip.peak_level = peaks.get(index).copied().unwrap_or(0.0);
     };

@@ -253,6 +253,17 @@ impl Default for ReflectionProbeSource {
 #[derive(Component)]
 pub struct HideInHierarchy;
 
+/// Set on an entity while a sound it owns is actually sounding.
+///
+/// Maintained by `renzora_audio` from its live-voice bookkeeping, and read by the
+/// hierarchy panel to show a playing indicator. It lives here, in the contract
+/// crate, precisely so the hierarchy does not have to link the audio crate to ask
+/// a one-bit question — the pattern the plugin split exists to encourage.
+///
+/// Deliberately *not* serialized: it describes this instant, not the scene.
+#[derive(Component)]
+pub struct AudioEmitting;
+
 /// Canonical render-pass ordering phases for the Bevy 0.19 `Core3d` schedule —
 /// the centralized "render composition" pipeline (see `docs/render-composition.md`
 /// and `renzora::postprocess`). Bevy deleted the render graph in 0.19 and moved
@@ -922,6 +933,48 @@ impl AssetPathChanged {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod asset_path_changed_tests {
+    use super::AssetPathChanged;
+
+    fn file(old: &str, new: &str) -> AssetPathChanged {
+        AssetPathChanged { old: old.into(), new: new.into(), is_dir: false }
+    }
+    fn dir(old: &str, new: &str) -> AssetPathChanged {
+        AssetPathChanged { old: old.into(), new: new.into(), is_dir: true }
+    }
+
+    #[test]
+    fn file_rename_is_exact_match_only() {
+        let ev = file("scenes/main.bsn", "scenes/level1.bsn");
+        assert_eq!(ev.rewrite("scenes/main.bsn").as_deref(), Some("scenes/level1.bsn"));
+        assert_eq!(ev.rewrite("scenes/other.bsn"), None);
+    }
+
+    /// A file rename must not act as a prefix match, or renaming `main.bsn`
+    /// would also rewrite `main.bsn.bak` — and these paths are written straight
+    /// back into `project.toml`.
+    #[test]
+    fn file_rename_does_not_match_by_prefix() {
+        let ev = file("scenes/main", "scenes/level1");
+        assert_eq!(ev.rewrite("scenes/main.bsn"), None);
+    }
+
+    #[test]
+    fn dir_rename_rewrites_contents() {
+        let ev = dir("scenes", "levels");
+        assert_eq!(ev.rewrite("scenes/main.bsn").as_deref(), Some("levels/main.bsn"));
+        assert_eq!(ev.rewrite("scenes").as_deref(), Some("levels"));
+    }
+
+    /// `scenes2/` is not inside `scenes/`, so a folder rename must leave it be.
+    #[test]
+    fn dir_rename_respects_path_boundaries() {
+        let ev = dir("scenes", "levels");
+        assert_eq!(ev.rewrite("scenes2/main.bsn"), None);
     }
 }
 

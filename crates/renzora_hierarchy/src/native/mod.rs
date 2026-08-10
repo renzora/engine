@@ -193,6 +193,7 @@ pub fn register_native_hierarchy(app: &mut App) {
                 marquee::hier_marquee_overlay,
                 marquee::hier_marquee_autoscroll,
                 hier_responsive_header,
+                row::animate_audio_bars,
             ),
             scene_drop::arm_hier_scene_drop,
             scene_drop::commit_hier_scene_drop,

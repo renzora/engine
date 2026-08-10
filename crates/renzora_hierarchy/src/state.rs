@@ -28,6 +28,9 @@ pub struct EntityNode {
     /// `.blueprint` script entry), and/or a material (`MaterialRef`). They let
     /// you spot what rides on an entity without opening the inspector.
     pub has_script: bool,
+    /// A sound this entity owns is currently audible. Purely live state — it is
+    /// not part of the scene, and it changes as often as playback does.
+    pub is_emitting: bool,
     pub has_blueprint: bool,
     pub has_material: bool,
     /// Registered type label from `ComponentIconRegistry`, or `None` when the
@@ -74,6 +77,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
         is_locked: bool,
         is_default_camera: bool,
         has_script: bool,
+        is_emitting: bool,
         has_blueprint: bool,
         has_material: bool,
         type_name: Option<&'static str>,
@@ -203,6 +207,9 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 })
                 .unwrap_or((false, false));
             let has_material = world.get::<renzora::core::MaterialRef>(entity).is_some();
+            // One bit, read through the contract crate's marker — the hierarchy
+            // links no audio crate to ask this. See `renzora::AudioEmitting`.
+            let is_emitting = world.get::<renzora::AudioEmitting>(entity).is_some();
 
             named_entities.insert(entity);
             entries.push(Entry {
@@ -218,6 +225,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                 has_script,
                 has_blueprint,
                 has_material,
+                is_emitting,
                 type_name,
             });
         }
@@ -351,6 +359,7 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
             is_locked: entry.is_locked,
             is_default_camera: entry.is_default_camera,
             has_script: entry.has_script,
+            is_emitting: entry.is_emitting,
             has_blueprint: entry.has_blueprint,
             has_material: entry.has_material,
             type_name: entry.type_name,

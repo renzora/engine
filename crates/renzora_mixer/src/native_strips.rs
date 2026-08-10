@@ -36,8 +36,8 @@ use renzora_ember::reactive::tracked::{
 };
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
-    fader, knob, menu_header, menu_item, menu_item_styled, menu_sep, menu_submenu, mixer_button,
-    screen_menu_flip, text_input, vu_meter_bound, EmberTextInput, MenuAction,
+    fader, knob_pivoted, menu_header, menu_item, menu_item_styled, menu_sep, menu_submenu,
+    mixer_button, screen_menu_flip, text_input, vu_meter_bound, EmberTextInput, MenuAction,
 };
 
 const RED: (u8, u8, u8) = (225, 90, 80);
@@ -431,8 +431,11 @@ fn strip(commands: &mut Commands, fonts: &EmberFonts, is_master: bool, bus: BusR
             write(w, bus, move |s| s.volume = nv);
         },
     );
+    // Against full scale, not `VOL_MAX`. Dividing by the fader's 1.5 head-room
+    // meant a signal at 0 dBFS only ever filled two thirds of the meter, so a mix
+    // that was actually clipping looked comfortable.
     let vu = vu_meter_bound(commands, move |rx| {
-        read(rx, bus, |s| (s.peak_level / VOL_MAX as f32).clamp(0.0, 1.0))
+        read(rx, bus, |s| s.peak_level.clamp(0.0, 1.0))
     });
     grow_vertically(commands, vu);
     commands.entity(meters).add_children(&[vol, vu]);
@@ -451,7 +454,10 @@ fn strip(commands: &mut Commands, fonts: &EmberFonts, is_master: bool, bus: BusR
 
     // Pan: -1..1 mapped to the knob's 0..1. Above the fader and smaller than it
     // was — it's a trim, and it had been outweighing the control it trims.
-    let pan = knob(commands, 0.5);
+    // Pivoted at centre: pan is a direction from the middle, not a level, so the
+    // fill has to grow either side of 12 o'clock. A fill-from-the-left knob draws
+    // itself half full at dead centre and looks panned left.
+    let pan = knob_pivoted(commands, 0.5, 0.5);
     commands.queue(move |w: &mut World| {
         if let Some(mut n) = w.get_mut::<Node>(pan) {
             n.width = Val::Px(30.0);
