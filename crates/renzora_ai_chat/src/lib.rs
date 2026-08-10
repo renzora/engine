@@ -65,7 +65,7 @@ struct Preset {
 /// Grounding rules + hard API invariants sent with every request. The
 /// '[Engine docs: …]' blocks are retrieved per-query and so cover whatever
 /// the prompt happens to mention; the invariants below are the *closed sets*
-/// (the eight lifecycle hooks, the Lua/Rhai split, read-only globals) that a
+/// (the eleven lifecycle hooks, the Lua/Rhai split, read-only globals) that a
 /// vague query won't surface — without them, small local models invent
 /// plausible-looking hooks like `on_damage` and claim to have read pages
 /// they never saw. Keep this in sync with docs/r1-alphaN/scripting/*.md.
@@ -95,7 +95,11 @@ assigning to them does nothing; move via translate/set_position or physics. \
 LIFECYCLE HOOKS ARE A CLOSED SET. The engine only ever calls these free \
 functions: props, on_ready, on_update, on_ui(name,args,entity), \
 on_rpc(name,args,from), on_http(callback,status,body), on_player_joined(id), \
-on_player_left(id). ANY OTHER 'on_*' function — on_start, on_collision, \
+on_player_left(id), on_scene_loaded(path), on_scene_load_failed(path,error), \
+on_event(name,args). \
+The two scene hooks reach only scripts that SURVIVE the load — put them on a \
+global (autoload) scene, since the outgoing scene's scripts are despawned \
+mid-load. ANY OTHER 'on_*' function — on_start, on_collision, \
 on_destroy, on_damage, on_spawn, on_hit, etc. — is NEVER called by the \
 engine; do not present one as a hook. Use on_ready for setup, read the \
 is_colliding global for overlap, and note that collision EVENTS exist only as \
@@ -121,7 +125,12 @@ get('AnimatorReadState.*'). \
 action() ESCAPE HATCH. action(name, args) — and action_on(target,name,args) \
 — fires verbs that have no dedicated function: 40+ 'ui_*' widget verbs, \
 'hui_*' markup verbs (hui_spawn, hui_despawn, hui_hide, hui_show), \
-global_set/global_get, net_connect/net_disconnect, play_audio_player, quit. \
+net_connect/net_disconnect, play_audio_player, quit. \
+\
+EVENTS. emit(name, args) broadcasts to every script's on_event(name,args) and \
+to Rust observers; delivery is NEXT FRAME, so a script never sees its own \
+emit in the same hook. Prefer emit when the sender should not know who \
+listens; prefer set_on/get_on when addressing a known entity by id. \
 Networking connect is action('net_connect', {address=…, port=…}), NOT a bare \
 function. \
 \

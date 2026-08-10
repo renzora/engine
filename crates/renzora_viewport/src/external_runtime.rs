@@ -66,38 +66,49 @@ impl ExternalRuntime {
 
 /// Locate the runtime binary to launch for external play.
 ///
-/// The engine is ONE binary that boots as the game when told to skip the
-/// editor bundle, so the editor's own executable relaunched with
-/// `--no-editor` is always a valid runtime — that's the normal dev-loop
-/// answer, and what `cargo renzora` / `cargo run` sessions use. A dedicated
-/// `renzora-runtime[.exe]` (leaner: built by `build-all.sh`'s runtime lane
-/// without the editor feature set) is preferred when one is staged nearby:
+/// The runtime is **`renzora[.exe]`** and the editor is **`renzora-editor[.exe]`**
+/// — two separate executables staged side by side. Once Bevy became statically
+/// linked the editor stopped being a loadable bundle the host could decline, so
+/// "runtime" is a different file rather than the same file told to behave.
 ///
-/// 1. `<exe_dir>/runtime/renzora-runtime[.exe]`
-/// 2. `<exe_dir>/renzora-runtime[.exe]` — the flat sibling `build-all.sh`
-///    places beside the editor in `dist/<platform>/`.
-/// 3. `<exe_dir>/../runtime/renzora-runtime[.exe]` — a split
-///    `editor/` + `runtime/` package layout.
-/// 4. The editor binary itself (see above).
+/// That is why this looks for `renzora` and why there is **no fall back to the
+/// current executable**. It used to end with `Some(exe)`, from when one binary
+/// booted either way and `--no-editor` was enough to make it a game. With a
+/// separate editor executable that fallback relaunches the *editor*: picking the
+/// "Window" play target opened a second editor window instead of the game, which
+/// is exactly what it was reported doing. Returning `None` instead makes the
+/// caller log and fall back to in-viewport play, which at least plays the game.
+///
+/// It also looks for the retired `renzora-runtime[.exe]`, so an older staged
+/// tree still works.
+///
+/// 1. `<exe_dir>/renzora[.exe]` — the normal staged layout.
+/// 2. `<exe_dir>/runtime/renzora[.exe]` — a split `editor/` + `runtime/` package.
+/// 3. `<exe_dir>/../runtime/renzora[.exe]` — the same, one level up.
 pub fn find_runtime_binary() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe_dir = exe.parent()?;
 
-    let bin_name = if cfg!(target_os = "windows") {
-        "renzora-runtime.exe"
-    } else {
-        "renzora-runtime"
-    };
+    let suffix = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let names = [format!("renzora{suffix}"), format!("renzora-runtime{suffix}")];
 
-    let candidates = [
-        exe_dir.join("runtime").join(bin_name),
-        exe_dir.join(bin_name),
-        exe_dir.parent().map(|d| d.join("runtime").join(bin_name))?,
-    ];
-    if let Some(found) = candidates.into_iter().find(|c| c.exists()) {
-        return Some(found);
+    for name in &names {
+        let candidates = [
+            Some(exe_dir.join(name)),
+            Some(exe_dir.join("runtime").join(name)),
+            exe_dir.parent().map(|d| d.join("runtime").join(name)),
+        ];
+        for candidate in candidates.into_iter().flatten() {
+            // Never hand back the binary we are already running. On a dev build
+            // the editor can sit in the same directory under a name that matches,
+            // and spawning ourselves is the bug this function had.
+            if candidate == exe || !candidate.exists() {
+                continue;
+            }
+            return Some(candidate);
+        }
     }
-    Some(exe)
+    None
 }
 
 /// Spawn the runtime pointed at `project_path`. Returns the child handle

@@ -344,11 +344,11 @@ Still open, with measured sizes:
   while glTF is on). Needs a compile to confirm.
 ### Why some crates can't be unticked yet
 
-Exactly eight `renzora_*` crates are **non-optional** in `renzora_runtime`, so no
-capability can strip them: `renzora`, `renzora_engine`, `renzora_globals`,
+Exactly seven `renzora_*` crates are **non-optional** in `renzora_runtime`, so no
+capability can strip them: `renzora`, `renzora_engine`,
 `renzora_input`, `renzora_lighting`, `renzora_network`, `renzora_postprocess`,
 `renzora_tonemapping`. Plus `renzora_plugin` + `renzora_postprocess` on the binary
-directly. Six of those are genuinely core (contract, engine, globals, input,
+directly. Five of those are genuinely core (contract, engine, input,
 lighting, tonemapping). Two are not:
 
 - **`renzora_network` (184 KiB) — the one worth doing, and the only remaining item

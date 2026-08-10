@@ -134,8 +134,10 @@ fn cleanup_deband_dither(
     mut commands: Commands,
     mut removed: RemovedComponents<DebandDitherSettings>,
     routing: Res<renzora::EffectRouting>,
+    alive: Query<()>,
 ) {
-    if removed.read().next().is_some() {
+    // Despawn vs. deliberate removal — see `cleanup_tonemapping`.
+    if removed.read().any(|e| alive.contains(e)) {
         for (target, _) in routing.iter() {
             if let Ok(mut ec) = commands.get_entity(*target) {
                 ec.insert(DebandDither::Disabled);
@@ -148,16 +150,30 @@ fn cleanup_tonemapping(
     mut commands: Commands,
     mut removed: RemovedComponents<TonemappingSettings>,
     routing: Res<renzora::EffectRouting>,
+    alive: Query<()>,
 ) {
-    if removed.read().next().is_some() {
+    // Only a *deliberate* removal means "no tone curve".
+    //
+    // `RemovedComponents` also fires when the entity is despawned, and the whole
+    // image-quality bucket — tonemapping, bloom, AE, TAA, exposure — is seeded
+    // onto the scene camera (`renzora_level_presets::seed_camera_effects`). So
+    // deleting the camera used to force `Tonemapping::None` onto every routed
+    // camera, including the editor viewport, which then rendered raw HDR: a
+    // blown-out white sky with no way back, since with no source `sync_tonemapping`
+    // never inserts a curve again. Adding a camera "fixed" it only because that
+    // re-seeded the settings.
+    //
+    // An entity that still exists lost the component on purpose (the inspector's
+    // remove button); one that doesn't was despawned, which says nothing about
+    // what curve the remaining cameras should use.
+    let deliberate = removed.read().any(|e| alive.contains(e));
+    if deliberate {
         for (target, _) in routing.iter() {
             if let Ok(mut ec) = commands.get_entity(*target) {
-                // Removing the component means "no tone curve", not "reset to
-                // the default curve". `Tonemapping::default()` is TonyMcMapface
-                // — identical to what was already showing — so the old code made
+                // `Tonemapping::default()` is TonyMcMapface — identical to what
+                // was already showing — so resetting to the default would make
                 // removal look like a no-op. `None` is the visibly-off state and
-                // matches `enabled: false` in sync, so toggling and removing now
-                // agree, and removal is as obvious as bloom disappearing.
+                // matches `enabled: false` in sync, so toggling and removing agree.
                 ec.insert(Tonemapping::None);
             }
         }
