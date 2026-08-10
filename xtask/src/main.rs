@@ -53,7 +53,12 @@ fn platform() -> Platform {
     // always native, so we never cross-target here.
     let arm = cfg!(target_arch = "aarch64");
     if cfg!(target_os = "windows") {
-        Platform { dir: "windows-x64", ext: "dll", lib_prefix: "", exe_suffix: ".exe" }
+        Platform {
+            dir: if arm { "windows-arm64" } else { "windows-x64" },
+            ext: "dll",
+            lib_prefix: "",
+            exe_suffix: ".exe",
+        }
     } else if cfg!(target_os = "macos") {
         Platform {
             dir: if arm { "macos-arm64" } else { "macos-x64" },

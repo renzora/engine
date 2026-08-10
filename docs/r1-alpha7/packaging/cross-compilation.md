@@ -27,13 +27,19 @@ The base image is the source of truth for the **container's** Rust version; a `r
 | Platform | Rust target | Toolchain | Linker |
 |---|---|---|---|
 | Linux x64 | `x86_64-unknown-linux-gnu` | native (container) | `clang` + `mold` |
+| Linux ARM64 | `aarch64-unknown-linux-gnu` | GNU cross-gcc (container) | `aarch64-linux-gnu-gcc` wrapper |
 | Windows x64 | `x86_64-pc-windows-msvc` | **xwin** (MSVC SDK + CRT) | `rust-lld` (LLVM `lld`) |
+| Windows ARM64 | `aarch64-pc-windows-msvc` | **native MSVC only** — not the container | `rust-lld` (LLVM `lld`) |
 | macOS x64 | `x86_64-apple-darwin` | **osxcross** | osxcross darwin `clang` |
 | macOS ARM64 | `aarch64-apple-darwin` | **osxcross** | osxcross darwin `clang` |
 | iOS ARM64 | `aarch64-apple-ios` (+ `-sim`) | **osxcross** iPhoneOS SDK | `clang-19` wrapper |
 | Android ARM64 | `aarch64-linux-android` | **Android NDK r27c** | NDK `android33-clang` |
 | Android x86_64 | `x86_64-linux-android` | **Android NDK r27c** | NDK `android33-clang` |
 | Web (WASM) | `wasm32-unknown-unknown` | `wasm-bindgen` + `binaryen` | (none — `wasm-bindgen`) |
+
+> **The two Linux rows are host-relative.** One `renzora build linux` emits *both* desktop Linux arches from one container: whichever arch the container itself runs on builds natively with `clang` + `mold`, and the other is true cross-compilation through the GNU cross-gcc the image installs for it (rustc runs at native speed and emits foreign code — no emulation). So on the usual x86_64 host the table reads exactly as written; on an arm64 host the two swap roles. The cross arch is **best-effort**: if it fails to link, `build-all.sh` prints a `WARN` and the native arch still ships.
+
+> **Windows ARM64 is not a container target.** The only MSVC pieces Microsoft permits redistributing — so `xwin` can bake them into a public image — are the CRT and the Windows SDK, which leaves `clang` as the C compiler. `clang` cannot fully stand in for MSVC on ARM64: it emits MSVC NEON intrinsics (`neon_*`) as undefined externals that no redistributable lib provides, which is an unwinnable per-crate hunt. `aarch64-pc-windows-msvc` is therefore built **natively**, with the real MSVC toolchain — see [Continuous integration](#continuous-integration) below. Windows-on-ARM users who don't want a native build can run the x64 binary under Windows 11's built-in x64 emulation.
 
 > **tvOS / Apple TV is not a supported target.** The image installs no `aarch64-apple-tvos` rustup target and `docker/build-all.sh` has no tvOS lane. Orphan `cargo build-tvos` / `build-tvos-sim` aliases exist in `.cargo/config.toml`, but the container cannot build them — tvOS is aspirational, not shippable.
 
@@ -96,7 +102,8 @@ renzora build
 
 | Token | Expands to | Output directory |
 |---|---|---|
-| `linux` | Linux x64 | `dist/linux-x64/` |
+| `linux` | `linux-x64` + `linux-arm64` | `dist/linux-x64/`, `dist/linux-arm64/` |
+| `linux-x64` / `linux-arm64` | that arch only, if the container can produce it | the matching dir |
 | `windows` | Windows x64 (MSVC) | `dist/windows-x64/` |
 | `macos` | `macos-x64` + `macos-arm64` | `dist/macos-x64/`, `dist/macos-arm64/` |
 | `macos-x64` | macOS x64 only | `dist/macos-x64/` |
@@ -119,6 +126,31 @@ Builds run as concurrent **lanes**, where the contention-free unit is the *featu
 Concurrency is capped by `BUILD_JOBS` (env), defaulting to ~one lane per 4 GB of container RAM and clamped to the CPU count, because parallel Bevy builds are RAM-bound during codegen/link. On a memory-tight machine set `BUILD_JOBS=1`.
 
 > The desktop lane is **required** (its failure fails the build); the `android` and `ios` lanes are **best-effort** — a failure there prints a `WARN` and is reported in the lane summary but does not fail the overall build. macOS is skipped entirely if osxcross is missing.
+
+## Continuous integration
+
+`.github/workflows/build-engine.yml` runs the same cross-compile in CI. It is **manual only** — a `workflow_dispatch` with a `platform` choice (`all`, `linux`, `windows`, `macos`, `wasm`), never a `push` trigger. A full build costs hours of runner time across several jobs, and the artefacts are export templates you want at release time, not on every commit; CI's per-commit gate is `test.yml` (`cargo test` + `cargo clippy -D warnings`), which is a different job with a different budget.
+
+Run it from the Actions tab, or:
+
+```bash
+gh workflow run build-engine.yml -f platform=all
+```
+
+Each container job pulls its toolchain image from GHCR, mounts the checkout at `/app/src` (where the CLI puts it, so cargo resolves **both** the repo's `.cargo/config.toml` and the image's `/app/.cargo` cross-linker sections), and runs `docker/build-all.sh` — the exact path `renzora build <platform>` takes. It pulls `:latest` rather than the content-hash tag because this workflow and `docker-image.yml` are independent, so the hash-tagged image for the current Dockerfile may not be published yet.
+
+| Job | Runner | Produces | Artifact |
+|---|---|---|---|
+| `build (linux)` | `ubuntu-latest` + linux image | `dist/linux-x64/`, `dist/linux-arm64/` | `renzora-linux` |
+| `build (windows)` | `ubuntu-latest` + windows image | `dist/windows-x64/` | `renzora-windows` |
+| `build (macos)` | `ubuntu-latest` + macos image | `dist/macos-x64/`, `dist/macos-arm64/` | `renzora-macos` |
+| `build (wasm)` | `ubuntu-latest` + wasm image | `dist/web-wasm32/` | `renzora-wasm` |
+| `windows-arm64` | `windows-11-arm` (native) | `dist/windows-arm64/` | `renzora-windows-arm64` |
+
+Two details worth knowing:
+
+- **`windows-arm64` is not a container job.** For the reason given under [Supported targets](#supported-targets), that slice needs the real MSVC toolchain, so it runs natively on a GitHub-hosted `windows-11-arm` runner (free for public repos) via `cargo renzora dist` — the same xtask a contributor uses locally, which stages the identical layout `build-all.sh` produces. Because the host target *is* `aarch64-pc-windows-msvc`, nothing there is cross-compiled and no `rustup target add` is needed; the runner image ships no Rust, so the job installs `rustup` and lets `rust-toolchain.toml` pin the channel.
+- **`fail-fast` is off.** One platform failing must not cancel the others — a macOS SDK hiccup shouldn't throw away a two-hour Linux build that already succeeded.
 
 ## Output layout
 

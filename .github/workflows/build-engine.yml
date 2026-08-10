@@ -7,12 +7,22 @@ name: Build Engine
 # .cargo/config.toml and the image's /app/.cargo cross-linker sections), and runs
 # docker/build-all.sh — the exact path `renzora build <platform>` takes.
 #
-# Arch coverage matches the toolchain's real capabilities:
+# Arch coverage — x86_64 and aarch64 for all three desktop platforms, plus web:
 #   linux    x86_64 + aarch64  (one container cross-builds both)
 #   macos    x86_64 + aarch64  (osxcross builds both slices)
-#   windows  x86_64 only       (native arm64 Windows is intentionally unsupported
-#                               by the toolchain — see docker/windows/Dockerfile;
-#                               arm64 users run the x64 build under emulation)
+#   windows  x86_64            (container, via xwin)
+#            aarch64           (NOT the container — a separate native job, below)
+#   wasm     wasm32            (game runtime only — there is no editor on web,
+#                               so this artifact is `renzora-runtime.js` + the
+#                               wasm-bindgen'd module, not an engine tree)
+#
+# Windows arm64 is the one target the Docker toolchain cannot produce. The only
+# MSVC pieces Microsoft lets you redistribute (so xwin can bake them into a public
+# image) are the CRT + SDK, which leaves clang as the C compiler — and clang can't
+# stand in for MSVC on ARM64 (it emits MSVC NEON intrinsics as undefined externals
+# that no redistributable lib provides). See docker/windows/Dockerfile. So that
+# slice is built natively on a `windows-11-arm` runner with the real MSVC
+# toolchain, in the `windows-arm64` job at the bottom of this file.
 #
 # Triggered ONLY by hand (workflow_dispatch) — never on push.
 
@@ -28,6 +38,7 @@ on:
           - linux
           - windows
           - macos
+          - wasm
 
 env:
   REGISTRY: ghcr.io/renzora
@@ -45,11 +56,13 @@ jobs:
           linux='{"platform":"linux","arches":"x64+arm64"}'
           windows='{"platform":"windows","arches":"x64"}'
           macos='{"platform":"macos","arches":"x64+arm64"}'
+          wasm='{"platform":"wasm","arches":"wasm32"}'
           case "${{ inputs.platform }}" in
-            all)     inc="$linux,$windows,$macos" ;;
+            all)     inc="$linux,$windows,$macos,$wasm" ;;
             linux)   inc="$linux" ;;
             windows) inc="$windows" ;;
             macos)   inc="$macos" ;;
+            wasm)    inc="$wasm" ;;
           esac
           echo "matrix={\"include\":[$inc]}" >> "$GITHUB_OUTPUT"
 
@@ -106,5 +119,70 @@ jobs:
         with:
           name: renzora-${{ matrix.platform }}
           path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── Windows ARM64 — native, no container ────────────────────────────────────
+  # The header explains why this can't ride the Docker matrix. `windows-11-arm`
+  # is a GitHub-hosted arm64 runner (free for public repos, which this is) with
+  # the real MSVC ARM64 toolchain, so the build is native: no cross-compile, no
+  # clang-standing-in-for-MSVC intrinsics hunt, and the host target IS
+  # aarch64-pc-windows-msvc so nothing needs `rustup target add`.
+  #
+  # It runs `cargo renzora dist` — the same xtask a contributor uses locally,
+  # which compiles the workspace on the `dist` profile and stages
+  # dist/windows-arm64/ with the layout the loader expects (bevy_dylib + renzora
+  # + the editor bundle beside the exe, distribution plugins under plugins/).
+  # That is the native mirror of what build-all.sh does inside the containers,
+  # so the artifact is shaped identically to the other desktop slices.
+  windows-arm64:
+    if: inputs.platform == 'all' || inputs.platform == 'windows'
+    runs-on: windows-11-arm
+    # A cold full-workspace bevy build on this runner is measured in hours, well
+    # past the 360-minute job default it would otherwise silently inherit.
+    timeout-minutes: 350
+    env:
+      # No cache is restored here, so incremental artifacts are pure disk cost —
+      # and disk, not time, is the tighter budget on a Windows runner.
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The arm64 Windows image is leaner than windows-latest and doesn't
+      # preinstall Rust. Guarded so this becomes a no-op if the image gains it.
+      - name: Install rustup
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            Invoke-WebRequest -Uri https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe -OutFile rustup-init.exe
+            ./rustup-init.exe -y --default-toolchain none --profile minimal
+            "$env:USERPROFILE\.cargo\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+
+      # rust-toolchain.toml pins the channel; `rustup show` is what installs it
+      # up front rather than mid-build, where the download would be buried in
+      # cargo's output and its failure mode much less obvious.
+      - name: Install pinned toolchain
+        run: |
+          rustup show
+          cargo --version
+          rustc --version --verbose
+
+      - name: Build + stage
+        run: cargo renzora dist
+
+      # Disk exhaustion is the likeliest failure on this runner, and cargo's
+      # error for it is unhelpful; report free space either way so a failed run
+      # says so directly instead of needing a second run to diagnose.
+      - name: Report disk usage
+        if: always()
+        run: Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
+
+      - name: Upload windows-arm64 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: renzora-windows-arm64
+          path: dist/windows-arm64/
           if-no-files-found: error
           retention-days: 7

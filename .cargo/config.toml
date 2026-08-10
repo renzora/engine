@@ -124,6 +124,20 @@ rustflags = [
     "--remap-path-prefix=/app/src=/renzora",
 ]
 
+# Windows ARM64: same reasoning as x86_64 above, one target triple over. This
+# triple is NEVER produced by the Docker toolchain — xwin can only redistribute
+# the MSVC CRT + SDK, so the C compiler there is clang, and clang can't stand in
+# for MSVC on ARM64 (see docker/windows/Dockerfile). It is built natively instead,
+# on a `windows-11-arm` runner in .github/workflows/build-engine.yml, which is why
+# the section carries no xwin lib paths — the real MSVC toolchain supplies them.
+[target.aarch64-pc-windows-msvc]
+linker = "rust-lld"
+rustflags = [
+    "-C", "link-arg=/pdbpagesize:16384",
+    "--remap-path-prefix=/usr/local/cargo=/cargo",
+    "--remap-path-prefix=/app/src=/renzora",
+]
+
 # macOS: embed @loader_path so the binary finds bevy_dylib, renzora.dylib,
 # and any dlopen'd distribution plugin next to itself.
 [target.aarch64-apple-darwin]

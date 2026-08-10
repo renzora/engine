@@ -135,7 +135,8 @@ renzora build
 
 | Token | Output directory |
 |---|---|
-| `linux` | `dist/linux-x64/` |
+| `linux` (= `linux-x64` + `linux-arm64`) | `dist/linux-x64/`, `dist/linux-arm64/` |
+| `linux-x64` / `linux-arm64` | the individual Linux dir |
 | `windows` | `dist/windows-x64/` |
 | `macos` (= `macos-x64` + `macos-arm64`) | `dist/macos-x64/`, `dist/macos-arm64/` |
 | `macos-x64` / `macos-arm64` | the individual macOS dir |
@@ -145,7 +146,9 @@ renzora build
 
 Desktop targets place the binary and its shared libraries directly in the platform dir; wasm and mobile targets nest their output under a `runtime/` subdirectory.
 
-> Notes: macOS lanes build only when osxcross is present; the Android and iOS lanes are **best-effort** (a failure there does not fail the whole build). The web build is **game-runtime only** — there is no WebAssembly editor (the binary has no `editor` compile feature, and the editor bundle is a desktop dlopen target). On Linux the editor build is additionally wrapped into an AppDir and `.AppImage` when `appimagetool` is available.
+> Notes: macOS lanes build only when osxcross is present; the Android and iOS lanes are **best-effort** (a failure there does not fail the whole build), as is the non-host Linux arch. The web build is **game-runtime only** — there is no WebAssembly editor (the binary has no `editor` compile feature, and the editor bundle is a desktop dlopen target). On Linux the editor build is additionally wrapped into an AppDir and `.AppImage` when `appimagetool` is available.
+
+> **`windows-arm64` is missing from that list on purpose** — the container cannot produce it. Building for Windows on ARM needs the real MSVC toolchain, which is not redistributable, so that slice is built natively (on the machine, or by the `windows-arm64` job in `.github/workflows/build-engine.yml`). See [Cross-compilation](../packaging/cross-compilation.md#supported-targets).
 
 ### Plugin scaffolding
 
