@@ -1,4 +1,9 @@
-//! Fader — a vertical slider.
+//! Fader — a slider that travels along one axis.
+//!
+//! Vertical by default (the desk fader everyone pictures), horizontal on
+//! request. The two are one control with its geometry mirrored rather than two
+//! widgets: every dimension below is picked from `horizontal`, so a change to
+//! the cap or the track can't land on one orientation and miss the other.
 
 use bevy::prelude::*;
 use bevy::window::SystemCursorIcon;
@@ -12,38 +17,86 @@ use crate::theme::*;
 pub(crate) struct EmberFader {
     fill: Entity,
     thumb: Entity,
+    /// Travel along x rather than y — read by [`fader_drag`] to decide which
+    /// cursor axis is the value, and by [`fader_apply`] to decide which edge the
+    /// fill grows from.
+    horizontal: bool,
 }
 
-/// Width of the fader's column. The cap centres itself in it.
+/// Thickness of the fader across its travel axis. The cap centres itself in it.
 const COL_W: f32 = 24.0;
+/// Default travel length. Callers that want the fader to fill its parent
+/// override it — the mixer's strips do, because a longer fader is a finer one.
+const LEN: f32 = 120.0;
+/// The track/fill bar's thickness, and the inset that centres it in `COL_W`.
+const TRACK_T: f32 = 6.0;
+const TRACK_INSET: f32 = (COL_W - TRACK_T) / 2.0;
 
 /// A vertical fader (drag to change `value` 0..1).
 pub fn fader(commands: &mut Commands, value: f32) -> Entity {
+    build_fader(commands, value, false)
+}
+
+/// The same fader on its side: travel left→right, cap ribs turned through 90°.
+///
+/// For layouts where height is the scarce axis rather than width — a mixer drawn
+/// as rows can spare 24px of a strip's height but not the 120px a standing
+/// fader wants.
+pub fn fader_horizontal(commands: &mut Commands, value: f32) -> Entity {
+    build_fader(commands, value, true)
+}
+
+fn build_fader(commands: &mut Commands, value: f32, horizontal: bool) -> Entity {
     let v = value.clamp(0.0, 1.0);
     let col = commands
         .spawn((
             Node {
-                width: Val::Px(COL_W),
-                height: Val::Px(120.0),
+                width: Val::Px(if horizontal { LEN } else { COL_W }),
+                height: Val::Px(if horizontal { COL_W } else { LEN }),
                 position_type: PositionType::Relative,
                 ..default()
             },
             Interaction::default(),
             bevy::ui::RelativeCursorPosition::default(),
-            crate::cursor_icon::HoverCursor(SystemCursorIcon::NsResize),
+            crate::cursor_icon::HoverCursor(if horizontal {
+                SystemCursorIcon::EwResize
+            } else {
+                SystemCursorIcon::NsResize
+            }),
             Name::new("fader"),
         ))
         .id();
+
+    // Track and fill are the same bar, one full-length and one cut to the value.
+    // Both are absolute so the cap can overhang them at either end.
+    let mut track_node = Node {
+        position_type: PositionType::Absolute,
+        border_radius: BorderRadius::all(Val::Px(TRACK_T / 2.0)),
+        ..default()
+    };
+    let mut fill_node = track_node.clone();
+    if horizontal {
+        track_node.top = Val::Px(TRACK_INSET);
+        track_node.left = Val::Px(0.0);
+        track_node.width = Val::Percent(100.0);
+        track_node.height = Val::Px(TRACK_T);
+        fill_node.top = Val::Px(TRACK_INSET);
+        fill_node.left = Val::Px(0.0);
+        fill_node.width = Val::Percent(v * 100.0);
+        fill_node.height = Val::Px(TRACK_T);
+    } else {
+        track_node.left = Val::Px(TRACK_INSET);
+        track_node.width = Val::Px(TRACK_T);
+        track_node.height = Val::Percent(100.0);
+        fill_node.left = Val::Px(TRACK_INSET);
+        fill_node.bottom = Val::Px(0.0);
+        fill_node.width = Val::Px(TRACK_T);
+        fill_node.height = Val::Percent(v * 100.0);
+    }
+
     let track = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(9.0),
-                width: Val::Px(6.0),
-                height: Val::Percent(100.0),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
+            track_node,
             BackgroundColor(rgb(card_bg())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("fader-track"),
@@ -51,33 +104,31 @@ pub fn fader(commands: &mut Commands, value: f32) -> Entity {
         .id();
     let fill = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(9.0),
-                bottom: Val::Px(0.0),
-                width: Val::Px(6.0),
-                height: Val::Percent(v * 100.0),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
+            fill_node,
             BackgroundColor(rgb(accent())),
             bevy::ui::FocusPolicy::Pass,
             Name::new("fader-fill"),
         ))
         .id();
-    let thumb = fader_cap(commands, v);
+    let thumb = fader_cap(commands, v, horizontal);
     commands.entity(col).add_children(&[track, fill, thumb]);
-    commands
-        .entity(col)
-        .insert((EmberFader { fill, thumb }, Bound::<f32>(v)));
+    commands.entity(col).insert((
+        EmberFader {
+            fill,
+            thumb,
+            horizontal,
+        },
+        Bound::<f32>(v),
+    ));
     col
 }
 
-/// Height of the fader cap. It sits on `bottom: <value>%` with a negative
-/// bottom margin of half this, so the cap's *centre* — where the index line is —
-/// marks the value rather than its lower edge.
-const CAP_H: f32 = 28.0;
-const CAP_W: f32 = 20.0;
+/// Cap size along the travel axis. It sits on `<value>%` with a negative margin
+/// of half this, so the cap's *centre* — where the index line is — marks the
+/// value rather than its trailing edge.
+const CAP_LONG: f32 = 28.0;
+/// Cap size across the travel axis.
+const CAP_SHORT: f32 = 20.0;
 
 /// The grip: a cap with ribbing and a centre index line, rather than the flat
 /// 18×10 lozenge this used to be.
@@ -89,24 +140,38 @@ const CAP_W: f32 = 20.0;
 /// stretches to fill the strip) the more that guess costs. The ribs are what a
 /// real cap has under the thumb, and the index line in the fill's own colour is
 /// the one pixel that reads the scale.
-fn fader_cap(commands: &mut Commands, v: f32) -> Entity {
+fn fader_cap(commands: &mut Commands, v: f32, horizontal: bool) -> Entity {
+    let mut node = Node {
+        position_type: PositionType::Absolute,
+        width: Val::Px(if horizontal { CAP_LONG } else { CAP_SHORT }),
+        height: Val::Px(if horizontal { CAP_SHORT } else { CAP_LONG }),
+        // The ribs run across the travel axis in both orientations, so the cap
+        // stacks them along it.
+        flex_direction: if horizontal {
+            FlexDirection::Row
+        } else {
+            FlexDirection::Column
+        },
+        align_items: AlignItems::Center,
+        justify_content: JustifyContent::Center,
+        border: UiRect::all(Val::Px(1.0)),
+        border_radius: BorderRadius::all(Val::Px(3.0)),
+        ..default()
+    };
+    if horizontal {
+        node.top = Val::Px((COL_W - CAP_SHORT) / 2.0);
+        node.left = Val::Percent(v * 100.0);
+        node.margin = UiRect::left(Val::Px(-CAP_LONG / 2.0));
+        node.column_gap = Val::Px(4.0);
+    } else {
+        node.left = Val::Px((COL_W - CAP_SHORT) / 2.0);
+        node.bottom = Val::Percent(v * 100.0);
+        node.margin = UiRect::bottom(Val::Px(-CAP_LONG / 2.0));
+        node.row_gap = Val::Px(4.0);
+    }
     let cap = commands
         .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px((COL_W - CAP_W) / 2.0),
-                bottom: Val::Percent(v * 100.0),
-                margin: UiRect::bottom(Val::Px(-CAP_H / 2.0)),
-                width: Val::Px(CAP_W),
-                height: Val::Px(CAP_H),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(4.0),
-                border: UiRect::all(Val::Px(1.0)),
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
+            node,
             BackgroundColor(rgb(tab_active())),
             BorderColor::all(rgb(border())),
             bevy::ui::FocusPolicy::Pass,
@@ -120,8 +185,8 @@ fn fader_cap(commands: &mut Commands, v: f32) -> Entity {
         commands
             .spawn((
                 Node {
-                    width: Val::Px(10.0),
-                    height: Val::Px(1.0),
+                    width: Val::Px(if horizontal { 1.0 } else { 10.0 }),
+                    height: Val::Px(if horizontal { 10.0 } else { 1.0 }),
                     flex_shrink: 0.0,
                     ..default()
                 },
@@ -134,8 +199,16 @@ fn fader_cap(commands: &mut Commands, v: f32) -> Entity {
     let index = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(1.0),
+                width: if horizontal {
+                    Val::Px(1.0)
+                } else {
+                    Val::Percent(100.0)
+                },
+                height: if horizontal {
+                    Val::Percent(100.0)
+                } else {
+                    Val::Px(1.0)
+                },
                 flex_shrink: 0.0,
                 ..default()
             },
@@ -153,16 +226,23 @@ fn fader_cap(commands: &mut Commands, v: f32) -> Entity {
 
 /// User drag → write the model (`Bound<f32>`). Visuals follow via [`fader_apply`].
 pub(crate) fn fader_drag(
-    mut faders: Query<(&Interaction, &bevy::ui::RelativeCursorPosition, &mut Bound<f32>), With<EmberFader>>,
+    mut faders: Query<(
+        &Interaction,
+        &bevy::ui::RelativeCursorPosition,
+        &EmberFader,
+        &mut Bound<f32>,
+    )>,
 ) {
-    for (interaction, rcp, mut b) in &mut faders {
+    for (interaction, rcp, f, mut b) in &mut faders {
         if *interaction != Interaction::Pressed {
             continue;
         }
         let Some(n) = rcp.normalized else {
             continue;
         };
-        let v = (0.5 - n.y).clamp(0.0, 1.0);
+        // `normalized` is centred on the node (-0.5..0.5), and y grows downward.
+        let along = if f.horizontal { n.x + 0.5 } else { 0.5 - n.y };
+        let v = along.clamp(0.0, 1.0);
         if (v - b.0).abs() >= 0.001 {
             b.0 = v;
         }
@@ -178,10 +258,18 @@ pub(crate) fn fader_apply(
     for (f, b) in &faders {
         let v = b.0.clamp(0.0, 1.0);
         if let Ok(mut node) = nodes.get_mut(f.fill) {
-            node.height = Val::Percent(v * 100.0);
+            if f.horizontal {
+                node.width = Val::Percent(v * 100.0);
+            } else {
+                node.height = Val::Percent(v * 100.0);
+            }
         }
         if let Ok(mut node) = nodes.get_mut(f.thumb) {
-            node.bottom = Val::Percent(v * 100.0);
+            if f.horizontal {
+                node.left = Val::Percent(v * 100.0);
+            } else {
+                node.bottom = Val::Percent(v * 100.0);
+            }
         }
     }
 }

@@ -113,6 +113,17 @@ let ng = node_graph(commands, fonts);
 
 > The **Gallery** workspace in the editor is a living catalog of this widget set — open it to see every widget rendered live with its current theme.
 
+### Faders and VU meters run either way
+
+`fader` and the `vu_meter*` builders are vertical, which is what a mixing desk wants. Each also has a horizontal twin — `fader_horizontal`, `vu_meter_bound_horizontal` — for layouts where height is the scarce axis rather than width (the Mixer panel's horizontal channel rows use both):
+
+```rust
+let f = fader_horizontal(commands, 0.6);                       // travels left -> right
+let m = vu_meter_bound_horizontal(commands, move |rx| level(rx));
+```
+
+They are one control mirrored, not two widgets: orientation is a field on the widget's component, and every dimension, the drag axis and the fill's anchor edge are picked from it. Both ship at 120px along the travel axis and 24px (fader) / 14px (meter) across it; stretch the travel axis by overriding `Node` (`flex_grow` plus `width: Auto` / `height: Auto`) — the fills and hit-testing are percentage-based, so any length works.
+
 ### Tooltips (`HoverTooltip`)
 
 Tooltips are a **global layer**, not per-widget bubbles: insert `renzora_ember::widgets::HoverTooltip::new("Label")` on any entity that has `Interaction`, and hovering it shows the shared cursor-following bubble after a short delay. Do **not** spawn a bubble node as a child of your widget — bevy_ui clips absolutely-positioned children by every scrolling/clipping ancestor, so a per-widget bubble silently disappears inside panels (`GlobalZIndex` changes paint order, not clipping). The shared bubble is a parentless root node with `Pickable::IGNORE`, so nothing clips it and it never steals hover. The `tooltip(...)` wrapper builder still exists for wrapping non-interactive content, and forwards to the same mechanism. Viewport toolbar buttons, panel toolbar buttons, and the inspector's component rail all use it.
