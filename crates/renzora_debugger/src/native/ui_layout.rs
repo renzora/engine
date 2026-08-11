@@ -93,6 +93,10 @@ impl UiLayoutStats {
 
 pub(super) fn register_ui_layout(app: &mut App) {
     app.init_resource::<UiLayoutStats>();
+    // panel-systems-ungated: these bracket Bevy's own UI sets to time them. The
+    // measurement has to span the layout run itself, which happens whether or
+    // not this panel is open — and the numbers feed the diagnostic store below,
+    // whose whole point is being recorded while nobody is looking.
     app.add_systems(
         PostUpdate,
         (
@@ -103,7 +107,9 @@ pub(super) fn register_ui_layout(app: &mut App) {
             mark_end.after(UiSystems::Layout),
         ),
     );
-    // Counting walks every node, so it runs last and only when observed.
+    // Counting walks every node, so it runs last and only when observed —
+    // `count_nodes` checks that for itself rather than being gated here.
+    // panel-systems-ungated: self-gating, and it feeds the diagnostics below.
     app.add_systems(Last, count_nodes);
     app.register_panel_content(PANEL, true, build);
 
@@ -121,6 +127,10 @@ pub(super) fn register_ui_layout(app: &mut App) {
     ] {
         app.register_diagnostic(Diagnostic::new(path.clone()));
     }
+    // panel-systems-ungated: publishing into the diagnostic store is exactly
+    // the part that must NOT stop when the panel is hidden — a spike that lasts
+    // one frame is what this exists to catch, and the Tracy bridge plots it
+    // whether or not anyone has the panel open.
     app.add_systems(Last, publish_ui_layout_diagnostics.after(count_nodes));
 }
 

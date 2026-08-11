@@ -177,6 +177,9 @@ pub fn register_plugin_panels(app: &mut App) {
             // registration would be idle rather than wrong; `is_settings` firing
             // for several sections is why this needs to be idempotent at all.
             if !std::mem::replace(&mut settings_fill_added, true) {
+                // panel-systems-ungated: a settings SECTION has no panel to
+                // scope to — that is the whole difference from the branch
+                // below, and it is why this is added globally instead.
                 app.add_systems(Update, fill);
             }
             info!("[plugin] settings section `{id}`");
@@ -226,6 +229,9 @@ pub fn register_plugin_panels(app: &mut App) {
         info!("[plugin] panel `{id}`");
     }
 
+    // panel-systems-ungated: these dispatch for EVERY plugin panel and every
+    // settings section at once, so there is no single panel whose visibility
+    // could gate them. Scoping them to one would stop the others updating.
     app.add_systems(
         Update,
         (
@@ -249,6 +255,11 @@ pub fn register_plugin_panels(app: &mut App) {
     //
     // Running here puts it after the flush and before the sweep, so a call made
     // during `Update` is claimed in the same frame it was made.
+    // panel-systems-ungated: this CLAIMS queued `set_panel_content` calls, and a
+    // call that is not claimed in the frame it was made is binned by the `Last`
+    // sweep (see the note above). Gating it on visibility would silently discard
+    // every update a plugin makes to a panel while that panel is hidden — so the
+    // panel would be stale on the frame it reappeared, with nothing logged.
     app.add_systems(
         PostUpdate,
         (
