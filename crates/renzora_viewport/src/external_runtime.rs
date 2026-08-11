@@ -120,14 +120,122 @@ pub fn find_runtime_binary() -> Option<PathBuf> {
 /// boot as a game, and a harmless no-op for a dedicated runtime binary (which
 /// has no editor bundle to suppress in the first place). `vr` adds `--vr`, the
 /// OpenXR boot flag — the "VR Headset" play target.
+///
+/// Its output is piped into the editor console (category `Runtime`) rather than
+/// inherited. On Windows the runtime is a GUI-subsystem binary launched from
+/// another GUI process, so it has no console attached and everything it logs —
+/// every `[audio]`, `[autoload]` and `[plugin]` line, every panic — went
+/// nowhere. Debugging a game that behaves differently outside the editor meant
+/// running it by hand from a terminal to find out why.
 pub fn spawn_runtime(binary: &Path, project_path: &Path, vr: bool) -> std::io::Result<Child> {
-    use std::process::Command;
+    use std::process::{Command, Stdio};
     let mut command = Command::new(binary);
     command.arg("--no-editor").arg("--project").arg(project_path);
     if vr {
         command.arg("--vr");
     }
-    command.spawn()
+    // Piped, and therefore *must* be drained: a pipe nobody reads fills up and
+    // then blocks the child on its next log line. The reader threads below are
+    // what makes this safe, not just useful.
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    let mut child = command.spawn()?;
+    if let Some(stdout) = child.stdout.take() {
+        forward_to_console(stdout);
+    }
+    if let Some(stderr) = child.stderr.take() {
+        forward_to_console(stderr);
+    }
+    Ok(child)
+}
+
+/// Read `stream` line by line on its own thread, pushing each line into the
+/// editor console. Detached: the read ends when the child closes the pipe, so
+/// the thread retires itself with the process it was reading.
+fn forward_to_console(stream: impl std::io::Read + Send + 'static) {
+    use renzora::core::console_log::console_log;
+    use std::io::{BufRead, BufReader};
+
+    std::thread::spawn(move || {
+        // Lossy rather than strict UTF-8: a runtime that dies mid-line, or logs
+        // a path the OS handed it in some other encoding, must not silence the
+        // rest of the stream.
+        for line in BufReader::new(stream).split(b'\n') {
+            let Ok(bytes) = line else { break };
+            let line = String::from_utf8_lossy(&bytes);
+            let line = strip_ansi(line.trim_end_matches('\r'));
+            if line.trim().is_empty() {
+                continue;
+            }
+            let (level, message) = classify_runtime_line(&line);
+            console_log(level, "Runtime", message);
+        }
+    });
+}
+
+/// Drop SGR colour escapes. `tracing_subscriber` colours its output whether or
+/// not the sink is a terminal, and a pipe is never one, so without this every
+/// forwarded line arrives wrapped in `\x1b[…m` noise.
+fn strip_ansi(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            out.push(c);
+            continue;
+        }
+        // `ESC [ … <final byte in @..~>`. Anything else after ESC is a short
+        // escape we simply drop along with its one following character.
+        if chars.next() != Some('[') {
+            continue;
+        }
+        for c in chars.by_ref() {
+            if ('@'..='~').contains(&c) {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// Split a forwarded log line into a console level and the text to show.
+///
+/// The runtime's lines look like `<timestamp>  INFO  <target>: <message>`. Both
+/// the timestamp and the level are dropped: the console renders its own level
+/// colour and the timestamp is noise next to the editor's own lines.
+fn classify_runtime_line(line: &str) -> (renzora::core::console_log::LogLevel, String) {
+    use renzora::core::console_log::LogLevel;
+
+    let mut rest = line.trim_start();
+    // An RFC3339 timestamp is the first token and always ends in `Z`.
+    if let Some((first, tail)) = rest.split_once(char::is_whitespace) {
+        if first.ends_with('Z') && first.contains(':') {
+            rest = tail.trim_start();
+        }
+    }
+
+    for (token, level) in [
+        ("ERROR", LogLevel::Error),
+        ("WARN", LogLevel::Warning),
+        ("INFO", LogLevel::Info),
+        ("DEBUG", LogLevel::Info),
+        ("TRACE", LogLevel::Info),
+    ] {
+        if let Some(tail) = rest.strip_prefix(token) {
+            if tail.starts_with(char::is_whitespace) {
+                return (level, tail.trim_start().to_string());
+            }
+        }
+    }
+
+    // No level token: wgpu/naga chatter, or a panic. A panic is the one thing
+    // here nobody can afford to have filed as routine information.
+    let level = if line.contains("panicked at") || line.starts_with("thread '") {
+        LogLevel::Error
+    } else {
+        LogLevel::Info
+    };
+    (level, rest.to_string())
 }
 
 /// Detach the running child, if any, and kill it. Returns whether a child
@@ -159,7 +267,19 @@ pub fn poll_external_runtime(mut runtime: ResMut<ExternalRuntime>) {
         return;
     };
     match child.try_wait() {
-        Ok(Some(_status)) => {
+        Ok(Some(status)) => {
+            // How it ended, not just that it did: a runtime that dies on its
+            // own is indistinguishable from one the user closed, and the two
+            // want very different reactions.
+            match status.code() {
+                Some(0) | None => {
+                    renzora::core::console_log::console_info("PlayMode", "Runtime window closed")
+                }
+                Some(code) => renzora::core::console_log::console_error(
+                    "PlayMode",
+                    format!("Runtime exited with code {code}"),
+                ),
+            }
             // Runtime window closed (or it crashed) — drop the handle and
             // lift the pause overlay so the editor is usable again.
             runtime.child = None;
@@ -283,5 +403,45 @@ pub fn apply_runtime_pause_render(
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora::core::console_log::LogLevel;
+
+    #[test]
+    fn colour_escapes_are_stripped() {
+        let line = "\u{1b}[2m2026-08-10T13:24:25Z\u{1b}[0m \u{1b}[32m INFO\u{1b}[0m ready";
+        assert_eq!(strip_ansi(line), "2026-08-10T13:24:25Z  INFO ready");
+    }
+
+    #[test]
+    fn the_timestamp_and_level_come_off_the_front() {
+        let (level, message) =
+            classify_runtime_line("2026-08-10T13:24:25.159700Z  WARN renzora_audio: no ears");
+        assert_eq!(level, LogLevel::Warning);
+        assert_eq!(message, "renzora_audio: no ears");
+    }
+
+    /// A line the runtime's own logger didn't write — wgpu chatter, a panic —
+    /// still has to arrive, and a panic must not arrive as routine info.
+    #[test]
+    fn an_unprefixed_line_survives_and_a_panic_is_an_error() {
+        let (level, message) = classify_runtime_line("wgpu: picked adapter");
+        assert_eq!(level, LogLevel::Info);
+        assert_eq!(message, "wgpu: picked adapter");
+
+        let (level, _) = classify_runtime_line("thread 'main' panicked at src/main.rs:12:5:");
+        assert_eq!(level, LogLevel::Error);
+    }
+
+    /// `INFORMATIONAL` is not the `INFO` token, and a word boundary is the only
+    /// thing that tells them apart.
+    #[test]
+    fn a_level_token_needs_a_word_boundary() {
+        let (_, message) = classify_runtime_line("INFOrmational text");
+        assert_eq!(message, "INFOrmational text");
     }
 }

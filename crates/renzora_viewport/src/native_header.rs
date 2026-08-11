@@ -965,6 +965,10 @@ struct HeaderModel {
     primary: Color,
     muted: Color,
     accent: Color,
+    /// Amber. Only the Save button uses it — an unsaved tab has to be visible at
+    /// a glance from across the top bar, and `primary` (the same color as every
+    /// other enabled button) wasn't.
+    warning: Color,
     hovered_bg: Color,
 }
 
@@ -1000,6 +1004,7 @@ fn update_header_visuals(
         primary: col(t.text.primary),
         muted: col(t.text.muted),
         accent: col(t.semantic.accent),
+        warning: col(t.semantic.warning),
         hovered_bg: col(t.widgets.hovered_bg),
     };
 
@@ -1056,9 +1061,12 @@ fn action_appearance(
             if m.can_redo { m.primary } else { m.muted },
             m.can_redo,
         ),
+        // Save is the one action whose enabled state means "you have work you
+        // could lose", so it gets amber rather than the neutral `primary` the
+        // other enabled buttons use — the unsaved tab is the thing to notice.
         HeaderAction::Save => (
             "floppy-disk",
-            if m.can_save { m.primary } else { m.muted },
+            if m.can_save { m.warning } else { m.muted },
             m.can_save,
         ),
         HeaderAction::Maximize => (

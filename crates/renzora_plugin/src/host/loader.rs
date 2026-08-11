@@ -183,6 +183,9 @@ fn contains_symbol(path: &Path, needle: &[u8]) -> bool {
 ///
 /// `.reload` has no file extension, so [`load_dir`]'s extension filter skips it
 /// and the copies are never mistaken for plugins to load.
+///
+/// **Editor-only.** A shipped game opens `plugins/<name>.dll` itself — see
+/// [`load_one`] for why copying is actively harmful there.
 fn shadow_copy(path: &Path, generation: u32) -> std::io::Result<PathBuf> {
     let dir = path.parent().unwrap_or_else(|| Path::new(".")).join(".reload");
     std::fs::create_dir_all(&dir)?;
@@ -195,10 +198,10 @@ fn shadow_copy(path: &Path, generation: u32) -> std::io::Result<PathBuf> {
 
 /// Remove shadow copies left by earlier sessions.
 ///
-/// Safe here and nowhere else: at `build` time nothing is mapped yet, so no copy
-/// is locked. Skipping a file that refuses to delete is deliberate — a stale
-/// image is harmless (nothing scans this directory), and failing the whole boot
-/// over it would not be.
+/// Editor-only, like the copies themselves. Safe here and nowhere else: at
+/// `build` time nothing is mapped yet, so no copy is locked. Skipping a file
+/// that refuses to delete is deliberate — a stale image is harmless (nothing
+/// scans this directory), and failing the whole boot over it would not be.
 fn clear_shadow_dir(dir: &Path) {
     let shadow = dir.join(".reload");
     if let Ok(entries) = std::fs::read_dir(&shadow) {
@@ -233,9 +236,22 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         )
     };
 
-    let image = match shadow_copy(path, generation) {
-        Ok(p) => p,
-        Err(e) => return LoadOutcome::Failed(format!("could not stage a copy to load: {e}")),
+    // Only the editor loads a copy. The copy exists so a rebuild can overwrite
+    // the original while it is mapped (see [`shadow_copy`]) — a shipped game
+    // never reloads a plugin, so it has nothing to buy there and one real cost:
+    // `plugins/` is shared with whoever launched it. The editor spawns the game
+    // as a child pointed at the same directory, and it already has every shadow
+    // copy mapped and locked, so the child's `fs::copy` failed with "used by
+    // another process" for EVERY plugin. The runtime window came up with no
+    // audio backend, no scripting and no plugins at all — which reads as "audio
+    // is broken outside the editor" rather than "the runtime loaded nothing".
+    let image = if is_editor {
+        match shadow_copy(path, generation) {
+            Ok(p) => p,
+            Err(e) => return LoadOutcome::Failed(format!("could not stage a copy to load: {e}")),
+        }
+    } else {
+        path.to_path_buf()
     };
 
     // SAFETY: loading arbitrary native code is inherently unsafe — a plugin can
@@ -245,6 +261,20 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         Ok(l) => l,
         Err(e) => return LoadOutcome::Failed(format!("could not open: {e}")),
     };
+
+    // Never unmapped, on ANY path out of here — including the ones that decide
+    // this image is not wanted. `_libraries` already says a loaded plugin stays
+    // mapped for the life of the process; this extends that to a rejected one,
+    // because unloading is not merely wasteful, it **hangs**. `FreeLibrary` runs
+    // the image's static destructors while holding the Windows loader lock, and
+    // an image whose initialisers started a thread waits on that thread — which
+    // cannot finish, because finishing needs the lock.
+    //
+    // Only a build that *rejects* a plugin can hit it, which is why the editor
+    // never did and the game runtime always would: the runtime skips every
+    // Editor-scope plugin, so it deadlocked partway through the plugins folder,
+    // with no window, no message and no crash — a boot that simply stopped.
+    let library = std::mem::ManuallyDrop::new(library);
 
     let init: Symbol<sys::ExtensionInit> =
         match unsafe { library.get(sys::INIT_SYMBOL.as_bytes()) } {
@@ -286,7 +316,9 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
             let s = &mut loaded.0[slot];
             s.loaded_at = generation;
             s.images += 1;
-            s._libraries.push(library);
+            // The one path that takes ownership rather than leaking in place —
+            // and it only moves the handle somewhere that also never drops it.
+            s._libraries.push(std::mem::ManuallyDrop::into_inner(library));
             LoadOutcome::Loaded
         }
         sys::InitResult::VersionTooOld => LoadOutcome::VersionTooOld,
@@ -615,8 +647,12 @@ impl Plugin for RenzoraPluginHostPlugin {
 
         register_exposed_components(app.world_mut());
         // Nothing is mapped yet, so last session's shadow copies are still
-        // deletable. After this they are not.
-        clear_shadow_dir(&dir);
+        // deletable. After this they are not. Editor-only: only the editor
+        // makes these, and a game runtime launched from the editor's own
+        // directory must not delete images that editor is running on.
+        if self.is_editor {
+            clear_shadow_dir(&dir);
+        }
 
         // Reload machinery, before the initial load so a plugin that somehow
         // requests a reload during its own init is queued rather than lost.
