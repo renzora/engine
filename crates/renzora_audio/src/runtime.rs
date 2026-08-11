@@ -336,6 +336,29 @@ pub fn board(mixer: &MixerState) -> Vec<BusState> {
     out
 }
 
+/// Which scene camera the ears default to: the one marked `DefaultCamera`, else
+/// the first.
+///
+/// Deliberately the same rule `enter_play_mode` uses to choose the camera it
+/// renders through, so "the listener" and "the viewpoint" are the same entity
+/// without either side having to publish its choice. Scene cameras only — a UI
+/// or render-target camera has no business being the ears, and picking by render
+/// order would hand them to one.
+fn pick_game_camera<'a>(
+    cameras: impl Iterator<Item = (&'a GlobalTransform, bool)>,
+) -> Option<&'a GlobalTransform> {
+    let mut first = None;
+    for (transform, is_default) in cameras {
+        if is_default {
+            return Some(transform);
+        }
+        if first.is_none() {
+            first = Some(transform);
+        }
+    }
+    first
+}
+
 /// The per-frame conversation: tell the backend what moved, and take back the
 /// meters and the voices that ended.
 ///
@@ -348,8 +371,11 @@ pub fn audio_update(
     mut voices: ResMut<ActiveVoices>,
     listener: Query<(&GlobalTransform, &crate::systems::AudioListener)>,
     editor_camera: Query<&GlobalTransform, With<renzora::core::EditorCamera>>,
+    game_camera: Query<
+        (&GlobalTransform, Option<&renzora::core::DefaultCamera>),
+        With<renzora::core::SceneCamera>,
+    >,
     play_mode: Option<Res<renzora::PlayModeState>>,
-    mut warned: Local<bool>,
 ) {
     if !link.is_active() {
         return;
@@ -362,8 +388,14 @@ pub fn audio_update(
     // audio being broken, and it was the right complaint: an `AudioListener` on a
     // scene camera sits still while you fly past it.
     //
-    // In play mode the game's own `AudioListener` wins, because then the scene is
-    // driving the camera and its ears are the ones that mean anything.
+    // Otherwise: an explicit `AudioListener` if the scene has one, and the game
+    // camera if it does not. The camera default is what makes the component
+    // optional — a first-person or 2D game never needs one, and the state where
+    // nothing has ears (positioned sounds panning by their distance from the
+    // world origin, deaf to the camera, for the whole session) cannot happen.
+    // The override still matters: in third person the ears belong on the
+    // character, not four metres behind them, and a pulled-back strategy camera
+    // would attenuate the whole scene to silence.
     let editing = play_mode
         .as_ref()
         .is_some_and(|pm| !pm.is_in_play_mode());
@@ -383,30 +415,18 @@ pub fn audio_update(
             .find(|(_, l)| l.active)
             .map(|(transform, _)| ears(transform))
     };
+    let from_game_camera =
+        || pick_game_camera(game_camera.iter().map(|(t, d)| (t, d.is_some()))).map(ears);
     let listener_state = if editing {
-        editor_camera.iter().next().map(ears).or_else(from_component)
+        editor_camera
+            .iter()
+            .next()
+            .map(ears)
+            .or_else(from_component)
+            .or_else(from_game_camera)
     } else {
-        from_component()
+        from_component().or_else(from_game_camera)
     };
-
-    // Spatial audio with no listener is the single most confusing state this
-    // system has: the backend keeps its default ears at the origin facing +X, so
-    // every positioned sound pans by where it happens to sit relative to the
-    // world origin and never moves however the camera does. It sounds broken
-    // rather than absent, so say so — once, because it is a scene-setup mistake
-    // and not a per-frame event.
-    // Only worth saying while playing: in the editor the camera stands in, so a
-    // scene with no listener yet is an ordinary in-progress scene rather than a
-    // mistake.
-    if !editing && listener_state.is_none() && !voices.is_empty() && !*warned {
-        *warned = true;
-        warn!(
-            "[audio] sound is playing but no entity has an AudioListener —              spatial audio has no ears, so positioned sounds will pan by their              distance from the world origin and ignore the camera"
-        );
-    }
-    if listener_state.is_some() {
-        *warned = false;
-    }
 
     let request = UpdateRequest {
         listener: listener_state,
@@ -455,6 +475,30 @@ pub fn audio_update(
 mod tests {
     use super::*;
     use crate::mixer::ChannelStrip;
+
+    /// The ears default to the same camera play mode renders through, so the
+    /// two can never disagree about which viewpoint the scene is heard from.
+    #[test]
+    fn the_default_camera_is_preferred_over_the_first_one() {
+        let first = GlobalTransform::from_xyz(1.0, 0.0, 0.0);
+        let marked = GlobalTransform::from_xyz(2.0, 0.0, 0.0);
+        let picked = pick_game_camera([(&first, false), (&marked, true)].into_iter());
+        assert_eq!(picked.map(|t| t.translation().x), Some(2.0));
+    }
+
+    /// A scene whose cameras are all unmarked still has ears.
+    #[test]
+    fn with_no_default_camera_the_first_one_hears() {
+        let a = GlobalTransform::from_xyz(1.0, 0.0, 0.0);
+        let b = GlobalTransform::from_xyz(2.0, 0.0, 0.0);
+        let picked = pick_game_camera([(&a, false), (&b, false)].into_iter());
+        assert_eq!(picked.map(|t| t.translation().x), Some(1.0));
+    }
+
+    #[test]
+    fn no_cameras_at_all_is_not_a_panic() {
+        assert!(pick_game_camera(core::iter::empty()).is_none());
+    }
 
     #[test]
     fn the_board_puts_master_first_and_custom_buses_last() {

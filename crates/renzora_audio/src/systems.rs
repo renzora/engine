@@ -14,7 +14,27 @@ use crate::link::{AudioLink, VoiceId};
 use crate::preview::AudioPreviewState;
 use crate::runtime::{ActiveVoices, SoundCache};
 
-/// Marker component for the audio listener entity (the "ears" in 3D space).
+/// The "ears" in 3D space — an **override**, not a requirement.
+///
+/// Without one, sound is heard from the game camera (`renzora_audio::runtime`
+/// picks the same camera play mode renders through). Most games never need this
+/// component: in first person, and in anything 2D, the camera *is* the ears.
+///
+/// Add one when the two come apart:
+/// - **Third person** — the camera trails the character by several metres, so
+///   camera ears put the player's own footsteps in front of them and misjudge
+///   the distance to everything nearby.
+/// - **Strategy / orthographic** — a camera pulled fifty metres back would
+///   attenuate the whole scene past `spatial_max_distance` into silence.
+/// - **Split screen** — with several viewport cameras, which one hears is a
+///   decision, and this is where it is written down.
+///
+/// Only affects *spatial* voices: a sound with `AudioPlayer.spatial` off (and
+/// that is the default) is played at its authored volume and pan and never
+/// consults the listener at all.
+///
+/// `active: false` disables one without deleting it. With several active, the
+/// first found wins — which is arbitrary, so don't rely on it.
 ///
 /// `Reflect` + `#[reflect(Component)]` are what make it survive a save: the
 /// scene serializer walks `AppTypeRegistry`, so a component that is not

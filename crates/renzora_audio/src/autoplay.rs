@@ -13,6 +13,7 @@ use bevy::prelude::*;
 
 use crate::commands::{AudioCommand, AudioCommandQueue};
 use crate::components::AudioPlayer;
+use crate::link::AudioLink;
 
 /// Marker inserted once an entity's `AudioPlayer` has been auto-started this
 /// play session. Removed when play mode stops so the next play restarts it.
@@ -31,12 +32,25 @@ fn is_running(play_mode: &Option<Res<renzora::PlayModeState>>) -> bool {
 pub fn audio_player_autoplay(
     mut commands: Commands,
     play_mode: Option<Res<renzora::PlayModeState>>,
+    link: Res<AudioLink>,
     pending: Query<(Entity, &AudioPlayer, Option<&GlobalTransform>), Without<AudioAutoplayed>>,
     started: Query<Entity, With<AudioAutoplayed>>,
     mut queue: ResMut<AudioCommandQueue>,
     mut was_running: Local<bool>,
 ) {
     let running = is_running(&play_mode);
+
+    // Autoplay is a one-shot per session: the marker below is what stops it
+    // firing again, and it goes on whether or not the sound actually started.
+    // With no backend yet, `PlayEntity` is dropped when the queue is drained —
+    // so a frame where the plugin has not been adopted would mark every emitter
+    // as done and leave the scene permanently silent. That is not hypothetical:
+    // a shipped runtime autoplays on the very first frame, alongside the frame
+    // the backend is adopted on. Wait for ears instead of spending the shot.
+    if running && !link.is_active() {
+        *was_running = running;
+        return;
+    }
 
     if running {
         // Play any not-yet-started autoplay emitters. Entities that load in

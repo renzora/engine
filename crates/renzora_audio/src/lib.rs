@@ -136,9 +136,14 @@ impl Plugin for AudioPlugin {
                     Update,
                     runtime::adopt_backend.before(AudioSet::Commands),
                 )
+                // After adoption, so the first frame of a shipped runtime — where
+                // the scene is already spawned and the backend arrives the same
+                // frame — sees an active link rather than waiting for the next one.
                 .add_systems(
                     Update,
-                    autoplay::audio_player_autoplay.before(AudioSet::Commands),
+                    autoplay::audio_player_autoplay
+                        .after(runtime::adopt_backend)
+                        .before(AudioSet::Commands),
                 )
                 .add_systems(
                     Update,

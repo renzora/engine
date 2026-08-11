@@ -49,7 +49,15 @@ Turn on the **Spatial** option and a sound will come from the object's position 
 
 Set **Spatial Min Distance** to roughly the size of the thing making the sound (a campfire ~3 m, a whisper ~0.5 m), and **Spatial Max Distance** to how far it should still be heard.
 
-> **Don't forget the ears!** Spatial sound is silent until something in the scene is listening. Add an **AudioListener** component to your camera (or your player). It is not added for you automatically.
+**Where is it heard from?** By default, your game camera — you don't have to set anything up, and while you're editing it's the viewport camera, so you can fly around an emitter and hear it move.
+
+Add an **AudioListener** component only when the ears belong somewhere other than the camera:
+
+- **Third-person games** — the camera trails your character by a few metres, which puts their own footsteps in front of them and misjudges how close everything is. Put the listener on the character.
+- **Strategy or top-down games** — a camera fifty metres up is past most Spatial Max Distances, so the scene fades out as you zoom. Put the listener nearer the action.
+- **Split screen** — with more than one camera, this is how you say which one hears.
+
+An AudioListener wins over the camera wherever it is. Untick **Active** to disable one without deleting it. None of this affects ordinary non-spatial sounds — those play at the volume and pan you set, wherever the listener is.
 
 ## Playing sounds from a script
 
@@ -99,6 +107,24 @@ Renzora starts you with four buses:
 
 On each channel strip you can drag the **fader** to set volume (the number underneath is the gain in dB), turn the **Pan** knob to move it left or right, and use **M** (mute) and **S** (solo) to quickly silence or isolate a channel.
 
+### Laying the board out
+
+A slim strip across the top of the panel sets the board's shape. Nothing here changes your sound — it's only about how much room each channel gets and which way the channels run. The three keys sit at the right-hand end, out of the way of the channels; hover any of them for a tooltip.
+
+| Key | What it does |
+|---|---|
+| **Compact** (arrows pointing in) | Narrower strips: a smaller pan knob and no "Pan" caption, so more channels fit at once |
+| **Wide** (arrows pointing out) | Roomier strips, the default — a bigger pan knob that's easier to aim at |
+| **Columns / rows** | Flips the channels between standing columns and stacked rows. The icon shows the layout you're currently in |
+
+**Vertical** is the classic mixing desk: strips stand up side by side, and the fader is as tall as the panel allows — the longer a fader, the more precisely you can set it. This is the default.
+
+**Horizontal** lays each channel down as a row instead: the name on the left, then the pan knob, a fader and level meter lying on their sides, the dB readout and the M/S keys. It fits many more channels in a panel that's wide but short — which is the shape the Mixer usually ends up when it's docked at the bottom of the editor — and the list of rows scrolls when it outgrows the panel.
+
+Narrow the panel and a row gives ground in a fixed order: the name column shrinks first, then the fader and meter. The controls stay inside the strip's frame rather than sliding off the edge of the panel, so mute and solo remain reachable at any width you can dock the Mixer to.
+
+Master keeps its place either way: at the far right in vertical, at the bottom in horizontal, always behind a dividing rule, because everything else feeds into it.
+
 ### Adding and naming your own buses
 
 Click the **+** tile at the end of the row and you get a new channel immediately, already named (`Bus 1`, `Bus 2`, …) and already given a colour. Point an AudioPlayer's **Bus** field at it and it's wired up.
@@ -121,7 +147,7 @@ Each strip carries a colour, shown as a bar across the top of the strip and a ma
 
 ### The strip menu
 
-Right-clicking a strip is also how you reach everything that isn't a live control — at 74 pixels wide there is no room for it on the strip itself. The menu opens at your cursor and re-positions itself to stay on screen, so it works the same on a strip at the edge of the panel as one in the middle.
+Right-clicking a strip is also how you reach everything that isn't a live control — a strip is under a hundred pixels wide, so there is no room for it on the strip itself. The menu opens at your cursor and re-positions itself to stay on screen, so it works the same on a strip at the edge of the panel as one in the middle.
 
 | Menu entry | What it does |
 |---|---|
@@ -147,5 +173,5 @@ These are optional tools for more advanced projects; you don't need them to add 
 
 - **Use several clips for repeated sounds.** Footsteps and impacts sound more natural with a few variations and a little pitch/volume randomness.
 - **OGG for music, WAV for sound effects.** OGG keeps music files small; WAV plays with zero delay.
-- **Always add an AudioListener** to your camera, or 3D sound will be silent.
+- **You don't need an AudioListener** unless the ears belong somewhere other than the camera — third person, a pulled-back strategy camera, or split screen.
 - **Pre-place your audio objects** with Autoplay off, then trigger them from a script to avoid hitches when the sound first loads.
