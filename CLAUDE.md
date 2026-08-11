@@ -88,23 +88,58 @@ the container, and it is why this section now reads the way it does.
 The `bevy_dylib` sharing still applies to *distribution* plugins, which is why
 §3 still exists and why the marketplace still builds against a canonical release.
 
+### NEVER build the `dev` (debug) profile — one `target/` profile directory only
+
+**Every cargo command in this repo takes `--profile dist`, or goes through
+`cargo renzora`. No exceptions.** A bare `cargo build`/`check`/`clippy`/`test`
+defaults to the `dev` profile and creates a *second* full set of artefacts under
+`target/debug/`, and this workspace is far too large for two of them to coexist.
+
+```sh
+cargo renzora            # build + stage + run   ← the normal way to work
+cargo renzora dist       # build + stage, don't launch
+cargo check  --profile dist [-p <crate>]
+cargo clippy --profile dist [-p <crate>]
+cargo test   --profile dist -p <crate>
+```
+
+**Why this is a hard rule and not a preference.** On 2026-08-11 `target/` reached
+**314.5 GB** and filled a 929 GB disk to 1.38 GB free, because `dev` and `dist`
+artefacts had both accumulated. A full disk does not fail cleanly here — rustc
+writes **truncated `.rmeta`/`.rlib` files** and the next crate to read them fails
+with errors that look like source bugs in code nobody touched:
+
+- `renzora_inspector`: 1323 errors, every `bevy::prelude` item "not found in this
+  scope" (`default`, `BackgroundColor`, `TextColor`, `in_state`)
+- `renzora_import`: 302 errors, `cannot find module or crate 'validation'` — the
+  `gltf` submodules
+- `renzora_mixer`: a phantom `E0061` wrong-argument-count
+- `rust-lld` crashing with a stack dump instead of a diagnostic
+
+All of them vanished on a re-run once a little space came back, which is the
+tell: **a compile error in a crate you did not touch, that disappears when you
+run again, is a disk-space error.** Check `Get-PSDrive C` before believing it.
+
+If `target/` has already grown a `debug/` directory, delete it —
+`Remove-Item -Recurse -Force target\debug`. Nothing needs it.
+
 ### What runs where
 
 - ✅ **`cargo renzora`** — native build + stage + run on the host platform. The
-  normal way to work.
-- ✅ `cargo check` natively / via the editor — the fast gate while editing
-  (doesn't link).
-- ✅ `cargo clippy` natively — links nothing, so it reproduces the CI gate
-  exactly. Mirror CI's exclude list from `.github/workflows/test.yml` (notably
-  `polyanya`), and don't add `--all-targets` — CI doesn't, and the extra test
-  targets pull in vendored crates CI never lints.
-- ✅ **`cargo test -p <crate>` links and runs natively on Windows.** This used to
-  be false: the test harness pushed the `renzora` dylib's export count to ~875k
-  against the PE format's 65,535 ceiling and rust-lld hard-errored (`too many
-  exported symbols`). The C-ABI plugin work removed the dylib that caused it, so
-  the cap is no longer reached. Verified 2026-08 (`cargo test -p renzora_ember`
-  → links, runs, ~20 s warm). Prefer it for iterating — it is an order of
-  magnitude faster than a container round-trip.
+  normal way to work. Uses `--profile dist`.
+- ✅ `cargo check --profile dist` natively / via the editor — the fast gate while
+  editing (doesn't link).
+- ✅ `cargo clippy --profile dist` natively — links nothing, so it reproduces the
+  CI gate exactly. Mirror CI's exclude list from `.github/workflows/test.yml`
+  (notably `polyanya`), and don't add `--all-targets` — CI doesn't, and the extra
+  test targets pull in vendored crates CI never lints.
+- ✅ **`cargo test --profile dist -p <crate>` links and runs natively on
+  Windows.** This used to be false: the test harness pushed the `renzora` dylib's
+  export count to ~875k against the PE format's 65,535 ceiling and rust-lld
+  hard-errored (`too many exported symbols`). The C-ABI plugin work removed the
+  dylib that caused it, so the cap is no longer reached. Verified 2026-08
+  (`cargo test -p renzora_ember` → links, runs, ~20 s warm). Prefer it for
+  iterating — it is an order of magnitude faster than a container round-trip.
 - ⚠️ **`cargo test --workspace` still fails**, but not on the export cap — on two
   vendored XR crates whose *examples* never got the Bevy 0.19 `shadows_enabled`
   → `shadow_maps_enabled` rename (`bevy_oxr`'s `3d_scene`, `bevy_xr_utils`'
@@ -113,7 +148,8 @@ The `bevy_dylib` sharing still applies to *distribution* plugins, which is why
 - ✅ `renzora build [platform]` — **cross-compilation, the reason Docker is
   here.** Required for export templates and release artefacts.
 - ✅ `renzora check` / `renzora test` — reproduce CI exactly. Use when a result
-  must match what CI will say, not as the default way to build.
+  must match what CI will say, not as the default way to build. They run in the
+  container, so they cost nothing in the host's `target/`.
 - ❌ Don't "fix" a perceived link error by stripping the `dylib` crate-type or
   disabling `prefer-dynamic` — the shared `bevy_dylib`/`renzora` dylib is
   load-bearing for the distribution-plugin ABI (§3). Note that a *standalone*
@@ -365,9 +401,13 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 - **Trust the constraints.** The single shared `bevy_dylib`, the one-`TypeId`
   contract crate, and the frozen-vs-current docs split are all load-bearing. Work
   *with* them.
-- **`cargo renzora` to build and run, `cargo check`/`cargo clippy` to iterate,
-  `renzora test` to verify.** Docker is for cross-compiling export templates, not
-  for installing the engine on your own machine.
+- **`cargo renzora` to build and run, `cargo check --profile dist` /
+  `cargo clippy --profile dist` to iterate, `renzora test` to verify.** Docker is
+  for cross-compiling export templates, not for installing the engine on your own
+  machine.
+- **Never build the `dev` profile.** Every cargo command takes `--profile dist`;
+  a bare one creates a second 300 GB `target/debug/` and a full disk shows up as
+  nonsense compile errors in untouched crates, not as a disk error (§2).
 - **Put shared types in `renzora`.** Any type two crates (or a plugin and the
   host) both need crosses the dylib boundary and must have one definition.
 - **Two plugins, not one "both" plugin,** when a feature needs editor tooling +
