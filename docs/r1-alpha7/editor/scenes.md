@@ -132,7 +132,7 @@ The strip spans the viewport's full width, so nothing folds away until the tabs 
 - **Reordering** — drag a tab sideways to move it. An accent bar shows where it will land, and the move is applied when you let go. Tabs that have folded into the caret menu can be dragged too: press a row in the menu and pull it out, and it lands where you drop it in the strip (something else folds away to make room). A plain click in the menu still just activates the tab.
 - **Renaming** — double-click a tab to edit its name in place. `Enter` (or clicking away) commits, `Escape` cancels. For a saved document this **renames the file on disk**, keeping its extension and folder, and anything referencing the old path follows it — the same move the asset browser's rename performs. A brand-new unsaved tab has no file yet, so there it only changes the label. Renaming to a name that already exists in that folder is refused.
 
-A tab with unsaved edits shows a **`*`** after its name.
+A tab with unsaved edits shows a **`*`** after its name, and the **save button** in the top bar turns **amber** — it's greyed out while the active tab is clean, so the color is the at-a-glance cue that the scene has work in it you haven't written to disk.
 
 ## Saving your scene
 

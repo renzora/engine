@@ -307,8 +307,29 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
         .get_resource_mut::<SceneTabBuffers>()
         .and_then(|mut buffers| buffers.buffers.remove(&new_id));
 
+    // Where the tab we're switching to lives on disk, if anywhere. Needed by
+    // both branches below: the buffer branch to record what is now open, the
+    // disk branch to load it.
+    let target_path = world
+        .get_resource::<DocumentTabState>()
+        .and_then(|ts| ts.tabs.iter().find(|t| t.id == new_id))
+        .and_then(|t| t.scene_path.clone())
+        .and_then(|rel| {
+            world
+                .get_resource::<CurrentProject>()
+                .map(|p| p.resolve_path(&rel))
+        });
+
     if let Some(snap) = target_snapshot {
         scene_io::load_scene_from_string(world, &snap.scene_ron);
+        // A buffer restore never goes through `load_scene`, which is the only
+        // thing that records the open document in `SceneLoadState`. Left alone,
+        // that record keeps naming whichever scene was loaded from disk last —
+        // so after visiting a global scene's tab and switching away, everything
+        // downstream still believes the global scene is the open one. The
+        // autoload pass reads exactly that to avoid spawning a second copy of a
+        // global scene you already have open, and so skipped it entirely.
+        set_open_scene_path(world, target_path.as_deref());
 
         // Restore camera
         if let Some(mut orbit) = world.get_resource_mut::<OrbitCameraState>() {
@@ -330,18 +351,11 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
         // No buffer but the tab has a path: a tab restored on project load
         // (`editor_open_tabs`) whose scene hasn't been visited yet — load it
         // from disk. A pathless tab is a genuinely new "+" tab: stays empty.
-        let disk_path = world
-            .get_resource::<DocumentTabState>()
-            .and_then(|ts| ts.tabs.iter().find(|t| t.id == new_id))
-            .and_then(|t| t.scene_path.clone())
-            .and_then(|rel| {
-                world
-                    .get_resource::<CurrentProject>()
-                    .map(|p| p.resolve_path(&rel))
-            });
-        if let Some(path) = disk_path {
+        if let Some(path) = target_path {
             scene_io::load_scene(world, &path);
             extract_orbit_from_scene_camera(world);
+        } else {
+            set_open_scene_path(world, None);
         }
     }
 
@@ -352,6 +366,30 @@ fn handle_tab_switch(world: &mut World, mut live_scene: Local<Option<u64>>) {
         "Scene",
         format!("Switched scene tab {} -> {}", save_id, new_id),
     );
+}
+
+/// Point `SceneLoadState` at the document that is now open, for the paths that
+/// swap scenes without going through [`scene_io::load_scene`].
+///
+/// `None` for a tab that has no file behind it yet — a fresh "+" tab is not a
+/// scene anyone can name, and claiming it is the previous one is the same lie
+/// this exists to stop telling.
+fn set_open_scene_path(world: &mut World, path: Option<&std::path::Path>) {
+    let Some(mut state) = world.get_resource_mut::<scene_io::SceneLoadState>() else {
+        return;
+    };
+    match path {
+        Some(path) => {
+            state.current_path = Some(path.to_string_lossy().to_string());
+            state.phase = scene_io::SceneLoadPhase::Ready;
+            state.progress = 1.0;
+        }
+        None => {
+            state.current_path = None;
+            state.phase = scene_io::SceneLoadPhase::Idle;
+            state.progress = 0.0;
+        }
+    }
 }
 
 // ============================================================================

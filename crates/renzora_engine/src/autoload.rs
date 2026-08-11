@@ -88,6 +88,19 @@ pub fn load_autoloads(world: &mut World) {
         .and_then(|s| s.current_path.clone())
         .map(std::path::PathBuf::from);
 
+    // `load_scene` records what it just loaded in `SceneLoadState`, which is the
+    // engine's answer to "which document is open". A global scene is not a
+    // document — it is loaded *alongside* one — so the answer is snapshotted
+    // here and put back at the end of the pass.
+    //
+    // Without that, the load leaves `current_path` naming the global scene, and
+    // the `open_scene` guard below then reads its own footprint on the next
+    // Play: the scene looks like the one already open, is skipped, and a global
+    // scene works exactly once per session and never again.
+    let load_state = world
+        .get_resource::<scene_io::SceneLoadState>()
+        .map(|s| (s.phase.clone(), s.current_path.clone(), s.progress));
+
     for path in resolved {
         if let Some(open) = &open_scene {
             if scene_io::paths_equal(open, &path) {
@@ -155,6 +168,14 @@ pub fn load_autoloads(world: &mut World) {
             count
         );
     }
+
+    if let Some((phase, current_path, progress)) = load_state {
+        if let Some(mut state) = world.get_resource_mut::<scene_io::SceneLoadState>() {
+            state.phase = phase;
+            state.current_path = current_path;
+            state.progress = progress;
+        }
+    }
 }
 
 /// Carry `Persistent` onto children that appear *after* the autoload pass.
@@ -199,6 +220,38 @@ mod tests {
         // and they would never come back for the rest of the session.
         tracked.paths.clear();
         assert!(!tracked.is_resident(&p));
+    }
+
+    /// `load_scene` stamps whatever it loaded over `SceneLoadState`, and it does
+    /// so before it has even checked the file exists. Left in place, that makes
+    /// the pass's own "is this already the open scene?" guard read its own
+    /// footprint on the next Play and skip every global scene from then on.
+    #[test]
+    fn an_autoload_leaves_the_open_document_alone() {
+        let mut world = World::new();
+        let config = renzora::core::ProjectConfig {
+            autoload: vec!["scenes/globals.bsn".to_string()],
+            ..Default::default()
+        };
+        world.insert_resource(CurrentProject {
+            path: PathBuf::from("/proj"),
+            config,
+        });
+        world.insert_resource(scene_io::SceneLoadState {
+            phase: scene_io::SceneLoadPhase::Ready,
+            current_path: Some("/proj/scenes/world.bsn".to_string()),
+            progress: 1.0,
+        });
+
+        load_autoloads(&mut world);
+
+        let state = world.resource::<scene_io::SceneLoadState>();
+        assert_eq!(
+            state.current_path.as_deref(),
+            Some("/proj/scenes/world.bsn"),
+            "the global scene overwrote the record of which document is open"
+        );
+        assert_eq!(state.phase, scene_io::SceneLoadPhase::Ready);
     }
 }
 
