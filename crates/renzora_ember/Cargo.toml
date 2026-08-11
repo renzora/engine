@@ -53,7 +53,7 @@ renzora_text_mesh = { path = "../renzora_text_mesh" }
 arboard = "3"
 # Markdown image downloads (`![alt](url)`): fetch + decode on a background
 # thread, register as bevy `Image` assets. wasm builds no-op the download.
-ureq = "3"
+renzora_net = { path = "../renzora_net" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 [dev-dependencies]

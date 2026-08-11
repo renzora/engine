@@ -241,6 +241,13 @@ pub const VERSION_MAJOR: u32 = 4;
 ///          anticipated. It is boundary surface rather than a `crate::audio`
 ///          domain for the reason `add_script_backend` is: the host calls into
 ///          the backend and needs an answer, which a command queue cannot say.
+/// 9 -> 10 appended `add_net_backend`, [`NetBackendDesc`], [`NetCall`],
+///          [`NetOp`] and [`NetStatus`] — the HTTP client as a plugin, on the
+///          same reasoning as the line above. It is the one that finally takes
+///          rustls, ring and the whole TLS stack out of the engine's dependency
+///          graph: nothing in the binary makes a network request any more, it
+///          asks whoever registered here. See [`crate::net`], and `sys/net.rs`
+///          for why this is not the same thing as [`crate::http`].
 ///
 /// ## MAJOR 2 and 3, for the record
 ///
@@ -272,7 +279,7 @@ pub const VERSION_MAJOR: u32 = 4;
 /// crate's own semver, and only a change to the *mechanism* moves this. A plugin
 /// that wants audio some day should not have to declare a minimum ABI that also
 /// encodes animation's history.
-pub const VERSION_MINOR: u32 = 9;
+pub const VERSION_MINOR: u32 = 10;
 
 /// The single symbol a plugin cdylib must export. See [`ExtensionInit`].
 pub const INIT_SYMBOL: &str = "renzora_plugin_init";
@@ -2765,6 +2772,27 @@ interface! {
     /// speakers. The host keeps the first registration and logs the second.
     add_audio_backend:
         unsafe extern "C" fn(host: *mut Host, desc: *const AudioBackendDesc) -> RegisterStatus,
+
+    // ── Added in MINOR 4.10 ───────────────────────────────────────────────
+    // NOTHING MAY BE INSERTED ABOVE THIS POINT. A new function goes here, at
+    // the very end, under a new header. See `boundary_layouts_are_pinned` in
+    // `tests/abi_order.rs`.
+    /// Register the network backend. See [`NetBackendDesc`].
+    ///
+    /// The third entry here with the same justification as
+    /// [`Self::add_script_backend`] and [`Self::add_audio_backend`]: the host
+    /// calls into the backend and needs the answer back. Every domain riding
+    /// [`CommandKind::Service`] is a plugin asking the engine for something,
+    /// which a queued opaque payload expresses perfectly; "fetch this URL and
+    /// hand me the bytes" is the engine asking the plugin, and a command queue
+    /// has no way to say it.
+    ///
+    /// One backend at a time, like audio and unlike scripting. Two languages
+    /// coexist because a script names one by its file extension; two HTTP
+    /// clients have no such key, and picking one arbitrarily per request would
+    /// mean a session's cookies and connection pool split across two of them.
+    add_net_backend:
+        unsafe extern "C" fn(host: *mut Host, desc: *const NetBackendDesc) -> RegisterStatus,
 }
 
 /// How the inspector should edit one numeric field.
@@ -3250,3 +3278,10 @@ unsafe impl Sync for ScriptBackendDesc {}
 // as one in this file is; see the note at the top of that test.
 mod audio;
 pub use audio::*;
+
+// The network boundary, in `sys/net.rs` for the same reason — five self-contained
+// types, and `sys` is long enough. Note that `net` and `crate::http` are the two
+// directions of one protocol: `http` is a plugin asking the host to fetch, this
+// is the host asking a plugin to. See `sys/net.rs` for why both exist.
+mod net;
+pub use net::*;

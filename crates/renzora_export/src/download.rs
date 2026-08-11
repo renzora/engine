@@ -5,7 +5,6 @@
 //! runtime template directory. Desktop assets are zip archives that get
 //! extracted alongside the editor; mobile/web assets are saved as-is.
 
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex};
 
@@ -76,16 +75,12 @@ pub struct ReleaseInfo {
 
 /// Fetch the latest release manifest and figure out which platforms have assets.
 pub fn fetch_release_info() -> Result<ReleaseInfo, String> {
-    let text = ureq::get(RELEASE_API)
+    let manifest: ReleaseManifest = renzora_net::Request::get(RELEASE_API)
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
-        .call()
+        .send()
         .map_err(|e| format!("Failed to fetch release: {}", e))?
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read release body: {}", e))?;
-
-    let manifest: ReleaseManifest = serde_json::from_str(&text)
+        .json()
         .map_err(|e| format!("Failed to parse release manifest: {}", e))?;
 
     let mut available = std::collections::HashSet::new();
@@ -129,16 +124,12 @@ fn download_and_install(
 ) -> Result<String, String> {
     let asset_name = release_asset_name(platform);
 
-    let manifest_text = ureq::get(RELEASE_API)
+    let manifest: ReleaseManifest = renzora_net::Request::get(RELEASE_API)
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/vnd.github+json")
-        .call()
+        .send()
         .map_err(|e| format!("Failed to fetch release: {}", e))?
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read release body: {}", e))?;
-
-    let manifest: ReleaseManifest = serde_json::from_str(&manifest_text)
+        .json()
         .map_err(|e| format!("Failed to parse release manifest: {}", e))?;
 
     let asset = manifest
@@ -159,17 +150,14 @@ fn download_and_install(
         asset.size as f64 / 1_000_000.0
     )));
 
-    let mut response = ureq::get(&asset.browser_download_url)
+    let response = renzora_net::Request::get(&asset.browser_download_url)
         .header("User-Agent", USER_AGENT)
-        .call()
+        .send()
         .map_err(|e| format!("Download failed: {}", e))?;
-
-    let mut bytes = Vec::with_capacity(asset.size as usize);
-    response
-        .body_mut()
-        .as_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("Read failed: {}", e))?;
+    if !response.is_ok() {
+        return Err(format!("Download failed: HTTP {}", response.status));
+    }
+    let bytes = response.body;
 
     std::fs::create_dir_all(runtime_dir)
         .map_err(|e| format!("Failed to create runtime dir: {}", e))?;

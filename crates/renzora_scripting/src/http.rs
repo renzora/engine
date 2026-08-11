@@ -2,7 +2,7 @@
 //!
 //! Scripts kick off a request (which becomes a `ScriptCommand::HttpRequest`);
 //! `apply_script_commands` spawns a background thread running the blocking
-//! `ureq` client and pushes the result into [`HttpInbox`]. The execution loop
+//! `renzora_net` client and pushes the result into [`HttpInbox`]. The execution loop
 //! drains the inbox each frame and fires every script's `on_http(name, status,
 //! body)` hook (broadcast, like `on_rpc` / `on_ui`). The handling script
 //! typically parses the body (`json_parse`) and stashes a value in a variable,
@@ -157,16 +157,37 @@ impl HttpInbox {
     }
 }
 
-/// Whether the caller supplied their own `Content-Type`.
+/// Build the request every path below sends.
 ///
-/// The JSON default below is a convenience for the common case, but sending it
-/// *as well* as the caller's would be two of the same header — which some
-/// servers reject outright and others resolve unpredictably.
+/// The JSON default is a convenience for the common case, but sending it *as
+/// well* as a caller's own `Content-Type` would be two of the same header —
+/// which some servers reject outright and others resolve unpredictably. So it
+/// is applied only when the caller supplied none.
 #[cfg(all(not(target_arch = "wasm32"), feature = "script_http"))]
-fn has_content_type(headers: &[(String, String)]) -> bool {
-    headers
+fn build(
+    method: &str,
+    url: &str,
+    body: Option<&str>,
+    headers: &[(String, String)],
+) -> renzora_net::Request {
+    let mut request = renzora_net::Request::new(method, url);
+    let has_content_type = headers
         .iter()
-        .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+        .any(|(k, _)| k.eq_ignore_ascii_case("content-type"));
+    if let Some(body) = body.filter(|_| method != "GET") {
+        request = if has_content_type {
+            // The caller's header is added below; this only carries the bytes.
+            let mut r = request;
+            r.body = body.as_bytes().to_vec();
+            r
+        } else {
+            request.body("application/json", body.as_bytes())
+        };
+    }
+    for (k, v) in headers {
+        request = request.header(k, v);
+    }
+    request
 }
 
 /// Push one chunk onto the shared queue. Separate so both the success and error
@@ -192,10 +213,13 @@ fn push_chunk(
 /// Perform one blocking request. `(status, body)`; `status == 0` on transport
 /// error with the error text in `body`.
 ///
-/// Only compiled with the `script_http` feature (native): it's the sole user of
-/// `ureq`, so gating it here lets the lean exporter drop the whole rustls/ring
-/// TLS stack (~1 MiB) for a game that issues no script HTTP requests. The
-/// `HttpInbox`/`HttpResult` types above stay so `systems::` need no `#[cfg]`.
+/// Only compiled with the `script_http` feature (native). The TLS stack no
+/// longer lives in this crate — it is `plugins/http`'s, reached through
+/// `renzora_net` — so what the feature strips now is the request-building code
+/// and the crate's dependency on `renzora_net`, not a megabyte of rustls. It is
+/// kept because the lean exporter's `script_http` capability is what tells an
+/// exported game it needs no HTTP plugin at all. The `HttpInbox`/`HttpResult`
+/// types above stay so `systems::` need no `#[cfg]`.
 #[cfg(all(not(target_arch = "wasm32"), feature = "script_http"))]
 fn run_blocking(
     method: &str,
@@ -203,41 +227,11 @@ fn run_blocking(
     body: Option<&str>,
     headers: &[(String, String)],
 ) -> (u16, String) {
-    let result = match method.to_ascii_uppercase().as_str() {
-        "POST" => {
-            let mut r = ureq::post(url);
-            if !has_content_type(headers) {
-                r = r.header("Content-Type", "application/json");
-            }
-            for (k, v) in headers {
-                r = r.header(k, v);
-            }
-            r.send(body.unwrap_or("").as_bytes())
-        }
-        "PUT" => {
-            let mut r = ureq::put(url);
-            if !has_content_type(headers) {
-                r = r.header("Content-Type", "application/json");
-            }
-            for (k, v) in headers {
-                r = r.header(k, v);
-            }
-            r.send(body.unwrap_or("").as_bytes())
-        }
-        _ => {
-            let mut r = ureq::get(url);
-            for (k, v) in headers {
-                r = r.header(k, v);
-            }
-            r.call()
-        }
-    };
-    match result {
-        Ok(resp) => {
-            let status = resp.status().as_u16();
-            let body = resp.into_body().read_to_string().unwrap_or_default();
-            (status, body)
-        }
+    // A status is NOT an error here, and a script sees it as one only if it
+    // checks: `renzora_net` reports 4xx as a successful request, which is what
+    // lets `on_http` read the error body an API sends with its 400.
+    match build(method, url, body, headers).send() {
+        Ok(response) => (response.status, response.text()),
         Err(e) => (0, format!("{e}")),
     }
 }
@@ -263,66 +257,29 @@ fn run_streaming(
     sink: &Arc<Mutex<Vec<HttpResult>>>,
     headers: &[(String, String)],
 ) {
-    use std::io::Read;
-
-    let result = match method.to_ascii_uppercase().as_str() {
-        "POST" => {
-            let mut r = ureq::post(url);
-            if !has_content_type(headers) {
-                r = r.header("Content-Type", "application/json");
-            }
-            for (k, v) in headers {
-                r = r.header(k, v);
-            }
-            r.send(body.unwrap_or("").as_bytes())
-        }
-        "PUT" => {
-            let mut r = ureq::put(url);
-            if !has_content_type(headers) {
-                r = r.header("Content-Type", "application/json");
-            }
-            for (k, v) in headers {
-                r = r.header(k, v);
-            }
-            r.send(body.unwrap_or("").as_bytes())
-        }
-        _ => {
-            let mut r = ureq::get(url);
-            for (k, v) in headers {
-                r = r.header(k, v);
-            }
-            r.call()
-        }
-    };
-
-    let resp = match result {
-        Ok(r) => r,
+    let mut stream = match build(method, url, body, headers).send_stream() {
+        Ok(s) => s,
         // Never reached a response: one Error chunk carrying the transport error.
         Err(e) => return push_chunk(sink, callback, 0, format!("{e}"), ChunkKind::Error),
     };
 
-    let status = resp.status().as_u16();
-    let mut reader = resp.into_body().into_reader();
-    let mut buf = [0u8; 8192];
-    loop {
-        match reader.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                // Lossy: a chunk boundary can land mid-codepoint, and refusing
-                // the whole stream over a split character would be worse than
-                // one replacement char. Framing-sensitive callers should send
-                // bytes they can re-split, which both NDJSON and SSE are.
-                let text = String::from_utf8_lossy(&buf[..n]).into_owned();
-                push_chunk(sink, callback, status, text, ChunkKind::Data);
-            }
-            // Mid-stream failure. The status is already known and worth keeping
-            // — a 200 that died halfway is a different problem from a 500.
-            Err(e) => {
-                return push_chunk(sink, callback, status, format!("{e}"), ChunkKind::Error)
-            }
-        }
+    // Every exit path emits exactly one terminal chunk, because a consumer polls
+    // until it sees one — a path that returned without it would leave a script
+    // waiting on a stream that already finished.
+    for chunk in &mut stream {
+        // Lossy: a chunk boundary can land mid-codepoint, and refusing the whole
+        // stream over a split character would be worse than one replacement
+        // char. Framing-sensitive callers should send bytes they can re-split,
+        // which both NDJSON and SSE are.
+        push_chunk(sink, callback, chunk.status, chunk.text(), ChunkKind::Data);
     }
-    push_chunk(sink, callback, status, String::new(), ChunkKind::End);
+    let status = stream.status();
+    match stream.error() {
+        // Mid-stream failure. The status is already known and worth keeping — a
+        // 200 that died halfway is a different problem from a 500.
+        Some(e) => push_chunk(sink, callback, status, format!("{e}"), ChunkKind::Error),
+        None => push_chunk(sink, callback, status, String::new(), ChunkKind::End),
+    }
 }
 
 /// Streaming counterpart to the disabled `run_blocking` below.
@@ -346,7 +303,7 @@ fn run_streaming(
 
 /// Fallback when script HTTP is unavailable — wasm (no native client yet) or the
 /// `script_http` feature stripped by the lean export. `http_get`/`http_post`
-/// then resolve to this disabled response instead of pulling in `ureq`.
+/// then resolve to this disabled response instead of reaching the network.
 #[cfg(any(target_arch = "wasm32", not(feature = "script_http")))]
 fn run_blocking(
     _method: &str,

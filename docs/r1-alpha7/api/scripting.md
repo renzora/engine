@@ -337,6 +337,8 @@ end
 
 **Lua only.** Requests are asynchronous (native only); responses arrive at `on_http` on a later frame, tagged by the callback name.
 
+> **Needs a network backend plugin** (`plugins/http`). The engine has no HTTP client of its own — see [Network backends](../extending/network-backends.md). With none present a request answers immediately with `status == 0` and an error body, rather than hanging.
+
 ```lua
 function on_ready()
     http_get("https://example.com/score", "score")
@@ -355,6 +357,8 @@ end
 |----------|-------------|
 | `http_get(url [, callback])` | Fire a GET (callback defaults to `"get"`) |
 | `http_post(url, body [, callback])` | POST a JSON body string (callback defaults to `"post"`) |
+
+An HTTP error status is **not** a failure here: a 404 arrives at `on_http` with `status == 404` and whatever body the server sent, which is how you read an API's own error message. Only `status == 0` means the request never reached a server, and `body` is then the transport error.
 | `json_parse(str)` | Decode a JSON string into a table/value (`nil` on error) |
 
 ## Assets

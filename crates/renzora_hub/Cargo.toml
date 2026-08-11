@@ -24,7 +24,7 @@ crossbeam-channel = "0.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }
-ureq = "3"
+renzora_net = { path = "../renzora_net" }
 # Native file pickers for the asset-uploader panel (main file, cover, screenshots,
 # audio previews) — same dependency the profile avatar/cover upload uses.
 rfd = "0.15"

@@ -71,18 +71,19 @@ pub(crate) fn absolute_url(url: &str) -> String {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn start_download(url: String, tx: Sender<Result<Downloaded, String>>) {
-    use std::io::Read;
     std::thread::spawn(move || {
         let result = (|| -> Result<Downloaded, String> {
-            let response = ureq::get(&url).call().map_err(|_| url.clone())?;
-            let mut bytes = Vec::new();
-            response
-                .into_body()
-                .into_reader()
-                .take(10 * 1024 * 1024)
-                .read_to_end(&mut bytes)
+            // The 10 MiB cap is enforced by the backend as the body arrives,
+            // not after: this URL came from a server, and a limit applied once
+            // the bytes are already in memory protects nothing.
+            let response = renzora_net::Request::get(&url)
+                .max_bytes(10 * 1024 * 1024)
+                .send()
                 .map_err(|_| url.clone())?;
-            let img = image::load_from_memory(&bytes).map_err(|_| url.clone())?;
+            if !response.is_ok() {
+                return Err(url.clone());
+            }
+            let img = image::load_from_memory(&response.body).map_err(|_| url.clone())?;
             let rgba = img.to_rgba8();
             let (width, height) = rgba.dimensions();
             Ok(Downloaded { url: url.clone(), rgba: rgba.into_raw(), width, height })

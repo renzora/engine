@@ -124,6 +124,23 @@ script = ["std"]
 # from a thread the game cannot see.
 audio = ["std"]
 
+# Networking is audio's shape again: the host calls into the backend and needs
+# the bytes back, so it too costs an `Interface` function and a
+# `sys::VERSION_MINOR` bump (4.10).
+#
+# The odd thing about this one is that the engine used to do it itself. `ureq`
+# plus the rustls/ring TLS stack under it is twenty packages every build of the
+# engine compiled — including a 2D mobile game that never makes a request — and
+# behind this feature they are the plugin's dependencies instead. That is also
+# what makes the client replaceable: `fetch` on the web, the platform's own
+# certified library on a console, a studio's proxy client behind a firewall.
+#
+# Requires `std` for the same reasons `audio` does, plus one of its own: a
+# network backend owns worker threads and wants the panic firewall. Note the
+# distinction from the `http` feature above — that one is a plugin asking the
+# ENGINE to fetch something, this one is the engine asking a plugin.
+net = ["std"]
+
 # The ENGINE opts into `host`, which adds the other side of the boundary: the
 # interface implementation, the dynamic-query dispatcher, and the `dlopen`
 # loader. Split by feature rather than by crate so a plugin author depends on

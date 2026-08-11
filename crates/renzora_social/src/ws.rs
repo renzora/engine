@@ -356,8 +356,9 @@ fn spawn_worker(token: String, tx: Sender<SocialWsEvent>, shutdown: Arc<AtomicBo
 /// renzora.com sits behind Cloudflare, whose managed WAF rules block requests
 /// that arrive with no `User-Agent` at all — the handshake never reaches axum
 /// and comes back as a 403 HTML error page instead of the 401 the route would
-/// return for a bad token. Our `ureq` calls are fine because ureq sends its own
-/// UA by default; tungstenite sends none, so we set one here.
+/// return for a bad token. Our `renzora_net` calls are fine because the HTTP
+/// plugin sends its own UA by default; tungstenite sends none, so we set one
+/// here.
 ///
 /// The error is boxed because `tungstenite::Error` is 136 bytes — large enough
 /// that clippy's `result_large_err` (a `-D warnings` failure in CI) rejects

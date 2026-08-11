@@ -12,7 +12,6 @@
 //! Detection order (cheapest first): cargo already on `PATH` → a toolchain we
 //! provisioned on a previous run → fresh `rustup` bootstrap.
 
-use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -173,16 +172,17 @@ fn bootstrap_rustup(
 
     progress("Downloading rustup-init…".into());
     let url = format!("https://static.rust-lang.org/rustup/dist/{triple}/{init_name}");
-    let mut resp = ureq::get(&url)
+    let response = renzora_net::Request::get(&url)
         .header("User-Agent", "renzora-editor")
-        .call()
+        .send()
         .map_err(|e| format!("Failed to download rustup-init: {e}"))?;
-    let mut bytes = Vec::new();
-    resp.body_mut()
-        .as_reader()
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("Failed to read rustup-init: {e}"))?;
-    std::fs::write(&init_path, &bytes)
+    if !response.is_ok() {
+        return Err(format!(
+            "Failed to download rustup-init: HTTP {}",
+            response.status
+        ));
+    }
+    std::fs::write(&init_path, &response.body)
         .map_err(|e| format!("Failed to write rustup-init: {e}"))?;
 
     // rustup-init must be executable on Unix.

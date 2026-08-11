@@ -22,7 +22,6 @@
 //! [Ollama]: https://ollama.com
 
 use std::hash::{Hash, Hasher};
-use std::io::BufRead;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Mutex;
 
@@ -988,19 +987,15 @@ fn drain_models(mut chat: ResMut<AiChat>) {
 
 fn fetch_models(preset: &Preset, url: &str, key: &str) -> Result<Vec<String>, String> {
     let endpoint = format!("{url}{}", preset.models_path);
-    let mut req = agent().get(&endpoint);
-    req = authorize(req, preset.protocol, key);
-    let mut res = req
-        .call()
+    let req = authorize(renzora_net::Request::get(&endpoint), preset.protocol, key);
+    let res = req
+        .send()
         .map_err(|e| format!("Can't reach {endpoint}: {e}"))?;
-    let body = res
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Bad response from {endpoint}: {e}"))?;
-    if res.status().as_u16() >= 400 {
+    let body = res.text();
+    if res.status >= 400 {
         return Err(format!(
             "HTTP {} from {endpoint}: {}",
-            res.status(),
+            res.status,
             api_error_message(&body)
         ));
     }
@@ -1340,12 +1335,16 @@ shell); its real content is not visible to a plain fetch.]",
     };
 
     let req = authorize(
-        agent().post(&endpoint).header("Content-Type", "application/json"),
+        renzora_net::Request::post(&endpoint)
+            .body("application/json", payload.to_string())
+            // A model can think for a long time before its first token, and the
+            // default would cut a slow local Ollama off mid-answer.
+            .timeout(std::time::Duration::from_secs(10 * 60)),
         preset.protocol,
         &key,
     );
-    let mut response = match req.send(payload.to_string().as_bytes()) {
-        Ok(r) => r,
+    let mut stream = match req.send_stream() {
+        Ok(s) => s,
         Err(e) => {
             let _ = tx.send(StreamEvent::Error(format!(
                 "Can't reach {endpoint} ({e}). Is the server running?"
@@ -1354,62 +1353,102 @@ shell); its real content is not visible to a plain fetch.]",
         }
     };
 
-    // Surface the server's own error message (e.g. Ollama's
-    // "model not found") instead of a bare status code.
-    if response.status().as_u16() >= 400 {
-        let status = response.status();
-        let body = response
-            .body_mut()
-            .read_to_string()
-            .unwrap_or_default();
+    // Surface the server's own error message (e.g. Ollama's "model not found")
+    // instead of a bare status code. The status only exists once the first piece
+    // has arrived, so this reads one and then decides -- and on an error it keeps
+    // reading, because the message is in the body.
+    let Some(first) = stream.next() else {
+        let _ = tx.send(match stream.error() {
+            Some(e) => StreamEvent::Error(format!("Can't reach {endpoint} ({e}).")),
+            None => StreamEvent::Done,
+        });
+        return;
+    };
+    if first.status >= 400 {
+        let mut body = first.text();
+        for chunk in &mut stream {
+            body.push_str(&chunk.text());
+        }
         let _ = tx.send(StreamEvent::Error(format!(
-            "HTTP {status}: {}",
+            "HTTP {}: {}",
+            first.status,
             api_error_message(&body)
         )));
         return;
     }
 
-    let reader = std::io::BufReader::new(response.into_body().into_reader());
-    for line in reader.lines() {
-        let Ok(line) = line else { break };
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    // Chunks are whatever each read returned, so a frame can straddle two of
+    // them: the transport is deliberately dumb about framing (see the boundary
+    // docs) because NDJSON and SSE end a frame differently, and reassembling
+    // lines is what that leaves the consumer to do. It has to be done -- a token
+    // split across a chunk boundary would otherwise be dropped silently.
+    let mut pending = String::new();
+    let mut finished = false;
+    let mut chunks = std::iter::once(first).chain(&mut stream);
+    loop {
+        match chunks.next() {
+            Some(chunk) => pending.push_str(&chunk.text()),
+            // End of stream. A server that omits the newline after its last
+            // frame would otherwise have that frame silently dropped, so the
+            // separator is supplied here and the remainder parsed as a line.
+            None if pending.is_empty() => break,
+            None => pending.push(LF),
         }
-        // OpenAI-style SSE frames are `data: {json}` / `data: [DONE]`;
-        // Ollama is bare NDJSON. Normalize to the JSON part.
-        let json_part = line.strip_prefix("data:").map(str::trim).unwrap_or(line);
-        if json_part == "[DONE]" {
-            break;
-        }
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(json_part) else {
-            continue;
-        };
-        if let Some(err) = value["error"].as_str() {
-            let _ = tx.send(StreamEvent::Error(format!("Server: {err}")));
-            return;
-        }
-        if let Some(err) = value["error"]["message"].as_str() {
-            let _ = tx.send(StreamEvent::Error(format!("Server: {err}")));
-            return;
-        }
-        let delta = match preset.protocol {
-            Protocol::Ollama => value["message"]["content"].as_str(),
-            Protocol::OpenAi => value["choices"][0]["delta"]["content"].as_str(),
-            // Messages API: `content_block_delta` frames carry `text_delta`s.
-            Protocol::Anthropic => value["delta"]["text"].as_str(),
-        };
-        if let Some(delta) = delta {
-            if !delta.is_empty() && tx.send(StreamEvent::Delta(delta.to_string())).is_err() {
-                return; // panel gone; stop streaming
+        while let Some(newline) = pending.find(LF) {
+            let line: String = pending.drain(..=newline).collect();
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // OpenAI-style SSE frames are `data: {json}` / `data: [DONE]`;
+            // Ollama is bare NDJSON. Normalize to the JSON part.
+            let json_part = line.strip_prefix("data:").map(str::trim).unwrap_or(line);
+            if json_part == "[DONE]" {
+                finished = true;
+                break;
+            }
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(json_part) else {
+                continue;
+            };
+            if let Some(err) = value["error"].as_str() {
+                let _ = tx.send(StreamEvent::Error(format!("Server: {err}")));
+                return;
+            }
+            if let Some(err) = value["error"]["message"].as_str() {
+                let _ = tx.send(StreamEvent::Error(format!("Server: {err}")));
+                return;
+            }
+            let delta = match preset.protocol {
+                Protocol::Ollama => value["message"]["content"].as_str(),
+                Protocol::OpenAi => value["choices"][0]["delta"]["content"].as_str(),
+                // Messages API: `content_block_delta` frames carry `text_delta`s.
+                Protocol::Anthropic => value["delta"]["text"].as_str(),
+            };
+            if let Some(delta) = delta {
+                if !delta.is_empty() && tx.send(StreamEvent::Delta(delta.to_string())).is_err() {
+                    return; // panel gone; stop streaming
+                }
+            }
+            // End-of-turn: Ollama sets `done`; Anthropic emits `message_stop`
+            // (OpenAI-style streams end with `data: [DONE]`, handled above).
+            if value["done"].as_bool() == Some(true)
+                || value["type"].as_str() == Some("message_stop")
+            {
+                finished = true;
+                break;
             }
         }
-        // End-of-turn: Ollama sets `done`; Anthropic emits `message_stop`
-        // (OpenAI-style streams end with `data: [DONE]`, handled above).
-        if value["done"].as_bool() == Some(true)
-            || value["type"].as_str() == Some("message_stop")
-        {
+        if finished {
             break;
+        }
+    }
+    // A stream that died halfway delivers what it got and then stops, which is
+    // indistinguishable from a clean finish unless we ask. Only worth reporting
+    // when the protocol did not already say it was done.
+    if !finished {
+        if let Some(e) = stream.error() {
+            let _ = tx.send(StreamEvent::Error(format!("Stream ended early: {e}")));
+            return;
         }
     }
     let _ = tx.send(StreamEvent::Done);
@@ -1450,17 +1489,17 @@ const DOCS_CHAR_BUDGET: usize = 9000;
 
 /// Fetch a URL's raw body (HTML).
 fn fetch_raw(url: &str) -> Result<String, String> {
-    let mut res = agent()
-        .get(url)
+    let res = renzora_net::Request::get(url)
         .header("User-Agent", "renzora-ai-chat/0.1")
-        .call()
+        // A crawled page feeds a context budget of a few thousand characters,
+        // so there is no reason to accept a body orders of magnitude larger.
+        .max_bytes(8 * 1024 * 1024)
+        .send()
         .map_err(|e| format!("{e}"))?;
-    if res.status().as_u16() >= 400 {
-        return Err(format!("HTTP {}", res.status()));
+    if res.status >= 400 {
+        return Err(format!("HTTP {}", res.status));
     }
-    res.body_mut()
-        .read_to_string()
-        .map_err(|e| format!("unreadable body: {e}"))
+    Ok(res.text())
 }
 
 /// Truncate on a char boundary and say so — a silently cut page is another
@@ -1826,13 +1865,17 @@ fn html_to_text(html: &str) -> String {
     text.trim().to_string()
 }
 
+/// The line separator streamed frames are split on. NDJSON and SSE both end
+/// a frame with it; a bare `\r` is left on the line and trimmed off there.
+const LF: char = '\n';
+
 /// Attach the protocol's auth headers. Anthropic uses `x-api-key` + a
 /// pinned `anthropic-version`; everything else is a Bearer token.
-fn authorize<B>(
-    req: ureq::RequestBuilder<B>,
+fn authorize(
+    req: renzora_net::Request,
     protocol: Protocol,
     key: &str,
-) -> ureq::RequestBuilder<B> {
+) -> renzora_net::Request {
     match protocol {
         Protocol::Anthropic => req
             .header("x-api-key", key)
@@ -1840,15 +1883,6 @@ fn authorize<B>(
         _ if !key.is_empty() => req.header("Authorization", &format!("Bearer {key}")),
         _ => req,
     }
-}
-
-/// An agent that returns 4xx/5xx responses instead of erroring, so error
-/// bodies (which carry the useful message) stay readable.
-fn agent() -> ureq::Agent {
-    ureq::config::Config::builder()
-        .http_status_as_error(false)
-        .build()
-        .new_agent()
 }
 
 /// Extract the human-readable message from an API error body:

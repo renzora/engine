@@ -180,6 +180,15 @@ pub mod script;
 #[cfg(feature = "audio")]
 pub mod audio;
 
+/// Networking: implement the HTTP client the engine fetches through.
+///
+/// Opt in with `features = ["net"]`. Scripting's shape rather than a domain's —
+/// the host calls *into* the plugin here — so like [`script`] and [`audio`] this
+/// one does touch [`sys`]. Not to be confused with [`http`], which is the same
+/// protocol pointed the other way; see the module docs for both.
+#[cfg(feature = "net")]
+pub mod net;
+
 #[cfg(feature = "host")]
 pub mod host;
 

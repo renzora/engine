@@ -260,14 +260,18 @@ bevy = { version = "0.19", default-features = false, features = [
     # DROPPED: `asset_processor` + `compressed_image_saver` (Bevy's offline asset
     # pipeline — Renzora has its own `.rmip` texture pipeline and never enabled
     # Bevy's processor at runtime) and `web_asset_cache` (nothing reads it).
-    # `http`/`https` are KEPT for the editor (marketplace/asset browsing); the
-    # `remote_assets` capability strips them from every game export, and doing so
-    # was verified to take the whole ureq/rustls/ring/webpki-roots stack with it.
-    # If TLS still shows up in an export log, the source is `script_http` or
-    # `renzora_network`, not this.
-    # `file_watcher` KEPT pending the same check: the theme/shader hot-reload uses
-    # its own mtime polling, so Bevy's watcher may be unused.
-    "file_watcher", "http", "https",
+    # DROPPED: `http`/`https` (Bevy's URL asset source). They were kept "for the
+    # editor (marketplace/asset browsing)", but nothing ever loaded an asset by
+    # URL through `AssetServer` — the marketplace, thumbnails, sign-in and the
+    # update check all went through the engine's own client, and that client is
+    # now `plugins/http` behind the `renzora_net` boundary. Keeping these was
+    # therefore paying `bevy_asset`'s `ureq` + rustls/ring/webpki-roots (~20
+    # packages) for a code path with no callers. The `remote_assets` capability
+    # is retained in `renzora_export` so a game that DOES want URL assets can
+    # turn them back on.
+    # `file_watcher` KEPT pending a similar check: the theme/shader hot-reload
+    # uses its own mtime polling, so Bevy's watcher may be unused.
+    "file_watcher",
     # NOTE: `trace_tracy` is deliberately NOT enabled. Bevy installs its Tracy
     # tracing layer inside `LogPlugin` at boot whenever that feature is compiled
     # in, with no runtime off-switch — so it would arm Tracy on every launch and

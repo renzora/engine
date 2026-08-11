@@ -6,8 +6,6 @@
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
-use std::io::Read;
-
 use crate::session::AuthSession;
 
 /// Base URL for the Renzora API.
@@ -93,16 +91,8 @@ pub fn list_assets(
         url.push_str(&format!("&max_price={p}"));
     }
 
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, None)?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Get asset detail by slug.
@@ -110,16 +100,8 @@ pub fn list_assets(
 pub fn get_asset(slug: &str) -> Result<AssetDetail, String> {
     let url = format!("{API_BASE}/api/marketplace/detail/{slug}");
 
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, None)?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Download an asset (requires authentication).
@@ -130,17 +112,8 @@ pub fn download_asset(session: &AuthSession, asset_id: &str) -> Result<DownloadR
 
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/download");
 
-    let response = ureq::get(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, Some(token))?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Public URL of an asset's file via the marketplace preview proxy.
@@ -155,19 +128,16 @@ pub fn preview_file_url(asset_id: &str) -> String {
 /// Download the actual file bytes from a URL.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn download_file(url: &str) -> Result<Vec<u8>, String> {
-    let response = ureq::get(url)
-        .call()
+    // 256 MB, enforced by the backend as the bytes arrive rather than after —
+    // this is an asset file whose size the marketplace chose, not us.
+    let response = renzora_net::Request::get(url)
+        .max_bytes(256 * 1024 * 1024)
+        .send()
         .map_err(|e| format!("Download failed: {e}"))?;
-
-    let mut bytes = Vec::new();
-    response
-        .into_body()
-        .into_reader()
-        .take(256 * 1024 * 1024) // 256 MB limit
-        .read_to_end(&mut bytes)
-        .map_err(|e| format!("Failed to read file: {e}"))?;
-
-    Ok(bytes)
+    if !response.is_ok() {
+        return Err(format!("Download failed: HTTP {}", response.status));
+    }
+    Ok(response.body)
 }
 
 /// One entry in an asset's preview-media gallery. `media_type` is one of
@@ -191,17 +161,9 @@ pub struct MediaItem {
 pub fn get_media(asset_id: &str) -> Result<Vec<MediaItem>, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/media");
 
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    let mut items: Vec<MediaItem> =
-        serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))?;
+    let mut items: Vec<MediaItem> = crate::client::get_json_raw(&url, None)?
+        .json()
+        .map_err(|e| e.to_string())?;
     items.sort_by_key(|m| m.sort_order);
     Ok(items)
 }
@@ -230,12 +192,8 @@ pub struct AssetFileInfo {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn get_asset_files(asset_id: &str) -> Result<Vec<AssetFileInfo>, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/asset-files");
-    let response = ureq::get(&url).call().map_err(|e| format!("Request failed: {e}"))?;
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, None)?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// List marketplace categories.
@@ -243,16 +201,8 @@ pub fn get_asset_files(asset_id: &str) -> Result<Vec<AssetFileInfo>, String> {
 pub fn list_categories() -> Result<Vec<Category>, String> {
     let url = format!("{API_BASE}/api/marketplace/categories");
 
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, None)?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Purchase an asset with credits (requires authentication).
@@ -262,20 +212,8 @@ pub fn purchase_asset(session: &AuthSession, asset_id: &str) -> Result<PurchaseR
 
     let url = format!("{API_BASE}/api/credits/purchase");
     let body = serde_json::json!({ "asset_id": asset_id });
-    let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
-
-    let response = ureq::post(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("Content-Type", "application/json")
-        .send(json.as_bytes())
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body_str = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+        let response = crate::client::post_json_raw(&url, &body, Some(token))?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Get the user's purchased/owned assets.
@@ -285,17 +223,8 @@ pub fn get_my_assets(session: &AuthSession) -> Result<MarketplaceListResponse, S
 
     let url = format!("{API_BASE}/api/marketplace/purchased");
 
-    let response = ureq::get(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, Some(token))?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Get the user's credit balance.
@@ -305,17 +234,8 @@ pub fn get_credit_balance(session: &AuthSession) -> Result<CreditBalanceResponse
 
     let url = format!("{API_BASE}/api/credits/balance");
 
-    let response = ureq::get(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, Some(token))?;
+    response.json().map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -368,16 +288,8 @@ pub struct AssetRating {
 pub fn get_comments(asset_id: &str) -> Result<CommentsResponse, String> {
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/comments");
 
-    let response = ureq::get(&url)
-        .call()
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+    let response = crate::client::get_json_raw(&url, None)?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Post a comment on an asset (requires authentication).
@@ -391,20 +303,8 @@ pub fn post_comment(
 
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/comments");
     let body = serde_json::json!({ "content": content });
-    let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
-
-    let response = ureq::post(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("Content-Type", "application/json")
-        .send(json.as_bytes())
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body_str = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+        let response = crate::client::post_json_raw(&url, &body, Some(token))?;
+    response.json().map_err(|e| e.to_string())
 }
 
 /// Get an asset's rating aggregate. Ratings are "reviews", keyed by asset **id**
@@ -415,9 +315,8 @@ pub fn post_comment(
 pub fn get_rating(asset_id: &str, _session: Option<&AuthSession>) -> Result<AssetRating, String> {
     let empty = AssetRating { average: 0.0, count: 0, user_rating: None };
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/reviews");
-    let Ok(response) = ureq::get(&url).call() else { return Ok(empty) };
-    let Ok(body) = response.into_body().read_to_string() else { return Ok(empty) };
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) else { return Ok(empty) };
+    let Ok(response) = renzora_net::Request::get(&url).send() else { return Ok(empty) };
+    let Ok(v) = response.json::<serde_json::Value>() else { return Ok(empty) };
     let average = v.get("rating_avg").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
     let count = v.get("rating_count").and_then(|x| x.as_i64()).unwrap_or(0);
     Ok(AssetRating { average, count, user_rating: None })
@@ -433,15 +332,20 @@ pub fn post_rating(session: &AuthSession, asset_id: &str, rating: i32) -> Result
 
     let url = format!("{API_BASE}/api/marketplace/{asset_id}/reviews");
     let body = serde_json::json!({ "rating": rating });
-    let json = serde_json::to_string(&body).map_err(|e| e.to_string())?;
 
-    // Non-2xx (e.g. "you must own this asset") surfaces as Err here, which the
-    // overlay toasts.
-    ureq::post(&url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("Content-Type", "application/json")
-        .send(json.as_bytes())
-        .map_err(|e| format!("Request failed: {e}"))?;
+    // Non-2xx (e.g. "you must own this asset") must surface as Err, which the
+    // overlay toasts. Checked explicitly: `renzora_net` treats an HTTP error
+    // status as a successful request — that is what lets every other call site
+    // here read the server's own `{"error": …}` — so the status is ours to
+    // interpret.
+    let response = crate::client::post_json_raw(&url, &body, Some(token))?;
+    if !response.is_ok() {
+        return Err(response
+            .json::<serde_json::Value>()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| format!("HTTP {}", response.status)));
+    }
 
     // Re-read the aggregate; stamp our own rating so the stars stay filled.
     let mut agg = get_rating(asset_id, Some(session))?;

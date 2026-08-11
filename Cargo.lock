@@ -819,7 +819,6 @@ dependencies = [
  "bevy_utils 0.19.0",
  "bitflags 2.11.1",
  "blake3",
- "blocking",
  "crossbeam-channel",
  "derive_more",
  "disqualified",
@@ -835,7 +834,6 @@ dependencies = [
  "stackfuture",
  "thiserror 2.0.18",
  "tracing",
- "ureq",
  "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3115,16 +3113,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core-foundation"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a6cd9ae233e7f62ba4e9353e81a88df7fc8a5987b8d445b4d90c879bd156f6"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3137,7 +3125,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c07782be35f9e1140080c6b96f0d44b739e2278479f64e02fdab4e32dfd8b081"
 dependencies = [
  "bitflags 1.3.2",
- "core-foundation 0.9.4",
+ "core-foundation",
  "core-graphics-types",
  "foreign-types",
  "libc",
@@ -3150,7 +3138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
 dependencies = [
  "bitflags 1.3.2",
- "core-foundation 0.9.4",
+ "core-foundation",
  "libc",
 ]
 
@@ -6244,12 +6232,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
-name = "openssl-probe"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
 name = "openxr"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7245,10 +7227,10 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_ember",
+ "renzora_net",
  "rfd",
  "serde",
  "serde_json",
- "ureq",
 ]
 
 [[package]]
@@ -7374,9 +7356,9 @@ dependencies = [
  "dirs 6.0.0",
  "renzora",
  "renzora_ember",
+ "renzora_net",
  "serde",
  "serde_json",
- "ureq",
 ]
 
 [[package]]
@@ -7763,12 +7745,12 @@ dependencies = [
  "image",
  "nom",
  "renzora",
+ "renzora_net",
  "renzora_scripting",
  "renzora_text_mesh",
  "serde",
  "tempfile",
  "toml 0.8.23",
- "ureq",
  "uuid",
 ]
 
@@ -7857,6 +7839,7 @@ dependencies = [
  "renzora",
  "renzora_ember",
  "renzora_import",
+ "renzora_net",
  "renzora_plugin",
  "renzora_rpak",
  "rfd",
@@ -7865,7 +7848,6 @@ dependencies = [
  "sha2",
  "toml 0.8.23",
  "toml_edit 0.22.27",
- "ureq",
  "zip",
 ]
 
@@ -7995,12 +7977,12 @@ dependencies = [
  "renzora_auth",
  "renzora_ember",
  "renzora_grid",
+ "renzora_net",
  "renzora_shader",
  "renzora_theme",
  "rfd",
  "serde",
  "toml 0.8.23",
- "ureq",
  "zip",
 ]
 
@@ -8275,6 +8257,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_net"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_plugin",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "renzora_network"
 version = "0.1.0"
 dependencies = [
@@ -8536,6 +8529,7 @@ dependencies = [
  "renzora_lumen",
  "renzora_motion_blur",
  "renzora_navmesh",
+ "renzora_net",
  "renzora_network",
  "renzora_night_stars",
  "renzora_oit",
@@ -8591,10 +8585,10 @@ dependencies = [
  "log",
  "renzora",
  "renzora_blueprint",
+ "renzora_net",
  "renzora_plugin",
  "serde",
  "serde_json",
- "ureq",
 ]
 
 [[package]]
@@ -8704,12 +8698,12 @@ dependencies = [
  "renzora",
  "renzora_auth",
  "renzora_ember",
+ "renzora_net",
  "rfd",
  "rustls",
  "serde",
  "serde_json",
  "tungstenite",
- "ureq",
 ]
 
 [[package]]
@@ -8728,12 +8722,12 @@ dependencies = [
  "dirs 6.0.0",
  "renzora",
  "renzora_ember",
+ "renzora_net",
  "renzora_ui",
  "rfd",
  "serde",
  "serde_json",
  "toml 0.8.23",
- "ureq",
  "web-sys",
 ]
 
@@ -9247,25 +9241,12 @@ version = "0.23.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
 dependencies = [
- "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "rustls-native-certs"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dab5152771c58876a2146916e53e35057e1a4dfa2b9df0f0305b07f611fdea4d"
-dependencies = [
- "openssl-probe",
- "rustls-pki-types",
- "schannel",
- "security-framework",
 ]
 
 [[package]]
@@ -9276,33 +9257,6 @@ checksum = "be040f8b0a225e40375822a563fa9524378b9d63112f53e19ffff34df5d33fdd"
 dependencies = [
  "zeroize",
 ]
-
-[[package]]
-name = "rustls-platform-verifier"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d99feebc72bae7ab76ba994bb5e121b8d83d910ca40b36e0921f53becc41784"
-dependencies = [
- "core-foundation 0.10.1",
- "core-foundation-sys",
- "jni 0.21.1",
- "log",
- "once_cell",
- "rustls",
- "rustls-native-certs",
- "rustls-platform-verifier-android",
- "rustls-webpki",
- "security-framework",
- "security-framework-sys",
- "webpki-root-certs",
- "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "rustls-platform-verifier-android"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
@@ -9349,15 +9303,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "schannel"
-version = "0.1.29"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
-dependencies = [
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9394,29 +9339,6 @@ dependencies = [
  "pkcs8",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "security-framework"
-version = "3.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7f4bc775c73d9a02cde8bf7b2ec4c9d12743edf609006c7facc23998404cd1d"
-dependencies = [
- "bitflags 2.11.1",
- "core-foundation 0.10.1",
- "core-foundation-sys",
- "libc",
- "security-framework-sys",
-]
-
-[[package]]
-name = "security-framework-sys"
-version = "2.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ce2691df843ecc5d231c0b14ece2acc3efb62c0a398c7e1d875f3983ce020e3"
-dependencies = [
- "core-foundation-sys",
- "libc",
 ]
 
 [[package]]
@@ -10583,36 +10505,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
-name = "ureq"
-version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdc97a28575b85cfedf2a7e7d3cc64b3e11bd8ac766666318003abbacc7a21fc"
-dependencies = [
- "base64 0.22.1",
- "flate2",
- "log",
- "percent-encoding",
- "rustls",
- "rustls-pki-types",
- "rustls-platform-verifier",
- "ureq-proto",
- "utf-8",
- "webpki-roots 1.0.6",
-]
-
-[[package]]
-name = "ureq-proto"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d81f9efa9df032be5934a46a068815a10a042b494b6a58cb0a1a97bb5467ed6f"
-dependencies = [
- "base64 0.22.1",
- "http",
- "httparse",
- "log",
-]
-
-[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10950,15 +10842,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webpki-root-certs"
-version = "1.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b96554aa2acc8ccdb7e1c9a58a7a68dd5d13bccc69cd124cb09406db612a1c9b"
-dependencies = [
- "rustls-pki-types",
 ]
 
 [[package]]
@@ -11731,7 +11614,7 @@ dependencies = [
  "calloop",
  "cfg_aliases",
  "concurrent-queue",
- "core-foundation 0.9.4",
+ "core-foundation",
  "core-graphics",
  "cursor-icon",
  "dpi",

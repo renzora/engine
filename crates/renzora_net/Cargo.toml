@@ -1,0 +1,26 @@
+[package]
+name = "renzora_net"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+
+# For `renzora::add!`, which is how a plugin gets into the app at all. The
+# contract dylib and nothing from it beyond the macro.
+renzora = { path = "../renzora", default-features = false }
+
+# The boundary. `host` for the resource the plugin loader fills in when a backend
+# registers; `net` for the request/event vocabulary both sides compile. Note what
+# is NOT here: no `ureq`, no `rustls`, no `ring`. That is the entire point of the
+# crate — the engine describes requests, and something else makes them.
+renzora_plugin = { path = "../renzora_plugin", features = ["host", "net"] }
+
+# For `Response::json`. Every caller that fetches an API endpoint was already
+# doing this by hand a line after the request; folding it in removes the same
+# five lines from a dozen call sites and gives them one error type.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

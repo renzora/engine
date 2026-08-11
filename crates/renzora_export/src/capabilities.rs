@@ -81,17 +81,15 @@ pub const CAPABILITIES: &[Capability] = &[
     // sysinfo_plugin set. See the root `Cargo.toml` bevy feature list for why each
     // went. A capability whose features aren't in the manifest is a no-op toggle
     // that still costs the user a decision, so it doesn't belong here.
-    Capability {
-        id: "remote_assets",
-        section: "build",
-        label: "Remote asset loading (HTTP)",
-        help: "Loading assets over http/https at runtime — pulls in the whole rustls/ring/ureq \
-               TLS stack (several MB). Off for a game shipping local (rpak) assets.",
-        bevy_features: &["http", "https"],
-        runtime_features: &[],
-        default_on: false,
-        group: None,
-    },
+    //
+    // `remote_assets` (bevy `http`/`https`) went the same way in the 2026-08
+    // pass, and is worth a line because it looked load-bearing: it claimed to
+    // strip "the whole rustls/ring/ureq TLS stack", and it did. But the engine
+    // no longer HAS a TLS stack to strip — HTTP is `plugins/http` behind the
+    // `renzora_net` boundary, and a game drops the whole thing by not shipping
+    // that plugin. Bevy's URL asset source turned out to have no callers in the
+    // engine at all, so the features it needed left the manifest and this
+    // toggle went with them.
     Capability {
         id: "dev_extras",
         section: "build",

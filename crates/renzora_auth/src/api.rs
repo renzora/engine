@@ -59,19 +59,12 @@ fn post_json<T: serde::de::DeserializeOwned>(
     url: &str,
     body: &impl Serialize,
 ) -> Result<T, String> {
-    let json = serde_json::to_string(body).map_err(|e| e.to_string())?;
-
-    let response = ureq::post(url)
-        .header("Content-Type", "application/json")
-        .send(json.as_bytes())
-        .map_err(|e| format!("Request failed: {e}"))?;
-
-    let body_str = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-
-    serde_json::from_str(&body_str).map_err(|e| format!("Failed to parse response: {e}"))
+    renzora_net::Request::post(url)
+        .json(body)
+        .send()
+        .map_err(|e| format!("Request failed: {e}"))?
+        .json()
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -105,6 +98,72 @@ pub fn refresh_token(refresh_token: &str) -> Result<AuthResponse, String> {
             refresh_token: refresh_token.to_string(),
         },
     )
+}
+
+/// Why a token refresh did not produce a new session.
+///
+/// The distinction is the whole point of this type, and it decides whether the
+/// user stays signed in: only [`Rejected`](Self::Rejected) means the saved
+/// session is actually dead. Everything else — offline, no HTTP plugin, the API
+/// returning a 502 — leaves it alone.
+///
+/// Collapsing the two was a real bug: `try_restore_session` treated any `Err` as
+/// "token expired", so a failed refresh **deleted the session file**, and the
+/// editor asked for a sign-in on every launch.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug)]
+pub enum RefreshFailure {
+    /// The server answered and refused the token. It is not coming back.
+    Rejected(String),
+    /// No answer, or an answer that says nothing about the token: a transport
+    /// failure, a missing network backend, or a 5xx. Try again later; the
+    /// session stays as it is.
+    Unavailable(String),
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl std::fmt::Display for RefreshFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rejected(e) | Self::Unavailable(e) => f.write_str(e),
+        }
+    }
+}
+
+/// Refresh a token, saying whether a failure invalidates the session.
+///
+/// Goes through `renzora_net` directly rather than [`post_json`] because the
+/// status code is the entire signal here and that helper folds it into a string.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn refresh_token_checked(refresh_token: &str) -> Result<AuthResponse, RefreshFailure> {
+    let response = renzora_net::Request::post(&format!("{}/api/auth/refresh", api_base()))
+        .json(&RefreshRequest {
+            refresh_token: refresh_token.to_string(),
+        })
+        .send()
+        .map_err(|e| RefreshFailure::Unavailable(e.to_string()))?;
+
+    // 401/403 are the only answers that mean the token itself is bad. A 500 or a
+    // 502 is the API having a bad day, and signing every user out over it would
+    // turn a brief outage into a support queue.
+    if response.status == 401 || response.status == 403 {
+        return Err(RefreshFailure::Rejected(
+            response
+                .json::<serde_json::Value>()
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "session expired".to_string()),
+        ));
+    }
+    if !response.is_ok() {
+        return Err(RefreshFailure::Unavailable(format!(
+            "HTTP {}",
+            response.status
+        )));
+    }
+    response
+        .json()
+        .map_err(|e| RefreshFailure::Unavailable(e.to_string()))
 }
 
 #[cfg(not(target_arch = "wasm32"))]

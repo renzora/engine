@@ -540,6 +540,11 @@ const GOLDEN: &[Golden] = &[
             // backend and needs an answer (meters, durations, captured samples),
             // which a one-way queue cannot express.
             "add_audio_backend: unsafe extern \"C\" fn(host: *mut Host, desc: *const AudioBackendDesc) -> RegisterStatus",
+            // Appended in MINOR 4.10 — the HTTP client as a plugin, on the same
+            // reasoning as the line above. Not to be confused with the
+            // `renzora.http` service, which is the same protocol pointed the
+            // other way (a plugin asking the host to fetch).
+            "add_net_backend: unsafe extern \"C\" fn(host: *mut Host, desc: *const NetBackendDesc) -> RegisterStatus",
         ],
     },
     Golden {
@@ -636,6 +641,12 @@ const GOLDEN: &[Golden] = &[
             "get_components: unsafe extern \"C\" fn(ctx: *mut c_void, entity: StrRef, reply: *const ByteSink)",
             "asset_progress: unsafe extern \"C\" fn(ctx: *mut c_void, reply: *const ByteSink)",
             "translate: unsafe extern \"C\" fn(ctx: *mut c_void, key: StrRef, reply: *const ByteSink)",
+            // Appended by `feat(scripting): scene-load and broadcast-event hooks`
+            // (ef1da0d8), which did not record it here — so this gate had been
+            // failing since that commit. A true append: last field, so an
+            // already-built plugin reads every earlier one at unchanged offsets
+            // and never calls this pointer.
+            "scene_load_state: unsafe extern \"C\" fn(ctx: *mut c_void, reply: *const ByteSink)",
         ],
     },
     Golden {
@@ -712,6 +723,50 @@ const GOLDEN: &[Golden] = &[
             "name: Str256",
             "state: *mut c_void",
             "entry: AudioEntry",
+        ],
+    },
+    // ── Networking (MINOR 4.10) ──────────────────────────────────────────
+    //
+    // All five cross, for the same reasons the audio five do — this group is
+    // deliberately audio's shape, down to the `_pad`. Note that `NetStatus`
+    // carries no HTTP status: a 404 is a successful call whose *event* says 404,
+    // and conflating the two is how a client ends up unable to read the error
+    // body a server sent alongside its 400.
+    Golden {
+        name: "NetOp",
+        fields: &[
+            "0: u32",
+        ],
+    },
+    Golden {
+        name: "NetStatus",
+        fields: &[
+            "0: i32",
+        ],
+    },
+    Golden {
+        name: "NetCall",
+        fields: &[
+            "op: NetOp",
+            "_pad: u32",
+            "state: *mut c_void",
+            "payload: BlobRef",
+            "blob: BlobRef",
+            "out: *const ByteSink",
+        ],
+    },
+    Golden {
+        name: "NetEntry",
+        fields: &[
+            "= unsafe extern \"C\" fn(call: *const NetCall) -> NetStatus",
+        ],
+    },
+    Golden {
+        name: "NetBackendDesc",
+        fields: &[
+            "name: Str256",
+            "state: *mut c_void",
+            "entry: NetEntry",
         ],
     },
 ];

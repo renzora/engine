@@ -60,13 +60,12 @@ impl GithubStats {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fetch_stars() -> Option<u64> {
-    let response = ureq::get(REPO_API)
+    let response = renzora_net::Request::get(REPO_API)
         .header("User-Agent", "renzora-splash")
         .header("Accept", "application/vnd.github+json")
-        .call()
+        .send()
         .ok()?;
-    let text = response.into_body().read_to_string().ok()?;
-    let parsed: RepoResponse = serde_json::from_str(&text).ok()?;
+    let parsed: RepoResponse = response.json().ok()?;
     Some(parsed.stargazers_count)
 }
 

@@ -250,6 +250,16 @@ pub fn retire_slot(world: &mut World, slot: usize) {
             audio.0 = None;
         }
     }
+    // And the network backend, for the same reason. This one has a second
+    // hazard the other two do not: threads inside the plugin are mid-transfer
+    // and will try to hand back events. `renzora_net` sees the backend vanish
+    // and fails every request still waiting on it, which is what stops a
+    // background thread blocking forever on an answer that can no longer come.
+    if let Some(mut net) = world.get_resource_mut::<PluginNetBackend>() {
+        if net.0.as_ref().is_some_and(|b| b.owner == slot) {
+            net.0 = None;
+        }
+    }
 
     // GPU assets are the one thing that leaks visibly if this is skipped: a
     // reloaded plugin creates a fresh mesh and material every cycle, and
@@ -392,6 +402,7 @@ static IFACE: sys::Interface = sys::Interface {
     add_script_backend,
     add_audio_backend,
     add_settings_section,
+    add_net_backend,
 };
 
 
@@ -890,6 +901,50 @@ unsafe extern "C" fn add_audio_backend(
 
         info!("[audio] backend `{name}` registered");
         backend.0 = Some(PluginAudioBackendEntry {
+            name,
+            state: desc.state as usize,
+            entry: desc.entry,
+            owner,
+        });
+        sys::RegisterStatus::Ok
+    })
+}
+
+unsafe extern "C" fn add_net_backend(
+    host: *mut sys::Host,
+    desc: *const sys::NetBackendDesc,
+) -> sys::RegisterStatus {
+    guard_host("add_net_backend", sys::RegisterStatus::Invalid, || {
+        if desc.is_null() {
+            return sys::RegisterStatus::Invalid;
+        }
+        let desc = &*desc;
+        let name = desc.name.as_str().to_string();
+        if name.is_empty() {
+            error!("plugin registered a network backend with no name");
+            return sys::RegisterStatus::Invalid;
+        }
+
+        let ctx = &mut *(host as *mut HostCtx);
+        let owner = ctx.slot;
+        let mut backend = ctx
+            .world
+            .get_resource_or_insert_with(PluginNetBackend::default);
+
+        // First claim wins, as with audio. Scripting can hold several because a
+        // script names its language by file extension; a request carries no
+        // such key, and two clients would each hold half of one session's
+        // cookies and connection pool.
+        if let Some(existing) = &backend.0 {
+            error!(
+                "network backend `{name}` is ignored — `{}` is already registered",
+                existing.name
+            );
+            return sys::RegisterStatus::Invalid;
+        }
+
+        info!("[net] backend `{name}` registered");
+        backend.0 = Some(PluginNetBackendEntry {
             name,
             state: desc.state as usize,
             entry: desc.entry,
@@ -2433,6 +2488,30 @@ pub struct PluginAudioBackendEntry {
 /// opaque pointer and a function pointer.
 #[derive(Resource, Default)]
 pub struct PluginAudioBackend(pub Option<PluginAudioBackendEntry>);
+
+/// The network backend a plugin registered.
+///
+/// `state` is stored as a `usize` for the reason [`PluginAudioBackendEntry`]
+/// does it — the host never dereferences it, so the pointer's only requirement
+/// is that it round-trips unchanged, and a `usize` keeps the resource
+/// `Send + Sync` without an unsafe impl.
+pub struct PluginNetBackendEntry {
+    /// Human-readable, for logs and the editor's network settings.
+    pub name: String,
+    /// Opaque plugin state, passed back with every call.
+    pub state: usize,
+    pub entry: sys::NetEntry,
+    /// Registering plugin slot — see [`retire_slot`].
+    pub owner: usize,
+}
+
+/// The one network backend, if a plugin registered one.
+///
+/// `renzora_net` drains this into its own client, which is what keeps this crate
+/// from needing to know what a URL is. All it holds is a name, an opaque pointer
+/// and a function pointer.
+#[derive(Resource, Default)]
+pub struct PluginNetBackend(pub Option<PluginNetBackendEntry>);
 
 /// Turns BSN source into entities.
 ///

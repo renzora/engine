@@ -1,0 +1,33 @@
+[workspace]
+
+[package]
+name = "http"
+version = "0.1.0"
+edition = "2021"
+description = "The Renzora HTTP client. Implements the engine's network-backend contract."
+
+[lib]
+# `rlib` alongside `cdylib` so the client is unit-testable without going through
+# the C ABI. The request/cancel/drain bookkeeping is the half of this crate that
+# can be wrong in ways a smoke test never catches.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The boundary. `net` brings the `Backend` trait, the request/event vocabulary
+# and the one `Interface` entry a backend registers through — and nothing else:
+# this crate links no Bevy and no engine.
+renzora_plugin = { path = "../../crates/renzora_plugin", features = ["net"] }
+
+# The client, and the whole reason this plugin exists. `ureq` and the rustls/ring
+# stack under it are ~20 packages; here they are compiled once, by this crate,
+# instead of by every build of the engine.
+#
+# `rustls` (the default) rather than `native-tls`: the engine's WebSocket client
+# already pins the process-level provider to ring, and two providers in one
+# process is a rustls panic at first use rather than a link error.
+ureq = "3"
+
+[profile.dist]
+inherits = "release"
+opt-level = 3
+strip = "symbols"

@@ -5,7 +5,7 @@
 //! sides compile, and this module is the engine side that claims the service.
 //!
 //! It lives in `renzora_scripting` because that is where the HTTP client
-//! already is — [`HttpInbox`] runs the blocking `ureq` call on a background
+//! already is — [`HttpInbox`] runs the blocking `renzora_net` call on a background
 //! thread so the game loop never waits on the network. A plugin's request takes
 //! exactly the same path a script's `http_get` does; there is one client and one
 //! thread pool, not two.

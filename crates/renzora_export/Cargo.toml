@@ -33,7 +33,7 @@ rcgen = { version = "0.13", default-features = false }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pkcs8", "std"] }
 sha2 = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
-ureq = "3"
+renzora_net = { path = "../renzora_net" }
 serde_json = "1"
 # Copy the build log to the system clipboard from the export log view.
 arboard = "3"

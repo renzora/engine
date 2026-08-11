@@ -35,6 +35,8 @@ impl Plugin for AuthPlugin {
         app.init_resource::<AuthState>()
             .insert_resource(try_restore_session())
             .init_resource::<renzora::core::AuthBridge>()
+            .init_resource::<SessionRefresh>()
+            .add_systems(Update, (start_session_refresh, apply_session_refresh))
             .add_systems(Update, auth_system);
         // Native (bevy_ui) sign-in modal.
         native::register(app);
@@ -178,30 +180,130 @@ fn spawn_auth_request(_state: &mut AuthState, _f: impl FnOnce() -> AuthResult + 
 }
 
 
-/// Try to restore a previously saved session on startup.
-/// Call this once during editor initialization.
+/// Restore a previously saved session from disk.
+///
+/// **Reads the file and nothing else.** Verifying the token with the server is
+/// [`start_session_refresh`]'s job, on a background thread, because this runs
+/// inside `Plugin::build` — before the app has a frame loop.
+///
+/// It used to refresh here, which worked only as long as the HTTP client was a
+/// direct dependency and a blocking call could be made from anywhere. Now that
+/// requests are handed to a plugin by a per-frame pump, a blocking call made
+/// during `build` waits for a frame that cannot begin until `build` returns; the
+/// refresh timed out, the `Err` was read as "token expired", and the session
+/// file was deleted. The editor then asked for a sign-in on every launch.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn try_restore_session() -> AuthSession {
-    if let Some(mut saved) = session::load_session() {
-        // Try to refresh the token in the background to verify it's still valid
-        if let Some(refresh) = &saved.refresh_token {
-            match api::refresh_token(refresh) {
-                Ok(response) => {
-                    saved.set_from_response(&response);
-                    session::save_session(&saved);
-                }
-                Err(_) => {
-                    // Token expired or invalid — clear session
-                    saved.clear();
-                    session::delete_session();
-                }
-            }
+    session::load_session().unwrap_or_default()
+}
+
+/// The in-flight startup token refresh.
+#[derive(Resource, Default)]
+pub struct SessionRefresh {
+    /// `None` until the refresh is spawned, then holds its result channel.
+    #[cfg(not(target_arch = "wasm32"))]
+    rx: Option<Mutex<mpsc::Receiver<Result<api::AuthResponse, api::RefreshFailure>>>>,
+    /// Set once a refresh has been started or abandoned, so neither happens
+    /// twice.
+    settled: bool,
+    /// Frames spent waiting for a network backend to appear.
+    waited: u32,
+}
+
+/// How many frames to wait for the HTTP plugin to register before giving up on
+/// the startup refresh.
+///
+/// The plugin loader runs during the first frames, so the backend usually
+/// arrives within a handful. Giving up merely skips the refresh — the saved
+/// session is still used, and the next API call will discover it if the token
+/// really has expired. A few seconds at 60 Hz.
+#[cfg(not(target_arch = "wasm32"))]
+const REFRESH_WAIT_FRAMES: u32 = 300;
+
+/// Once a network backend exists, verify the restored token on a background
+/// thread.
+#[cfg(not(target_arch = "wasm32"))]
+fn start_session_refresh(
+    session: Res<AuthSession>,
+    mut refresh: ResMut<SessionRefresh>,
+) {
+    if refresh.settled {
+        return;
+    }
+    let Some(token) = session.refresh_token.clone() else {
+        refresh.settled = true;
+        return;
+    };
+    // Nothing to hand a request to yet. The HTTP plugin loads during the first
+    // frames, so this is the ordinary case for a frame or two.
+    if !renzora_net::is_available() {
+        refresh.waited += 1;
+        if refresh.waited > REFRESH_WAIT_FRAMES {
+            warn!("[auth] no network backend — keeping the saved session unverified");
+            refresh.settled = true;
         }
-        saved
-    } else {
-        AuthSession::default()
+        return;
+    }
+
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("renzora-auth-refresh".to_string())
+        .spawn(move || {
+            let _ = tx.send(api::refresh_token_checked(&token));
+        })
+        .ok();
+    refresh.rx = Some(Mutex::new(rx));
+    refresh.settled = true;
+}
+
+/// Apply the refresh once it lands.
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_session_refresh(
+    mut session: ResMut<AuthSession>,
+    mut refresh: ResMut<SessionRefresh>,
+) {
+    let Some(rx) = &refresh.rx else { return };
+    let Ok(rx) = rx.lock() else { return };
+    let result = match rx.try_recv() {
+        Ok(result) => result,
+        Err(mpsc::TryRecvError::Empty) => return,
+        // The worker died without answering. Leave the session alone — the same
+        // reasoning as `Unavailable` below.
+        Err(mpsc::TryRecvError::Disconnected) => {
+            drop(rx);
+            refresh.rx = None;
+            return;
+        }
+    };
+    drop(rx);
+    refresh.rx = None;
+
+    match result {
+        Ok(response) => {
+            session.set_from_response(&response);
+            session::save_session(&session);
+        }
+        // The server refused the token. This is the ONLY case that signs the
+        // user out.
+        Err(api::RefreshFailure::Rejected(e)) => {
+            info!("[auth] session expired ({e}) — signing out");
+            session.clear();
+            session::delete_session();
+        }
+        // Offline, or the API is having a bad day. Keep the session: the token
+        // may well still be good, and the next call that needs it will find out.
+        Err(api::RefreshFailure::Unavailable(e)) => {
+            warn!("[auth] could not verify the saved session ({e}) — keeping it");
+        }
     }
 }
+
+/// Both refresh systems are native-only; wasm has no session to restore.
+#[cfg(target_arch = "wasm32")]
+fn start_session_refresh() {}
+
+#[cfg(target_arch = "wasm32")]
+fn apply_session_refresh() {}
 
 #[cfg(target_arch = "wasm32")]
 pub fn try_restore_session() -> AuthSession {

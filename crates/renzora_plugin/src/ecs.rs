@@ -3243,6 +3243,40 @@ impl App {
         }
         self
     }
+
+    /// Become the engine's HTTP client.
+    ///
+    /// The descriptor comes from the `net_backend!` macro, which owns the entry
+    /// point's state — see [`crate::net`]. Registering makes every network
+    /// request the engine wants to make — the marketplace, asset thumbnails,
+    /// sign-in, the update check, a script's `http_get` — go through this
+    /// plugin. Without one registered, the engine has no client at all and every
+    /// such call reports that plainly rather than hanging.
+    ///
+    /// Only one backend loads. A second registration is refused and logged, for
+    /// the reason `add_audio_backend` refuses one: there is no per-request key
+    /// to choose by, and splitting a session's cookies and connection pool
+    /// across two clients would break both.
+    ///
+    /// ```ignore
+    /// renzora_plugin::net_backend!(MyClient);
+    ///
+    /// impl Plugin for MyHttpPlugin {
+    ///     fn build(&self, app: &mut App) {
+    ///         app.add_net_backend(net_backend::desc());
+    ///     }
+    /// }
+    /// ```
+    #[cfg(feature = "net")]
+    pub fn add_net_backend(&mut self, desc: sys::NetBackendDesc) -> &mut Self {
+        // SAFETY: `desc` is alive for this call and the host copies the name
+        // before returning; `state` and `entry` are passed through untouched.
+        let status = unsafe { ((*self.ctx.iface).add_net_backend)(self.ctx.host, &desc) };
+        if status != sys::RegisterStatus::Ok && self.rejected.is_none() {
+            self.rejected = Some(status);
+        }
+        self
+    }
 }
 
 /// An editor panel, before registration.

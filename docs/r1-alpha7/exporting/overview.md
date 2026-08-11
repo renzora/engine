@@ -232,6 +232,11 @@ files, `glTF model loading` whether it contains `.gltf`/`.glb` files,
 `Blueprints` whether it contains graphs, and `Script HTTP` whether a script calls
 `http_get`/`http_post`.
 
+> A game that makes any network request also needs `plugins/http` staged beside
+> it — the engine carries no HTTP client. See
+> [Network backends](../extending/network-backends.md). Leaving it out is how a
+> fully offline game drops the TLS stack entirely.
+
 ### Sections
 
 The list is grouped so the two rendering pipelines sit next to each other — a

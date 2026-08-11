@@ -138,6 +138,8 @@
             { "slug": "extending/custom-nodes", "title": "Custom Blueprint Nodes" },
             { "slug": "extending/script-bindings", "title": "Script API Bindings" },
             { "slug": "extending/script-backends", "title": "Script Backends (languages)" },
+            { "slug": "extending/audio-backends", "title": "Audio Backends (mixers)" },
+            { "slug": "extending/network-backends", "title": "Network Backends (HTTP)" },
             { "slug": "extending/post-processing", "title": "Post-Processing Effects" },
             { "slug": "extending/material-nodes", "title": "Custom Material Nodes" }
           ]

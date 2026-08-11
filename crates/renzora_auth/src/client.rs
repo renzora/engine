@@ -42,37 +42,51 @@ pub(crate) fn urlencoded(s: &str) -> String {
     out
 }
 
-/// Shared agent: HTTP error statuses come back as responses (not opaque
-/// `ureq` errors) so we can surface the server's actual {"error": ...} message.
+/// Send a request and read the reply as JSON.
+///
+/// The whole body of every helper below, because they differ only in verb and
+/// payload. `Response::json` is what surfaces the API's own `{"error": "…"}`
+/// on a non-2xx — the alternative is reporting "HTTP 400" and discarding the
+/// reason, which is what this code did before it moved onto `renzora_net`.
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn agent() -> &'static ureq::Agent {
-    use std::sync::OnceLock;
-    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(|| {
-        ureq::Agent::new_with_config(
-            ureq::config::Config::builder()
-                .http_status_as_error(false)
-                .build(),
-        )
-    })
+fn send_json<T: serde::de::DeserializeOwned>(
+    request: renzora_net::Request,
+) -> Result<T, String> {
+    request
+        .send()
+        .map_err(|e| format!("Request failed: {e}"))?
+        .json()
+        .map_err(|e| e.to_string())
 }
 
+/// GET, returning the raw response for a caller that decodes it itself.
+///
+/// `marketplace.rs` wants this because several of its endpoints are read
+/// best-effort — an unrated asset answering 404 must yield an empty rating, not
+/// a toast — and that decision belongs at the call site rather than here.
 #[cfg(not(target_arch = "wasm32"))]
-fn read_json<T: serde::de::DeserializeOwned>(response: ureq::http::Response<ureq::Body>) -> Result<T, String> {
-    let status = response.status();
-    let body = response
-        .into_body()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-    if !status.is_success() {
-        // The API answers errors as {"error": "message"} — show the message.
-        let msg = serde_json::from_str::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(|e| e.to_string()))
-            .unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-        return Err(msg);
-    }
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse response: {e}"))
+pub(crate) fn get_json_raw(
+    url: &str,
+    token: Option<&str>,
+) -> Result<renzora_net::Response, String> {
+    renzora_net::Request::get(url)
+        .maybe_bearer(token)
+        .send()
+        .map_err(|e| format!("Request failed: {e}"))
+}
+
+/// POST a JSON body, returning the raw response. See [`get_json_raw`].
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn post_json_raw(
+    url: &str,
+    body: &impl serde::Serialize,
+    token: Option<&str>,
+) -> Result<renzora_net::Response, String> {
+    renzora_net::Request::post(url)
+        .json(body)
+        .maybe_bearer(token)
+        .send()
+        .map_err(|e| format!("Request failed: {e}"))
 }
 
 /// GET a JSON endpoint, optionally authenticated.
@@ -81,12 +95,7 @@ pub(crate) fn get_json<T: serde::de::DeserializeOwned>(
     url: &str,
     token: Option<&str>,
 ) -> Result<T, String> {
-    let mut req = agent().get(url);
-    if let Some(t) = token {
-        req = req.header("Authorization", &format!("Bearer {t}"));
-    }
-    let response = req.call().map_err(|e| format!("Request failed: {e}"))?;
-    read_json(response)
+    send_json(renzora_net::Request::get(url).maybe_bearer(token))
 }
 
 /// POST a JSON body, optionally authenticated.
@@ -96,15 +105,7 @@ pub(crate) fn post_json<T: serde::de::DeserializeOwned>(
     body: &impl serde::Serialize,
     token: Option<&str>,
 ) -> Result<T, String> {
-    let json = serde_json::to_string(body).map_err(|e| e.to_string())?;
-    let mut req = agent().post(url).header("Content-Type", "application/json");
-    if let Some(t) = token {
-        req = req.header("Authorization", &format!("Bearer {t}"));
-    }
-    let response = req
-        .send(json.as_bytes())
-        .map_err(|e| format!("Request failed: {e}"))?;
-    read_json(response)
+    send_json(renzora_net::Request::post(url).json(body).maybe_bearer(token))
 }
 
 /// PUT a JSON body, optionally authenticated.
@@ -114,15 +115,7 @@ pub(crate) fn put_json<T: serde::de::DeserializeOwned>(
     body: &impl serde::Serialize,
     token: Option<&str>,
 ) -> Result<T, String> {
-    let json = serde_json::to_string(body).map_err(|e| e.to_string())?;
-    let mut req = agent().put(url).header("Content-Type", "application/json");
-    if let Some(t) = token {
-        req = req.header("Authorization", &format!("Bearer {t}"));
-    }
-    let response = req
-        .send(json.as_bytes())
-        .map_err(|e| format!("Request failed: {e}"))?;
-    read_json(response)
+    send_json(renzora_net::Request::put(url).json(body).maybe_bearer(token))
 }
 
 /// DELETE an endpoint, optionally authenticated.
@@ -131,12 +124,7 @@ pub(crate) fn delete_json<T: serde::de::DeserializeOwned>(
     url: &str,
     token: Option<&str>,
 ) -> Result<T, String> {
-    let mut req = agent().delete(url);
-    if let Some(t) = token {
-        req = req.header("Authorization", &format!("Bearer {t}"));
-    }
-    let response = req.call().map_err(|e| format!("Request failed: {e}"))?;
-    read_json(response)
+    send_json(renzora_net::Request::delete(url).maybe_bearer(token))
 }
 
 /// Extract the bearer token from a session, or fail like existing callers do.
@@ -192,18 +180,17 @@ fn multipart<T: serde::de::DeserializeOwned>(
     body.extend_from_slice(bytes);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
-    let ct = format!("multipart/form-data; boundary={boundary}");
-    let auth = format!("Bearer {token}");
-    let req = match method {
-        "PUT" => agent().put(url),
-        _ => agent().post(url),
+    let request = match method {
+        "PUT" => renzora_net::Request::put(url),
+        _ => renzora_net::Request::post(url),
     };
-    let response = req
-        .header("Authorization", &auth)
-        .header("Content-Type", &ct)
-        .send(&body[..])
-        .map_err(|e| format!("Upload failed: {e}"))?;
-    read_json(response)
+    request
+        .bearer(token)
+        .body(&format!("multipart/form-data; boundary={boundary}"), body)
+        .send()
+        .map_err(|e| format!("Upload failed: {e}"))?
+        .json()
+        .map_err(|e| e.to_string())
 }
 
 /// One file part of a multi-part form: the field name the server reads it under,
@@ -256,12 +243,11 @@ pub(crate) fn post_multipart_form<T: serde::de::DeserializeOwned>(
     }
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
-    let ct = format!("multipart/form-data; boundary={boundary}");
-    let response = agent()
-        .post(url)
-        .header("Authorization", &format!("Bearer {token}"))
-        .header("Content-Type", &ct)
-        .send(&body[..])
-        .map_err(|e| format!("Upload failed: {e}"))?;
-    read_json(response)
+    renzora_net::Request::post(url)
+        .bearer(token)
+        .body(&format!("multipart/form-data; boundary={boundary}"), body)
+        .send()
+        .map_err(|e| format!("Upload failed: {e}"))?
+        .json()
+        .map_err(|e| e.to_string())
 }

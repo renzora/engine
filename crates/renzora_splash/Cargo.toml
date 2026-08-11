@@ -15,7 +15,7 @@ toml = "0.8"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
 dirs = "6"
-ureq = "3"
+renzora_net = { path = "../renzora_net" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage", "console"] }

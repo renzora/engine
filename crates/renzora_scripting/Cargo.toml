@@ -8,7 +8,7 @@ edition = "2021"
 # strips what a game doesn't use, by depending on this crate with
 # `default-features = false` (every lean-closure dependent does) and forwarding
 # the kept ones from `renzora_runtime`. `blueprint` pulls the visual-scripting
-# compiler (~0.2 MiB); `script_http` pulls `ureq` plus the whole rustls/ring TLS
+# compiler (~0.2 MiB); `script_http` pulls `renzora_net` — no longer the TLS
 # stack (~1 MiB) for the `http_get`/`http_post` script verbs.
 #
 # There is no `lua` feature any more: the interpreter is `plugins/lua`, so which
@@ -16,7 +16,7 @@ edition = "2021"
 # by how the engine was compiled.
 default = ["blueprint", "script_http"]
 blueprint = ["dep:renzora_blueprint"]
-script_http = ["dep:ureq"]
+script_http = ["dep:renzora_net"]
 
 # No `editor` feature: lean runtime crate. The ScriptComponent inspector entry
 # moved to the nested renzora_scripting_editor crate (crates/renzora_scripting/editor).
@@ -36,11 +36,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 
-# `ureq` powers `http_get`/`http_post` from scripts (blocking client run on a
+# `renzora_net` powers `http_get`/`http_post` from scripts (a blocking call on a
 # background thread; native only — a wasm fetch path can come later). Optional
 # (`script_http`): a game with no script HTTP drops the whole TLS stack.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-ureq = { version = "3", optional = true }
+renzora_net = { path = "../renzora_net", optional = true }
 
 [lints]
 workspace = true
