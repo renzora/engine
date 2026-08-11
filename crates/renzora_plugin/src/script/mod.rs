@@ -99,8 +99,8 @@ mod tests {
             assert!(op.is_known(), "op {i} should be known");
             assert_ne!(op.name(), "?", "op {i} has no name");
         }
-        assert!(!ScriptOp(12).is_known());
-        assert_eq!(ScriptOp(12).name(), "?");
+        assert!(!ScriptOp(14).is_known());
+        assert_eq!(ScriptOp(14).name(), "?");
     }
 
     #[test]

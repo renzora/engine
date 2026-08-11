@@ -1631,6 +1631,13 @@ mod tests {
                 body: Some("{}".into()),
                 callback: "on_done".into(),
             },
+            C::Emit {
+                name: "door_opened".into(),
+                args: vec![
+                    ("id".into(), ActionValue::Float(3.0)),
+                    ("by".into(), ActionValue::String("Player".into())),
+                ],
+            },
         ]
     }
 
