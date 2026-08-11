@@ -324,6 +324,8 @@ edit a file  →  cargo build  →  the new dll is staged  →  the running edit
 
 That loop is only possible because a standalone plugin links no Bevy. One changed file rebuilds in well under a second; a plugin that shared the engine's Bevy would spend half a minute linking and the loop wouldn't be worth having.
 
+**This is an editor feature, and only the editor pays for it.** To leave `plugins/<name>.dll` writable while it runs, the editor loads a private copy of it from `plugins/.reload/`; a shipped game — including the one **Play in Runtime Window** launches — never reloads anything, so it opens the real file directly. One consequence worth knowing during development: while a runtime window is open it holds `plugins/*.dll`, so a rebuild that stages plugins wants that window closed first.
+
 ### What survives a reload
 
 **Your data.** Components and resources live in the host's ECS, keyed by name, so a swap never touches them — a counter keeps counting, entities keep their values, and nothing is serialised or restored. That is the whole reason this is tractable rather than a save-and-reload cycle.
