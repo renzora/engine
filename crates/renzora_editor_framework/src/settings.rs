@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 
-/// Currently selected settings tab.
+/// Currently selected settings tab. A tab is a *page group*, not a sidebar row:
+/// the settings sidebar splits several of these into finer categories (see
+/// `CATS` in `renzora_settings`), and one category may stack several sections.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsTab {
     #[default]
@@ -9,7 +11,6 @@ pub enum SettingsTab {
     Editor,
     Viewport,
     Scripting,
-    Assets,
     Input,
     Shortcuts,
     Theme,

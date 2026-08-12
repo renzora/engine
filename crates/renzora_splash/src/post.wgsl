@@ -139,9 +139,15 @@ fn fragment(in: UiVertexOutput) -> @location(0) vec4<f32> {
     // Scaled with darkness the way film grain actually behaves, and it doubles as
     // the dither that hides any residual banding from the volumetric raymarch
     // (which runs without jitter — see `native_chamber.rs`).
+    //
+    // The amplitude is deliberately low. The chamber is mostly near-black, and grain
+    // scaled up for the shadows there covers most of the frame — at the old 0.055 it
+    // read as a noisy image rather than as film. The shadow figure keeps a healthy
+    // margin over the ~1/255 needed to break up banding, which is the floor this
+    // can't drop below without the raymarch's rings showing through.
     let px = vec2<u32>(in.position.xy);
     let g = grain_noise(px, u32(t * 60.0)) - 0.5;
-    col = col + g * mix(0.055, 0.016, smoothstep(0.0, 0.5, luma(col)));
+    col = col + g * mix(0.022, 0.007, smoothstep(0.0, 0.5, luma(col)));
 
     return vec4<f32>(col, 1.0);
 }

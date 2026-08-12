@@ -102,7 +102,7 @@ Until it lands, state that must outlive a scene load goes in your own `Resource`
 
 A global scene is an ordinary scene listed in `project.toml`'s `autoload`. It loads *before* the boot scene, and every entity it spawns is tagged `renzora::Persistent` — which the scene-load despawn filter (`Without<Persistent>`) skips. The result is content that survives every subsequent `load_scene()`: one scene for your HUD, one for music, one for networking, rather than rebuilding them per level.
 
-Set them in **Settings → Global Scenes**: a toggle per scene in `scenes/`. The list is ordered, which matters only if two global scenes touch the same thing at boot.
+Set them in **Settings → Project → Global Scenes**: a toggle per scene in `scenes/`. The list is ordered, which matters only if two global scenes touch the same thing at boot.
 
 ```toml
 # project.toml

@@ -144,7 +144,8 @@ RuntimePlugin → InputPlugin → ScriptingPlugin → PhysicsPlugin
 - **Skips any cdylib that exports `plugin_install_scope`** — bundles load only from beside the exe, never from `plugins/`, so the editor can't be shipped *inside* a game.
 - Reads `plugin_scope`, gates `should_load` (Editor → only in an editor session; Runtime → always), then calls `plugin_create` and `plugin.build(app)`, keeping the `Library` alive in the `DynamicPluginRegistry`.
 - `HotPluginPlugin` watches `plugins/` about once a second on the `Last` schedule and live-builds newly dropped dlls into the running world; render-world plugins report `NeedsReload` ("restart to take effect").
-- The export UI's `scan_plugins` lists **only** Runtime-scope single-plugin cdylibs.
+- The export UI's `scan_plugins` (now `renzora_plugin::host::loader::scan_plugins`) lists every C-ABI plugin in `plugins/` **with its scope**, which the export then records per plugin so the shipped host applies the same Editor/Runtime rule to a linked-in plugin as it would to a loaded one.
+- **`scan_plugins` maps nothing.** "Is this a plugin?" is a byte search for `renzora_plugin_init` in the file; the scope comes from `LoadedPlugins`, which recorded it when the plugin was loaded for real. Only a plugin this process never loaded falls back to mapping the image, and that mapping is then never unmapped. Listing a directory must never `LoadLibrary` + `FreeLibrary` its contents: that runs each image's initialisers *and* destructors, and `FreeLibrary` deadlocks the Windows loader lock against an image (like `tracy`) that started a thread at map time. In the editor it is doubly wrong — the running plugin is a `plugins/.reload/` shadow copy under a different filename, so mapping the original creates a *second* live instance of it.
 
 ## Rendering and post-processing
 

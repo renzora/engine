@@ -491,7 +491,7 @@ pub const CAPABILITIES: &[Capability] = &[
         id: "water",
         section: "simulation",
         label: "Water",
-        help: "The water surface subsystem.",
+        help: "FFT ocean water: wave cascades, foam and buoyancy.",
         bevy_features: &[],
         runtime_features: &["water"],
         default_on: true,

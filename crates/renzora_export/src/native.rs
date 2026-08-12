@@ -118,7 +118,7 @@ fn scan_plugins(world: &mut World) {
         return;
     }
     let dir = world.resource::<TemplateManager>().runtime_plugins_dir();
-    let plugins = renzora_plugin::host::loader::scan_plugins(&dir);
+    let plugins = renzora_plugin::host::loader::scan_plugins(world, &dir);
 
     // Pre-select only the plugins a scene actually references, so the export
     // ships just the effects it uses instead of all 50+. A plugin id is the dll

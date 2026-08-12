@@ -166,7 +166,7 @@ On desktop it also copies the shared libraries that sit beside the binary — `b
 
 ### Plugin selection
 
-Effects and other features live in distribution-plugin cdylibs. Export scans the editor's `plugins/` directory with `dynamic_plugin_loader::scan_plugins` (which lists **Runtime-scope, single-plugin** cdylibs only — the editor bundle is skipped), then **pre-selects just the plugins your scenes actually reference**: it matches each plugin's crate prefix (e.g. `renzora_matrix::`) against the serialized component type paths in the project's `.ron` files. Selected plugins are copied into `output/plugins/`. If no scenes can be read, it falls back to selecting everything; effects added purely from scripts aren't auto-detected, so you can tick those manually.
+Effects and other features live in distribution-plugin cdylibs. Export scans the editor's `plugins/` directory with `renzora_plugin::host::loader::scan_plugins` (which lists each C-ABI plugin with its Editor/Runtime scope, and deliberately maps nothing to do it — see [architecture](../setup/architecture.md)), then **pre-selects just the plugins your scenes actually reference**: it matches each plugin's crate prefix (e.g. `renzora_matrix::`) against the serialized component type paths in the project's `.ron` files. Selected plugins are copied into `output/plugins/`. If no scenes can be read, it falls back to selecting everything; effects added purely from scripts aren't auto-detected, so you can tick those manually.
 
 ### Dedicated server
 

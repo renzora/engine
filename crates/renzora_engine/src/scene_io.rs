@@ -370,6 +370,8 @@ pub fn save_scene(world: &mut World, path: &Path) -> Result<(), Box<dyn std::err
         .deny_component::<Children>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
         .deny_component::<bevy::camera::primitives::Aabb>()
+        // Runtime mirror of the camera's projection, rebuilt every frame.
+        .deny_component::<crate::camera_script::CameraReadState>()
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
@@ -539,6 +541,8 @@ pub fn serialize_scene_to_string(world: &mut World) -> Result<String, Box<dyn st
         .deny_component::<Children>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
         .deny_component::<bevy::camera::primitives::Aabb>()
+        // Runtime mirror of the camera's projection, rebuilt every frame.
+        .deny_component::<crate::camera_script::CameraReadState>()
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()
@@ -727,6 +731,8 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
         .deny_component::<GlobalTransform>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
         .deny_component::<bevy::camera::primitives::Aabb>()
+        // Runtime mirror of the camera's projection, rebuilt every frame.
+        .deny_component::<crate::camera_script::CameraReadState>()
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_animation_state()
         .deny_physics_components()
@@ -1730,6 +1736,8 @@ pub fn save_prefab_source(
         .deny_component::<GlobalTransform>()
         .deny_component::<bevy::transform::components::TransformTreeChanged>()
         .deny_component::<bevy::camera::primitives::Aabb>()
+        // Runtime mirror of the camera's projection, rebuilt every frame.
+        .deny_component::<crate::camera_script::CameraReadState>()
         .deny_component::<bevy::render::sync_world::SyncToRenderWorld>()
         .deny_component::<bevy::input::gamepad::Gamepad>()
         .deny_component::<bevy::input::gamepad::GamepadSettings>()

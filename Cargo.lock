@@ -9025,6 +9025,7 @@ version = "0.1.0"
 dependencies = [
  "avian3d",
  "bevy",
+ "naga 29.0.3",
  "renzora",
  "serde",
 ]

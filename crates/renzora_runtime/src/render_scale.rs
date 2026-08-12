@@ -33,6 +33,10 @@ use bevy::camera::{ClearColorConfig, RenderTarget};
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
+// `bevy::ui` is gone from a lean export that stripped the `ui` capability, and
+// the module does not exist to import from — so the gate has to be on the import
+// as well as the use, not just on the spawn.
+#[cfg(feature = "ui")]
 use bevy::ui::IsDefaultUiCamera;
 use bevy::window::{PrimaryWindow, WindowResized};
 
@@ -291,7 +295,9 @@ fn apply_render_scale(
                 // WINDOW at native res instead of following the 3D camera into the
                 // downscaled offscreen (they'd blur). Torn down at native/no-op, and
                 // viewport-stretch can't be co-active, so the "exactly one
-                // IsDefaultUiCamera" invariant holds.
+                // IsDefaultUiCamera" invariant holds. Nothing to claim when the
+                // export stripped the UI layer — there is no UI to place.
+                #[cfg(feature = "ui")]
                 IsDefaultUiCamera,
                 Name::new("Render Scale Blit Camera"),
             ))

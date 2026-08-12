@@ -37,7 +37,11 @@ use renzora_viewport::settings::{
 
 const PANEL_W: f32 = 880.0;
 const PANEL_H: f32 = 620.0;
-const SIDEBAR_W: f32 = 160.0;
+// Wide enough that no category label wraps to a second line. The usable text
+// width is this minus the icon (14), the two gaps (10 + 10) and the horizontal
+// padding (8 + 8) — at 160px that left ~110px, which "2D Rendering" and
+// "UI Workspace" overflowed.
+const SIDEBAR_W: f32 = 200.0;
 
 // Accent colors per category — matches the egui `CategoryStyle` palette.
 const A_BLUE: (u8, u8, u8) = (80, 140, 255);
@@ -104,27 +108,16 @@ fn tr_group(group: &str) -> String {
 fn tr_cat(label: &str) -> String {
     let key = match label {
         "Project" => "common.project",
-        "Rendering" => "settings.cat.rendering",
         "Window" => "settings.cat.window",
-        "Viewport" => "settings.tab.viewport",
-        "2D Rendering" => "settings.cat.rendering_2d",
-        "Fonts" => "settings.cat.fonts",
-        "Display" => "settings.cat.display",
-        "Hierarchy" => "settings.cat.hierarchy",
-        "Inspector" => "settings.cat.inspector",
+        "Rendering" => "settings.cat.rendering",
+        "Interface" => "settings.category.interface",
         "Theme" => "settings.tab.theme",
-        "Developer" => "settings.category.developer",
+        "General" => "settings.tab.general",
         "Auto-Save" => "settings.cat.autosave",
-        "UI Workspace" => "settings.cat.workspace",
-        "Renderer" => "settings.cat.renderer",
-        "Grid" => "settings.cat.grid",
-        "Labels" => "settings.cat.labels",
-        "Performance" => "settings.cat.performance",
+        "Viewport" => "settings.tab.viewport",
         "Camera" => "settings.category.camera",
         "Gizmos" => "settings.cat.gizmos",
         "Scripting" => "settings.category.scripting",
-        "Code Editor" => "settings.cat.code_editor",
-        "Assets" => "settings.cat.assets",
         "Input" => "settings.cat.input",
         "Shortcuts" => "settings.tab.shortcuts",
         _ => return label.to_string(),
@@ -805,43 +798,42 @@ fn build_body(
 /// `(tab, focus, icon, label)`; `focus` is the section key shown when a tab is
 /// split into finer categories (`None` = the whole tab as one page). The active
 /// category is `(EditorSettings.settings_tab, NativeSettingsState.active_sub)`.
+///
+/// A category is a *page*, not a single section: several sections may share one
+/// `focus` key and so appear stacked under one sidebar row. Window holds both
+/// Window and Render Resolution; General holds Developer, Renderer and Import.
+/// That is the whole point of the key — before, every section had its own key
+/// and therefore its own sidebar row, which put twenty rows in the sidebar for
+/// sixty-eight actual settings, six of them a lone checkbox.
 type Cat = (SettingsTab, Option<&'static str>, &'static str, &'static str);
 const CATS: &[(&str, &[Cat])] = &[
     (
         "PROJECT",
         &[
             (SettingsTab::Project, Some("project"), "folder-open", "Project"),
-            (SettingsTab::Project, Some("rendering"), "monitor", "Rendering"),
+            // Window (the OS surface) + Render Resolution (what the camera
+            // actually shoots at). They live together because their width/height
+            // pairs are only distinguishable side by side.
             (SettingsTab::Project, Some("window"), "desktop", "Window"),
-            (SettingsTab::Project, Some("game_viewport"), "video-camera", "Viewport"),
-            (SettingsTab::Project, Some("rendering_2d"), "image-square", "2D Rendering"),
+            (SettingsTab::Project, Some("rendering"), "monitor", "Rendering"),
         ],
     ),
     (
         "APPEARANCE",
         &[
-            (SettingsTab::Interface, Some("fonts"), "text-aa", "Fonts"),
-            (SettingsTab::Interface, Some("display"), "monitor", "Display"),
-            (SettingsTab::Interface, Some("hierarchy"), "list-bullets", "Hierarchy"),
-            (SettingsTab::Interface, Some("inspector"), "sliders", "Inspector"),
+            (SettingsTab::Interface, None, "layout", "Interface"),
             (SettingsTab::Theme, None, "palette", "Theme"),
         ],
     ),
     (
         "EDITOR",
         &[
-            (SettingsTab::Editor, Some("developer"), "wrench", "Developer"),
+            (SettingsTab::Editor, Some("general"), "wrench", "General"),
             (SettingsTab::Editor, Some("autosave"), "floppy-disk", "Auto-Save"),
-            (SettingsTab::Editor, Some("workspace"), "desktop", "UI Workspace"),
-            (SettingsTab::Editor, Some("renderer"), "monitor", "Renderer"),
-            (SettingsTab::Viewport, Some("grid"), "grid-four", "Grid"),
-            (SettingsTab::Viewport, Some("labels"), "text-aa", "Labels"),
-            (SettingsTab::Viewport, Some("performance"), "gauge", "Performance"),
+            (SettingsTab::Viewport, Some("viewport"), "grid-four", "Viewport"),
             (SettingsTab::Viewport, Some("camera"), "video-camera", "Camera"),
             (SettingsTab::Viewport, Some("gizmos"), "bounding-box", "Gizmos"),
-            (SettingsTab::Scripting, Some("scripting"), "code", "Scripting"),
-            (SettingsTab::Scripting, Some("code_editor"), "code", "Code Editor"),
-            (SettingsTab::Assets, None, "desktop", "Assets"),
+            (SettingsTab::Scripting, None, "code", "Scripting"),
         ],
     ),
     (
@@ -1235,13 +1227,10 @@ fn build_tab_content(
         SettingsTab::Project => {
             tab_project(commands, fonts, col, scenes, custom, has_project, active_sub)
         }
-        SettingsTab::Interface => {
-            tab_interface(commands, fonts, col, settings, custom, active_sub)
-        }
+        SettingsTab::Interface => tab_interface(commands, fonts, col, settings, custom),
         SettingsTab::Editor => tab_editor(commands, fonts, col, active_sub),
         SettingsTab::Viewport => tab_viewport(commands, fonts, col, viewport, active_sub),
-        SettingsTab::Scripting => tab_scripting(commands, fonts, col, active_sub),
-        SettingsTab::Assets => tab_assets(commands, fonts, col),
+        SettingsTab::Scripting => tab_scripting(commands, fonts, col),
         SettingsTab::Theme => tab_theme(commands, fonts, col, themes),
         SettingsTab::Shortcuts => tab_shortcuts(commands, fonts, col),
         SettingsTab::Input => tab_input(commands, fonts, col, input),
@@ -1420,7 +1409,10 @@ fn tab_project(
         A_BLUE,
     );
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "global_scenes");
+    // Keyed to "project", not a key of its own: `global_scenes` never had a
+    // sidebar entry, so every Project category hid it and the toggles could not
+    // be reached at all. Same fix as the Language picker under Interface.
+    focus_hide(commands, sec, focus, "project");
     if scenes.is_empty() {
         let lbl = commands
             .spawn((
@@ -1465,7 +1457,7 @@ fn tab_project(
     }
 
     // Rendering (3D pipeline).
-    let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.rendering"), A_BLUE);
+    let (sec, body) = section(commands, fonts, "monitor", &tr("settings.section.rendering_3d"), A_BLUE);
     commands.entity(col).add_child(sec);
     focus_hide(commands, sec, focus, "rendering");
     let rmode_opts = [
@@ -1569,10 +1561,21 @@ fn tab_project(
     );
     settings_row(commands, fonts, body, 3, &tr("common.mode"), dd);
 
-    // Viewport (render resolution).
-    let (sec, body) = section(commands, fonts, "video-camera", &tr("settings.tab.viewport"), A_PURPLE);
+    // Render Resolution. Shares the "window" key so it sits directly under the
+    // Window section: both carry a width/height pair, and the only thing that
+    // tells them apart is that this one is the resolution the camera renders at
+    // (honoured only when Stretch Mode is Viewport) while the window is the OS
+    // surface it gets scaled onto. Calling it "Viewport" — its old name, and
+    // still the `[viewport]` key in project.toml — made that unguessable.
+    let (sec, body) = section(
+        commands,
+        fonts,
+        "video-camera",
+        &tr("settings.section.render_resolution"),
+        A_PURPLE,
+    );
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "game_viewport");
+    focus_hide(commands, sec, focus, "window");
     let stretch_opts = [tr("common.disabled"), tr("settings.tab.viewport")];
     let stretch_refs: Vec<&str> = stretch_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
@@ -1650,10 +1653,11 @@ fn tab_project(
     );
     settings_row(commands, fonts, body, 3, &tr("settings.row.aspect_mode"), dd);
 
-    // Rendering 2D.
+    // Rendering 2D — a single dropdown, so it rides along under Rendering
+    // rather than owning a sidebar row of its own.
     let (sec, body) = section(commands, fonts, "image-square", &tr("settings.section.rendering_2d"), A_BLUE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "rendering_2d");
+    focus_hide(commands, sec, focus, "rendering");
     let filter_opts = [tr("settings.opt.nearest"), tr("settings.opt.linear")];
     let filter_refs: Vec<&str> = filter_opts.iter().map(|s| s.as_str()).collect();
     let dd = ctl_dropdown(
@@ -1731,17 +1735,18 @@ fn focus_hide(commands: &mut Commands, sec: Entity, focus: Option<&str>, key: &s
     }
 }
 
+/// The whole Interface page — one sidebar category, six stacked sections. It
+/// takes no `focus`: each of its sections was a single sidebar row before, and
+/// three of them held exactly one control.
 fn tab_interface(
     commands: &mut Commands,
     fonts: &EmberFonts,
     col: Entity,
     settings: &EditorSettings,
     custom: &[String],
-    focus: Option<&str>,
 ) {
     let (sec, body) = section(commands, fonts, "text-aa", &tr("settings.cat.fonts"), A_BLUE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "fonts");
 
     // UI font: builtin labels + custom names.
     let ui_opts: Vec<String> = UiFont::BUILTIN
@@ -1800,7 +1805,6 @@ fn tab_interface(
     // demonstrating the end-to-end path.
     let (sec, body) = section(commands, fonts, "globe", &tr("settings.row.language"), A_GREEN);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "language");
 
     let langs = renzora::lang::available();
     let lang_labels: Vec<String> = langs
@@ -1846,7 +1850,6 @@ fn tab_interface(
 
     let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.display"), A_PURPLE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "display");
     let dd = ctl_dropdown(
         commands,
         fonts,
@@ -1881,7 +1884,6 @@ fn tab_interface(
 
     let (sec, body) = section(commands, fonts, "list-bullets", &tr("settings.cat.hierarchy"), A_BLUE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "hierarchy");
     let t = ctl_toggle(
         commands,
         settings.hierarchy_parent_stacking,
@@ -1892,7 +1894,6 @@ fn tab_interface(
 
     let (sec, body) = section(commands, fonts, "sliders", &tr("settings.cat.inspector"), A_PURPLE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "inspector");
     let label_strs: Vec<String> =
         InspectorExpandDefault::ALL.iter().map(|m| loc_opt(m.label())).collect();
     let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
@@ -1946,6 +1947,19 @@ fn tab_interface(
     );
     settings_row(commands, fonts, body, 2, &tr("settings.row.rail_sweep"), t);
     note_row(commands, fonts, body, &tr("settings.hint.rail_sweep"));
+
+    // UI Workspace — one toggle, so it lives here as a section of Interface
+    // rather than as its own sidebar row. It decides whether the game viewport
+    // renders behind the UI canvas when the game-UI workspace is entered.
+    let (sec, body) = section(commands, fonts, "desktop", &tr("settings.cat.workspace"), A_BLUE);
+    commands.entity(col).add_child(sec);
+    let t = ctl_toggle(
+        commands,
+        true,
+        |w| w.resource::<EditorSettings>().ui_preview_by_default,
+        |w, &v| w.resource_mut::<EditorSettings>().ui_preview_by_default = v,
+    );
+    settings_row(commands, fonts, body, 0, &tr("common.preview"), t);
 }
 
 fn inspector_filter_style_index(v: InspectorComponentFilterStyle) -> usize {
@@ -2028,7 +2042,7 @@ fn mono_font_from_index(i: usize, custom: &[String]) -> MonoFont {
 fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: Option<&str>) {
     let (sec, body) = section(commands, fonts, "wrench", &tr("settings.category.developer"), A_ORANGE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "developer");
+    focus_hide(commands, sec, focus, "general");
     let t = ctl_toggle(
         commands,
         false, // corrected by bind_2way on first frame
@@ -2093,20 +2107,9 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
     settings_row(commands, fonts, body, 1, &tr("settings.row.interval_secs"), dv);
     note_row(commands, fonts, body, &tr("settings.hint.autosave"));
 
-    let (sec, body) = section(commands, fonts, "desktop", &tr("settings.cat.workspace"), A_BLUE);
-    commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "workspace");
-    let t = ctl_toggle(
-        commands,
-        true,
-        |w| w.resource::<EditorSettings>().ui_preview_by_default,
-        |w, &v| w.resource_mut::<EditorSettings>().ui_preview_by_default = v,
-    );
-    settings_row(commands, fonts, body, 0, &tr("common.preview"), t);
-
     let (sec, body) = section(commands, fonts, "monitor", &tr("settings.cat.renderer"), A_BLUE);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "renderer");
+    focus_hide(commands, sec, focus, "general");
     let avail: Vec<renzora::RendererBackend> = renzora::RendererBackend::available().to_vec();
     let label_strs: Vec<String> = avail.iter().map(|b| loc_opt(b.label())).collect();
     let labels: Vec<&str> = label_strs.iter().map(|s| s.as_str()).collect();
@@ -2131,6 +2134,18 @@ fn tab_editor(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: O
     );
     settings_row(commands, fonts, body, 0, &tr("settings.row.graphics_backend"), dd);
     note_row(commands, fonts, body, &tr("settings.hint.restart_editor"));
+
+    // Import — the former Assets tab, a single toggle. Folded in here so it
+    // stops being a whole sidebar category holding one checkbox.
+    let (sec, body) = section(commands, fonts, "folder-open", &tr("common.import"), A_BLUE);
+    commands.entity(col).add_child(sec);
+    focus_hide(commands, sec, focus, "general");
+    let t = ctl_toggle(
+        commands, true,
+        |w| w.resource::<EditorSettings>().auto_import_on_drop,
+        |w, &v| w.resource_mut::<EditorSettings>().auto_import_on_drop = v,
+    );
+    settings_row(commands, fonts, body, 0, &tr("settings.row.drop_import"), t);
 }
 
 // ── Viewport ─────────────────────────────────────────────────────────────────
@@ -2144,7 +2159,7 @@ fn tab_viewport(
 ) {
     let (sec, body) = section(commands, fonts, "grid-four", &tr("settings.cat.grid"), A_GREEN);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "grid");
+    focus_hide(commands, sec, focus, "viewport");
     let t = ctl_toggle(
         commands,
         vp.show_grid,
@@ -2196,7 +2211,7 @@ fn tab_viewport(
     // Entity name labels (Bevy 0.19 stroke-font text gizmos).
     let (sec, body) = section(commands, fonts, "text-aa", &tr("settings.cat.labels"), A_GREEN);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "labels");
+    focus_hide(commands, sec, focus, "viewport");
     let t = ctl_toggle(
         commands,
         vp.show_labels,
@@ -2252,7 +2267,7 @@ fn tab_viewport(
 
     let (sec, body) = section(commands, fonts, "gauge", &tr("settings.cat.performance"), A_TEAL);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "performance");
+    focus_hide(commands, sec, focus, "viewport");
     // Graphics Quality — gates the expensive fullscreen passes (GI / auto-exposure
     // / bloom / TAA). The single biggest lever for FPS on weak / high-DPI GPUs.
     let q_strs: Vec<String> = GraphicsQuality::ALL.iter().map(|s| loc_opt(s.label())).collect();
@@ -2467,10 +2482,11 @@ fn tab_viewport(
 
 // ── Scripting ────────────────────────────────────────────────────────────────
 
-fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus: Option<&str>) {
+/// Scripting + Code Editor as one page — the two were separate sidebar rows for
+/// eight toggles between them.
+fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
     let (sec, body) = section(commands, fonts, "code", &tr("settings.category.scripting"), A_GREEN);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "scripting");
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().script_rerun_on_ready_on_reload,
@@ -2496,7 +2512,6 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
 
     let (sec, body) = section(commands, fonts, "code", &tr("settings.cat.code_editor"), A_GREEN);
     commands.entity(col).add_child(sec);
-    focus_hide(commands, sec, focus, "code_editor");
     let t = ctl_toggle(
         commands, true,
         |w| w.resource::<EditorSettings>().code_auto_close_pairs,
@@ -2527,19 +2542,6 @@ fn tab_scripting(commands: &mut Commands, fonts: &EmberFonts, col: Entity, focus
         |w, &v| w.resource_mut::<EditorSettings>().code_word_wrap = v,
     );
     settings_row(commands, fonts, body, 4, &renzora::lang::t_or("settings.row.word_wrap", "Word Wrap"), t);
-}
-
-// ── Assets ───────────────────────────────────────────────────────────────────
-
-fn tab_assets(commands: &mut Commands, fonts: &EmberFonts, col: Entity) {
-    let (sec, body) = section(commands, fonts, "folder-open", &tr("common.import"), A_BLUE);
-    commands.entity(col).add_child(sec);
-    let t = ctl_toggle(
-        commands, true,
-        |w| w.resource::<EditorSettings>().auto_import_on_drop,
-        |w, &v| w.resource_mut::<EditorSettings>().auto_import_on_drop = v,
-    );
-    settings_row(commands, fonts, body, 0, &tr("settings.row.drop_import"), t);
 }
 
 // ── Theme ────────────────────────────────────────────────────────────────────

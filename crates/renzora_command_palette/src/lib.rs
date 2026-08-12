@@ -267,7 +267,6 @@ fn collect_items(
         (SettingsTab::Editor, "Editor"),
         (SettingsTab::Viewport, "Viewport"),
         (SettingsTab::Scripting, "Scripting"),
-        (SettingsTab::Assets, "Assets"),
         (SettingsTab::Input, "Input"),
         (SettingsTab::Shortcuts, "Shortcuts"),
         (SettingsTab::Theme, "Theme"),

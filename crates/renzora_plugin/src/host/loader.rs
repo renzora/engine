@@ -20,6 +20,15 @@ use std::path::{Path, PathBuf};
 /// component schemas refer to.
 pub struct PluginSlot {
     pub path: PathBuf,
+    /// The scope this path reported, once anything has read it. `None` until a
+    /// load got far enough to ask.
+    ///
+    /// Recorded so [`scan_plugins`] can answer "what scope is this plugin?"
+    /// without mapping the image again — which in the editor would map a *second*
+    /// instance of it, since the running one is a shadow copy under a different
+    /// filename. See [`scan_plugins`] for why a second instance is not merely
+    /// wasteful.
+    pub scope: Option<sys::PluginScope>,
     /// Shared with every system this slot's plugins registered. Bumping it
     /// retires the previous load's systems — see `host::GenGate`.
     pub generation: super::PluginGeneration,
@@ -56,12 +65,23 @@ impl LoadedPlugins {
         }
         self.0.push(PluginSlot {
             path: path.to_path_buf(),
+            scope: None,
             generation: super::PluginGeneration::default(),
             loaded_at: 0,
             images: 0,
             _libraries: Vec::new(),
         });
         self.0.len() - 1
+    }
+
+    /// The scope already read for `path`, if any load has read one.
+    ///
+    /// What lets [`scan_plugins`] skip mapping an image it has already seen.
+    fn scope_of(&self, path: &Path) -> Option<sys::PluginScope> {
+        self.0
+            .iter()
+            .find(|s| s.path.as_path() == path)
+            .and_then(|s| s.scope)
     }
 }
 
@@ -291,6 +311,10 @@ fn load_one(world: &mut World, path: &Path, is_editor: bool) -> LoadOutcome {
         // No declaration means Runtime, matching `renzora::add!`'s default.
         Err(_) => sys::PluginScope::Runtime,
     };
+    // Recorded here rather than on the success path, so the rejections below —
+    // and a plugin whose own init fails — still leave the answer behind.
+    // `scan_plugins` reads it instead of mapping the image a second time.
+    world.resource_mut::<LoadedPlugins>().0[slot].scope = Some(scope);
     if !scope.is_known() {
         return LoadOutcome::Failed(format!(
             "declares scope {} which this build does not have",
@@ -383,6 +407,7 @@ pub fn load_static(world: &mut World, plugin: &StaticPlugin, is_editor: bool) ->
     let (slot, counter) = {
         let mut loaded = world.get_resource_or_insert_with(LoadedPlugins::default);
         let slot = loaded.slot_for(&path);
+        loaded.0[slot].scope = Some(plugin.scope);
         let counter = loaded.0[slot].generation.clone();
         (slot, counter)
     };
@@ -771,29 +796,46 @@ pub struct PluginInfo {
 ///
 /// A library that does not export `renzora_plugin_init` is simply not a plugin
 /// and is skipped, so unrelated DLLs sitting in the folder are ignored.
-pub fn scan_plugins(dir: &Path) -> Vec<PluginInfo> {
+///
+/// **Answered without mapping anything, wherever possible.** This used to
+/// `Library::new` every file in the folder and let the handle drop at the end of
+/// the iteration, which froze the editor the moment the export dialog opened:
+/// `FreeLibrary` runs an image's static destructors under the Windows loader
+/// lock, and `tracy.dll` starts a profiler thread at map time, so the unload
+/// waited on a thread that needed the lock the unload was holding. It is the same
+/// deadlock [`load_one`]'s `ManuallyDrop` exists to prevent — see the comment
+/// there.
+///
+/// Mapping was doubly wrong here, not merely fatal on the way out. The editor
+/// runs each plugin from a shadow copy under a different filename (see
+/// [`shadow_copy`]), so the OS treats `plugins/tracy.dll` as an unrelated library
+/// and maps a **second** live instance of it, initialisers and all — a second
+/// Tracy client, from a dialog that only wanted to list filenames.
+///
+/// So: [`exports_plugin_init`] settles "is this a plugin?" from the file's bytes,
+/// and the scope comes from [`LoadedPlugins`], which recorded it when the plugin
+/// was loaded for real. Only a plugin this process never loaded — one added to
+/// the folder since boot, or one whose load failed before the scope was read —
+/// falls through to [`probe_scope`].
+pub fn scan_plugins(world: &World, dir: &Path) -> Vec<PluginInfo> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
+    let known = world.get_resource::<LoadedPlugins>();
     let mut out = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some(std::env::consts::DLL_EXTENSION)
             || is_proc_macro_dylib(&path)
+            || !exports_plugin_init(&path)
         {
             continue;
         }
-        // Loading only to read two symbols: the library is dropped at the end of
-        // the iteration and never initialised, so nothing it contains runs.
-        let Ok(library) = (unsafe { libloading::Library::new(&path) }) else {
+        let Some(scope) = known
+            .and_then(|k| k.scope_of(&path))
+            .or_else(|| probe_scope(&path))
+        else {
             continue;
-        };
-        if unsafe { library.get::<sys::ExtensionInit>(sys::INIT_SYMBOL.as_bytes()) }.is_err() {
-            continue; // not a Renzora plugin
-        }
-        let scope = match unsafe { library.get::<sys::ScopeEntry>(sys::SCOPE_SYMBOL.as_bytes()) } {
-            Ok(f) => unsafe { f() },
-            Err(_) => sys::PluginScope::Runtime,
         };
         let id = path
             .file_stem()
@@ -803,4 +845,24 @@ pub fn scan_plugins(dir: &Path) -> Vec<PluginInfo> {
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
+}
+
+/// Read a plugin's scope by mapping it, for the case where nothing else knows.
+///
+/// The image is **never unmapped** — `ManuallyDrop`, for the reason
+/// [`load_one`] spells out at length. That makes this the expensive answer, and
+/// it is why [`scan_plugins`] asks [`LoadedPlugins`] first: it costs one
+/// permanently mapped image per plugin this process has not otherwise loaded.
+///
+/// `None` means the file would not open at all, which [`scan_plugins`] treats as
+/// "not something we can offer to ship".
+fn probe_scope(path: &Path) -> Option<sys::PluginScope> {
+    let library = std::mem::ManuallyDrop::new(unsafe { Library::new(path) }.ok()?);
+    Some(
+        match unsafe { library.get::<sys::ScopeEntry>(sys::SCOPE_SYMBOL.as_bytes()) } {
+            Ok(f) => unsafe { f() },
+            // No declaration means Runtime, matching `renzora::add!`'s default.
+            Err(_) => sys::PluginScope::Runtime,
+        },
+    )
 }

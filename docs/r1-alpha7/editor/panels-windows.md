@@ -27,7 +27,7 @@ Any scrollable panel (Hierarchy, Inspector, Assets, Console, …) accepts three 
 - **↑ / ↓ arrow keys** — hover the panel and hold an arrow key to scroll it, browser-style. Arrows stand down whenever something is using them as caret keys (a focused text field, the code editor, or a numeric field you're typing into).
 - **Middle-click drag** — grab the content and pan it with the cursor; the grip holds even if the drag strays outside the panel. Views that scroll both axes (like the tileset atlas) pan on both.
 
-All three honour **Settings → Interface → Scroll Speed**, a multiplier on the scroll rate (1.5 is the default feel) persisted per user in `~/.renzora/editor.toml`.
+All three honour **Settings → Interface → Display → Scroll Speed**, a multiplier on the scroll rate (1.5 is the default feel) persisted per user in `~/.renzora/editor.toml`.
 
 ## Narrow panels
 

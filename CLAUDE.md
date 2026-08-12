@@ -85,8 +85,10 @@ canonical about. A plugin built with any rustc on any machine loads into an
 engine built with any other. That removed the last reason an ordinary user needed
 the container, and it is why this section now reads the way it does.
 
-The `bevy_dylib` sharing still applies to *distribution* plugins, which is why
-§3 still exists and why the marketplace still builds against a canonical release.
+That sharing is now gone **entirely**, not just for third-party plugins:
+in-workspace plugins are statically linked `rlib`s wired in by a build-time
+generator, so no plugin anywhere needs a canonical build environment. §3 covers
+both paths.
 
 ### NEVER build the `dev` (debug) profile — one `target/` profile directory only
 
@@ -150,11 +152,13 @@ If `target/` has already grown a `debug/` directory, delete it —
 - ✅ `renzora check` / `renzora test` — reproduce CI exactly. Use when a result
   must match what CI will say, not as the default way to build. They run in the
   container, so they cost nothing in the host's `target/`.
-- ❌ Don't "fix" a perceived link error by stripping the `dylib` crate-type or
-  disabling `prefer-dynamic` — the shared `bevy_dylib`/`renzora` dylib is
-  load-bearing for the distribution-plugin ABI (§3). Note that a *standalone*
-  plugin must not inherit `prefer-dynamic`; `plugins/.cargo/config.toml` turns it
-  off for exactly that reason.
+- ❌ Don't "fix" a perceived link error by disabling `prefer-dynamic` or dropping
+  `dynamic_linking` from the default features. `bevy_dylib` is no longer a plugin
+  ABI concern (§3) — it is a *build-time* one: turning it off relinks the whole of
+  Bevy statically into every build and costs minutes per iteration. Note that a
+  *standalone* plugin must not inherit `prefer-dynamic`; `plugins/.cargo/config.toml`
+  turns it off with an explicit `=no`, because an inherited one makes the plugin
+  import a toolchain-versioned `std-<hash>.dll` that isn't there.
 
 A note on the old "native can't link" claim: the shared `renzora` dylib plus the
 full plugin set exceeds the PE 65,535 exported-symbol cap, which MSVC `link.exe`
@@ -174,77 +178,74 @@ clippy green; the vendored crates must stay excluded.
 
 ---
 
-## 3. Plugin ABI — the `bevy_dylib` it links
+## 3. Plugin ABI — one C symbol, no Bevy
 
-Community/distribution plugins are `dlopen`'d at runtime and share **one
-compiled `bevy_dylib`** with the host. The ABI guard is `plugin_bevy_hash()`,
-exported by every plugin and the editor bundle, and checked by
-`dynamic_plugin_loader` before a plugin is allowed to touch the `App`. It returns
-`TypeId::of::<bevy::ecs::world::World>()` (transmuted to `[u64; 2]`); the loader
-computes its own `TypeId::of::<World>()` and **rejects any plugin whose value
-differs**. If a plugin linked a different `bevy_dylib`, its `World` would be a
-distinct type and every component/resource crossing the boundary would mismatch,
-so the loader refuses it. There is no separate hash crate, no baked
-`RENZORA_ABI_HASH`, and no `abi.lock` — the guard is the `World` `TypeId` itself,
-computed by the compiler, so it can never go stale relative to the build.
+**Nothing is `dlopen`'d against Bevy any more.** This section used to describe a
+shared `bevy_dylib`, a `plugin_bevy_hash()` export and a `World` `TypeId` gate
+enforced by a `dynamic_plugin_loader` crate. All of that is gone: the crate was
+deleted, `add!` emits no FFI, and in-workspace plugins like `renzora_lumen` are
+plain `rlib`s. Two unrelated mechanisms replaced it.
 
-### What actually decides compatibility
+### In-workspace plugins are statically linked, via a build-time generator
 
-Two layers, both real:
+`renzora::add!(MyPlugin [, Editor|Runtime] [, priority = N])` is **not** a
+runtime registry — it is a directive the build generator reads *as text*. The
+generator finds every `add!` line and writes two committed files,
+`crates/renzora_runtime/src/plugins.rs` and
+`crates/renzora_editor/src/plugins.rs`, each an ordinary list of
+`app.add_plugins(...)` calls. Dropping a crate into `crates/` with an `add!` line
+in it is the whole job.
 
-1. **The `bevy_dylib` filename — the OS-enforced gate.** Cargo names the shared
-   library `bevy_dylib-<metadata>.dll` (e.g. `bevy_dylib-0acc7716eed29df6.dll`),
-   where `<metadata>` is cargo's own hash of the *full* build: package id, bevy
-   feature set, profile, `RUSTFLAGS`, target, and rustc. The host `renzora.exe`
-   imports that exact filename; a plugin that shares bevy must import the *same*
-   filename. Build a plugin in a different environment and it imports a
-   differently-named `bevy_dylib` that isn't beside the exe → the OS loader fails
-   it **before `plugin_bevy_hash()` is even called**. This is why **prebuilt,
-   redistributed plugins must be built in the canonical Docker env** (the one
-   canonical flag/env set): only then do they import the same `bevy_dylib-<metadata>`
-   the canonical editor does. **Source-first builds sidestep this entirely** —
-   whether via Docker or native `cargo renzora`, the host and every in-workspace
-   plugin are compiled together in one env, so they share that build's
-   `bevy_dylib-<metadata>` and `World` `TypeId` by construction.
-2. **The `World` `TypeId` guard — the clean rejection.** When two `bevy_dylib`s
-   *do* coexist (e.g. a plugin shipping its own), the filename gate can't catch
-   it; the `TypeId` check does, and turns a cryptic loader failure into an
-   "incompatible bevy version" rejection. Mitigation that makes this rare: there
-   is exactly **one** `bevy_dylib`, beside the exe — never ship one inside
-   `plugins/`.
+Because both lists are committed, a plain `cargo build` needs no generator run;
+CI checks that regenerating produces no diff, which is what stops a stale list
+from shipping. Keep the declaration on one line at the top level of the file —
+the parse requires the full `add!(..);` form at line start, so a commented-out or
+string-embedded one is ignored — and keep every module on the plugin's path
+`pub`, since the type is resolved from the module the file defines. A wrong path
+is a compile error in the generated file, never a silently missing plugin.
 
-### The model: a fixed ABI per canonical release, source-first for everyone else
+There is no ABI here at all: a named type in a generated list is just a linker
+symbol. Deleting the old `inventory` registry also deleted the three dead-strip
+workarounds that existed only to keep its constructors alive.
 
-The ABI is whatever the **canonical editor release** (the prebuilt binary, built
-from a fixed commit in Docker) compiled. That release's `bevy_dylib`/`World`
-`TypeId` is its fixed ABI, frozen in time. So:
+### Third-party extensions are standalone C-ABI plugins that link no Bevy
 
-- **Marketplace plugins** are built *by the marketplace* against a canonical
-  release's ABI, so a downloaded prebuilt always matches that editor. A new
-  release = a new ABI = the marketplace rebuilds plugins for it.
-- **Engine developers build plugins from source**, not from a prebuilt dylib.
-  `renzora run`/`build` compiles every in-workspace plugin in the dev's own Docker
-  env, so they share that build's `bevy_dylib` by construction — whatever bevy
-  features the dev added or removed. Source-first means a custom feature set just
-  works; there is no hash to match.
+A `plugins/*` cdylib exports exactly **one** required symbol,
+`renzora_plugin_init` (`sys::INIT_SYMBOL`), plus an optional
+`renzora_plugin_scope` (`sys::SCOPE_SYMBOL`; absent = `Runtime`). It imports
+nothing from the host — the whole interface is passed *in* as a function table.
+No Bevy, no `TypeId`, no shared dylib, so a plugin built with any rustc on any
+machine loads into an engine built with any other. This is what removed the last
+reason an ordinary user needed the container (§2).
 
-Because of this, the precise value of the ABI tag doesn't matter and needs no
-pinning: matching is guaranteed by *building in the same Docker env* (prebuilts)
-or *building from source* (everything else), and the OS linker + `World` `TypeId`
-enforce it.
+Compatibility is negotiated in two layers, both in `crates/renzora_plugin/src/sys`:
 
-### Feature changes still move the ABI — `trace_tracy` in particular
+1. **A version handshake** — `VERSION_MAJOR` (currently 4) and `VERSION_MINOR`
+   (currently 10). Major breaks; minor appends. The full history sits above the
+   constants in `sys/mod.rs`, including the two releases that *claimed* to append
+   but actually inserted into the middle of `Interface` — which is why MAJOR is 4,
+   and why layer 2 exists.
+2. **`INTERFACE_PREFIX_HASHES`** — entry *n* hashes the shape of the first *n*
+   fields of the interface table, so a plugin verifies the table it was handed
+   rather than trusting the two numbers above. This is the layer that catches a
+   mis-declared "append".
 
-Changing the bevy feature set recompiles `bevy_dylib` and moves the ABI (the
-filename metadata and the `World` `TypeId` both shift), so every existing
-prebuilt plugin for the old ABI stops loading until rebuilt — fine under the
-model above (marketplace rebuilds; devs rebuild from source). One feature to keep
-**out** of the normal build: `trace_tracy`. Bevy installs its Tracy layer in
+The loader (`crates/renzora_plugin/src/host/loader.rs`) is deliberately
+symbol-dispatched: a library is a plugin only if it exports `INIT_SYMBOL`, and
+anything else is skipped silently. It **never drops a loaded `Library`** — every
+function pointer a plugin registered points into that image, a retired system is
+still *in* the schedule merely returning early, and dropping the handle has
+deadlocked in `FreeLibrary` here before. A reload therefore leaks one image; a
+restart reclaims it.
+
+### `trace_tracy` still stays out of the normal build
+
+No longer an ABI concern — a runtime one. Bevy installs its Tracy layer in
 `LogPlugin` at boot whenever that feature is compiled in, with no runtime
 off-switch, so it would arm Tracy (and grow RAM) on every launch. Tracy is opt-in
 via `plugins/tracy`, a standalone C-ABI plugin (frame marks + diagnostic plots,
 started on its own Settings toggle); per-system CPU zones need a dedicated
-profiling build that re-adds `trace_tracy` and so moves the ABI.
+profiling build that re-adds `trace_tracy`.
 
 ---
 
@@ -272,17 +273,14 @@ profiling build that re-adds `trace_tracy` and so moves the ABI.
 
 ## 5. Architecture (orientation)
 
-- **`crates/renzora` is the contract crate** (`crate-type = ["dylib", "rlib"]`,
-  zero deps beyond Bevy + serde). It holds the shared types, events, components,
-  resources, the post-process framework, and the editor contract (`editor`
-  feature). **Every boundary-crossing type lives here** so all crates and
-  dlopen'd plugins agree on one `TypeId`.
-- **Plugin registry:** every plugin self-registers with `renzora::add!(MyPlugin
-  [, Editor|Runtime] [, priority = N])`. The macro emits both an `inventory`
-  entry (static linking, all platforms) and — gated on the *calling crate's*
-  `dlopen` feature — the `extern "C"` FFI trio (`plugin_create`, `plugin_scope`,
-  `plugin_bevy_hash`) used by the dynamic loader. See
-  `crates/renzora/src/plugin_meta.rs`.
+- **`crates/renzora` is the contract crate** (`crate-type = ["rlib"]`, zero deps
+  beyond Bevy + serde). It holds the shared types, events, components, resources,
+  the post-process framework, and the editor contract (`editor` feature). **Every
+  boundary-crossing type lives here** so all crates agree on one definition.
+- **Plugin declaration:** every plugin declares itself with `renzora::add!(MyPlugin
+  [, Editor|Runtime] [, priority = N])`. This is read *as text* at build time by a
+  generator that writes the committed `plugins.rs` lists — it emits no `inventory`
+  entry and no FFI (§3). See `crates/renzora/src/plugin_meta.rs`.
 - **Editor / runtime split.** A plugin's scope is exclusively `Runtime` or
   `Editor` (there is no "both"). Runtime plugins run in the editor viewport AND
   the shipped game; Editor plugins run only when the editor bundle is present.
@@ -300,24 +298,27 @@ profiling build that re-adds `trace_tracy` and so moves the ABI.
 ## 6. Writing plugins
 
 **Before creating or modifying a plugin, ALWAYS research the plugin API first.**
-Read `docs/r1-alpha6/extending/plugins.md` and `crates/renzora/src/plugin_meta.rs`,
+Read `docs/r1-alpha7/extending/plugins.md` and `crates/renzora/src/plugin_meta.rs`,
 and look at an existing distribution plugin (`renzora_lumen`, `renzora_cloth`)
 as a template. Use `renzora add <name>` to scaffold.
 
 Principles (in priority order):
 
 1. **Make plugins as modular as possible.** One plugin = one cohesive feature.
-   Prefer a self-contained `cdylib` distribution plugin over wiring a feature
-   deep into the host.
-2. **Refrain from linking crates as much as possible.** Minimize a plugin's
-   dependency on other `renzora_*` crates. When a type must cross the plugin↔host
-   boundary, **move that type into the `renzora` contract dylib** rather than
-   depending on the crate that defines it. This is the established pattern (GI
-   settings, etc. live in `renzora`, not in their plugin).
-3. **Exactly one `add!` per distribution cdylib** (the FFI symbols are
-   unmangled and would collide). Multi-plugin engine crates stay rlibs and rely
-   on the `inventory` path only. Bundles use `export_plugin_bundle!`.
-4. A plugin that mutates files in parallel with others, or that must initialize
+   Prefer a self-contained plugin over wiring a feature deep into the host.
+2. **Pick the right of the two kinds.** An optional or third-party feature belongs
+   in `plugins/` as a **standalone C-ABI cdylib** — it links no Bevy, loads into
+   any build, and can ship independently. An engine feature belongs in `crates/`
+   as an **`rlib` with an `add!` line**, statically linked by the generator (§3).
+3. **Refrain from linking crates as much as possible.** Minimize a plugin's
+   dependency on other `renzora_*` crates. When a type must cross a crate
+   boundary, **move it into the `renzora` contract crate** rather than depending
+   on the crate that defines it. This is the established pattern (GI settings,
+   etc. live in `renzora`, not in their plugin).
+4. **Multiple `add!` lines per crate are fine** (`renzora_ember` has four) — the
+   old one-per-cdylib rule died with the FFI exports. Keep each on one line at the
+   top level of its file so the generator's text parse sees it.
+5. A plugin that mutates files in parallel with others, or that must initialize
    before another, is the rare case — most ordering should use Bevy's own system
    sets, not plugin `priority`.
 
@@ -398,9 +399,9 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 
 ## 9. Best practices (audit summary)
 
-- **Trust the constraints.** The single shared `bevy_dylib`, the one-`TypeId`
-  contract crate, and the frozen-vs-current docs split are all load-bearing. Work
-  *with* them.
+- **Trust the constraints.** The one-definition contract crate, the two-layer
+  C-ABI negotiation, and the frozen-vs-current docs split are all load-bearing.
+  Work *with* them.
 - **`cargo renzora` to build and run, `cargo check --profile dist` /
   `cargo clippy --profile dist` to iterate, `renzora test` to verify.** Docker is
   for cross-compiling export templates, not for installing the engine on your own
@@ -408,14 +409,15 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 - **Never build the `dev` profile.** Every cargo command takes `--profile dist`;
   a bare one creates a second 300 GB `target/debug/` and a full disk shows up as
   nonsense compile errors in untouched crates, not as a disk error (§2).
-- **Put shared types in `renzora`.** Any type two crates (or a plugin and the
-  host) both need crosses the dylib boundary and must have one definition.
+- **Put shared types in `renzora`.** Any type two crates both need must have one
+  definition, and that is where it lives.
 - **Two plugins, not one "both" plugin,** when a feature needs editor tooling +
   runtime behaviour.
-- **Plugin ABI is the shared `bevy_dylib`** — guaranteed by building in the same
-  Docker env (prebuilts) or from source (everything else); the `World` `TypeId`
-  guard rejects mismatches. There is no pinned hash to maintain.
-- **Docs are part of "done."** A feature without its `docs/r1-alpha6/` update is
+- **Nothing is `dlopen`'d against Bevy.** In-workspace plugins are statically
+  linked `rlib`s; third-party ones are C-ABI cdylibs that link no Bevy and
+  negotiate via version + `INTERFACE_PREFIX_HASHES` (§3). There is no
+  `bevy_dylib` gate and no hash to maintain.
+- **Docs are part of "done."** A feature without its `docs/r1-alpha7/` update is
   unfinished.
 - **Verify before contradicting the user** about working-tree state; check the
   actual files.
@@ -426,19 +428,22 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 
 | Path | What it is |
 |---|---|
-| `crates/renzora/` | Contract dylib: shared types/events/components, editor contract |
-| `crates/renzora/src/plugin_meta.rs` | `add!` / `export_plugin_bundle!`, `PluginScope` |
-| `crates/dynamic_plugin_loader/src/lib.rs` | dlopen loader + `World` `TypeId` ABI gate + hot-reload |
+| `crates/renzora/` | Contract crate (`rlib`): shared types/events/components, editor contract |
+| `crates/renzora/src/plugin_meta.rs` | `add!` + `PluginScope`; what the build generator parses |
+| `crates/renzora_runtime/src/plugins.rs`, `crates/renzora_editor/src/plugins.rs` | **Generated + committed.** The static plugin lists the `add!` generator writes; CI fails if regenerating them diffs |
+| `crates/renzora_plugin/src/sys/mod.rs` | The C-ABI: `INIT_SYMBOL`, `VERSION_MAJOR`/`MINOR`, `INTERFACE_PREFIX_HASHES`, and the version history |
+| `crates/renzora_plugin/src/host/loader.rs` | The plugin loader: symbol-dispatched, never drops a `Library` |
 | `crates/renzora_scripting/` | Scripting system: hooks, commands, context, declarative `ScriptExtension` |
 | `crates/renzora_plugin/src/script/` | The language-backend boundary (codec, contexts, `Backend`) |
 | `plugins/lua/` | The Lua interpreter, as a standalone plugin |
+| `plugins/grayscale/` | The smallest C-ABI plugin — a 52-line `#![no_std]` post-process template |
 | `crates/renzora_static_plugins/` | **Generated.** The list of C-ABI plugins a lean export linked into the binary. The checked-in copy is an empty stub; `renzora_export::build::stage_static_plugins` rewrites it inside `target/export-src/`. Editing it by hand changes nothing about an export |
-| `crates/renzora_lumen`, `crates/renzora_cloth` | Distribution `cdylib` plugin templates |
+| `crates/renzora_lumen`, `crates/renzora_cloth` | In-workspace `rlib` plugin templates (`add!`-declared, statically linked) |
 | `docker/base/Dockerfile` | Shared base image (rust + Linux deps + LLVM-19); the Rust/Bevy pin |
 | `docker/<platform>/Dockerfile` | Per-platform toolchain image, `FROM base` (linux/windows/macos/ios/android/wasm) |
 | `docker/build-all.sh` | In-container build orchestrator (run once per platform container) |
 | `.github/workflows/docker-image.yml` | Publishes base + each <platform> image to GHCR |
-| `docs/r1-alpha6/` | Current docs (edit here); `extending/plugins.md` for the plugin API |
+| `docs/r1-alpha7/` | Current docs (edit here); `extending/plugins.md` for the plugin API |
 | `docs/BEVY_0.19_MIGRATION.md` | Bevy 0.19 upgrade notes (plugin ABI will change) |
 | `.github/workflows/test.yml` | CI: container test + clippy gate |
 | `.github/workflows/sync-docs.yml` | Auto-publish docs to renzora.com |

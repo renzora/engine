@@ -154,7 +154,7 @@ main_scene = "scenes/main.ron"
 
 You can also mark scenes **global**: they load *before* the main scene and stay alive the whole time, surviving every later scene change. Use one per concern — a HUD scene, a music scene, a networking scene — rather than duplicating that content in every level.
 
-Set them in **Settings → Global Scenes** (a toggle per scene in `scenes/`), which writes the `autoload` list:
+Set them in **Settings → Project → Global Scenes** (a toggle per scene in `scenes/`), which writes the `autoload` list:
 
 ```toml
 main_scene = "scenes/main.ron"

@@ -125,6 +125,41 @@ Put it on any entity — the effect is global, and the bridge finds the first in
 
 The consequence to know: a second entity carrying the same effect component does nothing. One effect, one set of settings.
 
+## Animated effects tick their own clock
+
+There is no `time` binding and no globals uniform. The bridge uploads the settings component's bytes **verbatim** — it never interprets a field, so a field called `time` is not special and nothing in the host writes to it. An effect that animates needs a `f32` in its struct and a three-line system to advance it:
+
+```rust
+#[derive(Component)]
+#[repr(C)]
+pub struct FilmGrain {
+    #[field(min = 0.0, max = 2.0, speed = 0.01)]
+    pub intensity: f32,
+    #[field(skip)]
+    pub time: f32,
+}
+
+fn sync_time(mut q: Query<&mut FilmGrain>, time: Res<Time>) {
+    for g in &mut q {
+        g.time += time.delta_secs();
+        if g.time > 1024.0 {
+            g.time -= 1024.0;   // keep the f32 seed small
+        }
+    }
+}
+
+// ...
+app.add_post_process::<FilmGrain>("film_grain", WGSL, RenderPhase::LdrPost, 0.0)
+    .add_systems(Update, sync_time);
+```
+
+`#[field(skip)]` only hides the value from the inspector. It does not mean "engine-driven" — reading it that way is what left several converted effects frozen at `0.0`, animating nothing while their shaders faithfully sampled a clock that never moved. `plugins/film_grain`, `plugins/pulse` and `plugins/ripple` are the working shape.
+
+Two details worth copying from `film_grain`:
+
+- **Wrap the accumulator** instead of assigning `time.elapsed_secs()`. An f32 second count stops resolving small steps after a few hours of uptime.
+- **Feed time as its own hash axis**, not as an offset added to the sample coordinate. Offsetting the coordinate translates one fixed noise field, which looks like a sheet of dirt sliding over the image rather than something regenerating in place.
+
 ## Hot reload
 
 Both halves reload. Rebuild the plugin and:
