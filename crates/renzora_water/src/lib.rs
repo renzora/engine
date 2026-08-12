@@ -1,18 +1,39 @@
-// The `Buoyant` marker is a plain component (queried by the water-interaction
-// shader uniforms), so the module stays compiled. Only `buoyancy::apply_buoyancy`
-// applies avian forces — that system (and the avian import) is gated behind
-// `physics`, so a no-physics lean export drops `avian3d`.
+//! FFT ocean waves.
+//!
+//! The surface is a sum of **wave cascades**, each an independent simulation of
+//! a JONSWAP/TMA ocean spectrum over its own tile. Each frame the GPU
+//! propagates the spectrum in time and inverse-Fourier-transforms it into a
+//! displacement map and a normal/foam map ([`sim`]); the water material
+//! displaces its vertices by those maps and shades them ([`material`],
+//! `water.wgsl`). Foam comes from the Jacobian of the displacement — it appears
+//! where the surface folds over itself, i.e. where waves actually break.
+//!
+//! Ported from [GodotOceanWaves](https://github.com/2Retr0/GodotOceanWaves)
+//! (MIT). The per-file headers record where each kernel deviates from the
+//! original and why.
+//!
+//! Buoyancy does not read the GPU maps back. [`heightfield`] recomputes the
+//! same sea at low resolution on the CPU, which is both cheaper than a readback
+//! and the only option on a headless server.
+//!
+//! Only the `Buoyant` marker is a plain component; `buoyancy::apply_buoyancy`
+//! is gated behind `physics` so a no-physics lean export drops `avian3d`.
 pub mod buoyancy;
 pub mod component;
+pub mod heightfield;
 pub mod material;
 pub mod mesh;
+pub mod sim;
 pub mod systems;
 
 use bevy::asset::embedded_asset;
 use bevy::prelude::*;
 
 pub use buoyancy::Buoyant;
-pub use component::{GerstnerWave, WaterInteractor, WaterPreset, WaterSurface};
+pub use component::{
+    WaterMeshMode, WaterMeshQuality, WaterPreset, WaterSurface, WaveCascade, MAX_CASCADES,
+};
+pub use heightfield::WaterHeightField;
 pub use material::WaterMaterial;
 
 #[derive(Default)]
@@ -23,23 +44,45 @@ impl Plugin for WaterPlugin {
         info!("[runtime] WaterPlugin");
 
         embedded_asset!(app, "water.wgsl");
+        embedded_asset!(app, "shaders/water_spectrum.wgsl");
+        embedded_asset!(app, "shaders/water_modulate.wgsl");
+        embedded_asset!(app, "shaders/water_butterfly.wgsl");
+        embedded_asset!(app, "shaders/water_fft.wgsl");
+        embedded_asset!(app, "shaders/water_transpose.wgsl");
+        embedded_asset!(app, "shaders/water_unpack.wgsl");
 
-        app.add_plugins(material::WaterMaterialPlugin)
+        app.add_plugins((material::WaterMaterialPlugin, sim::WaterSimPlugin))
+            .init_resource::<systems::WaterSimState>()
+            .init_resource::<heightfield::WaterHeightField>()
             .register_type::<component::WaterSurface>()
-            .register_type::<component::WaterInteractor>()
+            // Nested types have to be registered too, or reflection-based
+            // scene save/load can't walk into the cascade list.
+            .register_type::<component::WaveCascade>()
+            .register_type::<component::WaterMeshMode>()
+            .register_type::<component::WaterMeshQuality>()
             .register_type::<buoyancy::Buoyant>()
             .add_systems(
                 Update,
                 (
-                    systems::ensure_depth_prepass,
+                    // Chained: the textures must exist before a material can
+                    // point at them, and the simulation clock must advance
+                    // before the height field samples it.
+                    systems::ensure_cascade_textures,
                     systems::setup_water_entities,
+                    systems::drive_water_simulation,
+                    systems::follow_camera_with_clipmap,
                     systems::update_water_uniforms,
-                ),
+                    systems::update_water_heightfield,
+                )
+                    .chain(),
             );
 
         // Applying buoyancy forces needs avian — only when `physics` is built.
         #[cfg(feature = "physics")]
-        app.add_systems(Update, buoyancy::apply_buoyancy);
+        app.add_systems(
+            Update,
+            buoyancy::apply_buoyancy.after(systems::update_water_heightfield),
+        );
     }
 }
 

@@ -20,5 +20,13 @@ renzora = { path = "../renzora", default-features = false }
 serde = { version = "1", features = ["derive"] }
 avian3d = { version = "0.7", default-features = false, features = ["3d", "f32"], optional = true }
 
+[dev-dependencies]
+# Compiles the WGSL compute kernels in a unit test. Without a GPU in CI (and
+# with shader errors otherwise only surfacing as a silent pipeline failure at
+# runtime), this is the only place a typo in the simulation shaders gets caught.
+# Same version wgpu itself uses, so the validation matches what the engine will
+# do at load time.
+naga = { version = "29", features = ["wgsl-in"] }
+
 [lints]
 workspace = true
