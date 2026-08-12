@@ -57,6 +57,12 @@ unsafe extern "C" fn no_progress(_c: *mut std::ffi::c_void, out: *const sys::Byt
     write_false(out);
 }
 
+/// "No scene is loading" — the `false` presence bit `scene_load_state` decodes
+/// into `None`.
+unsafe extern "C" fn no_scene_load(_c: *mut std::ffi::c_void, out: *const sys::ByteSink) {
+    write_false(out);
+}
+
 unsafe extern "C" fn echo_key(
     _c: *mut std::ffi::c_void,
     key: sys::StrRef,
@@ -74,6 +80,7 @@ fn stub_host() -> sys::ScriptHostCalls {
         get_component: no_component,
         get_components: no_components,
         asset_progress: no_progress,
+        scene_load_state: no_scene_load,
         translate: echo_key,
     }
 }
@@ -362,4 +369,27 @@ fn a_declared_action_binding_becomes_a_function() {
             ],
         }]
     );
+}
+
+/// Syntax-checks the example scripts that ship in `assets/scripts/`. They are
+/// authored by hand and only ever exercised by loading a scene, so a typo in
+/// one is otherwise found by a user, at runtime, as a script that silently
+/// does nothing.
+#[test]
+fn shipped_example_scripts_parse() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/scripts");
+    let lua = mlua::Lua::new();
+    let mut checked = 0;
+    for entry in std::fs::read_dir(dir).expect("assets/scripts") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("lua") {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).expect("read script");
+        if let Err(err) = lua.load(&source).set_name(path.to_string_lossy()).into_function() {
+            panic!("{}: {err}", path.display());
+        }
+        checked += 1;
+    }
+    assert!(checked > 0, "no example scripts found in {dir}");
 }

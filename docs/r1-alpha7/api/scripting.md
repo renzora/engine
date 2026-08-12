@@ -165,6 +165,30 @@ end
 
 `goto_camera_preset(name)` moves the script's **own** entity to the matching preset's stored translation + rotation (it's a transform write, applied after the hook returns). It's a no-op with a console warning if the entity has no `CameraPresets` or no preset matches `name`. Both backends. To read the list generically, use component reflection (`get("CameraPresets...")`).
 
+## Field of view
+
+FOV lives inside Bevy's `Projection` **enum**, which the generic `get`/`set` reflect paths cannot address — so it gets two declared functions instead. Both are degrees, matching the inspector's FOV field. Both backends.
+
+| Function | Description |
+|----------|-------------|
+| `set_fov(degrees)` | Set this camera's vertical field of view. Clamped to 10–170, the same bounds the inspector enforces. A no-op on an orthographic camera. |
+| `camera_fov()` | This camera's vertical field of view in degrees, or **0** if it is orthographic (so a script can tell the difference rather than reading a fake angle). |
+
+```lua
+local base_fov = 0.0
+
+function on_ready()
+    base_fov = camera_fov()
+end
+
+function on_update()
+    -- Breathe the lens by half a degree.
+    set_fov(base_fov + math.sin(elapsed * 0.4) * 0.5)
+end
+```
+
+`camera_fov()` reads a `CameraReadState` mirror that `renzora_engine` refreshes each frame from the projection; it is never saved into a scene. See `assets/scripts/camera_sway.lua` for both functions in use — it breathes the lens *and* scales its rotation amplitudes by FOV, so the sway covers the same fraction of the frame on any lens.
+
 ## Component reflection
 
 Read or write any registered component field by a `"Component.field"` (dot-separated) path. The setters and `get`/`get_on` are in **both** backends; the bulk/component helpers are **Lua only**.
@@ -433,6 +457,7 @@ Domain crates inject extra functions into the VM when their plugin is active. Th
 | `renzora_physics` | `move_controller(x, y, z)` (collide-and-slide), plus re-registered `apply_force(x, y, z)`, `apply_impulse(x, y, z)`, `set_linear_velocity(x, y, z)` (routed through `ScriptAction`) |
 | `renzora_navmesh` | `nav_set_destination(x, y, z)`, `nav_clear_destination()`, `nav_stop()` |
 | `renzora_animation` | `set_anim_param(name, v)`, `set_anim_bool(name, v)`, `set_anim_trigger(name)`, `get_animation_length(name)` |
+| `renzora_engine` (camera) | `set_fov(degrees)`, `camera_fov()` |
 
 ## Capabilities not exposed as functions
 
@@ -440,7 +465,7 @@ The `ScriptCommand` enum (`command.rs`) defines many engine verbs that have **no
 
 `apply_torque`, `set_angular_velocity`, `Raycast`, `tween` / `tween_position` / `tween_rotation` / `tween_scale`, all particle ops (`particle_play`/`burst`/`set_rate`/…), health (`set_health`, `damage`, `heal`, `kill`, `revive`, `set_invincible`), `camera_follow` / `set_camera_target` / `set_camera_zoom`, `spawn_prefab` / `unload_scene`, sprite animation, debug draws (`draw_ray` / `draw_sphere` / `draw_box` / `draw_point`), and `set_light_intensity` / `set_light_color`.
 
-> Do not document these as available globals — the old API draft invented names such as `rpc_send`, `is_server`, `get_network_id`, `raycast_down`, `find_entity_by_name`, `set_camera_fov`, and `terrain_get_height` that **do not exist** in the engine.
+> Do not document these as available globals — the old API draft invented names such as `rpc_send`, `is_server`, `get_network_id`, `raycast_down`, `find_entity_by_name`, and `terrain_get_height` that **do not exist** in the engine. (That list used to include `set_camera_fov`; field of view is now reachable, as `set_fov` / `camera_fov` — see [Field of view](#field-of-view).)
 
 ## Blueprints
 

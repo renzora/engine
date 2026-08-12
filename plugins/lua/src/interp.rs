@@ -1357,12 +1357,15 @@ fn register_api(lua: &Lua) {
             let (component, field) = parse_component_path(&path).ok_or_else(|| {
                 mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
             })?;
+            let value = lua_to_property_value(&value).ok_or_else(|| {
+                mlua::Error::runtime(format!("set('{}', …): unsupported value", path))
+            })?;
             push_command(ScriptCommand::SetComponentField {
                 entity_id: None,
                 entity_name: None,
                 component_type: component,
                 field_path: field,
-                value: lua_to_property_value(&value),
+                value,
             });
             Ok(())
         })
@@ -1377,12 +1380,15 @@ fn register_api(lua: &Lua) {
                 let (component, field) = parse_component_path(&path).ok_or_else(|| {
                     mlua::Error::runtime(format!("Invalid path '{}'. Use 'Component.field'", path))
                 })?;
+                let value = lua_to_property_value(&value).ok_or_else(|| {
+                    mlua::Error::runtime(format!("set_on('{}', …): unsupported value", path))
+                })?;
                 push_command(ScriptCommand::SetComponentField {
                     entity_id: None,
                     entity_name: Some(entity_name),
                     component_type: component,
                     field_path: field,
-                    value: lua_to_property_value(&value),
+                    value,
                 });
                 Ok(())
             },
@@ -2106,27 +2112,67 @@ fn json_to_lua(lua: &Lua, value: &serde_json::Value) -> mlua::Result<LuaValue> {
     }
 }
 
+/// A Lua table recognised as engine data.
+///
+/// The three converters below each used to re-implement this recognition with
+/// slightly different rules, so the *same* table meant different things
+/// depending on which boundary it crossed: `{x=1, y=2}` was a `Vec2` as a script
+/// variable but matched nothing as a reflection write (and fell through to a
+/// `0.0` that could silently overwrite an unrelated float field), and no colour
+/// table was recognised over RPC at all. One classifier, one precedence order,
+/// so a table means one thing everywhere; each converter then maps the shape
+/// into whatever its own value enum can actually carry.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum TableShape {
+    Vec2([f32; 2]),
+    Vec3([f32; 3]),
+    Color([f32; 4]),
+}
+
+/// Recognise a Lua table as a vector or a colour.
+///
+/// The precedence is deliberate and shared by every caller: named fields beat
+/// positional ones, and within each group the widest match wins so `{x,y,z}` is
+/// never mistaken for `{x,y}`. Alpha defaults to opaque, matching the engine's
+/// colour convention. A table matching nothing returns `None` rather than a
+/// zero, so callers can refuse the write instead of corrupting a field.
+fn classify_table(t: &LuaTable) -> Option<TableShape> {
+    if let (Ok(x), Ok(y)) = (t.get::<f64>("x"), t.get::<f64>("y")) {
+        if let Ok(z) = t.get::<f64>("z") {
+            return Some(TableShape::Vec3([x as f32, y as f32, z as f32]));
+        }
+        return Some(TableShape::Vec2([x as f32, y as f32]));
+    }
+    if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b")) {
+        let a: f64 = t.get("a").unwrap_or(1.0);
+        return Some(TableShape::Color([r as f32, g as f32, b as f32, a as f32]));
+    }
+    // Positional: {r,g,b,a} / {x,y,z} / {x,y}.
+    if let (Ok(v1), Ok(v2)) = (t.get::<f64>(1), t.get::<f64>(2)) {
+        if let Ok(v3) = t.get::<f64>(3) {
+            if let Ok(v4) = t.get::<f64>(4) {
+                return Some(TableShape::Color([v1 as f32, v2 as f32, v3 as f32, v4 as f32]));
+            }
+            return Some(TableShape::Vec3([v1 as f32, v2 as f32, v3 as f32]));
+        }
+        return Some(TableShape::Vec2([v1 as f32, v2 as f32]));
+    }
+    None
+}
+
 fn lua_to_script_value(value: &LuaValue) -> Option<ScriptValue> {
     match value {
         LuaValue::Number(n) => Some(ScriptValue::Float(*n as f32)),
         LuaValue::Integer(n) => Some(ScriptValue::Int(*n as i32)),
         LuaValue::Boolean(b) => Some(ScriptValue::Bool(*b)),
         LuaValue::String(s) => Some(ScriptValue::String(s.to_str().ok()?.to_string())),
-        LuaValue::Table(t) => {
-            // Check for vec2/vec3/color
-            if let (Ok(x), Ok(y)) = (t.get::<f64>("x"), t.get::<f64>("y")) {
-                if let Ok(z) = t.get::<f64>("z") {
-                    return Some(ScriptValue::Vec3([x as f32, y as f32, z as f32]));
-                }
-                return Some(ScriptValue::Vec2([x as f32, y as f32]));
-            }
-            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b"))
-            {
-                let a: f64 = t.get("a").unwrap_or(1.0);
-                return Some(ScriptValue::Color([r as f32, g as f32, b as f32, a as f32]));
-            }
-            None
-        }
+        // The only target enum that can carry every shape, so this is a straight
+        // mapping — the other two below have to degrade.
+        LuaValue::Table(t) => match classify_table(t)? {
+            TableShape::Vec2(v) => Some(ScriptValue::Vec2(v)),
+            TableShape::Vec3(v) => Some(ScriptValue::Vec3(v)),
+            TableShape::Color(v) => Some(ScriptValue::Color(v)),
+        },
         _ => None,
     }
 }
@@ -2153,38 +2199,34 @@ fn parse_component_path(path: &str) -> Option<(String, String)> {
     Some((component, field))
 }
 
-/// Convert a Lua value to PropertyValue for reflection writes.
-fn lua_to_property_value(value: &LuaValue) -> PropValue {
+/// Convert a Lua value to a [`PropValue`] for reflection writes.
+///
+/// Returns `None` for anything unrecognised so `set`/`set_on` can raise a script
+/// error. This used to fall through to `Float(0.0)`, which was the worst
+/// available answer: a typo'd table wrote a real zero into whatever field the
+/// path named, so the script looked like it worked and the value was silently
+/// wrong.
+///
+/// `PropValue` has no `Vec2`, so a two-component table is promoted to `Vec3`
+/// with `z = 0.0`. Adding a `Vec2` variant would be the honest fix, but it is a
+/// codec change on both `PropValue` and the contract crate's `PropertyValue` —
+/// i.e. a plugin ABI bump — so it is deliberately not done here. The promotion
+/// at least lands `x`/`y` on a `Vec3` field instead of failing outright.
+fn lua_to_property_value(value: &LuaValue) -> Option<PropValue> {
     use renzora_plugin::script::PropValue as PropertyValue;
     match value {
-        LuaValue::Number(n) => PropertyValue::Float(*n as f32),
-        LuaValue::Integer(n) => PropertyValue::Int(*n),
-        LuaValue::Boolean(b) => PropertyValue::Bool(*b),
-        LuaValue::String(s) => {
-            PropertyValue::String(s.to_str().map(|s| s.to_string()).unwrap_or_default())
-        }
-        LuaValue::Table(t) => {
-            // Check for vec3 {x, y, z}
-            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f64>("x"), t.get::<f64>("y"), t.get::<f64>("z"))
-            {
-                return PropertyValue::Vec3([x as f32, y as f32, z as f32]);
-            }
-            // Check for color {r, g, b, a}
-            if let (Ok(r), Ok(g), Ok(b)) = (t.get::<f64>("r"), t.get::<f64>("g"), t.get::<f64>("b"))
-            {
-                let a: f64 = t.get("a").unwrap_or(1.0);
-                return PropertyValue::Color([r as f32, g as f32, b as f32, a as f32]);
-            }
-            // Check for array-style {r, g, b, a} or {x, y, z}
-            if let (Ok(v1), Ok(v2), Ok(v3)) = (t.get::<f64>(1), t.get::<f64>(2), t.get::<f64>(3)) {
-                if let Ok(v4) = t.get::<f64>(4) {
-                    return PropertyValue::Color([v1 as f32, v2 as f32, v3 as f32, v4 as f32]);
-                }
-                return PropertyValue::Vec3([v1 as f32, v2 as f32, v3 as f32]);
-            }
-            PropertyValue::Float(0.0)
-        }
-        _ => PropertyValue::Float(0.0),
+        LuaValue::Number(n) => Some(PropertyValue::Float(*n as f32)),
+        LuaValue::Integer(n) => Some(PropertyValue::Int(*n)),
+        LuaValue::Boolean(b) => Some(PropertyValue::Bool(*b)),
+        LuaValue::String(s) => Some(PropertyValue::String(
+            s.to_str().map(|s| s.to_string()).unwrap_or_default(),
+        )),
+        LuaValue::Table(t) => match classify_table(t)? {
+            TableShape::Vec2([x, y]) => Some(PropertyValue::Vec3([x, y, 0.0])),
+            TableShape::Vec3(v) => Some(PropertyValue::Vec3(v)),
+            TableShape::Color(v) => Some(PropertyValue::Color(v)),
+        },
+        _ => None,
     }
 }
 
@@ -2236,7 +2278,15 @@ fn action_value_to_lua(lua: &Lua, value: &ActionValue) -> LuaResult<LuaValue> {
     }
 }
 
-/// Extract a string argument from a LuaMultiValue by index.
+/// Convert a Lua value into an [`ActionValue`] for RPC arguments.
+///
+/// `ActionValue` is the narrowest of the three targets — no `Vec2`, no `Color` —
+/// so both degrade to `Vec3`, and a colour loses its alpha. That is lossy but at
+/// least *recognised*; previously any colour table fell to the catch-all below.
+///
+/// The catch-all no longer uses `format!("{:?}", value)`. For a table that
+/// rendered a pointer (`Table(Ref(0x7f…))`), which differs run to run and is
+/// useless to the receiving script — a fixed marker is at least deterministic.
 fn lua_to_action_value(value: &LuaValue) -> ActionValue {
     use ActionValue as ScriptActionValue;
     match value {
@@ -2244,16 +2294,14 @@ fn lua_to_action_value(value: &LuaValue) -> ActionValue {
         LuaValue::Integer(n) => ScriptActionValue::Int(*n),
         LuaValue::Boolean(b) => ScriptActionValue::Bool(*b),
         LuaValue::String(s) => ScriptActionValue::String(s.to_string_lossy().to_string()),
-        LuaValue::Table(t) => {
-            // Check if it's a vec3 table {x, y, z}
-            if let (Ok(x), Ok(y), Ok(z)) = (t.get::<f32>("x"), t.get::<f32>("y"), t.get::<f32>("z"))
-            {
-                ScriptActionValue::Vec3([x, y, z])
-            } else {
-                ScriptActionValue::String(format!("{:?}", value))
-            }
-        }
-        _ => ScriptActionValue::String(format!("{:?}", value)),
+        LuaValue::Table(t) => match classify_table(t) {
+            Some(TableShape::Vec2([x, y])) => ScriptActionValue::Vec3([x, y, 0.0]),
+            Some(TableShape::Vec3(v)) => ScriptActionValue::Vec3(v),
+            Some(TableShape::Color([r, g, b, _a])) => ScriptActionValue::Vec3([r, g, b]),
+            None => ScriptActionValue::String("<table>".into()),
+        },
+        LuaValue::Nil => ScriptActionValue::String("nil".into()),
+        _ => ScriptActionValue::String("<unsupported>".into()),
     }
 }
 
@@ -2268,4 +2316,124 @@ fn to_display_name(name: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod marshalling_tests {
+    //! One table shape, one meaning, at every boundary.
+    //!
+    //! These exist because the three converters used to disagree: the same
+    //! `{x=1, y=2}` was a `Vec2` as a script variable and an unrecognised value
+    //! that silently became `0.0` as a reflection write. The assertions below
+    //! are deliberately written per-shape *across all three* converters, so a
+    //! future edit to one of them that forgets the others fails here.
+
+    use super::*;
+
+    fn table(src: &str) -> (Lua, LuaValue) {
+        let lua = Lua::new();
+        let v: LuaValue = lua.load(src).eval().expect("table literal");
+        (lua, v)
+    }
+
+    fn shape(src: &str) -> Option<TableShape> {
+        let (_lua, v) = table(src);
+        match v {
+            LuaValue::Table(t) => classify_table(&t),
+            _ => panic!("not a table"),
+        }
+    }
+
+    #[test]
+    fn named_xy_is_vec2_everywhere() {
+        assert_eq!(shape("return {x=1, y=2}"), Some(TableShape::Vec2([1.0, 2.0])));
+
+        let (_lua, v) = table("return {x=1, y=2}");
+        assert_eq!(lua_to_script_value(&v), Some(ScriptValue::Vec2([1.0, 2.0])));
+        // No Vec2 in either narrower enum, so both promote with z = 0 rather
+        // than falling through to a zero (property) or a debug string (action).
+        assert_eq!(
+            lua_to_property_value(&v),
+            Some(PropValue::Vec3([1.0, 2.0, 0.0]))
+        );
+        assert_eq!(lua_to_action_value(&v), ActionValue::Vec3([1.0, 2.0, 0.0]));
+    }
+
+    #[test]
+    fn named_xyz_is_vec3_everywhere() {
+        let (_lua, v) = table("return {x=1, y=2, z=3}");
+        assert_eq!(
+            lua_to_script_value(&v),
+            Some(ScriptValue::Vec3([1.0, 2.0, 3.0]))
+        );
+        assert_eq!(
+            lua_to_property_value(&v),
+            Some(PropValue::Vec3([1.0, 2.0, 3.0]))
+        );
+        assert_eq!(lua_to_action_value(&v), ActionValue::Vec3([1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn rgb_defaults_alpha_to_opaque() {
+        assert_eq!(
+            shape("return {r=1, g=0, b=0}"),
+            Some(TableShape::Color([1.0, 0.0, 0.0, 1.0]))
+        );
+        assert_eq!(
+            shape("return {r=1, g=0, b=0, a=0.5}"),
+            Some(TableShape::Color([1.0, 0.0, 0.0, 0.5]))
+        );
+    }
+
+    #[test]
+    fn colour_is_recognised_over_rpc_even_though_it_degrades() {
+        let (_lua, v) = table("return {r=1, g=0, b=0, a=0.5}");
+        assert_eq!(
+            lua_to_script_value(&v),
+            Some(ScriptValue::Color([1.0, 0.0, 0.0, 0.5]))
+        );
+        // ActionValue has no Color; alpha is dropped, but it is no longer
+        // stringified into a pointer-debug.
+        assert_eq!(lua_to_action_value(&v), ActionValue::Vec3([1.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    fn positional_tables_work_at_every_boundary() {
+        assert_eq!(shape("return {1, 2}"), Some(TableShape::Vec2([1.0, 2.0])));
+        assert_eq!(
+            shape("return {1, 2, 3}"),
+            Some(TableShape::Vec3([1.0, 2.0, 3.0]))
+        );
+        assert_eq!(
+            shape("return {1, 2, 3, 4}"),
+            Some(TableShape::Color([1.0, 2.0, 3.0, 4.0]))
+        );
+
+        // Previously only the reflection path understood positional tables.
+        let (_lua, v) = table("return {1, 2, 3}");
+        assert_eq!(
+            lua_to_script_value(&v),
+            Some(ScriptValue::Vec3([1.0, 2.0, 3.0]))
+        );
+    }
+
+    #[test]
+    fn named_fields_beat_positional_ones() {
+        assert_eq!(
+            shape("return {9, 9, 9, x=1, y=2, z=3}"),
+            Some(TableShape::Vec3([1.0, 2.0, 3.0]))
+        );
+    }
+
+    #[test]
+    fn unrecognised_table_is_refused_not_zeroed() {
+        assert_eq!(shape("return {foo=1}"), None);
+
+        let (_lua, v) = table("return {foo=1}");
+        assert_eq!(lua_to_script_value(&v), None);
+        // The regression this whole module exists for: this used to be
+        // `Float(0.0)`, which wrote a real zero into whatever field was named.
+        assert_eq!(lua_to_property_value(&v), None);
+        assert_eq!(lua_to_action_value(&v), ActionValue::String("<table>".into()));
+    }
 }

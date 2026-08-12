@@ -8,6 +8,7 @@ pub mod asset_progress;
 pub mod asset_reader;
 pub mod autoload;
 pub mod camera;
+pub mod camera_script;
 pub mod crash;
 pub mod debug_log;
 #[cfg(feature = "render_3d")]
@@ -604,6 +605,27 @@ impl Plugin for RuntimePlugin {
                 );
         }
 
+        // Camera scripting: `set_fov(degrees)` and `camera_fov()`. FOV sits
+        // inside the `Projection` enum, which the generic reflect paths cannot
+        // reach, so it needs a declared action and a reflected mirror.
+        app.register_type::<camera_script::CameraReadState>()
+            .add_observer(camera_script::handle_camera_script_actions)
+            .add_systems(
+                Update,
+                (
+                    camera_script::auto_init_camera_read_state,
+                    camera_script::update_camera_read_state,
+                )
+                    .chain(),
+            );
+        #[cfg(feature = "scripting")]
+        {
+            let mut extensions = app.world_mut().get_resource_or_insert_with(
+                renzora_scripting::extension::ScriptExtensions::default,
+            );
+            extensions.register(camera_script::CameraScriptExtension);
+        }
+
         // Keep ProjectAssetPath in sync with CurrentProject so the asset reader
         // always resolves from the correct project directory.
         app.add_systems(Update, sync_project_asset_path);
@@ -676,7 +698,7 @@ impl Plugin for RuntimePlugin {
                 id: "cube",
                 name: "Cube",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| m.add(Cuboid::new(1.0, 1.0, 1.0)),
                 default_color: Color::srgb(0.8, 0.3, 0.2),
             });
@@ -684,7 +706,7 @@ impl Plugin for RuntimePlugin {
                 id: "sphere",
                 name: "Sphere",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| m.add(Sphere::new(0.5).mesh().ico(5).unwrap()),
                 default_color: Color::srgb(0.2, 0.5, 0.8),
             });
@@ -692,7 +714,7 @@ impl Plugin for RuntimePlugin {
                 id: "cylinder",
                 name: "Cylinder",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| m.add(Cylinder::new(0.5, 1.0)),
                 default_color: Color::srgb(0.3, 0.7, 0.4),
             });
@@ -700,7 +722,7 @@ impl Plugin for RuntimePlugin {
                 id: "plane",
                 name: "Plane",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| m.add(Plane3d::default().mesh().size(2.0, 2.0)),
                 default_color: Color::srgb(0.35, 0.35, 0.35),
             });
@@ -708,7 +730,7 @@ impl Plugin for RuntimePlugin {
                 id: "cone",
                 name: "Cone",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| {
                     m.add(Cone {
                         radius: 0.5,
@@ -721,7 +743,7 @@ impl Plugin for RuntimePlugin {
                 id: "torus",
                 name: "Torus",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| {
                     m.add(Torus {
                         minor_radius: 0.15,
@@ -734,7 +756,7 @@ impl Plugin for RuntimePlugin {
                 id: "capsule",
                 name: "Capsule",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| m.add(Capsule3d::new(0.25, 0.5)),
                 default_color: Color::srgb(0.3, 0.6, 0.6),
             });
@@ -742,7 +764,7 @@ impl Plugin for RuntimePlugin {
                 id: "hemisphere",
                 name: "Hemisphere",
                 icon: "",
-                category: "Basic",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_hemisphere_mesh(16)),
                 default_color: Color::srgb(0.5, 0.4, 0.7),
             });
@@ -751,7 +773,7 @@ impl Plugin for RuntimePlugin {
                 id: "wedge",
                 name: "Wedge",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_wedge_mesh()),
                 default_color: Color::srgb(0.6, 0.6, 0.5),
             });
@@ -759,7 +781,7 @@ impl Plugin for RuntimePlugin {
                 id: "stairs",
                 name: "Stairs",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_stairs_mesh(6)),
                 default_color: Color::srgb(0.5, 0.5, 0.6),
             });
@@ -767,7 +789,7 @@ impl Plugin for RuntimePlugin {
                 id: "arch",
                 name: "Arch",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_arch_mesh(16)),
                 default_color: Color::srgb(0.6, 0.5, 0.4),
             });
@@ -775,7 +797,7 @@ impl Plugin for RuntimePlugin {
                 id: "half_cylinder",
                 name: "Half Cylinder",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_half_cylinder_mesh(16)),
                 default_color: Color::srgb(0.5, 0.6, 0.5),
             });
@@ -783,7 +805,7 @@ impl Plugin for RuntimePlugin {
                 id: "quarter_pipe",
                 name: "Quarter Pipe",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_quarter_pipe_mesh(16)),
                 default_color: Color::srgb(0.55, 0.55, 0.5),
             });
@@ -791,7 +813,7 @@ impl Plugin for RuntimePlugin {
                 id: "corner",
                 name: "Corner",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_corner_mesh()),
                 default_color: Color::srgb(0.5, 0.5, 0.55),
             });
@@ -799,7 +821,7 @@ impl Plugin for RuntimePlugin {
                 id: "wall",
                 name: "Wall",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(Cuboid::new(1.0, 2.0, 0.1)),
                 default_color: Color::srgb(0.55, 0.5, 0.5),
             });
@@ -807,7 +829,7 @@ impl Plugin for RuntimePlugin {
                 id: "ramp",
                 name: "Ramp",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_ramp_mesh()),
                 default_color: Color::srgb(0.5, 0.55, 0.5),
             });
@@ -815,7 +837,7 @@ impl Plugin for RuntimePlugin {
                 id: "curved_wall",
                 name: "Curved Wall",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_curved_wall_mesh(16)),
                 default_color: Color::srgb(0.55, 0.55, 0.55),
             });
@@ -823,7 +845,7 @@ impl Plugin for RuntimePlugin {
                 id: "doorway",
                 name: "Doorway",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_doorway_mesh()),
                 default_color: Color::srgb(0.5, 0.5, 0.6),
             });
@@ -831,7 +853,7 @@ impl Plugin for RuntimePlugin {
                 id: "window_wall",
                 name: "Window Wall",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_window_wall_mesh()),
                 default_color: Color::srgb(0.5, 0.55, 0.55),
             });
@@ -839,7 +861,7 @@ impl Plugin for RuntimePlugin {
                 id: "l_shape",
                 name: "L-Shape",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_l_shape_mesh()),
                 default_color: Color::srgb(0.55, 0.5, 0.55),
             });
@@ -847,7 +869,7 @@ impl Plugin for RuntimePlugin {
                 id: "t_shape",
                 name: "T-Shape",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_t_shape_mesh()),
                 default_color: Color::srgb(0.5, 0.55, 0.6),
             });
@@ -855,7 +877,7 @@ impl Plugin for RuntimePlugin {
                 id: "cross_shape",
                 name: "Cross",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_cross_shape_mesh()),
                 default_color: Color::srgb(0.55, 0.55, 0.6),
             });
@@ -863,7 +885,7 @@ impl Plugin for RuntimePlugin {
                 id: "spiral_stairs",
                 name: "Spiral Stairs",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_spiral_stairs_mesh(16)),
                 default_color: Color::srgb(0.5, 0.5, 0.55),
             });
@@ -871,7 +893,7 @@ impl Plugin for RuntimePlugin {
                 id: "pillar",
                 name: "Pillar",
                 icon: "",
-                category: "Level",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_pillar_mesh()),
                 default_color: Color::srgb(0.55, 0.5, 0.5),
             });
@@ -880,7 +902,7 @@ impl Plugin for RuntimePlugin {
                 id: "pipe",
                 name: "Pipe",
                 icon: "",
-                category: "Curved",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_pipe_mesh(24)),
                 default_color: Color::srgb(0.4, 0.5, 0.6),
             });
@@ -888,7 +910,7 @@ impl Plugin for RuntimePlugin {
                 id: "ring",
                 name: "Ring",
                 icon: "",
-                category: "Curved",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_ring_mesh(24)),
                 default_color: Color::srgb(0.5, 0.4, 0.6),
             });
@@ -896,7 +918,7 @@ impl Plugin for RuntimePlugin {
                 id: "funnel",
                 name: "Funnel",
                 icon: "",
-                category: "Curved",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_funnel_mesh(24)),
                 default_color: Color::srgb(0.6, 0.4, 0.5),
             });
@@ -904,7 +926,7 @@ impl Plugin for RuntimePlugin {
                 id: "gutter",
                 name: "Gutter",
                 icon: "",
-                category: "Curved",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_gutter_mesh(16)),
                 default_color: Color::srgb(0.4, 0.6, 0.5),
             });
@@ -913,7 +935,7 @@ impl Plugin for RuntimePlugin {
                 id: "prism",
                 name: "Prism",
                 icon: "",
-                category: "Advanced",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_prism_mesh()),
                 default_color: Color::srgb(0.5, 0.5, 0.7),
             });
@@ -921,7 +943,7 @@ impl Plugin for RuntimePlugin {
                 id: "pyramid",
                 name: "Pyramid",
                 icon: "",
-                category: "Advanced",
+                category: "Shapes",
                 create_mesh: |m| m.add(pm::create_pyramid_mesh()),
                 default_color: Color::srgb(0.7, 0.5, 0.5),
             });
