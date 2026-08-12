@@ -227,7 +227,7 @@ Press **Play** to play-test your game without leaving the editor. Edit mode and 
 
 - **Pressing Play brings the viewport tab to the front automatically**, so you see the game even if you were looking at another tab when you started.
 - Entering play gives a clean game view: it **clears your selection and hides the editor toolbars, the axis gizmo, and the viewport buttons**; Stop brings them back. (The Play/Stop control itself lives in the top bar and stays put throughout.)
-- **Maximize on Play** (Settings → Viewport → Camera, **on by default**): pressing Play collapses the dock to just the viewport for a full-panel game view, and Stop restores your layout. Turn it off to keep the rest of your panels visible while playing.
+- **Maximize on Play** (Settings → Editor → Camera, **on by default**): pressing Play collapses the dock to just the viewport for a full-panel game view, and Stop restores your layout. Turn it off to keep the rest of your panels visible while playing.
 - If no viewport panel is open at all, play falls back to taking over the whole window.
 - The game's render resolution follows the active camera's resolution setting, just like the editor view.
 

@@ -1275,6 +1275,13 @@ pub struct EditorPrefs {
     /// this section — the runtime never reads it and export strips it.
     #[serde(default)]
     pub tutorial_completed: bool,
+    /// Ids of the tutorial chapters (`renzora_tutorial`'s `Chapter::id`) finished
+    /// for this project. The picker ticks these off and uses them to unlock the
+    /// next chapter, so the list is progress, not just history. Separate from
+    /// `tutorial_completed`, which only gates the auto-launch and is also set by
+    /// skipping.
+    #[serde(default)]
+    pub tutorial_chapters: Vec<String>,
 }
 
 #[cfg(test)]

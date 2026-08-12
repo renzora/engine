@@ -8,6 +8,28 @@ You can get Renzora two ways: grab a prebuilt build from [renzora.com/download](
 
 When the editor starts you'll land on a project picker. Click **New Project**, type a name, and choose a folder on your computer. That's it — the editor builds the project and opens its starting scene, ready to go.
 
+### The first-run walkthrough
+
+The very first time you open a project, a small card appears in the corner and walks you through the basics — orbit, zoom and fly the camera, find your way home with `Home`, select the glowing cube, move it with the gizmo, then a tour of the workspace tabs, panels, Settings and themes.
+
+Steps aren't a slideshow: each one asks you to **actually do the thing**, and the editor notices when you have. The ones that point at editor chrome glow the target and float a green arrow at it, so you can't miss which button they mean. Once you've done it, a green **Continue** button appears — you move on when you're ready, not the instant you finish the gesture. Drag the card by its header if it's ever sitting on top of what you need.
+
+There's more than one chapter. Finish the first and **Help → Getting Started Tutorial** reopens at the chapter list:
+
+| Chapter | What it covers |
+|---|---|
+| **Getting Started** | Camera, selection, gizmos, panels, Settings, themes |
+| **Building a Scene** | The shape library, lights, duplicating and deleting, editing components |
+| **Scripting** | Writing Lua, attaching it to an entity, running it in Simulate |
+| **Materials** | The node graph, previewing, saving a material |
+| **Your Workspace** | Workspaces, docking panels, rearranging the toolbar, rebinding keys |
+| **The Marketplace** | Finding, installing and re-using assets from renzora.com |
+| **Play Mode** | Play vs Simulate, play targets, and what Export does |
+
+Chapters unlock in order: finishing one opens the next, so you're never staring at seven titles wondering which to open. Finished ones get a green tick, and progress is tracked per project, so a new project starts fresh.
+
+**Skip** moves past a single step you can't do right now — no model to import, no marketplace account — without losing the chapter. The **X** in the header closes the tutorial entirely.
+
 ## What's inside a new project
 
 A fresh project is just a few files on disk:

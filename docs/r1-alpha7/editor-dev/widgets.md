@@ -212,6 +212,28 @@ Two rules it depends on, both learned by crashing:
 
 The drop index is counted against each group's own box in reading order (line, then x), never as a fraction of the row's width: once a row wraps, that fraction says nothing about where the groups actually are.
 
+### Draggable floating cards (`drag_grip`, `DragHandle`)
+
+A floating card that the user can shove out of the way needs a **handle that moves its parent**, not a node that moves itself. `drag_grip(commands, &fonts.phosphor, target)` spawns the conventional six-dot grip already wired to drag `target`; add it to your header and you're done.
+
+```rust
+let card = commands.spawn(( /* absolute-positioned card */ )).id();
+let grip = drag_grip(&mut commands, &fonts.phosphor, card);
+commands.entity(header).add_child(grip);
+```
+
+Insert `DragHandle::new(target)` yourself if you'd rather drag by a whole title bar than by a grip, and `.with_margin(px)` to change how much of the card must stay reachable on screen (24px by default).
+
+This is **not** markup's `draggable="true"` ([`Draggable`](#the-markup-interaction-kernel)), which moves the node it's on — right for a game-UI element you drag directly, wrong for a window, where tagging the card would make every press on it (a button, a list row, a text selection) start a drag.
+
+Three things it handles that `Node.left += delta` does not:
+
+- **Anchor handover.** Cards are usually pinned with `right`/`bottom`, leaving `left` as `Val::Auto`. Reading that as zero teleports the card on the first drag, so the handle resolves the target's real on-screen rect from `UiGlobalTransform` instead, then writes `left`/`top` and clears the opposite pair — the two anchor sets fight if you leave both set.
+- **Staying reachable.** A card flung past the window edge takes its close button with it, so the position is clamped to keep a margin on screen.
+- **Release anywhere.** The drag ends on mouse-button release, not on `Interaction`, so moving faster than the handle follows doesn't silently drop it.
+
+Used by the onboarding tutorial's card, which parks bottom-right — occasionally right on top of the thing a step is pointing at. It puts the handle on the **whole header strip** rather than the grip alone (a 13px glyph is a fussy target for something you reach for precisely when the card is in your way); the Skip button inside that header still gets its own press, because bevy_ui only marks the topmost node under the cursor as hovered.
+
 ### Folder picker (`folder_picker`)
 
 `folder_picker(commands, fonts, root, selected, max_depth)` is the shared "where should this land?" control: the project's own directory tree as a bordered, scrolling list of rows, one of them selected. It returns a single box entity that **flex-grows**, so drop it into an overlay body between the fixed content above and the buttons below and it fills the leftover height.

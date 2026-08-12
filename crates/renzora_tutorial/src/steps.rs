@@ -1,41 +1,107 @@
-//! The onboarding step catalog.
+//! Step + chapter types — the vocabulary the onboarding content is written in.
 //!
-//! Each [`Step`] is a hands-on task the user completes by **actually performing
-//! the action** — there is no "Next" button to click through. The matching
-//! completion signal for every [`StepKind`] is polled in
-//! [`crate::state::detect_and_advance`]; the animated mouse/key [`Hint`] is drawn
-//! by [`crate::hints`].
+//! A [`Chapter`] is one guided track (Getting Started, Scripting, Materials…);
+//! the content of every chapter lives in [`crate::chapters`]. Each [`Step`] is a
+//! hands-on task whose completion signal is polled in
+//! [`crate::state::detect_step_done`], and whose animated mouse/key [`Hint`] is
+//! drawn by [`crate::hints`].
+//!
+//! **Steps no longer auto-advance.** Detection only *arms* the step: the card
+//! then shows a green Continue button and the user moves on when they're ready
+//! (see `state::handle_continue`). That's what makes [`StepKind::Info`] viable —
+//! a step with nothing to detect, which is how we teach the parts of the editor
+//! that expose no observable state (a marketplace purchase, say) without either
+//! lying about detecting them or reaching into another crate's private state.
+
+use renzora::core::keybindings::EditorAction;
 
 /// What action a step asks for — drives both the hint art and the detection
-/// predicate. Order in [`STEPS`] is the order the tutorial walks.
+/// predicate. Order within a chapter's slice is the order the tutorial walks.
+///
+/// Payload-carrying variants keep the *content* in [`crate::chapters`] and the
+/// *mechanism* here, so teaching a new panel is a one-line data change rather
+/// than a new enum variant plus a new match arm.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum StepKind {
+    /// Nothing to detect — the user reads it and clicks Continue. Use when the
+    /// action genuinely isn't observable from this crate, not as a shortcut
+    /// around writing a predicate.
+    Info,
+
+    // ── Camera ───────────────────────────────────────────────────────────────
     /// Orbit/look: the camera's yaw or pitch changed.
     Orbit,
     /// Zoom: the camera's orbit distance changed.
     Zoom,
     /// Fly/move: the camera's focus point moved (RMB + WASD).
     Fly,
+
+    // ── Selection & transform ────────────────────────────────────────────────
     /// Select: the demo target mesh became the selected entity.
     Select,
     /// Transform: the demo target mesh was moved with the gizmo.
     Move,
+    /// The demo mesh was scaled (the Inspector's Transform fields, or `R`).
+    Scale,
+    /// Any entity is selected (not necessarily the demo mesh).
+    SelectAny,
+
+    // ── Scene contents ───────────────────────────────────────────────────────
+    /// A new mesh entity appeared — the shape library, or a dropped model.
+    AddShape,
+    /// Added a World Environment via the hierarchy's Add Entity menu.
+    AddEnvironment,
+    /// A new light entity appeared.
+    AddLight,
+    /// The scene's entity count grew (duplicate) …
+    Duplicate,
+    /// … or shrank (delete).
+    Delete,
+    /// Imported a 3D model (a new model file landed in the project's assets).
+    ImportModel,
+    /// Any new asset file landed under the project — the marketplace install
+    /// path, which writes into the project like any other download.
+    InstallAsset,
+
+    // ── Editor shell ─────────────────────────────────────────────────────────
     /// Switched the active workspace/layout (title-bar tabs).
     SwitchLayout,
     /// Added the tutorial's Demo panel to the dock via a tab bar's + picker.
     AddPanel,
     /// Re-docked / reordered the Demo panel by dragging its tab.
     ReorderPanel,
+    /// Docked the named panel (by its `register_panel_content` id).
+    OpenPanel(&'static str),
+    /// Dragged the viewport toolbar's groups into a new arrangement.
+    ReorderToolbar,
+    /// Toggled any of the gizmo snapping switches (translate/rotate/scale).
+    ToggleSnap,
     /// Changed the fly camera's move speed in Settings.
     CameraSpeed,
-    /// Added a World Environment via the hierarchy's Add Entity menu.
-    AddEnvironment,
     /// Switched to a different editor theme in Settings → Theme.
     ChangeTheme,
-    /// Imported a 3D model (a new model file landed in the project's assets).
-    ImportModel,
+    /// Pressed the key bound to an editor action (respects rebinding).
+    Shortcut(EditorAction),
+
+    // ── Scripting ────────────────────────────────────────────────────────────
     /// Opened/created a script in the code editor.
     CreateScript,
+    /// A `.lua` script file exists under the project's `scripts/`.
+    ScriptFile,
+    /// Something in the scene turned *while the simulation ran* — i.e. a script
+    /// actually drove it. Scene-wide on purpose: the user attaches their script
+    /// to an entity of their own, not to the tutorial's demo mesh.
+    ScriptedMotion,
+
+    // ── Play ─────────────────────────────────────────────────────────────────
+    /// Entered in-editor Simulate.
+    Simulate,
+    /// Entered full Play mode.
+    Play,
+    /// Returned to editing from Play/Simulate.
+    StopPlay,
+
+    // ── Authoring ────────────────────────────────────────────────────────────
     /// Entered the UI authoring view.
     CreateUi,
 }
@@ -60,6 +126,14 @@ pub struct Hint {
     pub anim: HintAnim,
 }
 
+/// A hint that draws nothing — for [`StepKind::Info`] steps, which have no
+/// gesture to illustrate.
+pub const NO_HINT: Hint = Hint {
+    icons: &[],
+    keys: &[],
+    anim: HintAnim::Pulse,
+};
+
 /// One onboarding task.
 pub struct Step {
     pub kind: StepKind,
@@ -70,124 +144,65 @@ pub struct Step {
     pub hint: Hint,
 }
 
-/// The full guided sequence. Camera basics first (so the user learns to look at
-/// the glowing target), then select it, then move it.
-pub const STEPS: &[Step] = &[
-    Step {
-        kind: StepKind::Orbit,
-        badge: "arrows-clockwise",
-        title: "Orbit the view",
-        body: "Hold the MIDDLE mouse button and drag to orbit the camera around the scene. Try circling the glowing cube.",
-        hint: Hint { icons: &["mouse-middle-click"], keys: &["drag"], anim: HintAnim::Drag },
-    },
-    Step {
-        kind: StepKind::Zoom,
-        badge: "magnifying-glass-plus",
-        title: "Zoom in and out",
-        body: "Scroll the mouse wheel to dolly the camera closer and further away.",
-        hint: Hint { icons: &["mouse-scroll"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::Fly,
-        badge: "arrows-out-cardinal",
-        title: "Fly around",
-        body: "Hold the RIGHT mouse button and use W A S D to fly through the scene, like a first-person camera.",
-        hint: Hint { icons: &["mouse-right-click"], keys: &["W", "A", "S", "D"], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::Select,
-        badge: "cursor-click",
-        title: "Select the cube",
-        body: "Left-click the glowing cube to select it. Selected objects show a transform gizmo and appear in the Inspector.",
-        hint: Hint { icons: &["cursor-click"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::Move,
-        badge: "arrows-out-cardinal",
-        title: "Move the cube",
-        body: "Press W for the Move tool, then drag one of the colored gizmo arrows to slide the cube to a new spot.",
-        hint: Hint { icons: &["keyboard"], keys: &["W", "drag"], anim: HintAnim::Drag },
-    },
-    Step {
-        kind: StepKind::SwitchLayout,
-        badge: "squares-four",
-        title: "Switch workspace",
-        body: "Click a workspace tab in the highlighted bar (Scene, Blueprints, Scripting…) to re-arrange the whole editor for a different kind of work.",
-        hint: Hint { icons: &["mouse-left-click", "squares-four"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::AddPanel,
-        badge: "stack",
-        title: "Add a panel",
-        body: "Click the highlighted + in a panel's tab bar and choose \"Demo Panel\" from the list to dock it into the editor.",
-        hint: Hint { icons: &["mouse-left-click", "plus"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::ReorderPanel,
-        badge: "arrows-out-cardinal",
-        title: "Rearrange it",
-        body: "Drag the highlighted \"Demo Panel\" tab and drop it over another panel (or its edge) to re-dock it somewhere new.",
-        hint: Hint { icons: &["mouse-left-click"], keys: &["drag"], anim: HintAnim::Drag },
-    },
-    Step {
-        kind: StepKind::CameraSpeed,
-        badge: "sliders",
-        title: "Tune your fly speed",
-        body: "Open Settings, go to Viewport → Camera and drag the Move Speed slider to change how fast the right-click + WASD fly moves.",
-        hint: Hint { icons: &["sliders"], keys: &["Ctrl", ","], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::AddEnvironment,
-        badge: "globe",
-        title: "Add an environment",
-        body: "Click the highlighted \"Add Entity\" button and choose \"World Environment\" to drop in a sky, sun, atmosphere and fog.",
-        hint: Hint { icons: &["mouse-left-click", "globe"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::ChangeTheme,
-        badge: "palette",
-        title: "Pick a theme",
-        body: "Open the highlighted theme menu in the status bar (or Settings → Theme) and choose a different theme — the entire editor re-skins instantly.",
-        hint: Hint { icons: &["palette"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::ImportModel,
-        badge: "cube",
-        title: "Import a 3D model",
-        body: "Drag a .glb / .gltf / .fbx / .obj onto the viewport (or use the Asset browser's Import button) to bring a model into your project.",
-        hint: Hint { icons: &["cube", "check-circle"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::CreateScript,
-        badge: "file-plus",
-        title: "Create a script",
-        body: "Open the code editor on a script: add a script to a selected entity, or double-click a .lua / .rhai file in the Asset browser.",
-        hint: Hint { icons: &["file-plus", "code"], keys: &[], anim: HintAnim::Pulse },
-    },
-    Step {
-        kind: StepKind::CreateUi,
-        badge: "frame-corners",
-        title: "Author some UI",
-        body: "Switch the viewport to the UI view (the UI tab above the viewport, or add a UI Canvas from the Add menu) to start building game interface.",
-        hint: Hint { icons: &["frame-corners", "cursor-click"], keys: &[], anim: HintAnim::Pulse },
-    },
-];
+/// One guided track. `id` is the persistence key (recorded in `project.toml`
+/// once finished) and must stay stable across releases — renaming one re-runs
+/// the chapter for everyone who'd already done it.
+pub struct Chapter {
+    pub id: &'static str,
+    /// Phosphor glyph for the picker row and the card header.
+    pub icon: &'static str,
+    pub title: &'static str,
+    /// One line under the title in the picker.
+    pub summary: &'static str,
+    /// Shown on the chapter's completion card.
+    pub outro: &'static str,
+    pub steps: &'static [Step],
+}
 
-/// The chrome element (by bevy_ui `Name`) the animated highlight box should frame
-/// for a step, or `None` for steps whose target is the viewport or a floating
-/// overlay we can't reliably locate. The names are the shell's stable node names
-/// (`renzora_shell`): `"ribbon"` (workspace tabs), `"dock-area"` (panels),
-/// `"theme-menu"` (status-bar theme switcher).
-pub fn highlight_for(kind: StepKind) -> Option<&'static str> {
+/// Every chapter, in the order the picker lists them. Index 0 is the one that
+/// auto-launches on a project's first run.
+pub const CHAPTERS: &[Chapter] = crate::chapters::CHAPTERS;
+
+/// The chrome elements (by bevy_ui `Name`) the animated highlight box + arrow
+/// should frame for a step, **most specific first**. Empty for steps whose
+/// target is the viewport or a floating overlay we can't reliably locate.
+///
+/// It's a list because these steps are two-stage: click a button, *then* pick a
+/// row out of the overlay it opened. The highlight takes the first candidate
+/// that's actually on screen, so it follows the user from the button to the row
+/// without the step needing to know which stage they're in.
+///
+/// `search-row:<label>` targets a row in the shared ember search overlay (Add
+/// Entity, the dock's + panel picker). It matches the row's **displayed** label,
+/// which is localized — so in a non-English editor these fall back to
+/// highlighting the button that opens the overlay, which is what they did
+/// before rows were nameable at all.
+pub fn highlight_for(kind: StepKind) -> &'static [&'static str] {
     match kind {
-        StepKind::SwitchLayout => Some("ribbon"),
-        // The tab bar's "+" button (small + precise, unlike the whole dock area).
-        StepKind::AddPanel => Some("dock-add-panel"),
+        // `ribbon-strip` — the workspace tab bar. NOT `"ribbon"`: that's the key
+        // passed to `overflow_strip`, which names its nodes `<key>-strip` /
+        // `-items` / `-overflow`. Targeting the bare key silently matched
+        // nothing, so this step simply never highlighted.
+        StepKind::SwitchLayout => &["ribbon-strip"],
+        // The tab bar's "+" button (small + precise, unlike the whole dock area),
+        // then the Demo Panel row in the picker it opens.
+        // Three stages, in order of what's on screen: the row itself if it's
+        // visible, else the overlay's search box (the list is long — typing is
+        // how you actually reach a row that's scrolled away), else the + button
+        // that opens the whole thing. Without the middle candidate, a scrolled
+        // list falls all the way back to a button now hidden behind the overlay.
+        StepKind::AddPanel => &["search-row:Demo Panel", "search-bar", "dock-add-panel"],
+        StepKind::OpenPanel(_) => &["search-bar", "dock-add-panel"],
         // The Demo panel's own tab (exists once it's been added).
-        StepKind::ReorderPanel => Some("tab:tutorial_demo_panel"),
-        // The hierarchy's "Add Entity" button.
-        StepKind::AddEnvironment => Some("add-entity"),
-        StepKind::ChangeTheme => Some("theme-menu"),
-        _ => None,
+        StepKind::ReorderPanel => &["tab:tutorial_demo_panel"],
+        // The hierarchy's "Add Entity" button, then the row being asked for.
+        StepKind::AddEnvironment => &["search-row:World Environment", "search-bar", "add-entity"],
+        StepKind::AddShape | StepKind::AddLight => &["search-bar", "add-entity"],
+        // The viewport toolbar's camera-speed scrubber. The step also mentions
+        // Settings → Editor → Camera, but that's behind a modal we can't point
+        // into — the toolbar control is the one that's on screen right now.
+        StepKind::CameraSpeed => &["vp-cam-speed"],
+        StepKind::ChangeTheme => &["theme-menu"],
+        _ => &[],
     }
 }

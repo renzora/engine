@@ -626,7 +626,13 @@ fn item_row(
                 order,
             },
             SearchAction(entry.action),
-            Name::new("search-row"),
+            // Named per row, not a flat `"search-row"`: callers that need to
+            // point *at a specific entry* (the onboarding tutorial's highlight
+            // box asking for "World Environment" or "Demo Panel") have no other
+            // handle on a row built inside this widget. The label is the
+            // displayed — so localized — one; a name-based lookup that misses
+            // simply doesn't highlight.
+            Name::new(format!("search-row:{}", entry.label)),
         ))
         .id();
     bind_bg(commands, row, move |w| {

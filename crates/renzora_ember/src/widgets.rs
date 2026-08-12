@@ -106,6 +106,7 @@ mod chart;
 mod code_editor;
 mod collapsible;
 mod context_menu;
+mod drag_window;
 mod hamburger;
 mod icon_menu;
 mod menu;
@@ -230,6 +231,7 @@ pub use section::{
     section, section_with_header, section_with_header_icon_open, section_with_header_open,
     set_section_open, Section,
 };
+pub use drag_window::{drag_grip, DragHandle};
 pub use search::*;
 pub use sortable::*;
 pub use spinner::*;
@@ -421,6 +423,7 @@ impl Plugin for WidgetsPlugin {
                 text_input::text_input_bound_sync.before(text_input::text_input_sync),
                 text_input::text_input_sync,
                 form::form_tab_focus,
+                drag_window::drag_handle_move,
             ),
         );
         // Markdown widget: open clicked links in the browser, swap image
