@@ -66,6 +66,7 @@ pub(crate) fn register(app: &mut App) {
             manage_import_modal,
             manage_import_toast,
             file_browse_click,
+            folder_browse_click,
             dest_folder_click,
             nav_click,
             enforce_nav_section,
@@ -83,6 +84,8 @@ pub(crate) fn register(app: &mut App) {
 struct ImportRoot;
 #[derive(Component)]
 struct FileBrowseBtn;
+#[derive(Component)]
+struct FolderBrowseBtn;
 /// A clickable sidebar nav row; switches the active pane on press.
 #[derive(Component, Clone, Copy)]
 struct NavBtn(ImportSection);
@@ -408,7 +411,7 @@ fn queue_has_model(w: &Rx) -> bool {
     w.get_resource::<ImportOverlayState>().is_some_and(|s| {
         s.pending_files
             .iter()
-            .any(|p| renzora_import::formats::detect_format(p).is_some())
+            .any(|q| renzora_import::formats::detect_format(&q.path).is_some())
     })
 }
 
@@ -422,7 +425,11 @@ fn import_title(w: &Rx) -> String {
     if state.pending_files.is_empty() {
         return "Import Assets".to_string();
     }
-    let kinds: Vec<AssetKind> = state.pending_files.iter().filter_map(|p| detect_kind(p)).collect();
+    let kinds: Vec<AssetKind> = state
+        .pending_files
+        .iter()
+        .filter_map(|q| detect_kind(&q.path))
+        .collect();
     let first = kinds.first().copied();
     let uniform = first.is_some_and(|k| kinds.iter().all(|&x| x == k));
     match first.filter(|_| uniform) {
@@ -453,7 +460,7 @@ fn enforce_nav_section(state: Option<Res<ImportOverlayState>>, nav: Option<ResMu
         && !state
             .pending_files
             .iter()
-            .any(|p| renzora_import::formats::detect_format(p).is_some())
+            .any(|q| renzora_import::formats::detect_format(&q.path).is_some())
     {
         nav.active = ImportSection::Files;
     }
@@ -490,16 +497,16 @@ fn pane_header(commands: &mut Commands, fonts: &EmberFonts, title: &str, subtitl
 
 fn build_files_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity) {
     let p = pane(commands, ImportSection::Files);
-    let head = pane_header(commands, fonts, "Files", "Add the files you want to import — models, images, audio, and more.");
+    let head = pane_header(commands, fonts, "Files", "Add files or a whole folder — models, images, audio, and more.");
 
     // Dropzone — the empty state is this panel, so there's no separate "no
-    // files" hint. Only the Browse button is clickable; the card itself is
-    // passive (real OS drag-drop is handled by the egui orchestration layer).
+    // files" hint. Only the Browse buttons are clickable; the card itself is
+    // passive (real OS drag-drop is handled by the orchestration layer).
     let dz = commands
         .spawn((
             Node {
                 width: Val::Percent(100.0),
-                height: Val::Px(116.0),
+                height: Val::Px(128.0),
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
@@ -514,10 +521,21 @@ fn build_files_pane(commands: &mut Commands, fonts: &EmberFonts, parent: Entity)
         ))
         .id();
     let cloud = icon_text(commands, &fonts.phosphor, "cloud-arrow-down", text_muted(), 30.0);
-    let dz_t = txt(commands, fonts, "Drag & drop files here", 12.0, text_primary());
-    let browse = pill_button(commands, fonts, "folder-open", "Browse files");
+    let dz_t = txt(commands, fonts, "Drag & drop files or a folder here", 12.0, text_primary());
+    let browse_row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .id();
+    let browse = pill_button(commands, fonts, "file", "Browse files");
     commands.entity(browse).insert(FileBrowseBtn);
-    commands.entity(dz).add_children(&[cloud, dz_t, browse]);
+    let browse_folder = pill_button(commands, fonts, "folder-open", "Browse folder");
+    commands.entity(browse_folder).insert(FolderBrowseBtn);
+    commands.entity(browse_row).add_children(&[browse, browse_folder]);
+    commands.entity(dz).add_children(&[cloud, dz_t, browse_row]);
 
     // Queued-file list.
     let list = commands.spawn((Node { width: Val::Percent(100.0), flex_direction: FlexDirection::Column, row_gap: Val::Px(4.0), ..default() }, FilesContainer)).id();
@@ -775,20 +793,36 @@ fn build_footer(commands: &mut Commands, fonts: &EmberFonts, panel: Entity) {
 
 fn files_snapshot(world: &Rx) -> KeyedSnapshot {
     use std::hash::{Hash, Hasher};
-    let files: Vec<PathBuf> = world.get_resource::<ImportOverlayState>().map(|s| s.pending_files.clone()).unwrap_or_default();
+    use crate::kinds::QueuedAsset;
+    let files: Vec<QueuedAsset> = world
+        .get_resource::<ImportOverlayState>()
+        .map(|s| s.pending_files.clone())
+        .unwrap_or_default();
     let items: Vec<(u64, u64)> = files
         .iter()
-        .map(|p| {
+        .map(|q| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            p.hash(&mut h);
+            (&q.path, &q.relative_dir).hash(&mut h);
             (h.finish(), h.finish())
         })
         .collect();
-    KeyedSnapshot { items, build: Box::new(move |c, f, i| file_row(c, f, &files[i])) }
+    KeyedSnapshot {
+        items,
+        build: Box::new(move |c, f, i| file_row(c, f, &files[i])),
+    }
 }
 
-fn file_row(commands: &mut Commands, fonts: &EmberFonts, path: &std::path::Path) -> Entity {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
+fn file_row(commands: &mut Commands, fonts: &EmberFonts, asset: &crate::kinds::QueuedAsset) -> Entity {
+    let path = &asset.path;
+    let name = if asset.relative_dir.is_empty() {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("?")
+            .to_string()
+    } else {
+        let file = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+        format!("{}/{}", asset.relative_dir, file)
+    };
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_uppercase();
     let row = commands
         .spawn((
@@ -880,7 +914,7 @@ fn remove_file_click(q: Query<(&Interaction, &RemoveFileBtn), Changed<Interactio
     let Some(state) = state.as_mut() else { return };
     for (i, rm) in &q {
         if *i == Interaction::Pressed {
-            state.pending_files.retain(|p| p != &rm.0);
+            state.pending_files.retain(|q| q.path != rm.0);
         }
     }
 }
@@ -891,6 +925,40 @@ fn file_browse_click(q: Query<&Interaction, (With<FileBrowseBtn>, Changed<Intera
     }
 }
 
+fn folder_browse_click(q: Query<&Interaction, (With<FolderBrowseBtn>, Changed<Interaction>)>, mut commands: Commands) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.queue(|w: &mut World| { pick_and_queue_folder(w); });
+    }
+}
+
+/// Append queued assets, de-duping by source path and auto-detecting unit
+/// scale on a fresh queue.
+fn queue_paths(world: &mut World, assets: &[crate::kinds::QueuedAsset]) -> bool {
+    if assets.is_empty() {
+        return false;
+    }
+    let mut state = world.resource_mut::<ImportOverlayState>();
+    let was_empty = state.pending_files.is_empty();
+    let mut added = false;
+    for asset in assets {
+        if !state.pending_files.iter().any(|q| q.path == asset.path) {
+            state.pending_files.push(asset.clone());
+            added = true;
+        }
+    }
+    // Auto-detect unit scale from the first model in a fresh queue (no-op for
+    // non-model picks — `detect_unit_scale` returns None for those).
+    if was_empty && state.settings.scale == 1.0 {
+        if let Some(scale) = assets
+            .iter()
+            .find_map(|q| renzora_import::units::detect_unit_scale(&q.path))
+        {
+            state.settings.scale = scale;
+        }
+    }
+    added
+}
+
 /// Open the OS file picker (filtered to every importable kind) and append the
 /// chosen files to the queue. Returns `true` if at least one new file was added.
 /// Shared by the asset-browser Import trigger (`lib.rs`) and the overlay's own
@@ -899,23 +967,17 @@ pub(crate) fn pick_and_queue_files(world: &mut World) -> bool {
     let Some(paths) = crate::kinds::pick_importable_files() else {
         return false;
     };
-    let mut state = world.resource_mut::<ImportOverlayState>();
-    let was_empty = state.pending_files.is_empty();
-    let mut added = false;
-    for p in &paths {
-        if !state.pending_files.contains(p) {
-            state.pending_files.push(p.clone());
-            added = true;
-        }
-    }
-    // Auto-detect unit scale from the first model in a fresh queue (no-op for
-    // non-model picks — `detect_unit_scale` returns None for those).
-    if was_empty && state.settings.scale == 1.0 {
-        if let Some(scale) = paths.first().and_then(|p| renzora_import::units::detect_unit_scale(p)) {
-            state.settings.scale = scale;
-        }
-    }
-    added
+    let assets: Vec<_> = paths.into_iter().map(crate::kinds::QueuedAsset::flat).collect();
+    queue_paths(world, &assets)
+}
+
+/// Open the OS folder picker, expand it (mirroring the source tree), and
+/// append to the queue.
+pub(crate) fn pick_and_queue_folder(world: &mut World) -> bool {
+    let Some(assets) = crate::kinds::pick_importable_folder() else {
+        return false;
+    };
+    queue_paths(world, &assets)
 }
 
 /// Click a destination folder row → it becomes the import target directory.

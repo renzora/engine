@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::sync::{mpsc, Mutex};
 
+use crate::kinds::QueuedAsset;
 use bevy::prelude::*;
 use renzora::core::CurrentProject;
 use renzora_import::optimize::MeshOptSettings;
@@ -75,7 +76,7 @@ pub(crate) struct ImportTask {
 #[derive(Resource)]
 pub struct ImportOverlayState {
     pub visible: bool,
-    pub pending_files: Vec<PathBuf>,
+    pub pending_files: Vec<QueuedAsset>,
     pub target_directory: String,
     /// How imported files are organized under the destination folder.
     pub layout: ImportLayout,
@@ -258,6 +259,28 @@ pub(crate) fn run_import(world: &mut World) {
     });
 }
 
+/// Join `dest` with a forward-slashed relative directory from a folder import.
+fn dest_with_rel(dest: &std::path::Path, relative_dir: &str) -> PathBuf {
+    if relative_dir.is_empty() {
+        return dest.to_path_buf();
+    }
+    relative_dir
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .fold(dest.to_path_buf(), |acc, seg| acc.join(seg))
+}
+
+/// Project-relative forward-slashed prefix for a file landing under `target_dir`
+/// (plus an optional mirrored source subdirectory from a folder import).
+fn project_prefix(target_dir: &str, relative_dir: &str) -> String {
+    match (target_dir.is_empty(), relative_dir.is_empty()) {
+        (true, true) => String::new(),
+        (true, false) => relative_dir.to_string(),
+        (false, true) => target_dir.to_string(),
+        (false, false) => format!("{target_dir}/{relative_dir}"),
+    }
+}
+
 /// Pick a file path under `dest` that doesn't collide. If `name` is taken,
 /// inserts `1`, `2`, … before the extension (`tex.png` → `tex1.png`). Used by
 /// the copy path for non-model assets, which land directly in the destination
@@ -304,7 +327,7 @@ fn unique_model_dir(dest: &std::path::Path, base: &str) -> (String, PathBuf) {
 fn import_worker(
     tx: mpsc::Sender<ImportMsg>,
     project: CurrentProject,
-    files: Vec<PathBuf>,
+    files: Vec<QueuedAsset>,
     settings: ImportSettings,
     target_dir: String,
     layout: ImportLayout,
@@ -324,25 +347,41 @@ fn import_worker(
     let mut errors = Vec::new();
     let mut all_warnings = Vec::new();
 
-    for (i, source_path) in files.iter().enumerate() {
+    for (i, item) in files.iter().enumerate() {
+        let source_path = &item.path;
         let file_name = source_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
 
+        // Folder imports recreate the source tree under `dest`; single-file
+        // picks land flat in `dest` (relative_dir empty).
+        let file_dest = dest_with_rel(&dest, &item.relative_dir);
+        if let Err(e) = std::fs::create_dir_all(&file_dest) {
+            let msg = format!("failed to create folder: {}", e);
+            errors.push(format!("{}: {}", file_name, msg));
+            let _ = tx.send(ImportMsg::Log(ImportLogEntry {
+                file_name: file_name.clone(),
+                success: false,
+                message: msg,
+            }));
+            continue;
+        }
+        let target_prefix = project_prefix(&target_dir, &item.relative_dir);
+
         // Non-model assets have no conversion step. "Importing" one just copies
         // it verbatim into the destination folder the user picked — images,
         // audio, `.bsn`, `.particle`, `.material`, fonts and scripts all take
         // this path. The layout / extract / optimize options are model-only, so
-        // copies always land directly in `dest` (no per-stem subfolder).
+        // copies always land directly in `file_dest` (no per-stem subfolder).
         if renzora_import::formats::detect_format(source_path).is_none() {
             let _ = tx.send(ImportMsg::Progress {
                 current: i + 1,
                 total,
                 label: format!("Copying {}", file_name),
             });
-            let out = unique_file(&dest, &file_name);
+            let out = unique_file(&file_dest, &file_name);
             match std::fs::copy(source_path, &out) {
                 Ok(bytes) => {
                     imported += 1;
@@ -424,13 +463,14 @@ fn import_worker(
                 //     its assets stay isolated from other imports.
                 //   Combined — every file writes straight into the destination,
                 //     so derived assets merge into shared sibling folders.
+                // Both are rooted at `file_dest` (mirrors folder imports).
                 let base_stem = source_path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
                 let (stem_owned, model_dir) = match layout {
-                    ImportLayout::PerFileFolder => unique_model_dir(&dest, base_stem),
-                    ImportLayout::Combined => (base_stem.to_string(), dest.clone()),
+                    ImportLayout::PerFileFolder => unique_model_dir(&file_dest, base_stem),
+                    ImportLayout::Combined => (base_stem.to_string(), file_dest.clone()),
                 };
                 let stem: &str = &stem_owned;
                 if let Err(e) = std::fs::create_dir_all(&model_dir) {
@@ -456,13 +496,15 @@ fn import_worker(
                     let rewrite_uri = |uri: &Option<String>| -> Option<String> {
                         // Textures live under the model folder. Prefix the
                         // relative URI with that folder's path from the project
-                        // root so consumers can resolve it. The model folder is
-                        // `<target>/<stem>/` (PerFileFolder) or `<target>/`
-                        // (Combined).
+                        // root so consumers can resolve it.
                         let prefix = match layout {
-                            ImportLayout::PerFileFolder if target_dir.is_empty() => stem.to_string(),
-                            ImportLayout::PerFileFolder => format!("{}/{}", target_dir, stem),
-                            ImportLayout::Combined => target_dir.clone(),
+                            ImportLayout::PerFileFolder if target_prefix.is_empty() => {
+                                stem.to_string()
+                            }
+                            ImportLayout::PerFileFolder => {
+                                format!("{}/{}", target_prefix, stem)
+                            }
+                            ImportLayout::Combined => target_prefix.clone(),
                         };
                         uri.as_ref().map(|u| {
                             if prefix.is_empty() {
@@ -658,8 +700,8 @@ fn import_worker(
                     .and_then(|s| s.to_str())
                     .unwrap_or("model");
                 let (stem_owned, fallback_model_dir) = match layout {
-                    ImportLayout::PerFileFolder => unique_model_dir(&dest, base_stem),
-                    ImportLayout::Combined => (base_stem.to_string(), dest.clone()),
+                    ImportLayout::PerFileFolder => unique_model_dir(&file_dest, base_stem),
+                    ImportLayout::Combined => (base_stem.to_string(), file_dest.clone()),
                 };
                 let _stem: &str = &stem_owned;
                 let anim_dir = fallback_model_dir.join("animations");
