@@ -241,7 +241,7 @@ A panic hook is installed once the session kind is known. The editor writes `~/.
 
 ## What's next
 
-- [Core Concepts](/docs/r1-alpha5/getting-started/concepts) — the ECS data model and a gentler tour of the one-binary model.
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — Lua, Rhai, and blueprints on top of this architecture.
-- [Multiplayer Overview](/docs/r1-alpha5/multiplayer/overview) — how `--server`/`--host` and replication fit in.
-- [Exporting](/docs/r1-alpha5/exporting/overview) — turning the editor binary into a shipped game.
+- [Core Concepts](/docs/r1-alpha7/getting-started/concepts) — the ECS data model and a gentler tour of the one-binary model.
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — Lua, Rhai, and blueprints on top of this architecture.
+- [Multiplayer Overview](/docs/r1-alpha7/multiplayer/overview) — how `--server`/`--host` and replication fit in.
+- [Exporting](/docs/r1-alpha7/exporting/overview) — turning the editor binary into a shipped game.

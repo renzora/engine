@@ -132,7 +132,7 @@ Authoring camera angles in the editor is two clicks:
 - **Snap to Viewport** — right-click a camera in the hierarchy (or use the button on its **Camera** component) to move that camera so it sits exactly where the editor fly-camera is looking. Parent-aware: a camera under a rig/empty lands at the right world pose.
 - **Camera Presets** — the camera's inspector has a *Camera Presets* section. *Capture current view* saves the current editor view as a named angle. Each preset row has three actions: **Go to** drives the editor fly-camera to that angle (preview it in the viewport), **Snap to Viewport** overwrites the preset with the current editor view, and the trash icon deletes it. Presets live in a `CameraPresets` component (`Vec<CameraPreset { name, translation, rotation }>`, world-space) that serializes into the scene.
 
-Presets are scriptable: a script on the camera calls `goto_camera_preset("name")` to move that camera entity to a stored angle at runtime. See the [Scripting](/docs/r1-alpha6/api/scripting) page.
+Presets are scriptable: a script on the camera calls `goto_camera_preset("name")` to move that camera entity to a stored angle at runtime. See the [Scripting](/docs/r1-alpha7/api/scripting) page.
 
 ## Post-process effects on cameras
 
@@ -194,4 +194,4 @@ fn on_update() {
 }
 ```
 
-> Functions like `set_camera_fov`, `set_camera_position`, `camera_look_at`, `camera_screen_to_world`, and `camera_world_to_screen` do **not** exist. A few camera verbs (`camera_follow`, `set_camera_target`, `zoom`) are defined in the internal `ScriptCommand` enum but have **no** Lua/Rhai binding, so they are not callable from scripts today. See [Lua scripting](/docs/r1-alpha5/scripting/lua) and [Rhai scripting](/docs/r1-alpha5/scripting/rhai) for the full function surface.
+> Functions like `set_camera_fov`, `set_camera_position`, `camera_look_at`, `camera_screen_to_world`, and `camera_world_to_screen` do **not** exist. A few camera verbs (`camera_follow`, `set_camera_target`, `zoom`) are defined in the internal `ScriptCommand` enum but have **no** Lua binding, so they are not callable from scripts today. See [Lua scripting](/docs/r1-alpha7/scripting/lua) for the full function surface.

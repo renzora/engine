@@ -3,10 +3,10 @@
 The complete catalog of **every** node in the Renzora material graph, grouped by
 category, with each node's inputs, outputs, and exactly what it computes.
 
-This page is the per-node companion to the [Material API](/docs/r1-alpha5/api/material)
-(file format, instances, domains) and the [Material Editor](/docs/r1-alpha5/editor/materials)
+This page is the per-node companion to the [Material API](/docs/r1-alpha7/api/material)
+(file format, instances, domains) and the [Material Editor](/docs/r1-alpha7/editor/materials)
 (how to wire nodes). To add a brand-new built-in node, see
-[Custom Material Nodes](/docs/r1-alpha5/extending/material-nodes).
+[Custom Material Nodes](/docs/r1-alpha7/extending/material-nodes).
 
 All nodes live in `renzora_shader` — declared in `material/nodes.rs` (`ALL_NODES`)
 and compiled to WGSL in `material/codegen.rs`. There are **13 categories** and
@@ -413,9 +413,9 @@ and stylized effects.
 
 ## See also
 
-- [Material API](/docs/r1-alpha5/api/material) — the `.material` file format, pin
+- [Material API](/docs/r1-alpha7/api/material) — the `.material` file format, pin
   types, material instances, and code shaders.
-- [Material Editor](/docs/r1-alpha5/editor/materials) — the visual workflow for
+- [Material Editor](/docs/r1-alpha7/editor/materials) — the visual workflow for
   wiring these nodes.
-- [Custom Material Nodes](/docs/r1-alpha5/extending/material-nodes) — how to add a
+- [Custom Material Nodes](/docs/r1-alpha7/extending/material-nodes) — how to add a
   new built-in node to the engine, and how the codegen works.

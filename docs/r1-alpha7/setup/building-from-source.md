@@ -188,7 +188,7 @@ A few things that live outside this workspace, or that older docs got wrong:
 
 ## What's next?
 
-- [Project Structure](/docs/r1-alpha5/setup/project-structure) — how the workspace and its ~187 crates are laid out
-- [Architecture](/docs/r1-alpha5/setup/architecture) — the one-binary, editor-as-removable-cdylib model in depth
-- [Building Plugins](/docs/r1-alpha5/extending/plugins) — extend the engine with `renzora::add!`
-- [Building Export Templates](/docs/r1-alpha5/packaging/export-templates) — produce shippable game builds
+- [Project Structure](/docs/r1-alpha7/setup/project-structure) — how the workspace and its ~187 crates are laid out
+- [Architecture](/docs/r1-alpha7/setup/architecture) — the one-binary, editor-as-removable-cdylib model in depth
+- [Building Plugins](/docs/r1-alpha7/extending/plugins) — extend the engine with `renzora::add!`
+- [Building Export Templates](/docs/r1-alpha7/packaging/export-templates) — produce shippable game builds

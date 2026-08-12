@@ -55,7 +55,7 @@ A handful of tags cover almost everything:
 | `<input>` | A text field the player types into |
 | `<icon name="...">` | A small icon, e.g. `<icon name="check" />` |
 
-There are a few more tags for repeating lists and reusing components. See the [Scripting API](/docs/r1-alpha5/api/scripting) for the full list.
+There are a few more tags for repeating lists and reusing components. See the [Scripting API](/docs/r1-alpha7/api/scripting) for the full list.
 
 ## Making the UI show live values
 
@@ -129,7 +129,7 @@ Need a circular gauge, a bar chart, or a speedometer? Add `vector="..."` to a no
       color="#4C8BF5" readout="{{ Player.fuel }}" />
 ```
 
-The `value`, `data`, and `readout` fields accept live `{{ }}` bindings, so a fuel gauge or speedometer tracks your game in real time. For the full list of widget options, see the [Scripting API](/docs/r1-alpha5/api/scripting).
+The `value`, `data`, and `readout` fields accept live `{{ }}` bindings, so a fuel gauge or speedometer tracks your game in real time. For the full list of widget options, see the [Scripting API](/docs/r1-alpha7/api/scripting).
 
 ## Showing and hiding UI from a script
 
@@ -248,4 +248,4 @@ end
 
 - [Scripting Overview](./overview) — backends, hooks, and the `action()` escape hatch.
 - [Lua reference](./lua) — the full function catalog, including `set_on`/`get_on`.
-- [Scripting API](/docs/r1-alpha5/api/scripting) — the complete UI tag, binding, and widget reference.
+- [Scripting API](/docs/r1-alpha7/api/scripting) — the complete UI tag, binding, and widget reference.

@@ -61,6 +61,7 @@
           "category": "Publishing Your Game",
           "pages": [
             { "slug": "exporting/overview", "title": "Export Overview" },
+            { "slug": "exporting/cross-platform", "title": "Exporting to Other Platforms" },
             { "slug": "exporting/windows", "title": "Windows" },
             { "slug": "exporting/linux", "title": "Linux" },
             { "slug": "exporting/macos", "title": "macOS" },

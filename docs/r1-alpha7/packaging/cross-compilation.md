@@ -217,6 +217,6 @@ These write into the arch-suffixed `dist/` layout and run the full `wasm-bindgen
 
 ## What's next?
 
-- [Building from Source](/docs/r1-alpha5/setup/building-from-source) — the cargo aliases, runtime modes, and the one-binary/editor-as-cdylib model.
-- [Building Export Templates](/docs/r1-alpha5/packaging/export-templates) — turning these builds into shippable game templates.
-- [Asset Packing (rpak)](/docs/r1-alpha5/packaging/asset-packing) — how project assets are packed and shipped beside the binary.
+- [Building from Source](/docs/r1-alpha7/setup/building-from-source) — the cargo aliases, runtime modes, and the one-binary/editor-as-cdylib model.
+- [Building Export Templates](/docs/r1-alpha7/packaging/export-templates) — turning these builds into shippable game templates.
+- [Asset Packing (rpak)](/docs/r1-alpha7/packaging/asset-packing) — how project assets are packed and shipped beside the binary.

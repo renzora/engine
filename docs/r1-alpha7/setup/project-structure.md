@@ -35,7 +35,7 @@ engine/
 └── docs/                   # in-repo engine docs (markdown)
 ```
 
-> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.95.0`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Build System](/docs/r1-alpha5/setup/build-system)).
+> There is **no** `Makefile.toml`/cargo-make and no `_legacy_src/`, but there **is** an `xtask/` crate (behind the `cargo renzora` alias) for native builds and a `rust-toolchain.toml` that pins the Rust version for them. The container's Rust version (`1.95.0`) lives in `docker/base/Dockerfile`, kept in lockstep with `rust-toolchain.toml`; common tasks run through the `renzora` CLI or the cargo aliases in `.cargo/config.toml` (see [Building from Source](/docs/r1-alpha7/setup/building-from-source)).
 
 ## The workspace member globs
 
@@ -91,7 +91,7 @@ There is exactly **one** `[[bin]]` in the whole workspace: `renzora_app` → `sr
 - `--no-editor` (or `RENZORA_NO_EDITOR`) forces the game even when the bundle is present.
 - `--server` runs a headless dedicated server; `--host` runs a windowed listen server.
 
-There is no `editor` compile-time feature and no separate editor or server binary. Delete the bundle file and the same binary becomes the shipped game. See [Core Concepts](/docs/r1-alpha5/getting-started/concepts) for the full model.
+There is no `editor` compile-time feature and no separate editor or server binary. Delete the bundle file and the same binary becomes the shipped game. See [Core Concepts](/docs/r1-alpha7/getting-started/concepts) for the full model.
 
 ## Dual-mode crates and `/editor` subcrates
 
@@ -115,7 +115,7 @@ Some editor-only features (e.g. `renzora_hierarchy`, `renzora_inspector`, `renzo
 | **Workspace plugin** | `rlib` | Statically linked into the binary or the editor bundle; registers via its `inventory` constructor at process start. |
 | **Distribution plugin** | `cdylib` with a default-on `dlopen` feature | dlopen'd at startup, or hot-loaded when dropped into `<exe>/plugins/`. Exactly **one** `renzora::add!` per cdylib. |
 
-Most feature crates are plain rlibs. The `dlopen` feature (gated `#[cfg(feature = "dlopen")]`) emits the `extern "C"` symbols — `plugin_create`, `plugin_scope`, `plugin_bevy_hash` — that the loader checks for ABI compatibility before loading. See [Building Plugins](/docs/r1-alpha5/extending/plugins).
+Most feature crates are plain rlibs. The `dlopen` feature (gated `#[cfg(feature = "dlopen")]`) emits the `extern "C"` symbols — `plugin_create`, `plugin_scope`, `plugin_bevy_hash` — that the loader checks for ABI compatibility before loading. See [Building Plugins](/docs/r1-alpha7/extending/plugins).
 
 ## Crate categories at a glance
 
@@ -189,6 +189,6 @@ Wiring it in:
 
 ## What's next?
 
-- [Build System](/docs/r1-alpha5/setup/build-system) — the `renzora` CLI, the Docker toolchain, output layout
-- [Core Concepts](/docs/r1-alpha5/getting-started/concepts) — ECS, plugins, and the one-binary model
-- [Building Plugins](/docs/r1-alpha5/extending/plugins) — write a workspace or distribution plugin
+- [Building from Source](/docs/r1-alpha7/setup/building-from-source) — `cargo renzora`, the cargo aliases, and the output layout
+- [Core Concepts](/docs/r1-alpha7/getting-started/concepts) — ECS, plugins, and the one-binary model
+- [Building Plugins](/docs/r1-alpha7/extending/plugins) — write a workspace or distribution plugin

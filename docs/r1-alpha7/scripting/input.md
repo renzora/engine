@@ -4,7 +4,7 @@ Read keyboard, mouse, and gamepad input from scripts, and rebind it through the 
 
 Renzora exposes input to scripts in two layers. The quickest is a set of **read-only context globals** (`input_x`, `mouse_x`, `gamepad_south`, …) that the backend refreshes before every hook. On top of that, the `renzora_input` crate provides a rebindable **action map** (`InputMap` / `ActionState`) that unifies keyboard, mouse, and gamepad behind named actions like `"move"` and `"jump"`, queried with the `input_button_*` / `input_axis_*` functions.
 
-> The context globals are inputs, not state you own. Assigning to `position_x` or `input_x` does nothing — only variables declared in `props()` are read back. To move an entity, call a transform function such as `translate(x, y, z)` (see [Lua](/docs/r1-alpha5/scripting/lua#moving-and-transforming)).
+> The context globals are inputs, not state you own. Assigning to `position_x` or `input_x` does nothing — only variables declared in `props()` are read back. To move an entity, call a transform function such as `translate(x, y, z)` (see [Lua](/docs/r1-alpha7/scripting/lua#moving-and-transforming)).
 
 ## Lua and Rhai differences
 
@@ -16,7 +16,7 @@ Both backends receive the same read-only input globals each frame, but the query
 | `is_key_pressed` family | `is_key_pressed("KeyW")` | `is_key_pressed(_keys_pressed, "KeyW")` (must pass the key map) |
 | Action map (`input_button_*`, `input_axis_1d/2d`) | Yes | **No** |
 
-For movement that should work everywhere, prefer the `input_x` / `input_y` and `gamepad_*` globals — they already combine keyboard and gamepad and are available in both backends. The action-mapped helpers are Lua-only; see [What Rhai can't do](/docs/r1-alpha5/scripting/rhai#what-rhai-cant-do).
+For movement that should work everywhere, prefer the `input_x` / `input_y` and `gamepad_*` globals — they already combine keyboard and gamepad.
 
 ## Movement axes
 
@@ -315,7 +315,6 @@ The Rhai equivalent must use the read-only globals (`input_x`/`input_y`, `gamepa
 
 ## Related
 
-- [Lua](/docs/r1-alpha5/scripting/lua) — the full-surface, native-only backend
-- [Rhai](/docs/r1-alpha5/scripting/rhai) — the everywhere-including-web backend (input limitations)
-- [Physics](/docs/r1-alpha5/scripting/physics) — forces, impulses, and `PhysicsReadState`
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — how scripts attach and dispatch by extension
+- [Lua](/docs/r1-alpha7/scripting/lua) — the full-surface, native-only backend
+- [Physics](/docs/r1-alpha7/scripting/physics) — forces, impulses, and `PhysicsReadState`
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how scripts attach and dispatch by extension

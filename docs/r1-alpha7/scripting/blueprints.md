@@ -14,7 +14,7 @@ Every frame that scripts are running, the interpreter (`interpreter::run_bluepri
 
 ### Blueprints vs. text scripts
 
-Blueprints and text scripts ([Lua](/docs/r1-alpha5/scripting/lua) / [Rhai](/docs/r1-alpha5/scripting/rhai)) are **separate systems** that happen to share the same downstream action plumbing:
+Blueprints and text scripts ([Lua](/docs/r1-alpha7/scripting/lua)) are **separate systems** that happen to share the same downstream action plumbing:
 
 - A blueprint is **not** a 1:1 visual mirror of the scripting API. It exposes its own, smaller node palette (listed below). Anything outside that palette has to be done in Lua or Rhai.
 - A single entity can carry **both** a `BlueprintGraph` component and a `ScriptComponent` — they run side by side and write to the same world.
@@ -116,7 +116,7 @@ The palette is organised into these categories (in editor display order). Node-t
 
 > Loops (`for_loop`, `while_loop`) run their body to completion **within one frame** (capped at 100k iterations as a hang guard); use `flow/counter` instead when you want one step per frame. Selection is `flow/branch` (bool) or `flow/switch_int` / `flow/switch_string`. Reusable subgraphs are `event/custom` + `flow/call_event`. There is still no array/list pin type, so there is no ForEach-over-collection node.
 
-The full per-node pin reference lives in the [Blueprint Node API](/docs/r1-alpha5/api/blueprint-nodes). To add your own node types, see [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes).
+The full per-node pin reference lives in the [Blueprint Node API](/docs/r1-alpha7/api/blueprint-nodes). To add your own node types, see [Custom Blueprint Nodes](/docs/r1-alpha7/extending/custom-nodes).
 
 ## Event nodes
 
@@ -175,6 +175,6 @@ You normally never hand-edit this — the Blueprint Editor reads and writes it f
 
 ## See also
 
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — how scripts and blueprints fit together
-- [Blueprint Node API](/docs/r1-alpha5/api/blueprint-nodes) — every node and its pins
-- [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes) — register your own node types
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how scripts and blueprints fit together
+- [Blueprint Node API](/docs/r1-alpha7/api/blueprint-nodes) — every node and its pins
+- [Custom Blueprint Nodes](/docs/r1-alpha7/extending/custom-nodes) — register your own node types

@@ -46,7 +46,7 @@ In the Inspector you can:
 
 In the shot above, the selected "World Environment" entity carries a Transform (its rotation), a Directional Light (the sun — here an Illuminance of 40000 with shadows on), and a few rendering options. They're all just components layered onto one entity.
 
-> **For programmers:** components are plain Rust data structs, and *systems* are functions that read and change them each frame. You can write your own and make their fields editable right here in the Inspector. See [Creating Components](/docs/r1-alpha5/engine-core/components) for the full guide.
+> **For programmers:** components are plain Rust data structs, and *systems* are functions that read and change them each frame. You can write your own and make their fields editable right here in the Inspector. See [Creating Components](/docs/r1-alpha7/engine-core/components) for the full guide.
 
 ## Scenes: a saved world
 
@@ -70,7 +70,7 @@ To make things *do* something — move, take damage, open a door — you attach 
 - **Lua** (`.lua`) — a friendly text scripting language with the full Renzora API (native desktop and mobile).
 - **Rhai** (`.rhai`) — a lighter scripting language that also runs on the **Web** export.
 
-Just give an entity a **Name** in the editor and it's ready to hold scripts. See the [Scripting Overview](/docs/r1-alpha5/scripting/overview) to get started.
+Just give an entity a **Name** in the editor and it's ready to hold scripts. See the [Scripting Overview](/docs/r1-alpha7/scripting/overview) to get started.
 
 ## How a frame works
 
@@ -86,8 +86,8 @@ You just describe your entities, components, and scripts — the engine runs eve
 
 ## What's next?
 
-- [Your First Project](/docs/r1-alpha5/getting-started/first-project) — create a project and open the editor
-- [Scenes & Hierarchy](/docs/r1-alpha5/editor/scenes) — build a world in the editor
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — add gameplay logic
-- [Creating Components](/docs/r1-alpha5/engine-core/components) — write your own components in Rust
-- [Building Plugins](/docs/r1-alpha5/extending/plugins) — extend the engine itself
+- [Your First Project](/docs/r1-alpha7/getting-started/first-project) — create a project and open the editor
+- [Scenes & Hierarchy](/docs/r1-alpha7/editor/scenes) — build a world in the editor
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — add gameplay logic
+- [Creating Components](/docs/r1-alpha7/engine-core/components) — write your own components in Rust
+- [Building Plugins](/docs/r1-alpha7/extending/plugins) — extend the engine itself

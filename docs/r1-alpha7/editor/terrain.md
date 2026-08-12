@@ -135,7 +135,7 @@ Foliage is the separate **Paint Foliage** tool (`renzora_foliage_editor`, panel 
 
 ## Components & scene format
 
-Terrain is serialized into the RON scene like any other entity (see [Scenes & Hierarchy](/docs/r1-alpha5/editor/scenes)). The meaningful, `Reflect`-serialized fields:
+Terrain is serialized into the RON scene like any other entity (see [Scenes & Hierarchy](/docs/r1-alpha7/editor/scenes)). The meaningful, `Reflect`-serialized fields:
 
 ```ron
 // Root terrain entity

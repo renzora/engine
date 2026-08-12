@@ -2,7 +2,7 @@
 
 Define your own data components, make them survive scene save/load, and expose their fields in the editor's Inspector.
 
-This page assumes you already know the basics of Bevy components, queries, and the `renzora::add!` plugin macro — see [ECS & Bevy](/docs/r1-alpha5/engine-core/ecs) first. Everything here is about the two Renzora-specific layers on top of a plain component: **scene serialization** (`register_type`) and the **`#[derive(Inspectable)]`** editor card.
+This page assumes you already know the basics of Bevy components, queries, and the `renzora::add!` plugin macro — see [ECS & Bevy](/docs/r1-alpha7/engine-core/ecs) first. Everything here is about the two Renzora-specific layers on top of a plain component: **scene serialization** (`register_type`) and the **`#[derive(Inspectable)]`** editor card.
 
 ## A plain component
 
@@ -240,4 +240,4 @@ This is how Renzora's own dual-mode crates are split (e.g. the runtime `renzora_
 | Use for | per-entity data | global state, config |
 | Saved in scenes | yes (if reflected + registered + on a named entity) | **no** (`deny_all_resources`) |
 
-For resources, message/observer events, systems, and scheduling, see [ECS & Bevy](/docs/r1-alpha5/engine-core/ecs).
+For resources, message/observer events, systems, and scheduling, see [ECS & Bevy](/docs/r1-alpha7/engine-core/ecs).

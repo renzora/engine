@@ -356,7 +356,7 @@ renzora build windows linux wasm android ios
 | `android` (= `android-arm64` + `android-x86`) | `dist/android-arm64/`, `dist/android-x86/` |
 | `ios` | `dist/ios-arm64/` |
 
-> macOS lanes build only when osxcross is present; the Android and iOS lanes are best-effort (a failure there does not fail the whole build). See [Installation → Cross-compiling with Docker](/docs/r1-alpha5/getting-started/installation) for toolchain details.
+> macOS lanes build only when osxcross is present; the Android and iOS lanes are best-effort (a failure there does not fail the whole build). See [Exporting to Other Platforms](cross-platform.md) for the three ways to get a template, and [Cross-Compilation](../packaging/cross-compilation.md) for toolchain details.
 
 ## Dedicated server export
 
@@ -371,7 +371,7 @@ There is **no separate server executable** — the dedicated server is the shipp
 renzora --server --rpak server.rpak --port 7636 --tick-rate 64 --max-clients 32
 ```
 
-`--host` instead runs a windowed listen server (client + server in one process). See [Server setup](/docs/r1-alpha5/multiplayer/server-setup) for the full flag list and deployment notes.
+`--host` instead runs a windowed listen server (client + server in one process). See [Server setup](/docs/r1-alpha7/multiplayer/server-setup) for the full flag list and deployment notes.
 
 > The current networking handshake is insecure (`Authentication::Manual` with a zero key) and the only working transport is native **UDP** — multiplayer exports are LAN/dev-grade today.
 
@@ -391,5 +391,5 @@ Android and iOS export by injecting your `game.rpak` into a prebuilt template (`
 
 ## What's next
 
-- [Installation → Working from a checkout](/docs/r1-alpha5/getting-started/installation) — the `renzora` CLI and Docker cross-compile setup behind these builds.
-- [Multiplayer → Server setup](/docs/r1-alpha5/multiplayer/server-setup) — running the exported dedicated server.
+- [Installation → Working from a checkout](/docs/r1-alpha7/getting-started/installation) — the `renzora` CLI and Docker cross-compile setup behind these builds.
+- [Multiplayer → Server setup](/docs/r1-alpha7/multiplayer/server-setup) — running the exported dedicated server.

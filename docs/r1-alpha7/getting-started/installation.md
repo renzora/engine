@@ -121,5 +121,5 @@ You do **not** need any of this to build and run Renzora on your own machine —
 
 ## What's next?
 
-- [Core concepts](/docs/r1-alpha5/getting-started/concepts) — how scenes, entities, and scripts fit together
-- [Your first project](/docs/r1-alpha5/getting-started/first-project) — build something in the editor
+- [Core concepts](/docs/r1-alpha7/getting-started/concepts) — how scenes, entities, and scripts fit together
+- [Your first project](/docs/r1-alpha7/getting-started/first-project) — build something in the editor

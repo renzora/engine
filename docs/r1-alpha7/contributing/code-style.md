@@ -112,7 +112,7 @@ To add a crate, just create its directory; the glob picks it up. Check a single 
 renzora check -p renzora_<name>
 ```
 
-> See [Project Structure](/docs/r1-alpha5/setup/project-structure) for the full layout and [Building From Source](/docs/r1-alpha5/setup/building-from-source) for the `renzora` CLI commands that drive editor/runtime builds.
+> See [Project Structure](/docs/r1-alpha7/setup/project-structure) for the full layout and [Building From Source](/docs/r1-alpha7/setup/building-from-source) for the `renzora` CLI commands that drive editor/runtime builds.
 
 ## Inside a crate
 
@@ -173,7 +173,7 @@ renzora::add!(MyPlugin);            // Runtime scope (default)
 // renzora::add!(MyFoundation, Runtime, priority = -100);
 ```
 
-`PluginScope` is exactly `{ Editor, Runtime }` with equality matching — there is **no "both" scope**. A feature that needs editor tooling on top of runtime behaviour ships two plugins (e.g. `GameUiPlugin` + `GameUiEditorPlugin`). See [Building Plugins](/docs/r1-alpha5/extending/plugins) for the full model.
+`PluginScope` is exactly `{ Editor, Runtime }` with equality matching — there is **no "both" scope**. A feature that needs editor tooling on top of runtime behaviour ships two plugins (e.g. `GameUiPlugin` + `GameUiEditorPlugin`). See [Building Plugins](/docs/r1-alpha7/extending/plugins) for the full model.
 
 ## Error handling and panics
 
@@ -247,6 +247,6 @@ Common scopes: a crate short-name (`physics`, `ember`, `shader`, `animation`), o
 
 ## What's next?
 
-- [Building From Source](/docs/r1-alpha5/setup/building-from-source) — the `renzora` CLI commands the workflow actually uses
-- [Project Structure](/docs/r1-alpha5/setup/project-structure) — how the workspace's ~187 crates are organized
-- [Building Plugins](/docs/r1-alpha5/extending/plugins) — the `renzora::add!` plugin model in depth
+- [Building From Source](/docs/r1-alpha7/setup/building-from-source) — the `renzora` CLI commands the workflow actually uses
+- [Project Structure](/docs/r1-alpha7/setup/project-structure) — how the workspace's ~187 crates are organized
+- [Building Plugins](/docs/r1-alpha7/extending/plugins) — the `renzora::add!` plugin model in depth

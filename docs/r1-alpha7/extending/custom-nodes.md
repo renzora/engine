@@ -185,6 +185,6 @@ renzora run runtime    # shipped game
 
 ## See also
 
-- [Visual Blueprints](/docs/r1-alpha5/scripting/blueprints) — authoring graphs in the editor and how they relate to scripts
-- [Blueprint Node API](/docs/r1-alpha5/api/blueprint-nodes) — the full built-in node and pin reference
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — how the `ScriptAction` / `TransformWrite` buses are consumed
+- [Visual Blueprints](/docs/r1-alpha7/scripting/blueprints) — authoring graphs in the editor and how they relate to scripts
+- [Blueprint Node API](/docs/r1-alpha7/api/blueprint-nodes) — the full built-in node and pin reference
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how the `ScriptAction` / `TransformWrite` buses are consumed

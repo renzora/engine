@@ -2,7 +2,7 @@
 
 The Inspector is where you read and tweak everything about the object you have selected — its position, its colors, its lights, its scripts, and more. Click something in your scene and all of its settings show up here, ready to edit.
 
-This page covers the everyday basics. When you want the deep technical reference, the [Scripting API](/docs/r1-alpha5/api/scripting) and the [Inspector Fields](/docs/r1-alpha5/editor-dev/inspector-fields) guides have the full story.
+This page covers the everyday basics. When you want the deep technical reference, the [Scripting API](/docs/r1-alpha7/api/scripting) and the [Inspector Fields](/docs/r1-alpha7/editor-dev/inspector-fields) guides have the full story.
 
 ![The Inspector panel showing the selected World Environment object, with collapsible sections for Name, Transform, Visibility, Directional Light, Volumetric Light, and TAA.](/assets/previews/inspector.png)
 
@@ -89,7 +89,7 @@ Any entity with text exposes two text sections:
   order after the base text, so you can mix colors and weights in a single label.
 
 Fonts you use are saved into the scene and packed into the exported game (only
-the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha6/exporting/overview)).
+the fonts actually referenced are bundled — see [Exporting](/docs/r1-alpha7/exporting/overview)).
 
 ## Script properties
 
@@ -116,7 +116,7 @@ Each entry just needs a `value` (which sets both the default and the field type)
 
 `props()` works in **both** Lua and Rhai. Whatever you set in the Inspector is saved per-object and feeds straight back into the running script.
 
-See [Scripting Overview](/docs/r1-alpha5/scripting/overview) to get started writing scripts, and the [Scripting API](/docs/r1-alpha5/api/scripting) for the full list of functions you can call.
+See [Scripting Overview](/docs/r1-alpha7/scripting/overview) to get started writing scripts, and the [Scripting API](/docs/r1-alpha7/api/scripting) for the full list of functions you can call.
 
 ## For programmers: custom components
 
@@ -137,4 +137,4 @@ pub struct Health {
 
 Then call `app.register_inspectable::<Health>();` from your plugin. The contract types live in the `renzora` crate behind its `editor` feature (engine built on **Bevy 0.19**).
 
-That's the short version. For per-field attributes, custom widgets, and fully native drawers, see [Inspector Fields](/docs/r1-alpha5/editor-dev/inspector-fields).
+That's the short version. For per-field attributes, custom widgets, and fully native drawers, see [Inspector Fields](/docs/r1-alpha7/editor-dev/inspector-fields).

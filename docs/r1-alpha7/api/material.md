@@ -4,7 +4,7 @@ Reference for Renzora's material system — the `.material` node-graph format, m
 
 ## How materials work
 
-A Renzora material is a **node graph**, not a fixed list of PBR sliders. You build it in the [Material Editor](/docs/r1-alpha5/editor/materials) (the **Materials** workspace), and it is saved to disk as a `.material` file — JSON-serialized [`MaterialGraph`](#the-material-file-format). At runtime the `renzora_shader` crate's `MaterialResolverPlugin` watches every entity that has a `MaterialRef` component pointing at a `.material` (or `.shader`) file, compiles the graph, and applies the result to the mesh.
+A Renzora material is a **node graph**, not a fixed list of PBR sliders. You build it in the [Material Editor](/docs/r1-alpha7/editor/materials) (the **Materials** workspace), and it is saved to disk as a `.material` file — JSON-serialized [`MaterialGraph`](#the-material-file-format). At runtime the `renzora_shader` crate's `MaterialResolverPlugin` watches every entity that has a `MaterialRef` component pointing at a `.material` (or `.shader`) file, compiles the graph, and applies the result to the mesh.
 
 There are two compile paths, chosen automatically by the resolver:
 
@@ -167,7 +167,7 @@ Masters and instances share the `.material` extension; the resolver content-dete
 
 Node types are identified by a `category/name` string. Categories appear in the editor's node menu in the order below.
 
-> For the **per-node reference** — every node's inputs, outputs, and exactly what it computes — see [Material Node Reference](/docs/r1-alpha5/api/material-node-reference). The tables below are the quick index.
+> For the **per-node reference** — every node's inputs, outputs, and exactly what it computes — see [Material Node Reference](/docs/r1-alpha7/api/material-node-reference). The tables below are the quick index.
 
 ### Input
 
@@ -433,6 +433,6 @@ set_material_color(1.0, 0.0, 0.0)        -- red
 set_material_color(0.0, 0.4, 1.0, 0.5)   -- semi-transparent blue
 ```
 
-> `set_material_color` is **Lua-only** — it is not part of the [Rhai](/docs/r1-alpha5/scripting/rhai) subset. There are **no** `set_material_property`, `set_material_emissive`, or `swap_material` functions. In this release `set_material_color` emits a script action that the renderer does not yet consume, so for reliable runtime variation use **material instances** / `MaterialOverrides` or edit the graph directly.
+> There are **no** `set_material_property`, `set_material_emissive`, or `swap_material` functions. In this release `set_material_color` emits a script action that the renderer does not yet consume, so for reliable runtime variation use **material instances** / `MaterialOverrides` or edit the graph directly.
 
-To add your own node types to the graph, see [Custom Material Nodes](/docs/r1-alpha5/extending/material-nodes).
+To add your own node types to the graph, see [Custom Material Nodes](/docs/r1-alpha7/extending/material-nodes).

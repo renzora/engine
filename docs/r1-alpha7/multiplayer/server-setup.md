@@ -178,7 +178,7 @@ Implemented and working:
 
 - The dedicated (`--server`) and host (`--host`) modes, tick synchronization, and the protocol handshake.
 - `rpc()` send/receive/relay and the join/leave lifecycle hooks.
-- Basic `Transform` replication with snapshot interpolation. Adding the `Networked` marker to an entity auto-inserts Lightyear's `Replicate` (to all clients) plus an interpolation target. See [State Replication](/docs/r1-alpha5/multiplayer/replication) for details.
+- Basic `Transform` replication with snapshot interpolation. Adding the `Networked` marker to an entity auto-inserts Lightyear's `Replicate` (to all clients) plus an interpolation target. See [State Replication](/docs/r1-alpha7/multiplayer/replication) for details.
 
 Not yet implemented (do not assume these work):
 
@@ -192,7 +192,7 @@ Not yet implemented (do not assume these work):
 
 ## Related
 
-- [Multiplayer Overview](/docs/r1-alpha5/multiplayer/overview) — the big picture
-- [State Replication](/docs/r1-alpha5/multiplayer/replication) — the `Networked` marker and `Transform` sync
-- [Lua](/docs/r1-alpha5/scripting/lua) — the full scripting surface (networking is Lua-only)
-- [Exporting](/docs/r1-alpha5/exporting/overview) — building the binary you run with `--server`
+- [Multiplayer Overview](/docs/r1-alpha7/multiplayer/overview) — the big picture
+- [State Replication](/docs/r1-alpha7/multiplayer/replication) — the `Networked` marker and `Transform` sync
+- [Lua](/docs/r1-alpha7/scripting/lua) — the full scripting surface (networking is Lua-only)
+- [Exporting](/docs/r1-alpha7/exporting/overview) — building the binary you run with `--server`

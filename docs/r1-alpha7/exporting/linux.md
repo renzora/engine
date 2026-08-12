@@ -124,5 +124,5 @@ The official pipeline targets **`x86_64` only**. There is no `aarch64` Linux lan
 
 ## See also
 
-- [Exporting overview](/docs/r1-alpha5/exporting/overview) — the shared build model across platforms
-- [Installation](/docs/r1-alpha5/getting-started/installation) — building the engine from source and the cargo aliases
+- [Exporting overview](/docs/r1-alpha7/exporting/overview) — the shared build model across platforms
+- [Installation](/docs/r1-alpha7/getting-started/installation) — building the engine from source and the cargo aliases

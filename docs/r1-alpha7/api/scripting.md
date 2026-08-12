@@ -2,7 +2,7 @@
 
 The authoritative reference for every global, function, lifecycle hook, and `action()` verb exposed to Lua and Rhai scripts.
 
-This page documents the surface registered by `crates/renzora_scripting` (`backends/lua.rs`, `backends/rhai.rs`, `command.rs`) plus the functions injected by domain crates. For a guided introduction see [Lua](/docs/r1-alpha5/scripting/lua), [Rhai](/docs/r1-alpha5/scripting/rhai), and the [Scripting Overview](/docs/r1-alpha5/scripting/overview).
+This page documents the surface registered by `crates/renzora_scripting` plus the functions injected by domain crates. For a guided introduction see [Lua](/docs/r1-alpha7/scripting/lua) and the [Scripting Overview](/docs/r1-alpha7/scripting/overview).
 
 ## How the API is dispatched
 
@@ -42,7 +42,7 @@ Define any of these free functions; the engine calls the ones that exist. None a
 
 > **The scene hooks only reach `Persistent` scripts.** A scene load despawns the outgoing scene's entities partway through, so a script that lives in the scene being replaced is already gone when its successor arrives. Put scene-transition logic on a global scene (see [Global scenes](../engine-core/resources#cross-scene-state)) — that is the entire reason a loading screen has to live outside the scene it is covering.
 
-> There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup and read the `is_colliding` global for overlap state. Collision *events* exist only as [Blueprint](/docs/r1-alpha5/scripting/blueprints) nodes. Rhai scripts get `props`, `on_ready`, and `on_update` only — the other hooks fall through to no-ops.
+> There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup and read the `is_colliding` global for overlap state. Collision *events* exist only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes. Rhai scripts get `props`, `on_ready`, and `on_update` only — the other hooks fall through to no-ops.
 
 ### props()
 
@@ -122,7 +122,7 @@ The flat `gamepad_*` globals mirror the **first connected pad**. Every pad is ad
 | Button held | `gamepad_button(pad, button)` | `gamepad_button(gamepads, pad, button)` | `"south"`, `"l1"`, `"dpad_up"`, … |
 | Button just pressed | `gamepad_button_just_pressed(pad, button)` | `gamepad_button_just_pressed(gamepads, pad, button)` | Down this frame |
 
-Rhai also receives a `gamepads` array in scope (one map per pad with `id`, the axis fields, and `buttons` / `just_pressed` maps) which can be indexed or iterated directly. See [Input Handling — Multiple gamepads](/docs/r1-alpha6/scripting/input#multiple-gamepads).
+Rhai also receives a `gamepads` array in scope (one map per pad with `id`, the axis fields, and `buttons` / `just_pressed` maps) which can be indexed or iterated directly. See [Input Handling — Multiple gamepads](/docs/r1-alpha7/scripting/input#multiple-gamepads).
 
 > All of the globals above are available in **both** backends except the mouse-button set, which is only mirrored into Lua. Rhai receives the time, transform, mouse-position, `camera_yaw`/`camera_ev`, `project_width`/`project_height`, gamepad, collision, timer, health, and parent globals via its scope; use Lua for the action-map and mouse-button helpers below.
 
@@ -311,7 +311,7 @@ end
 
 ## Networking
 
-**Lua only.** Built on the engine's Lightyear layer (native only). See [Multiplayer](/docs/r1-alpha5/multiplayer/overview).
+**Lua only.** Built on the engine's Lightyear layer (native only). See [Multiplayer](/docs/r1-alpha7/multiplayer/overview).
 
 | Function | Description |
 |----------|-------------|
@@ -444,7 +444,7 @@ The `ScriptCommand` enum (`command.rs`) defines many engine verbs that have **no
 
 ## Blueprints
 
-Visual [Blueprints](/docs/r1-alpha5/scripting/blueprints) (`.blueprint` / `.bp`, JSON-serialized `BlueprintGraph`) are a separate system. At runtime they are **interpreted directly** by `renzora_blueprint` — walking the graph and emitting the same `ScriptAction` / transform / character commands as text scripts — not compiled to Lua. (The editor's `compile_to_lua` bake to `scripts/bp_<name>.lua` is an export action, not the live path.) Blueprints expose collision, timer, and message *events* (`event/on_collision_enter`, `event/on_timer`, `event/on_message`, …) that text scripts do not have.
+Visual [Blueprints](/docs/r1-alpha7/scripting/blueprints) (`.blueprint` / `.bp`, JSON-serialized `BlueprintGraph`) are a separate system. At runtime they are **interpreted directly** by `renzora_blueprint` — walking the graph and emitting the same `ScriptAction` / transform / character commands as text scripts — not compiled to Lua. (The editor's `compile_to_lua` bake to `scripts/bp_<name>.lua` is an export action, not the live path.) Blueprints expose collision, timer, and message *events* (`event/on_collision_enter`, `event/on_timer`, `event/on_message`, …) that text scripts do not have.
 
 ## Rhai subset
 
@@ -472,8 +472,7 @@ Syntax also differs:
 
 ## See also
 
-- [Lua](/docs/r1-alpha5/scripting/lua) — guided introduction to the full backend
-- [Rhai](/docs/r1-alpha5/scripting/rhai) — the everywhere-including-web backend
-- [Visual Blueprints](/docs/r1-alpha5/scripting/blueprints) — node graphs interpreted at runtime
-- [Input Handling](/docs/r1-alpha5/scripting/input) — the action map and key names
-- [Game UI](/docs/r1-alpha5/scripting/game-ui) — markup, `ui_*` verbs, and bindings
+- [Lua](/docs/r1-alpha7/scripting/lua) — guided introduction to the full backend
+- [Visual Blueprints](/docs/r1-alpha7/scripting/blueprints) — node graphs interpreted at runtime
+- [Input Handling](/docs/r1-alpha7/scripting/input) — the action map and key names
+- [Game UI](/docs/r1-alpha7/scripting/game-ui) — markup, `ui_*` verbs, and bindings

@@ -59,10 +59,10 @@ renzora test             # the test suite (container)
 |---|---|
 | **Bug fixes** | Browse the [issue tracker](https://github.com/renzora/engine/issues). |
 | **Documentation** | Edit the markdown under `docs/` in the **website** repo (this site), not the engine repo. |
-| **Editor panels** | Register a native bevy_ui panel with the `App` extension APIs `register_shell_panel(id, title, icon, category)` + `register_panel_content(id, scroll, build_fn)`. See [Editor Panels](/docs/r1-alpha5/editor-dev/panels). |
-| **Scripting functions** | Add Lua bindings in `renzora_scripting` (or a domain crate's `ScriptExtension`). Rhai is a **subset** — see [Rhai](/docs/r1-alpha5/scripting/rhai) before assuming parity. |
-| **Post-process effects** | Annotate a settings struct with `#[renzora_macros::post_process(...)]` and `renzora::add!` the plugin. See [Post-Processing](/docs/r1-alpha5/extending/post-processing). |
-| **Plugins** | Self-register with `renzora::add!(MyPlugin)`. See [Building Plugins](/docs/r1-alpha5/extending/plugins). |
+| **Editor panels** | Register a native bevy_ui panel with the `App` extension APIs `register_shell_panel(id, title, icon, category)` + `register_panel_content(id, scroll, build_fn)`. See [Editor Panels](/docs/r1-alpha7/editor-dev/panels). |
+| **Scripting functions** | Add Lua bindings in `renzora_scripting` (or a domain crate's `ScriptExtension`). |
+| **Post-process effects** | Annotate a settings struct with `#[renzora_macros::post_process(...)]` and `renzora::add!` the plugin. See [Post-Processing](/docs/r1-alpha7/extending/post-processing). |
+| **Plugins** | Self-register with `renzora::add!(MyPlugin)`. See [Building Plugins](/docs/r1-alpha7/extending/plugins). |
 | **Export targets** | Improve a platform lane in `docker/build-all.sh`. |
 
 > The editor has no `EditorPanel` trait you "implement and register" — panels are plain bevy_ui content functions registered through the two `App` extension methods above. Anything claiming an egui `EditorPanel` trait is stale (egui was fully removed).
@@ -189,6 +189,6 @@ The engine is dual-licensed under **MIT OR Apache-2.0** (`LICENSE-MIT` and `LICE
 
 ## What's next?
 
-- [Building from Source](/docs/r1-alpha5/setup/building-from-source) — the full build, aliases, and Docker cross-compile flow
-- [Architecture](/docs/r1-alpha5/setup/architecture) — the one-binary, editor-as-removable-cdylib model
-- [Building Plugins](/docs/r1-alpha5/extending/plugins) — extend the engine with `renzora::add!`
+- [Building from Source](/docs/r1-alpha7/setup/building-from-source) — the full build, aliases, and Docker cross-compile flow
+- [Architecture](/docs/r1-alpha7/setup/architecture) — the one-binary, editor-as-removable-cdylib model
+- [Building Plugins](/docs/r1-alpha7/extending/plugins) — extend the engine with `renzora::add!`

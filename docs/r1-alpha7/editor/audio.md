@@ -2,7 +2,7 @@
 
 Sound brings a game to life. In Renzora you can attach sounds to objects, play music and effects from your scripts, and balance everything in a friendly visual mixer — no audio engineering degree required.
 
-This page walks you through the basics. When you need the deep technical details, the [Scripting API](/docs/r1-alpha5/api/scripting) has the full reference.
+This page walks you through the basics. When you need the deep technical details, the [Scripting API](/docs/r1-alpha7/api/scripting) has the full reference.
 
 ## How sound works
 
@@ -41,7 +41,7 @@ That's the whole setup for a basic sound. The most common settings you'll reach 
 | **Autoplay** | Start automatically when the game runs |
 | **Bus** | Which mixer channel it plays through (more on this below) |
 
-There are more advanced options too — random clip pools, volume/pitch jitter, fades, and reverb. See the [Scripting API](/docs/r1-alpha5/api/scripting) for the complete list of fields.
+There are more advanced options too — random clip pools, volume/pitch jitter, fades, and reverb. See the [Scripting API](/docs/r1-alpha7/api/scripting) for the complete list of fields.
 
 ### Making sound feel 3D
 
@@ -90,7 +90,7 @@ The handful of functions you'll use most:
 
 > Music does not crossfade — starting a new track stops the old one right away (with an optional fade-in).
 
-Rhai can play audio too, but with simpler function signatures, and the keyboard-input functions shown above are Lua-only. For the full list of audio functions and the small Lua/Rhai differences, see the [Lua scripting guide](/docs/r1-alpha5/scripting/lua) and the [Scripting API](/docs/r1-alpha5/api/scripting).
+Rhai can play audio too, but with simpler function signatures, and the keyboard-input functions shown above are Lua-only. For the full list of audio functions and the small Lua/Rhai differences, see the [Lua scripting guide](/docs/r1-alpha7/scripting/lua) and the [Scripting API](/docs/r1-alpha7/api/scripting).
 
 ## The mixer
 
@@ -159,7 +159,7 @@ Right-clicking a strip is also how you reach everything that isn't a live contro
 
 Devices are listed fresh each time you open the menu, so a microphone you plugged in after starting the editor shows up straight away.
 
-> Bus volumes are set here in the Mixer, not from scripts. Advanced users can also add effects (FX) to a bus — see the [Scripting API](/docs/r1-alpha5/api/scripting) for those features.
+> Bus volumes are set here in the Mixer, not from scripts. Advanced users can also add effects (FX) to a bus — see the [Scripting API](/docs/r1-alpha7/api/scripting) for those features.
 
 ## Recording and cinematics
 

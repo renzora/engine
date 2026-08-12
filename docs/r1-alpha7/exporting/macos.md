@@ -31,7 +31,7 @@ renzora build macos-x64
 
 Every argument is a platform token. Pass no tokens to build every platform the image supports; output lands in `dist/<platform>/`.
 
-> `renzora build macos` derives the image tag, pulls it, and runs the `docker/build-all.sh` step inside the container — that wrapper is the documented build path; you never run cargo natively. See [Installation](/docs/r1-alpha5/getting-started/installation).
+> `renzora build macos` derives the image tag, pulls it, and runs the `docker/build-all.sh` step inside the container — that wrapper is the documented build path; you never run cargo natively. See [Installation](/docs/r1-alpha7/getting-started/installation).
 
 ## Output layout
 
@@ -65,7 +65,7 @@ rm dist/macos-arm64/librenzora_editor.dylib
 
 The remaining `renzora` binary, the SDK/Bevy/std dylibs, and the `plugins/` folder are what your players run. Keep the dylibs next to the binary — they are resolved relative to the executable's directory.
 
-> Game assets are loaded through the VFS: an `.rpak` embedded in the binary, an adjacent `renzora.rpak`, or a loose `assets/` directory next to the binary. See [Asset Packing (rpak)](/docs/r1-alpha5/packaging/asset-packing) for packing assets into a single archive for distribution.
+> Game assets are loaded through the VFS: an `.rpak` embedded in the binary, an adjacent `renzora.rpak`, or a loose `assets/` directory next to the binary. See [Asset Packing (rpak)](/docs/r1-alpha7/packaging/asset-packing) for packing assets into a single archive for distribution.
 
 ## Toolchain and compatibility
 

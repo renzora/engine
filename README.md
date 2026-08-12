@@ -10,20 +10,7 @@ A 3D game engine and visual editor built on <a href="https://bevyengine.org/" ta
 
 ## Getting Started
 
-**Prerequisites:** <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noopener noreferrer">Docker</a>, and Rust just to install the CLI.
-
-```bash
-cargo install renzora     # installs the `renzora` command
-renzora new engine        # scaffold a new project
-cd engine
-renzora run               # build the editor and launch it (first run is slow)
-```
-
-Everything builds inside a container, so Docker handles the rest — no toolchain or system libraries to set up, and the build is identical on every machine. The editor runs on your computer, not in the container.
-
-### Building from source without Docker
-
-Working on the engine itself, or prefer no Docker? Clone the repo and build natively for your own platform with `cargo renzora`:
+**Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>. Nothing else — `rust-toolchain.toml` pins the exact compiler version, so rustup fetches it for you on the first build.
 
 ```bash
 git clone https://github.com/renzora/engine.git
@@ -31,7 +18,7 @@ cd engine
 cargo renzora             # build, stage dist/, and launch the editor
 ```
 
-The build lands in `dist/<platform>/`. Use `cargo renzora dist` to build without launching. Builds are host-only; for other platforms use `renzora build` (Docker).
+That's the whole setup. `cargo renzora` builds the workspace natively, stages a complete engine into `dist/<platform>/`, and launches the editor from it. The first build is slow; every one after that is incremental.
 
 On **Linux** you also need the usual graphics/audio dev headers:
 
@@ -40,23 +27,22 @@ sudo apt install pkg-config libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
   libwayland-dev libxkbcommon-dev libasound2-dev libudev-dev
 ```
 
-### Renzora CLI Commands
+### Build Commands
 
 | Command | What it does |
 |---|---|
-| `renzora new <name>` | Scaffold a new project. |
-| `renzora run [editor\|runtime]` | Build for your machine and launch it (editor by default). |
-| `renzora build [platforms]` | Cross-build for one or more platforms (no args = all). |
-| `renzora test` | Run the test suite. |
-| `renzora add <name> [--editor\|--dylib]` | Add a plugin crate. |
-| `renzora remove <name>` | Delete a plugin crate. |
-| `renzora shell` | Open a shell in the build container. |
+| `cargo renzora` | Build, stage `dist/<platform>/`, and launch the editor. |
+| `cargo renzora dist` | Build and stage without launching. |
+| `cargo renzora plugin <name>` | Rebuild one standalone plugin and stage it — hot reload, no editor restart. |
+| `cargo renzora profile` | Profiling build with Tracy instrumentation compiled in. |
+| `cargo renzora sync` | Regenerate the plugin wiring from the `renzora::add!` declarations. |
+| `cargo renzora remove <crate>` | Delete a plugin crate and every reference to it. |
 
-Run `renzora --help` for the rest (`init`, `check`, `upx`, `clean`, `destroy`).
+Building the editor always builds the runtime too. The runtime doubles as a dedicated server — run it with `--server`.
 
-Platforms: `windows`, `linux`, `macos`, `wasm`, `android`, `ios`. Builds land in `dist/<platform>/` — the runtime build doubles as a dedicated server (run it with `--server`).
+Iterate with `cargo check --profile dist` and `cargo clippy --profile dist`; run tests with `cargo test --profile dist -p <crate>`. Always pass `--profile dist` — a bare cargo command builds a second full set of artefacts under `target/debug/`, and this workspace is far too large for two of them.
 
-The toolchain image is multi-arch (amd64 + arm64), so Apple Silicon Macs run it natively. Two arch caveats: `linux` builds the container's native arch (`linux-x64` or `linux-arm64`), and `android` needs the amd64 image (Google publishes no arm64-Linux NDK) — on arm64 that lane is skipped with a warning.
+Shipping a game for a platform you're not sitting at — a macOS, Android, or web build from a Windows box — is part of the editor's export system, covered in <a href="https://renzora.com/docs" target="_blank" rel="noopener noreferrer">the docs</a>.
 
 ## Documentation
 
@@ -82,7 +68,7 @@ Full documentation — getting started, scripting, UI, plugins, exporting, and m
 |--------|------|
 | `.glb` / `.gltf` / `.fbx` / `.obj` / `.stl` / `.ply` | 3D models |
 | `.ron` | Scene files |
-| `.rhai` / `.lua` | Scripts |
+| `.lua` | Scripts |
 | `.blueprint` | Visual script graphs |
 | `.material` | Material graphs |
 | `.particle` | Particle effects |

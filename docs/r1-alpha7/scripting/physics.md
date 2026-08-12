@@ -199,7 +199,7 @@ These appear in older docs or the internal `ScriptCommand` enum but have **no na
 - `raycast`, `raycast_down` — there is no raycast text function (raycasting exists only internally).
 - `apply_impulse_to`, `find_entity_by_name` — no such helpers.
 - `collisions_entered`, `collisions_exited`, `active_collisions` — these counters don't exist; use the `is_colliding` global.
-- `on_collision` — there is **no collision lifecycle hook** in Lua or Rhai. Collision *events* (`on_collision_enter` / `on_collision_exit`) exist only as [Blueprint](/docs/r1-alpha5/scripting/blueprints) nodes.
+- `on_collision` — there is **no collision lifecycle hook** in Lua or Rhai. Collision *events* (`on_collision_enter` / `on_collision_exit`) exist only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes.
 
 ## Lua vs Rhai summary
 
@@ -213,6 +213,5 @@ These appear in older docs or the internal `ScriptCommand` enum but have **no na
 
 ## Related
 
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — how scripts attach and run
-- [Rhai](/docs/r1-alpha5/scripting/rhai) — the cross-platform subset backend
-- [Blueprints](/docs/r1-alpha5/scripting/blueprints) — collision and physics nodes for visual scripting
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how scripts attach and run
+- [Blueprints](/docs/r1-alpha7/scripting/blueprints) — collision and physics nodes for visual scripting

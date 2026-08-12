@@ -51,7 +51,7 @@ Want to line something up dead-on from the front or top? The numpad snaps the ca
 | `Numpad 7` | Top (add `Ctrl` for Bottom) |
 | `Numpad 5` | Switch between perspective and flat (orthographic) |
 
-The viewport header also has a **3D / 2D / UI** selector: **2D** switches the panel to the flat, orthographic 2D editor (see below), and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha5/scripting/game-ui).
+The viewport header also has a **3D / 2D / UI** selector: **2D** switches the panel to the flat, orthographic 2D editor (see below), and **UI** opens the canvas where you build your game's interface with the [renzora_ember markup system](/docs/r1-alpha7/scripting/game-ui).
 
 ## The 2D view
 

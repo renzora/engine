@@ -39,7 +39,7 @@ The Surface Output node is what shows up on your mesh. The pins you'll reach for
 - **Normal** — plug in a normal map for surface bumps and detail.
 - **Emissive** — makes a surface glow (great for screens, lava, neon).
 
-A minimal material only needs **Base Color** — everything you leave unplugged just keeps its sensible default. There are more advanced pins too (clearcoat for car paint, transmission for glass and water, anisotropy for brushed metal), all listed in the [Material API reference](/docs/r1-alpha5/api/material).
+A minimal material only needs **Base Color** — everything you leave unplugged just keeps its sensible default. There are more advanced pins too (clearcoat for car paint, transmission for glass and water, anisotropy for brushed metal), all listed in the [Material API reference](/docs/r1-alpha7/api/material).
 
 ### Nodes you can wire in
 
@@ -52,7 +52,7 @@ There are around 150 node types, grouped into friendly categories. You don't nee
 - **Procedural** — noise, checkerboard, brick, and other patterns with no texture needed.
 - **Animation** — scroll UVs, wind sway, flipbook frames.
 
-For the complete catalog — every node, with its inputs, outputs, and what it does — see the [Material Node Reference](/docs/r1-alpha5/api/material-node-reference).
+For the complete catalog — every node, with its inputs, outputs, and what it does — see the [Material Node Reference](/docs/r1-alpha7/api/material-node-reference).
 
 ## Material types (domains)
 
@@ -90,7 +90,7 @@ You author named **Parameter** nodes (like `BaseColor` or `Roughness`) on a mast
 }
 ```
 
-You'll usually set these up visually in the editor rather than by hand. See the [Material API reference](/docs/r1-alpha5/api/material) for the full instance and `.material` file format.
+You'll usually set these up visually in the editor rather than by hand. See the [Material API reference](/docs/r1-alpha7/api/material) for the full instance and `.material` file format.
 
 ## Textures: which image files work
 
@@ -110,7 +110,7 @@ function on_update()
 end
 ```
 
-> `set_material_color` is **Lua-only** and only changes base color on the script's own entity. For anything richer — animated patterns, glows that react to gameplay — build it in the node graph with `Parameter` nodes and material instances. See the [Scripting overview](/docs/r1-alpha5/scripting/overview) for what scripts can do.
+> `set_material_color` is **Lua-only** and only changes base color on the script's own entity. For anything richer — animated patterns, glows that react to gameplay — build it in the node graph with `Parameter` nodes and material instances. See the [Scripting overview](/docs/r1-alpha7/scripting/overview) for what scripts can do.
 
 ## Previewing your material
 

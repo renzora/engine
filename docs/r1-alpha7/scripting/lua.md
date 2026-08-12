@@ -2,7 +2,7 @@
 
 Write per-entity gameplay logic in Lua 5.4 — the full-featured scripting backend for native desktop and mobile builds.
 
-Renzora's scripting core is language-agnostic: the backend is chosen by file extension. A `.lua` file runs on the **Lua** backend (mlua 0.10, Lua 5.4, vendored), and a `.rhai` file runs on **Rhai**. Lua is compiled into every native build but is **not** available on the web (wasm) target — use [Rhai](/docs/r1-alpha5/scripting/rhai) there. Lua exposes the full API (~70 functions and all eight lifecycle hooks); Rhai is a deliberate subset.
+Renzora's scripting core is language-agnostic: the backend is chosen by file extension, and a `.lua` file runs on the **Lua** backend (mlua 0.10, Lua 5.4, vendored). Lua ships as a standalone plugin on every native build; it is **not** available on the web (wasm) target. It exposes the full API (~70 functions and all eight lifecycle hooks).
 
 A `ScriptComponent` is auto-inserted on any entity that receives a `Name`, so naming an entity in the editor is all you need before attaching a script to it. One Lua VM is cached per `(entity, script)` and persists across frames.
 
@@ -43,7 +43,7 @@ Define any of these free functions; the engine calls the ones that exist. None a
 | `on_scene_load_failed(path, error)` | A scene load failed; `error` is the reason. Without this a loading screen cannot tell "still working" from "never arriving" |
 | `on_event(name, args)` | A broadcast game event was emitted (see [Events](#events)) |
 
-> There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup, and read the `is_colliding` global for overlap state. Collision *events* are available only as [Blueprint](/docs/r1-alpha5/scripting/blueprints) nodes.
+> There is **no** `on_start`, `on_collision`, or `on_destroy` hook. Use `on_ready` for setup, and read the `is_colliding` global for overlap state. Collision *events* are available only as [Blueprint](/docs/r1-alpha7/scripting/blueprints) nodes.
 
 ## Script properties
 
@@ -241,7 +241,7 @@ end
 | `net_player_count()` | Connected client count (server only; 0 elsewhere) |
 | `rpc(name, args)` | Fire a networked RPC (reliable channel) |
 
-> Connecting is done through `action()`, not a bare function: `action("net_connect", { address = "127.0.0.1", port = 7636 })` and `action("net_disconnect")`. Origin peer ids are lost through server relay — a client receiving another client's RPC sees `from = 0`. See [Multiplayer](/docs/r1-alpha5/multiplayer/overview).
+> Connecting is done through `action()`, not a bare function: `action("net_connect", { address = "127.0.0.1", port = 7636 })` and `action("net_disconnect")`. Origin peer ids are lost through server relay — a client receiving another client's RPC sees `from = 0`. See [Multiplayer](/docs/r1-alpha7/multiplayer/overview).
 
 ## HTTP
 
@@ -332,8 +332,7 @@ The languages also differ in syntax:
 
 ## What's next
 
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — how scripts attach, run, and dispatch by extension
-- [Rhai](/docs/r1-alpha5/scripting/rhai) — the everywhere-including-web backend
-- [Visual Blueprints](/docs/r1-alpha5/scripting/blueprints) — node graphs interpreted at runtime
-- [Input Handling](/docs/r1-alpha5/scripting/input) — the action map and key names
-- [Scripting API](/docs/r1-alpha5/api/scripting) — the full function reference
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how scripts attach, run, and dispatch by extension
+- [Visual Blueprints](/docs/r1-alpha7/scripting/blueprints) — node graphs interpreted at runtime
+- [Input Handling](/docs/r1-alpha7/scripting/input) — the action map and key names
+- [Scripting API](/docs/r1-alpha7/api/scripting) — the full function reference

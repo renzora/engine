@@ -4,7 +4,7 @@ Every built-in blueprint node, its `node_type` string, and its pins.
 
 > **⚠ This page documents the pre-rebuild node set and is largely stale.** `renzora_blueprint` was rewritten around a single compile-to-Lua path — the live interpreter and the original ~190 hand-written node defs were deleted, and nodes are being re-added to the `REGISTRY` in `crates/renzora_blueprint/src/nodes/mod.rs` one tested unit at a time. Today that registry holds **15** nodes: `event/on_ready`, `event/on_update`, `event/on_event`, `event/emit`, `math/add`, `math/multiply`, `math/combine_vec3`, `transform/set_position`, `transform/set_rotation`, `transform/rotate`, `flow/branch`, `variable/get`, `variable/set`, `debug/log`, `animation/crossfade`. Anything below that is not in that list does not exist yet. The former `Lifecycle` category (`on_scene_loaded`, `global_get`, `global_set`) was removed outright; cross-scene content is handled by [global scenes](/docs/r1-alpha7/editor/scenes#global-scenes) instead.
 
-This is the per-node reference for [Visual Blueprints](/docs/r1-alpha5/scripting/blueprints). For the data model (pins, wires, the `.blueprint` file format) start there; to register node types of your own see [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes).
+This is the per-node reference for [Visual Blueprints](/docs/r1-alpha7/scripting/blueprints). For the data model (pins, wires, the `.blueprint` file format) start there; to register node types of your own see [Custom Blueprint Nodes](/docs/r1-alpha7/extending/custom-nodes).
 
 ## How to read these tables
 
@@ -348,7 +348,7 @@ Acts on **this entity's** animator. Setters use `exec` → `then`; reads are pur
 | Net Spawn | `network/spawn` | `name` `String`, `position` `Vec3` | — standard `exec` → `then` |
 | On Message | `network/on_message` | `channel` `String` = `"default"` | **Event node:** `exec` output + `data` `String` + `sender` `Int` (sender ID) |
 
-> **Network nodes are minimal today.** The blueprint interpreter does not read the networking crate, so `Is Server` / `Is Connected` evaluate to `false`, and `Send Message` / `Net Spawn` map onto the same TODO/stub network actions as the scripting API. Treat the Network category as forward-looking. See [Multiplayer](/docs/r1-alpha5/multiplayer) for the real status.
+> **Network nodes are minimal today.** The blueprint interpreter does not read the networking crate, so `Is Server` / `Is Connected` evaluate to `false`, and `Send Message` / `Net Spawn` map onto the same TODO/stub network actions as the scripting API. Treat the Network category as forward-looking. See [Multiplayer](/docs/r1-alpha7/multiplayer/overview) for the real status.
 
 ## Navigation
 
@@ -403,10 +403,10 @@ let physics = nodes_in_category("Physics");
 let set_pos = node_def("transform/set_position").unwrap();
 ```
 
-Each entry is a `BlueprintNodeDef { node_type, display_name, category, description, pins, color }`, where `pins` is a function returning the node's `PinTemplate`s. This is the same data the editor palette and the interpreter dispatch on, so adding a node in one place keeps both in sync — see [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes).
+Each entry is a `BlueprintNodeDef { node_type, display_name, category, description, pins, color }`, where `pins` is a function returning the node's `PinTemplate`s. This is the same data the editor palette and the interpreter dispatch on, so adding a node in one place keeps both in sync — see [Custom Blueprint Nodes](/docs/r1-alpha7/extending/custom-nodes).
 
 ## See also
 
-- [Visual Blueprints](/docs/r1-alpha5/scripting/blueprints) — concepts, pins/wires, and the `.blueprint` file format
-- [Custom Blueprint Nodes](/docs/r1-alpha5/extending/custom-nodes) — register your own node types
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — how blueprints and Lua/Rhai scripts share the same downstream actions
+- [Visual Blueprints](/docs/r1-alpha7/scripting/blueprints) — concepts, pins/wires, and the `.blueprint` file format
+- [Custom Blueprint Nodes](/docs/r1-alpha7/extending/custom-nodes) — register your own node types
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how blueprints and Lua/Rhai scripts share the same downstream actions

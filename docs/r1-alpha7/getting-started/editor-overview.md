@@ -69,7 +69,7 @@ What you can do here:
 - **Right-click** for duplicate, delete, or rename.
 - Click the **eye** to hide an item, or the **lock** to stop accidental edits.
 
-Selecting an item here highlights it in the viewport and fills in the Inspector. See [Scenes & Hierarchy](/docs/r1-alpha5/editor/scenes) for more.
+Selecting an item here highlights it in the viewport and fills in the Inspector. See [Scenes & Hierarchy](/docs/r1-alpha7/editor/scenes) for more.
 
 ## The Inspector
 
@@ -83,7 +83,7 @@ In the shot above you can see common components:
 - **Visibility** — show or hide the object.
 - **Directional Light** — brightness, color, and shadows.
 
-Type new numbers into any field to change them live. Use **Add** at the top to attach more components (a physics body, a script, a custom one your plugins provide). For the full list of what each component does, see the [Inspector](/docs/r1-alpha5/editor/inspector) docs.
+Type new numbers into any field to change them live. Use **Add** at the top to attach more components (a physics body, a script, a custom one your plugins provide). For the full list of what each component does, see the [Inspector](/docs/r1-alpha7/editor/inspector) docs.
 
 ## The 3D viewport
 
@@ -91,7 +91,7 @@ The **viewport** is your window into the world. Click an object to select it, an
 
 ![The 3D viewport with a parked scooter selected in a street scene; a colored transform gizmo and selection outline let you move, rotate, or scale the object directly.](/assets/previews/viewport.png)
 
-The toolbar at the top of the viewport switches your tool between **Select**, **Translate** (move), **Rotate**, and **Scale**. To look around, orbit, fly, and zoom with the mouse — the full controls are listed in [Viewport & Camera](/docs/r1-alpha5/editor/viewport). You can even open up to four viewports at once to see your scene from different angles.
+The toolbar at the top of the viewport switches your tool between **Select**, **Translate** (move), **Rotate**, and **Scale**. To look around, orbit, fly, and zoom with the mouse — the full controls are listed in [Viewport & Camera](/docs/r1-alpha7/editor/viewport). You can even open up to four viewports at once to see your scene from different angles.
 
 ## The Console
 
@@ -130,6 +130,6 @@ A couple of shortcuts you'll use constantly:
 
 ## What's next?
 
-Now that you can find your way around, learn about [Core Concepts](/docs/r1-alpha5/getting-started/concepts) — entities, components, scenes, and how scripts attach to them.
+Now that you can find your way around, learn about [Core Concepts](/docs/r1-alpha7/getting-started/concepts) — entities, components, scenes, and how scripts attach to them.
 
-Want to build your own editor panels or dig into the architecture? That's covered in the advanced [Building Editor Panels](/docs/r1-alpha5/editor-dev/panels) guide.
+Want to build your own editor panels or dig into the architecture? That's covered in the advanced [Building Editor Panels](/docs/r1-alpha7/editor-dev/panels) guide.

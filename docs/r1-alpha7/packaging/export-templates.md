@@ -128,7 +128,7 @@ To assemble a full APK shell you need a local Android SDK/NDK + cargo-ndk, then 
 ./templates/android/build-template.sh --all        # all of the above
 ```
 
-Each run emits an **unsigned** release APK named `renzora-runtime-android-arm64.apk` (etc.) into `target/templates/` and the per-user cache (`%APPDATA%/renzora/templates` on Windows, `~/.config/renzora/templates` elsewhere). The editor's export step injects your `.rpak` as `assets/game.rpak`, then signs the APK. See [Export: Android](/docs/r1-alpha5/exporting/android) for the full local-route walkthrough.
+Each run emits an **unsigned** release APK named `renzora-runtime-android-arm64.apk` (etc.) into `target/templates/` and the per-user cache (`%APPDATA%/renzora/templates` on Windows, `~/.config/renzora/templates` elsewhere). The editor's export step injects your `.rpak` as `assets/game.rpak`, then signs the APK. See [Export: Android](/docs/r1-alpha7/exporting/android) for the full local-route walkthrough.
 
 ## Building the iOS / tvOS template
 
@@ -182,6 +182,6 @@ There is no version manifest. Compatibility between a template and its plugins i
 
 ## See also
 
-- [Export Overview](/docs/r1-alpha5/exporting/overview) — the end-to-end export workflow and `.rpak`/VFS details.
-- [Export: Android](/docs/r1-alpha5/exporting/android) — Android specifics (Gradle config, flavors, signing).
-- [Building from source](/docs/r1-alpha5/setup/building-from-source) — cargo aliases and the Docker cross-compile image.
+- [Export Overview](/docs/r1-alpha7/exporting/overview) — the end-to-end export workflow and `.rpak`/VFS details.
+- [Export: Android](/docs/r1-alpha7/exporting/android) — Android specifics (Gradle config, flavors, signing).
+- [Building from source](/docs/r1-alpha7/setup/building-from-source) — cargo aliases and the Docker cross-compile image.

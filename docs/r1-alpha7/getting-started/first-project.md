@@ -4,7 +4,7 @@ Let's make something move on screen. In this guide you'll create a project, drop
 
 ## Open the editor
 
-You can get Renzora two ways: grab a prebuilt build from [renzora.com/download](/download), or install the command-line tool with `cargo install renzora`. Either way, the next step is the same — open the editor. (The [Installation guide](/docs/r1-alpha5/getting-started/installation) has the exact commands for your platform.)
+You can get Renzora two ways: grab a prebuilt build from [renzora.com/download](/download), or install the command-line tool with `cargo install renzora`. Either way, the next step is the same — open the editor. (The [Installation guide](/docs/r1-alpha7/getting-started/installation) has the exact commands for your platform.)
 
 When the editor starts you'll land on a project picker. Click **New Project**, type a name, and choose a folder on your computer. That's it — the editor builds the project and opens its starting scene, ready to go.
 
@@ -95,7 +95,7 @@ Two friendly things to know:
 - Anything you return from `props()` shows up in the Inspector, so you can tweak it without editing code. Here, `speed` becomes a slider-friendly value you can change live.
 - `on_update()` runs every frame. `delta` is the time since the last frame, which keeps the spin smooth at any frame rate.
 
-To attach the script: select the cube, find the **Scripts** section in the Inspector, and point it at `scripts/spin.lua`. The full list of functions you can call (moving, input, audio, and more) lives in the [Scripting API](/docs/r1-alpha5/api/scripting).
+To attach the script: select the cube, find the **Scripts** section in the Inspector, and point it at `scripts/spin.lua`. The full list of functions you can call (moving, input, audio, and more) lives in the [Scripting API](/docs/r1-alpha7/api/scripting).
 
 ## Press Play
 
@@ -109,6 +109,6 @@ Press **`Ctrl+S`** to save. Your scene is written to a `.ron` file in the `scene
 
 ## What's next?
 
-- [Editor Overview](/docs/r1-alpha5/getting-started/editor-overview) — a tour of every panel.
-- [Core Concepts](/docs/r1-alpha5/getting-started/concepts) — how scenes, entities, and scripts fit together.
-- [Scripting Overview](/docs/r1-alpha5/scripting/overview) — Lua, Rhai, and visual Blueprints.
+- [Editor Overview](/docs/r1-alpha7/getting-started/editor-overview) — a tour of every panel.
+- [Core Concepts](/docs/r1-alpha7/getting-started/concepts) — how scenes, entities, and scripts fit together.
+- [Scripting Overview](/docs/r1-alpha7/scripting/overview) — Lua, Rhai, and visual Blueprints.

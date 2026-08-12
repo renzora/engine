@@ -6,7 +6,7 @@ Cross-compile your game to a native Windows x64 (`x86_64-pc-windows-msvc`) build
 
 Renzora is one binary. The Windows target is the same `renzora` binary as every other platform, compiled for the MSVC ABI and emitted to `dist/windows-x64/`. It is produced with the `renzora` CLI, which cross-compiles inside the Docker image: the engine's builder image carries a full Linux→Windows-MSVC toolchain (xwin + `lld-link` + `clang-cl`), so you can build a Windows `.exe` from Linux, macOS, or Windows. The host needs only Docker + Git (Rust just to install the CLI).
 
-> The editor is not a compile-time variant. The same `renzora.exe` is the editor when `renzora_editor.dll` sits beside it, and the shipped game when that one file is removed (or you pass `--no-editor`). "Exporting" a Windows game is really "build the binary, then drop the editor bundle." See [Building from Source](/docs/r1-alpha5/setup/building-from-source) for the full one-binary model.
+> The editor is not a compile-time variant. The same `renzora.exe` is the editor when `renzora_editor.dll` sits beside it, and the shipped game when that one file is removed (or you pass `--no-editor`). "Exporting" a Windows game is really "build the binary, then drop the editor bundle." See [Building from Source](/docs/r1-alpha7/setup/building-from-source) for the full one-binary model.
 
 ## Building with Docker
 
