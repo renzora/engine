@@ -10,7 +10,7 @@ A 3D game engine and visual editor built on <a href="https://bevyengine.org/" ta
 
 ## Getting Started
 
-**Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>. Nothing else — `rust-toolchain.toml` pins the exact compiler version, so rustup fetches it for you on the first build.
+**Prerequisites:** <a href="https://rustup.rs/" target="_blank" rel="noopener noreferrer">Rust</a>.
 
 ```bash
 git clone https://github.com/renzora/engine.git
