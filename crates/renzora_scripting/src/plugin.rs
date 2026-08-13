@@ -328,10 +328,27 @@ fn sync_scripts_folder(
 
 /// Auto-insert `ScriptComponent` on newly spawned entities that have a `Name`
 /// but no `ScriptComponent` yet. This decouples the hierarchy from the scripting crate.
+///
+/// **`Without<Node>` is the editor-chrome boundary and is load-bearing.** Every
+/// named entity used to get one, and the editor's own `bevy_ui` chrome is by far
+/// the biggest population of named entities in the process — on an empty scene it
+/// was ~955 of them. Each insert is a deferred *archetype move* (the entity's
+/// whole component set is copied to a new table), and editor chrome respawns in
+/// bursts, so a panel rebuild turned into a burst of hundreds of archetype moves
+/// in a single frame. It also doubled the archetype count for UI, since every UI
+/// component-set then existed both with and without this component.
+///
+/// Filtering here is free: `Without<Node>` is resolved per archetype, so chrome
+/// is never visited rather than visited and rejected.
+///
+/// Game UI genuinely does need this component — `<input bind="Entity.var">`
+/// resolves to a `ScriptComponent` on a named UI node — but game UI is a small,
+/// controlled population, so it is inserted deliberately where it is spawned
+/// (see `renzora_ember::game_ui`) instead of blanket-applied to all UI.
 fn auto_insert_script_component(
     trigger: On<Insert, Name>,
     mut commands: Commands,
-    query: Query<(), Without<ScriptComponent>>,
+    query: Query<(), (Without<ScriptComponent>, Without<bevy::ui::Node>)>,
 ) {
     let entity = trigger.entity;
     // Only add if the entity doesn't already have ScriptComponent

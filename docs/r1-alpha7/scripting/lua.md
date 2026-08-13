@@ -4,7 +4,7 @@ Write per-entity gameplay logic in Lua 5.4 — the full-featured scripting backe
 
 Renzora's scripting core is language-agnostic: the backend is chosen by file extension, and a `.lua` file runs on the **Lua** backend (mlua 0.10, Lua 5.4, vendored). Lua ships as a standalone plugin on every native build; it is **not** available on the web (wasm) target. It exposes the full API (~70 functions and all eight lifecycle hooks).
 
-A `ScriptComponent` is auto-inserted on any entity that receives a `Name`, so naming an entity in the editor is all you need before attaching a script to it. One Lua VM is cached per `(entity, script)` and persists across frames.
+A `ScriptComponent` is auto-inserted on any entity that receives a `Name`, so naming an entity in the editor is all you need before attaching a script to it. The one exception is `bevy_ui` nodes: authored game UI gets its `ScriptComponent` from `renzora_ember::game_ui` instead, and editor chrome gets none at all (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). One Lua VM is cached per `(entity, script)` and persists across frames.
 
 ## Your first script
 

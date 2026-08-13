@@ -39,8 +39,40 @@ pub struct EntityNode {
     pub type_name: Option<&'static str>,
 }
 
+/// A query filter for "this entity is a candidate for the hierarchy tree".
+///
+/// **This is the editor-chrome boundary, and it is deliberately a query filter
+/// rather than a per-entity check.** The rule is: an entity is scene content
+/// unless it is a `bevy_ui` node, and a `bevy_ui` node is scene content only if
+/// it is authored game UI (`UiCanvas`/`UiWidget`).
+///
+/// Expressing it as a filter is the entire point. Bevy resolves `With`/`Without`
+/// once per *archetype*, so the ~1500 editor-chrome UI nodes are skipped by
+/// never being visited. This used to be four `world.get::<T>(entity)` random
+/// lookups per named entity — plus a `world.get::<Name>` on every entity in the
+/// world, ~3000 of them, just to find the named ones — all of it repeated on
+/// every rebuild, and the rebuild runs up to 10x/sec in an exclusive system.
+/// The information was always there in the archetype; we were re-deriving it per
+/// entity.
+///
+/// `HideInHierarchy` and `Gamepad` fold in for free for the same reason.
+type HierarchyCandidate = (
+    Without<HideInHierarchy>,
+    Without<bevy::input::gamepad::Gamepad>,
+    Or<(
+        Without<bevy::ui::Node>,
+        With<renzora_ember::game_ui::UiCanvas>,
+        With<renzora_ember::game_ui::UiWidget>,
+    )>,
+);
+
 /// Build the entity tree from the world.
-pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
+///
+/// Takes `&mut World` only to build the candidate `QueryState` (which registers
+/// the component ids it needs); everything after that is read-only.
+pub fn build_entity_tree(world: &mut World) -> Vec<EntityNode> {
+    let mut candidates = world.query_filtered::<(Entity, &Name), HierarchyCandidate>();
+    let world: &World = world;
     // Resolve hierarchy filter — map component type names to ComponentIds.
     let resolve_ids = |names: &Vec<&'static str>| -> Vec<bevy::ecs::component::ComponentId> {
         let Some(registry) = world.get_resource::<AppTypeRegistry>() else {
@@ -86,12 +118,8 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
     let mut entries: Vec<Entry> = Vec::new();
     let mut named_entities: HashSet<Entity> = HashSet::new();
 
-    for archetype in world.archetypes().iter() {
-        for arch_entity in archetype.entities() {
-            let entity = arch_entity.id();
-            let Some(name) = world.get::<Name>(entity) else {
-                continue;
-            };
+    {
+        for (entity, name) in candidates.iter(world) {
             // Apply component filter: skip entities unless they or an ancestor
             // have one of the required components (so children of matching
             // entities still appear in the hierarchy).
@@ -131,26 +159,11 @@ pub fn build_entity_tree(world: &World) -> Vec<EntityNode> {
                     continue;
                 }
             }
-            if world.get::<HideInHierarchy>(entity).is_some() {
-                continue;
-            }
-            // Skip the editor's own bevy_ui chrome (dock, panels, widgets). The
-            // hierarchy lists the 3D scene plus authored game UI, so keep any
-            // `UiCanvas` / `UiWidget` node but drop every other UI node.
-            if world.get::<bevy::ui::Node>(entity).is_some()
-                && world
-                    .get::<renzora_ember::game_ui::UiCanvas>(entity)
-                    .is_none()
-                && world
-                    .get::<renzora_ember::game_ui::UiWidget>(entity)
-                    .is_none()
-            {
-                continue;
-            }
-            if world.get::<bevy::input::gamepad::Gamepad>(entity).is_some() {
-                continue;
-            }
-            // Also skip children of gamepad entities (axis/button sub-entities)
+            // `HideInHierarchy`, the editor's own bevy_ui chrome, and gamepad
+            // device entities are all excluded by `HierarchyCandidate` at the
+            // archetype level — see its doc comment for why that matters.
+            //
+            // Skip children of gamepad entities (axis/button sub-entities)
             // and any entity whose name indicates it's a system gamepad device.
             if let Some(child_of) = world.get::<ChildOf>(entity) {
                 if world

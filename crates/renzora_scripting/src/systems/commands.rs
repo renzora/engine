@@ -46,21 +46,16 @@ pub fn apply_script_commands(
     }
 
     // 1. Apply transform writes
-    let tw_count = cmd_queue.transform_writes.len();
-    if tw_count > 0 {
-        renzora::clog_info!(
-            "ScriptCmd",
-            "apply_script_commands: {} transform_writes",
-            tw_count
-        );
-    }
+    //
+    // Deliberately unlogged. There used to be a `clog_info!` per frame here and
+    // another *per write*, which is a `format!` plus a mutex lock plus a
+    // VecDeque push on the shared console buffer for every entity a script moves,
+    // every frame, in the shipped game as well as the editor. The buffer's
+    // duplicate-coalescing couldn't help: the message interpolated the entity id
+    // and the rotation delta, so consecutive lines were never identical and each
+    // one evicted an older entry instead of incrementing a count. A script that
+    // moves anything continuously is the normal case, not a debug scenario.
     for tw in cmd_queue.transform_writes.drain(..) {
-        renzora::clog_info!(
-            "ScriptCmd",
-            "TW entity={:?} rot_delta={:?}",
-            tw.entity,
-            tw.rotation_delta
-        );
         let Ok(mut t) = transforms.get_mut(tw.entity) else {
             renzora::clog_warn!("ScriptCmd", "Entity {:?} NOT FOUND in query!", tw.entity);
             continue;

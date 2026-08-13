@@ -70,6 +70,10 @@ impl Plugin for HierarchyPanelPlugin {
         app.init_resource::<RenameRequest>();
         app.init_resource::<HierarchyTreeCache>();
         app.init_resource::<HierarchyDirty>();
+        // These ran on bare `Update` with no condition at all — not even
+        // `in_state(Editor)` — so the full-world tree rebuild happened in the
+        // splash screen and with the Hierarchy panel closed. It is an exclusive
+        // system doing a whole-world scan, so it stalls the frame it runs on.
         app.add_systems(
             bevy::prelude::Update,
             (
@@ -77,7 +81,8 @@ impl Plugin for HierarchyPanelPlugin {
                 cache::mark_hierarchy_dirty,
                 cache::update_hierarchy_cache.after(cache::mark_hierarchy_dirty),
                 auto_select_first_hierarchy_entity.after(cache::update_hierarchy_cache),
-            ),
+            )
+                .run_if(bevy::prelude::in_state(renzora::SplashState::Editor)),
         );
 
         // Spawn presets are now self-registered by their owning crates:

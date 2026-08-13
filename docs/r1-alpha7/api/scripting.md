@@ -18,7 +18,7 @@ Both backends are compiled into the shipping runtime (`renzora_scripting` defaul
 - A **registered function** — a Rust closure exposed to the VM that pushes a `ScriptCommand` onto a per-frame queue, applied after the hook returns.
 - A **context global** — a value written fresh into the VM before each hook. Globals are inputs; assigning to them has no effect.
 
-A `ScriptComponent` is auto-inserted on any entity that receives a `Name`. One Lua VM is cached per `(entity, script_path)` and reused across frames.
+A `ScriptComponent` is auto-inserted on any entity that receives a `Name`, except `bevy_ui` nodes — authored game UI gets one from `renzora_ember::game_ui` instead, and editor chrome gets none (see [Profiling](../editor-dev/profiling.md#standing-findings--dont-undo-these)). One Lua VM is cached per `(entity, script_path)` and reused across frames.
 
 > Rhai is a deliberate **subset** of the Lua surface. Each function below is tagged **Both** (registered in Lua and Rhai) or **Lua** (Lua only). Rhai also supports only three lifecycle hooks. See [Rhai subset](#rhai-subset) at the end.
 

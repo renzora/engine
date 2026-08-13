@@ -121,13 +121,23 @@ impl Plugin for DebuggerPlugin {
 
         // Update systems
         use renzora::SplashState;
+        // `update_diagnostics_state` also feeds the always-visible status bar, so
+        // it stays panel-ungated. The other three feed exactly one panel each and
+        // are O(scene) or O(assets), so they get the same treatment as
+        // `update_render_stats` / `update_ecs_stats` below: hidden → zero cost.
+        app.add_systems(
+            Update,
+            update_diagnostics_state.run_if(in_state(SplashState::Editor)),
+        );
         app.add_systems(
             Update,
             (
-                update_diagnostics_state,
-                update_memory_profiler,
-                update_camera_debug_state,
-                update_culling_debug_state,
+                // Iterates every Mesh and every Image in `Assets`.
+                update_memory_profiler.run_if(renzora_ember::dock::panel_active("memory_profiler")),
+                update_camera_debug_state.run_if(renzora_ember::dock::panel_active("camera_debug")),
+                // Walks every Mesh3d entity computing camera distances.
+                update_culling_debug_state
+                    .run_if(renzora_ember::dock::panel_active("culling_debug")),
             )
                 .run_if(in_state(SplashState::Editor)),
         );

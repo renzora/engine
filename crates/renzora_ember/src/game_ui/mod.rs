@@ -110,6 +110,7 @@ impl Plugin for GameUiPlugin {
         // mode dropdown; the observer applies the saved mode on scene
         // load when reflection inserts skip change-tick propagation.
         app.add_observer(on_canvas_inserted);
+        app.add_observer(on_game_ui_node_inserted);
 
         // ── Shape primitives ────────────────────────────────────────────
         app.add_plugins(shapes::ShapesPlugin);
@@ -240,6 +241,29 @@ fn on_canvas_inserted(
     let in_play = play_mode.is_none_or(|p| p.is_in_play_mode());
     if let Ok((canvas, mut vis)) = canvases.get_mut(entity) {
         apply_canvas_visibility_to(in_play, canvas, &mut vis);
+    }
+}
+
+/// Give authored game-UI nodes a `ScriptComponent`, so `<input bind="Entity.var">`
+/// has one to resolve to (see `markup::input_field::sync_inputs`).
+///
+/// This exists because `renzora_scripting::auto_insert_script_component`
+/// deliberately skips every `bevy_ui` node. It used to blanket-apply the
+/// component to all named entities, and the editor's own chrome is by far the
+/// largest population of those — ~955 on an empty scene — with each insert
+/// costing an archetype move. Game UI is the small, controlled population that
+/// actually wants the component, so it opts in here instead of the entire UI
+/// tree paying for it.
+fn on_game_ui_node_inserted(
+    trigger: On<Insert, (UiWidget, UiCanvas)>,
+    mut commands: Commands,
+    missing: Query<(), Without<renzora_scripting::ScriptComponent>>,
+) {
+    let entity = trigger.entity;
+    if missing.get(entity).is_ok() {
+        commands
+            .entity(entity)
+            .insert(renzora_scripting::ScriptComponent::new());
     }
 }
 
