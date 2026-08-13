@@ -3,6 +3,8 @@
 //! or hit-tests goes through the [`super::layout`] visual-row model, so folding
 //! and word wrap are handled uniformly.
 
+use std::hash::{DefaultHasher, Hash, Hasher};
+
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::MouseWheel;
 use bevy::input::ButtonState;
@@ -17,8 +19,8 @@ use super::edit::{self, bracket_match, has_selection, sel_range};
 use super::highlight::tokenize;
 use super::layout::{self, char_len};
 use super::{
-    mono, CodeEditor, CodeFoldToggle, CodeProbe, CodeViewport, Metrics, FOLD_COL_W, PAD, PROBE_LEN,
-    TAB_WIDTH,
+    mono, CodeEditor, CodeFoldToggle, CodeProbe, CodeViewport, Metrics, RenderedRow, FOLD_COL_W,
+    PAD, PROBE_LEN, TAB_WIDTH,
 };
 
 /// Recompute each editor's derived metrics; flag a re-render when they change.
@@ -310,6 +312,26 @@ pub(crate) fn code_scroll(
     }
 }
 
+/// Rebuild the visible rows — **incrementally**.
+///
+/// This used to despawn every child of the body and respawn the lot on any
+/// frame the editor was dirty. That is fine for a one-off repaint and ruinous
+/// while a key is held: a typed or deleted character dirties the editor every
+/// frame, so ~30 rows × (gutter + number + text + one entity per token span)
+/// were destroyed and recreated 60 times a second, and bevy_ui had to re-run
+/// taffy over the whole body and re-shape every line of text with it. It cost
+/// enough to drag the editor to ~25 FPS while holding Delete (issue #84
+/// follow-up).
+///
+/// An edit only changes *one* row, so each row now carries a hash of everything
+/// it draws from ([`RowRender::sig`]) and a row whose hash is unchanged is left
+/// completely alone — no despawn, no respawn, no relayout, no re-shape. The
+/// per-row overlays (current-line highlight, indent guides, selection, bracket
+/// match) moved inside the row entity for the same reason: as body-level
+/// absolute overlays they had to be rebuilt whenever *any* row changed. Rows are
+/// only ever appended to or popped from the tail, so the child order stays the
+/// visual order without `insert_children` (which can panic when it reorders —
+/// see the `place` bug worked around in `reactive.rs`).
 pub(crate) fn code_render(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
@@ -327,9 +349,16 @@ pub(crate) fn code_render(
         let m = ed.metrics();
         let sp = syntax_palette();
         let body = ed.body;
-        if let Ok(kids) = children.get(body) {
-            for c in kids.iter() {
-                commands.entity(c).despawn();
+
+        // If anything despawned our rows behind our back (a panel teardown),
+        // drop the whole record and rebuild from scratch rather than issuing
+        // commands against dead entities.
+        if ed.rendered.iter().any(|r| commands.get_entity(r.entity).is_err()) {
+            ed.rendered.clear();
+            if let Ok(kids) = children.get(body) {
+                for c in kids.iter() {
+                    commands.entity(c).try_despawn();
+                }
             }
         }
 
@@ -376,31 +405,31 @@ pub(crate) fn code_render(
         }
         let spans_of = |line: usize| -> &Vec<(String, Color)> { &per_line[line - lo] };
 
-        // ---- Underlay: current-line highlight + indent guides (furthest back).
-        let mut underlay: Vec<Entity> = Vec::new();
-        let guide_color = rgba(sp.indent_guide);
-        for (k, row) in rows[start..end].iter().enumerate() {
-            let y = k as f32 * m.line_h;
-            if row.line == ed.cursor_line && ed.view_w > 0.0 {
-                underlay.push(
-                    commands
-                        .spawn((
-                            Node {
-                                position_type: PositionType::Absolute,
-                                left: Val::Px(0.0),
-                                top: Val::Px(y),
-                                width: Val::Px(ed.view_w),
-                                height: Val::Px(m.line_h),
-                                ..default()
-                            },
-                            BackgroundColor(rgba(sp.current_line)),
-                            bevy::ui::FocusPolicy::Pass,
-                            Name::new("code-current-line"),
-                        ))
-                        .id(),
-                );
-            }
-            // Indent guides for this line's leading whitespace.
+        // ---- What every row draws this frame, resolved but not yet spawned.
+        let colors = RowColors {
+            normal: rgb(sp.normal),
+            line_number: rgb(sp.line_number),
+            fold: rgb(sp.comment),
+            guide: rgba(sp.indent_guide),
+            current: rgba(sp.current_line),
+            selection: rgba(sp.selection),
+            bracket: rgba(sp.bracket_match),
+        };
+        // Shared inputs (zoom, theme, viewport width): a change here invalidates
+        // every row at once, so they're folded into one value each row's hash
+        // starts from instead of being repeated in it.
+        let epoch = render_epoch(m, &colors, ed.view_w, ed.show_whitespace);
+
+        let selection = has_selection(&ed).then(|| sel_range(&ed));
+        let bracket = if selection.is_none() { bracket_match(&ed) } else { None };
+        let show_ws = ed.show_whitespace;
+
+        let mut plans: Vec<RowRender> = Vec::with_capacity(end - start);
+        for row in &rows[start..end] {
+            let slice = slice_spans(spans_of(row.line), row.start_col, row.end_col);
+
+            // Indent guides for this line's leading whitespace (x offsets into
+            // the row, which starts at the body's left edge).
             let mut cols = 0usize;
             for c in ed.text[row.line].chars() {
                 match c {
@@ -409,147 +438,90 @@ pub(crate) fn code_render(
                     _ => break,
                 }
             }
-            for i in 1..(cols / TAB_WIDTH) {
-                let x = m.gutter_w + m.pad + (i * TAB_WIDTH) as f32 * m.char_w;
-                underlay.push(
-                    commands
-                        .spawn((
-                            Node {
-                                position_type: PositionType::Absolute,
-                                left: Val::Px(x),
-                                top: Val::Px(y),
-                                width: Val::Px(1.0),
-                                height: Val::Px(m.line_h),
-                                ..default()
-                            },
-                            BackgroundColor(guide_color),
-                            bevy::ui::FocusPolicy::Pass,
-                            Name::new("code-indent-guide"),
-                        ))
-                        .id(),
-                );
-            }
-        }
-        commands.entity(body).add_children(&underlay);
+            let guides = (1..(cols / TAB_WIDTH))
+                .map(|i| m.gutter_w + m.pad + (i * TAB_WIDTH) as f32 * m.char_w)
+                .collect();
 
-        // ---- Selection rects (behind the text), mapped onto visual rows.
-        if has_selection(&ed) {
-            let ((sl, sc), (el, ec)) = sel_range(&ed);
-            let mut rects: Vec<Entity> = Vec::new();
-            for (k, row) in rows[start..end].iter().enumerate() {
-                if row.line < sl || row.line > el {
-                    continue;
-                }
-                let full = char_len(&ed.text, row.line);
-                let line_a = if row.line == sl { sc } else { 0 };
-                let line_b = if row.line == el { ec } else { full };
-                let a = line_a.max(row.start_col);
-                let b = line_b.min(row.end_col);
-                let mut w = (b.saturating_sub(a)) as f32 * m.char_w;
-                // Show the selected newline as a sliver of trailing highlight.
-                if row.line < el && row.end_col >= full {
-                    w += m.char_w * 0.5;
-                }
-                if w <= 0.0 {
-                    continue;
-                }
-                rects.push(
-                    commands
-                        .spawn((
-                            Node {
-                                position_type: PositionType::Absolute,
-                                left: Val::Px(m.gutter_w + m.pad + (a - row.start_col) as f32 * m.char_w),
-                                top: Val::Px(k as f32 * m.line_h),
-                                width: Val::Px(w),
-                                height: Val::Px(m.line_h),
-                                ..default()
-                            },
-                            BackgroundColor(rgba(sp.selection)),
-                            bevy::ui::FocusPolicy::Pass,
-                            Name::new("code-selection"),
-                        ))
-                        .id(),
-                );
-            }
-            commands.entity(body).add_children(&rects);
-        } else if let Some((a, b)) = bracket_match(&ed) {
-            // ---- Matching-bracket highlight (only when there's no selection).
-            let mut brackets: Vec<Entity> = Vec::new();
-            for (bl, bc) in [a, b] {
-                if let Some((k, x_col)) = locate_in_view(&rows, start, end, bl, bc) {
-                    brackets.push(
-                        commands
-                            .spawn((
-                                Node {
-                                    position_type: PositionType::Absolute,
-                                    left: Val::Px(m.gutter_w + m.pad + x_col as f32 * m.char_w),
-                                    top: Val::Px(k as f32 * m.line_h),
-                                    width: Val::Px(m.char_w),
-                                    height: Val::Px(m.line_h),
-                                    ..default()
-                                },
-                                BackgroundColor(rgba(sp.bracket_match)),
-                                bevy::ui::FocusPolicy::Pass,
-                                Name::new("code-bracket-match"),
-                            ))
-                            .id(),
-                    );
+            // This row's slice of the selection, as (left, width).
+            let mut sel_rect = None;
+            if let Some(((sl, sc), (el, ec))) = selection {
+                if row.line >= sl && row.line <= el {
+                    let full = char_len(&ed.text, row.line);
+                    let line_a = if row.line == sl { sc } else { 0 };
+                    let line_b = if row.line == el { ec } else { full };
+                    let a = line_a.max(row.start_col);
+                    let b = line_b.min(row.end_col);
+                    let mut w = (b.saturating_sub(a)) as f32 * m.char_w;
+                    // Show the selected newline as a sliver of trailing highlight.
+                    if row.line < el && row.end_col >= full {
+                        w += m.char_w * 0.5;
+                    }
+                    if w > 0.0 {
+                        sel_rect = Some((m.gutter_w + m.pad + (a - row.start_col) as f32 * m.char_w, w));
+                    }
                 }
             }
-            commands.entity(body).add_children(&brackets);
+
+            // Matching-bracket cells that land on this row.
+            let mut brackets: Vec<f32> = Vec::new();
+            if let Some((a, b)) = bracket {
+                for (bl, bc) in [a, b] {
+                    if bl == row.line && bc >= row.start_col && bc < row.end_col {
+                        brackets.push(m.gutter_w + m.pad + (bc - row.start_col) as f32 * m.char_w);
+                    }
+                }
+            }
+
+            plans.push(RowRender {
+                number: if row.first { Some(row.line + 1) } else { None },
+                line: row.line,
+                foldable: row.first && edit::is_line_foldable(&ed, row.line),
+                folded: edit::is_folded(&ed, row.line),
+                fold_badge: row.fold_header,
+                spans: slice,
+                whitespace: show_ws
+                    .then(|| whitespace_overlay(&ed.text[row.line], row.start_col, row.end_col)),
+                current_line: row.line == ed.cursor_line && ed.view_w > 0.0,
+                current_w: ed.view_w,
+                guides,
+                selection: sel_rect,
+                brackets,
+            });
         }
 
-        // ---- The visible rows themselves (front).
-        let show_ws = ed.show_whitespace;
-        let mut row_ents: Vec<Entity> = Vec::with_capacity(end - start);
-        for row in &rows[start..end] {
-            let full_spans = spans_of(row.line);
-            let slice = slice_spans(full_spans, row.start_col, row.end_col);
-            let foldable = row.first && edit::is_line_foldable(&ed, row.line);
-            let folded = edit::is_folded(&ed, row.line);
-            let ws = if show_ws {
-                Some(whitespace_overlay(&ed.text[row.line], row.start_col, row.end_col))
-            } else {
-                None
-            };
-            row_ents.push(render_row(
-                &mut commands,
-                &fonts,
-                m,
-                entity,
-                RowRender {
-                    number: if row.first { Some(row.line + 1) } else { None },
-                    line: row.line,
-                    foldable,
-                    folded,
-                    fold_badge: row.fold_header,
-                    spans: &slice,
-                    whitespace: ws,
-                    normal: rgb(sp.normal),
-                    line_number: rgb(sp.line_number),
-                    fold_color: rgb(sp.comment),
-                },
-            ));
+        // ---- Reconcile against what's already on screen.
+        // Tail first: rows that scrolled out of existence.
+        let keep = plans.len().min(ed.rendered.len());
+        for gone in ed.rendered.split_off(keep) {
+            if let Ok(mut e) = commands.get_entity(gone.entity) {
+                e.try_despawn();
+            }
         }
-        commands.entity(body).add_children(&row_ents);
-    }
-}
-
-/// Find `(line, col)` among the visible rows, returning `(row_offset_from_start,
-/// x_col_within_row)` when it's on screen.
-fn locate_in_view(
-    rows: &[layout::VisualRow],
-    start: usize,
-    end: usize,
-    line: usize,
-    col: usize,
-) -> Option<(usize, usize)> {
-    for (k, row) in rows[start..end].iter().enumerate() {
-        if row.line == line && col >= row.start_col && col < row.end_col {
-            return Some((k, col - row.start_col));
+        for (k, plan) in plans.iter().enumerate() {
+            let sig = plan.sig(epoch);
+            match ed.rendered.get(k).copied() {
+                // Already correct on screen — the whole point of this pass.
+                Some(prev) if prev.sig == sig => {}
+                Some(prev) => {
+                    if let Ok(kids) = children.get(prev.entity) {
+                        for c in kids.iter() {
+                            commands.entity(c).try_despawn();
+                        }
+                    }
+                    let kids = row_children(&mut commands, &fonts, m, colors, entity, plan);
+                    commands.entity(prev.entity).insert(row_node(m)).replace_children(&kids);
+                    ed.rendered[k].sig = sig;
+                }
+                None => {
+                    let row = commands.spawn((row_node(m), Name::new("code-line"))).id();
+                    let kids = row_children(&mut commands, &fonts, m, colors, entity, plan);
+                    commands.entity(row).add_children(&kids);
+                    commands.entity(body).add_children(&[row]);
+                    ed.rendered.push(RenderedRow { entity: row, sig });
+                }
+            }
         }
     }
-    None
 }
 
 /// Slice a line's colored spans to the character range `[a, b)` (for a wrapped
@@ -592,32 +564,145 @@ fn whitespace_overlay(line: &str, a: usize, b: usize) -> String {
         .collect()
 }
 
-struct RowRender<'a> {
+/// The palette colors a row draws with. Constant across a render pass (and
+/// folded into [`render_epoch`]), so they're passed alongside the per-row plan
+/// rather than stored in — and hashed by — every row.
+#[derive(Clone, Copy)]
+struct RowColors {
+    normal: Color,
+    line_number: Color,
+    fold: Color,
+    guide: Color,
+    current: Color,
+    selection: Color,
+    bracket: Color,
+}
+
+/// Everything one visual row draws. Hashed by [`RowRender::sig`] so an unchanged
+/// row can be skipped outright — see [`code_render`].
+struct RowRender {
     number: Option<usize>,
     line: usize,
     foldable: bool,
     folded: bool,
     fold_badge: bool,
-    spans: &'a [(String, Color)],
+    spans: Vec<(String, Color)>,
     whitespace: Option<String>,
-    normal: Color,
-    line_number: Color,
-    fold_color: Color,
+    /// Draw the full-width current-line highlight behind this row.
+    current_line: bool,
+    /// Width of that highlight (the viewport width).
+    current_w: f32,
+    /// x offsets of this row's indent guides.
+    guides: Vec<f32>,
+    /// This row's slice of the selection, as `(left, width)`.
+    selection: Option<(f32, f32)>,
+    /// x offsets of matching-bracket cells landing on this row.
+    brackets: Vec<f32>,
 }
 
-fn render_row(commands: &mut Commands, fonts: &EmberFonts, m: Metrics, editor: Entity, r: RowRender<'_>) -> Entity {
-    let row = commands
-        .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                height: Val::Px(m.line_h),
-                align_items: AlignItems::Center,
-                position_type: PositionType::Relative,
-                ..default()
-            },
-            Name::new("code-line"),
-        ))
-        .id();
+fn hash_f32(f: f32, h: &mut DefaultHasher) {
+    f.to_bits().hash(h);
+}
+
+fn hash_color(c: Color, h: &mut DefaultHasher) {
+    let s = c.to_srgba();
+    for ch in [s.red, s.green, s.blue, s.alpha] {
+        hash_f32(ch, h);
+    }
+}
+
+/// Hash of the inputs shared by every row (metrics, palette, viewport width).
+/// Seeding each row's signature with this invalidates them all together when the
+/// zoom or theme changes, without repeating those fields per row.
+fn render_epoch(m: Metrics, c: &RowColors, view_w: f32, show_ws: bool) -> u64 {
+    let mut h = DefaultHasher::new();
+    for f in [m.font_size, m.gutter_size, m.line_h, m.caret_h, m.char_w, m.gutter_w, m.pad, view_w] {
+        hash_f32(f, &mut h);
+    }
+    for col in [c.normal, c.line_number, c.fold, c.guide, c.current, c.selection, c.bracket] {
+        hash_color(col, &mut h);
+    }
+    show_ws.hash(&mut h);
+    h.finish()
+}
+
+impl RowRender {
+    fn sig(&self, epoch: u64) -> u64 {
+        let mut h = DefaultHasher::new();
+        epoch.hash(&mut h);
+        (self.number, self.line, self.foldable, self.folded, self.fold_badge).hash(&mut h);
+        self.whitespace.hash(&mut h);
+        (self.current_line, self.selection.is_some()).hash(&mut h);
+        hash_f32(self.current_w, &mut h);
+        for (text, color) in &self.spans {
+            text.hash(&mut h);
+            hash_color(*color, &mut h);
+        }
+        for x in self.guides.iter().chain(self.brackets.iter()) {
+            hash_f32(*x, &mut h);
+        }
+        if let Some((left, w)) = self.selection {
+            hash_f32(left, &mut h);
+            hash_f32(w, &mut h);
+        }
+        h.finish()
+    }
+}
+
+fn row_node(m: Metrics) -> Node {
+    Node {
+        flex_direction: FlexDirection::Row,
+        height: Val::Px(m.line_h),
+        align_items: AlignItems::Center,
+        position_type: PositionType::Relative,
+        ..default()
+    }
+}
+
+/// Spawn one row's children, back to front: the absolutely-positioned overlays
+/// (current line, indent guides, selection, bracket match, whitespace markers)
+/// first so they paint behind the in-flow gutter and text. They belong to the
+/// row rather than the body so a row that didn't change needs no work at all.
+fn row_children(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+    m: Metrics,
+    colors: RowColors,
+    editor: Entity,
+    r: &RowRender,
+) -> Vec<Entity> {
+    let mut kids: Vec<Entity> = Vec::new();
+
+    let overlay = |commands: &mut Commands, left: f32, width: f32, color: Color, name: &'static str| {
+        commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(left),
+                    top: Val::Px(0.0),
+                    width: Val::Px(width),
+                    height: Val::Px(m.line_h),
+                    ..default()
+                },
+                BackgroundColor(color),
+                bevy::ui::FocusPolicy::Pass,
+                Name::new(name),
+            ))
+            .id()
+    };
+
+    if r.current_line {
+        kids.push(overlay(commands, 0.0, r.current_w, colors.current, "code-current-line"));
+    }
+    for x in &r.guides {
+        kids.push(overlay(commands, *x, 1.0, colors.guide, "code-indent-guide"));
+    }
+    if let Some((left, w)) = r.selection {
+        kids.push(overlay(commands, left, w, colors.selection, "code-selection"));
+    }
+    for x in &r.brackets {
+        kids.push(overlay(commands, *x, m.char_w, colors.bracket, "code-bracket-match"));
+    }
 
     // Gutter = fold-chevron slot + right-aligned line number.
     let gutter = commands
@@ -644,9 +729,9 @@ fn render_row(commands: &mut Commands, fonts: &EmberFonts, m: Metrics, editor: E
             &fonts.phosphor,
             if r.folded { "caret-right" } else { "caret-down" },
             (
-                (r.fold_color.to_srgba().red * 255.0) as u8,
-                (r.fold_color.to_srgba().green * 255.0) as u8,
-                (r.fold_color.to_srgba().blue * 255.0) as u8,
+                (colors.fold.to_srgba().red * 255.0) as u8,
+                (colors.fold.to_srgba().green * 255.0) as u8,
+                (colors.fold.to_srgba().blue * 255.0) as u8,
             ),
             m.gutter_size,
         );
@@ -665,16 +750,16 @@ fn render_row(commands: &mut Commands, fonts: &EmberFonts, m: Metrics, editor: E
         .id();
     if let Some(num) = r.number {
         let t = commands
-            .spawn((Text::new(format!("{num}")), mono(&fonts.mono, m.gutter_size), TextColor(r.line_number)))
+            .spawn((Text::new(format!("{num}")), mono(&fonts.mono, m.gutter_size), TextColor(colors.line_number)))
             .id();
         commands.entity(number_box).add_child(t);
     }
     commands.entity(gutter).add_children(&[chevron_slot, number_box]);
 
-    // Whitespace overlay sits under the text at the same x (monospace-aligned).
-    if let Some(ws) = r.whitespace {
-        if !ws.trim().is_empty() {
-            let overlay = commands
+    // Whitespace markers sit under the text at the same x (monospace-aligned).
+    if let Some(ws) = r.whitespace.as_ref().filter(|ws| !ws.trim().is_empty()) {
+        kids.push(
+            commands
                 .spawn((
                     Node {
                         position_type: PositionType::Absolute,
@@ -684,23 +769,22 @@ fn render_row(commands: &mut Commands, fonts: &EmberFonts, m: Metrics, editor: E
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    Text::new(ws),
+                    Text::new(ws.clone()),
                     mono(&fonts.mono, m.font_size),
-                    TextColor(rgba(syntax_palette().indent_guide)),
+                    TextColor(colors.guide),
                     TextLayout::no_wrap(),
                     bevy::ui::FocusPolicy::Pass,
                     Name::new("code-whitespace"),
                 ))
-                .id();
-            commands.entity(row).add_child(overlay);
-        }
+                .id(),
+        );
     }
 
     let line_text = commands
         .spawn((
             Text::new(""),
             mono(&fonts.mono, m.font_size),
-            TextColor(r.normal),
+            TextColor(colors.normal),
             TextLayout::no_wrap(),
             Node { padding: UiRect::left(Val::Px(m.pad)), ..default() },
         ))
@@ -716,13 +800,13 @@ fn render_row(commands: &mut Commands, fonts: &EmberFonts, m: Metrics, editor: E
     if r.fold_badge {
         span_ents.push(
             commands
-                .spawn((TextSpan::new("  \u{22EF}".to_string()), mono(&fonts.mono, m.font_size), TextColor(r.fold_color)))
+                .spawn((TextSpan::new("  \u{22EF}".to_string()), mono(&fonts.mono, m.font_size), TextColor(colors.fold)))
                 .id(),
         );
     }
     commands.entity(line_text).add_children(&span_ents);
-    commands.entity(row).add_children(&[gutter, line_text]);
-    row
+    kids.extend([gutter, line_text]);
+    kids
 }
 
 /// Repaint editors when the syntax palette changes (live theme edits).
@@ -744,6 +828,233 @@ pub(crate) fn code_theme_watch(
     }
 }
 
+/// Drive the editor's real systems headlessly so a key storm can be replayed in
+/// a test. The widget spawns plain components (no layout/render needed), so an
+/// `App` with `MinimalPlugins` + `InputPlugin` exercises input → edit → render
+/// end-to-end — the path a held key actually takes.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::input::keyboard::{Key, KeyboardInput};
+    use bevy::input::{ButtonState, InputPlugin};
+    use bevy::text::FontSource;
+
+    use super::super::CodeToken;
+
+    /// The reporter's buffer (issue #84): a `function`/`end` block with the caret
+    /// parked left of the body text.
+    const SRC: &str = "\nfunction on_update(delta)\n    return 0.0 * delta\nend";
+
+    fn fonts() -> EmberFonts {
+        EmberFonts {
+            ui: FontSource::SansSerif,
+            phosphor: Handle::default(),
+            mono: FontSource::Monospace,
+            default_ui: FontSource::SansSerif,
+            default_mono: FontSource::Monospace,
+        }
+    }
+
+    fn press(logical: Key, code: KeyCode) -> KeyboardInput {
+        KeyboardInput {
+            key_code: code,
+            logical_key: logical,
+            state: ButtonState::Pressed,
+            text: None,
+            repeat: true,
+            window: Entity::PLACEHOLDER,
+        }
+    }
+
+    fn harness(text: &str) -> (App, Entity) {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, InputPlugin));
+        app.insert_resource(fonts());
+        app.add_systems(Update, (code_metrics, code_input, code_render, code_caret).chain());
+        let owned = text.to_string();
+        let editor = app
+            .world_mut()
+            .run_system_once(move |mut c: Commands| super::super::code_editor(&mut c, &owned))
+            .unwrap();
+        app.update();
+        (app, editor)
+    }
+
+    /// Put the caret where the reporter had it and hold the key down.
+    fn hold(app: &mut App, editor: Entity, logical: Key, code: KeyCode, presses_per_frame: usize) {
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            ed.focused = true;
+            ed.visible = 20;
+            ed.cursor_line = 2;
+            ed.cursor_col = 4;
+            ed.anchor_line = 2;
+            ed.anchor_col = 4;
+        }
+        for _ in 0..200 {
+            for _ in 0..presses_per_frame {
+                app.world_mut().write_message(press(logical.clone(), code));
+            }
+            app.update();
+        }
+    }
+
+    /// The row entities under the body, each with its own children — the shape a
+    /// repaint would churn.
+    fn drawn(app: &mut App, editor: Entity) -> Vec<(Entity, Vec<Entity>)> {
+        let body = app.world().get::<CodeEditor>(editor).unwrap().body;
+        let world = app.world();
+        let Some(rows) = world.get::<Children>(body) else {
+            return Vec::new();
+        };
+        rows.iter()
+            .map(|r| {
+                let kids = world.get::<Children>(r).map(|c| c.iter().collect()).unwrap_or_default();
+                (r, kids)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn holding_delete_does_not_panic() {
+        let (mut app, editor) = harness(SRC);
+        hold(&mut app, editor, Key::Delete, KeyCode::Delete, 1);
+    }
+
+    /// The FPS half of issue #84: a keystroke must not rebuild the whole view.
+    /// Every row but the edited one keeps its exact entities, so bevy_ui has
+    /// nothing to relayout and bevy_text nothing to re-shape for them.
+    #[test]
+    fn an_edit_rebuilds_only_the_edited_row() {
+        let (mut app, editor) = harness(SRC);
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            ed.focused = true;
+            ed.visible = 20;
+            ed.cursor_line = 2;
+            ed.cursor_col = 4;
+            ed.anchor_line = 2;
+            ed.anchor_col = 4;
+            // `code_measure` normally flags this; there's no layout here.
+            ed.dirty = true;
+        }
+        app.update();
+        let before = drawn(&mut app, editor);
+        assert_eq!(before.len(), 4, "one row per line of SRC");
+
+        app.world_mut().write_message(press(Key::Delete, KeyCode::Delete));
+        app.update();
+        let after = drawn(&mut app, editor);
+
+        let row_ents: Vec<Entity> = before.iter().map(|(e, _)| *e).collect();
+        assert_eq!(row_ents, after.iter().map(|(e, _)| *e).collect::<Vec<_>>(), "row entities must be reused");
+        let rebuilt: Vec<usize> = before
+            .iter()
+            .zip(&after)
+            .enumerate()
+            .filter(|(_, ((_, a), (_, b)))| a != b)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(rebuilt, vec![2], "only the edited row's contents should be respawned");
+    }
+
+    /// A repaint that resolves to the same picture (theme tick, a stray dirty
+    /// flag) must not touch a single entity.
+    #[test]
+    fn an_unchanged_repaint_touches_nothing() {
+        let (mut app, editor) = harness(SRC);
+        app.update();
+        let before = drawn(&mut app, editor);
+        app.world_mut().get_mut::<CodeEditor>(editor).unwrap().dirty = true;
+        app.update();
+        assert_eq!(before, drawn(&mut app, editor));
+    }
+
+    /// Scrolling reuses the row entities too — only their contents change.
+    #[test]
+    fn scrolling_reuses_the_row_entities() {
+        let (mut app, editor) = harness("a\nb\nc\nd\ne\nf\ng\nh");
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            ed.visible = 3;
+            ed.dirty = true;
+        }
+        app.update();
+        let before = drawn(&mut app, editor);
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            ed.scroll = 3;
+            ed.dirty = true;
+        }
+        app.update();
+        let after = drawn(&mut app, editor);
+        assert_eq!(before.len(), after.len());
+        assert_eq!(
+            before.iter().map(|(e, _)| *e).collect::<Vec<_>>(),
+            after.iter().map(|(e, _)| *e).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn holding_delete_with_repeats_per_frame_does_not_panic() {
+        let (mut app, editor) = harness(SRC);
+        hold(&mut app, editor, Key::Delete, KeyCode::Delete, 5);
+    }
+
+    #[test]
+    fn holding_backspace_does_not_panic() {
+        let (mut app, editor) = harness(SRC);
+        hold(&mut app, editor, Key::Backspace, KeyCode::Backspace, 3);
+    }
+
+    #[test]
+    fn holding_delete_while_wrapped_does_not_panic() {
+        let (mut app, editor) = harness(SRC);
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            ed.wrap = true;
+            ed.wrap_cols = 6;
+        }
+        hold(&mut app, editor, Key::Delete, KeyCode::Delete, 2);
+    }
+
+    #[test]
+    fn holding_delete_with_a_host_highlighter_does_not_panic() {
+        let (mut app, editor) = harness(SRC);
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            // Mimic the host tokenizer's contract: byte-length runs covering the
+            // whole line (words vs the rest).
+            ed.highlighter = Some(Box::new(|line: &str, st: u32| {
+                let mut toks = Vec::new();
+                let bytes = line.as_bytes();
+                let mut i = 0;
+                while i < bytes.len() {
+                    let start = i;
+                    let word = bytes[i].is_ascii_alphanumeric();
+                    while i < bytes.len() && bytes[i].is_ascii_alphanumeric() == word {
+                        i += 1;
+                    }
+                    toks.push(CodeToken { len: i - start, color: Color::WHITE });
+                }
+                (toks, st)
+            }));
+        }
+        hold(&mut app, editor, Key::Delete, KeyCode::Delete, 2);
+    }
+
+    #[test]
+    fn holding_delete_on_a_folded_buffer_does_not_panic() {
+        let (mut app, editor) = harness(SRC);
+        {
+            let mut ed = app.world_mut().get_mut::<CodeEditor>(editor).unwrap();
+            edit::toggle_fold(&mut ed, 1);
+        }
+        hold(&mut app, editor, Key::Delete, KeyCode::Delete, 2);
+    }
+}
+
 pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes: Query<&mut Node>) {
     let on = (time.elapsed_secs() * 1.6).fract() < 0.5;
     for ed in &editors {
@@ -754,14 +1065,35 @@ pub(crate) fn code_caret(time: Res<Time>, editors: Query<&CodeEditor>, mut nodes
         let rows = ed.rows();
         let cr = layout::row_of(&rows, ed.cursor_line, ed.cursor_col);
         let on_screen = cr >= ed.scroll && cr < ed.scroll + ed.visible;
-        if ed.focused && on && on_screen && m.char_w > 0.0 {
+        // Assign through `set_if_neq`-style guards: this runs every frame, and a
+        // plain write marks the node changed, which makes bevy_ui re-run layout
+        // on it (and its ancestors) 60 times a second for a caret that hasn't
+        // moved. Only the blink phase should normally cost anything.
+        let want = if ed.focused && on && on_screen && m.char_w > 0.0 {
             let x_col = ed.cursor_col.saturating_sub(rows[cr].start_col);
-            n.display = Display::Flex;
-            n.height = Val::Px(m.caret_h);
-            n.left = Val::Px(m.gutter_w + m.pad + x_col as f32 * m.char_w);
-            n.top = Val::Px((cr - ed.scroll) as f32 * m.line_h + (m.line_h - m.caret_h) / 2.0);
+            Some((
+                Val::Px(m.caret_h),
+                Val::Px(m.gutter_w + m.pad + x_col as f32 * m.char_w),
+                Val::Px((cr - ed.scroll) as f32 * m.line_h + (m.line_h - m.caret_h) / 2.0),
+            ))
         } else {
-            n.display = Display::None;
+            None
+        };
+        match want {
+            Some((height, left, top)) => {
+                if n.display != Display::Flex || n.height != height || n.left != left || n.top != top {
+                    let n = &mut *n;
+                    n.display = Display::Flex;
+                    n.height = height;
+                    n.left = left;
+                    n.top = top;
+                }
+            }
+            None => {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
         }
     }
 }

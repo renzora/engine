@@ -24,8 +24,10 @@
 //! actually drawn (fold bodies removed, long lines split). Caret, selection,
 //! scrolling and hit-testing are all expressed in visual rows, so folding and
 //! wrapping compose for free. [`systems::code_input`] edits the buffer,
-//! [`systems::code_render`] rebuilds the visible rows (gutter + colored token
-//! spans + overlays), and [`systems::code_caret`] positions the blinking cursor.
+//! [`systems::code_render`] reconciles the visible rows (gutter + colored token
+//! spans + overlays) — hashing what each row draws so a keystroke only rebuilds
+//! the row it changed — and [`systems::code_caret`] positions the blinking
+//! cursor.
 //!
 //! Submodules: [`layout`] (visual rows), [`folding`] (fold detection),
 //! [`history`] (undo/redo), [`highlight`] (fallback tokenizer), [`edit`]
@@ -217,8 +219,20 @@ pub(crate) struct CodeEditor {
     /// Multi-click tracking (double = word, triple = line select). `(time,
     /// line, col, count)`.
     last_click: Option<(f32, usize, usize, u8)>,
+    /// The row entities currently drawn under [`Self::body`], in visual order,
+    /// each with the signature it was built from. `code_render` reconciles
+    /// against this instead of rebuilding every row (see its docs).
+    rendered: Vec<RenderedRow>,
     body: Entity,
     caret: Entity,
+}
+
+/// One drawn row: the entity rendering it and a hash of everything it draws.
+/// A render pass that produces the same hash leaves the entity alone.
+#[derive(Clone, Copy)]
+pub(crate) struct RenderedRow {
+    pub entity: Entity,
+    pub sig: u64,
 }
 
 impl CodeEditor {
@@ -439,6 +453,7 @@ pub fn code_editor(commands: &mut Commands, text: &str) -> Entity {
         last_key: None,
         highlighter: None,
         last_click: None,
+        rendered: Vec::new(),
         body,
         caret,
     };
@@ -490,6 +505,7 @@ pub(crate) fn code_editor_for_test(text: &str) -> CodeEditor {
         last_key: None,
         highlighter: None,
         last_click: None,
+        rendered: Vec::new(),
         body: Entity::PLACEHOLDER,
         caret: Entity::PLACEHOLDER,
     };
