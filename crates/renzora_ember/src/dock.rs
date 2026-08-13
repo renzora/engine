@@ -2541,6 +2541,7 @@ fn spawn_float_resize_zones(commands: &mut Commands, window: Entity) -> Vec<Enti
                         ..default()
                     },
                     Interaction::default(),
+                    crate::resize::ResizeHandle,
                     crate::cursor_icon::HoverCursor(cursor),
                     FloatWindowResize { window, octant },
                     bevy::ui::GlobalZIndex(200),
@@ -3558,6 +3559,10 @@ fn build_tree(
                 .spawn((
                     hit,
                     Interaction::default(),
+                    // The strip overhangs `GRAB/2` into both panes, so without
+                    // this the press it owns also lands on whatever it covers
+                    // (GH #81).
+                    crate::resize::ResizeHandle,
                     crate::cursor_icon::HoverCursor(cursor),
                     Divider {
                         container,
@@ -4243,6 +4248,7 @@ fn populate_leaf(
             .unwrap();
             commands.entity(filler).insert((
                 Interaction::default(),
+                crate::resize::ResizeHandle,
                 crate::cursor_icon::HoverCursor(cursor),
                 Divider {
                     container: p.container,

@@ -286,6 +286,35 @@ app.add_systems(Update, (poll_store, ..));
 
 Deliberately not a path list in the test: a list rots the moment a file is renamed, and it puts the justification where nobody looks while editing the code it excuses. At the call site the reason travels with the code and can't go stale — delete the systems and the marker goes with them.
 
+## Press guards — what else sits over your content
+
+A panel that acts on a press in its *empty* space — clear the selection, start a rubber-band sweep, begin a drag — usually decides "was this press mine?" geometrically, by testing `RelativeCursorPosition::cursor_over` on its content node. That test is pure geometry: it knows the cursor is inside your rect, not whether something was drawn on top of it. Two editor widgets are drawn on top of every panel's rect, so a press on either one reads as a press on your empty content unless you say otherwise:
+
+| Resource | Set while | Import |
+|---|---|---|
+| `ScrollbarBusy` | pressing a visible scroll track, or mid-thumb-drag | `renzora_ember::widgets::ScrollbarBusy` |
+| `ResizeBusy` | the button is held after a press on any `ResizeHandle` — a dock divider, a floating dock window's edge zone, the shell window's edge grips | `renzora_ember::resize::ResizeBusy` |
+
+The divider is the surprising one. Its visible line is 1px but its grab strip is 11px, so the handle deliberately **overhangs about 5px into the panes on either side** — which is inside your content rect. Take both flags and bail on a press when either is set:
+
+```rust
+fn my_empty_press(
+    mouse: Res<ButtonInput<MouseButton>>,
+    content: Query<&RelativeCursorPosition, With<MyContentArea>>,
+    scrollbar: Res<ScrollbarBusy>,
+    resizing: Res<ResizeBusy>,
+) {
+    if !mouse.just_pressed(MouseButton::Left) || scrollbar.active() || resizing.active() {
+        return;
+    }
+    // ... your press action
+}
+```
+
+Both are refreshed in `PreUpdate` after the pointer state settles, so they're already correct when your `Update` system reads them, whatever the system order. `ResizeBusy` stays set for the whole gesture, not just the press frame — a resize drag continues after the cursor has left the handle, and an OS window resize takes the pointer away entirely.
+
+A panel that hit-tests with `Interaction` is safe from resize handles specifically, because `ResizeHandle` also forces `FocusPolicy::Block` onto the node it marks, so the press stops there. Don't assume that's the default: in Bevy 0.19 `FocusPolicy` defaults to `Pass`, and an unblocked node marks *every* node under the cursor `Pressed`, not just the front one. Scroll tracks carry no `Interaction` at all and so block nothing — `ScrollbarBusy` is the guard there either way. If you build a widget that owns a press and sits over other content, give it `FocusPolicy::Block` (and `ResizeHandle`, if it resizes something).
+
 ## A status-bar item
 
 Status items don't need a panel. Register one `ShellStatusItem` whose `render` returns the current segments:

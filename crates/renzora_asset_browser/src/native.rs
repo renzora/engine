@@ -1402,6 +1402,7 @@ fn marquee_select(
     grid: Query<&bevy::ui::RelativeCursorPosition, With<GridArea>>,
     tiles: Query<(&AssetTile, &Interaction, &bevy::ui::ComputedNode, &bevy::ui::UiGlobalTransform)>,
     scrollbar: Res<ScrollbarBusy>,
+    resizing: Res<renzora_ember::resize::ResizeBusy>,
     mut state: ResMut<NativeAssets>,
 ) {
     if mouse.just_released(MouseButton::Left) {
@@ -1417,11 +1418,14 @@ fn marquee_select(
     // Begin on a press over the grid that didn't land on a tile. Suppressed while
     // an inline rename is active so clicking into its field doesn't start a sweep,
     // and while the press is on the scrollbar (grabbing it to scroll must not
-    // start a marquee in the content beneath).
+    // start a marquee in the content beneath) or on a resize handle, whose grab
+    // strip overhangs the panel edge and so lands inside the grid's rect (same
+    // bug the hierarchy's marquee had — GH #81).
     if mouse.just_pressed(MouseButton::Left)
         && state.marquee_start.is_none()
         && state.renaming.is_none()
         && !scrollbar.active()
+        && !resizing.active()
     {
         let over_grid = grid.iter().any(|r| r.cursor_over);
         let on_tile = tiles.iter().any(|(_, i, _, _)| *i == Interaction::Pressed);

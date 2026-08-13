@@ -2781,6 +2781,11 @@ fn build_resize_zones(commands: &mut Commands) -> Vec<Entity> {
                     BackgroundColor(Color::NONE),
                     GlobalZIndex(60),
                     Interaction::default(),
+                    // Overlaid on the window perimeter, so it covers the edge of
+                    // whatever panel is docked against it: the press is this
+                    // zone's alone, and panels can see the gesture is in flight
+                    // rather than reading it as a press on their content.
+                    renzora_ember::resize::ResizeHandle,
                     WindowResizeZone(octant),
                     renzora_ember::cursor_icon::HoverCursor(cursor),
                     Name::new("resize-zone"),

@@ -16,6 +16,7 @@ use bevy::prelude::*;
 use bevy::ui::{ComputedNode, RelativeCursorPosition, ScrollPosition, UiGlobalTransform};
 
 use renzora_editor_framework::EditorSelection;
+use renzora_ember::resize::ResizeBusy;
 use renzora_ember::theme::{accent, rgb};
 use renzora_ember::widgets::{EmberScroll, ScrollbarBusy};
 
@@ -72,6 +73,7 @@ pub(crate) fn hier_marquee(
     parents: Query<&ChildOf>,
     viewports: Query<&RelativeCursorPosition>,
     scrollbar: Res<ScrollbarBusy>,
+    resizing: Res<ResizeBusy>,
     mut marquee: ResMut<HierMarquee>,
 ) {
     if mouse.just_released(MouseButton::Left) {
@@ -90,11 +92,18 @@ pub(crate) fn hier_marquee(
     // Begin on a press that landed in empty tree space: over the scroll viewport,
     // not over any row, and never while a row reorder-drag or inline rename is in
     // flight. Suppressing it over rows is what keeps reorder-drag conflict-free.
+    //
+    // The two busy flags cover the widgets that sit *over* the tree's rect but
+    // aren't part of it, so `cursor_over` alone can't tell them apart from empty
+    // list space: the scrollbar inside the panel, and the resize handles that
+    // overhang its edges (GH #81 — dragging the panel's resize grip used to
+    // sweep-select whatever rows the drag passed).
     if mouse.just_pressed(MouseButton::Left)
         && marquee.start.is_none()
         && rename.0.is_none()
         && !drag.active
         && !scrollbar.active()
+        && !resizing.active()
     {
         let over_tree = content
             .iter()

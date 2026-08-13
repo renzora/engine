@@ -46,6 +46,7 @@ pub mod markup;
 pub mod panel;
 pub mod phosphor_map;
 pub mod reactive;
+pub mod resize;
 pub mod settings_sections;
 pub mod style;
 pub mod theme;
@@ -76,6 +77,8 @@ impl Plugin for EmberPlugin {
         // Runs right after `UiSystems::Focus` (the sole writer of `Interaction` /
         // `RelativeCursorPosition`) so every consumer reads the corrected values.
         app.add_systems(PreUpdate, correct_pointer_state.after(UiSystems::Focus));
+        // Then the "a resize gesture is in flight" flag, off the corrected state.
+        resize::plugin(app);
     }
 }
 
