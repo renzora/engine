@@ -68,13 +68,28 @@ fn collect_dropped_files(
 
     let mut dropped: Vec<crate::kinds::QueuedAsset> = Vec::new();
     let mut hover_now: Option<bool> = None;
+    // Folders the user dropped that held nothing importable. A dropped *file*
+    // the importer rejects has always been silently ignored, but a folder is a
+    // deliberate "import all of this" gesture — dropping one and getting no
+    // response at all reads as a bug, so those get surfaced below.
+    let mut empty_folders: Vec<String> = Vec::new();
     for ev in events.read() {
         match ev {
             FileDragAndDrop::HoveredFile { .. } => hover_now = Some(true),
             FileDragAndDrop::HoveredFileCanceled { .. } => hover_now = Some(false),
             FileDragAndDrop::DroppedFile { path_buf, .. } => {
                 hover_now = Some(false);
-                dropped.extend(crate::kinds::expand_importables(path_buf));
+                let found = crate::kinds::expand_importables(path_buf);
+                if found.is_empty() && path_buf.is_dir() {
+                    empty_folders.push(
+                        path_buf
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("that folder")
+                            .to_string(),
+                    );
+                }
+                dropped.extend(found);
             }
         }
     }
@@ -91,6 +106,15 @@ fn collect_dropped_files(
         return;
     };
     if dropped.is_empty() {
+        if let Some(name) = empty_folders.first() {
+            // Nothing to import, so nothing will open the modal on its own —
+            // show it carrying the reason rather than swallowing the drop.
+            state.progress = overlay::ImportProgress::Error(format!(
+                "No importable files in {}",
+                name
+            ));
+            state.visible = true;
+        }
         return;
     }
 
@@ -105,22 +129,9 @@ fn collect_dropped_files(
         state.target_directory = dir;
     }
 
-    let was_empty = state.pending_files.is_empty();
-    for asset in dropped {
-        if !state.pending_files.iter().any(|q| q.path == asset.path) {
-            state.pending_files.push(asset);
-        }
-    }
-    // Auto-detect unit scale from the first file.
-    if was_empty && state.settings.scale == 1.0 {
-        if let Some(scale) = state
-            .pending_files
-            .first()
-            .and_then(|q| renzora_import::units::detect_unit_scale(&q.path))
-        {
-            state.settings.scale = scale;
-        }
-    }
+    // De-dup + unit-scale detection live on the state itself so this path and
+    // the overlay's Browse buttons can't drift apart.
+    state.enqueue(&dropped);
     // When the user hasn't opted into silent auto-import, a drop opens the
     // modal so they can confirm; otherwise the orchestrator imports silently.
     let auto_import = settings.map(|s| s.auto_import_on_drop).unwrap_or(true);
@@ -151,9 +162,14 @@ fn import_orchestrate_system(world: &mut World) {
             world.resource_mut::<overlay::ImportOverlayState>().target_directory =
                 target.0.clone();
         }
-        // Explicit Import opens the OS file picker first, then the overlay
-        // pre-loaded with the chosen files. Cancel with an empty queue leaves
-        // the overlay closed (Browse folder / drops can still fill it later).
+        // An explicit Import click opens the **OS file picker first**, then
+        // shows the overlay pre-loaded with the chosen files — rather than
+        // opening an empty overlay the user then has to Browse from. The picker
+        // is filtered to every importable kind (models + copyable assets).
+        // Folders can't come through this picker (no OS dialog picks both), so
+        // they arrive via the overlay's Browse folder button or a drop.
+        // If the user cancels but files are already queued (e.g. from a prior
+        // drop), we still surface the overlay so those aren't stranded.
         let picked = native::pick_and_queue_files(world);
         let has_pending = !world
             .resource::<overlay::ImportOverlayState>()

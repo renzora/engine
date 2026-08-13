@@ -113,6 +113,60 @@ impl Default for ImportOverlayState {
     }
 }
 
+impl ImportOverlayState {
+    /// Append `assets` to the queue, skipping any whose source path is already
+    /// queued, and auto-detect the unit scale when the queue starts empty.
+    /// Returns whether anything new was added.
+    ///
+    /// Both entry points (the drop handler in `lib.rs` and the overlay's own
+    /// Browse buttons in `native.rs`) funnel through here so they can't drift
+    /// apart — they previously had two copies of this that disagreed about
+    /// which file the scale is read from.
+    ///
+    /// The de-dup uses a set rather than a linear scan per item: a folder
+    /// import can queue thousands of files at once, and the quadratic version
+    /// spent that as several million `PathBuf` comparisons on the main thread.
+    pub(crate) fn enqueue(&mut self, assets: &[QueuedAsset]) -> bool {
+        if assets.is_empty() {
+            return false;
+        }
+        let was_empty = self.pending_files.is_empty();
+        let mut seen: std::collections::HashSet<&std::path::Path> =
+            self.pending_files.iter().map(|q| q.path.as_path()).collect();
+        let mut added = Vec::new();
+        for asset in assets {
+            if seen.insert(asset.path.as_path()) {
+                added.push(asset.clone());
+            }
+        }
+        if added.is_empty() {
+            return false;
+        }
+        // Auto-detect the unit scale from the first *model* in a fresh queue.
+        // Scanning for one matters for folder imports: the queue is sorted by
+        // path, so entry zero is usually a texture, and `detect_unit_scale`
+        // returns None for every non-model.
+        if was_empty && self.settings.scale == 1.0 {
+            if let Some(scale) = added
+                .iter()
+                .find_map(|q| renzora_import::units::detect_unit_scale(&q.path))
+            {
+                self.settings.scale = scale;
+            }
+        }
+        // Clear a stale "No importable files in …" once the queue actually has
+        // something, so the message line doesn't contradict the list under it.
+        // Only while no toast is up: `manage_import_toast` waits on a terminal
+        // progress state to auto-dismiss, and resetting it out from under a
+        // live toast would strand it on screen.
+        if !self.toast_active && matches!(self.progress, ImportProgress::Error(_)) {
+            self.progress = ImportProgress::Idle;
+        }
+        self.pending_files.extend(added);
+        true
+    }
+}
+
 /// Drain progress messages from the background thread into overlay state.
 pub(crate) fn poll_import_task(world: &mut World) {
     let has_task = world.resource::<ImportOverlayState>().active_task.is_some();
@@ -260,13 +314,18 @@ pub(crate) fn run_import(world: &mut World) {
 }
 
 /// Join `dest` with a forward-slashed relative directory from a folder import.
+///
+/// `.` and `..` segments are dropped rather than walked. A filesystem walk
+/// can't produce them, but `QueuedAsset::relative_dir` is a public field on a
+/// public resource, so anything in the editor can push an entry — and joining
+/// a `..` here would write outside the project.
 fn dest_with_rel(dest: &std::path::Path, relative_dir: &str) -> PathBuf {
     if relative_dir.is_empty() {
         return dest.to_path_buf();
     }
     relative_dir
         .split('/')
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty() && *s != "." && *s != "..")
         .fold(dest.to_path_buf(), |acc, seg| acc.join(seg))
 }
 
@@ -801,5 +860,37 @@ fn import_worker(
             total,
             errors.len()
         )));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dest_with_rel_mirrors_the_source_tree() {
+        let dest = std::path::Path::new("proj").join("models");
+        assert_eq!(dest_with_rel(&dest, ""), dest);
+        assert_eq!(
+            dest_with_rel(&dest, "Pack/textures"),
+            dest.join("Pack").join("textures")
+        );
+        // Empty and traversal segments are dropped, never walked.
+        assert_eq!(dest_with_rel(&dest, "Pack//textures"), dest.join("Pack").join("textures"));
+        assert_eq!(dest_with_rel(&dest, "../../etc"), dest.join("etc"));
+        assert_eq!(dest_with_rel(&dest, "./Pack"), dest.join("Pack"));
+    }
+
+    #[test]
+    fn project_prefix_covers_every_target_relative_combination() {
+        // Project root + single-file pick: no prefix at all.
+        assert_eq!(project_prefix("", ""), "");
+        // Project root + folder import: the mirrored subtree is the prefix.
+        assert_eq!(project_prefix("", "Pack/textures"), "Pack/textures");
+        // Chosen target + single-file pick: the old (pre-folder) behaviour.
+        assert_eq!(project_prefix("models", ""), "models");
+        // Both — the case that decides where extracted material textures
+        // resolve from, so it's the one worth pinning down.
+        assert_eq!(project_prefix("models", "Pack/textures"), "models/Pack/textures");
     }
 }

@@ -241,6 +241,14 @@ pub(crate) fn expand_importables(path: &Path) -> Vec<QueuedAsset> {
         .unwrap_or("import");
     let mut out = Vec::new();
     let mut stack = vec![path.to_path_buf()];
+    // Symlinked directories are followed (an asset pack may legitimately link
+    // a shared `textures/`), so the walk needs its own cycle guard: a link
+    // pointing at an ancestor otherwise loops until the editor runs out of
+    // memory, with no way to cancel — this walk is synchronous on the main
+    // thread. Canonicalizing collapses links to their real target, so a
+    // directory already visited under a different name is recognised.
+    let mut visited: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    visited.insert(std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()));
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -248,7 +256,10 @@ pub(crate) fn expand_importables(path: &Path) -> Vec<QueuedAsset> {
         for entry in entries.flatten() {
             let p = entry.path();
             if p.is_dir() {
-                stack.push(p);
+                let real = std::fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+                if visited.insert(real) {
+                    stack.push(p);
+                }
             } else if is_importable(&p) {
                 let Ok(rel) = p.strip_prefix(path) else {
                     continue;
@@ -297,19 +308,21 @@ pub(crate) fn pick_importable_files() -> Option<Vec<std::path::PathBuf>> {
 }
 
 /// Open the OS folder picker and expand it to every importable file underneath,
-/// preserving the folder tree via [`QueuedAsset::relative_dir`]. Returns `None`
-/// if the user cancelled or the folder held nothing importable.
+/// preserving the folder tree via [`QueuedAsset::relative_dir`]. `None` = the
+/// user cancelled.
+///
+/// A folder holding nothing importable comes back as the picked path with an
+/// empty list rather than `None`: the caller needs to tell "cancelled" (say
+/// nothing) apart from "picked, found nothing" (say so, with the folder's
+/// name) — silently doing nothing after the user confirms a folder is
+/// indistinguishable from a broken button.
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn pick_importable_folder() -> Option<Vec<QueuedAsset>> {
+pub(crate) fn pick_importable_folder() -> Option<(PathBuf, Vec<QueuedAsset>)> {
     let dir = rfd::FileDialog::new()
         .set_title("Select folder to import")
         .pick_folder()?;
     let files = expand_importables(&dir);
-    if files.is_empty() {
-        None
-    } else {
-        Some(files)
-    }
+    Some((dir, files))
 }
 
 #[cfg(test)]
@@ -409,6 +422,26 @@ mod tests {
         assert_eq!(flat.len(), 1);
         assert!(flat[0].relative_dir.is_empty());
         assert!(expand_importables(&root.join("skip.txt")).is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A directory symlink pointing back at an ancestor used to make the walk
+    /// loop forever. Unix-only because creating a symlink on Windows needs
+    /// developer mode or elevation; the guard itself is platform-independent
+    /// and CI runs Linux.
+    #[cfg(unix)]
+    #[test]
+    fn expand_importables_survives_a_symlink_cycle() {
+        let root = std::env::temp_dir().join("renzora_kinds_cycle_test");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub").join("a.png"), b"x").unwrap();
+        std::os::unix::fs::symlink(&root, root.join("sub").join("loop")).unwrap();
+
+        // Terminates, and the file behind the cycle is still found exactly once.
+        let got = expand_importables(&root);
+        assert_eq!(got.len(), 1, "expected one file, got {:?}", got);
 
         let _ = std::fs::remove_dir_all(&root);
     }

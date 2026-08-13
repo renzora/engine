@@ -812,17 +812,36 @@ fn files_snapshot(world: &Rx) -> KeyedSnapshot {
     }
 }
 
+/// Row label for a queued asset: the bare filename for a flat pick, or the
+/// mirrored `sub/dir/file.png` path for a folder import.
+///
+/// Deep pack paths are elided in the middle (`Pack/…/textures/a.png`). The row
+/// is a fixed 26px, so an un-elided path wraps out of it — and the filename is
+/// the half worth keeping, which a plain right-clip would be the half to lose.
+fn queued_label(asset: &crate::kinds::QueuedAsset) -> String {
+    let file = asset.path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+    if asset.relative_dir.is_empty() {
+        return file.to_string();
+    }
+    const MAX: usize = 52;
+    let full = format!("{}/{}", asset.relative_dir, file);
+    if full.chars().count() <= MAX {
+        return full;
+    }
+    // Keep the root folder (which pack this is) and the tail (where in it).
+    let segs: Vec<&str> = asset.relative_dir.split('/').collect();
+    let root = segs.first().copied().unwrap_or("");
+    let tail = segs.last().copied().unwrap_or("");
+    if segs.len() > 2 {
+        format!("{}/…/{}/{}", root, tail, file)
+    } else {
+        format!("{}/…/{}", root, file)
+    }
+}
+
 fn file_row(commands: &mut Commands, fonts: &EmberFonts, asset: &crate::kinds::QueuedAsset) -> Entity {
     let path = &asset.path;
-    let name = if asset.relative_dir.is_empty() {
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("?")
-            .to_string()
-    } else {
-        let file = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-        format!("{}/{}", asset.relative_dir, file)
-    };
+    let name = queued_label(asset);
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_uppercase();
     let row = commands
         .spawn((
@@ -931,34 +950,6 @@ fn folder_browse_click(q: Query<&Interaction, (With<FolderBrowseBtn>, Changed<In
     }
 }
 
-/// Append queued assets, de-duping by source path and auto-detecting unit
-/// scale on a fresh queue.
-fn queue_paths(world: &mut World, assets: &[crate::kinds::QueuedAsset]) -> bool {
-    if assets.is_empty() {
-        return false;
-    }
-    let mut state = world.resource_mut::<ImportOverlayState>();
-    let was_empty = state.pending_files.is_empty();
-    let mut added = false;
-    for asset in assets {
-        if !state.pending_files.iter().any(|q| q.path == asset.path) {
-            state.pending_files.push(asset.clone());
-            added = true;
-        }
-    }
-    // Auto-detect unit scale from the first model in a fresh queue (no-op for
-    // non-model picks — `detect_unit_scale` returns None for those).
-    if was_empty && state.settings.scale == 1.0 {
-        if let Some(scale) = assets
-            .iter()
-            .find_map(|q| renzora_import::units::detect_unit_scale(&q.path))
-        {
-            state.settings.scale = scale;
-        }
-    }
-    added
-}
-
 /// Open the OS file picker (filtered to every importable kind) and append the
 /// chosen files to the queue. Returns `true` if at least one new file was added.
 /// Shared by the asset-browser Import trigger (`lib.rs`) and the overlay's own
@@ -968,16 +959,27 @@ pub(crate) fn pick_and_queue_files(world: &mut World) -> bool {
         return false;
     };
     let assets: Vec<_> = paths.into_iter().map(crate::kinds::QueuedAsset::flat).collect();
-    queue_paths(world, &assets)
+    world.resource_mut::<ImportOverlayState>().enqueue(&assets)
 }
 
 /// Open the OS folder picker, expand it (mirroring the source tree), and
-/// append to the queue.
+/// append to the queue. A folder with nothing importable in it reports that in
+/// the overlay's message line instead of leaving the button looking dead.
 pub(crate) fn pick_and_queue_folder(world: &mut World) -> bool {
-    let Some(assets) = crate::kinds::pick_importable_folder() else {
+    let Some((dir, assets)) = crate::kinds::pick_importable_folder() else {
         return false;
     };
-    queue_paths(world, &assets)
+    if assets.is_empty() {
+        let name = dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("that folder")
+            .to_string();
+        world.resource_mut::<ImportOverlayState>().progress =
+            ImportProgress::Error(format!("No importable files in {}", name));
+        return false;
+    }
+    world.resource_mut::<ImportOverlayState>().enqueue(&assets)
 }
 
 /// Click a destination folder row → it becomes the import target directory.

@@ -141,6 +141,12 @@ tree** under the destination (including the selected folder's name), and land
 in the batch queue. Drag-and-drop of individual files still works too (flat into
 the target).
 
+A folder holding nothing the importer recognises reports *"No importable files
+in `<name>`"* in the modal rather than doing nothing. Symlinked subdirectories
+are followed, but only once each — a link pointing back at an ancestor is
+detected instead of walked forever. The walk runs on the main thread, so
+dropping a very large tree stalls the editor until it finishes.
+
 It's a **two-pane dialog**: a left sidebar lists the sections and a right pane
 shows the active one, so the modal stays a fixed size instead of scrolling
 through every option at once. The modal always opens on **Files**, and its title
