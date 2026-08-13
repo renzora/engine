@@ -149,7 +149,7 @@ net = ["std"]
 # Requires `std` — it links Bevy, `libloading` and the host's own threading, none
 # of which exist without it. That is not a limitation to lift: the host is the
 # editor, and the editor is a windowed GPU application.
-host = ["std", "dep:bevy", "dep:libloading"]
+host = ["std", "dep:bevy", "dep:libloading", "dep:notify-debouncer-full"]
 # The 3D half of the host: `StandardMaterial` / `MeshMaterial3d`, which come from
 # `bevy_pbr`. A 2D-only export strips that, so without this `add_material`
 # refuses with a warning and `MaterialSlot::Standard` does not exist. Plugins
@@ -180,6 +180,15 @@ render_3d = []
 renzora_plugin_derive = { path = "../renzora_plugin_derive" }
 bevy = { workspace = true, optional = true }
 libloading = { version = "0.8", optional = true }
+# `host` only — the live-rebuild source watcher (`host::dev`). Already in the
+# tree via bevy's `file_watcher`, so it adds nothing to a build that has bevy;
+# and because it is gated behind `host`, a plugin depending on this crate with
+# default features still resolves to zero dependencies.
+#
+# The debouncer rather than bare `notify`: an editor saving a file emits several
+# filesystem events for one logical write, which is the exact problem the old
+# two-poll `settling` set was hand-rolling.
+notify-debouncer-full = { version = "0.7", optional = true }
 # Pulled only by the `libm` feature, i.e. only by `no_std` plugins. It is itself
 # `no_std` and dependency-free, so it does not weaken the guarantee above — it
 # exposes functions, not types, and nothing from it crosses the ABI boundary.

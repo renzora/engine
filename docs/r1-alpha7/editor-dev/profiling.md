@@ -285,8 +285,67 @@ measured split was **0.23 ms of reactivity against 5.48 ms of UI layout**.
 
 ## Standing findings — don't undo these
 
-Two results from the r1-alpha7 profiling pass are easy to reverse by accident,
-because in both cases the *expensive* setting looks like the harmless default.
+These results are easy to reverse by accident, because in each case the
+*expensive* option looks like the harmless default.
+
+**Watch the filesystem; never poll it from a system.** `host::dev` used to
+re-walk every plugin crate's source tree with a recursive `read_dir` every
+0.25 s, diffing a map of `(mtime, len)` stamps. Measured on a splash screen with
+no project open:
+
+| | polling | `notify` watcher |
+|---|---|---|
+| `poll_plugin_sources` | 1278.0 µs/frame | **1.8 µs/frame** |
+| its max | 31.33 ms | **0.10 ms** |
+| frames in the 20.5-24 ms lump | 4.3% | **0.12%** |
+
+351 walks at ~19 ms each across a 96 s capture, none of which found anything,
+in every editor session — the install is gated on `is_editor`, not Dev Mode.
+`notify` and `notify-debouncer-full` are already in the tree via bevy's
+`file_watcher`, so this costs no new dependency; in `renzora_plugin` the dep is
+gated behind the `host` feature so a plugin author still resolves to zero
+dependencies.
+
+Two details that are easy to get wrong and were both hit here. **Watch `src/`
+and `Cargo.toml`, not the crate directory** — each plugin declares its own
+`[workspace]` and therefore has its own `target/`, so a recursive watch makes
+every rebuild flood the queue with its own build output. Filtering those paths
+after delivery is not enough; an overflow drops real events alongside the noise.
+And **an overflow must not trigger a rebuild-everything fallback** — a `git
+checkout` would then rebuild all 63 plugins, which is the worst possible response
+to the moment you least want one.
+
+The remaining poll, `loader::poll_plugin_dir`, is deliberate: it stats one flat
+directory of built libraries rather than a tree, and measures 15.6 µs/frame.
+
+**Editor chrome is excluded with a query filter, never a per-entity check.** The
+editor's own `bevy_ui` nodes live in the same `World` as the scene — roughly 1500
+of them, ~950 of those named, on a completely empty project. Any system that means
+"the scene" must therefore say so, and it must say so as a `With`/`Without` filter
+so Bevy resolves it **once per archetype**. The rule is: an entity is scene content
+unless it is a `bevy_ui` node, and a `bevy_ui` node is scene content only if it is
+authored game UI (`UiCanvas`/`UiWidget`). `renzora_hierarchy::state::HierarchyCandidate`
+is the canonical spelling.
+
+Two places got this wrong and are worth understanding, because the mistake is
+natural:
+
+- `build_entity_tree` looped every archetype, then called `world.get::<Name>(entity)`
+  on **every entity in the world** to find the named ones, then made three or four
+  more random-access lookups per named entity to discard the chrome. All of that
+  information is in the archetype; it was being re-derived per entity, up to 10x/sec,
+  in an exclusive system.
+- `ScriptComponent` was auto-inserted on every named entity, which meant every named
+  UI node. Each insert is a deferred **archetype move** — the entity's whole component
+  set is copied to a new table — and chrome respawns in bursts, so one panel rebuild
+  became hundreds of archetype moves in a single frame. It also doubled the archetype
+  count for UI, since each UI component-set then existed both with and without it.
+
+**Behaviour contract this changes:** a named `bevy_ui` node no longer receives a
+`ScriptComponent` automatically. Authored game UI still does — `renzora_ember::game_ui`
+inserts one on `UiWidget`/`UiCanvas` so `<input bind="Entity.var">` resolves — but if
+you spawn a UI entity outside that path and need script variables on it, insert the
+component yourself.
 
 **`ghost_nodes` is deliberately off.** It's a `bevy_ui` feature that swaps
 `UiChildren` for a much slower implementation on the editor's hottest path.

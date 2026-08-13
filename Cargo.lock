@@ -8372,6 +8372,7 @@ dependencies = [
  "bevy",
  "libloading 0.8.9",
  "libm",
+ "notify-debouncer-full",
  "renzora_plugin_derive",
 ]
 

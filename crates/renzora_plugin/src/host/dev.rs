@@ -30,24 +30,74 @@
 //! renzora_plugin`, so this crate never depends on the engine.
 
 use bevy::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 
-/// How often to stat the source tree. Two polls settle a file, as in the dll
-/// watcher — an editor writing a file is as partial as a linker writing a dll.
-const POLL_INTERVAL: f32 = 0.25;
+use notify_debouncer_full::notify::RecursiveMode;
+use notify_debouncer_full::{new_debouncer, DebounceEventResult, DebouncedEvent};
 
-/// Which plugin sources to watch, and what they looked like last time.
+/// How long a path must be quiet before its change counts.
+///
+/// An editor saving a file produces several filesystem events for one logical
+/// write, and a `cargo build` produces thousands. The debouncer coalesces both
+/// into one notification per path, which is what the old two-poll `settling` set
+/// was approximating.
+const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Which plugin sources to watch.
+///
+/// **This used to poll.** It re-walked every plugin crate's entire source tree
+/// with a recursive `read_dir` every 0.25 s and diffed a map of `(mtime, len)`
+/// stamps. Profiling put that at **~19 ms per walk, ~4 times a second** — 6.9 s
+/// of CPU across a 96 s capture, on the main thread, in `Last`, on a splash
+/// screen with no project open. It ran in every editor session (the install is
+/// gated on `is_editor`, not on Dev Mode), and it was pure overhead in the
+/// overwhelmingly common case where no source file had changed at all.
+///
+/// Now the OS says which path changed. Idle cost is draining an empty channel,
+/// and the rebuild also *starts sooner* — no waiting out a poll interval.
 #[derive(Resource)]
 pub struct PluginSourceWatcher {
     /// Directory holding one subdirectory per plugin crate.
     pub root: PathBuf,
     /// Where to put a built library, i.e. the directory the loader scans.
     stage_to: PathBuf,
-    seen: HashMap<PathBuf, (std::time::SystemTime, u64)>,
-    settling: HashSet<PathBuf>,
-    countdown: f32,
+    /// Debounced filesystem events, drained each frame.
+    rx: std::sync::Mutex<Receiver<DebounceEventResult>>,
+    /// Crates we already hold watches for, so a new one can be picked up without
+    /// re-adding watches for the rest.
+    watched: HashSet<String>,
+    /// Dropping the debouncer unregisters every watch, so it is kept alive here.
+    /// `Option` so a failed install degrades to "no live rebuild" rather than
+    /// taking the editor down; see [`install`].
+    debouncer: Option<SourceDebouncer>,
+}
+
+type SourceDebouncer = notify_debouncer_full::Debouncer<
+    notify_debouncer_full::notify::RecommendedWatcher,
+    notify_debouncer_full::RecommendedCache,
+>;
+
+/// Watch one crate's sources: `src/` recursively, plus its manifest.
+///
+/// **Deliberately not a recursive watch on the crate directory**, because that
+/// would include `plugins/<crate>/target/` — each plugin declares its own
+/// `[workspace]`, so it has one. Every rebuild writes thousands of files there,
+/// which would flood the notification queue with our own build output and can
+/// overflow it. Filtering those paths after the fact (as [`is_source`] does)
+/// is not enough: the events still have to be produced, queued and delivered,
+/// and an overflow loses *real* events alongside the noise.
+fn watch_crate(debouncer: &mut SourceDebouncer, dir: &Path) -> notify_debouncer_full::notify::Result<()> {
+    let src = dir.join("src");
+    if src.is_dir() {
+        debouncer.watch(&src, RecursiveMode::Recursive)?;
+    }
+    let manifest = dir.join("Cargo.toml");
+    if manifest.is_file() {
+        debouncer.watch(&manifest, RecursiveMode::NonRecursive)?;
+    }
+    Ok(())
 }
 
 /// What a finished `cargo build` produced.
@@ -130,59 +180,91 @@ pub(crate) fn install(app: &mut App, stage_to: PathBuf) {
         debug!("[plugin] no plugin source directory found — live rebuild is off");
         return;
     };
-    info!("[plugin] watching {} for source changes", root.display());
+    let (tx, rx) = std::sync::mpsc::channel();
+    // A failed watch is not fatal — Linux inotify has a per-user watch limit that
+    // a large tree can exhaust, and network filesystems often emit nothing at all.
+    // Losing live rebuild is a much better outcome than refusing to start, so this
+    // degrades instead of propagating.
+    let mut watched = HashSet::new();
+    let debouncer = match new_debouncer(DEBOUNCE, None, tx) {
+        Ok(mut d) => {
+            // The root itself, non-recursively: this is what notices a plugin
+            // crate being *added* while the editor runs, which the old poll got
+            // for free by re-reading the root every tick.
+            match d.watch(&root, RecursiveMode::NonRecursive) {
+                Ok(()) => {
+                    // The one and only directory listing. Everything after this is
+                    // event-driven; there is no baseline to maintain, because the
+                    // OS reports what changed rather than us diffing what is there.
+                    for (name, dir) in crate_dirs(&root) {
+                        if let Err(e) = watch_crate(&mut d, &dir) {
+                            warn!("[plugin] could not watch {name} ({e})");
+                            continue;
+                        }
+                        watched.insert(name);
+                    }
+                    info!(
+                        "[plugin] watching {} crate(s) under {} for source changes",
+                        watched.len(),
+                        root.display()
+                    );
+                    Some(d)
+                }
+                Err(e) => {
+                    warn!(
+                        "[plugin] could not watch {} ({e}) — live rebuild is off",
+                        root.display()
+                    );
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            warn!("[plugin] could not start the source watcher ({e}) — live rebuild is off");
+            None
+        }
+    };
+
     app.insert_resource(PluginSourceWatcher {
-        // Seeded on the first poll rather than here: an empty map plus the "unseen
-        // means changed" rule below would rebuild every plugin at startup.
-        seen: HashMap::new(),
-        settling: HashSet::new(),
-        countdown: POLL_INTERVAL,
         root,
         stage_to,
+        rx: std::sync::Mutex::new(rx),
+        watched,
+        debouncer,
     })
     .init_resource::<PluginBuilds>()
     .add_systems(Last, (poll_plugin_sources, drain_plugin_builds));
 }
 
-/// Every file whose change should trigger a rebuild, for one plugin crate.
+/// Does a changed path mean "recompile this crate"?
 ///
-/// `Cargo.toml` counts — adding a dependency changes what compiles just as much as
-/// editing a function. `target/` is skipped for the obvious reason: cargo writes
-/// there while building, and watching it would make every build trigger the next.
-fn source_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if path.is_dir() {
-            if name != "target" && !name.starts_with('.') {
-                source_files(&path, out);
-            }
-        } else if name == "Cargo.toml" || path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            out.push(path);
-        }
+/// `Cargo.toml` counts — adding a dependency changes what compiles just as much
+/// as editing a function. `target/` is excluded for the obvious reason: cargo
+/// writes there while building, and reacting to it would make every build
+/// trigger the next one.
+fn is_source(path: &Path) -> bool {
+    if path.components().any(|c| {
+        let s = c.as_os_str().to_string_lossy();
+        s == "target" || s.starts_with('.')
+    }) {
+        return false;
+    }
+    match path.file_name().and_then(|n| n.to_str()) {
+        Some("Cargo.toml") => true,
+        _ => path.extension().and_then(|e| e.to_str()) == Some("rs"),
     }
 }
 
-fn poll_plugin_sources(
-    time: Res<Time>,
-    mut watcher: ResMut<PluginSourceWatcher>,
-    mut builds: ResMut<PluginBuilds>,
-) {
-    watcher.countdown -= time.delta_secs();
-    if watcher.countdown > 0.0 {
-        return;
-    }
-    watcher.countdown = POLL_INTERVAL;
-
-    let Ok(entries) = std::fs::read_dir(&watcher.root) else {
-        return;
+/// Every plugin crate directly under `root`, as `(name, dir)`.
+///
+/// The single directory listing this module performs, done once at [`install`]
+/// and again only when the root reports a new entry. A directory without a
+/// manifest is not a crate — don't spawn cargo in it.
+fn crate_dirs(root: &Path) -> Vec<(String, PathBuf)> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
     };
-    // Collected first because the loop below mutates `watcher`.
-    let crates: Vec<(String, PathBuf)> = entries
+    entries
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.join("Cargo.toml").is_file())
@@ -190,43 +272,98 @@ fn poll_plugin_sources(
             let name = p.file_name()?.to_string_lossy().into_owned();
             Some((name, p))
         })
-        .collect();
+        .collect()
+}
 
-    let first_poll = watcher.seen.is_empty();
-    for (name, dir) in crates {
-        let mut files = Vec::new();
-        source_files(&dir, &mut files);
+/// Which plugin crate owns a changed path — the first directory under the root.
+///
+/// Returns `None` for a path outside the root or one lying directly in it (a
+/// stray file next to the crate directories belongs to no crate).
+fn owning_crate(root: &Path, path: &Path) -> Option<(String, PathBuf)> {
+    let rel = path.strip_prefix(root).ok()?;
+    let first = rel.components().next()?;
+    let dir = root.join(first);
+    // A directory with no manifest is not a crate — don't spawn cargo in it.
+    dir.join("Cargo.toml")
+        .is_file()
+        .then(|| (first.as_os_str().to_string_lossy().into_owned(), dir))
+}
 
-        let mut changed = false;
-        for file in files {
-            let Ok(meta) = std::fs::metadata(&file) else { continue };
-            let Ok(mtime) = meta.modified() else { continue };
-            let stamp = (mtime, meta.len());
-            match watcher.seen.get(&file).copied() {
-                // Unseen. On the first poll that is just "this file exists" — the
-                // staged build is already current, and rebuilding everything at
-                // startup would be a minute of cargo for nothing.
-                None => {
-                    watcher.seen.insert(file.clone(), stamp);
-                    if !first_poll {
-                        watcher.settling.insert(file);
-                    }
+/// Drain debounced filesystem events and rebuild whatever changed.
+///
+/// Keeps the name it had when it polled, because it is still the same link in
+/// the chain the module doc describes; it just no longer does the walking.
+fn poll_plugin_sources(mut watcher: ResMut<PluginSourceWatcher>, mut builds: ResMut<PluginBuilds>) {
+    // One crate may produce many events for one save even after debouncing (a
+    // `Cargo.toml` plus an `.rs`, say), so collect before spawning.
+    let mut dirty: Vec<(String, PathBuf)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    // A root-level event means a crate may have appeared; re-list only then.
+    let mut root_changed = false;
+
+    let Ok(rx) = watcher.rx.lock() else {
+        return;
+    };
+    for batch in rx.try_iter() {
+        let events: Vec<DebouncedEvent> = match batch {
+            Ok(events) => events,
+            // The OS queue overflowed — a `git checkout` or a cargo build can
+            // outrun it. Events were dropped, so we cannot know what changed.
+            // Log rather than guess: rebuilding everything on an overflow would
+            // turn a branch switch into a full rebuild of every plugin.
+            Err(errors) => {
+                for e in errors {
+                    warn!("[plugin] source watch error: {e}");
                 }
-                Some(prev) if prev != stamp => {
-                    watcher.seen.insert(file.clone(), stamp);
-                    watcher.settling.insert(file);
+                continue;
+            }
+        };
+        for event in events {
+            for path in &event.paths {
+                if path.parent() == Some(watcher.root.as_path()) {
+                    root_changed = true;
                 }
-                // Unchanged since the last poll. If it moved then, the write is
-                // done and this plugin is ready to rebuild.
-                Some(_) => {
-                    if watcher.settling.remove(&file) {
-                        changed = true;
-                    }
+                if !is_source(path) {
+                    continue;
+                }
+                let Some((name, dir)) = owning_crate(&watcher.root, path) else {
+                    continue;
+                };
+                if seen.insert(name.clone()) {
+                    dirty.push((name, dir));
                 }
             }
         }
+    }
+    drop(rx);
 
-        if !changed || builds.in_flight.contains(&name) {
+    // A crate appeared since we installed watches — cover it from now on. It is
+    // NOT rebuilt here: a plugin that just showed up has whatever artifact it
+    // shipped with, and rebuilding on discovery would fire cargo for every crate
+    // the first time this ran.
+    if root_changed {
+        let known: Vec<(String, PathBuf)> = crate_dirs(&watcher.root)
+            .into_iter()
+            .filter(|(name, _)| !watcher.watched.contains(name))
+            .collect();
+        for (name, dir) in known {
+            let Some(debouncer) = watcher.debouncer.as_mut() else {
+                break;
+            };
+            match watch_crate(debouncer, &dir) {
+                Ok(()) => {
+                    info!("[plugin] now watching new crate {name}");
+                    watcher.watched.insert(name);
+                }
+                Err(e) => warn!("[plugin] could not watch new crate {name} ({e})"),
+            }
+        }
+    }
+
+    for (name, dir) in dirty {
+        // A second change while one is in flight is dropped rather than queued —
+        // see `PluginBuilds::in_flight`.
+        if builds.in_flight.contains(&name) {
             continue;
         }
         info!("[plugin] {name} source changed, rebuilding");
