@@ -1,20 +1,33 @@
 # Testing
 
-How to write and run tests for the Renzora engine workspace with the `renzora test` CLI.
+How to write and run tests for the Renzora engine workspace — natively while you iterate, and in the pinned container when you need to match CI exactly.
 
-## Running tests
+## Running tests natively
 
-Renzora is one Cargo workspace, and `renzora test` runs its suite inside the pinned toolchain container (it forwards to `cargo test`, so the usual selectors still work):
+Per-crate tests link and run natively on every host platform, including Windows, and this is the fast way to iterate — an order of magnitude quicker than a container round-trip:
+
+```bash
+cargo test --profile dist -p renzora_physics
+cargo test --profile dist -p renzora_ember parse_templates   # one test by substring
+```
+
+> **Always pass `--profile dist`.** A bare `cargo test` builds the `dev` profile and creates a second full artefact tree; this workspace is far too large for two of them.
+
+> **`cargo test --workspace` does not pass natively**, and that is expected rather than something to fix. It builds *example* targets, and two vendored XR crates ship examples that never got a Bevy 0.19 rename. CI never sees this because it excludes those crates. Test per-crate, or use `renzora test` below.
+
+## Running tests the way CI does
+
+`renzora test` runs the suite inside the pinned toolchain container (it forwards to `cargo test`, so the usual selectors still work):
 
 ```bash
 # All first-party crates
 renzora test
 
 # A single crate
-renzora test --package renzora_network
+renzora test --package renzora_net
 
 # A single test by name (substring match)
-renzora test host_client_is_promoted
+renzora test dynamic_2d_body_blocked_by_static_collider
 
 # Show stdout / println! from passing tests
 renzora test -- --nocapture
@@ -142,59 +155,48 @@ Cross-crate tests go in a crate's `tests/` directory (`crates/<crate>/tests/*.rs
 
 | Test file | What it proves |
 |---|---|
-| `crates/renzora_network/tests/host_server.rs` | `--host` listen-server wiring: a single `App` can hold both Lightyear `ClientPlugins` and `ServerPlugins`, and a local client is promoted to a `HostClient`. |
+| `crates/renzora_plugin/tests/abi_order.rs` | The C-ABI interface table's field order and prefix hashes match what plugins negotiate against — the check that catches a "minor append" that actually inserted into the middle. |
+| `crates/renzora_net/tests/round_trip.rs` | The whole HTTP chain end to end — `fetch` on a background thread → queue → frame pump → an `extern "C"` call into a backend → events → back to the parked thread — against a table-driven fake backend, so there are no sockets to flake. |
+| `crates/renzora_physics/tests/avian2d_collision.rs` | A dynamic 2D body driven by `LinearVelocity` is blocked by a static collider-only entity — the shape a tilemap's merged colliders take. A regression here is "the player walks through walls". |
+| `crates/renzora_bsn/tests/raw_roundtrip.rs` | The scene format survives a serialize → deserialize round-trip. |
 | `crates/renzora_ember/tests/parse_templates.rs` | Every shipped `.html` UI template parses through bevy_hui's parser — markup syntax errors are caught in CI without a GPU. |
 | `crates/renzora_ember/tests/inspector_writeback.rs` | The inspector → `.html` writeback round-trip patches the source file on disk and keeps the span cache coherent. |
 
-### Network example
+### Driving a fixed-timestep system
 
-`host_server.rs` builds an app with both plugin sets, registers the real protocol, and ticks until Lightyear promotes the local client. It is a pure-Lightyear probe that runs without the engine binary:
+Anything on the fixed-timestep schedule — physics above all — needs two things a bare `MinimalPlugins` app doesn't give you. `avian2d_collision.rs` shows both:
 
 ```rust
+use std::time::Duration;
+
 use bevy::prelude::*;
-use core::time::Duration;
-use std::net::SocketAddr;
+use bevy::time::TimeUpdateStrategy;
+use renzora_physics::PhysicsPlugin;
 
-use lightyear::connection::host::HostClient;
-use lightyear::prelude::client::ClientPlugins;
-use lightyear::prelude::server::{NetcodeConfig, NetcodeServer, ServerPlugins, ServerUdpIo, Start};
-use lightyear::prelude::{Client, Connect, LinkOf, LocalAddr};
-
-#[test]
-fn local_client_is_promoted_to_host_client() {
-    let tick = Duration::from_secs_f64(1.0 / 64.0);
+fn physics_app() -> App {
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins);
-    app.add_plugins(ClientPlugins { tick_duration: tick });
-    app.add_plugins(ServerPlugins { tick_duration: tick });
-    renzora_network::protocol::register_protocol(&mut app);
-
-    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-    let server = app
-        .world_mut()
-        .spawn((
-            ServerUdpIo::default(),
-            LocalAddr(addr),
-            NetcodeServer::new(NetcodeConfig::default()),
-        ))
-        .id();
-    app.world_mut().trigger(Start { entity: server });
-    for _ in 0..10 {
-        app.update();
-    }
-
-    let client = app
-        .world_mut()
-        .spawn((Client::default(), LinkOf { server }))
-        .id();
-    app.world_mut().trigger(Connect { entity: client });
-    for _ in 0..10 {
-        app.update();
-    }
-
-    assert!(app.world().get::<HostClient>(client).is_some());
+    app.add_plugins((
+        MinimalPlugins,
+        // Avian's tree/spatial-query systems take its diagnostics resources,
+        // which it only inserts when bevy's diagnostics are present.
+        bevy::diagnostic::DiagnosticsPlugin,
+        bevy::asset::AssetPlugin::default(),
+        TransformPlugin,
+    ));
+    app.init_asset::<Mesh>();
+    app.add_plugins(PhysicsPlugin);
+    // Manual time, or the fixed-timestep schedule never runs during app.update().
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
+        1.0 / 60.0,
+    )));
+    // Avian registers its diagnostics resources in `Plugin::finish`, which a real
+    // app's runner calls but a bare `app.update()` loop never does.
+    app.finish();
+    app
 }
 ```
+
+`TimeUpdateStrategy::ManualDuration` is the one people miss: without it, wall-clock time barely advances between `app.update()` calls and the fixed schedule may never tick, so the test asserts on a simulation that never ran.
 
 ### Headless asset / UI tests
 

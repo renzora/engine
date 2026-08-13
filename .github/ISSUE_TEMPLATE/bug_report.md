@@ -29,13 +29,14 @@ What actually happened.
 - **OS:** (e.g., Windows 11, Ubuntu 24.04, macOS 15)
 - **GPU:** (e.g., NVIDIA RTX 4070, AMD RX 7800 XT, Intel Arc)
 - **Rust version:** (output of `rustc --version`)
-- **Cargo features:** (e.g., `editor`, `editor,solari`)
+- **Engine version:** (e.g., `r1-alpha7`, or the commit you built)
+- **Run mode:** editor (`renzora-editor`), shipped game (`renzora`), or the runtime with `--server` / `--host` / `--vr`
 
 ## Logs / Screenshots
 
 Paste any relevant console output, error messages, or screenshots.
 
-If the engine crashed, include the contents of `crash.log`.
+If the engine crashed, attach the crash report: the editor writes `~/.renzora/crashes/last_crash.txt`, and a shipped game appends to `crash.log` beside the executable.
 
 <details>
 <summary>Console output</summary>

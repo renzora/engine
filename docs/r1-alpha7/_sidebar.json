@@ -168,6 +168,7 @@
           "category": "Contributing",
           "pages": [
             { "slug": "contributing/guide", "title": "Contributing Guide" },
+            { "slug": "contributing/ai-policy", "title": "AI Policy" },
             { "slug": "contributing/code-style", "title": "Code Style" },
             { "slug": "contributing/testing", "title": "Testing" }
           ]

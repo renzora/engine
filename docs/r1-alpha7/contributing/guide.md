@@ -11,45 +11,56 @@ Be respectful, constructive, and collaborative. Harassment, trolling, and uncons
 1. **Fork** the [engine repo](https://github.com/renzora/engine) on GitHub.
 2. **Clone** your fork and check out a branch from `main`.
 3. **Make your changes**, following the guidelines below.
-4. **Run the checks** (`renzora test`, `renzora check`) locally — both run in the container.
+4. **Run the checks** locally — `cargo clippy --profile dist` and the tests for the crates you touched.
 5. **Push** to your fork and open a **pull request** against `main`.
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/engine.git
 cd engine
 git checkout -b fix-spotlight-shadow
-renzora init                      # one-time: build/pull the toolchain image
+cargo renzora                        # build, stage dist/, and launch the editor
 # make changes...
-renzora shell -- cargo fmt        # rustfmt inside the container
-renzora check                     # clippy (warnings denied) in the container
-renzora test                      # test suite in the container
-git commit -m "Fix spotlight shadow not updating when range changes"
+cargo fmt
+cargo clippy --profile dist          # the CI lint gate, natively
+cargo test --profile dist -p renzora_physics
+git commit -m "fix(lighting): update spotlight shadow when range changes"
 git push origin fix-spotlight-shadow
 ```
 
 If you're looking for a first contribution, check for issues labeled `good first issue` or `help wanted`.
+
+## Using AI
+
+You're welcome to use an AI assistant — we don't review AI-assisted PRs any
+differently. In exchange, you audit every line you submit, you prove it works
+with tests, and you name the model and version in an `Assisted-by:` commit
+trailer. The full terms are on the [AI Policy](ai-policy.md) page; read it before
+opening your first AI-assisted PR.
 
 ## Development setup
 
 The full build story — the one-binary / editor-as-removable-cdylib model and the cross-compile images — is documented in [Building from a Checkout](/docs/r1-alpha7/setup/building-from-source). The short version:
 
 ```bash
-cargo renzora            # build the workspace and run the EDITOR
-cargo renzora dist       # build and stage without launching
-cargo check              # fast gate while editing
-cargo clippy             # reproduces the CI lint job
-renzora test             # the test suite (container)
+cargo renzora                    # build the workspace and run the EDITOR
+cargo renzora dist               # build and stage without launching
+cargo check  --profile dist      # fast gate while editing
+cargo clippy --profile dist      # reproduces the CI lint job
+cargo test   --profile dist -p <crate>   # per-crate tests, natively
+renzora test                     # the full suite, exactly as CI runs it (container)
 ```
 
-> You do not need Docker to develop on Renzora. `cargo renzora` builds the host and every in-workspace plugin from source in one environment, which is what the shared-`bevy_dylib` plugin ABI actually requires — the container guarantees the same thing *across machines*, which is why it is right for release artefacts and cross-compilation and unnecessary locally. [Standalone plugins](/docs/r1-alpha7/extending/standalone-plugins) do not link Bevy at all, so they are unaffected either way. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
+> **Always pass `--profile dist`.** A bare cargo command defaults to the `dev` profile and creates a *second* full set of artefacts under `target/debug/`; this workspace is far too large for two of them, and a full disk surfaces as bogus compile errors in crates you never touched rather than as a disk error.
+
+> You do not need Docker to develop on Renzora. Docker is a **cross-compiler** — it builds export templates for platforms you don't own — and a way to reproduce CI exactly. It is not the install path. Nothing is `dlopen`'d against Bevy any more: in-workspace plugins are statically linked `rlib`s wired in by a build-time generator, and [standalone plugins](/docs/r1-alpha7/extending/standalone-plugins) are C-ABI cdylibs that link no Bevy at all, so neither needs a canonical build environment. The editor is the removable `renzora_editor` cdylib bundle that the binary dlopens from beside itself; there is **no `editor` compile-time feature** — the only build features on the `renzora` binary are `runtime` (default) and `wasm`.
 
 ### Toolchain
 
 - You need **Git** and **rustup**. `rust-toolchain.toml` pins the Rust version and rustup selects it automatically; the project does **not** require nightly. You will also need your platform's usual native build dependencies — a C/C++ toolchain, and on Linux the X11/Wayland/ALSA/udev dev headers (the list mirrors `docker/base/Dockerfile`).
 - The Rust version is pinned in two lockstep files: `rust-toolchain.toml` (native) and `docker/base/Dockerfile` (`FROM rust:1.95.0-bookworm`, container). A bump must edit both.
-- **Docker** is needed for two things only: cross-compiling export templates (`renzora build <platform>`) and running the test suite on Windows.
-- Linux uses `mold` and Windows uses `rust-lld` (MSVC `link.exe` hits the 65535-object limit on `bevy_dylib`). `.cargo/config.toml` sets that up for native builds as well as the container, so a native link succeeds.
-- **`cargo test` does not link natively on Windows**: the test harness pushes the `renzora` dylib past the PE format's 65,535 exported-symbol ceiling, which is a limit of the executable format rather than something to configure around. Use `renzora test`.
+- **Docker** is needed for two things only: cross-compiling export templates (`renzora build <platform>`) and reproducing CI exactly (`renzora check` / `renzora test`).
+- Linux uses `mold` and Windows uses `rust-lld` (MSVC `link.exe` hits the 65535-object limit). `.cargo/config.toml` sets that up for native builds as well as the container, so a native link succeeds.
+- **`cargo test --profile dist -p <crate>` links and runs natively**, including on Windows, and it is the fastest way to iterate. `cargo test --workspace` is the one that doesn't: it builds *example* targets, and two vendored XR crates have examples that never got a Bevy 0.19 rename. CI never hits this because it excludes those crates — test per-crate, or use `renzora test`.
 
 > Heads-up: hardware ray-traced GI ships via the optional **`renzora_solari`** plugin (Bevy Solari), enabled by the `bevy_solari` Bevy feature in the workspace `Cargo.toml` and activated at runtime only on RT-capable GPUs — see [Solari ray-traced GI](../rendering/solari.md). There is still no `--features solari` *build* flag; Solari is a drop-in plugin, not a build variant. Lumen's separate `LumenQuality::Hwrt` tier remains an unimplemented placeholder and renders nothing.
 
@@ -58,11 +69,11 @@ renzora test             # the test suite (container)
 | Area | How |
 |---|---|
 | **Bug fixes** | Browse the [issue tracker](https://github.com/renzora/engine/issues). |
-| **Documentation** | Edit the markdown under `docs/` in the **website** repo (this site), not the engine repo. |
+| **Documentation** | Edit the markdown under `docs/r1-alpha7/` in the **engine** repo; pushing to `main` auto-publishes it to this site. Older `docs/r1-alpha*` directories are frozen releases — leave them alone. |
 | **Editor panels** | Register a native bevy_ui panel with the `App` extension APIs `register_shell_panel(id, title, icon, category)` + `register_panel_content(id, scroll, build_fn)`. See [Editor Panels](/docs/r1-alpha7/editor-dev/panels). |
-| **Scripting functions** | Add Lua bindings in `renzora_scripting` (or a domain crate's `ScriptExtension`). |
+| **Scripting functions** | Declare them from the owning domain crate via the `ScriptExtension` trait, so every language backend builds them. Engine-wide primitives live in the language plugin's `register_api()` (`plugins/lua`). |
 | **Post-process effects** | Annotate a settings struct with `#[renzora_macros::post_process(...)]` and `renzora::add!` the plugin. See [Post-Processing](/docs/r1-alpha7/extending/post-processing). |
-| **Plugins** | Self-register with `renzora::add!(MyPlugin)`. See [Building Plugins](/docs/r1-alpha7/extending/plugins). |
+| **Plugins** | Declare with `renzora::add!(MyPlugin)` — a build-time generator reads that line *as text* and writes the committed static plugin lists, so keep it on one line at the top level. See [Building Plugins](/docs/r1-alpha7/extending/plugins). |
 | **Export targets** | Improve a platform lane in `docker/build-all.sh`. |
 
 > The editor has no `EditorPanel` trait you "implement and register" — panels are plain bevy_ui content functions registered through the two `App` extension methods above. Anything claiming an egui `EditorPanel` trait is stale (egui was fully removed).
@@ -90,11 +101,12 @@ Use default `rustfmt`. Run `cargo fmt` before committing, and don't hand-format 
 
 ## Testing
 
-Tests live in `#[cfg(test)] mod tests` blocks alongside the code. Run the suite the same way CI does — in the container, via the CLI:
+Tests live in `#[cfg(test)] mod tests` blocks alongside the code. Iterate per-crate natively, then reproduce CI in the container before you submit:
 
 ```bash
-renzora test
-renzora test -- scripting::tests      # a specific module
+cargo test --profile dist -p renzora_physics   # natively, fast
+renzora test                                   # the full suite, exactly as CI runs it
+renzora test --package renzora_net             # one crate, in the container
 ```
 
 Focus on logic, serialization round-trips, and edge cases:
@@ -114,7 +126,7 @@ mod tests {
 }
 ```
 
-What's worth a test: new data structures (serialize/deserialize round-trips), new algorithms (correctness + edge cases), new components (registration and defaults), and networking round-trips (e.g. `crates/renzora_network/tests/host_server.rs` validates host-mode promotion to an in-process `HostClient`).
+What's worth a test: new data structures (serialize/deserialize round-trips), new algorithms (correctness + edge cases), and new components (registration and defaults). Cross-crate tests go in `crates/<crate>/tests/*.rs` — `renzora_plugin/tests/abi_order.rs` pins the C-ABI interface layout, `renzora_bsn/tests/raw_roundtrip.rs` round-trips the scene format, `renzora_ember/tests/parse_templates.rs` proves every shipped UI template parses without a GPU, and `renzora_net/tests/round_trip.rs` covers the wire codec.
 
 ## Continuous integration
 
@@ -149,29 +161,32 @@ The vendored crates (`bevy_*`, `vleue_navigator`) are third-party code copied in
 - **One concern per PR** — don't mix a bug fix with a feature or a refactor.
 - **Branch from `main`** with a descriptive name (`fix-spotlight-shadow`, `add-cylinder-collider`).
 - **Write tests** for new functionality when the module already has coverage.
-- **Update documentation** (this website's `docs/`) when you change public APIs or add features.
+- **Update documentation** — the markdown under `docs/r1-alpha7/` in the engine repo — when you change public APIs or add features. New pages also need an entry in `docs/r1-alpha7/_sidebar.json`.
 - During review, push additional commits — **don't force-push** mid-review.
 
 ### PR checklist
 
-- [ ] `cargo fmt` applied (via `renzora shell`), no unrelated formatting changes
-- [ ] `renzora check` (clippy, warnings denied) is clean
-- [ ] `renzora test` passes
+- [ ] `cargo fmt` applied, no unrelated formatting changes
+- [ ] `cargo clippy --profile dist` (or `renzora check`) is clean — warnings are denied in CI
+- [ ] Tests pass for the crates you touched (`cargo test --profile dist -p <crate>`, or `renzora test`)
+- [ ] Docs updated under `docs/r1-alpha7/` if behavior or APIs changed
 - [ ] New tests added where applicable
 - [ ] Branch is up to date with `main`
+- [ ] AI-assisted work is audited and disclosed with an `Assisted-by:` trailer ([AI Policy](ai-policy.md))
 
 ## Commit messages
 
-Match the existing style:
+This repo uses [Conventional Commits](https://www.conventionalcommits.org/):
 
-- **Imperative present tense:** "Add ...", "Fix ...", "Update ...", "Refactor ..."
-- **Under ~72 characters**, no trailing period.
+- **`type(scope): subject`** — types are `feat`, `fix`, `docs`, `refactor`, `chore`, `ci`, `security`; the scope is optional.
+- **Imperative mood**, under ~72 characters, no trailing period.
 - **Say what changed and why.**
 
 ```text
-Add cylinder collider component with radius and height
-Fix spotlight shadow not updating when range changes
-Refactor blueprint codegen to support multiple output pins
+feat(scripting): camera field of view
+fix(import): harden the folder-import walk and unify the queue path
+refactor(audio): delete kira; renzora_audio becomes the API and nothing else
+docs(r1-alpha7): audio is a plugin, not a library the engine links
 ```
 
 ## Reporting issues
@@ -180,7 +195,7 @@ Search existing issues first to avoid duplicates. For a bug report, include:
 
 - **Steps to reproduce**, expected vs actual behavior.
 - **Environment** — OS, GPU, and `rustc --version`.
-- **Run mode** — editor (bundle present), shipped game (`--no-editor`), `--server`, or `--host`. Note that the only build features are `runtime` (default) and `wasm`; there is no `editor` feature to report.
+- **Run mode** — editor (`renzora-editor`), shipped game (`renzora`), or the runtime launched with `--server` (headless), `--host` (listen server), or `--vr`. There is no `--no-editor` flag any more: the runtime binary can never become the editor. Note also that the only build features are `runtime` (default) and `wasm`; there is no `editor` feature to report.
 - **Crash logs** — the editor writes `~/.renzora/crashes/last_crash.txt` (plus a native dialog); the shipped game silently appends `crash.log` beside the executable. Attach the relevant one.
 
 ## License
@@ -189,6 +204,7 @@ The engine is dual-licensed under **MIT OR Apache-2.0** (`LICENSE-MIT` and `LICE
 
 ## What's next?
 
+- [AI Policy](ai-policy.md) — using AI assistants, auditing, testing, and disclosure
 - [Building from Source](/docs/r1-alpha7/setup/building-from-source) — the full build, aliases, and Docker cross-compile flow
 - [Architecture](/docs/r1-alpha7/setup/architecture) — the one-binary, editor-as-removable-cdylib model
 - [Building Plugins](/docs/r1-alpha7/extending/plugins) — extend the engine with `renzora::add!`
