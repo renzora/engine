@@ -104,8 +104,11 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
     //
     // The whole strip is the drag handle, not just the grip — a 16px glyph is a
     // fussy target for something you reach for precisely when the card is in
-    // your way. Bevy only marks the topmost node under the cursor as hovered, so
-    // Skip (a child) still gets its own press rather than starting a drag.
+    // your way. Skip and the X therefore have to *capture* their press, which
+    // is what the `FocusPolicy::Block` below buys: since Bevy 0.19, `Node`
+    // requires `FocusPolicy` and its default is `Pass`, so an unmarked button
+    // hands its press down to every node behind it — here the header — and
+    // pressing Skip would start dragging the card as well.
     let header = commands
         .spawn((
             Node {
@@ -137,9 +140,9 @@ pub fn build_overlay(commands: &mut Commands, fonts: &EmberFonts) -> OverlayEnti
     // (no model to import, no marketplace account). Closing the whole tutorial
     // is the X beside it, so neither action can be taken for the other.
     let skip = small_button(commands, fonts, "Skip", ButtonStyle::Outline);
-    commands.entity(skip).insert(TutorialSkipButton);
+    commands.entity(skip).insert((TutorialSkipButton, FocusPolicy::Block));
     let close = icon_button(commands, fonts, "x");
-    commands.entity(close).insert(TutorialCloseButton);
+    commands.entity(close).insert((TutorialCloseButton, FocusPolicy::Block));
     commands
         .entity(header)
         .add_children(&[grip, cap, title, spacer, skip, close]);

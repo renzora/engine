@@ -10,19 +10,33 @@
 //! widening this layout.
 //!
 //! Renders while in [`SplashState::Splash`].
+//!
+//! **Every clickable node here carries an explicit [`FocusPolicy::Block`].** In
+//! Bevy 0.19 `Node` *requires* `FocusPolicy`, and its `Default` is `Pass` — so a
+//! node with no policy of its own no longer captures the pointer, it lets the
+//! press fall through to every node behind it that also contains the cursor,
+//! ancestors included. In this file that meant a single click landed on the
+//! widget you aimed at *and* on the whole-window drag handle (the splash root is
+//! `SplashDragHandle`), and, for a recent-projects row, on the row's own "open
+//! this project" hit-box: clicking the remove **✕** removed the entry and opened
+//! the project (GH #82). Blocking is only load-bearing on nodes that own a
+//! press; the layout scaffolding around them keeps `FocusPolicy::Pass` on
+//! purpose, so dragging the window by its empty background still works.
 
 use bevy::ecs::world::CommandQueue;
 use bevy::math::CompassOctant;
 use bevy::prelude::*;
 use bevy::time::Real;
-use bevy::ui::{BackgroundGradient, ColorStop, FocusPolicy, Gradient, LinearGradient};
+use bevy::ui::{
+    BackgroundGradient, ColorStop, FocusPolicy, Gradient, LinearGradient, RelativeCursorPosition,
+};
 use bevy::window::SystemCursorIcon;
 
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::reactive::{react, KeyedSnapshot};
 use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_bg, bind_display, bind_text, bind_text_color, keyed_list};
-use renzora_ember::widgets::{bind_text_input, menu_item, scroll_area_keyed, text_input, Popup};
+use renzora_ember::widgets::{bind_text_input, menu_item, scroll_area_keyed, text_input, HoverTooltip, Popup};
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
 
@@ -187,12 +201,14 @@ pub(crate) fn register(app: &mut App) {
 /// to the previous CRT-flavoured splash — nothing in this theme tears or blinks.
 fn animate_recent_borders(
     time: Res<Time>,
-    mut rows: Query<(&Interaction, &mut BorderColor, &mut BackgroundGradient), With<RecentRow>>,
+    mut rows: Query<
+        (&RelativeCursorPosition, &mut BorderColor, &mut BackgroundGradient),
+        With<RecentRow>,
+    >,
 ) {
     let t = time.elapsed_secs();
-    for (interaction, mut border, mut grad) in &mut rows {
-        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
-        if !hovered {
+    for (cursor, mut border, mut grad) in &mut rows {
+        if !cursor.cursor_over {
             *border = BorderColor::all(border_soft());
             *grad = card_gradient(ca(22, 24, 36, 225), ca(11, 13, 21, 225));
             continue;
@@ -593,6 +609,7 @@ fn build_language_picker(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
             },
             BackgroundColor(btn_dark()),
             Interaction::default(),
+            FocusPolicy::Block,
             Popup { panel, open: false },
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-language-picker"),
@@ -648,6 +665,11 @@ fn build_search(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             },
             BackgroundColor(ca(10, 12, 20, 225)),
             BorderColor::all(border_soft()),
+            // The field itself is an ember widget with its own `Interaction`;
+            // blocking on the frame around it is what keeps a click *into* the
+            // field from reaching the drag handle underneath and handing the
+            // press to the OS mid-focus.
+            FocusPolicy::Block,
         ))
         .id();
     let mag = icon_text(commands, &fonts.phosphor, "magnifying-glass", (150, 158, 178), 14.0);
@@ -696,6 +718,7 @@ fn win_button(commands: &mut Commands, fonts: &EmberFonts, kind: WinBtn, icon: &
             },
             BackgroundColor(Color::NONE),
             Interaction::default(),
+            FocusPolicy::Block,
             SplashWinBtn(kind),
             HoverCursor(SystemCursorIcon::Pointer),
             Name::new("splash-win-btn"),
@@ -744,6 +767,7 @@ fn pill_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label_tx
             },
             BackgroundColor(if primary { accent() } else { btn_dark() }),
             Interaction::default(),
+            FocusPolicy::Block,
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
@@ -781,6 +805,7 @@ fn social_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, txt: &
             },
             BackgroundColor(btn_dark()),
             Interaction::default(),
+            FocusPolicy::Block,
             SplashUrl(url.to_string()),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
@@ -884,6 +909,15 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
             card_gradient(ca(22, 24, 36, 225), ca(11, 13, 21, 225)),
             BorderColor::all(border_soft()),
             Interaction::default(),
+            // `cursor_over` — not `Interaction` — drives the row's hover sheen:
+            // the ✕ blocks, so `Interaction` correctly drops to `None` the moment
+            // the pointer crosses onto it, and keying the sheen off that would
+            // make the card flatten out under your own cursor. Bevy fills
+            // `RelativeCursorPosition` for every node containing the pointer
+            // regardless of who captures the press, which is exactly the "is the
+            // pointer anywhere over this row" signal the visual wants.
+            RelativeCursorPosition::default(),
+            FocusPolicy::Block,
             RecentRow,
         ))
         .id();
@@ -911,7 +945,16 @@ fn build_recent_row(commands: &mut Commands, fonts: &EmberFonts, row: &RowData) 
             Node { width: Val::Px(26.0), height: Val::Px(26.0), align_items: AlignItems::Center, justify_content: JustifyContent::Center, border_radius: BorderRadius::all(Val::Px(5.0)), ..default() },
             BackgroundColor(Color::NONE),
             Interaction::default(),
+            // Without this the press also reaches the row behind it, which opens
+            // the project — the reported bug. It only *looked* correct for a
+            // project whose folder had been deleted by hand, because a missing
+            // project's row carries no `RecentOpen` for the press to land on.
+            FocusPolicy::Block,
             RecentRemove(row.path.clone()),
+            // The ✕ removes the entry from this list; it does not touch the
+            // folder on disk. Say so — the reporter of #82 read it as "delete
+            // project", which is a reasonable thing to read into a red ✕.
+            HoverTooltip::new("Remove from recent projects"),
             HoverCursor(SystemCursorIcon::Pointer),
         ))
         .id();
@@ -971,6 +1014,8 @@ fn build_resize_zones(commands: &mut Commands, root: Entity) {
                 BackgroundColor(Color::NONE),
                 GlobalZIndex(560),
                 Interaction::default(),
+                // Or a drag from an edge starts an OS *move* as well as a resize.
+                FocusPolicy::Block,
                 SplashResizeZone(octant),
                 HoverCursor(cursor),
                 Name::new("splash-resize"),
