@@ -319,7 +319,17 @@ pub fn highlight_line(
             let mut has_dot = false;
             let mut has_exp = false;
             if bytes[j] == b'.' {
+                // Consume the leading `.` of a `.5`-style literal HERE. Only
+                // marking `has_dot` left `j == i`: the scan below sees the dot,
+                // finds `has_dot` already set, and breaks on its first
+                // iteration, so the span is empty, `i` never advances, and this
+                // branch is re-entered forever. That froze the whole editor on
+                // any line containing `.` followed by a digit — `.5`, or a Rust
+                // tuple index like `v.0` — since the tokenizer runs on every
+                // visible line every frame. Reported as a "crash" while holding
+                // Delete (issue #84): deleting the `0` from `0.5` produces `.5`.
                 has_dot = true;
+                j += 1;
             }
             while j < len {
                 let c = bytes[j];
@@ -604,6 +614,39 @@ mod tests {
         assert!(has(&r, "mid", TokenKind::Comment));
         let (_, st) = toks("end --><b>", Language::Html, LineState::HtmlComment);
         assert_eq!(st, LineState::Normal);
+    }
+
+    /// Regression for issue #84. A `.`-leading number literal used to leave the
+    /// scan at `j == i`, so the tokenizer never advanced and spun forever — the
+    /// editor froze (no panic, no crash log) as soon as a visible line contained
+    /// `.` followed by a digit. A regression here shows up as this test hanging,
+    /// not failing.
+    #[test]
+    fn dot_leading_number_terminates() {
+        let (r, _) = toks("    .5 * delta", Language::Lua, LineState::Normal);
+        assert!(has(&r, ".5", TokenKind::Number));
+
+        // Same shape, and perfectly ordinary source: a Rust tuple index.
+        let (r, _) = toks("let a = v.0;", Language::Rust, LineState::Normal);
+        assert!(has(&r, ".0", TokenKind::Number));
+
+        // Every intermediate state of deleting forward through `0.5 * delta`
+        // (what the reporter did by holding Delete) must terminate.
+        let line = "    0.5 * delta";
+        for cut in 0..line.chars().count() {
+            let partial: String = line
+                .chars()
+                .enumerate()
+                .filter(|(i, _)| *i < 4 || *i >= 4 + cut)
+                .map(|(_, c)| c)
+                .collect();
+            toks(&partial, Language::Lua, LineState::Normal);
+        }
+
+        // Multiple dots must not re-enter the number branch on the same byte.
+        let (r, _) = toks("1.2.3", Language::Lua, LineState::Normal);
+        assert!(has(&r, "1.2", TokenKind::Number));
+        assert!(has(&r, ".3", TokenKind::Number));
     }
 
     #[test]
