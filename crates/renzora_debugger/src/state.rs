@@ -1017,26 +1017,52 @@ pub fn update_ecs_stats(world: &mut World) {
         state.time_since_update = 0.0;
     }
 
-    let entity_count = world.entities().len() as usize;
+    // Component names come from the type registry, NOT `ComponentInfo::name()`.
+    // That returns a `DebugName`, which stores nothing unless bevy's `debug`
+    // feature is on, and this workspace deliberately leaves it off (see the
+    // omitted-features list in the root `Cargo.toml`). Keying the map on the
+    // name therefore collapsed every component in the world into a single
+    // "<Enable the debug feature to see the name>" row. We key on `ComponentId`
+    // — the canonical identity, which never collides — and resolve a display
+    // name separately. `reflect_auto_register` means nearly everything with a
+    // `#[derive(Reflect)]` is in the registry.
+    let registry = world.get_resource::<AppTypeRegistry>().cloned();
+    let registry = registry.as_ref().map(|r| r.read());
 
+    let mut entity_count = 0usize;
     let mut archetype_infos: Vec<ArchetypeInfo> = Vec::new();
-    let mut component_counts: HashMap<String, (usize, usize)> = HashMap::new();
+    let mut component_counts: HashMap<ComponentId, (usize, usize)> = HashMap::new();
+    let mut names: HashMap<ComponentId, String> = HashMap::new();
 
     for archetype in world.archetypes().iter() {
         let arch_entity_count = archetype.len() as usize;
+        // Summing archetype lengths IS the live entity count. `Entities::len()`
+        // is not, despite reading like it: bevy documents it as the count of
+        // allocated entity *indices*, it never shrinks when entities despawn,
+        // and the allocator rounds it up to the metadata `Vec`'s capacity — so
+        // it reported a bare power of two (8192) that tracked the allocator
+        // rather than the scene, and only ever went up.
+        entity_count += arch_entity_count;
         if arch_entity_count == 0 {
             continue;
         }
 
         let mut components: Vec<String> = Vec::new();
         for component_id in archetype.components() {
-            if let Some(info) = world.components().get_info(*component_id) {
-                let name = info.name().to_string();
-                let entry = component_counts.entry(name.clone()).or_insert((0, 0));
-                entry.0 += arch_entity_count;
-                entry.1 += 1;
-                components.push(name);
-            }
+            let Some(info) = world.components().get_info(*component_id) else {
+                continue;
+            };
+            let name = names.entry(*component_id).or_insert_with(|| {
+                info.type_id()
+                    .and_then(|tid| registry.as_ref()?.get_type_info(tid))
+                    .map(|ti| ti.type_path().to_string())
+                    .unwrap_or_else(|| format!("<unregistered #{}>", component_id.index()))
+            });
+            components.push(name.clone());
+
+            let entry = component_counts.entry(*component_id).or_insert((0, 0));
+            entry.0 += arch_entity_count;
+            entry.1 += 1;
         }
 
         archetype_infos.push(ArchetypeInfo {
@@ -1047,20 +1073,25 @@ pub fn update_ecs_stats(world: &mut World) {
     }
 
     let archetype_count = archetype_infos.len();
-    archetype_infos.sort_by_key(|a| std::cmp::Reverse(a.entity_count));
+    // Ties break on a stable key so the panel's `keyed_list` doesn't reshuffle
+    // equal-count rows every refresh — `HashMap` iteration order is arbitrary
+    // and varies per process, so an unqualified sort churns the list.
+    archetype_infos.sort_by_key(|a| (std::cmp::Reverse(a.entity_count), a.id));
     let top_archetypes: Vec<ArchetypeInfo> = archetype_infos.into_iter().take(20).collect();
 
     let mut stats: Vec<ComponentTypeStats> = component_counts
         .into_iter()
-        .map(
-            |(name, (instance_count, archetype_count))| ComponentTypeStats {
-                name,
-                instance_count,
-                archetype_count,
-            },
-        )
+        .map(|(id, (instance_count, archetype_count))| ComponentTypeStats {
+            name: names.remove(&id).unwrap_or_default(),
+            instance_count,
+            archetype_count,
+        })
         .collect();
-    stats.sort_by_key(|s| std::cmp::Reverse(s.instance_count));
+    stats.sort_by(|a, b| {
+        b.instance_count
+            .cmp(&a.instance_count)
+            .then_with(|| a.name.cmp(&b.name))
+    });
 
     let mut state = world.resource_mut::<EcsStatsState>();
     state.entity_count = entity_count;
