@@ -130,10 +130,16 @@ buckets, decided by `renzora_import_ui::kinds::detect_kind`:
 
 **Workflow.** Clicking the asset browser's **Import** button (or **☰ → File →
 Import Assets…** in the top bar, or the command palette's *File: Import…*)
-opens the **OS file picker first**, filtered to every
-importable kind. Once files are chosen, the modal appears pre-loaded with them —
-there's no separate "open empty modal, then Browse" step. (Drag-and-drop still
-works too, and honours the same kind filter.)
+opens the **OS file picker first**, filtered to every importable kind. Once
+files are chosen, the modal appears pre-loaded with them. Cancelling an empty
+picker leaves the modal closed.
+
+OS dialogs can't pick files and folders in one shot. To import a whole directory,
+use **Browse folder** on the Files pane or **drag a folder** onto the asset
+browser — both expand through the same detector, **preserve the source folder
+tree** under the destination (including the selected folder's name), and land
+in the batch queue. Drag-and-drop of individual files still works too (flat into
+the target).
 
 It's a **two-pane dialog**: a left sidebar lists the sections and a right pane
 shows the active one, so the modal stays a fixed size instead of scrolling
@@ -141,9 +147,9 @@ through every option at once. The modal always opens on **Files**, and its title
 tracks the queue's kind (*Import 3D Models* / *Import Images* / … / the generic
 *Import Assets* for an empty or mixed queue).
 
-- **Files** — a drag-and-drop card (a **Browse files** button re-opens the
-  picker) above the queued-file list. Each row's icon reflects the file's kind.
-  The sidebar's Files row carries a count badge of how many files are queued.
+- **Files** — a drag-and-drop card (**Browse files** / **Browse folder**) above
+  the queued-file list. Each row's icon reflects the file's kind. The sidebar's
+  Files row carries a count badge of how many files are queued.
 - **Settings** — scale, up-axis, **Flip UVs** and **Generate normals** as
   label-left / control-right rows, fed into `ImportSettings`. *Model-only: the
   nav row hides when the queue has no model.*

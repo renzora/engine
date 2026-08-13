@@ -66,7 +66,7 @@ fn collect_dropped_files(
 ) {
     use bevy::window::FileDragAndDrop;
 
-    let mut dropped: Vec<std::path::PathBuf> = Vec::new();
+    let mut dropped: Vec<crate::kinds::QueuedAsset> = Vec::new();
     let mut hover_now: Option<bool> = None;
     for ev in events.read() {
         match ev {
@@ -74,9 +74,7 @@ fn collect_dropped_files(
             FileDragAndDrop::HoveredFileCanceled { .. } => hover_now = Some(false),
             FileDragAndDrop::DroppedFile { path_buf, .. } => {
                 hover_now = Some(false);
-                if crate::kinds::is_importable(path_buf) {
-                    dropped.push(path_buf.clone());
-                }
+                dropped.extend(crate::kinds::expand_importables(path_buf));
             }
         }
     }
@@ -108,14 +106,18 @@ fn collect_dropped_files(
     }
 
     let was_empty = state.pending_files.is_empty();
-    for path in &dropped {
-        if !state.pending_files.contains(path) {
-            state.pending_files.push(path.clone());
+    for asset in dropped {
+        if !state.pending_files.iter().any(|q| q.path == asset.path) {
+            state.pending_files.push(asset);
         }
     }
     // Auto-detect unit scale from the first file.
     if was_empty && state.settings.scale == 1.0 {
-        if let Some(scale) = renzora_import::units::detect_unit_scale(&dropped[0]) {
+        if let Some(scale) = state
+            .pending_files
+            .first()
+            .and_then(|q| renzora_import::units::detect_unit_scale(&q.path))
+        {
             state.settings.scale = scale;
         }
     }
@@ -149,12 +151,9 @@ fn import_orchestrate_system(world: &mut World) {
             world.resource_mut::<overlay::ImportOverlayState>().target_directory =
                 target.0.clone();
         }
-        // New workflow: an explicit Import click opens the **OS file picker
-        // first**, then shows the overlay pre-loaded with the chosen files —
-        // rather than opening an empty overlay the user then has to Browse from.
-        // The picker is filtered to every importable kind (models + copyable
-        // assets). If the user cancels but files are already queued (e.g. from a
-        // prior drop), we still surface the overlay so those aren't stranded.
+        // Explicit Import opens the OS file picker first, then the overlay
+        // pre-loaded with the chosen files. Cancel with an empty queue leaves
+        // the overlay closed (Browse folder / drops can still fill it later).
         let picked = native::pick_and_queue_files(world);
         let has_pending = !world
             .resource::<overlay::ImportOverlayState>()
