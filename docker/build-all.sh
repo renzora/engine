@@ -27,7 +27,7 @@
 #   macos        macOS x86_64 + arm64 (osxcross)
 #   macos-x64    macOS x86_64 only
 #   macos-arm64  macOS arm64 only
-#   wasm         WASM runtime + best-effort editor
+#   wasm         WASM game runtime (no editor — see build_wasm)
 #   android      Android arm64 + x86_64
 #   android-arm64
 #   android-x86
@@ -128,6 +128,16 @@ array_contains() {
 # build drops `--workspace` (build the binary's dep tree only) so
 # editor crates never enter the build graph.
 
+# ── Helper: copy one executable into the staged tree ────────────────────────
+# Usage: stage_bin <src> <dest>. Returns non-zero (without copying) if <src>
+# isn't there, so callers can decide whether a missing binary is fatal.
+stage_bin() {
+    [ -f "$1" ] || return 1
+    cp "$1" "$2"
+    chmod +x "$2" 2>/dev/null || true
+    return 0
+}
+
 # ── Helper: copy shared libraries for a platform ────────────────────────────
 # Usage: copy_shared_libs <target-dir> <output-dir> <lib-ext>
 copy_shared_libs() {
@@ -158,10 +168,14 @@ copy_shared_libs() {
     # NOTE: `renzora_postprocess` is no longer here — its framework folded
     # into `renzora` (module `renzora::postprocess`), so it ships inside
     # renzora.{dll,so,dylib} and emits no dylib of its own.
-    # `renzora_editor.$EXT` is the editor BUNDLE cdylib (the removable editor):
-    # present beside the exe → the binary is the editor; delete it → the same
-    # binary is the exported game. The editor *framework* is now an rlib (folded
-    # contract lives in renzora.dll), so it emits no dylib of its own.
+    # NOTE: as of the static-Bevy split, none of these files are produced any
+    # more. `renzora` is `crate-type = ["rlib"]`, `renzora_editor` likewise, and
+    # `bevy/dynamic_linking` is no longer in `renzora_app`'s default features —
+    # so there is no bevy_dylib, no renzora.dll, and no editor bundle cdylib. The
+    # removable editor is a removable *executable* now (`renzora-editor`, staged
+    # in build_desktop). The loop is kept only so a stale dylib left in a warm
+    # cargo cache from before the change still lands beside the exe rather than
+    # being swept into plugins/ below.
     for f in \
         "$SRC/librenzora.$EXT"         "$SRC/renzora.$EXT" \
         "$SRC/librenzora_editor.$EXT"  "$SRC/renzora_editor.$EXT"; do
@@ -239,7 +253,7 @@ fixup_macos() {
     [ -z "$RCS" ] && echo "WARN: rcodesign not found; macOS arm64 binaries will have invalid signatures"
 
     local f dep
-    for f in "$OUT/renzora" "$OUT/renzora-runtime" "$OUT"/*.dylib "$OUT"/plugins/*.dylib; do
+    for f in "$OUT/renzora" "$OUT/renzora-editor" "$OUT/renzora-runtime" "$OUT"/*.dylib "$OUT"/plugins/*.dylib; do
         [ -f "$f" ] || continue
         case "$f" in
             *.dylib) "$INT" -id "@rpath/$(basename "$f")" "$f" ;;
@@ -300,21 +314,45 @@ build_desktop() {
     local OUT="$OUTPUT_DIR/$PLATFORM"
     mkdir -p "$OUT"
 
-    # Binary (rename based on feature)
-    case "$FEATURE" in
-        editor)  DEST="renzora" ;;
-        runtime) DEST="renzora-runtime" ;;
-    esac
-
-    if [ "$EXT" = "dll" ]; then
-        [ -f "$SRC/renzora.exe" ] && cp "$SRC/renzora.exe" "$OUT/$DEST.exe"
-    else
-        [ -f "$SRC/renzora" ] && cp "$SRC/renzora" "$OUT/$DEST"
-        chmod +x "$OUT/$DEST" 2>/dev/null || true
-    fi
+    # ── The binaries ─────────────────────────────────────────────────────────
+    # There are TWO executables and the editor lane must stage BOTH:
+    #
+    #   renzora         the runtime / shipped game (package `renzora_app`)
+    #   renzora-editor  the editor              (package `renzora_editor_app`)
+    #
+    # This used to copy `renzora` alone and call it the editor, which was right
+    # only while the editor was a `dlopen`'d cdylib bundle sitting beside one
+    # dual-purpose exe. Static Bevy ended that: a cdylib bundle would link its
+    # own copy of Bevy, hence its own `World` type, so the editor became a
+    # separate binary — and this script never learned. The result was that every
+    # desktop artefact shipped the RUNTIME under the name `renzora` and no editor
+    # at all, while `cargo build --workspace` had happily compiled one.
+    #
+    # They also have to ship together, not just both exist: external-runtime play
+    # mode launches `<exe_dir>/renzora[.exe]` as a child process
+    # (`renzora_viewport::external_runtime`), so an editor staged on its own
+    # cannot start a game.
+    local SUF=""
+    [ "$EXT" = "dll" ] && SUF=".exe"
 
     local HOST_BIN
-    if [ "$EXT" = "dll" ]; then HOST_BIN="$OUT/$DEST.exe"; else HOST_BIN="$OUT/$DEST"; fi
+    case "$FEATURE" in
+        editor)
+            stage_bin "$SRC/renzora$SUF" "$OUT/renzora$SUF" || true
+            # Warn rather than fail: the tree is still a usable game build, and a
+            # silent omission here is exactly how the artefacts went editor-less
+            # unnoticed. Loud beats absent.
+            stage_bin "$SRC/renzora-editor$SUF" "$OUT/renzora-editor$SUF" \
+                || echo "WARN: renzora-editor$SUF missing from $SRC — staged a runtime-only tree"
+            HOST_BIN="$OUT/renzora$SUF"
+            ;;
+        runtime)
+            # Runtime-only lane: rename so the artefact is self-describing.
+            stage_bin "$SRC/renzora$SUF" "$OUT/renzora-runtime$SUF" || true
+            HOST_BIN="$OUT/renzora-runtime$SUF"
+            ;;
+    esac
+
     copy_shared_libs "$SRC" "$OUT" "$EXT" "$HOST_BIN"
     return 0
 }
@@ -360,8 +398,11 @@ wrap_linux_appimage() {
     local APPDIR="$EDITOR_DIR/Renzora Engine.AppDir"
     rm -rf "$APPDIR"
     mkdir -p "$APPDIR/plugins"
-    # Move all artifacts into the AppDir
+    # Move all artifacts into the AppDir. BOTH executables go in: the AppImage is
+    # the editor, but the editor shells out to `renzora` next to itself for
+    # external-runtime play mode, so shipping only one breaks Play.
     mv "$EDITOR_DIR/renzora" "$APPDIR/renzora"
+    [ -f "$EDITOR_DIR/renzora-editor" ] && mv "$EDITOR_DIR/renzora-editor" "$APPDIR/renzora-editor"
     for f in "$EDITOR_DIR"/*.so; do [ -f "$f" ] && mv "$f" "$APPDIR/"; done
     if [ -d "$EDITOR_DIR/plugins" ]; then
         for f in "$EDITOR_DIR/plugins"/*.so; do [ -f "$f" ] && mv "$f" "$APPDIR/plugins/"; done
@@ -372,6 +413,12 @@ wrap_linux_appimage() {
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE:$HERE/plugins:${LD_LIBRARY_PATH:-}"
+# This AppImage IS the editor, so launch the editor binary. `renzora` beside it
+# is the runtime the editor spawns for Play — falling back to it keeps an
+# editor-less (runtime-only) build launchable rather than silently dead.
+if [ -x "$HERE/renzora-editor" ]; then
+    exec "$HERE/renzora-editor" "$@"
+fi
 exec "$HERE/renzora" "$@"
 APPRUN
     chmod +x "$APPDIR/AppRun"
@@ -380,7 +427,7 @@ APPRUN
 [Desktop Entry]
 Type=Application
 Name=Renzora Engine
-Exec=renzora
+Exec=renzora-editor
 Icon=renzora-engine
 Categories=Development;Graphics;
 Terminal=false
@@ -425,7 +472,10 @@ wrap_macos_app() {
     rm -rf "$APP"
     mkdir -p "$MACOS_DIR/plugins" "$RES_DIR"
 
+    # Both executables move in — the .app is the editor, and the editor spawns
+    # `renzora` from its own directory for external-runtime play mode.
     mv "$OUT/renzora" "$MACOS_DIR/renzora"
+    [ -f "$OUT/renzora-editor" ] && mv "$OUT/renzora-editor" "$MACOS_DIR/renzora-editor"
     local f
     for f in "$OUT"/*.dylib; do [ -f "$f" ] && mv "$f" "$MACOS_DIR/"; done
     if [ -d "$OUT/plugins" ]; then
@@ -449,7 +499,14 @@ open(sys.argv[2], 'wb').write(b'icns' + struct.pack('>I', len(chunk) + 8) + chun
 PY
     fi
 
-    cat > "$APP/Contents/Info.plist" <<'PLIST'
+    # CFBundleExecutable names the EDITOR — double-clicking "Renzora Engine.app"
+    # must open the editor, not the game runtime that ships alongside it for
+    # Play. Falls back to `renzora` so a runtime-only tree still yields a
+    # launchable bundle. (Unquoted heredoc so this interpolates; the plist body
+    # contains no other `$` or backticks.)
+    local MAIN_BIN="renzora"
+    [ -f "$MACOS_DIR/renzora-editor" ] && MAIN_BIN="renzora-editor"
+    cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -457,7 +514,7 @@ PY
     <key>CFBundleName</key>            <string>Renzora Engine</string>
     <key>CFBundleDisplayName</key>     <string>Renzora Engine</string>
     <key>CFBundleIdentifier</key>      <string>org.renzora.engine</string>
-    <key>CFBundleExecutable</key>      <string>renzora</string>
+    <key>CFBundleExecutable</key>      <string>$MAIN_BIN</string>
     <key>CFBundleIconFile</key>        <string>renzora</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleVersion</key>         <string>0.2.0</string>
@@ -535,10 +592,15 @@ build_wasm() {
         fi
     fi
 
-    # Editor-on-web was removed with Operation Merge: there is no compile-time
-    # `editor` feature anymore, and the editor now ships as a desktop dlopen
-    # bundle (`renzora_editor`) which has no wasm equivalent. The web
-    # lane builds the game runtime only (above).
+    # No editor on the web. The reason has changed since this comment was first
+    # written — it is no longer "the editor is a dlopen bundle and wasm has no
+    # dlopen": the editor is a separate statically-linked executable
+    # (`renzora_editor_app`) now, so nothing about its shape rules wasm out.
+    # What rules it out is that it has never been built or run for wasm, and the
+    # desktop-only crates it pulls (native file dialogs, the PTY terminal panel,
+    # process-spawning play mode, threaded asset import) would each need a web
+    # path first. Editor-on-web is a project, not a flag — until someone takes it
+    # on, this lane deliberately ships the game runtime only.
     return 0
 }
 

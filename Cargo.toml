@@ -410,10 +410,20 @@ renzora_postprocess = { path = "crates/renzora_postprocess" }
 toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
-# WASM support: getrandom needs JS backend on wasm32 targets
+# WASM support: getrandom needs JS backend on wasm32 targets.
+# getrandom has no default backend for wasm32-unknown-unknown — it `compile_error!`s
+# unless the JS backend feature is on. Nothing here calls getrandom directly; these
+# are feature-unification handles, one per major version present in the graph, so
+# whichever transitive dep pulls a given major gets a backend. All three majors are
+# live at once: 0.2 and 0.3 from older corners of bevy/wgpu's tree, and 0.4 via
+# `rand` 0.10 (bevy_math) and `uuid` 1.23. The 0.4 handle is the one that was
+# missing, and its absence is what broke the CI wasm lane — nothing in the tree
+# changed shape, a dependency simply crossed a major boundary. Expect to add a
+# 0.5 line here the next time one does.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
 wasm-bindgen = "0.2.108"
 
 [build-dependencies]

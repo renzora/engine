@@ -293,8 +293,15 @@ profiling build that re-adds `trace_tracy`.
   plugins. The lean pattern is `renzora_<name>` (runtime, in the binary) +
   `renzora_<name>/editor/` (`renzora_<name>_editor`, linked only by the editor
   bundle).
-- **The editor is a removable `cdylib` bundle** (`renzora_editor`) loaded once
-  from beside the exe via `load_bundle`. Present → editor mode; absent → game.
+- **The editor is a separate executable**, not a loadable bundle. `renzora`
+  (package `renzora_app`) is the runtime / shipped game; `renzora-editor`
+  (package `renzora_editor_app`) is the editor, which statically links
+  `renzora_editor` as an `rlib`. It stopped being a `dlopen`'d `cdylib` when Bevy
+  went static — a cdylib linking static Bevy would carry a *second* copy of Bevy,
+  and therefore a second `World` type. "Remove the editor" is now "ship only the
+  other file". Both must be staged **together**: external-runtime play mode
+  spawns `<exe_dir>/renzora[.exe]` as a child process
+  (`renzora_viewport::external_runtime`).
 - **Building also builds the runtime** by design — an editor build always
   produces the runtime too. Don't propose editor-only scoping of a build.
 
