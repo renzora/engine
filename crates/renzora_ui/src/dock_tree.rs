@@ -421,3 +421,361 @@ pub fn delete_saved_workspace() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `Hierarchy | (Viewport / Console) | Inspector`, the shape most editor
+    /// interactions actually operate on.
+    fn tree() -> DockTree {
+        DockTree::horizontal(
+            DockTree::leaf("hierarchy"),
+            DockTree::horizontal(
+                DockTree::vertical(DockTree::leaf("viewport"), DockTree::leaf("console"), 0.7),
+                DockTree::leaf("inspector"),
+                0.8,
+            ),
+            0.15,
+        )
+    }
+
+    fn tabs_of(tree: &DockTree, panel: &str) -> Vec<String> {
+        fn find(tree: &DockTree, panel: &str) -> Option<Vec<String>> {
+            match tree {
+                DockTree::Split { first, second, .. } => {
+                    find(first, panel).or_else(|| find(second, panel))
+                }
+                DockTree::Leaf { tabs, .. } if tabs.iter().any(|t| t == panel) => {
+                    Some(tabs.clone())
+                }
+                _ => None,
+            }
+        }
+        find(tree, panel).unwrap_or_default()
+    }
+
+    // ── construction ─────────────────────────────────────────────────────────
+
+    /// A ratio outside 0.1..0.9 leaves a pane too small to grab the resize grip
+    /// of — effectively lost, with no way back short of resetting the layout.
+    #[test]
+    fn split_ratios_are_clamped_to_a_grabbable_range() {
+        for bad in [-5.0f32, 0.0, 0.05, 0.95, 1.0, 42.0] {
+            for tree in [
+                DockTree::horizontal(DockTree::leaf("a"), DockTree::leaf("b"), bad),
+                DockTree::vertical(DockTree::leaf("a"), DockTree::leaf("b"), bad),
+            ] {
+                let DockTree::Split { ratio, .. } = tree else { panic!("not a split") };
+                assert!((0.1..=0.9).contains(&ratio), "{bad} became {ratio}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_leaf_starts_on_its_only_tab() {
+        let DockTree::Leaf { tabs, active_tab } = DockTree::leaf("viewport") else {
+            panic!("not a leaf");
+        };
+        assert_eq!(tabs, vec!["viewport"]);
+        assert_eq!(active_tab, 0);
+    }
+
+    // ── queries ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn containment_reaches_every_depth() {
+        let t = tree();
+        for panel in ["hierarchy", "viewport", "console", "inspector"] {
+            assert!(t.contains_panel(panel), "{panel} not found");
+        }
+        assert!(!t.contains_panel("nope"));
+        assert!(!DockTree::Empty.contains_panel("anything"));
+    }
+
+    /// `contains_panel` and `is_active_tab` answer different questions, and
+    /// conflating them is why a background tab can be told to render: a panel can
+    /// be present in the layout while another tab in its leaf is the one on
+    /// screen.
+    #[test]
+    fn a_background_tab_is_present_but_not_active() {
+        let mut t = tree();
+        t.add_tab("viewport", "game".to_string());
+
+        assert!(t.contains_panel("viewport"));
+        assert!(t.contains_panel("game"));
+        assert!(t.is_active_tab("game"), "the newly added tab should be shown");
+        assert!(!t.is_active_tab("viewport"), "viewport is now behind `game`");
+    }
+
+    #[test]
+    fn all_panels_lists_the_tree_in_traversal_order() {
+        assert_eq!(
+            tree().all_panels(),
+            vec!["hierarchy", "viewport", "console", "inspector"]
+        );
+        assert!(DockTree::Empty.all_panels().is_empty());
+    }
+
+    // ── adding tabs ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn adding_a_tab_appends_it_and_brings_it_to_the_front() {
+        let mut t = tree();
+        assert!(t.add_tab("console", "output".to_string()));
+        assert_eq!(tabs_of(&t, "console"), vec!["console", "output"]);
+        assert!(t.is_active_tab("output"));
+    }
+
+    #[test]
+    fn adding_a_tab_at_an_index_inserts_there() {
+        let mut t = tree();
+        t.add_tab("console", "output".to_string());
+        assert!(t.add_tab_at("console", "problems".to_string(), 1));
+        assert_eq!(tabs_of(&t, "console"), vec!["console", "problems", "output"]);
+        assert!(t.is_active_tab("problems"));
+    }
+
+    /// A drop past the end of the strip is what a drag released in empty space
+    /// to the right produces — it must clamp rather than panic on insert.
+    #[test]
+    fn an_out_of_range_insert_index_clamps_to_the_end() {
+        let mut t = tree();
+        assert!(t.add_tab_at("console", "output".to_string(), 999));
+        assert_eq!(tabs_of(&t, "console"), vec!["console", "output"]);
+    }
+
+    #[test]
+    fn adding_next_to_an_unknown_panel_does_nothing() {
+        let mut t = tree();
+        assert!(!t.add_tab("nope", "x".to_string()));
+        assert!(!t.add_tab_at("nope", "x".to_string(), 0));
+        assert_eq!(t.all_panels().len(), 4);
+    }
+
+    // ── splitting ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn splitting_places_the_new_panel_on_the_dropped_side() {
+        for (zone, expect_first) in [
+            (DropZone::Left, "new"),
+            (DropZone::Right, "inspector"),
+            (DropZone::Top, "new"),
+            (DropZone::Bottom, "inspector"),
+        ] {
+            let mut t = DockTree::leaf("inspector");
+            assert!(t.split_at("inspector", "new".to_string(), zone));
+            let DockTree::Split { first, .. } = &t else { panic!("{zone:?} did not split") };
+            assert_eq!(first.all_panels(), vec![expect_first], "{zone:?}");
+        }
+    }
+
+    #[test]
+    fn splitting_left_or_right_is_horizontal_and_top_or_bottom_vertical() {
+        for (zone, want) in [
+            (DropZone::Left, SplitDirection::Horizontal),
+            (DropZone::Right, SplitDirection::Horizontal),
+            (DropZone::Top, SplitDirection::Vertical),
+            (DropZone::Bottom, SplitDirection::Vertical),
+        ] {
+            let mut t = DockTree::leaf("a");
+            t.split_at("a", "b".to_string(), zone);
+            let DockTree::Split { direction, .. } = &t else { panic!() };
+            assert_eq!(*direction, want, "{zone:?}");
+        }
+    }
+
+    /// Center and Tab mean "become a tab here", not "split". If `split_at`
+    /// accepted them it would silently produce a split for a drop the user
+    /// intended as a tab — and the early return must leave the leaf intact
+    /// rather than the `Empty` it was temporarily swapped for.
+    #[test]
+    fn a_center_or_tab_drop_is_refused_without_damaging_the_leaf() {
+        for zone in [DropZone::Center, DropZone::Tab(0)] {
+            let mut t = tree();
+            assert!(!t.split_at("inspector", "new".to_string(), zone), "{zone:?}");
+            assert!(t.contains_panel("inspector"), "{zone:?} destroyed the leaf");
+            assert!(!t.contains_panel("new"));
+            assert_eq!(t.all_panels().len(), 4, "{zone:?}");
+        }
+    }
+
+    #[test]
+    fn splitting_an_unknown_panel_does_nothing() {
+        let mut t = tree();
+        assert!(!t.split_at("nope", "new".to_string(), DropZone::Left));
+        assert_eq!(t.all_panels().len(), 4);
+    }
+
+    // ── removing, and the collapse that follows ──────────────────────────────
+
+    #[test]
+    fn removing_a_tab_leaves_its_siblings() {
+        let mut t = tree();
+        t.add_tab("console", "output".to_string());
+        assert!(t.remove_panel("output"));
+        assert_eq!(tabs_of(&t, "console"), vec!["console"]);
+    }
+
+    /// Removing the tab that was on screen must leave a valid selection. An
+    /// `active_tab` past the end is an out-of-bounds index into the strip.
+    #[test]
+    fn removing_the_active_tab_reselects_within_bounds() {
+        let mut t = tree();
+        t.add_tab("console", "output".to_string());
+        assert!(t.is_active_tab("output"));
+
+        t.remove_panel("output");
+
+        let mut probe = t.clone();
+        let leaf = probe.find_leaf_mut("console").expect("console leaf missing").clone();
+        let DockTree::Leaf { tabs, active_tab } = leaf else {
+            panic!("expected a leaf")
+        };
+        assert!(active_tab < tabs.len(), "active_tab {active_tab} is out of bounds");
+        assert!(t.is_active_tab("console"));
+    }
+
+    /// Emptying a leaf must collapse its parent split, promoting the sibling.
+    /// Leaving the split in place is what produces a dead region the layout
+    /// still reserves space for.
+    #[test]
+    fn emptying_a_leaf_collapses_its_parent_split() {
+        let mut t = tree();
+        assert!(t.remove_panel("console"));
+
+        assert!(!t.contains_panel("console"));
+        assert_eq!(t.all_panels(), vec!["hierarchy", "viewport", "inspector"]);
+
+        // The viewport/console vertical split should be gone, leaving the
+        // viewport leaf directly in its place.
+        let DockTree::Split { second, .. } = &t else { panic!() };
+        let DockTree::Split { first, .. } = second.as_ref() else { panic!() };
+        assert!(
+            matches!(first.as_ref(), DockTree::Leaf { .. }),
+            "the split should have collapsed to a leaf"
+        );
+    }
+
+    /// Closing the last panel has to leave `Empty`, which is what renders the
+    /// empty-workspace prompt. A zero-tab `Leaf` would render a blank tab strip
+    /// instead, with no way to open anything.
+    #[test]
+    fn removing_the_last_panel_collapses_the_tree_to_empty() {
+        let mut t = DockTree::leaf("only");
+        assert!(t.remove_panel("only"));
+        assert!(matches!(t, DockTree::Empty));
+    }
+
+    #[test]
+    fn cascading_removal_collapses_all_the_way_down() {
+        let mut t = tree();
+        for panel in ["hierarchy", "viewport", "console", "inspector"] {
+            t.remove_panel(panel);
+        }
+        assert!(matches!(t, DockTree::Empty), "got {t:?}");
+        assert!(t.all_panels().is_empty());
+    }
+
+    #[test]
+    fn removing_an_unknown_panel_reports_no_change() {
+        let mut t = tree();
+        assert!(!t.remove_panel("nope"));
+        assert_eq!(t.all_panels().len(), 4);
+    }
+
+    // ── focus / reorder / ratios ─────────────────────────────────────────────
+
+    #[test]
+    fn focusing_an_open_panel_brings_it_forward_without_duplicating_it() {
+        let mut t = tree();
+        t.add_tab("console", "output".to_string());
+        assert!(t.is_active_tab("output"));
+
+        assert!(t.focus_or_add_panel("console"));
+
+        assert!(t.is_active_tab("console"));
+        assert_eq!(tabs_of(&t, "console"), vec!["console", "output"], "duplicated");
+    }
+
+    #[test]
+    fn focusing_a_closed_panel_adds_it() {
+        let mut t = tree();
+        assert!(t.focus_or_add_panel("profiler"));
+        assert!(t.contains_panel("profiler"));
+    }
+
+    #[test]
+    fn reordering_moves_a_tab_and_keeps_it_selected() {
+        let mut t = DockTree::Leaf {
+            tabs: vec!["a".into(), "b".into(), "c".into()],
+            active_tab: 0,
+        };
+        assert!(t.reorder_tab("a", 2));
+        assert_eq!(tabs_of(&t, "a"), vec!["b", "c", "a"]);
+        assert!(t.is_active_tab("a"), "a dragged tab should stay selected");
+    }
+
+    #[test]
+    fn reordering_past_the_end_clamps() {
+        let mut t = DockTree::Leaf {
+            tabs: vec!["a".into(), "b".into()],
+            active_tab: 0,
+        };
+        assert!(t.reorder_tab("a", 99));
+        assert_eq!(tabs_of(&t, "a"), vec!["b", "a"]);
+    }
+
+    #[test]
+    fn a_ratio_can_be_updated_by_path_and_is_clamped() {
+        let mut t = tree();
+        t.update_ratio(&[], 0.42);
+        let DockTree::Split { ratio, .. } = &t else { panic!() };
+        assert!((ratio - 0.42).abs() < 1e-6);
+
+        t.update_ratio(&[], 5.0);
+        let DockTree::Split { ratio, .. } = &t else { panic!() };
+        assert!((0.1..=0.9).contains(ratio), "{ratio}");
+    }
+
+    #[test]
+    fn a_ratio_path_selects_the_right_child() {
+        let mut t = tree();
+        t.update_ratio(&[true], 0.3); // the second child's split
+        let DockTree::Split { second, .. } = &t else { panic!() };
+        let DockTree::Split { ratio, .. } = second.as_ref() else { panic!() };
+        assert!((ratio - 0.3).abs() < 1e-6);
+    }
+
+    /// A path that runs off the end of the tree happens whenever a drag is still
+    /// in flight while the layout changes underneath it.
+    #[test]
+    fn a_ratio_path_into_nothing_is_ignored() {
+        let mut t = DockTree::leaf("a");
+        t.update_ratio(&[true, false, true], 0.5);
+        assert_eq!(t.all_panels(), vec!["a"]);
+    }
+
+    // ── the shipped layouts ──────────────────────────────────────────────────
+
+    /// A duplicate panel id in a shipped layout means the same panel is docked
+    /// twice, and the second copy renders over nothing.
+    #[test]
+    fn the_default_layout_has_no_duplicate_panels() {
+        let panels = default_layout().all_panels();
+        let unique: std::collections::HashSet<&String> = panels.iter().collect();
+        assert_eq!(panels.len(), unique.len(), "duplicates in {panels:?}");
+        assert!(!panels.is_empty());
+    }
+
+    #[test]
+    fn the_default_layout_docks_the_core_panels() {
+        let panels = default_layout().all_panels();
+        for expected in ["viewport", "hierarchy", "inspector"] {
+            assert!(
+                panels.iter().any(|p| p == expected),
+                "{expected} missing from {panels:?}"
+            );
+        }
+    }
+}

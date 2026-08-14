@@ -383,3 +383,172 @@ pub enum DocTabAction {
     /// Add a new scene tab.
     AddNew,
 }
+
+#[cfg(test)]
+mod doc_tab_kind_tests {
+    use super::*;
+
+    /// Every kind, so adding one without extending the tables below fails here
+    /// rather than silently in the editor.
+    const ALL: &[DocTabKind] = &[
+        DocTabKind::Scene,
+        DocTabKind::Material,
+        DocTabKind::Particle,
+        DocTabKind::Blueprint,
+        DocTabKind::Script,
+        DocTabKind::Shader,
+        DocTabKind::Other,
+    ];
+
+    /// These names go into `project.toml`. A change to one silently reopens the
+    /// user's saved tabs as the wrong kind — a material tab comes back as a
+    /// plain scene tab — so the round trip is the contract.
+    #[test]
+    fn every_kind_round_trips_through_its_persisted_name() {
+        for kind in ALL {
+            let name = kind.persist_name();
+            assert_eq!(
+                DocTabKind::from_persist_name(name),
+                *kind,
+                "{name:?} did not round-trip"
+            );
+        }
+    }
+
+    #[test]
+    fn persisted_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for kind in ALL {
+            assert!(
+                seen.insert(kind.persist_name()),
+                "duplicate persist name {:?}",
+                kind.persist_name()
+            );
+        }
+    }
+
+    /// A config written by a newer editor carries kinds this build has never
+    /// heard of. Falling back to `Other` opens them as plain scene-mode tabs
+    /// instead of guessing an asset editor that may not fit the file.
+    #[test]
+    fn an_unknown_persisted_name_falls_back_to_other() {
+        assert_eq!(DocTabKind::from_persist_name("hologram"), DocTabKind::Other);
+        assert_eq!(DocTabKind::from_persist_name("SCENE"), DocTabKind::Other);
+    }
+
+    /// A hand-edited config can omit the key entirely; that has to mean the
+    /// default rather than `Other`, or every such tab loses its scene layout.
+    #[test]
+    fn a_missing_persisted_name_reads_as_a_scene() {
+        assert_eq!(DocTabKind::from_persist_name(""), DocTabKind::Scene);
+        assert_eq!(DocTabKind::from_persist_name(""), DocTabKind::default());
+    }
+
+    /// Asset mode is what drops the hierarchy/outline panels. `Scene` and
+    /// `Other` must stay out of it — `Other` in particular is the fallback for
+    /// unknown kinds, and putting an unknown file into asset mode would hide the
+    /// panels with nothing to replace them.
+    #[test]
+    fn only_real_asset_kinds_enter_asset_mode() {
+        assert!(!DocTabKind::Scene.is_asset());
+        assert!(!DocTabKind::Other.is_asset());
+        for kind in [
+            DocTabKind::Material,
+            DocTabKind::Particle,
+            DocTabKind::Blueprint,
+            DocTabKind::Script,
+            DocTabKind::Shader,
+        ] {
+            assert!(kind.is_asset(), "{kind:?} should be an asset kind");
+        }
+    }
+
+    /// The two layout tables and `is_asset` have to agree: an asset kind that
+    /// has no asset layout would enter asset mode and then find no layout to
+    /// switch to, leaving whatever was on screen before.
+    #[test]
+    fn every_asset_kind_has_an_asset_layout() {
+        for kind in ALL {
+            assert_eq!(
+                kind.asset_layout_name().is_some(),
+                kind.is_asset(),
+                "{kind:?}: is_asset={} but asset_layout_name={:?}",
+                kind.is_asset(),
+                kind.asset_layout_name()
+            );
+        }
+    }
+
+    /// `Other` deliberately has no scene layout — "keep whatever is active" is
+    /// the right answer for a file the editor does not recognise.
+    #[test]
+    fn every_kind_but_other_names_a_scene_layout() {
+        assert_eq!(DocTabKind::Other.layout_name(), None);
+        for kind in ALL.iter().filter(|k| **k != DocTabKind::Other) {
+            assert!(kind.layout_name().is_some(), "{kind:?} has no layout");
+        }
+    }
+
+    /// Two kinds sharing a scene layout would make focusing one tab switch to
+    /// another's workspace.
+    #[test]
+    fn scene_layout_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for kind in ALL {
+            if let Some(name) = kind.layout_name() {
+                assert!(seen.insert(name), "duplicate layout {name:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn every_kind_has_an_icon() {
+        for kind in ALL {
+            assert!(!kind.icon().is_empty(), "{kind:?} has no icon");
+        }
+    }
+
+    // ── the editor-context projection ────────────────────────────────────────
+
+    fn tab(kind: DocTabKind, path: Option<&str>) -> DocumentTab {
+        DocumentTab {
+            id: 1,
+            name: "test".to_string(),
+            scene_path: path.map(|p| p.to_string()),
+            kind,
+            is_modified: false,
+        }
+    }
+
+    /// Scene and `Other` tabs stay in scene mode whatever their path — this is
+    /// the switch that decides whether panels read from a file or from the
+    /// selected entity.
+    #[test]
+    fn scene_and_unknown_tabs_project_to_scene_context() {
+        for kind in [DocTabKind::Scene, DocTabKind::Other] {
+            let ctx = EditorContext::from_tab(&tab(kind, Some("a/b.scene")));
+            assert!(ctx.is_scene(), "{kind:?} should be scene context");
+            assert!(!ctx.is_asset());
+            assert_eq!(ctx.asset_path(), None);
+        }
+    }
+
+    #[test]
+    fn an_asset_tab_carries_its_path_and_kind_into_the_context() {
+        let ctx = EditorContext::from_tab(&tab(DocTabKind::Material, Some("mats/stone.material")));
+        assert!(ctx.is_asset());
+        assert!(!ctx.is_scene());
+        assert_eq!(ctx.asset_path(), Some("mats/stone.material"));
+        assert_eq!(ctx.asset_kind(), Some(DocTabKind::Material));
+    }
+
+    /// An asset tab with no path yet — a freshly created, never-saved material —
+    /// must not claim to be an asset context, because every panel in asset mode
+    /// loads from that path.
+    #[test]
+    fn an_asset_tab_without_a_path_is_not_an_asset_context() {
+        let ctx = EditorContext::from_tab(&tab(DocTabKind::Material, None));
+        assert!(ctx.is_scene(), "a pathless asset tab must fall back to scene mode");
+        assert_eq!(ctx.asset_path(), None);
+    }
+}
