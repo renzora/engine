@@ -1313,6 +1313,37 @@ fn short_name(path: &str) -> String {
         .unwrap_or_else(|| path.to_string())
 }
 
+#[cfg(test)]
+mod short_name_tests {
+    use super::short_name;
+
+    #[test]
+    fn the_directory_is_stripped_for_display() {
+        assert_eq!(short_name("scenes/levels/forest.scene"), "forest.scene");
+        assert_eq!(short_name("forest.scene"), "forest.scene");
+    }
+
+    /// Asset paths are `/`-separated, but this also receives OS paths from the
+    /// open-file dialog on Windows.
+    #[test]
+    fn windows_separators_are_handled_too() {
+        assert_eq!(short_name(r"C:\projects\game\scenes\forest.scene"), "forest.scene");
+    }
+
+    /// A path with no file name still has to render *something* in the loading
+    /// screen — a blank line reads as a hung load.
+    #[test]
+    fn a_path_with_no_file_name_falls_back_to_the_whole_path() {
+        assert_eq!(short_name(""), "");
+        assert_eq!(short_name("scenes/.."), "scenes/..");
+    }
+
+    #[test]
+    fn a_trailing_separator_still_finds_the_last_segment() {
+        assert_eq!(short_name("scenes/levels/"), "levels");
+    }
+}
+
 /// Observer: surface "scene loaded but skipped some component types" as
 /// a warning toast. Fires whenever the lossy scene deserializer in
 /// `renzora_engine::scene_io` had to drop one or more entries to make

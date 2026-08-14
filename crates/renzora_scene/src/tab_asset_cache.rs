@@ -832,3 +832,163 @@ pub fn cache_stats(cache: &TabAssetCache) -> (usize, usize) {
     }
     (tab_count, paths.len())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A placeholder handle.
+    ///
+    /// Deliberately a `Uuid` handle rather than a strong one: nothing here
+    /// exercises Bevy's refcount, only this cache's own bookkeeping about which
+    /// tab claims what and how many claims it holds. Reusing one id across calls
+    /// is fine for that — the counts are of map entries and vec length, not of
+    /// distinct assets.
+    fn gltf_handle() -> Handle<Gltf> {
+        bevy::asset::uuid_handle!("2f9a1c64-1d3e-4a5b-9c8d-0e7f6a5b4c3d")
+    }
+
+    fn untyped(n: usize) -> Vec<UntypedHandle> {
+        (0..n).map(|_| gltf_handle().untyped()).collect()
+    }
+
+    fn breakdown(meshes: usize) -> LivePinBreakdown {
+        LivePinBreakdown { meshes, ..Default::default() }
+    }
+
+    #[test]
+    fn a_fresh_cache_pins_nothing() {
+        let cache = TabAssetCache::default();
+        assert_eq!(cache_stats(&cache), (0, 0));
+        assert!(cache.snapshot_for_diagnostics().is_empty());
+    }
+
+    #[test]
+    fn recording_a_gltf_creates_the_tabs_pin_set() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(1, "models/hero.glb".into(), gltf_handle());
+        assert_eq!(cache_stats(&cache), (1, 1));
+    }
+
+    /// Re-recording the same path must replace rather than accumulate, or a tab
+    /// that reloads the same model repeatedly grows an unbounded pin set — every
+    /// entry a strong handle keeping a GLB resident.
+    #[test]
+    fn recording_the_same_path_twice_does_not_accumulate() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(1, "models/hero.glb".into(), gltf_handle());
+        cache.record_gltf(1, "models/hero.glb".into(), gltf_handle());
+        assert_eq!(cache_stats(&cache), (1, 1));
+        assert_eq!(cache.snapshot_for_diagnostics()[0].gltf_count, 1);
+    }
+
+    /// Two tabs showing the same model each pin it, but it is one distinct
+    /// *path* — the stat is about how much is resident, not how many claims
+    /// exist.
+    #[test]
+    fn the_path_count_is_deduplicated_across_tabs() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(1, "shared.glb".into(), gltf_handle());
+        cache.record_gltf(2, "shared.glb".into(), gltf_handle());
+        cache.record_gltf(2, "only_in_two.glb".into(), gltf_handle());
+        assert_eq!(cache_stats(&cache), (2, 2));
+    }
+
+    /// Closing a tab has to release everything it claimed. A leak here is the
+    /// worst kind: invisible, and it grows with every tab the user opens.
+    #[test]
+    fn dropping_a_tab_releases_all_of_its_pins() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(1, "a.glb".into(), gltf_handle());
+        cache.store_live_with_breakdown(1, untyped(3), breakdown(3));
+        cache.record_gltf(2, "b.glb".into(), gltf_handle());
+
+        cache.drop_tab(1);
+
+        assert_eq!(cache_stats(&cache), (1, 1));
+        let snap = cache.snapshot_for_diagnostics();
+        assert_eq!(snap.len(), 1);
+        assert_eq!(snap[0].tab_id, 2);
+    }
+
+    #[test]
+    fn dropping_an_unknown_tab_is_harmless() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(1, "a.glb".into(), gltf_handle());
+        cache.drop_tab(999);
+        assert_eq!(cache_stats(&cache), (1, 1));
+    }
+
+    /// "New Scene" on an existing tab wipes the live entities but keeps the GLB
+    /// pins, so a subsequent drag-drop of the same model does not re-hit disk.
+    #[test]
+    fn wiping_a_tab_in_place_keeps_its_gltf_pins() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(7, "kept.glb".into(), gltf_handle());
+        cache.store_live_with_breakdown(7, untyped(5), breakdown(5));
+
+        cache.drop_tab_live(7);
+
+        let snap = &cache.snapshot_for_diagnostics()[0];
+        assert_eq!(snap.live_total, 0, "live handles should be released");
+        assert_eq!(snap.gltf_count, 1, "GLB pins should survive a wipe");
+    }
+
+    #[test]
+    fn wiping_a_tab_that_has_no_live_handles_is_harmless() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(7, "kept.glb".into(), gltf_handle());
+        cache.drop_tab_live(7);
+        cache.drop_tab_live(7);
+        assert_eq!(cache.snapshot_for_diagnostics()[0].gltf_count, 1);
+    }
+
+    #[test]
+    fn wiping_an_unknown_tab_does_not_create_one() {
+        let mut cache = TabAssetCache::default();
+        cache.drop_tab_live(42);
+        assert!(cache.snapshot_for_diagnostics().is_empty());
+    }
+
+    /// Re-pinning replaces the previous live set. Appending instead would keep
+    /// handles to entities that no longer exist alive forever.
+    #[test]
+    fn re_pinning_a_tab_replaces_its_live_set() {
+        let mut cache = TabAssetCache::default();
+        cache.store_live_with_breakdown(1, untyped(5), breakdown(5));
+        cache.store_live_with_breakdown(1, untyped(2), breakdown(2));
+
+        let snap = &cache.snapshot_for_diagnostics()[0];
+        assert_eq!(snap.live_total, 2);
+        assert_eq!(snap.breakdown.meshes, 2);
+    }
+
+    /// The panel renders these rows top to bottom; an unordered `HashMap` walk
+    /// would make them jump around every frame.
+    #[test]
+    fn the_diagnostics_snapshot_is_ordered_by_tab_id() {
+        let mut cache = TabAssetCache::default();
+        for id in [30u64, 10, 20] {
+            cache.record_gltf(id, format!("{id}.glb"), gltf_handle());
+        }
+        let ids: Vec<u64> = cache
+            .snapshot_for_diagnostics()
+            .iter()
+            .map(|s| s.tab_id)
+            .collect();
+        assert_eq!(ids, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn the_snapshot_reports_each_tabs_own_counts() {
+        let mut cache = TabAssetCache::default();
+        cache.record_gltf(1, "a.glb".into(), gltf_handle());
+        cache.record_gltf(1, "b.glb".into(), gltf_handle());
+        cache.store_live_with_breakdown(1, untyped(4), breakdown(4));
+        cache.record_gltf(2, "c.glb".into(), gltf_handle());
+
+        let snap = cache.snapshot_for_diagnostics();
+        assert_eq!((snap[0].gltf_count, snap[0].live_total), (2, 4));
+        assert_eq!((snap[1].gltf_count, snap[1].live_total), (1, 0));
+    }
+}

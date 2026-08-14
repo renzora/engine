@@ -3646,3 +3646,173 @@ fn settings_close_click(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    // ── option-label slugs ───────────────────────────────────────────────────
+
+    /// The slug is a translation-table key (`opt.<slug>`), so it has to be
+    /// stable and canonical: two labels differing only in punctuation or case
+    /// must reach the same key, or half the dropdown silently falls back to
+    /// English.
+    #[test]
+    fn slugs_lowercase_and_collapse_separators() {
+        assert_eq!(opt_slug("Screen Space"), "screen_space");
+        assert_eq!(opt_slug("SCREEN SPACE"), "screen_space");
+        assert_eq!(opt_slug("Screen-Space"), "screen_space");
+        assert_eq!(opt_slug("Screen  ---  Space"), "screen_space");
+        assert_eq!(opt_slug("Anti-Aliasing (TAA)"), "anti_aliasing_taa");
+    }
+
+    /// A run of separators at either end must not leave a dangling underscore —
+    /// `opt.screen_space_` and `opt.screen_space` are different keys and only one
+    /// of them is in the table.
+    #[test]
+    fn slugs_have_no_leading_or_trailing_underscore() {
+        for label in ["  Screen Space  ", "(Screen Space)", "- Screen Space -", "Screen Space!"] {
+            let slug = opt_slug(label);
+            assert!(!slug.starts_with('_'), "{label:?} -> {slug:?}");
+            assert!(!slug.ends_with('_'), "{label:?} -> {slug:?}");
+            assert_eq!(slug, "screen_space", "{label:?}");
+        }
+    }
+
+    #[test]
+    fn slugs_keep_digits() {
+        assert_eq!(opt_slug("MSAA 4x"), "msaa_4x");
+        assert_eq!(opt_slug("2048"), "2048");
+    }
+
+    #[test]
+    fn a_label_with_nothing_alphanumeric_slugs_to_nothing() {
+        assert_eq!(opt_slug("---"), "");
+        assert_eq!(opt_slug(""), "");
+    }
+
+    // ── localization fallbacks ───────────────────────────────────────────────
+
+    /// Every one of these must come back non-empty. `t_or` falls back to the
+    /// supplied English, so an empty result means a blank dropdown row or a
+    /// blank sidebar header — which reads as a broken UI rather than as a
+    /// missing translation.
+    #[test]
+    fn localization_never_returns_an_empty_label() {
+        for label in ["None", "Disabled", "Default", "Always", "Screen Space", "Anything Else"] {
+            assert!(!loc_opt(label).is_empty(), "loc_opt({label:?}) was empty");
+        }
+        for group in ["PROJECT", "APPEARANCE", "EDITOR", "CONTROLS", "PLUGINS", "SOMETHING NEW"] {
+            assert!(!tr_group(group).is_empty(), "tr_group({group:?}) was empty");
+        }
+        for cat in ["Project", "Window", "Rendering", "Interface", "Theme", "Unmapped Category"] {
+            assert!(!tr_cat(cat).is_empty(), "tr_cat({cat:?}) was empty");
+        }
+    }
+
+    /// An unmapped group or category passes through verbatim rather than
+    /// becoming a key that does not exist — that is what lets a plugin add a
+    /// sidebar group without also shipping a translation.
+    #[test]
+    fn unmapped_groups_and_categories_pass_through_unchanged() {
+        assert_eq!(tr_group("MY PLUGIN"), "MY PLUGIN");
+        assert_eq!(tr_cat("My Plugin Settings"), "My Plugin Settings");
+    }
+
+    // ── sidebar search ───────────────────────────────────────────────────────
+
+    fn text_input(value: &str) -> EmberTextInput {
+        EmberTextInput {
+            value: value.to_string(),
+            focused: false,
+            text_entity: Entity::PLACEHOLDER,
+            placeholder: String::new(),
+            caret: Entity::PLACEHOLDER,
+            password: false,
+            select_all: false,
+            caret_index: 0,
+            advance: 0.0,
+            offsets: Vec::new(),
+            sel_anchor: None,
+        }
+    }
+
+    /// A sidebar with two groups, one row and one header each.
+    fn sidebar(query: &str) -> (World, Entity, Entity, Entity, Entity) {
+        let mut world = World::new();
+        world.spawn((SettingsSearchBox, text_input(query)));
+
+        let row_theme = world
+            .spawn((
+                SettingsCatRow { group: "APPEARANCE".into(), label: "Theme".into() },
+                Node::default(),
+            ))
+            .id();
+        let row_camera = world
+            .spawn((
+                SettingsCatRow { group: "EDITOR".into(), label: "Camera".into() },
+                Node::default(),
+            ))
+            .id();
+        let head_appearance = world
+            .spawn((SettingsGroupTag("APPEARANCE".into()), Node::default()))
+            .id();
+        let head_editor = world
+            .spawn((SettingsGroupTag("EDITOR".into()), Node::default()))
+            .id();
+
+        world.run_system_once(filter_sidebar).unwrap();
+        (world, row_theme, row_camera, head_appearance, head_editor)
+    }
+
+    fn shown(world: &World, e: Entity) -> bool {
+        world.get::<Node>(e).unwrap().display == Display::Flex
+    }
+
+    #[test]
+    fn an_empty_query_shows_every_row_and_header() {
+        let (w, theme, camera, appearance, editor) = sidebar("");
+        assert!(shown(&w, theme) && shown(&w, camera));
+        assert!(shown(&w, appearance) && shown(&w, editor));
+    }
+
+    #[test]
+    fn a_query_hides_the_rows_that_do_not_match() {
+        let (w, theme, camera, _, _) = sidebar("theme");
+        assert!(shown(&w, theme));
+        assert!(!shown(&w, camera));
+    }
+
+    /// A group header with no visible rows under it is a heading over empty
+    /// space, which reads as a broken filter rather than as "no results".
+    #[test]
+    fn a_group_header_hides_once_all_its_rows_are_filtered_out() {
+        let (w, _, _, appearance, editor) = sidebar("theme");
+        assert!(shown(&w, appearance), "the matching row's group must stay");
+        assert!(!shown(&w, editor), "an empty group's header must hide");
+    }
+
+    /// Matching the group name is what makes typing "editor" list everything
+    /// under EDITOR, not only rows whose own label says "editor".
+    #[test]
+    fn a_query_can_match_the_group_rather_than_the_row() {
+        let (w, theme, camera, _, _) = sidebar("editor");
+        assert!(shown(&w, camera));
+        assert!(!shown(&w, theme));
+    }
+
+    #[test]
+    fn search_ignores_case_and_surrounding_space() {
+        let (w, theme, camera, _, _) = sidebar("  THEME  ");
+        assert!(shown(&w, theme));
+        assert!(!shown(&w, camera));
+    }
+
+    #[test]
+    fn a_query_matching_nothing_hides_everything() {
+        let (w, theme, camera, appearance, editor) = sidebar("zzzz-no-such-setting");
+        assert!(!shown(&w, theme) && !shown(&w, camera));
+        assert!(!shown(&w, appearance) && !shown(&w, editor));
+    }
+}
+
