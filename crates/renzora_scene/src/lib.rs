@@ -1324,10 +1324,26 @@ mod short_name_tests {
     }
 
     /// Asset paths are `/`-separated, but this also receives OS paths from the
-    /// open-file dialog on Windows.
+    /// open-file dialog — which on Windows are backslash-separated.
+    ///
+    /// Windows-only on purpose. `Path::file_name` is platform-aware: `\` is a
+    /// separator on Windows and an ordinary filename character everywhere else,
+    /// so on Linux this same call correctly returns the whole string. Asserting
+    /// it unconditionally is what made this test fail in CI against code that
+    /// was right — the backslash case cannot arise on a platform that does not
+    /// produce backslash paths.
+    #[cfg(windows)]
     #[test]
-    fn windows_separators_are_handled_too() {
+    fn windows_separators_are_handled_on_windows() {
         assert_eq!(short_name(r"C:\projects\game\scenes\forest.scene"), "forest.scene");
+    }
+
+    /// The cross-platform half: a `/`-separated asset path is what the loading
+    /// screen actually sees, and that works everywhere.
+    #[test]
+    fn asset_paths_are_stripped_on_every_platform() {
+        assert_eq!(short_name("scenes/levels/forest.scene"), "forest.scene");
+        assert_eq!(short_name("a/b/c/d/e.glb"), "e.glb");
     }
 
     /// A path with no file name still has to render *something* in the loading

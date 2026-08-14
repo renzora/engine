@@ -231,7 +231,7 @@ renzora::add!(LangPlugin, Runtime, priority = -50);
 mod tests {
     use super::*;
 
-    /// Serializes the tests that assert on `renzora::lang`'s **process-global**
+    /// Serializes the tests that touch `renzora::lang`'s **process-global**
     /// table and revision counter.
     ///
     /// The store is a single `RwLock` shared by the whole binary, and cargo runs
@@ -239,6 +239,15 @@ mod tests {
     /// revision did not move" races any other test that registers a pack. That
     /// is not hypothetical: it is what made the first version of
     /// `the_first_run_emits_a_language_changed` fail depending on scheduling.
+    ///
+    /// **Every test that WRITES to the store must take this lock, not just the
+    /// ones that assert on it.** A half-applied lock is worse than none, because
+    /// it looks correct and fails rarely: the first version of this module left
+    /// `every_embedded_pack_parses` unlocked, and its twenty registrations raced
+    /// `a_quiet_frame_emits_nothing_further` — which passed locally and in CI's
+    /// `test` job, then failed in the coverage job, where the slower
+    /// instrumented build shifted the interleaving.
+    ///
     /// Tests that only read their own `ExternalPacks` state need no lock.
     static LANG: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -253,6 +262,9 @@ mod tests {
     /// falls back to English in a shipped game.
     #[test]
     fn every_embedded_pack_parses() {
+        // Registers twenty packs into the global store — twenty revision bumps
+        // that would race any test asserting the revision holds still.
+        let _guard = lang_lock();
         for (code, src) in EMBEDDED_PACKS {
             assert!(
                 renzora::lang::register_pack_str(src).is_ok(),
@@ -294,6 +306,8 @@ mod tests {
 
     #[test]
     fn a_toml_pack_is_registered_and_its_mtime_recorded() {
+        // Writes to the global store (and reads it back via `has_language`).
+        let _guard = lang_lock();
         let tmp = pack_dir(&[(
             "test-pack.toml",
             "[meta]\nname = \"Scan Test\"\ncode = \"zz-scan\"\n[strings]\nscan_key = \"scanned\"\n",
