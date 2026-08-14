@@ -22,6 +22,7 @@
 pub mod backend;
 pub mod format;
 mod read;
+mod zstd_compat;
 
 pub use backend::{BytesBackend, PakBackend};
 #[cfg(not(target_arch = "wasm32"))]

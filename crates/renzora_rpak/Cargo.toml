@@ -5,7 +5,6 @@ edition = "2021"
 description = "Renzora .rpak asset archive format — zstd-compressed pack files"
 
 [dependencies]
-zstd = "0.13"
 cfg-if = "1"
 toml = "0.8"
 
@@ -13,9 +12,19 @@ toml = "0.8"
 # pure-bytes scenarios go through `BytesBackend` instead.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 memmap2 = "0.9"
+# C libzstd — packs AND unpacks. Not available to the web build: it compiles
+# vendored C through `cc`, and wasm32-unknown-unknown has no libc sysroot for it
+# ('stdlib.h' file not found). See `src/zstd_compat.rs`.
+zstd = "0.13"
 # Parallel per-entry compression during packing. Export is desktop-only; the
 # wasm runtime only reads archives, so rayon stays out of the wasm build.
 rayon = "1"
+
+# Pure-Rust zstd DECODER for the web build (no packing there — `mod pack` is
+# desktop-only). Same version Bevy already pulls for its `zstd_rust` feature, so
+# the wasm binary links one copy either way.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+ruzstd = "0.8"
 
 [lints]
 workspace = true

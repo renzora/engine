@@ -8491,6 +8491,7 @@ dependencies = [
  "cfg-if",
  "memmap2",
  "rayon",
+ "ruzstd",
  "toml 0.8.23",
  "zstd",
 ]

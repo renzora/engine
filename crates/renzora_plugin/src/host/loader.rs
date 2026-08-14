@@ -7,10 +7,66 @@
 //! its own and ignores the rest.
 
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use libloading::{Library, Symbol};
+#[cfg(target_arch = "wasm32")]
+use wasm_dl::{Library, Symbol};
 use crate::static_link::StaticPlugin;
 use crate::sys;
 use std::path::{Path, PathBuf};
+
+/// `libloading`'s shape, for a platform that has no dynamic loading at all.
+///
+/// The web has no `dlopen`, no `LoadLibrary`, and no `plugins/` folder to scan —
+/// a wasm build gets its plugins linked in (`static_link`) or not at all. The
+/// alternative to this shim was `#[cfg]`-ing the whole module out, which would
+/// have meant cfg-ing every caller of [`LoadedPlugins`] across the runtime for a
+/// platform where they all correctly find nothing anyway.
+///
+/// So: opening always fails, `scan_plugins` finds no plugins, and the statically
+/// linked ones are unaffected. `Symbol` can never be constructed (`get` only ever
+/// returns `Err`), which is what makes its `Deref` unreachable rather than wrong.
+#[cfg(target_arch = "wasm32")]
+mod wasm_dl {
+    use std::ffi::OsStr;
+    use std::marker::PhantomData;
+    use std::ops::Deref;
+
+    #[derive(Debug)]
+    pub struct Error;
+
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("dynamic library loading is not available on wasm")
+        }
+    }
+
+    pub struct Library;
+
+    impl Library {
+        /// # Safety
+        /// Never loads anything, so trivially sound; `unsafe` only to match
+        /// `libloading::Library::new`'s signature.
+        pub unsafe fn new<P: AsRef<OsStr>>(_path: P) -> Result<Self, Error> {
+            Err(Error)
+        }
+
+        /// # Safety
+        /// Unreachable — a `Library` cannot be constructed on this target.
+        pub unsafe fn get<T>(&self, _symbol: &[u8]) -> Result<Symbol<T>, Error> {
+            Err(Error)
+        }
+    }
+
+    pub struct Symbol<T>(PhantomData<T>);
+
+    impl<T> Deref for Symbol<T> {
+        type Target = T;
+        fn deref(&self) -> &T {
+            unreachable!("Library::get never returns Ok on wasm")
+        }
+    }
+}
 
 /// One plugin path, across every load of it.
 ///

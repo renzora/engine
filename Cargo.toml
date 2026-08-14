@@ -225,7 +225,10 @@ bevy = { version = "0.19", default-features = false, features = [
     # is correct for a LEAN EXPORT (a shipped game with no such assets) but not for
     # this base build, which is also the editor.
     "bmp", "dds", "exr", "gif", "hdr", "jpeg", "tga",
-    "webp", "zlib", "basis-universal",
+    "webp", "zlib",
+    # `basis-universal` is NOT here — it lives in `renzora_app`'s
+    # `cfg(not(target_arch = "wasm32"))` dependency block, because it cannot
+    # build for the web. See the note there.
     # (audio formats intentionally dropped — decoding lives in the audio plugin)
     # (`compressed_image_saver` + `asset_processor` dropped below — unused.)
     # PBR / rendering detail — the texture-slot features below are all live in the
@@ -254,8 +257,10 @@ bevy = { version = "0.19", default-features = false, features = [
     "bevy_solari",
     # built-in post-process effect stack (vignette, lens distortion, chromatic aberration)
     "bevy_post_process",
-    # clipboard / fonts / ui
-    "system_clipboard", "clipboard_image", "system_font_discovery",
+    # clipboard / fonts / ui — `system_clipboard` and `clipboard_image` are NOT
+    # here; they reach for `arboard`, which is desktop-only. Same wasm exclusion
+    # as `basis-universal` / `file_watcher`; see `renzora_app`'s target block.
+    "system_font_discovery",
     # asset IO / processing
     # DROPPED: `asset_processor` + `compressed_image_saver` (Bevy's offline asset
     # pipeline — Renzora has its own `.rmip` texture pipeline and never enabled
@@ -270,8 +275,8 @@ bevy = { version = "0.19", default-features = false, features = [
     # is retained in `renzora_export` so a game that DOES want URL assets can
     # turn them back on.
     # `file_watcher` KEPT pending a similar check: the theme/shader hot-reload
-    # uses its own mtime polling, so Bevy's watcher may be unused.
-    "file_watcher",
+    # uses its own mtime polling, so Bevy's watcher may be unused. It is NOT
+    # here either — same wasm-only exclusion as `basis-universal` above.
     # NOTE: `trace_tracy` is deliberately NOT enabled. Bevy installs its Tracy
     # tracing layer inside `LogPlugin` at boot whenever that feature is compiled
     # in, with no runtime off-switch — so it would arm Tracy on every launch and
@@ -409,6 +414,32 @@ renzora_static_plugins = { path = "crates/renzora_static_plugins", optional = tr
 renzora_postprocess = { path = "crates/renzora_postprocess" }
 toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+
+# ── Bevy features the web cannot have ────────────────────────────────────────
+# Held here, target-gated, rather than in `[workspace.dependencies].bevy`, so
+# that the wasm lane simply never turns them on. Feature unification still
+# spreads both to every crate's `bevy` dep on desktop — this is a subtraction
+# for ONE target, not an opt-in for the rest, and desktop behaviour is unchanged.
+#
+#   file_watcher     Bevy refuses it outright: `compile_error!("The
+#                    \"file_watcher\" feature for hot reloading does not work on
+#                    Wasm.")`. Nothing is lost — the theme/shader hot-reload uses
+#                    its own mtime polling.
+#   basis-universal  Builds a vendored C++ transcoder through `cc`. Targeting
+#                    wasm32-unknown-unknown there is no libc sysroot, so clang
+#                    dies on `'stdlib.h' file not found`. (Web basis support
+#                    would mean an emscripten target, not a feature flag.)
+#   system_clipboard Pulls `arboard`, which has no web backend — `bevy_clipboard`
+#   clipboard_image  fails to compile without it. Browser clipboard access is an
+#                    async permissions-gated web API; it would be a separate
+#                    implementation, not this feature.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { workspace = true, features = [
+    "file_watcher",
+    "basis-universal",
+    "system_clipboard",
+    "clipboard_image",
+] }
 
 # WASM support: getrandom needs JS backend on wasm32 targets.
 # getrandom has no default backend for wasm32-unknown-unknown — it `compile_error!`s

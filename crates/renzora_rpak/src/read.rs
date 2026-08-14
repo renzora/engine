@@ -86,7 +86,7 @@ impl RpakArchive {
         }
         let idx_raw = backend.read_slice(idx_offset_abs, idx_size)?;
         let idx_decoded: Vec<u8> = if header.index_is_compressed() {
-            zstd::decode_all(idx_raw.as_ref())
+            crate::zstd_compat::decode_all(idx_raw.as_ref())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
         } else {
             idx_raw.to_vec()
@@ -274,7 +274,7 @@ impl RpakArchive {
                 Ok(raw.into_owned())
             }
             Compression::Zstd => {
-                let out = zstd::decode_all(raw.as_ref())
+                let out = crate::zstd_compat::decode_all(raw.as_ref())
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 if out.len() != entry.uncompressed_size as usize {
                     return Err(io::Error::new(
