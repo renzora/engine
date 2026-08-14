@@ -27,7 +27,7 @@
 #   macos        macOS x86_64 + arm64 (osxcross)
 #   macos-x64    macOS x86_64 only
 #   macos-arm64  macOS arm64 only
-#   wasm         WASM game runtime (no editor — see build_wasm)
+#   wasm         WASM game runtime + editor (two bundles under web-wasm32/)
 #   android      Android arm64 + x86_64
 #   android-arm64
 #   android-x86
@@ -574,33 +574,137 @@ lane_desktop_feature() {
 # ── Lane: WASM ───────────────────────────────────────────────────────────────
 # WASM bundles plugins statically (no dlopen). Native plugin crates compile
 # as rlib for wasm — Cargo silently skips their dylib output for this target.
+# wasm-bindgen the built module, then shrink it. Usage:
+#   bindgen_wasm <built .wasm> <out-name>
+#
+# BOTH steps are checked. They used to be bare calls in a lane whose body runs
+# under `set +e` (see `run_lane`), so a wasm-bindgen failure fell through to
+# wasm-opt on a file that wasn't there and the lane still returned 0 — PASS, with
+# a partial tree uploaded. `if-no-files-found: error` only catches a completely
+# empty `dist/`, so a half-built web bundle would have shipped looking fine.
+bindgen_wasm() {
+    local WASM_FILE="$1" OUT_NAME="$2"
+    local OUT="$OUTPUT_DIR/web-wasm32"
+    mkdir -p "$OUT"
+
+    wasm-bindgen --out-dir "$OUT" --out-name "$OUT_NAME" --target web "$WASM_FILE" || {
+        echo "ERROR: wasm-bindgen failed for $OUT_NAME"
+        return 1
+    }
+
+    # -Oz on a 150–200 MB module is measured in minutes and is the single
+    # biggest cost in this lane — it is also what takes the bundle from hundreds
+    # of MB to tens, so it stays.
+    if command -v wasm-opt &>/dev/null; then
+        wasm-opt -Oz \
+            --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
+            --enable-mutable-globals --enable-reference-types --enable-multivalue \
+            "$OUT/${OUT_NAME}_bg.wasm" -o "$OUT/${OUT_NAME}_bg.wasm" || {
+            echo "ERROR: wasm-opt failed for $OUT_NAME"
+            return 1
+        }
+    else
+        echo "WARN: wasm-opt not found — $OUT_NAME ships unoptimized (hundreds of MB)"
+    fi
+    return 0
+}
+
 build_wasm() {
     echo "=== Building WASM Runtime ==="
     cargo build --profile dist -p renzora_app --no-default-features --features wasm \
         --target wasm32-unknown-unknown --target-dir target/wasm || return 1
     local WASM_FILE
     WASM_FILE=$(find target/wasm/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
-    if [ -n "$WASM_FILE" ]; then
-        mkdir -p "$OUTPUT_DIR/web-wasm32"
-        wasm-bindgen --out-dir "$OUTPUT_DIR/web-wasm32" --out-name renzora-runtime --target web "$WASM_FILE"
-        if command -v wasm-opt &>/dev/null; then
-            wasm-opt -Oz \
-                --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
-                --enable-mutable-globals --enable-reference-types --enable-multivalue \
-                "$OUTPUT_DIR/web-wasm32/renzora-runtime_bg.wasm" \
-                -o "$OUTPUT_DIR/web-wasm32/renzora-runtime_bg.wasm"
-        fi
+    if [ -z "$WASM_FILE" ]; then
+        echo "ERROR: renzora.wasm not produced"
+        return 1
     fi
+    bindgen_wasm "$WASM_FILE" renzora-runtime || return 1
 
-    # No editor on the web. The reason has changed since this comment was first
-    # written — it is no longer "the editor is a dlopen bundle and wasm has no
-    # dlopen": the editor is a separate statically-linked executable
-    # (`renzora_editor_app`) now, so nothing about its shape rules wasm out.
-    # What rules it out is that it has never been built or run for wasm, and the
-    # desktop-only crates it pulls (native file dialogs, the PTY terminal panel,
-    # process-spawning play mode, threaded asset import) would each need a web
-    # path first. Editor-on-web is a project, not a flag — until someone takes it
-    # on, this lane deliberately ships the game runtime only.
+    # ── The editor ───────────────────────────────────────────────────────────
+    # A SEPARATE target dir, deliberately. `renzora_app --features wasm` resolves
+    # `renzora` WITHOUT its `editor` feature and `renzora_editor_app` resolves it
+    # WITH — different feature sets, different `-C metadata`, so sharing one dir
+    # would make each build evict ~86 shared packages the other just compiled.
+    # Two dirs cost disk (the job's "Free disk space" step is why there is any);
+    # one dir would cost a full extra recompile on every run.
+    #
+    # This is a COMPILE target, not yet a usable product: the web editor has no
+    # way to open a project until the filesystem shim lands (a browser cannot
+    # reach a local folder synchronously — `showDirectoryPicker` is async-only,
+    # and `createSyncAccessHandle` is OPFS + Worker only). Play mode does work:
+    # the in-viewport path needs no subprocess, and the Window/VR targets that
+    # would need one are hidden on wasm.
+    echo "=== Building WASM Editor ==="
+    cargo build --profile dist -p renzora_editor_app --bin renzora-editor \
+        --target wasm32-unknown-unknown --target-dir target/wasm-editor || return 1
+    local EDITOR_WASM
+    EDITOR_WASM=$(find target/wasm-editor/wasm32-unknown-unknown/dist -name "renzora-editor.wasm" 2>/dev/null | head -1)
+    if [ -z "$EDITOR_WASM" ]; then
+        echo "ERROR: renzora-editor.wasm not produced"
+        return 1
+    fi
+    bindgen_wasm "$EDITOR_WASM" renzora-editor || return 1
+
+    write_web_shell || return 1
+    return 0
+}
+
+# Minimal host pages for the two web bundles. wasm-bindgen emits the JS glue and
+# the module but no page to load them from, so without this the artifact is a
+# pile of files with no entry point.
+#
+# The canvas id matches what bevy_winit looks for on wasm; without an explicit
+# canvas Bevy creates its own and the CSS below never applies, which shows up as
+# a viewport that ignores the window size.
+write_web_shell() {
+    local OUT="$OUTPUT_DIR/web-wasm32"
+    [ -d "$OUT" ] || return 0
+    local name title
+    for name in renzora-runtime renzora-editor; do
+        [ -f "$OUT/$name.js" ] || continue
+        case "$name" in
+            renzora-editor) title="Renzora Editor" ;;
+            *)              title="Renzora" ;;
+        esac
+        cat > "$OUT/$name.html" <<HTML
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$title</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14151a; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  #boot { position: fixed; inset: 0; display: grid; place-items: center;
+          font: 14px system-ui, sans-serif; color: #8a8f98; }
+</style>
+</head>
+<body>
+<div id="boot">Loading $title…</div>
+<canvas id="bevy"></canvas>
+<script type="module">
+  import init from './$name.js';
+  // WebGPU only — the engine's wasm build enables bevy's \`webgpu\` feature, so
+  // there is no WebGL fallback to degrade to. Say so plainly rather than
+  // failing somewhere deep in adapter selection.
+  if (!navigator.gpu) {
+    document.getElementById('boot').textContent =
+      'This build needs WebGPU. Try Chrome or Edge 113+.';
+  } else {
+    init()
+      .then(() => document.getElementById('boot').remove())
+      .catch(e => {
+        document.getElementById('boot').textContent = 'Failed to start: ' + e;
+        console.error(e);
+      });
+  }
+</script>
+</body>
+</html>
+HTML
+    done
     return 0
 }
 

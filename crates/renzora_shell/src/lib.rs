@@ -938,29 +938,39 @@ fn build_play_target_caret(commands: &mut Commands, font: &bevy::text::FontSourc
         ))
         .id();
 
-    let mut rows = Vec::new();
-    for (choice, icon_name, label) in [
-        (
-            PlayLaunchChoice::Viewport,
-            "frame-corners",
-            renzora::lang::t_or("shell.play_target.viewport", "Viewport"),
-        ),
-        (
+    // Window and VR are the two targets that need something outside this
+    // process: Window spawns `<exe_dir>/renzora` as a child process (see
+    // `renzora_viewport::external_runtime`) and VR needs an OpenXR device. A
+    // browser tab has neither, so the web editor doesn't offer them.
+    //
+    // Viewport and Simulate both run in-process and work unchanged — which is
+    // the whole reason play mode needed no porting for the web build.
+    let mut choices = vec![(
+        PlayLaunchChoice::Viewport,
+        "frame-corners",
+        renzora::lang::t_or("shell.play_target.viewport", "Viewport"),
+    )];
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        choices.push((
             PlayLaunchChoice::Window,
             "app-window",
             renzora::lang::t_or("shell.play_target.runtime_window", "Window"),
-        ),
-        (
+        ));
+        choices.push((
             PlayLaunchChoice::Vr,
             "virtual-reality",
             renzora::lang::t_or("shell.play_target.vr", "VR Headset"),
-        ),
-        (
-            PlayLaunchChoice::Simulate,
-            "flask",
-            renzora::lang::t_or("common.simulate", "Simulate"),
-        ),
-    ] {
+        ));
+    }
+    choices.push((
+        PlayLaunchChoice::Simulate,
+        "flask",
+        renzora::lang::t_or("common.simulate", "Simulate"),
+    ));
+
+    let mut rows = Vec::new();
+    for (choice, icon_name, label) in choices {
         let row = commands
             .spawn((
                 Node {
