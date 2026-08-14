@@ -69,3 +69,29 @@ impl Plugin for CrtPlugin {
 }
 
 renzora_plugin::add!(CrtPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Rust struct and the shader must agree byte for byte. Nothing enforces
+    /// it at run time — the host copies these bytes straight into the uniform
+    /// buffer and the shader reads them back by offset — so a mismatch is a
+    /// wrong picture, not an error.
+    #[test]
+    fn the_uniform_matches_the_shader() {
+        renzora_plugin::uniform_check::assert_uniform_matches::<Crt>(WGSL, "CrtSettings");
+    }
+
+    /// A default outside its own declared range is silently clamped the first
+    /// time the user touches the slider, which changes the effect without them
+    /// asking.
+    #[test]
+    fn defaults_sit_inside_their_declared_ranges() {
+        let d = Crt::default();
+        assert!((0.0..=2.0).contains(&d.scanline_intensity));
+        assert!((0.0..=1.0).contains(&d.curvature));
+        assert!((0.0..=0.1).contains(&d.chromatic_amount));
+        assert!((0.0..=2.0).contains(&d.vignette_amount));
+    }
+}

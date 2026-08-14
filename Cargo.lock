@@ -8908,6 +8908,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_physics",
+ "renzora_test_harness",
  "serde",
 ]
 

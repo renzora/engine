@@ -50,3 +50,18 @@ impl Plugin for DistortionPlugin {
 }
 
 renzora_plugin::add!(DistortionPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Rust struct and the shader must agree byte for byte. Nothing enforces
+    /// it at run time — the host copies these bytes straight into the uniform
+    /// buffer and the shader reads them back by offset — so a mismatch is not an
+    /// error, it is a wrong picture: every field from the mismatch onward reads
+    /// its neighbour's value.
+    #[test]
+    fn the_uniform_matches_the_shader() {
+        renzora_plugin::uniform_check::assert_uniform_matches::<Distortion>(WGSL, "DistortionSettings");
+    }
+}

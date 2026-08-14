@@ -99,6 +99,17 @@ pub mod ecs;
 pub mod static_link;
 pub mod sys;
 
+/// Cross-checks a post-process component's `#[repr(C)]` layout against the WGSL
+/// uniform block it is uploaded into — the one defect in a near-identical set of
+/// ~59 effect plugins that produces a wrong picture rather than an error.
+///
+/// Not part of the ABI: nothing here appears in [`sys::Interface`], so adding it
+/// moves no version and no prefix hash. Compiled unconditionally (rather than
+/// behind a `cfg(test)`) because a plugin's test binary is a *different* crate
+/// from this one — a `cfg(test)` module here would be invisible to every plugin
+/// that wants to call it.
+pub mod uniform_check;
+
 /// The byte codec every encoded boundary payload is written with.
 ///
 /// Not behind a feature: it is shared by [`script`] and [`audio`], and the

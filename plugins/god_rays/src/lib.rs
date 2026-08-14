@@ -27,6 +27,13 @@ pub struct GodRays {
     pub decay: f32,
     #[field(min = 0.0, max = 2.0, speed = 0.01)]
     pub density: f32,
+    /// Ray-march step count. Not inspectable — `FieldKind` has no `u32` — but it
+    /// MUST sit here, between `density` and `light_pos_x`, because that is where
+    /// the uniform block has it. While it was missing, the shader read the light
+    /// position as the sample count and `light_pos_y` as `light_pos_x`, so the
+    /// rays streamed from the wrong place.
+    #[field(skip)]
+    pub num_samples: u32,
     #[field(min = -1.0, max = 2.0, speed = 0.01)]
     pub light_pos_x: f32,
     #[field(min = -1.0, max = 2.0, speed = 0.01)]
@@ -39,6 +46,8 @@ impl Default for GodRays {
             intensity: 0.5,
             decay: 0.97,
             density: 1.0,
+            // The shader clamps to 128; 64 is the usual god-rays step count.
+            num_samples: 64,
             light_pos_x: 0.5,
             light_pos_y: 0.3,
         }
@@ -54,3 +63,18 @@ impl Plugin for GodRaysPlugin {
 }
 
 renzora_plugin::add!(GodRaysPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Rust struct and the shader must agree byte for byte. Nothing enforces
+    /// it at run time — the host copies these bytes straight into the uniform
+    /// buffer and the shader reads them back by offset — so a mismatch is not an
+    /// error, it is a wrong picture: every field from the mismatch onward reads
+    /// its neighbour's value.
+    #[test]
+    fn the_uniform_matches_the_shader() {
+        renzora_plugin::uniform_check::assert_uniform_matches::<GodRays>(WGSL, "GodRaysSettings");
+    }
+}

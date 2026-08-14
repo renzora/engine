@@ -23,12 +23,23 @@ const WGSL: &str = include_str!("gaussian_blur.wgsl");
 pub struct GaussianBlur {
     #[field(min = 0.1, max = 20.0, speed = 0.1)]
     pub sigma: f32,
+    /// Tap count per axis. Not inspectable — `FieldKind` has no `u32`, and the
+    /// shader clamps it to 15 anyway — but it MUST be declared here, because the
+    /// uniform block has it and the struct's layout is what the host uploads.
+    /// Without it the shader read this slot from whatever followed the 4 bytes
+    /// Rust supplied.
+    #[field(skip)]
+    pub kernel_size: u32,
 }
 
 impl Default for GaussianBlur {
     fn default() -> Self {
         Self {
             sigma: 2.0,
+            // 9 taps per axis (81 samples). The shader clamps to 15, and the
+            // loop is O(n²), so this is the quality/cost knee rather than the
+            // ceiling.
+            kernel_size: 9,
         }
     }
 }
@@ -42,3 +53,18 @@ impl Plugin for GaussianBlurPlugin {
 }
 
 renzora_plugin::add!(GaussianBlurPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Rust struct and the shader must agree byte for byte. Nothing enforces
+    /// it at run time — the host copies these bytes straight into the uniform
+    /// buffer and the shader reads them back by offset — so a mismatch is not an
+    /// error, it is a wrong picture: every field from the mismatch onward reads
+    /// its neighbour's value.
+    #[test]
+    fn the_uniform_matches_the_shader() {
+        renzora_plugin::uniform_check::assert_uniform_matches::<GaussianBlur>(WGSL, "GaussianBlurSettings");
+    }
+}
