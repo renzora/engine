@@ -199,6 +199,13 @@ impl Default for TilemapPaintLayer {
 /// Local Z per unit of [`TilemapPaintLayer::order`].
 pub const PAINT_LAYER_Z_STEP: f32 = 10.0;
 
+// A whole y-sort band — the ±0.5 spread plus its `z_base` of 1 — has to fit
+// inside one layer's step. Shrink this below that and a lower layer's y-sorted
+// prop starts drawing over an overhead layer, which reads as a random depth bug
+// in a scene rather than as a constant someone tuned. Checked at compile time
+// because there is no runtime state involved.
+const _: () = assert!(PAINT_LAYER_Z_STEP > 2.0);
+
 /// Keep each paint layer's transform Z and its tiles' alpha in sync with the
 /// authored `order`/`opacity`. Runs on change only; new tiles are painted
 /// opaque, so a repaint on a translucent layer re-applies via the layer
@@ -647,4 +654,318 @@ fn load_tileset_nearest(asset_server: &AssetServer, path: String) -> Handle<Imag
             settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor::nearest());
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renzora_physics::CollisionShapeType;
+    use renzora_test_harness::{minimal_app, pump};
+
+    // ── atlas slicing ────────────────────────────────────────────────────────
+
+    #[test]
+    fn an_explicit_column_count_wins_over_the_image_width() {
+        let layer = TilemapLayer { columns: 7, atlas_tile_px: 16, ..default() };
+        assert_eq!(layer.effective_columns(1024.0), 7);
+    }
+
+    #[test]
+    fn zero_columns_derives_the_count_from_the_image() {
+        let layer = TilemapLayer { columns: 0, atlas_tile_px: 16, ..default() };
+        assert_eq!(layer.effective_columns(160.0), 10);
+        // A partial trailing cell is not a column — cropping it would sample
+        // outside the image.
+        assert_eq!(layer.effective_columns(167.0), 10);
+    }
+
+    /// An atlas narrower than one tile still has to slice into something, or a
+    /// frame index divides by zero and the layer paints nothing.
+    #[test]
+    fn a_degenerate_atlas_still_yields_at_least_one_column() {
+        let layer = TilemapLayer { columns: 0, atlas_tile_px: 16, ..default() };
+        assert_eq!(layer.effective_columns(4.0), 1);
+
+        let broken = TilemapLayer { columns: 0, atlas_tile_px: 0, ..default() };
+        assert_eq!(broken.effective_columns(256.0), 1);
+    }
+
+    // ── object collider lookup ───────────────────────────────────────────────
+
+    fn collider(col: u32, row: u32, w: u32, h: u32) -> TileObjectCollider {
+        TileObjectCollider { col, row, w, h, rect_w: 1.0, rect_h: 1.0, ..default() }
+    }
+
+    #[test]
+    fn a_collider_is_recalled_by_its_full_bounding_box() {
+        let layer = TilemapLayer {
+            object_colliders: vec![collider(2, 3, 2, 4), collider(9, 9, 1, 1)],
+            ..default()
+        };
+        assert_eq!(layer.collider_for(2, 3, 2, 4), Some(collider(2, 3, 2, 4)));
+        // Every component of the key must match: a same-origin pick of a
+        // different size is a different object.
+        assert!(layer.collider_for(2, 3, 2, 5).is_none());
+        assert!(layer.collider_for(2, 4, 2, 4).is_none());
+        assert!(layer.collider_for(0, 0, 1, 1).is_none());
+    }
+
+    #[test]
+    fn a_layer_with_no_authored_colliders_recalls_nothing() {
+        assert!(TilemapLayer::default().collider_for(0, 0, 1, 1).is_none());
+    }
+
+    // ── palette rect → world collider ────────────────────────────────────────
+
+    fn boxed(w: u32, h: u32, rect: (f32, f32, f32, f32)) -> TileObjectCollider {
+        TileObjectCollider {
+            col: 0,
+            row: 0,
+            w,
+            h,
+            rect_x: rect.0,
+            rect_y: rect.1,
+            rect_w: rect.2,
+            rect_h: rect.3,
+            shape: CollisionShapeType::Box,
+        }
+    }
+
+    /// A rect filling its whole bounding box is centred on the object, whatever
+    /// the object's size. Any offset here would push every object's collider
+    /// off its sprite.
+    #[test]
+    fn a_full_cover_rect_sits_centred_on_the_object() {
+        let data = boxed(2, 3, (0.0, 0.0, 2.0, 3.0)).shape_data(16.0);
+        assert_eq!(data.offset, Vec3::ZERO);
+        assert_eq!(data.half_extents.x, 16.0); // 2 cells * 16 / 2
+        assert_eq!(data.half_extents.y, 24.0); // 3 cells * 16 / 2
+    }
+
+    /// The palette draws with y growing DOWN and the world has y UP. A rect in
+    /// the TOP half of the palette box must produce a POSITIVE world y offset;
+    /// getting this backwards puts a tree's trunk collider up in its canopy.
+    #[test]
+    fn palette_y_is_flipped_into_world_y() {
+        let top = boxed(1, 4, (0.0, 0.0, 1.0, 1.0));
+        let bottom = TileObjectCollider { rect_y: 3.0, ..top };
+
+        let top_y = top.shape_data(16.0).offset.y;
+        let bottom_y = bottom.shape_data(16.0).offset.y;
+        assert!(top_y > 0.0, "the palette's top must map above centre");
+        assert!(bottom_y < 0.0, "the palette's bottom must map below centre");
+        assert!((top_y + bottom_y).abs() < 1e-3, "should be symmetric about the centre");
+    }
+
+    #[test]
+    fn x_offsets_are_not_flipped() {
+        let left = boxed(4, 1, (0.0, 0.0, 1.0, 1.0));
+        let right = TileObjectCollider { rect_x: 3.0, ..left };
+        assert!(left.shape_data(16.0).offset.x < 0.0);
+        assert!(right.shape_data(16.0).offset.x > 0.0);
+    }
+
+    #[test]
+    fn a_sphere_takes_its_radius_from_the_shorter_side() {
+        let c = TileObjectCollider {
+            shape: CollisionShapeType::Sphere,
+            ..boxed(4, 4, (0.0, 0.0, 4.0, 2.0))
+        };
+        let data = c.shape_data(10.0);
+        assert_eq!(data.shape_type, CollisionShapeType::Sphere);
+        // half-width 20, half-height 10 → inscribed circle radius 10.
+        assert_eq!(data.radius, 10.0);
+    }
+
+    #[test]
+    fn a_capsule_fills_the_rest_of_the_rect_height() {
+        let c = TileObjectCollider {
+            shape: CollisionShapeType::Capsule,
+            ..boxed(2, 6, (0.0, 0.0, 2.0, 6.0))
+        };
+        let data = c.shape_data(10.0);
+        assert_eq!(data.shape_type, CollisionShapeType::Capsule);
+        // half-width 10, half-height 30 → radius 10, cylinder half-height 20.
+        assert_eq!(data.radius, 10.0);
+        assert_eq!(data.half_height, 20.0);
+    }
+
+    /// A capsule wider than it is tall has no cylinder left. It must degenerate
+    /// to a circle rather than produce a negative half-height, which avian
+    /// rejects.
+    #[test]
+    fn a_wide_capsule_degenerates_instead_of_going_negative() {
+        let c = TileObjectCollider {
+            shape: CollisionShapeType::Capsule,
+            ..boxed(6, 2, (0.0, 0.0, 6.0, 2.0))
+        };
+        let data = c.shape_data(10.0);
+        assert_eq!(data.half_height, 0.0);
+        assert!(data.radius > 0.0);
+    }
+
+    /// A zero-area rect would otherwise build a collider avian treats as
+    /// degenerate.
+    #[test]
+    fn a_zero_sized_rect_is_clamped_to_a_usable_extent() {
+        let data = boxed(1, 1, (0.0, 0.0, 0.0, 0.0)).shape_data(16.0);
+        assert!(data.half_extents.x >= 0.5);
+        assert!(data.half_extents.y >= 0.5);
+    }
+
+    #[test]
+    fn shape_data_scales_with_tile_size() {
+        let c = boxed(2, 2, (0.0, 0.0, 2.0, 2.0));
+        assert_eq!(
+            c.shape_data(32.0).half_extents.x,
+            2.0 * c.shape_data(16.0).half_extents.x
+        );
+    }
+
+    #[test]
+    fn an_unhandled_shape_falls_back_to_a_box() {
+        let c = TileObjectCollider {
+            shape: CollisionShapeType::Mesh,
+            ..boxed(1, 1, (0.0, 0.0, 1.0, 1.0))
+        };
+        assert_eq!(c.shape_data(16.0).shape_type, CollisionShapeType::Box);
+    }
+
+    /// The box's Z half-extent gives the 2D collider depth so it is not a
+    /// zero-thickness plane in a 3D world.
+    #[test]
+    fn a_box_collider_has_depth() {
+        assert!(boxed(1, 1, (0.0, 0.0, 1.0, 1.0)).shape_data(16.0).half_extents.z > 0.0);
+    }
+
+    // ── bake key ─────────────────────────────────────────────────────────────
+
+    fn object(cells: Vec<TileObjectCell>) -> TileObject {
+        TileObject {
+            tileset_path: "tiles/forest.png".into(),
+            tile_px: 16,
+            w: 2,
+            h: 2,
+            cells,
+        }
+    }
+
+    #[test]
+    fn the_bake_key_is_stable_for_identical_content() {
+        let a = object(vec![TileObjectCell { dx: 0, dy: 0, col: 1, row: 2 }]);
+        let b = object(vec![TileObjectCell { dx: 0, dy: 0, col: 1, row: 2 }]);
+        assert_eq!(a.bake_key(), b.bake_key());
+    }
+
+    /// Every input the baked texture depends on must move the key, or a change
+    /// silently keeps the stale texture on screen.
+    #[test]
+    fn the_bake_key_tracks_every_input_of_the_texture() {
+        let base = object(vec![TileObjectCell { dx: 0, dy: 0, col: 1, row: 2 }]);
+        let key = base.bake_key();
+
+        assert_ne!(
+            key,
+            TileObject { tileset_path: "tiles/other.png".into(), ..base.clone() }.bake_key()
+        );
+        assert_ne!(key, TileObject { tile_px: 32, ..base.clone() }.bake_key());
+        assert_ne!(key, TileObject { w: 3, ..base.clone() }.bake_key());
+        assert_ne!(key, TileObject { h: 3, ..base.clone() }.bake_key());
+        assert_ne!(key, object(vec![TileObjectCell { dx: 1, dy: 0, col: 1, row: 2 }]).bake_key());
+        assert_ne!(key, object(vec![TileObjectCell { dx: 0, dy: 0, col: 5, row: 2 }]).bake_key());
+        assert_ne!(key, object(vec![]).bake_key());
+    }
+
+    // ── paint layer ordering and opacity ─────────────────────────────────────
+
+    fn visuals_app() -> App {
+        let mut app = minimal_app();
+        app.add_systems(Update, apply_paint_layer_visuals);
+        app
+    }
+
+    #[test]
+    fn a_paint_layers_order_becomes_its_local_z() {
+        let mut app = visuals_app();
+        let e = app
+            .world_mut()
+            .spawn((TilemapPaintLayer { order: 3, ..default() }, Transform::default()))
+            .id();
+        pump(&mut app, 1);
+        assert_eq!(
+            app.world().get::<Transform>(e).unwrap().translation.z,
+            3.0 * PAINT_LAYER_Z_STEP
+        );
+    }
+
+    #[test]
+    fn a_negative_order_sits_behind_the_base_layer() {
+        let mut app = visuals_app();
+        let e = app
+            .world_mut()
+            .spawn((TilemapPaintLayer { order: -2, ..default() }, Transform::default()))
+            .id();
+        pump(&mut app, 1);
+        assert_eq!(app.world().get::<Transform>(e).unwrap().translation.z, -20.0);
+    }
+
+    fn layer_with_tile(app: &mut App, layer: TilemapPaintLayer) -> Entity {
+        let tile = app.world_mut().spawn(Sprite::default()).id();
+        app.world_mut()
+            .spawn((layer, Transform::default()))
+            .add_child(tile);
+        tile
+    }
+
+    #[test]
+    fn layer_opacity_reaches_the_child_tile_sprites() {
+        let mut app = visuals_app();
+        let tile = layer_with_tile(&mut app, TilemapPaintLayer { opacity: 0.25, ..default() });
+        pump(&mut app, 1);
+        assert_eq!(app.world().get::<Sprite>(tile).unwrap().color.alpha(), 0.25);
+    }
+
+    /// An authored opacity outside 0..1 would otherwise reach the renderer as an
+    /// alpha it clips unpredictably.
+    #[test]
+    fn out_of_range_opacity_is_clamped() {
+        let mut app = visuals_app();
+        let tile = layer_with_tile(&mut app, TilemapPaintLayer { opacity: 4.0, ..default() });
+        pump(&mut app, 1);
+        assert_eq!(app.world().get::<Sprite>(tile).unwrap().color.alpha(), 1.0);
+    }
+
+    #[test]
+    fn a_layer_with_no_tiles_yet_is_not_a_panic() {
+        let mut app = visuals_app();
+        app.world_mut()
+            .spawn((TilemapPaintLayer::default(), Transform::default()));
+        pump(&mut app, 2);
+    }
+
+    // ── defaults that scene loading depends on ───────────────────────────────
+
+    /// These are what `#[serde(default)]` hands a scene saved before collisions
+    /// and paint layers existed, so changing them changes how old scenes load.
+    #[test]
+    fn layer_defaults_keep_older_scenes_loading_unchanged() {
+        let layer = TilemapLayer::default();
+        assert!(layer.tileset_path.is_empty());
+        assert!(layer.solid_tiles.is_empty());
+        assert!(layer.object_colliders.is_empty());
+        assert!(layer.tile_size > 0.0);
+        assert!(layer.atlas_tile_px > 0);
+
+        let paint = TilemapPaintLayer::default();
+        assert_eq!(paint.order, 0);
+        assert_eq!(paint.opacity, 1.0);
+        assert!(!paint.locked);
+    }
+
+    #[test]
+    fn a_tile_records_its_grid_cell() {
+        let tile = TilemapTile { x: -3, y: 7 };
+        assert_eq!((tile.x, tile.y), (-3, 7));
+        assert_eq!(TilemapTile::default(), TilemapTile { x: 0, y: 0 });
+    }
 }

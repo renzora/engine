@@ -367,3 +367,207 @@ pub(crate) fn history_click(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Compact rendering of the flattened list, so a test can assert on layout
+    /// without matching six-field struct variants inline.
+    fn sketch(items: &[Item]) -> Vec<String> {
+        items
+            .iter()
+            .map(|it| match it {
+                Item::Header(s) => format!("header:{s}"),
+                Item::Hint(s) => format!("hint:{s}"),
+                Item::Empty => "empty".to_string(),
+                Item::Row { label, kind, action, .. } => {
+                    let k = match kind {
+                        RowKind::Past => "past",
+                        RowKind::Current => "current",
+                        RowKind::Future => "future",
+                    };
+                    let a = match action {
+                        Some(HistoryAction::Undo(n)) => format!("undo{n}"),
+                        Some(HistoryAction::Redo(n)) => format!("redo{n}"),
+                        None => "-".to_string(),
+                    };
+                    format!("{k}/{a}:{label}")
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_completely_empty_history_renders_only_the_empty_state() {
+        assert_eq!(sketch(&build_items(&[], &[])), vec!["empty"]);
+    }
+
+    /// The undo stack's last entry *is* the current state, so a stack of one has
+    /// no earlier state to jump back to. Listing it under "Undo Stack" as well
+    /// would offer the user an undo that goes nowhere.
+    #[test]
+    fn a_single_undo_entry_is_the_current_state_and_not_an_earlier_one() {
+        let items = build_items(&labels(&["Move Cube"]), &[]);
+        assert_eq!(
+            sketch(&items),
+            vec![
+                "header:Undo Stack",
+                "hint:No earlier states.",
+                "header:Current State",
+                "current/-:Move Cube",
+                "header:Redo Stack",
+                "hint:Nothing to redo.",
+            ]
+        );
+    }
+
+    /// The step count is how many undos it takes to reach that row, so the
+    /// oldest entry must carry the largest number. Getting this backwards jumps
+    /// the user to the wrong state.
+    #[test]
+    fn past_rows_count_the_undo_steps_needed_to_reach_them() {
+        let items = build_items(&labels(&["Add Light", "Move Cube", "Scale Cube"]), &[]);
+        assert_eq!(
+            sketch(&items),
+            vec![
+                "header:Undo Stack",
+                "past/undo2:Add Light",
+                "past/undo1:Move Cube",
+                "header:Current State",
+                "current/-:Scale Cube",
+                "header:Redo Stack",
+                "hint:Nothing to redo.",
+            ]
+        );
+    }
+
+    /// The redo deque has the most-immediate redo at its back, and the panel
+    /// lists nearest-first — so the display order is the reverse of storage.
+    #[test]
+    fn redo_rows_are_listed_most_immediate_first() {
+        let items = build_items(&labels(&["Base"]), &labels(&["Furthest", "Nearest"]));
+        assert_eq!(
+            sketch(&items),
+            vec![
+                "header:Undo Stack",
+                "hint:No earlier states.",
+                "header:Current State",
+                "current/-:Base",
+                "header:Redo Stack",
+                "future/redo1:Nearest",
+                "future/redo2:Furthest",
+            ]
+        );
+    }
+
+    /// Redo-only is reachable: undo everything, and the undo stack empties while
+    /// the redo stack stays full. There is no label to show as current then.
+    #[test]
+    fn an_empty_undo_stack_still_names_a_current_state() {
+        let items = build_items(&[], &labels(&["Move Cube"]));
+        assert_eq!(
+            sketch(&items),
+            vec![
+                "header:Undo Stack",
+                "hint:No earlier states.",
+                "header:Current State",
+                "current/-:Initial state",
+                "header:Redo Stack",
+                "future/redo1:Move Cube",
+            ]
+        );
+    }
+
+    #[test]
+    fn exactly_one_row_is_ever_the_current_state() {
+        let items = build_items(&labels(&["a", "b", "c"]), &labels(&["d", "e"]));
+        let current = items
+            .iter()
+            .filter(|it| matches!(it, Item::Row { kind: RowKind::Current, .. }))
+            .count();
+        assert_eq!(current, 1);
+    }
+
+    /// Only the current row is unclickable; every other row must carry an action
+    /// or clicking it silently does nothing.
+    #[test]
+    fn every_row_but_the_current_one_is_actionable() {
+        let items = build_items(&labels(&["a", "b", "c"]), &labels(&["d"]));
+        for it in &items {
+            if let Item::Row { kind, action, .. } = it {
+                match kind {
+                    RowKind::Current => assert!(action.is_none()),
+                    _ => assert!(action.is_some(), "a {kind:?} row must be clickable"),
+                }
+            }
+        }
+    }
+
+    // ── the reconcile hash ───────────────────────────────────────────────────
+
+    /// The panel reuses row entities whose hash is unchanged. If the hash missed
+    /// a field, an edited row would keep rendering its old content.
+    #[test]
+    fn the_item_hash_tracks_every_rendered_field() {
+        // Enum variants have no functional-update syntax, so vary one field at a
+        // time through a builder.
+        let row = |icon, label: &str, kind, action| Item::Row {
+            icon,
+            label: label.to_string(),
+            kind,
+            action,
+        };
+        let undo1 = Some(HistoryAction::Undo(1));
+        let key = hash_item(&row("caret-right", "Move Cube", RowKind::Past, undo1));
+
+        assert_ne!(key, hash_item(&row("caret-right", "Scale Cube", RowKind::Past, undo1)));
+        assert_ne!(key, hash_item(&row("caret-right", "Move Cube", RowKind::Future, undo1)));
+        assert_ne!(
+            key,
+            hash_item(&row("caret-right", "Move Cube", RowKind::Past, Some(HistoryAction::Undo(2))))
+        );
+        assert_ne!(
+            key,
+            hash_item(&row("arrow-bend-up-left", "Move Cube", RowKind::Past, undo1))
+        );
+        // An undo and a redo of the same depth are different destinations.
+        assert_ne!(
+            hash_item(&row("i", "l", RowKind::Past, Some(HistoryAction::Undo(1)))),
+            hash_item(&row("i", "l", RowKind::Past, Some(HistoryAction::Redo(1))))
+        );
+    }
+
+    #[test]
+    fn identical_items_hash_identically() {
+        let a = Item::Header("Undo Stack");
+        let b = Item::Header("Undo Stack");
+        assert_eq!(hash_item(&a), hash_item(&b));
+    }
+
+    /// A header, a hint and an empty state carrying the same text must not
+    /// collide — the variant tag is what keeps them apart.
+    #[test]
+    fn different_item_kinds_do_not_collide() {
+        let header = hash_item(&Item::Header("Undo Stack"));
+        let hint = hash_item(&Item::Hint("Undo Stack"));
+        let empty = hash_item(&Item::Empty);
+        assert_ne!(header, hint);
+        assert_ne!(header, empty);
+        assert_ne!(hint, empty);
+    }
+
+    impl std::fmt::Debug for RowKind {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str(match self {
+                RowKind::Past => "past",
+                RowKind::Current => "current",
+                RowKind::Future => "future",
+            })
+        }
+    }
+}

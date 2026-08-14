@@ -14,5 +14,8 @@ renzora = { path = "../renzora", default-features = false }
 # pattern renzora_terrain uses for chunk colliders.
 renzora_physics = { path = "../renzora_physics", default-features = false }
 
+[dev-dependencies]
+renzora_test_harness = { path = "../renzora_test_harness" }
+
 [lints]
 workspace = true
