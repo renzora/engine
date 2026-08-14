@@ -32,6 +32,25 @@
 //! symbols, and `llvm-cov` resolves its coverage records through the symbol
 //! table, so an unmodified `dist` build reports every crate at 0% with no error.
 //!
+//! ## Run it on an otherwise idle machine
+//!
+//! Instrumentation shares nothing with the ordinary build, so a coverage run is
+//! a second full compile of the workspace — and cargo will happily saturate
+//! every core doing it. Started alongside a plain `cargo test`, the two together
+//! exhausted RAM and the Windows pagefile here, and the way that surfaces is not
+//! an out-of-memory message but a wall of nonsense:
+//!
+//! ```text
+//! error: only metadata stub found for `dylib` dependency `std`
+//! error[E0786]: found invalid metadata files for crate `renzora_tilemap_editor`
+//!   = note: failed to mmap file '...rlib': The paging file is too small
+//! ```
+//!
+//! Same shape as the full-disk failure in CLAUDE.md §2 — a compile error in a
+//! crate nobody touched — and the same tell: it goes away on a re-run with the
+//! machine to itself. CI hits none of this because the coverage job is the only
+//! thing in its container.
+//!
 //! ## Two scopes, because the plugins are not workspace members
 //!
 //! `plugins/*` are deliberately excluded from the workspace (they must not

@@ -243,6 +243,92 @@ fn ground_hit(origin: Vec3, dir: Vec3) -> Option<Vec3> {
     Some(Vec3::new(hit.x, 0.0, hit.z))
 }
 
+#[cfg(test)]
+mod ground_hit_tests {
+    use super::ground_hit;
+    use bevy::prelude::*;
+
+    /// Where a right-click lands on the ground plane is where "Add Cube" spawns
+    /// the cube. Every rejection below is a case where there is no sensible
+    /// answer, and returning one anyway would drop an object somewhere the user
+    /// did not click.
+    #[test]
+    fn a_ray_aimed_down_hits_the_ground_below_it() {
+        let hit = ground_hit(Vec3::new(3.0, 10.0, -4.0), Vec3::NEG_Y).unwrap();
+        assert_eq!(hit, Vec3::new(3.0, 0.0, -4.0));
+    }
+
+    #[test]
+    fn the_hit_is_always_flattened_onto_the_plane() {
+        let hit = ground_hit(Vec3::new(0.0, 5.0, 0.0), Vec3::new(1.0, -1.0, 1.0)).unwrap();
+        assert_eq!(hit.y, 0.0);
+        // 5 units down means 5 units along x and z too.
+        assert!((hit.x - 5.0).abs() < 1e-4, "{hit:?}");
+        assert!((hit.z - 5.0).abs() < 1e-4, "{hit:?}");
+    }
+
+    /// From below the plane, an upward ray still hits it — the editor camera can
+    /// legitimately sit under the ground.
+    #[test]
+    fn a_ray_from_below_hits_the_plane_going_up() {
+        let hit = ground_hit(Vec3::new(1.0, -8.0, 2.0), Vec3::Y).unwrap();
+        assert_eq!(hit, Vec3::new(1.0, 0.0, 2.0));
+    }
+
+    /// A ray pointing away from the plane has its intersection *behind* the
+    /// camera. Without the `t <= 0.0` guard the click would spawn an object
+    /// behind the viewer, mirrored through the camera.
+    #[test]
+    fn a_ray_pointing_away_from_the_plane_misses() {
+        assert!(ground_hit(Vec3::new(0.0, 10.0, 0.0), Vec3::Y).is_none());
+        assert!(ground_hit(Vec3::new(0.0, -10.0, 0.0), Vec3::NEG_Y).is_none());
+    }
+
+    /// A ray parallel to the ground never meets it, and `-origin.y / dir.y`
+    /// would be an infinity — which then multiplies into a NaN position.
+    #[test]
+    fn a_ray_parallel_to_the_ground_misses_rather_than_going_infinite() {
+        for dir in [Vec3::X, Vec3::Z, Vec3::new(1.0, 0.0, 1.0), Vec3::new(1.0, 1e-9, 0.0)] {
+            assert!(ground_hit(Vec3::new(0.0, 5.0, 0.0), dir).is_none(), "{dir:?}");
+        }
+    }
+
+    /// A near-parallel ray from a camera far above the plane produces a hit
+    /// kilometres away. Spawning there is worse than not spawning: the object is
+    /// off-screen and the user has no idea where it went.
+    #[test]
+    fn an_absurdly_distant_hit_is_rejected() {
+        // Grazing angle: 100 units up, dropping 0.001 per unit travelled.
+        let far = ground_hit(Vec3::new(0.0, 100.0, 0.0), Vec3::new(1.0, -0.001, 0.0));
+        assert!(far.is_none(), "expected the 100km hit to be rejected, got {far:?}");
+    }
+
+    #[test]
+    fn a_hit_just_inside_the_distance_limit_is_kept() {
+        // t == 5000, comfortably inside the 10,000 cap.
+        let hit = ground_hit(Vec3::new(0.0, 5000.0, 0.0), Vec3::NEG_Y);
+        assert!(hit.is_some());
+    }
+
+    /// A camera sitting exactly on the plane is degenerate but reachable, and
+    /// `t` is then 0 — the guard rejects it rather than spawning at the camera.
+    #[test]
+    fn an_origin_already_on_the_plane_is_rejected() {
+        assert!(ground_hit(Vec3::new(4.0, 0.0, 4.0), Vec3::NEG_Y).is_none());
+    }
+
+    #[test]
+    fn a_hit_is_never_non_finite() {
+        for origin in [Vec3::new(0.0, 1.0, 0.0), Vec3::new(-500.0, 900.0, 250.0)] {
+            for dir in [Vec3::NEG_Y, Vec3::new(0.5, -0.5, 0.5), Vec3::new(-1.0, -2.0, 3.0)] {
+                if let Some(hit) = ground_hit(origin, dir) {
+                    assert!(hit.is_finite(), "{origin:?} {dir:?} -> {hit:?}");
+                }
+            }
+        }
+    }
+}
+
 // ── Actions ────────────────────────────────────────────────────────────────
 //
 // Helpers a native renderer will call once it is wired up. Kept here so the

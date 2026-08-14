@@ -327,6 +327,7 @@ Two mechanical gotchas worth knowing before you debug a zero:
 
 - The `dist` profile sets `strip = "symbols"`, and llvm-cov resolves coverage records through the symbol table. An unmodified `dist` build reports **every crate at 0% with no error**. The xtask forces `CARGO_PROFILE_DIST_STRIP=none` for its own runs; a hand-rolled `cargo llvm-cov` invocation must too.
 - Instrumentation changes every crate's fingerprint, so cargo-llvm-cov keeps artifacts in `target/llvm-cov-target/` — a second full artifact tree, disposable, delete it when you need the disk back. This is the one deliberate exception to the one-profile rule in CLAUDE.md §2.
+- **Run it on an otherwise idle machine.** It is a second full compile of the workspace and cargo will use every core. Started alongside a plain `cargo test`, the two together exhausted RAM and the pagefile here — and, exactly like the full-disk failure in CLAUDE.md §2, that surfaces as compile errors in crates nobody touched (`only metadata stub found for dylib dependency std`, `failed to mmap file '...rlib': The paging file is too small`) rather than as an out-of-memory message. It goes away on a re-run with the machine to itself.
 
 Vendored crates, dependency checkouts, and the generated `plugins.rs` lists are excluded from the report.
 

@@ -727,3 +727,138 @@ fn dispatch_remote(
 }
 
 renzora::add!(CommandPalettePlugin, Editor);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(kind: &'static str, label: &str) -> PaletteItem {
+        PaletteItem {
+            kind,
+            label: label.to_string(),
+            detail: None,
+            handler: Arc::new(|_| {}),
+        }
+    }
+
+    fn sample() -> Vec<PaletteItem> {
+        vec![
+            item("Command", "Save Scene"),
+            item("Command", "Open Scene"),
+            item("Tool", "Select"),
+            item("Tool", "Translate"),
+            item("Setting", "Viewport Camera Speed"),
+        ]
+    }
+
+    fn labels(items: &[PaletteItem]) -> Vec<&str> {
+        items.iter().map(|i| i.label.as_str()).collect()
+    }
+
+    #[test]
+    fn an_empty_query_keeps_everything() {
+        assert_eq!(filter_items(sample(), "").len(), 5);
+    }
+
+    #[test]
+    fn filtering_matches_a_substring_of_the_label() {
+        let out = filter_items(sample(), "scene");
+        assert_eq!(labels(&out), vec!["Save Scene", "Open Scene"]);
+    }
+
+    #[test]
+    fn filtering_is_case_insensitive_both_ways() {
+        assert_eq!(filter_items(sample(), "SCENE").len(), 2);
+        assert_eq!(filter_items(sample(), "sElEcT").len(), 1);
+    }
+
+    /// Matching the *kind* is what makes typing "tool" list every tool. Without
+    /// it the palette can only be searched by exact command wording.
+    #[test]
+    fn filtering_can_match_the_item_kind() {
+        let out = filter_items(sample(), "tool");
+        assert_eq!(labels(&out), vec!["Select", "Translate"]);
+    }
+
+    #[test]
+    fn a_query_matching_nothing_yields_nothing() {
+        assert!(filter_items(sample(), "zzz-no-such-command").is_empty());
+    }
+
+    /// The palette renders results in order, so filtering must preserve it —
+    /// otherwise the highlighted first row jumps as the user types.
+    #[test]
+    fn filtering_preserves_the_original_order() {
+        let all = sample();
+        let expected: Vec<&str> = labels(&all)
+            .into_iter()
+            .filter(|l| l.to_lowercase().contains('e'))
+            .collect();
+        let out = filter_items(sample(), "e");
+        assert_eq!(labels(&out), expected);
+    }
+
+    // ── remote-search debounce threshold ─────────────────────────────────────
+
+    /// The server-backed tabs must not fire a request on a one-character query —
+    /// that is a request per keystroke against a search endpoint, from every
+    /// editor open.
+    #[test]
+    fn server_backed_tabs_wait_for_a_real_query() {
+        for tab in [PaletteTab::Docs, PaletteTab::Forum, PaletteTab::Users] {
+            assert!(min_query_len(tab) >= 2, "{} would search too eagerly", tab.label());
+        }
+    }
+
+    /// The catalog tabs list their first page with no query at all, so requiring
+    /// input would leave them looking empty until the user typed.
+    #[test]
+    fn catalog_and_local_tabs_need_no_query() {
+        for tab in [
+            PaletteTab::Commands,
+            PaletteTab::Entities,
+            PaletteTab::Settings,
+            PaletteTab::Feed,
+            PaletteTab::Courses,
+            PaletteTab::Marketplace,
+        ] {
+            assert_eq!(min_query_len(tab), 0, "{} should list unfiltered", tab.label());
+        }
+    }
+
+    #[test]
+    fn every_tab_is_listed_in_all_and_has_a_label() {
+        assert_eq!(PaletteTab::ALL.len(), 9);
+        let mut seen = std::collections::HashSet::new();
+        for tab in PaletteTab::ALL {
+            assert!(!tab.label().is_empty());
+            assert!(seen.insert(tab.label()), "duplicate label {}", tab.label());
+        }
+    }
+
+    // ── hold-vs-press actions ────────────────────────────────────────────────
+
+    /// A held camera-movement key is meaningless as a palette entry: "run
+    /// CameraMoveForward once" does nothing a user would notice. Listing them
+    /// would fill the palette with seven dead rows.
+    #[test]
+    fn camera_movement_is_treated_as_a_hold() {
+        for action in [
+            EditorAction::CameraMoveForward,
+            EditorAction::CameraMoveBackward,
+            EditorAction::CameraMoveLeft,
+            EditorAction::CameraMoveRight,
+            EditorAction::CameraMoveUp,
+            EditorAction::CameraMoveDown,
+            EditorAction::CameraMoveFaster,
+        ] {
+            assert!(is_hold_action(action), "{action:?} should be a hold");
+        }
+    }
+
+    #[test]
+    fn a_one_shot_command_is_not_a_hold() {
+        assert!(!is_hold_action(EditorAction::SaveScene));
+        assert!(!is_hold_action(EditorAction::Undo));
+    }
+}
