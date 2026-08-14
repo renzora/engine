@@ -33,6 +33,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod coverage;
 mod sync;
 
 /// Host-platform naming. Filled at compile time from `cfg!` because xtask is
@@ -197,11 +198,29 @@ fn main() -> ExitCode {
                 }
             }
         }
+        // Measure line coverage and enforce the per-crate ratchet in
+        // `coverage-floors.txt`. See `coverage.rs` for why the gate is per-crate
+        // and never a single workspace threshold.
+        //
+        //   cargo renzora coverage                  workspace, print the table
+        //   cargo renzora coverage --plugins        the C-ABI plugins too
+        //   cargo renzora coverage --check          fail if any crate regressed
+        //   cargo renzora coverage --bless          record the current numbers
+        //   cargo renzora coverage --report-only    re-read the last run's lcov
+        //
+        // This is the one command that deliberately builds outside
+        // `target/dist`: instrumentation changes the fingerprint of every crate,
+        // so cargo-llvm-cov keeps its artifacts in `target/llvm-cov-target/`.
+        // That tree is disposable — delete it when you need the disk back.
+        "coverage" => {
+            let args: Vec<String> = std::env::args().skip(2).collect();
+            coverage::run(&repo, &args)
+        }
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
                  (expected: run | xr | dist | plugin <name> | profile | \
-                 sync [--check] | remove <crate-name>)"
+                 coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
             );
             ExitCode::from(2)
         }

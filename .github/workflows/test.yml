@@ -89,6 +89,115 @@ jobs:
             --exclude bevy_mod_xr \
             --exclude bevy_xr_utils
 
+  # The standalone C-ABI plugins under `plugins/`, which `--workspace` above can
+  # never reach.
+  #
+  # They are excluded from the workspace on purpose (as members they would
+  # inherit the engine's feature unification and link Bevy, destroying the
+  # zero-dependency property that lets a plugin build in a second on any
+  # machine). The unintended consequence was that ~14k lines — the entire C-ABI
+  # boundary, where a mistake is a hard crash inside someone else's game — had
+  # never been compiled or tested by CI at all. This job closes that.
+  #
+  # Each plugin is its own cargo project with its own lockfile, so this is a loop
+  # rather than one invocation. They share `plugins/target/` (see
+  # `plugins/.cargo/config.toml`), so the common deps compile once for the set.
+  #
+  # Deliberately does NOT `set -e` per iteration: one broken plugin should report
+  # every other plugin's result too, not mask them behind the first failure.
+  plugins:
+    runs-on: ubuntu-latest
+    container: ghcr.io/renzora/base:latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-plugins
+          workspaces: plugins -> target
+
+      - name: Test every standalone plugin
+        run: |
+          failed=""
+          for manifest in plugins/*/Cargo.toml; do
+            dir=$(dirname "$manifest")
+            echo "::group::$dir"
+            if ! (cd "$dir" && cargo test); then
+              failed="$failed $dir"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::plugins failed:$failed"
+            exit 1
+          fi
+          echo "all plugins built and passed"
+
+  # Tests that need a real graphics adapter — render-graph nodes, pipeline
+  # specialization, materials, post-process passes.
+  #
+  # About a third of this engine cannot execute at all under a `MinimalPlugins`
+  # app, and excluding it from the gate means the layer most likely to break on a
+  # Bevy bump is the layer nothing checks. lavapipe (Mesa's software Vulkan
+  # rasterizer) closes that: it is a real `VkDevice` as far as wgpu is concerned,
+  # so `RenderPlugin` initializes normally, the render graph runs, and
+  # render-to-texture targets read back — just on the CPU, slowly.
+  #
+  # Slowly is why this is a separate job rather than folded into `test`: software
+  # rasterization is one to two orders of magnitude slower than a GPU, so these
+  # tests are opt-in behind `RENZORA_GPU_TESTS` (see `renzora_test_harness`) and
+  # a test that finds the variable unset returns early instead of failing. That
+  # also means a developer without the variable set never pays for them, and one
+  # WITH a real GPU gets the same tests against real hardware.
+  #
+  # `LIBGL_ALWAYS_SOFTWARE` and `GALLIUM_DRIVER` force the software path even if
+  # the runner ever gains a real device — a test that quietly starts exercising
+  # different hardware is worse than one that is consistently slow.
+  gpu:
+    runs-on: ubuntu-latest
+    container: ghcr.io/renzora/base:latest
+
+    env:
+      RENZORA_GPU_TESTS: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      GALLIUM_DRIVER: llvmpipe
+      # wgpu picks the first adapter it likes; naming the ICD leaves nothing to
+      # chance on a runner image that may also carry a stub driver.
+      VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # The base image carries the Vulkan *loader* (it is a build dependency of
+      # the engine) but no ICD — nothing on a build machine ever needed a driver.
+      # lavapipe is the driver.
+      - name: Install software Vulkan
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends mesa-vulkan-drivers vulkan-tools
+          vulkaninfo --summary || true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-gpu
+
+      # Only the crates that actually have GPU-backed tests. Kept as an explicit
+      # list rather than `--workspace`: a software-rasterized `--workspace` run
+      # would take hours, and almost all of it would be tests that do not touch
+      # an adapter and already ran in the `test` job.
+      - name: Run GPU-backed tests
+        run: |
+          cargo test \
+            -p renzora_test_harness \
+            -p renzora_postprocess \
+            -p renzora_shader \
+            -p renzora_rmip
+
   clippy:
     runs-on: ubuntu-latest
     container: ghcr.io/renzora/base:latest

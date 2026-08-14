@@ -1,0 +1,22 @@
+[package]
+name = "renzora_test_harness"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Shared headless App builders for the engine's test suites. A dev-dependency only — nothing in a shipped binary links it."
+
+# NOT a plugin. It carries no `renzora::add!` declaration, so the build
+# generator never puts it in a plugin list, and it reaches a binary only via
+# another crate's `[dev-dependencies]` — which cargo does not propagate into a
+# normal build. It is a workspace member purely so `cargo test --workspace` and
+# the clippy gate cover it like anything else.
+
+[dependencies]
+# `debug` gives ECS validation failures real system and parameter names, which
+# is the difference between "a system panicked" and "system X is missing
+# resource Y" in a headless test. Worth it unconditionally here: this crate is
+# only ever compiled for tests.
+bevy = { workspace = true, features = ["debug"] }
+
+[lints]
+workspace = true

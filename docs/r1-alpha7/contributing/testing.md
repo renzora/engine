@@ -247,8 +247,99 @@ Notes on the clippy lane:
 
 > CI does **not** currently run `cargo fmt --check` or `cargo doc` as gating steps — only the `test` and `clippy` jobs above must pass before merge. Match local builds to CI by using the pinned Rust version — `docker/base/Dockerfile` (`rust:1.95.0-bookworm`) for the container, mirrored by `rust-toolchain.toml` for native `cargo renzora` builds.
 
+## The test harness — start here
+
+`renzora_test_harness` is a dev-dependency crate that builds the `App` for you. Add it and pick the cheapest tier the code under test will run in:
+
+```toml
+[dev-dependencies]
+renzora_test_harness = { path = "../renzora_test_harness" }
+```
+
+| Builder | What you get | Use it for |
+|---|---|---|
+| `minimal_app()` | `MinimalPlugins` + assets + transforms + diagnostics | Pure logic, data transforms, a single system. Milliseconds. |
+| `headless_app()` | Full `DefaultPlugins`, **no** wgpu backend | Most `Plugin::build` bodies, resources, events, asset loaders. No GPU needed. |
+| `gpu_app()` | Full `DefaultPlugins` **with** an adapter | Render-graph nodes, pipeline specialization, materials, post-process. Opt-in. |
+
+```rust
+use renzora_test_harness::{headless_app, pump, pump_until, with_manual_time};
+
+#[test]
+fn the_plugin_registers_its_settings_resource() {
+    let mut app = headless_app();
+    app.add_plugins(MyPlugin);
+    pump(&mut app, 1);
+    assert!(app.world().get_resource::<MySettings>().is_some());
+}
+```
+
+`headless_app()` is the one that unlocks most crates, and it is not a mock — it is the same configuration the dedicated server ships (`backends: None`, so Bevy skips renderer init entirely; no `RenderDevice`, no `RenderApp`). A plugin that panics under it has a real bug in its headless guard, not a harness limitation.
+
+Three helpers matter more than they look:
+
+- **`with_manual_time(&mut app, 60.0)`** — without it, wall-clock time barely advances between `app.update()` calls and `FixedUpdate` may never tick at all. A physics or network test then asserts on a simulation that never ran, and *passes* whenever the assertion happens to hold for the initial state. This is the single most-missed step in the workspace.
+- **`pump_until(&mut app, 200, "the asset loaded", |a| …)`** — asset loads, task-pool completions and command application are all asynchronous across frames, so "load it and assert" is a race. Panics rather than returning a bool, so a failed wait reports itself instead of surfacing as a confusing downstream assertion.
+- **`pump(&mut app, n)`** — run exactly `n` frames.
+
+### GPU-backed tests
+
+`gpu_app()` returns `None` unless `RENZORA_GPU_TESTS=1` is set, and a test should treat that as *skip*:
+
+```rust
+#[test]
+fn the_post_process_node_writes_its_target() {
+    let Some(mut app) = gpu_app() else { return };
+    // …
+}
+```
+
+Bevy requests its adapter inside `Plugin::finish`, and on a machine with no usable adapter that is a panic deep in renderer init with no way to ask first — so probing is not an option and an env opt-in is. CI's `gpu` job sets it after installing lavapipe (Mesa's software Vulkan); set it locally to run the same tests against your real GPU.
+
+## Coverage
+
+Coverage is measured with `cargo-llvm-cov` and gated by a **per-crate ratchet** in `coverage-floors.txt`.
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --locked
+
+cargo renzora coverage                 # measure the workspace, print the table
+cargo renzora coverage --plugins       # the standalone C-ABI plugins too
+cargo renzora coverage --check         # fail if any crate fell below its floor
+cargo renzora coverage --bless         # record the current numbers as the new floors
+cargo renzora coverage --report-only   # re-read the last run's lcov, no rebuild
+```
+
+The table prints worst-first, so the top of it is the next work to do. An HTML report lands in `target/llvm-cov/html`.
+
+### Why the gate is per crate and never one workspace threshold
+
+One global "must be ≥ N%" is the obvious design and the wrong one here. Testability varies by two orders of magnitude across the workspace — `renzora_input`'s action map is pure data transformation, `renzora_ssao` is a render-graph node that cannot execute without a GPU. A single number lets a well-tested crate's gains silently pay for a regression elsewhere, and it has to be set low enough for the worst crate, so it gates nothing.
+
+So the rule is only **never go down**, per crate. A crate at 12% may not drop to 11%; a crate at 0% is pinned at 0%. `--bless` raises the floors after you add tests — raise them in the same commit, and never lower a line to make CI green. Floors are written half a point below the measured value because coverage is not bit-reproducible across platforms (a `#[cfg(windows)]` branch is an uncovered line on Linux and vice versa).
+
+### What the numbers do and do not mean
+
+Line coverage on the `dist` profile. `opt-level = 2` means the optimizer merges and inlines before instrumentation lands, so the percentages run slightly **optimistic** versus an unoptimized build. They are a trend line and a regression gate, not a proof of exhaustiveness — a fully covered function whose assertions are `assert!(true)` is still untested.
+
+Two mechanical gotchas worth knowing before you debug a zero:
+
+- The `dist` profile sets `strip = "symbols"`, and llvm-cov resolves coverage records through the symbol table. An unmodified `dist` build reports **every crate at 0% with no error**. The xtask forces `CARGO_PROFILE_DIST_STRIP=none` for its own runs; a hand-rolled `cargo llvm-cov` invocation must too.
+- Instrumentation changes every crate's fingerprint, so cargo-llvm-cov keeps artifacts in `target/llvm-cov-target/` — a second full artifact tree, disposable, delete it when you need the disk back. This is the one deliberate exception to the one-profile rule in CLAUDE.md §2.
+
+Vendored crates, dependency checkouts, and the generated `plugins.rs` lists are excluded from the report.
+
+## What CI runs on top of the above
+
+Beyond `test` and `clippy`, two jobs exist specifically to close coverage holes:
+
+- **`plugins`** — loops over `plugins/*/Cargo.toml` and runs each plugin's suite. They are excluded from the workspace on purpose (as members they would inherit the engine's feature unification and link Bevy), and the unintended consequence was that ~14k lines of C-ABI boundary code had never been compiled or tested by CI at all.
+- **`gpu`** — installs lavapipe and re-runs the render-touching crates with `RENZORA_GPU_TESTS=1`.
+
+`coverage.yml` is separate and runs on pushes to `main` plus weekly, not on pull requests. That is a disk decision, not a policy one: a runner gives ~20 GB usable, `test` already flirts with filling it, and a coverage run adds a second full artifact tree. It uploads the lcov and HTML report as artifacts and enforces the floors.
+
 ## Notes
 
 - The workspace has **no benchmark suite** today — there are no `benches/` directories or `criterion` setup in any first-party crate. If you add one, it is a standard `cargo bench` target.
-- There is **no enforced coverage threshold** and no coverage tooling wired into CI. New features should still include tests for their critical paths.
-- Tests run headless via `MinimalPlugins`; nothing in the test suite requires a GPU or a window, which is what lets the whole suite run inside the Docker CI container.
+- Tests run headless; only the opt-in `gpu` lane needs an adapter, which is what lets the rest of the suite run inside the Docker CI container.

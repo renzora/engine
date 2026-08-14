@@ -7316,6 +7316,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_splash",
+ "tempfile",
 ]
 
 [[package]]
@@ -8065,6 +8066,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_scripting",
+ "tempfile",
 ]
 
 [[package]]
@@ -8239,6 +8241,7 @@ dependencies = [
  "renzora",
  "renzora_scripting",
  "renzora_terrain",
+ "renzora_test_harness",
  "ron 0.8.1",
  "serde",
  "vleue_navigator",
@@ -8748,6 +8751,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
+ "renzora_test_harness",
 ]
 
 [[package]]
@@ -8849,6 +8853,13 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_macros",
+]
+
+[[package]]
+name = "renzora_test_harness"
+version = "0.1.0"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]

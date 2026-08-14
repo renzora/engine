@@ -1,0 +1,78 @@
+name: Coverage
+
+# NOT a pull-request gate, and that is a disk decision rather than a policy one.
+#
+# `test.yml` already notes that a GitHub runner gives ~20 GB usable and that a
+# restored `rust-cache` plus a fresh build of this workspace is enough to hit
+# "No space left on device". A coverage run adds a *second* full artifact tree —
+# instrumentation changes every crate's fingerprint, so `target/llvm-cov-target/`
+# shares nothing with the ordinary build — on top of the one `test` already
+# needs. Running that on every PR would trade a reliable 15-minute gate for a
+# flaky 90-minute one.
+#
+# So it runs on pushes to `main` and weekly: a regression is caught within a day
+# and the report is always downloadable, without every PR paying for it. Promote
+# it to `pull_request` if the runner ever gets bigger.
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Sundays 04:00 UTC — after the week's merges, before anyone starts Monday.
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  # The `dist` profile strips symbols, and llvm-cov resolves its coverage records
+  # through the symbol table — an unmodified `dist` build reports every crate at
+  # 0% with no error at all. Debuginfo is dropped instead: source-based coverage
+  # carries its own file/line records in `__llvm_covmap`, so DWARF buys nothing
+  # here and costs tens of gigabytes.
+  CARGO_PROFILE_DIST_STRIP: none
+  CARGO_PROFILE_DIST_DEBUG: "0"
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    container: ghcr.io/renzora/base:latest
+    # A cold instrumented build of the whole workspace is the long pole; the
+    # default 360-minute cap is generous but the job should never approach it.
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust-coverage
+
+      # The base image ships without llvm-tools-preview for the same reason it
+      # ships without clippy: adding components to the image makes the parallel
+      # docker build lanes race on the rustup download.
+      - name: Install coverage tooling
+        run: |
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov --locked
+
+      - name: Measure coverage
+        run: cargo run --manifest-path xtask/Cargo.toml -- coverage
+
+      # Uploaded before the ratchet check, so a run that fails the gate still
+      # leaves behind the report that explains why.
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            target/coverage/workspace.lcov
+            target/llvm-cov/html
+          if-no-files-found: warn
+
+      # Re-reads the lcov the previous step already wrote — no rebuild, no
+      # re-run of the suite.
+      - name: Enforce the per-crate floors
+        run: cargo run --manifest-path xtask/Cargo.toml -- coverage --report-only --check
