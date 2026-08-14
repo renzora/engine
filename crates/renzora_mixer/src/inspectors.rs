@@ -644,3 +644,136 @@ fn audio_remove_clip_click(q: Query<(&Interaction, &AudioRemoveClip), Changed<In
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The dropdown hands back the index of the row the user clicked, so the two
+    /// mappings have to be exact inverses. If they drift, picking "Linear"
+    /// silently writes Logarithmic — audible as wrong distance attenuation, with
+    /// nothing in the UI to suggest the setting did not take.
+    #[test]
+    fn rolloff_indices_round_trip_through_the_dropdown() {
+        for rolloff in [RolloffType::Logarithmic, RolloffType::Linear] {
+            let index = rolloff_to_index(&rolloff);
+            assert_eq!(rolloff_from_index(index), rolloff, "{rolloff} did not survive");
+        }
+    }
+
+    /// The labels are what the dropdown renders, and the index is what comes
+    /// back — so a label added without a matching arm makes the last option map
+    /// to the wrong variant.
+    #[test]
+    fn every_label_has_a_distinct_variant_behind_it() {
+        let mapped: Vec<RolloffType> = (0..ROLLOFF_LABELS.len()).map(rolloff_from_index).collect();
+        assert_eq!(mapped, vec![RolloffType::Logarithmic, RolloffType::Linear]);
+        for (i, r) in mapped.iter().enumerate() {
+            assert_eq!(rolloff_to_index(r), i, "label {} maps back to the wrong row", ROLLOFF_LABELS[i]);
+        }
+    }
+
+    /// An index past the end is reachable — a saved scene from a build with more
+    /// rolloff modes, or a shrunk label list. It must fall back to the default
+    /// rather than panic in the inspector.
+    #[test]
+    fn an_out_of_range_index_falls_back_to_the_default() {
+        assert_eq!(rolloff_from_index(99), RolloffType::default());
+        assert_eq!(rolloff_from_index(usize::MAX), RolloffType::default());
+    }
+
+    // ── the field accessors the inspector rows are built from ────────────────
+
+    /// Each row pairs a getter with a setter, and they are written as separate
+    /// one-line functions — the classic place for a copy-paste to leave two rows
+    /// pointing at the same field. Setting each one to a distinct value and
+    /// reading them all back catches exactly that.
+    #[test]
+    fn every_field_accessor_addresses_its_own_field() {
+        let mut d = ApComp::default();
+
+        let floats: &[(&str, fn(&mut ApComp, f32), fn(&ApComp) -> f32)] = &[
+            ("volume", s_volume, g_volume),
+            ("volume_jitter", s_vol_jitter, g_vol_jitter),
+            ("pitch", s_pitch, g_pitch),
+            ("pitch_jitter", s_pitch_jitter, g_pitch_jitter),
+            ("panning", s_panning, g_panning),
+            ("reverb_send", s_reverb, g_reverb),
+            ("delay_send", s_delay, g_delay),
+            ("fade_in", s_fade, g_fade),
+            ("spatial_min_distance", s_min, g_min),
+            ("spatial_max_distance", s_max, g_max),
+        ];
+
+        // Distinct values, so a setter writing a neighbour's field shows up as a
+        // mismatch rather than coincidentally agreeing.
+        for (i, (name, set, _)) in floats.iter().enumerate() {
+            set(&mut d, i as f32 + 0.5);
+            let _ = name;
+        }
+        for (i, (name, _, get)) in floats.iter().enumerate() {
+            assert_eq!(get(&d), i as f32 + 0.5, "`{name}` reads the wrong field");
+        }
+
+        let bools: &[(&str, fn(&mut ApComp, bool), fn(&ApComp) -> bool)] = &[
+            ("autoplay", s_autoplay, g_autoplay),
+            ("looping", s_looping, g_looping),
+            ("spatial", s_spatial, g_spatial),
+        ];
+        // Flip one at a time and confirm the others hold still.
+        for (name, set, get) in bools {
+            let before: Vec<bool> = bools.iter().map(|(_, _, g)| g(&d)).collect();
+            let flipped = !get(&d);
+            set(&mut d, flipped);
+            let after: Vec<bool> = bools.iter().map(|(_, _, g)| g(&d)).collect();
+            let changed = before.iter().zip(&after).filter(|(a, b)| a != b).count();
+            assert_eq!(changed, 1, "setting `{name}` moved more than one field");
+        }
+    }
+
+    // ── the inspector entries themselves ─────────────────────────────────────
+
+    #[test]
+    fn both_audio_entries_are_registered() {
+        let mut registry = InspectorRegistry::default();
+        register_audio_inspectors(&mut registry);
+        // Registration is what puts the component in the inspector's "Add
+        // Component" list at all; a silent no-op here means the row vanishes.
+        let ids: Vec<&str> = registry.iter().map(|e| e.type_id).collect();
+        assert!(ids.contains(&"audio_player"), "registered: {ids:?}");
+        assert!(ids.contains(&"audio_listener"), "registered: {ids:?}");
+    }
+
+    #[test]
+    fn the_player_entry_can_add_and_remove_its_component() {
+        let entry = audio_player_entry();
+        let mut world = World::new();
+        let e = world.spawn_empty().id();
+
+        assert!(!(entry.has_fn)(&world, e));
+        (entry.add_fn.expect("player must be addable"))(&mut world, e);
+        assert!((entry.has_fn)(&world, e));
+        (entry.remove_fn.expect("player must be removable"))(&mut world, e);
+        assert!(!(entry.has_fn)(&world, e));
+    }
+
+    /// The listener is inserted `active: true` — an inactive listener renders
+    /// silence, which reads as "audio is broken" rather than as a setting.
+    #[test]
+    fn an_added_listener_starts_active() {
+        let entry = audio_listener_entry();
+        let mut world = World::new();
+        let e = world.spawn_empty().id();
+        (entry.add_fn.unwrap())(&mut world, e);
+        assert!(world.get::<AudioListener>(e).unwrap().active);
+    }
+
+    #[test]
+    fn the_entries_are_filed_under_audio() {
+        for entry in [audio_player_entry(), audio_listener_entry()] {
+            assert_eq!(entry.category, "Audio");
+            assert!(!entry.display_name.is_empty());
+            assert!(!entry.icon.is_empty());
+        }
+    }
+}

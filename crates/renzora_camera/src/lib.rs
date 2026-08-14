@@ -1514,3 +1514,299 @@ fn sync_orbit_snapshot(orbit: Res<OrbitCameraState>, mut snapshot: ResMut<Camera
 }
 
 renzora::add!(CameraPlugin, Editor);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use std::f32::consts::FRAC_PI_4;
+
+    fn close(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-4
+    }
+
+    // ── orbit → position ─────────────────────────────────────────────────────
+
+    /// The defining invariant of an orbit camera: wherever it swings to, it
+    /// stays exactly `distance` from the focus.
+    #[test]
+    fn the_camera_always_sits_its_distance_from_the_focus() {
+        for yaw in [-3.0f32, -1.0, 0.0, 0.7, 2.5] {
+            for pitch in [-1.5f32, -0.4, 0.0, 0.4, 1.5] {
+                let orbit = OrbitCameraState {
+                    focus: Vec3::new(3.0, -2.0, 8.0),
+                    distance: 12.5,
+                    yaw,
+                    pitch,
+                    ..default()
+                };
+                let d = orbit.calculate_position().distance(orbit.focus);
+                assert!(close(d, 12.5), "yaw {yaw} pitch {pitch} gave distance {d}");
+            }
+        }
+    }
+
+    #[test]
+    fn zero_pitch_puts_the_camera_level_with_its_focus() {
+        let orbit = OrbitCameraState {
+            focus: Vec3::new(0.0, 5.0, 0.0),
+            distance: 3.0,
+            yaw: 1.2,
+            pitch: 0.0,
+            ..default()
+        };
+        assert!(close(orbit.calculate_position().y, 5.0));
+    }
+
+    #[test]
+    fn positive_pitch_lifts_the_camera_above_the_focus() {
+        let base = OrbitCameraState { distance: 10.0, yaw: 0.0, pitch: 0.0, ..default() };
+        let raised = OrbitCameraState { pitch: 0.9, ..base.clone() };
+        let lowered = OrbitCameraState { pitch: -0.9, ..base.clone() };
+        assert!(raised.calculate_position().y > base.calculate_position().y);
+        assert!(lowered.calculate_position().y < base.calculate_position().y);
+    }
+
+    /// Yaw is the horizontal swing, so it must move the camera in XZ and leave
+    /// its height alone.
+    #[test]
+    fn yaw_swings_the_camera_horizontally_only() {
+        let a = OrbitCameraState { distance: 6.0, yaw: 0.0, pitch: 0.3, ..default() };
+        let b = OrbitCameraState { yaw: 1.4, ..a.clone() };
+        let (pa, pb) = (a.calculate_position(), b.calculate_position());
+        assert!(close(pa.y, pb.y), "yaw changed the camera's height");
+        assert!(pa.xz().distance(pb.xz()) > 0.1, "yaw did not move the camera");
+    }
+
+    #[test]
+    fn the_transform_looks_back_at_the_focus() {
+        let orbit = OrbitCameraState {
+            focus: Vec3::new(1.0, 2.0, 3.0),
+            distance: 7.0,
+            yaw: 0.8,
+            pitch: 0.5,
+            ..default()
+        };
+        let transform = orbit.calculate_transform();
+        let to_focus = (orbit.focus - transform.translation).normalize();
+        let forward = (transform.rotation * Vec3::NEG_Z).normalize();
+        assert!(
+            to_focus.dot(forward) > 0.999,
+            "the camera is not aimed at its focus"
+        );
+    }
+
+    // ── zoom and orbit clamps ────────────────────────────────────────────────
+
+    #[test]
+    fn zooming_in_shortens_the_distance_and_out_lengthens_it() {
+        let mut orbit = OrbitCameraState { distance: 10.0, ..default() };
+        orbit.zoom(3.0);
+        assert!(close(orbit.distance, 7.0));
+        orbit.zoom(-2.0);
+        assert!(close(orbit.distance, 9.0));
+    }
+
+    /// A distance of zero puts the camera on its own focus, and `looking_at`
+    /// then has no direction to build a rotation from — the view flips or goes
+    /// NaN. The floor is what stops a fast scroll doing that.
+    #[test]
+    fn zoom_never_reaches_the_focus_point() {
+        let mut orbit = OrbitCameraState { distance: 1.0, ..default() };
+        orbit.zoom(1000.0);
+        assert!(orbit.distance >= 0.1, "distance collapsed to {}", orbit.distance);
+        assert!(orbit.calculate_transform().rotation.is_finite());
+    }
+
+    /// Pitch is clamped short of ±π/2. At exactly straight-up the focus→camera
+    /// vector is parallel to the Y-up reference and `looking_at` degenerates.
+    #[test]
+    fn orbiting_cannot_pitch_past_the_poles() {
+        let mut orbit = OrbitCameraState { pitch: 0.0, ..default() };
+        orbit.orbit(0.0, 100.0);
+        assert!(orbit.pitch <= 1.5);
+        assert!(orbit.pitch < std::f32::consts::FRAC_PI_2);
+
+        orbit.orbit(0.0, -100.0);
+        assert!(orbit.pitch >= -1.5);
+        assert!(orbit.pitch > -std::f32::consts::FRAC_PI_2);
+    }
+
+    /// Yaw deliberately is NOT clamped — it wraps forever, so dragging round and
+    /// round keeps spinning instead of hitting a wall.
+    #[test]
+    fn yaw_accumulates_without_a_limit() {
+        let mut orbit = OrbitCameraState { yaw: 0.0, ..default() };
+        for _ in 0..10 {
+            orbit.orbit(1.0, 0.0);
+        }
+        assert!(close(orbit.yaw, 10.0));
+    }
+
+    #[test]
+    fn focusing_moves_the_pivot_and_keeps_the_distance() {
+        let mut orbit = OrbitCameraState { distance: 5.0, ..default() };
+        orbit.focus_on(Vec3::new(9.0, 1.0, -4.0));
+        assert_eq!(orbit.focus, Vec3::new(9.0, 1.0, -4.0));
+        assert!(close(orbit.distance, 5.0));
+        assert!(close(orbit.calculate_position().distance(orbit.focus), 5.0));
+    }
+
+    // ── set_from_view: the "go to camera preset" path ────────────────────────
+
+    /// The round trip that matters: aim the orbit at a pose the orbit itself
+    /// produced, and it must land back on the same angles. This is what "go to
+    /// camera preset" relies on, and a sign error here sends the editor view
+    /// somewhere unrelated to the preset.
+    #[test]
+    fn set_from_view_round_trips_a_pose_the_orbit_produced() {
+        for (yaw, pitch) in [(0.0f32, 0.0f32), (0.7, 0.4), (-2.1, -0.9), (3.0, 1.2)] {
+            let source = OrbitCameraState {
+                focus: Vec3::new(2.0, 3.0, -1.0),
+                distance: 8.0,
+                yaw,
+                pitch,
+                ..default()
+            };
+            let transform = source.calculate_transform();
+
+            let mut restored = OrbitCameraState { distance: 8.0, ..default() };
+            restored.set_from_view(transform.translation, transform.rotation);
+
+            assert!(close(restored.pitch, pitch), "pitch {pitch} -> {}", restored.pitch);
+            assert!(
+                close(restored.yaw.sin(), yaw.sin()) && close(restored.yaw.cos(), yaw.cos()),
+                "yaw {yaw} -> {}",
+                restored.yaw
+            );
+            assert!(
+                restored.focus.distance(source.focus) < 1e-3,
+                "focus {:?} -> {:?}",
+                source.focus,
+                restored.focus
+            );
+        }
+    }
+
+    /// The focus is placed `distance` ahead of the camera so a following orbit
+    /// or zoom pivots around what the user is looking at, not around wherever
+    /// the old focus happened to be.
+    #[test]
+    fn set_from_view_places_the_focus_ahead_of_the_camera() {
+        let mut orbit = OrbitCameraState { distance: 4.0, ..default() };
+        let at = Vec3::new(0.0, 0.0, 10.0);
+        orbit.set_from_view(at, Quat::IDENTITY); // facing -Z
+
+        assert!(close(orbit.focus.z, 6.0), "focus landed at {:?}", orbit.focus);
+        assert!(close(orbit.calculate_position().distance(orbit.focus), 4.0));
+    }
+
+    /// Roll is dropped on purpose — the orbit camera is always Y-up. A rolled
+    /// input must still produce a level view rather than a tilted horizon.
+    #[test]
+    fn set_from_view_discards_roll() {
+        let mut rolled = OrbitCameraState { distance: 4.0, ..default() };
+        let roll = Quat::from_rotation_z(0.9);
+        rolled.set_from_view(Vec3::ZERO, roll);
+
+        let mut level = OrbitCameraState { distance: 4.0, ..default() };
+        level.set_from_view(Vec3::ZERO, Quat::IDENTITY);
+
+        assert!(close(rolled.yaw, level.yaw));
+        assert!(close(rolled.pitch, level.pitch));
+    }
+
+    /// A zero rotation quaternion normalizes to nothing. Writing NaN angles from
+    /// it would poison the orbit for the rest of the session.
+    #[test]
+    fn set_from_view_ignores_a_degenerate_rotation() {
+        let mut orbit = OrbitCameraState { yaw: 0.5, pitch: 0.25, ..default() };
+        orbit.set_from_view(Vec3::ONE, Quat::from_xyzw(0.0, 0.0, 0.0, 0.0));
+        assert!(close(orbit.yaw, 0.5));
+        assert!(close(orbit.pitch, 0.25));
+    }
+
+    #[test]
+    fn set_from_view_clamps_a_straight_down_view_to_the_pitch_limit() {
+        let mut orbit = OrbitCameraState { distance: 4.0, ..default() };
+        orbit.set_from_view(Vec3::ZERO, Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2));
+        assert!(orbit.pitch <= 1.5 && orbit.pitch >= -1.5);
+        assert!(orbit.calculate_transform().rotation.is_finite());
+    }
+
+    // ── projection mode ──────────────────────────────────────────────────────
+
+    #[test]
+    fn toggling_the_projection_twice_returns_to_the_start() {
+        assert_eq!(ProjectionMode::Perspective.toggle(), ProjectionMode::Orthographic);
+        assert_eq!(ProjectionMode::Orthographic.toggle(), ProjectionMode::Perspective);
+        assert_eq!(ProjectionMode::default().toggle().toggle(), ProjectionMode::default());
+    }
+
+    #[test]
+    fn defaults_are_a_usable_starting_view() {
+        let orbit = OrbitCameraState::default();
+        assert!(orbit.distance > 0.1, "the default view must not start inside its focus");
+        assert!(orbit.pitch.abs() <= 1.5);
+        assert_eq!(orbit.projection_mode, ProjectionMode::Perspective);
+
+        let settings = CameraSettings::default();
+        assert!(settings.move_speed > 0.0);
+        assert!(settings.orbit_sensitivity > 0.0);
+        assert!(settings.zoom_sensitivity > 0.0);
+        assert!(!settings.invert_y);
+    }
+
+    // ── viewport FOV resolution ──────────────────────────────────────────────
+
+    fn perspective(fov: f32) -> Projection {
+        Projection::Perspective(PerspectiveProjection { fov, ..default() })
+    }
+
+    fn fov_world() -> World {
+        let mut world = World::new();
+        world.init_resource::<EditorViewportFov>();
+        world
+    }
+
+    #[test]
+    fn with_no_scene_camera_the_viewport_keeps_the_default_fov() {
+        let mut world = fov_world();
+        world.run_system_once(resolve_editor_viewport_fov).unwrap();
+        assert!(close(world.resource::<EditorViewportFov>().0, FRAC_PI_4));
+    }
+
+    #[test]
+    fn a_lone_scene_cameras_fov_is_mirrored() {
+        let mut world = fov_world();
+        world.spawn((renzora::SceneCamera, perspective(1.1)));
+        world.run_system_once(resolve_editor_viewport_fov).unwrap();
+        assert!(close(world.resource::<EditorViewportFov>().0, 1.1));
+    }
+
+    /// With several cameras in a scene, the one marked default is the one the
+    /// game boots into — so it is the one the editor viewport should match,
+    /// regardless of spawn order.
+    #[test]
+    fn the_default_camera_wins_over_the_others() {
+        let mut world = fov_world();
+        world.spawn((renzora::SceneCamera, perspective(0.5)));
+        world.spawn((renzora::SceneCamera, renzora::DefaultCamera, perspective(1.3)));
+        world.spawn((renzora::SceneCamera, perspective(0.9)));
+        world.run_system_once(resolve_editor_viewport_fov).unwrap();
+        assert!(close(world.resource::<EditorViewportFov>().0, 1.3));
+    }
+
+    /// An orthographic camera has no FOV to mirror; it must be skipped rather
+    /// than treated as zero, which would collapse the viewport's frustum.
+    #[test]
+    fn orthographic_scene_cameras_are_skipped() {
+        let mut world = fov_world();
+        world.spawn((
+            renzora::SceneCamera,
+            Projection::Orthographic(OrthographicProjection::default_3d()),
+        ));
+        world.run_system_once(resolve_editor_viewport_fov).unwrap();
+        assert!(close(world.resource::<EditorViewportFov>().0, FRAC_PI_4));
+    }
+}

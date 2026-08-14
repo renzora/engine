@@ -230,3 +230,211 @@ fn enforce_graphics_quality(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+    use renzora::core::viewport_types::GraphicsQuality;
+
+    /// A world holding one viewport camera carrying the full effect stack, plus
+    /// every resource the system reads.
+    ///
+    /// The camera deliberately carries *everything*, because the property under
+    /// test is subtractive: each tier is defined by what it strips, so a test
+    /// that only spawned the components it expected to survive could not tell
+    /// "correctly kept" from "never there".
+    fn world_at(quality: GraphicsQuality) -> (World, Entity) {
+        let mut world = World::new();
+
+        world.insert_resource(ViewportSettings {
+            graphics_quality: quality,
+            ..default()
+        });
+        world.init_resource::<GraphicsQualityState>();
+        world.init_resource::<ResolvedGraphicsQuality>();
+        world.insert_resource(DirectionalLightShadowMap { size: 4096 });
+
+        let camera = world
+            .spawn((
+                // The index is the multi-viewport slot; slot 0 is the focused
+                // one, and the tier applies to every slot alike.
+                ViewportCamera(0),
+                (
+                    Bloom::default(),
+                    TemporalAntiAliasing::default(),
+                    AutoExposure::default(),
+                    ScreenSpaceAmbientOcclusion::default(),
+                ),
+                (
+                    AtmosphereSettings {
+                        rendering_method: AtmosphereMode::Raymarched,
+                        ..default()
+                    },
+                    RtLighting { enabled: true, ..default() },
+                    LumenLighting { quality: LumenQuality::ScreenSpace, ..default() },
+                ),
+            ))
+            .id();
+
+        (world, camera)
+    }
+
+    fn enforce(world: &mut World) {
+        world.run_system_once(enforce_graphics_quality).unwrap();
+    }
+
+    #[test]
+    fn high_keeps_the_whole_stack() {
+        let (mut world, cam) = world_at(GraphicsQuality::High);
+        enforce(&mut world);
+
+        let e = world.entity(cam);
+        assert!(e.get::<Bloom>().is_some());
+        assert!(e.get::<TemporalAntiAliasing>().is_some());
+        assert!(e.get::<AutoExposure>().is_some());
+        assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_some());
+        assert!(e.get::<RtLighting>().unwrap().enabled);
+        assert_eq!(e.get::<LumenLighting>().unwrap().quality, LumenQuality::ScreenSpace);
+        assert!(matches!(
+            e.get::<AtmosphereSettings>().unwrap().rendering_method,
+            AtmosphereMode::Raymarched
+        ));
+    }
+
+    /// Medium's whole purpose is killing the heaviest pixel-bound passes (SSGI,
+    /// SSAO, the raymarched sky) while keeping the tonemapped look.
+    #[test]
+    fn medium_drops_the_screen_space_passes_but_keeps_the_look() {
+        let (mut world, cam) = world_at(GraphicsQuality::Medium);
+        enforce(&mut world);
+
+        let e = world.entity(cam);
+        assert!(!e.get::<RtLighting>().unwrap().enabled, "SSGI must be off below High");
+        assert_eq!(e.get::<LumenLighting>().unwrap().quality, LumenQuality::Off);
+        assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_none());
+        assert!(matches!(
+            e.get::<AtmosphereSettings>().unwrap().rendering_method,
+            AtmosphereMode::LookupTexture
+        ));
+
+        // The tonemapped look survives — that is what separates Medium from Low.
+        assert!(e.get::<Bloom>().is_some());
+        assert!(e.get::<TemporalAntiAliasing>().is_some());
+        assert!(e.get::<AutoExposure>().is_some());
+    }
+
+    #[test]
+    fn low_strips_every_fullscreen_pass() {
+        let (mut world, cam) = world_at(GraphicsQuality::Low);
+        enforce(&mut world);
+
+        let e = world.entity(cam);
+        assert!(e.get::<Bloom>().is_none());
+        assert!(e.get::<TemporalAntiAliasing>().is_none());
+        assert!(e.get::<AutoExposure>().is_none());
+        assert!(e.get::<ScreenSpaceAmbientOcclusion>().is_none());
+        assert!(!e.get::<RtLighting>().unwrap().enabled);
+        assert_eq!(e.get::<LumenLighting>().unwrap().quality, LumenQuality::Off);
+    }
+
+    /// The atmosphere and prepass bundles must stay *resident* at every tier —
+    /// their attachment layout is fixed at camera spawn and removing them at
+    /// runtime trips a wgpu validation crash. Downgrading the rendering method
+    /// is the cheap path; removing the component is the crash.
+    #[test]
+    fn the_atmosphere_component_is_never_removed() {
+        for quality in [GraphicsQuality::Low, GraphicsQuality::Medium, GraphicsQuality::High] {
+            let (mut world, cam) = world_at(quality);
+            enforce(&mut world);
+            assert!(
+                world.entity(cam).get::<AtmosphereSettings>().is_some(),
+                "{quality:?} removed AtmosphereSettings — that is a wgpu crash"
+            );
+        }
+    }
+
+    #[test]
+    fn each_tier_sets_its_shadow_map_size() {
+        for (quality, expected) in [
+            (GraphicsQuality::Low, 512),
+            (GraphicsQuality::Medium, 1024),
+            (GraphicsQuality::High, 2048),
+        ] {
+            let (mut world, _) = world_at(quality);
+            enforce(&mut world);
+            assert_eq!(world.resource::<DirectionalLightShadowMap>().size, expected);
+        }
+    }
+
+    /// Downstream renderer crates (clouds, environment-map IBL) read the tier
+    /// from this resource rather than from `ViewportSettings`, so that a shipped
+    /// game applying it from project config and the editor viewport agree.
+    #[test]
+    fn the_live_tier_is_published_for_other_crates() {
+        let (mut world, _) = world_at(GraphicsQuality::Low);
+        enforce(&mut world);
+        assert_eq!(world.resource::<ResolvedGraphicsQuality>().0, GraphicsQuality::Low);
+    }
+
+    /// Raising the tier has to re-poke `EffectRouting`, because each router only
+    /// re-applies its effect from the (untouched) scene source when routing
+    /// changes. Without the poke, an effect a lower tier disabled would never
+    /// come back.
+    #[test]
+    fn a_tier_change_nudges_the_routers_exactly_once() {
+        let (mut world, _) = world_at(GraphicsQuality::Low);
+        world.insert_resource(EffectRouting::default());
+
+        enforce(&mut world);
+        assert!(
+            world.resource_ref::<EffectRouting>().is_changed(),
+            "the first run is a tier change and must nudge the routers"
+        );
+
+        // A second run at the same tier must NOT keep re-poking: routers would
+        // re-sync every frame, which is the churn this state exists to avoid.
+        world.clear_trackers();
+        enforce(&mut world);
+        assert!(
+            !world.resource_ref::<EffectRouting>().is_changed(),
+            "an unchanged tier re-poked the routers"
+        );
+
+        // Raising the tier is a change again.
+        world.clear_trackers();
+        world.resource_mut::<ViewportSettings>().graphics_quality = GraphicsQuality::High;
+        enforce(&mut world);
+        assert!(world.resource_ref::<EffectRouting>().is_changed());
+    }
+
+    /// Scene-authored effects are what get serialized. The tier must only ever
+    /// touch the routed copies on viewport cameras, or saving a scene on the
+    /// default tier would bake "GI off" into the file for everyone.
+    #[test]
+    fn effects_on_non_viewport_entities_are_left_alone() {
+        let (mut world, _) = world_at(GraphicsQuality::Low);
+        let authored = world
+            .spawn((
+                Bloom::default(),
+                AutoExposure::default(),
+                RtLighting { enabled: true, ..default() },
+            ))
+            .id();
+
+        enforce(&mut world);
+
+        let e = world.entity(authored);
+        assert!(e.get::<Bloom>().is_some(), "an authored source was mutated");
+        assert!(e.get::<AutoExposure>().is_some());
+        assert!(e.get::<RtLighting>().unwrap().enabled);
+    }
+
+    #[test]
+    fn with_no_viewport_settings_nothing_is_touched() {
+        let (mut world, cam) = world_at(GraphicsQuality::Low);
+        world.remove_resource::<ViewportSettings>();
+        enforce(&mut world);
+        assert!(world.entity(cam).get::<Bloom>().is_some());
+    }
+}
