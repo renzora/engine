@@ -35,6 +35,7 @@ use std::process::{Command, ExitCode};
 
 mod coverage;
 mod sync;
+mod wasm;
 
 /// Host-platform naming. Filled at compile time from `cfg!` because xtask is
 /// built for — and run on — the very platform it stages for.
@@ -216,10 +217,17 @@ fn main() -> ExitCode {
             let args: Vec<String> = std::env::args().skip(2).collect();
             coverage::run(&repo, &args)
         }
+        // Build + stage the two WEB bundles into `dist/web-wasm32/`, the same
+        // place and layout the container's `build_wasm` lane produces.
+        //
+        // The one `cargo renzora` command that cross-compiles — every other
+        // builds for the host. Nothing links a host artefact here, so that costs
+        // nothing; the point of the target is that it runs in a browser.
+        "wasm" => wasm::build_and_stage(&repo),
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | xr | dist | plugin <name> | profile | \
+                 (expected: run | xr | dist | wasm | plugin <name> | profile | \
                  coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
             );
             ExitCode::from(2)
