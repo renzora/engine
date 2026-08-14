@@ -153,8 +153,18 @@ fn external_dirs() -> Vec<PathBuf> {
 /// Read every `*.toml` under the external dirs, registering changed files.
 /// Records each file's mtime so a later rescan re-parses only what changed.
 fn scan_external_packs(state: &mut ExternalPacks) {
-    for dir in external_dirs() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+    scan_dirs(state, &external_dirs());
+}
+
+/// The body of [`scan_external_packs`], with the directory list passed in.
+///
+/// Split out purely so it can be tested: [`external_dirs`] reads the process's
+/// executable path and working directory, and a test that wanted to exercise the
+/// mtime-skip logic through it would have to `set_current_dir` — a process-global
+/// mutation that races every other test in the binary.
+fn scan_dirs(state: &mut ExternalPacks, dirs: &[PathBuf]) {
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else {
             continue;
         };
         for entry in entries.flatten() {
@@ -216,3 +226,229 @@ fn emit_language_changed(
 }
 
 renzora::add!(LangPlugin, Runtime, priority = -50);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Serializes the tests that assert on `renzora::lang`'s **process-global**
+    /// table and revision counter.
+    ///
+    /// The store is a single `RwLock` shared by the whole binary, and cargo runs
+    /// tests in parallel threads within one process — so a test asserting "the
+    /// revision did not move" races any other test that registers a pack. That
+    /// is not hypothetical: it is what made the first version of
+    /// `the_first_run_emits_a_language_changed` fail depending on scheduling.
+    /// Tests that only read their own `ExternalPacks` state need no lock.
+    static LANG: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Take the lock, tolerating a previous test having panicked while holding
+    /// it — a poisoned mutex would otherwise cascade one failure into several.
+    fn lang_lock() -> std::sync::MutexGuard<'static, ()> {
+        LANG.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Every embedded pack must parse. A typo in a hand-authored `.toml` is
+    /// otherwise a runtime `error!` nobody reads, and that language silently
+    /// falls back to English in a shipped game.
+    #[test]
+    fn every_embedded_pack_parses() {
+        for (code, src) in EMBEDDED_PACKS {
+            assert!(
+                renzora::lang::register_pack_str(src).is_ok(),
+                "embedded pack '{code}' does not parse"
+            );
+        }
+    }
+
+    /// English is the resolver's base. If it stops being first, a half-written
+    /// pack registered ahead of it can leave keys with no fallback.
+    #[test]
+    fn english_is_the_first_embedded_pack() {
+        assert_eq!(EMBEDDED_PACKS[0].0, "en");
+    }
+
+    #[test]
+    fn embedded_language_codes_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for (code, _) in EMBEDDED_PACKS {
+            assert!(seen.insert(*code), "'{code}' is listed twice");
+        }
+    }
+
+    #[test]
+    fn external_dirs_are_deduplicated() {
+        let dirs = external_dirs();
+        let unique: std::collections::HashSet<_> = dirs.iter().collect();
+        assert_eq!(dirs.len(), unique.len(), "external_dirs returned a duplicate");
+        assert!(dirs.iter().all(|d| d.ends_with("languages")));
+    }
+
+    fn pack_dir(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        for (name, body) in files {
+            std::fs::write(tmp.path().join(name), body).unwrap();
+        }
+        tmp
+    }
+
+    #[test]
+    fn a_toml_pack_is_registered_and_its_mtime_recorded() {
+        let tmp = pack_dir(&[(
+            "test-pack.toml",
+            "[meta]\nname = \"Scan Test\"\ncode = \"zz-scan\"\n[strings]\nscan_key = \"scanned\"\n",
+        )]);
+        let mut state = ExternalPacks::default();
+        scan_dirs(&mut state, &[tmp.path().to_path_buf()]);
+
+        assert_eq!(state.seen.len(), 1, "the pack's mtime should be recorded");
+        assert!(renzora::lang::has_language("zz-scan"));
+    }
+
+    /// The mtime table is what keeps the 2-second rescan cheap. If an unchanged
+    /// file were re-parsed every tick, every pack would be re-registered twice a
+    /// second forever.
+    #[test]
+    fn an_unchanged_pack_is_skipped_on_rescan() {
+        let _guard = lang_lock();
+        let tmp = pack_dir(&[(
+            "stable.toml",
+            "[meta]\nname = \"Stable\"\ncode = \"zz-stable\"\n[strings]\nk = \"v\"\n",
+        )]);
+        let dirs = [tmp.path().to_path_buf()];
+        let mut state = ExternalPacks::default();
+
+        scan_dirs(&mut state, &dirs);
+        let after_first = renzora::lang::revision();
+
+        scan_dirs(&mut state, &dirs);
+        assert_eq!(
+            renzora::lang::revision(),
+            after_first,
+            "an unchanged pack was re-registered, bumping the revision"
+        );
+    }
+
+    #[test]
+    fn non_toml_files_are_ignored() {
+        let tmp = pack_dir(&[("readme.md", "not a pack"), ("pack.toml.bak", "nor this")]);
+        let mut state = ExternalPacks::default();
+        scan_dirs(&mut state, &[tmp.path().to_path_buf()]);
+        assert!(state.seen.is_empty());
+    }
+
+    /// A broken pack must still record its mtime, or it is re-parsed and
+    /// re-logged on every rescan — twice a second, forever.
+    #[test]
+    fn a_malformed_pack_is_recorded_so_it_is_not_retried() {
+        let tmp = pack_dir(&[("broken.toml", "this is not = valid toml [[[")]);
+        let dirs = [tmp.path().to_path_buf()];
+        let mut state = ExternalPacks::default();
+        scan_dirs(&mut state, &dirs);
+        assert_eq!(state.seen.len(), 1, "a failed parse must still be recorded");
+
+        let before = state.seen.clone();
+        scan_dirs(&mut state, &dirs);
+        assert_eq!(state.seen, before, "the broken pack was retried");
+    }
+
+    #[test]
+    fn a_missing_directory_is_skipped_rather_than_fatal() {
+        let mut state = ExternalPacks::default();
+        scan_dirs(&mut state, &[PathBuf::from("no/such/languages/dir")]);
+        assert!(state.seen.is_empty());
+    }
+
+    /// Counts `LanguageChanged` messages so a multi-frame app can be asserted
+    /// on; `run_system_once` cannot, because it hands the system a fresh
+    /// `Local<u64>` every call and the whole behaviour under test is that
+    /// `Local`'s persistence.
+    #[derive(Resource, Default)]
+    struct Seen(usize);
+
+    fn emit_app() -> App {
+        let mut app = App::new();
+        app.init_resource::<Seen>()
+            .add_message::<renzora::lang::LanguageChanged>()
+            .add_systems(
+                Update,
+                (
+                    emit_language_changed,
+                    |mut reader: bevy::ecs::message::MessageReader<
+                        renzora::lang::LanguageChanged,
+                    >,
+                     mut seen: ResMut<Seen>| {
+                        seen.0 += reader.read().count();
+                    },
+                )
+                    .chain(),
+            );
+        app
+    }
+
+    /// The `Local` starts at 0 and the revision is already past it by the time
+    /// any real app runs, so the first run must emit — that is what localizes UI
+    /// built before this system first ran.
+    #[test]
+    fn the_first_run_emits_a_language_changed() {
+        let _guard = lang_lock();
+        // Guarantee the global revision is non-zero without depending on which
+        // other tests have already run.
+        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+
+        let mut app = emit_app();
+        app.update();
+        assert_eq!(
+            app.world().resource::<Seen>().0,
+            1,
+            "the first run should announce the current language"
+        );
+    }
+
+    /// The counter is the point: panels rebuild their translated text on this
+    /// message, so re-emitting every frame would rebuild every localized panel
+    /// every frame.
+    #[test]
+    fn a_quiet_frame_emits_nothing_further() {
+        let _guard = lang_lock();
+        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+
+        let mut app = emit_app();
+        app.update();
+        let after_first = app.world().resource::<Seen>().0;
+
+        app.update();
+        app.update();
+        assert_eq!(
+            app.world().resource::<Seen>().0,
+            after_first,
+            "the message repeated on a frame where nothing changed"
+        );
+    }
+
+    #[test]
+    fn switching_language_emits_again() {
+        let _guard = lang_lock();
+        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+        renzora::lang::register_pack_str(EMBEDDED_PACKS[1].1).unwrap();
+        renzora::lang::set_active("en");
+
+        let mut app = emit_app();
+        app.update();
+        let after_first = app.world().resource::<Seen>().0;
+
+        renzora::lang::set_active("de");
+        app.update();
+
+        assert_eq!(app.world().resource::<Seen>().0, after_first + 1);
+        renzora::lang::set_active("en");
+    }
+
+    #[test]
+    fn set_active_switches_the_reported_code() {
+        let _guard = lang_lock();
+        renzora::lang::register_pack_str(EMBEDDED_PACKS[0].1).unwrap();
+        renzora::lang::set_active("en");
+        assert_eq!(renzora::lang::active_code(), "en");
+    }
+}

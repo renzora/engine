@@ -642,3 +642,348 @@ impl Plugin for NavMeshPlugin {
 // never registered at all (no `add!`), so navmesh was dormant — this activates
 // it. See [`ShowAgentPathsOverride`] for the editor↔runtime gizmo seam.
 renzora::add!(NavMeshPlugin, Runtime);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    use renzora::{ScriptAction, ScriptActionValue};
+    use renzora_test_harness::{minimal_app, pump, with_manual_time};
+
+    // ── settings derived from the volume ─────────────────────────────────────
+
+    #[test]
+    fn settings_carry_the_volumes_tuning_across() {
+        let volume = NavMeshVolume {
+            agent_radius: 1.25,
+            simplify: 0.02,
+            merge_steps: 3,
+            upward_shift: 0.75,
+            ..default()
+        };
+        let settings = build_settings(&volume);
+        assert_eq!(settings.agent_radius, 1.25);
+        assert_eq!(settings.simplify, 0.02);
+        assert_eq!(settings.merge_steps, 3);
+        assert_eq!(settings.upward_shift, 0.75);
+        // Without a timeout a degenerate outline can hang the build thread.
+        assert!(settings.build_timeout.is_some());
+    }
+
+    /// The volume is authored as half-extents in XZ but meshed as a 2D outline.
+    /// Getting the sign or the axis wrong yields a mesh the agents cannot stand
+    /// on, which surfaces much later as "start is not on the navmesh".
+    #[test]
+    fn the_outline_spans_the_full_extent_on_x_and_z() {
+        let volume = NavMeshVolume {
+            half_extents: Vec3::new(10.0, 5.0, 4.0),
+            ..default()
+        };
+        let settings = build_settings(&volume);
+        let outline = settings.fixed.as_navmesh();
+        // The triangulation is meshed into a single polyanya layer; its vertices
+        // are the 2D (x, z) outline the agents will be confined to.
+        let vertices = &outline.layers[0].vertices;
+        let xs: Vec<f32> = vertices.iter().map(|v| v.coords.x).collect();
+        let zs: Vec<f32> = vertices.iter().map(|v| v.coords.y).collect();
+        let span = |v: &[f32]| {
+            v.iter().cloned().fold(f32::MIN, f32::max) - v.iter().cloned().fold(f32::MAX, f32::min)
+        };
+        assert!((span(&xs) - 20.0).abs() < 1e-3, "x span should be 2*10");
+        assert!((span(&zs) - 8.0).abs() < 1e-3, "z span should be 2*4 — the Y half-extent must not leak in");
+    }
+
+    // ── agent movement ───────────────────────────────────────────────────────
+
+    fn agent_app() -> App {
+        let mut app = minimal_app();
+        with_manual_time(&mut app, 60.0);
+        app.add_message::<NavAgentArrived>()
+            .add_systems(Update, advance_agents);
+        app
+    }
+
+    fn spawn_walker(app: &mut App, at: Vec3, path: Vec<Vec3>, target: Option<Vec3>) -> Entity {
+        app.world_mut()
+            .spawn((
+                NavAgent {
+                    speed: 6.0,
+                    target,
+                    ..default()
+                },
+                NavPath { waypoints: path },
+                Transform::from_translation(at),
+            ))
+            .id()
+    }
+
+    fn pos(app: &App, e: Entity) -> Vec3 {
+        app.world().get::<Transform>(e).unwrap().translation
+    }
+
+    #[test]
+    fn an_agent_walks_toward_its_next_waypoint() {
+        let mut app = agent_app();
+        let e = spawn_walker(&mut app, Vec3::ZERO, vec![Vec3::new(10.0, 0.0, 0.0)], Some(Vec3::new(10.0, 0.0, 0.0)));
+        // Two frames, not one: Bevy's first update has a zero delta, so a
+        // dt-scaled mover legitimately stands still on frame one.
+        pump(&mut app, 2);
+        let p = pos(&app, e);
+        assert!(p.x > 0.0 && p.x < 10.0, "expected partial progress, got {p:?}");
+    }
+
+    /// Agents walk on the XZ plane; their height is owned by whatever placed
+    /// them (terrain sampling, a physics capsule). If the mover wrote Y from the
+    /// waypoint, every agent would sink to the navmesh plane.
+    #[test]
+    fn walking_preserves_the_agents_height() {
+        let mut app = agent_app();
+        let e = spawn_walker(
+            &mut app,
+            Vec3::new(0.0, 3.5, 0.0),
+            vec![Vec3::new(10.0, 0.0, 0.0)],
+            Some(Vec3::new(10.0, 0.0, 0.0)),
+        );
+        pump(&mut app, 5);
+        assert_eq!(pos(&app, e).y, 3.5);
+    }
+
+    #[test]
+    fn intermediate_waypoints_are_popped_as_they_are_reached() {
+        let mut app = agent_app();
+        let e = spawn_walker(
+            &mut app,
+            Vec3::ZERO,
+            vec![Vec3::new(0.1, 0.0, 0.0), Vec3::new(10.0, 0.0, 0.0)],
+            Some(Vec3::new(10.0, 0.0, 0.0)),
+        );
+        pump(&mut app, 1);
+        assert_eq!(
+            app.world().get::<NavPath>(e).unwrap().waypoints.len(),
+            1,
+            "the waypoint within the 0.15 threshold should have been consumed"
+        );
+    }
+
+    #[test]
+    fn arriving_clears_the_target_and_announces_it() {
+        let mut app = agent_app();
+        let dest = Vec3::new(0.05, 0.0, 0.0);
+        let e = spawn_walker(&mut app, Vec3::ZERO, vec![dest], Some(dest));
+
+        pump(&mut app, 1);
+
+        assert!(app.world().get::<NavPath>(e).unwrap().waypoints.is_empty());
+        assert!(
+            app.world().get::<NavAgent>(e).unwrap().target.is_none(),
+            "target must be cleared so the agent does not immediately repath"
+        );
+
+        let messages = app
+            .world()
+            .resource::<bevy::ecs::message::Messages<NavAgentArrived>>();
+        let mut cursor = messages.get_cursor();
+        let fired: Vec<_> = cursor.read(messages).collect();
+        assert_eq!(fired.len(), 1);
+        assert_eq!(fired[0].entity, e);
+    }
+
+    #[test]
+    fn an_agent_with_no_path_does_not_move() {
+        let mut app = agent_app();
+        let e = spawn_walker(&mut app, Vec3::new(1.0, 2.0, 3.0), vec![], None);
+        pump(&mut app, 5);
+        assert_eq!(pos(&app, e), Vec3::new(1.0, 2.0, 3.0));
+    }
+
+    /// A step longer than the remaining distance would overshoot and oscillate
+    /// around the waypoint forever.
+    #[test]
+    fn a_fast_agent_does_not_overshoot_its_waypoint() {
+        let mut app = minimal_app();
+        with_manual_time(&mut app, 1.0); // a full second per frame
+        app.add_message::<NavAgentArrived>()
+            .add_systems(Update, advance_agents);
+        let dest = Vec3::new(1.0, 0.0, 0.0);
+        let e = app
+            .world_mut()
+            .spawn((
+                NavAgent { speed: 1000.0, target: Some(dest), ..default() },
+                NavPath { waypoints: vec![dest] },
+                Transform::default(),
+            ))
+            .id();
+        pump(&mut app, 1);
+        assert!(pos(&app, e).x <= 1.0 + 1e-3, "agent overshot: {:?}", pos(&app, e));
+    }
+
+    // ── the script-readable mirror ───────────────────────────────────────────
+
+    #[test]
+    fn read_state_is_auto_inserted_for_agents() {
+        let mut app = minimal_app();
+        app.add_systems(Update, auto_init_nav_read_state);
+        let e = app.world_mut().spawn((NavAgent::default(), NavPath::default())).id();
+        pump(&mut app, 1);
+        assert!(app.world().get::<NavReadState>(e).is_some());
+    }
+
+    #[test]
+    fn read_state_mirrors_target_path_and_distance() {
+        let mut app = minimal_app();
+        app.add_systems(Update, update_nav_read_state);
+        let e = app
+            .world_mut()
+            .spawn((
+                NavAgent { target: Some(Vec3::new(3.0, 99.0, 4.0)), ..default() },
+                NavPath { waypoints: vec![Vec3::new(3.0, 0.0, 4.0)] },
+                Transform::default(),
+                NavReadState::default(),
+            ))
+            .id();
+        pump(&mut app, 1);
+
+        let read = *app.world().get::<NavReadState>(e).unwrap();
+        assert!(read.has_target);
+        assert!(read.has_path);
+        assert!(!read.is_at_destination);
+        // Distance is measured on the XZ plane, so the target's Y is ignored:
+        // 3-4-5 triangle.
+        assert!((read.distance_to_destination - 5.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn read_state_reports_arrival_once_the_target_clears() {
+        let mut app = minimal_app();
+        app.add_systems(Update, update_nav_read_state);
+        let e = app
+            .world_mut()
+            .spawn((
+                NavAgent { target: None, ..default() },
+                NavPath::default(),
+                Transform::from_xyz(7.0, 0.0, 7.0),
+                NavReadState::default(),
+            ))
+            .id();
+        pump(&mut app, 1);
+
+        let read = *app.world().get::<NavReadState>(e).unwrap();
+        assert!(read.is_at_destination);
+        assert!(!read.has_target);
+        assert_eq!(read.distance_to_destination, 0.0);
+    }
+
+    // ── the script action surface ────────────────────────────────────────────
+
+    fn action_app() -> App {
+        let mut app = minimal_app();
+        app.add_observer(handle_nav_script_actions);
+        app
+    }
+
+    fn fire(app: &mut App, entity: Entity, name: &str, args: HashMap<String, ScriptActionValue>) {
+        app.world_mut().trigger(ScriptAction {
+            name: name.to_string(),
+            entity,
+            target_entity: None,
+            args,
+        });
+    }
+
+    #[test]
+    fn nav_set_destination_accepts_a_vec3_argument() {
+        let mut app = action_app();
+        let e = app.world_mut().spawn((NavAgent::default(), NavPath::default())).id();
+
+        let mut args = HashMap::new();
+        args.insert("target".to_string(), ScriptActionValue::Vec3([1.0, 2.0, 3.0]));
+        fire(&mut app, e, "nav_set_destination", args);
+
+        assert_eq!(
+            app.world().get::<NavAgent>(e).unwrap().target,
+            Some(Vec3::new(1.0, 2.0, 3.0))
+        );
+    }
+
+    /// The x/y/z fallback is what a script written as
+    /// `nav_set_destination(x = 1, y = 0, z = 2)` produces, and integers are what
+    /// a Lua number literal arrives as. Both paths matter.
+    #[test]
+    fn nav_set_destination_falls_back_to_scalar_components() {
+        let mut app = action_app();
+        let e = app.world_mut().spawn((NavAgent::default(), NavPath::default())).id();
+
+        let mut args = HashMap::new();
+        args.insert("x".to_string(), ScriptActionValue::Float(1.5));
+        args.insert("y".to_string(), ScriptActionValue::Int(2));
+        // `z` deliberately omitted — a missing component reads as 0.0.
+        fire(&mut app, e, "nav_set_destination", args);
+
+        assert_eq!(
+            app.world().get::<NavAgent>(e).unwrap().target,
+            Some(Vec3::new(1.5, 2.0, 0.0))
+        );
+    }
+
+    #[test]
+    fn nav_clear_destination_clears_the_target() {
+        let mut app = action_app();
+        let e = app
+            .world_mut()
+            .spawn((
+                NavAgent { target: Some(Vec3::ONE), ..default() },
+                NavPath::default(),
+            ))
+            .id();
+        fire(&mut app, e, "nav_clear_destination", HashMap::new());
+        assert!(app.world().get::<NavAgent>(e).unwrap().target.is_none());
+    }
+
+    /// The observer sees every `ScriptAction` in the app, including ones aimed at
+    /// other crates' extensions. Reacting to an unknown name would make two
+    /// crates fight over the same call.
+    #[test]
+    fn an_unrelated_action_is_ignored() {
+        let mut app = action_app();
+        let e = app
+            .world_mut()
+            .spawn((
+                NavAgent { target: Some(Vec3::ONE), ..default() },
+                NavPath::default(),
+            ))
+            .id();
+        fire(&mut app, e, "play_sound", HashMap::new());
+        assert_eq!(app.world().get::<NavAgent>(e).unwrap().target, Some(Vec3::ONE));
+    }
+
+    #[test]
+    fn an_action_aimed_at_a_non_agent_is_a_no_op() {
+        let mut app = action_app();
+        let e = app.world_mut().spawn_empty().id();
+        let mut args = HashMap::new();
+        args.insert("target".to_string(), ScriptActionValue::Vec3([1.0, 2.0, 3.0]));
+        fire(&mut app, e, "nav_set_destination", args);
+        assert!(app.world().get::<NavAgent>(e).is_none());
+    }
+
+    // ── defaults ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn volume_defaults_are_a_usable_starting_region() {
+        let v = NavMeshVolume::default();
+        assert!(v.half_extents.x > 0.0 && v.half_extents.z > 0.0);
+        assert!(v.agent_radius > 0.0);
+        assert!(v.terrain_sample_step >= 1, "a step of 0 would divide by zero");
+        assert!(v.max_slope_degrees > 0.0 && v.max_slope_degrees < 90.0);
+    }
+
+    #[test]
+    fn agent_defaults_move_and_stop() {
+        let a = NavAgent::default();
+        assert!(a.speed > 0.0);
+        assert!(a.turn_speed > 0.0);
+        assert!(a.stopping_distance > 0.0);
+        assert!(a.target.is_none());
+    }
+}

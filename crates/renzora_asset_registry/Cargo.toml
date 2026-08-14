@@ -8,5 +8,11 @@ bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 renzora_splash = { path = "../renzora_splash" }
 
+[dev-dependencies]
+# The walk is filesystem behaviour — skipping `.git`/`target`, normalizing
+# separators, reading mtime — so the tests build real directory trees rather
+# than mocking `read_dir`.
+tempfile = "3"
+
 [lints]
 workspace = true

@@ -219,3 +219,219 @@ fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) 
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::RunSystemOnce;
+
+    fn kind(name: &str) -> AssetKind {
+        AssetKind::from_path(Path::new(name))
+    }
+
+    #[test]
+    fn every_extension_group_classifies() {
+        for name in ["a.glb", "a.gltf", "a.obj", "a.fbx", "a.usd", "a.usda", "a.usdc", "a.usdz",
+                     "a.abc", "a.dae", "a.blend"] {
+            assert_eq!(kind(name), AssetKind::Model, "{name}");
+        }
+        for name in ["a.png", "a.jpg", "a.jpeg", "a.bmp", "a.tga", "a.webp", "a.hdr", "a.exr"] {
+            assert_eq!(kind(name), AssetKind::Texture, "{name}");
+        }
+        for name in ["a.material", "a.material_bp"] {
+            assert_eq!(kind(name), AssetKind::Material, "{name}");
+        }
+        assert_eq!(kind("a.scene"), AssetKind::Scene);
+        for name in ["a.wav", "a.ogg", "a.mp3", "a.flac", "a.opus"] {
+            assert_eq!(kind(name), AssetKind::Audio, "{name}");
+        }
+        for name in ["a.mp4", "a.avi", "a.mov", "a.webm"] {
+            assert_eq!(kind(name), AssetKind::Video, "{name}");
+        }
+        for name in ["a.lua", "a.js", "a.ts"] {
+            assert_eq!(kind(name), AssetKind::Script, "{name}");
+        }
+        for name in ["a.wgsl", "a.glsl", "a.vert", "a.frag", "a.hlsl"] {
+            assert_eq!(kind(name), AssetKind::Shader, "{name}");
+        }
+    }
+
+    /// The doc comment promises the table matches the browser's icon picker,
+    /// which lower-cases. A `.PNG` from a Windows tool is the common real case.
+    #[test]
+    fn classification_ignores_extension_case() {
+        assert_eq!(kind("Hero.PNG"), AssetKind::Texture);
+        assert_eq!(kind("Level.GLTF"), AssetKind::Model);
+    }
+
+    #[test]
+    fn unknown_and_missing_extensions_are_other() {
+        assert_eq!(kind("notes.txt"), AssetKind::Other);
+        assert_eq!(kind("Makefile"), AssetKind::Other);
+        // A dotfile's "extension" is the whole name to `Path`, so this also
+        // guards the `.gitignore`-style case reaching the match arm at all.
+        assert_eq!(kind(".gitignore"), AssetKind::Other);
+    }
+
+    fn write(root: &Path, rel: &str, bytes: &[u8]) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    fn walk(root: &Path) -> HashMap<String, AssetEntry> {
+        let mut out = HashMap::new();
+        walk_into(root, &root.to_path_buf(), &mut out);
+        out
+    }
+
+    #[test]
+    fn walk_indexes_nested_files_under_forward_slash_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "models/hero.glb", b"12345");
+        write(root, "textures/ui/button.png", b"ab");
+
+        let out = walk(root);
+        assert_eq!(out.len(), 2);
+
+        // Separator normalization is the load-bearing part: the key is what
+        // gets handed to `AssetServer::load`, which only accepts `/` — on
+        // Windows the raw relative path would come back with backslashes.
+        let hero = out.get("models/hero.glb").expect("nested file indexed");
+        assert_eq!(hero.kind, AssetKind::Model);
+        assert_eq!(hero.size_bytes, 5);
+        assert_eq!(hero.path, "models/hero.glb");
+        assert!(out.contains_key("textures/ui/button.png"));
+    }
+
+    #[test]
+    fn walk_skips_dot_and_build_directories() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "keep.png", b"x");
+        write(root, ".git/objects/blob", b"x");
+        write(root, "target/dist/renzora.exe", b"x");
+        write(root, "node_modules/pkg/index.js", b"x");
+        write(root, ".hidden_asset.png", b"x");
+
+        let out = walk(root);
+        assert_eq!(
+            out.keys().collect::<Vec<_>>(),
+            vec!["keep.png"],
+            "only the non-hidden, non-build file should be indexed"
+        );
+    }
+
+    #[test]
+    fn walk_records_an_mtime_it_can_read() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), "a.png", b"x");
+        let out = walk(tmp.path());
+        // Every filesystem this runs on exposes mtime; `None` here would mean
+        // the cache-bust key is silently absent and derived thumbnails would
+        // never invalidate.
+        assert!(out["a.png"].mtime_secs.is_some());
+    }
+
+    #[test]
+    fn walk_of_a_missing_directory_is_empty_rather_than_a_panic() {
+        let out = walk(Path::new("no/such/directory/anywhere"));
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn registry_accessors_report_the_indexed_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), "a.png", b"x");
+        write(tmp.path(), "b.png", b"x");
+        write(tmp.path(), "c.glb", b"x");
+
+        let registry = AssetRegistry {
+            entries: walk(tmp.path()),
+        };
+        assert_eq!(registry.len(), 3);
+        assert!(!registry.is_empty());
+        assert!(registry.get("a.png").is_some());
+        assert!(registry.get("missing.png").is_none());
+        assert_eq!(registry.iter().count(), 3);
+        assert_eq!(registry.iter_kind(AssetKind::Texture).count(), 2);
+        assert_eq!(registry.iter_kind(AssetKind::Model).count(), 1);
+        assert_eq!(registry.iter_kind(AssetKind::Audio).count(), 0);
+    }
+
+    #[test]
+    fn empty_registry_is_empty() {
+        let registry = AssetRegistry::default();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn the_build_system_indexes_the_current_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), "scenes/main.scene", b"{}");
+
+        let mut world = World::new();
+        world.init_resource::<AssetRegistry>();
+        world.insert_resource(CurrentProject {
+            path: tmp.path().to_path_buf(),
+            config: Default::default(),
+        });
+
+        world.run_system_once(build_asset_registry_on_loading).unwrap();
+
+        let registry = world.resource::<AssetRegistry>();
+        assert_eq!(registry.len(), 1);
+        assert_eq!(registry.get("scenes/main.scene").unwrap().kind, AssetKind::Scene);
+    }
+
+    /// Opening a second project must not leave the first one's entries behind —
+    /// the browser would show files that are no longer on disk.
+    #[test]
+    fn rebuilding_clears_the_previous_project() {
+        let first = tempfile::tempdir().unwrap();
+        write(first.path(), "old.png", b"x");
+        let second = tempfile::tempdir().unwrap();
+        write(second.path(), "new.png", b"x");
+
+        let mut world = World::new();
+        world.init_resource::<AssetRegistry>();
+        world.insert_resource(CurrentProject {
+            path: first.path().to_path_buf(),
+            config: Default::default(),
+        });
+        world.run_system_once(build_asset_registry_on_loading).unwrap();
+        assert!(world.resource::<AssetRegistry>().get("old.png").is_some());
+
+        world.insert_resource(CurrentProject {
+            path: second.path().to_path_buf(),
+            config: Default::default(),
+        });
+        world.run_system_once(build_asset_registry_on_loading).unwrap();
+
+        let registry = world.resource::<AssetRegistry>();
+        assert!(registry.get("old.png").is_none(), "stale entry survived");
+        assert!(registry.get("new.png").is_some());
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn no_current_project_clears_rather_than_panics() {
+        let tmp = tempfile::tempdir().unwrap();
+        write(tmp.path(), "a.png", b"x");
+
+        let mut world = World::new();
+        world.init_resource::<AssetRegistry>();
+        world.insert_resource(CurrentProject {
+            path: tmp.path().to_path_buf(),
+            config: Default::default(),
+        });
+        world.run_system_once(build_asset_registry_on_loading).unwrap();
+        assert_eq!(world.resource::<AssetRegistry>().len(), 1);
+
+        world.remove_resource::<CurrentProject>();
+        world.run_system_once(build_asset_registry_on_loading).unwrap();
+        assert!(world.resource::<AssetRegistry>().is_empty());
+    }
+}

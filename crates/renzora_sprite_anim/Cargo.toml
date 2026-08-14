@@ -8,5 +8,8 @@ description = "2D sprite animation runtime: binds Sprite.image from the multi-sh
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false }
 
+[dev-dependencies]
+renzora_test_harness = { path = "../renzora_test_harness" }
+
 [lints]
 workspace = true

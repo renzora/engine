@@ -23,5 +23,10 @@ renzora = { path = "../renzora" }
 # Only for the `ScriptExtension` trait, which is now pure declaration.
 renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
 
+[dev-dependencies]
+# External pack discovery is filesystem behaviour (extension filter, mtime
+# skip, unreadable dir), so the tests build real `languages/` directories.
+tempfile = "3"
+
 [lints]
 workspace = true
