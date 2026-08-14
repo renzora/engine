@@ -475,11 +475,24 @@ macro_rules! no_std_runtime {
 #[cfg(not(any(feature = "std", feature = "static_link")))]
 macro_rules! no_std_runtime {
     () => {
+        // Both items are suppressed under `cfg(test)`, and that is what makes a
+        // `no_std` plugin testable at all.
+        //
+        // `cargo test` compiles the plugin crate with `--test`, which links the
+        // harness and therefore `std`. `std` already defines `panic_impl` and
+        // installs a global allocator, so emitting ours produced
+        // `E0152: found duplicate lang item` and the crate would not build —
+        // meaning `cargo test` failed for all 59 `no_std` plugins whether or not
+        // they had a single test in them. Gating on `test` hands those
+        // responsibilities back to `std` for the test binary only; the cdylib
+        // that actually ships is never built with `--test` and is unaffected.
+        #[cfg(not(test))]
         #[global_allocator]
         static __RENZORA_HEAP: $crate::no_std_heap::HostHeap = $crate::no_std_heap::HostHeap;
 
         /// Aborts. A `no_std` plugin cannot unwind, so there is no way to turn
         /// this into the `SystemStatus::Panicked` a `std` plugin would report.
+        #[cfg(not(test))]
         #[panic_handler]
         fn __renzora_panic(_: &::core::panic::PanicInfo) -> ! {
             $crate::no_std_heap::abort()
