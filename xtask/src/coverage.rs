@@ -89,6 +89,10 @@ const VENDORED: &[&str] = &[
 /// staticlib shells (no host test binary) and this helper itself.
 const NON_TEST_MEMBERS: &[&str] = &["renzora-android", "renzora-ios", "xtask"];
 
+/// Percentage points a blessed floor sits below the measured value, absorbing
+/// cross-platform variance. See [`write_floors`] for why it is this wide.
+const MARGIN: f64 = 1.5;
+
 /// One crate's line-coverage tally, summed over every file that belongs to it.
 #[derive(Default, Clone, Copy)]
 struct Tally {
@@ -470,11 +474,20 @@ fn write_floors(path: &Path, tallies: &BTreeMap<String, Tally>) -> Result<usize,
          # Format: <package> <floor-percent>\n",
     );
     for (name, t) in tallies {
-        // Floor a hair below the measured value. Coverage is not bit-reproducible
-        // across platforms — a `#[cfg(windows)]` branch counts as an uncovered
-        // line on Linux and vice versa — and a floor pinned to the exact reading
-        // would fail CI on the other host for no behavioural reason.
-        let floor = (t.percent() - 0.5).max(0.0);
+        // Floor below the measured value, because coverage is not
+        // bit-reproducible across platforms: a `#[cfg(windows)]` branch is an
+        // uncovered line on Linux and vice versa, so a floor pinned to the exact
+        // reading fails CI on the other host for no behavioural reason.
+        //
+        // The margin was 0.5 and that was measured to be too small. `renzora`
+        // blessed at 39.0 from a Windows run and CI's Linux run reported 38.8 —
+        // a 0.7-point gap, because the contract crate carries a lot of
+        // platform-gated path handling. 1.5 covers the widest gap seen so far.
+        //
+        // The margin is a workaround for blessing on the wrong host, not a
+        // substitute for it: bless from a Linux measurement (see `--report-only`
+        // and the CI artifact recipe in the testing docs) and the skew is zero.
+        let floor = (t.percent() - MARGIN).max(0.0);
         s.push_str(&format!("{name} {floor:.1}\n"));
     }
     std::fs::write(path, &s).map_err(|e| format!("cannot write {}: {e}", path.display()))?;

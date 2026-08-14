@@ -317,7 +317,21 @@ The table prints worst-first, so the top of it is the next work to do. An HTML r
 
 One global "must be ≥ N%" is the obvious design and the wrong one here. Testability varies by two orders of magnitude across the workspace — `renzora_input`'s action map is pure data transformation, `renzora_ssao` is a render-graph node that cannot execute without a GPU. A single number lets a well-tested crate's gains silently pay for a regression elsewhere, and it has to be set low enough for the worst crate, so it gates nothing.
 
-So the rule is only **never go down**, per crate. A crate at 12% may not drop to 11%; a crate at 0% is pinned at 0%. `--bless` raises the floors after you add tests — raise them in the same commit, and never lower a line to make CI green. Floors are written half a point below the measured value because coverage is not bit-reproducible across platforms (a `#[cfg(windows)]` branch is an uncovered line on Linux and vice versa).
+So the rule is only **never go down**, per crate. A crate at 12% may not drop to 11%; a crate at 0% is pinned at 0%. `--bless` raises the floors after you add tests — raise them in the same commit, and never lower a line to make CI green.
+
+### Bless from a Linux measurement
+
+Coverage is **not bit-reproducible across platforms**: a `#[cfg(windows)]` branch is an uncovered line on Linux and vice versa. Floors are therefore written 1.5 points below the measured value, and that margin is a workaround rather than a fix — it was widened from 0.5 after `renzora`, blessed at 39.0 from a Windows run, measured 38.8 in CI and failed the gate for no behavioural reason. The contract crate carries a lot of platform-gated path handling, so its gap is the widest in the workspace.
+
+Blessing from the platform CI measures on removes the skew entirely. Either run the measurement in the container, or take CI's:
+
+```bash
+# Grab the lcov the Coverage workflow uploaded, then bless from it — no rebuild.
+gh run download <run-id> -n coverage -D target/coverage
+cargo renzora coverage --report-only --bless
+```
+
+`--report-only` re-reads `target/coverage/workspace.lcov` without recompiling or re-running anything, so this is seconds rather than an hour.
 
 ### What the numbers do and do not mean
 
