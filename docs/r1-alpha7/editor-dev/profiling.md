@@ -46,13 +46,21 @@ client only buffers once a profiler connects, so launch order doesn't lose data.
 > already emits one frame mark per frame; the `plugins/tracy` bridge marking too
 > would double-count every frame and halve the reported frame time.
 
-`cargo renzora profile` launches with **`RENZORA_NO_XR=1`**. If an OpenXR runtime
-is installed and set as the system default, the editor otherwise takes the
-XR-capable boot, which disables `PipelinedRenderingPlugin` — the render sub-app
-then runs inline on the main thread instead of in parallel with the sim. That
-showed up as `sub app{name=RenderApp}` nested under `update` and costing ~11.6 ms
-of a 27 ms frame: a serialization that swamps whatever you were actually trying to
-measure. Add `--xr` when the headset path *is* the subject:
+**`cargo renzora` and `cargo renzora profile` both launch with `RENZORA_NO_XR=1`.**
+Editing in a headset is `cargo renzora xr`.
+
+This used to apply to the profiling lane only, which produced a memorable
+symptom: the *instrumented* build ran faster than the normal one.
+
+If an OpenXR runtime is installed and set as the system default — not connected,
+not in use, merely present — the editor otherwise takes the XR-capable boot,
+which disables `PipelinedRenderingPlugin`. The render sub-app then runs inline on
+the main thread instead of in parallel with the sim. That showed up as
+`sub app{name=RenderApp}` nested under `update` and costing ~11.6 ms of a 27 ms
+frame: a serialization that swamps whatever you were actually trying to measure,
+and which every ordinary editor session was silently paying.
+
+Add `--xr` when the headset path *is* the subject:
 
 ```
 cargo renzora profile --xr    # profile the XR-capable (non-pipelined) boot

@@ -89,7 +89,33 @@ fn main() -> ExitCode {
 
     match cmd.as_str() {
         // Build + stage + launch — the default `cargo renzora`.
+        //
+        // **Flat, pipelined boot.** This used to launch without `RENZORA_NO_XR`,
+        // which meant a dev with an OpenXR runtime *installed and set as the
+        // system default* — not connected, not in use, merely present — got the
+        // XR-capable editor boot. That disables `PipelinedRenderingPlugin`, so the
+        // render sub-app runs inline on the main thread instead of in parallel
+        // with the sim: measured at ~11.6 ms of a 27 ms frame. The symptom that
+        // found it was `cargo renzora profile` being *faster* than `cargo renzora`,
+        // because only the profiling lane was passing the opt-out.
+        //
+        // Editing in VR is `cargo renzora xr`; shipping a VR game is unaffected
+        // (the runtime binary's `--vr` path is separate).
         "run" => {
+            let out = match build_and_stage(&repo, &plat, &[]) {
+                Ok(out) => out,
+                Err(code) => return code,
+            };
+            launch(&repo, &out, &plat, true)
+        }
+        // Build + stage + launch the XR-capable editor.
+        //
+        // The explicit opt-in half of the change described on `run`. Boots with
+        // the XR plugins and *without* pipelined rendering, which is what the
+        // headset compositor needs (it wants synchronous submission). Expect a
+        // lower flat-screen frame rate — that is inherent to the boot, not a
+        // regression.
+        "xr" => {
             let out = match build_and_stage(&repo, &plat, &[]) {
                 Ok(out) => out,
                 Err(code) => return code,
@@ -174,8 +200,8 @@ fn main() -> ExitCode {
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | dist | plugin <name> | profile | sync [--check] \
-                 | remove <crate-name>)"
+                 (expected: run | xr | dist | plugin <name> | profile | \
+                 sync [--check] | remove <crate-name>)"
             );
             ExitCode::from(2)
         }
@@ -528,9 +554,10 @@ fn launch(repo: &Path, out: &Path, plat: &Platform, default_no_xr: bool) -> Exit
     cmd.current_dir(repo).args(&extra);
     if default_no_xr && !want_xr && std::env::var_os("RENZORA_NO_XR").is_none() {
         println!(
-            "[xtask] RENZORA_NO_XR=1 (flat, pipelined boot so the profile isn't \
-             dominated by XR's serialized render sub-app; pass --xr to profile the \
-             headset path)"
+            "[xtask] RENZORA_NO_XR=1 (flat, pipelined boot — an installed OpenXR \
+             runtime would otherwise disable pipelined rendering and serialize the \
+             render sub-app onto the main thread. Use `cargo renzora xr` to edit in \
+             a headset.)"
         );
         cmd.env("RENZORA_NO_XR", "1");
     }

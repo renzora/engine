@@ -99,6 +99,7 @@ defaults to the `dev` profile and creates a *second* full set of artefacts under
 
 ```sh
 cargo renzora            # build + stage + run   ← the normal way to work
+cargo renzora xr         # same, but XR-capable (headset editing; not pipelined)
 cargo renzora dist       # build + stage, don't launch
 cargo check  --profile dist [-p <crate>]
 cargo clippy --profile dist [-p <crate>]
@@ -128,7 +129,11 @@ If `target/` has already grown a `debug/` directory, delete it —
 ### What runs where
 
 - ✅ **`cargo renzora`** — native build + stage + run on the host platform. The
-  normal way to work. Uses `--profile dist`.
+  normal way to work. Uses `--profile dist`. **Launches with `RENZORA_NO_XR=1`**:
+  merely having an OpenXR runtime installed and set as the system default
+  otherwise takes the XR-capable boot, which disables `PipelinedRenderingPlugin`
+  and serializes the render sub-app onto the main thread (~11.6 ms of a 27 ms
+  frame). Use `cargo renzora xr` to edit in a headset.
 - ✅ `cargo check --profile dist` natively / via the editor — the fast gate while
   editing (doesn't link).
 - ✅ `cargo clippy --profile dist` natively — links nothing, so it reproduces the
