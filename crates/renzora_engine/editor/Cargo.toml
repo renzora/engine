@@ -12,10 +12,14 @@ renzora_ember = { path = "../../renzora_ember" }
 # The Streaming debug panel reports terrain chunk residency, which needs the
 # chunk marker types. Editor-scope crate — the lean runtime never links this.
 renzora_terrain = { path = "../../renzora_terrain" }
-# Clipboard for the crash-overlay "Copy to Clipboard" button. The editor bundle
-# is desktop-only, so an unconditional dep is fine (and avoids a cfg split
-# between the dep and the code that calls it).
-arboard = "3"
-
 [lints]
 workspace = true
+
+# Clipboard for the crash-overlay "Copy to Clipboard" button.
+#
+# This used to be an unconditional dependency, on the reasoning that "the editor
+# is desktop-only so a cfg split isn't worth it". That premise no longer holds —
+# the editor is built for wasm too — and `arboard` has no web backend, so it is
+# target-gated like everywhere else. `crash_overlay` no-ops the copy on web.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+arboard = "3"

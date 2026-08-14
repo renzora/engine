@@ -13,6 +13,13 @@ pub mod optimize;
 pub mod settings;
 
 mod fbx;
+// The FBX backend swaps wholesale on the web: `ufbx` is C and has no wasm
+// build. Switching the module here rather than `#[cfg]`-ing call sites keeps
+// `crate::fbx_ufbx::{convert, extract_animations}` resolving on both targets.
+#[cfg(not(target_arch = "wasm32"))]
+mod fbx_ufbx;
+#[cfg(target_arch = "wasm32")]
+#[path = "fbx_ufbx_web.rs"]
 mod fbx_ufbx;
 mod gltf_pass;
 mod obj;

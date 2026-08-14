@@ -7,6 +7,10 @@ pub mod bevy_inspectors;
 pub mod camera;
 pub mod commands;
 pub mod material_thumbnail_registry;
+// The bridge that answers a C-ABI plugin's file-dialog request. Native-only
+// because it is built on `renzora_plugin`'s host half, and the host loads
+// plugins with `dlopen` — a wasm build has no plugins to answer for.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod plugin_dialog;
 pub mod model_thumbnail_registry;
 pub mod sdk;
@@ -401,6 +405,12 @@ impl Plugin for RenzoraEditorPlugin {
             &mut app.world_mut().resource_mut::<SpawnRegistry>(),
         );
 
+        // Lifted out of the builder chain below because `#[cfg]` cannot sit on
+        // a method call mid-chain. Native-only — see the `plugin_dialog` module
+        // declaration at the top of this file.
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_plugins(plugin_dialog::PluginDialogBridge);
+
         app.init_resource::<EditorSettings>()
             .init_resource::<ActiveTool>()
             .init_resource::<GizmoMode>()
@@ -411,7 +421,6 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<AutoSelectFirstHierarchyEntity>()
             .init_resource::<renzora_ui::Toasts>()
             .add_plugins(renzora_ui::window_chrome::WindowChromePlugin)
-            .add_plugins(plugin_dialog::PluginDialogBridge)
             .add_systems(PostStartup, camera::spawn_ui_camera)
             // Drain queued `EditorCommands` (panel actions — visibility/lock
             // toggles, undo/redo, etc.) under the native (bevy_ui) shell.

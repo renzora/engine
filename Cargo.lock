@@ -7715,6 +7715,9 @@ name = "renzora_editor_app"
 version = "0.2.0"
 dependencies = [
  "bevy",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "log",
  "renzora_editor",
  "renzora_plugin",

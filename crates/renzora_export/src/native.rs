@@ -1087,6 +1087,9 @@ fn copy_log_click(
 ) {
     let Some(state) = state else { return };
     if q.iter().any(|i| *i == Interaction::Pressed) {
+        // See `crash_overlay`: the browser clipboard is async + gesture-gated,
+        // so there is nothing to call from a sync system. No-op on wasm.
+        #[cfg(not(target_arch = "wasm32"))]
         if let Ok(mut cb) = arboard::Clipboard::new() {
             let _ = cb.set_text(state.build_log.join("\n"));
         }

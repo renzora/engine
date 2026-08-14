@@ -179,6 +179,61 @@ struct RendererPrefFile {
     backend: RendererBackend,
 }
 
+/// Web no-ops for the whole `save_*` family.
+///
+/// Every `load_*` in this module already handles wasm internally and returns a
+/// default; every `save_*` was instead `#[cfg(not(target_arch = "wasm32"))]`,
+/// so on the web the getters existed and the setters simply vanished. Callers
+/// across the editor call them unguarded, so the web build failed at each one
+/// with "cannot find function in crate `renzora`" — a fresh error every time
+/// another crate got far enough to compile.
+///
+/// Defining them here as no-ops returning `Ok(())` gives every target one
+/// signature, which is the same bargain `load_*` already makes. There is
+/// nowhere to write to: these persist to `~/.renzora/*.toml`, and a browser tab
+/// has no home directory. Preferences therefore last a session on the web.
+///
+/// Keep this block in step with the native definitions below — a new `save_*`
+/// needs an arm here, or the web editor breaks at its first caller.
+#[cfg(target_arch = "wasm32")]
+mod wasm_prefs {
+    use super::{AutoSaveSettings, RendererBackend, StatsRefreshSettings};
+
+    pub fn save_renderer_backend(_backend: RendererBackend) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_ui_scale(_ui_scale: f32) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_scroll_speed(_scroll_speed: f32) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_console_log_limit(_limit: usize) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_language(_code: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_stats_refresh(_settings: &StatsRefreshSettings) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_dev_mode(_dev_mode: bool) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_play_vr(_play_vr: bool) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_play_runtime_window(_runtime_window: bool) -> std::io::Result<()> {
+        Ok(())
+    }
+    pub fn save_autosave(_settings: &AutoSaveSettings) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub use wasm_prefs::*;
+
 /// Path to the persisted renderer preference: `~/.renzora/renderer.toml`.
 /// Mirrors the crash-report directory convention. Resolves the home dir via
 /// env vars (`HOME`, falling back to Windows' `USERPROFILE`) so `renzora`

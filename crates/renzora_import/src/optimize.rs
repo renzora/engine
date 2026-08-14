@@ -54,10 +54,25 @@ impl MeshOptSettings {
     }
 }
 
+/// Web build: pass the GLB through untouched.
+///
+/// `meshoptimizer` is a C library and does not build for wasm. Passing through
+/// rather than erroring is deliberate and matches the contract the native arm
+/// already documents below — an unoptimized mesh is a *performance* result, not
+/// a wrong one, so an import that would otherwise succeed should not fail here.
+#[cfg(target_arch = "wasm32")]
+pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<u8>, String> {
+    if settings.any_enabled() {
+        warn!("mesh optimization skipped: meshoptimizer has no web build");
+    }
+    Ok(glb_bytes.to_vec())
+}
+
 /// Optimize all meshes in a GLB binary blob according to `settings`.
 ///
 /// Returns the optimized GLB bytes, or the original bytes unchanged if no
 /// optimizations are enabled or the GLB contains no mesh data.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<u8>, String> {
     if !settings.any_enabled() {
         return Ok(glb_bytes.to_vec());
@@ -153,6 +168,9 @@ pub fn optimize_glb(glb_bytes: &[u8], settings: &MeshOptSettings) -> Result<Vec<
 // Per-primitive optimization
 // ---------------------------------------------------------------------------
 
+// Everything below is reachable only from the native `optimize_glb`, so it is
+// gated with it — otherwise the web build carries a pile of dead helpers.
+#[cfg(not(target_arch = "wasm32"))]
 fn optimize_primitive(
     primitive: &gltf::Primitive<'_>,
     read_buf: &[u8],
@@ -240,6 +258,7 @@ fn optimize_primitive(
 // ---------------------------------------------------------------------------
 
 /// Read indices from binary buffer as `u32`.
+#[cfg(not(target_arch = "wasm32"))]
 fn read_indices_from_buf(accessor: &gltf::Accessor<'_>, buf: &[u8]) -> Result<Vec<u32>, String> {
     let view = accessor.view().ok_or("No buffer view for indices")?;
     let base = view.offset() + accessor.offset();
@@ -275,6 +294,7 @@ fn read_indices_from_buf(accessor: &gltf::Accessor<'_>, buf: &[u8]) -> Result<Ve
 }
 
 /// Read vertex positions as tightly-packed f32 bytes (12 bytes per vertex).
+#[cfg(not(target_arch = "wasm32"))]
 fn read_position_bytes(accessor: &gltf::Accessor<'_>, buf: &[u8]) -> Result<Vec<u8>, String> {
     let view = accessor.view().ok_or("No buffer view for positions")?;
     let base = view.offset() + accessor.offset();
@@ -292,6 +312,7 @@ fn read_position_bytes(accessor: &gltf::Accessor<'_>, buf: &[u8]) -> Result<Vec<
 }
 
 /// Write indices back to the binary buffer.
+#[cfg(not(target_arch = "wasm32"))]
 fn write_indices_to_buf(
     accessor: &gltf::Accessor<'_>,
     buf: &mut [u8],
@@ -328,6 +349,7 @@ fn write_indices_to_buf(
 /// `remap[old_vertex_index] = new_vertex_index` (as returned by
 /// `optimize_vertex_fetch_remap`).  We read each old vertex element from
 /// `read_buf` and write it to the new position in `write_buf`.
+#[cfg(not(target_arch = "wasm32"))]
 fn remap_attribute_in_buffer(
     accessor: &gltf::Accessor<'_>,
     read_buf: &[u8],

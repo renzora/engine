@@ -6,17 +6,43 @@
 //! is blocking HTTP on worker threads (the engine-wide convention — no async
 //! runtime).
 
+// ── Web: the community layer is absent, not broken ───────────────────────────
+// Every panel here is a view onto renzora.com via `renzora_auth`, and that crate
+// is native-only because `renzora_net` is — the engine's HTTP convention is
+// blocking calls on worker threads (see the module doc above), and a browser has
+// neither blocking sockets nor threads to spare. The WebSocket half is equally
+// stuck: `ws` is a native client, not a browser `WebSocket`.
+//
+// `SocialPlugin` itself still has to exist on wasm: `renzora_editor`'s plugin
+// list is generated from the `add!` below and CI fails if a regeneration diffs,
+// so the type must resolve on every target the editor builds for. Hollowing the
+// plugin keeps that generated file byte-identical.
+//
+// This comes back with `renzora_net` over `fetch` plus the browser `WebSocket`
+// API — one dependency, and the whole community layer returns with it.
+#[cfg(not(target_arch = "wasm32"))]
 mod account_settings;
+#[cfg(not(target_arch = "wasm32"))]
 mod avatars;
+#[cfg(not(target_arch = "wasm32"))]
 mod confetti;
+#[cfg(not(target_arch = "wasm32"))]
 mod lightbox;
+#[cfg(not(target_arch = "wasm32"))]
 mod notify_dropdown;
+#[cfg(not(target_arch = "wasm32"))]
 mod panels;
+#[cfg(not(target_arch = "wasm32"))]
 mod reaction_picker;
+#[cfg(not(target_arch = "wasm32"))]
 mod routing;
+#[cfg(not(target_arch = "wasm32"))]
 mod settings;
+#[cfg(not(target_arch = "wasm32"))]
 mod toasts;
+#[cfg(not(target_arch = "wasm32"))]
 mod util;
+#[cfg(not(target_arch = "wasm32"))]
 mod ws;
 
 use bevy::prelude::*;
@@ -36,6 +62,12 @@ pub(crate) struct PendingSocialRequest(pub Option<SocialPanelRequest>);
 pub struct SocialPlugin;
 
 impl Plugin for SocialPlugin {
+    #[cfg(target_arch = "wasm32")]
+    fn build(&self, _app: &mut App) {
+        info!("[editor] SocialPlugin: community features unavailable on the web (no HTTP client)");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut App) {
         info!("[editor] SocialPlugin");
         app.init_resource::<SocialBridge>();
@@ -102,6 +134,9 @@ impl Plugin for SocialPlugin {
 
 /// When the session ends, clear all account-scoped panel state and counters.
 /// (The WebSocket worker is stopped by `manage_ws_connection`.)
+///
+/// Native-only along with everything it touches — nothing registers it on wasm.
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::too_many_arguments)]
 fn sign_out_cleanup(
     session: Res<renzora_auth::AuthSession>,
@@ -133,6 +168,7 @@ fn sign_out_cleanup(
 renzora::add!(SocialPlugin, Editor);
 
 /// Status bar: WS connection dot + unread counters + friends online.
+#[cfg(not(target_arch = "wasm32"))]
 fn social_status(world: &World) -> Vec<ShellStatusSegment> {
     let Some(bridge) = world.get_resource::<SocialBridge>() else {
         return Vec::new();
@@ -175,6 +211,7 @@ fn social_status(world: &World) -> Vec<ShellStatusSegment> {
 /// pops the bell dropdown, and `Profile` is stashed for `profile::open_overlay`
 /// to raise the shared profile modal (so a username click anywhere opens the
 /// same overlay, not a stray tab).
+#[cfg(not(target_arch = "wasm32"))]
 fn handle_panel_requests(
     mut bridge: ResMut<SocialBridge>,
     mut pending: ResMut<PendingSocialRequest>,

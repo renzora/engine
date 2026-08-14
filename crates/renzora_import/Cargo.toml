@@ -14,24 +14,30 @@ tobj = "4"
 stl_io = "0.10"
 ply-rs = "0.1"
 
-# FBX — ufbx handles FBX 3.0 through 7.7, binary and ASCII, with Maya/3ds Max/
-# Blender/Mixamo quirks normalized. Vendored C source compiled via cc-rs.
-ufbx = "0.10"
-
 # Core types (AnimClip, BoneTrack, write_anim_file)
 renzora = { path = "../renzora", default-features = false }
 
-# USDZ archive extraction
-zip = "2"
+# USDZ archive extraction.
+#
+# `default-features = false, features = ["deflate"]` rather than plain `zip =
+# "2"`, matching renzora_asset_browser and renzora_gaussian_splatting. zip's
+# defaults switch on the zstd, bzip2 and lzma codecs, all three of which are C
+# libraries — and all three fail to build for wasm, which is how this surfaced.
+#
+# Nothing is lost: USDZ is *specified* as a stored (uncompressed, aligned) zip
+# so that readers can mmap members in place, and `deflate` (pure Rust here)
+# still covers archives from tools that ignore that. A USDZ compressed with
+# zstd/bzip2/lzma would not be a conformant USDZ.
+#
+# This also drops bzip2-sys and lzma-sys from the DESKTOP build, where they were
+# being compiled for a code path that could never reach them.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # LZ4 decompression (USDC token tables, compressed arrays)
 lz4_flex = "0.11"
 
 # Float16 support (half-precision vertex data)
 half = "2"
-
-# Mesh optimization
-meshopt = "0.3"
 
 # Parallel texture baking — BC compression is the import-time bottleneck for
 # texture-heavy models; rayon spreads it across all cores.
@@ -53,6 +59,24 @@ serde_json = "1"
 # downsample. Loader-only consumers (editor, runtime) skip this feature
 # and stay light.
 renzora_rmip = { path = "../renzora_rmip", features = ["bake"] }
+
+# ── Native-only importers ────────────────────────────────────────────────────
+# Both compile vendored C through cc-rs and neither has a wasm build, so they
+# are declared for every target EXCEPT wasm rather than unconditionally. Each
+# has a web arm that reports the capability as missing:
+#   ufbx    → `fbx_ufbx_web.rs` reports FBX as an unsupported format
+#   meshopt → `optimize::optimize_glb` passes the GLB through unoptimized
+# Everything else in this crate (glTF/GLB, OBJ, PLY, STL, USD) is pure Rust and
+# builds for the web unchanged.
+#
+# Keep this table LAST: a `[target…]` header ends the plain `[dependencies]`
+# table, so anything placed after it silently becomes native-only too.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# FBX — ufbx handles FBX 3.0 through 7.7, binary and ASCII, with Maya/3ds Max/
+# Blender/Mixamo quirks normalized. Vendored C source compiled via cc-rs.
+ufbx = "0.10"
+# Mesh optimization
+meshopt = "0.3"
 
 [lints]
 workspace = true

@@ -12,6 +12,7 @@
 //! BC5 with renormalized mips, linear multi-channel data → BC7/BC1.
 
 use image::{imageops::FilterType, GenericImageView, ImageBuffer, Rgba};
+#[cfg(not(target_arch = "wasm32"))]
 use intel_tex_2 as intel_tex;
 
 use crate::{mip_count, RmipFormat, HEADER_LEN, MAGIC, VERSION};
@@ -192,7 +193,7 @@ pub fn bake_rgba8(
     let mut payload =
         Vec::with_capacity(format.payload_size(width, height, mips));
     for level in &levels {
-        encode_level(format, level, &mut payload);
+        encode_level(format, level, &mut payload)?;
     }
 
     let mut out = Vec::with_capacity(HEADER_LEN + payload.len());
@@ -229,13 +230,46 @@ fn renormalize_normals(img: &mut ImageBuffer<Rgba<u8>, Vec<u8>>) {
 /// padded (edge-replicated) to a multiple of 4 in each dimension, then
 /// compressed; the resulting block count matches
 /// `RmipFormat::level_byte_size`, which is what wgpu expects on upload.
-fn encode_level(format: RmipFormat, img: &ImageBuffer<Rgba<u8>, Vec<u8>>, out: &mut Vec<u8>) {
-    let (w, h) = (img.width(), img.height());
-
+fn encode_level(
+    format: RmipFormat,
+    img: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
     if !format.is_block_compressed() {
         out.extend_from_slice(img.as_raw());
-        return;
+        return Ok(());
     }
+    encode_block_level(format, img, out)
+}
+
+/// Block compression is the one part of baking that needs native code:
+/// `intel_tex_2` is an ISPC (C) library with no wasm target. Everything else in
+/// this module is pure Rust and builds for the web unchanged, which is why the
+/// cut is here rather than around the whole module — the web editor keeps mip
+/// generation and the uncompressed formats.
+///
+/// The web arm errors rather than silently emitting zeroed blocks. Zeroes would
+/// still satisfy `level_byte_size`, so they would upload to wgpu cleanly and
+/// surface as corrupt textures with nothing pointing back at this function.
+#[cfg(target_arch = "wasm32")]
+fn encode_block_level(
+    format: RmipFormat,
+    _img: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    _out: &mut Vec<u8>,
+) -> Result<(), String> {
+    Err(format!(
+        "cannot encode {format:?}: block compression needs the native ISPC \
+         encoder, which has no web build — bake this texture on desktop"
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn encode_block_level(
+    format: RmipFormat,
+    img: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    out: &mut Vec<u8>,
+) -> Result<(), String> {
+    let (w, h) = (img.width(), img.height());
 
     // Pad to a multiple of 4 by clamping to the edge texel.
     let pw = w.div_ceil(4) * 4;
@@ -289,10 +323,14 @@ fn encode_level(format: RmipFormat, img: &ImageBuffer<Rgba<u8>, Vec<u8>>, out: &
         }
         RmipFormat::Rgba8UnormSrgb | RmipFormat::Rgba8Unorm => unreachable!("handled above"),
     }
+    Ok(())
 }
 
 /// Build a `pw × ph` RGBA8 buffer from `img`, replicating the right/bottom
 /// edge texels into the padding region.
+///
+/// Native-only: block compression is the sole caller, and that needs ISPC.
+#[cfg(not(target_arch = "wasm32"))]
 fn pad_rgba_clamp(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, pw: u32, ph: u32) -> Vec<u8> {
     let (w, h) = (img.width(), img.height());
     if w == pw && h == ph {
@@ -314,6 +352,9 @@ fn pad_rgba_clamp(img: &ImageBuffer<Rgba<u8>, Vec<u8>>, pw: u32, ph: u32) -> Vec
 
 /// Take the first `N` channels of an RGBA8 buffer into a tightly-packed
 /// `N`-channel buffer (for BC4's R / BC5's RG surfaces).
+///
+/// Native-only, for the same reason as [`pad_rgba_clamp`].
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_channels<const N: usize>(rgba: &[u8]) -> Vec<u8> {
     let texels = rgba.len() / 4;
     let mut out = Vec::with_capacity(texels * N);

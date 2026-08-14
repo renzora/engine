@@ -2,6 +2,12 @@
 
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
+// Hardware probing is native-only. `sysinfo` (CPU/RAM) and `nvml_wrapper`
+// (NVIDIA GPU counters) both read the OS directly and have no web equivalent —
+// a browser tab is not allowed to know any of it. The FPS/frame-time readout
+// and the GPU *name* come from Bevy's own diagnostics and render adapter, so
+// those survive on the web and the status bar is not empty there.
+#[cfg(not(target_arch = "wasm32"))]
 use nvml_wrapper::Nvml;
 
 use renzora::{
@@ -27,9 +33,11 @@ struct SystemMonitorState {
     gpu_vram_total_gb: f64,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource)]
 struct NvmlHandle(Option<Nvml>);
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for NvmlHandle {
     fn default() -> Self {
         Self(Nvml::init().ok())
@@ -65,6 +73,7 @@ fn update_system_monitor(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn init_hardware_info(mut state: ResMut<SystemMonitorState>) {
     use sysinfo::System;
 
@@ -80,6 +89,7 @@ fn init_hardware_info(mut state: ResMut<SystemMonitorState>) {
     state.gpu_name = String::new();
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn update_memory_info(
     mut state: ResMut<SystemMonitorState>,
     // Keep the `System` between calls — allocating a fresh one each time (and
@@ -91,6 +101,7 @@ fn update_memory_info(
     state.used_ram_gb = sys.used_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn update_gpu_stats(nvml: Res<NvmlHandle>, mut state: ResMut<SystemMonitorState>) {
     let Some(nvml) = nvml.0.as_ref() else { return };
     let Ok(device) = nvml.device_by_index(0) else {
@@ -138,8 +149,10 @@ impl Plugin for SystemMonitorPlugin {
         }
 
         app.init_resource::<SystemMonitorState>();
+        #[cfg(not(target_arch = "wasm32"))]
         app.init_resource::<NvmlHandle>();
 
+        #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(Startup, init_hardware_info);
         app.add_systems(
             Update,
@@ -149,9 +162,20 @@ impl Plugin for SystemMonitorPlugin {
         // query), so don't run it at 60 Hz for a status-bar readout. The interval
         // is user-configurable (Settings → Plugins → Stats Refresh); the resource
         // is seeded + persisted by the debugger plugin, and absent → 250 ms.
+        #[cfg(not(target_arch = "wasm32"))]
         app.add_systems(
             Update,
             (update_system_monitor, update_memory_info, update_gpu_stats)
+                .run_if(in_state(SplashState::Editor))
+                .run_if(renzora::stat_refresh_throttle(|s| s.system_monitor_ms)),
+        );
+        // Web: only the FPS/frame-time readout, which is pure Bevy diagnostics.
+        // The throttle still applies — it exists to keep a status-bar readout
+        // off the 60 Hz path, which is as true in a browser as on the desktop.
+        #[cfg(target_arch = "wasm32")]
+        app.add_systems(
+            Update,
+            update_system_monitor
                 .run_if(in_state(SplashState::Editor))
                 .run_if(renzora::stat_refresh_throttle(|s| s.system_monitor_ms)),
         );

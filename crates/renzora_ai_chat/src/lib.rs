@@ -911,6 +911,12 @@ fn docs_browse_click(
     mut commands: Commands,
 ) {
     if buttons.iter().any(|i| *i == Interaction::Pressed) {
+        // Web: no picker to open. `pick_folder` is synchronous and rfd's web
+        // backend has no folder support at all — the browser's equivalent is
+        // the async `showDirectoryPicker()`. The button is inert until the web
+        // build carries a directory-handle path; the text field still accepts a
+        // typed path, which is the only way to set this on the web for now.
+        #[cfg(not(target_arch = "wasm32"))]
         commands.queue(|world: &mut World| {
             let Some(folder) = rfd::FileDialog::new()
                 .set_title("Select the engine docs folder")

@@ -46,7 +46,26 @@ pub(crate) struct InstallConfirmBtn;
 #[derive(Component)]
 pub(crate) struct DismissOverlayBtn(Entity);
 
+/// `File → Install Plugin…` menu action — web arm.
+///
+/// A distribution plugin is a native `.dll`/`.so`/`.dylib` that the host
+/// `dlopen`s at startup. The web has no dynamic loading (see
+/// `renzora_plugin::host::loader`'s `wasm_dl` shim), no `plugins/` directory
+/// beside an executable, and no synchronous file picker. So the menu entry
+/// stays — removing it would mean `#[cfg]` on an element inside the `vec![]`
+/// that builds the File menu, which isn't stable — and says why instead.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn open_install_dialog(world: &mut World) {
+    notice_overlay(
+        world,
+        "Not Available on the Web",
+        "Plugins are native libraries loaded at startup. The web build cannot \
+         load them — install plugins in the desktop editor.",
+    );
+}
+
 /// `File → Install Plugin…` menu action.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn open_install_dialog(world: &mut World) {
     let Some(source) = rfd::FileDialog::new()
         .set_title("Select a Renzora plugin")

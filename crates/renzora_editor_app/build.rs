@@ -6,10 +6,24 @@
 fn main() {
     println!("cargo:rerun-if-changed=../../icon.ico");
 
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+
     // zstd-sys native lib: Cargo deduplicates its link metadata to the runtime
     // dylib (renzora_rpak uses zstd), but renzora_export/zip also need it in
     // the exe. Re-emit the link-lib directive so the exe linker finds it.
-    println!("cargo:rustc-link-lib=static=zstd");
+    //
+    // NOT on wasm — same as the root `build.rs`, and for the same reason: the C
+    // zstd crate has no wasm build, `renzora_rpak` decodes with `ruzstd` there,
+    // and nothing provides the native library. Asking for it anyway survives
+    // every compile and then fails the final link with
+    // `unable to find library -lzstd`, which no `cargo check` can catch.
+    //
+    // Two build scripts emit this line because build scripts are per-package.
+    // Fixing one does not fix the other — the runtime binary was fixed first
+    // and this one still broke the editor's link.
+    if target_arch != "wasm32" {
+        println!("cargo:rustc-link-lib=static=zstd");
+    }
 
     // Emit engine version and build hash for dynamic plugin compatibility checks.
     let pkg_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();

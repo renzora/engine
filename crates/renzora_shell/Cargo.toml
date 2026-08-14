@@ -12,8 +12,6 @@ renzora = { path = "../renzora", default-features = false, features = ["editor"]
 renzora_ember = { path = "../renzora_ember" }
 # Editor settings + undo/redo hooks + project handlers for the top-bar menus.
 renzora_editor_framework = { path = "../renzora_editor_framework" }
-# Native file picker for "File → Install Plugin…".
-rfd = "0.15"
 # Persist the per-workspace dock layout to ~/.renzora/layout.json across sessions.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -30,3 +28,9 @@ renzora_viewport = { path = "../renzora_viewport" }
 
 [lints]
 workspace = true
+
+# Native file picker for "File → Install Plugin…". rfd's web backend has no
+# synchronous `FileDialog`, and there is nothing to install on the web anyway —
+# `plugin_install::open_install_dialog` says so there instead of picking a file.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"

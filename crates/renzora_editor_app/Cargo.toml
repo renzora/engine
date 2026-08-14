@@ -42,6 +42,14 @@ renzora_postprocess = { path = "../renzora_postprocess" }
 toml = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
+# WASM support: getrandom needs JS backend on wasm32 targets. One handle per
+# getrandom major in the graph — see the root Cargo.toml, which carries the full
+# explanation and must stay in step with this.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
 [build-dependencies]
 winres = "0.1"
 

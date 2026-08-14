@@ -179,9 +179,15 @@ pub(crate) fn crash_overlay_buttons(
     }
     if copy_q.iter().any(|i| *i == Interaction::Pressed) {
         if let Some(report) = state.report.clone() {
+            // No web clipboard here: the browser's is async and gated behind a
+            // user gesture, so it cannot be driven from a sync Bevy system.
+            // The button stays visible and simply does nothing on wasm.
+            #[cfg(not(target_arch = "wasm32"))]
             if let Ok(mut cb) = arboard::Clipboard::new() {
                 let _ = cb.set_text(report.format());
             }
+            #[cfg(target_arch = "wasm32")]
+            let _ = report;
         }
     }
 }
