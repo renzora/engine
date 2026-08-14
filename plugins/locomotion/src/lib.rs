@@ -68,16 +68,29 @@ impl Default for Locomotion {
     }
 }
 
+/// Which clip a given speed calls for.
+///
+/// Split out of [`drive_gait`] so the thresholds can be tested without a host: a
+/// plugin's `Query` is backed by the interface table, so the system itself only
+/// runs inside a real engine, while this — the part that can actually be wrong —
+/// is ordinary arithmetic.
+///
+/// `run` is checked first, so a configuration with `run_at` below `walk_at`
+/// resolves to `run` rather than to whichever branch happens to come first.
+fn gait_for(speed: f32, walk_at: f32, run_at: f32) -> &'static str {
+    if speed >= run_at {
+        "run"
+    } else if speed >= walk_at {
+        "walk"
+    } else {
+        "idle"
+    }
+}
+
 /// Pick a gait and switch to it only when it actually changes.
 fn drive_gait(q: Query<(Entity, &Locomotion, &AnimState)>, mut cmds: Commands) {
     for (entity, loco, anim) in &q {
-        let want = if loco.speed >= loco.run_at {
-            "run"
-        } else if loco.speed >= loco.walk_at {
-            "walk"
-        } else {
-            "idle"
-        };
+        let want = gait_for(loco.speed, loco.walk_at, loco.run_at);
 
         // The whole point of the example. Without this guard the crossfade
         // restarts every frame and nothing ever finishes blending.
@@ -115,3 +128,82 @@ impl Plugin for LocomotionPlugin {
 }
 
 renzora_plugin::add!(LocomotionPlugin);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn gait(speed: f32) -> &'static str {
+        let d = Locomotion::default();
+        gait_for(speed, d.walk_at, d.run_at)
+    }
+
+    #[test]
+    fn a_standing_character_idles() {
+        assert_eq!(gait(0.0), "idle");
+    }
+
+    #[test]
+    fn speed_selects_walk_then_run() {
+        assert_eq!(gait(1.0), "walk");
+        assert_eq!(gait(8.0), "run");
+    }
+
+    /// The comparisons are `>=`, so a speed sitting exactly on a threshold takes
+    /// the faster gait. Flipping either to `>` leaves a character moving at
+    /// exactly `walk_at` playing the idle clip — feet planted while it slides.
+    #[test]
+    fn a_speed_exactly_on_a_threshold_takes_the_faster_gait() {
+        let d = Locomotion::default();
+        assert_eq!(gait_for(d.walk_at, d.walk_at, d.run_at), "walk");
+        assert_eq!(gait_for(d.run_at, d.walk_at, d.run_at), "run");
+    }
+
+    #[test]
+    fn just_below_a_threshold_keeps_the_slower_gait() {
+        let d = Locomotion::default();
+        assert_eq!(gait_for(d.walk_at - 0.001, d.walk_at, d.run_at), "idle");
+        assert_eq!(gait_for(d.run_at - 0.001, d.walk_at, d.run_at), "walk");
+    }
+
+    /// The thresholds are inspector fields with independent ranges, so nothing
+    /// stops a user dragging `run_at` below `walk_at`. Checking `run` first means
+    /// that resolves to `run` — one consistent answer — rather than depending on
+    /// branch order.
+    #[test]
+    fn inverted_thresholds_still_give_one_answer() {
+        assert_eq!(gait_for(5.0, 8.0, 2.0), "run");
+        assert_eq!(gait_for(1.0, 8.0, 2.0), "idle");
+    }
+
+    /// A character driven backwards has a negative speed, and must not be
+    /// treated as running.
+    #[test]
+    fn a_negative_speed_idles() {
+        assert_eq!(gait(-3.0), "idle");
+    }
+
+    /// Every gait this returns must be a clip name the character actually has,
+    /// and `is_clip`/`crossfade_animation` match on the string.
+    #[test]
+    fn only_the_three_known_clip_names_are_ever_returned() {
+        for speed in [-10.0f32, 0.0, 0.05, 0.1, 1.0, 3.9, 4.0, 100.0] {
+            assert!(
+                matches!(gait(speed), "idle" | "walk" | "run"),
+                "speed {speed} produced {:?}",
+                gait(speed)
+            );
+        }
+    }
+
+    /// Defaults have to be ordered, or a fresh component walks and runs at the
+    /// same speed and the gait never settles.
+    #[test]
+    fn default_thresholds_are_ordered_and_start_idle() {
+        let d = Locomotion::default();
+        assert!(d.walk_at < d.run_at, "walk_at {} !< run_at {}", d.walk_at, d.run_at);
+        assert!(d.walk_at > 0.0, "a walk_at of 0 would walk while standing still");
+        assert!(d.blend > 0.0, "a blend of 0 snaps between clips");
+        assert_eq!(gait_for(d.speed, d.walk_at, d.run_at), "idle");
+    }
+}
