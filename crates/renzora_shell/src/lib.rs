@@ -3582,7 +3582,14 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
             Name::new("window-buttons"),
         ))
         .id();
+    #[allow(unused_mut)]
     let mut kids: Vec<Entity> = Vec::new();
+    // No window controls on the web: a browser tab has no OS window to
+    // minimize, maximize or close. The buttons would render perfectly and do
+    // nothing — `set_minimized` and friends are no-ops there, and a tab cannot
+    // close itself unless a script opened it. The container stays (it collapses
+    // to zero width when empty) so the title bar's layout is unchanged.
+    #[cfg(not(target_arch = "wasm32"))]
     for (name, action, is_close) in [
         ("minus", WindowAction::Minimize, false),
         ("square", WindowAction::ToggleMaximize, false),

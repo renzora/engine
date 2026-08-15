@@ -18,7 +18,10 @@
 use bevy::core_pipeline::Core3d;
 use renzora::RenderPhase;
 use bevy::prelude::*;
+// Only the native `build` installs these; the web arm is a hollow plugin.
+#[cfg(not(target_arch = "wasm32"))]
 use bevy::render::extract_component::ExtractComponentPlugin;
+#[cfg(not(target_arch = "wasm32"))]
 use bevy::render::RenderApp;
 use renzora::{
     LumenDebug, LumenLighting, LumenQuality, RtDebugMode, RtLighting, RtLightingExternallyManaged,

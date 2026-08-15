@@ -46,10 +46,15 @@ mod util;
 mod ws;
 
 use bevy::prelude::*;
+use renzora::core::SocialPanelRequest;
+// Only the native `build` registers panels and the status item; the web arm is
+// a hollow plugin (see the note above the module list).
+#[cfg(not(target_arch = "wasm32"))]
 use renzora::core::{
     RenzoraShellExt, ShellStatusAlign, ShellStatusItem, ShellStatusSegment, SocialBridge,
-    SocialPanelRequest, SocialWsState,
+    SocialWsState,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use renzora::SplashState;
 
 /// Deep-link context handed to panels after a [`SocialPanelRequest`] focuses

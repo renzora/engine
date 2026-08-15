@@ -4,6 +4,8 @@
 //! optional lossy simplification to GLB meshes.
 
 use log::warn;
+// Native-only, like everything downstream of `optimize_glb`'s native arm.
+#[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 
 /// Settings controlling which mesh optimizations to apply.

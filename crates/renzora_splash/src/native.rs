@@ -766,10 +766,18 @@ fn build_window_controls(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
             Name::new("splash-window-controls"),
         ))
         .id();
-    let min = win_button(commands, fonts, WinBtn::Min, "minus", false);
-    let max = win_button(commands, fonts, WinBtn::Max, "square", false);
-    let close = win_button(commands, fonts, WinBtn::Close, "x", true);
-    commands.entity(row).add_children(&[min, max, close]);
+    // Same as the editor shell's title bar: a browser tab has no OS window to
+    // minimize, maximize or close, so the controls are left off rather than
+    // rendered as three buttons that do nothing.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let min = win_button(commands, fonts, WinBtn::Min, "minus", false);
+        let max = win_button(commands, fonts, WinBtn::Max, "square", false);
+        let close = win_button(commands, fonts, WinBtn::Close, "x", true);
+        commands.entity(row).add_children(&[min, max, close]);
+    }
+    #[cfg(target_arch = "wasm32")]
+    let _ = fonts;
     row
 }
 
