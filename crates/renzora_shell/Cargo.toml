@@ -34,3 +34,8 @@ workspace = true
 # `plugin_install::open_install_dialog` says so there instead of picking a file.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rfd = "0.15"
+
+# The Fullscreen API, for the title bar's web-only fullscreen toggle — the one
+# window state a page is allowed to change.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Document", "Element"] }

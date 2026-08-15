@@ -163,6 +163,10 @@ impl Plugin for ShellPlugin {
                 about::process_about_request,
                 about::about_credit_click,
                 about::about_credit_hover,
+                // Web-only: the fullscreen toggle that stands in for the
+                // window controls.
+                #[cfg(target_arch = "wasm32")]
+                (web_fullscreen_click, sync_web_fullscreen_icon),
                 relocalize_on_language_change,
                 settings_btn_click,
                 (play_target_option_click, update_play_target_menu),
@@ -2290,6 +2294,70 @@ use renzora_ui::window_chrome::{WindowAction, WindowActionQueue};
 #[derive(Component)]
 struct WindowBtn(WindowAction);
 
+/// The web's stand-in for the window controls: a fullscreen toggle.
+///
+/// Browser fullscreen is the only "window" state a page can actually change,
+/// and it is the one worth having — it takes the tab strip and address bar away
+/// and gives the editor the whole display, which is much closer to how the
+/// desktop build is used.
+#[cfg(target_arch = "wasm32")]
+#[derive(Component)]
+struct WebFullscreenBtn;
+
+/// Toggle browser fullscreen, and report whether the page is now fullscreen.
+///
+/// Must run from a click: browsers only grant `requestFullscreen` in response
+/// to a user gesture, and refuse it silently otherwise.
+#[cfg(target_arch = "wasm32")]
+fn toggle_web_fullscreen() {
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    if doc.fullscreen_element().is_some() {
+        doc.exit_fullscreen();
+    } else if let Some(el) = doc.document_element() {
+        // Fullscreen the whole page rather than the canvas: the canvas is sized
+        // from its parent (`fit_canvas_to_parent`), so promoting the root keeps
+        // that relationship and lets Bevy resize into the new viewport on its
+        // own.
+        let _ = el.request_fullscreen();
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn web_fullscreen_click(q: Query<&Interaction, (With<WebFullscreenBtn>, Changed<Interaction>)>) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        toggle_web_fullscreen();
+    }
+}
+
+/// Swap the glyph between "expand" and "collapse" as fullscreen changes.
+///
+/// Polled rather than driven by the `fullscreenchange` event: the state can
+/// also change by Esc or F11, which no click of ours would hear about, and a
+/// cheap per-frame read of `document.fullscreenElement` covers every route.
+#[cfg(target_arch = "wasm32")]
+fn sync_web_fullscreen_icon(q: Query<&Children, With<WebFullscreenBtn>>, mut text: Query<&mut Text>) {
+    let is_fs = web_sys::window()
+        .and_then(|w| w.document())
+        .is_some_and(|d| d.fullscreen_element().is_some());
+    let Some(want) =
+        renzora_ember::phosphor_map::icon_glyph(if is_fs { "corners-in" } else { "corners-out" })
+    else {
+        return;
+    };
+    let want = want.to_string();
+    for children in &q {
+        for child in children.iter() {
+            if let Ok(mut t) = text.get_mut(child) {
+                if t.0 != want {
+                    t.0 = want.clone();
+                }
+            }
+        }
+    }
+}
+
 /// An empty top-bar region that initiates an OS window-move on press (and, when
 /// maximized, restores first — Windows aero-snap then handles half/maximize).
 #[derive(Component)]
@@ -3584,11 +3652,54 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
         .id();
     #[allow(unused_mut)]
     let mut kids: Vec<Entity> = Vec::new();
-    // No window controls on the web: a browser tab has no OS window to
-    // minimize, maximize or close. The buttons would render perfectly and do
-    // nothing — `set_minimized` and friends are no-ops there, and a tab cannot
-    // close itself unless a script opened it. The container stays (it collapses
-    // to zero width when empty) so the title bar's layout is unchanged.
+
+    // Web: one fullscreen toggle instead of the three window controls.
+    //
+    // A browser tab has no OS window to minimize, maximize or close —
+    // `set_minimized` is a no-op and a tab cannot close itself unless a script
+    // opened it. Fullscreen is the one window state a page CAN change, and it
+    // is the one worth having: it hides the tab strip and address bar and gives
+    // the editor the whole display.
+    #[cfg(target_arch = "wasm32")]
+    {
+        let btn = commands
+            .spawn((
+                Node {
+                    width: Val::Px(32.0),
+                    height: Val::Px(24.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Interaction::default(),
+                WebFullscreenBtn,
+                renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            ))
+            .id();
+        let g = glyph(commands, "corners-out", text_muted(), 14.0);
+        commands.entity(g).insert(bevy::ui::FocusPolicy::Pass);
+        commands.entity(btn).add_child(g);
+        // Same hover treatment as the desktop minimize/maximize buttons — a
+        // faint wash, no red (nothing here is destructive).
+        renzora_ember::reactive::tracked::bind_bg(commands, btn, move |w| {
+            match w.get::<Interaction>(btn) {
+                Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                    Color::srgba(1.0, 1.0, 1.0, 0.09)
+                }
+                _ => Color::NONE,
+            }
+        });
+        renzora_ember::reactive::tracked::bind_text_color(commands, g, move |w| {
+            match w.get::<Interaction>(btn) {
+                Some(Interaction::Hovered) | Some(Interaction::Pressed) => rgb(text_primary()),
+                _ => rgb(text_muted()),
+            }
+        });
+        kids.push(btn);
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     for (name, action, is_close) in [
         ("minus", WindowAction::Minimize, false),

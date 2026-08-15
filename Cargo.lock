@@ -8681,6 +8681,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "web-sys",
 ]
 
 [[package]]
