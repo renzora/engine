@@ -312,7 +312,8 @@ mod tests {
         // triangles), and this runs on the main thread whenever a clipmap
         // parameter changes — so a regression that makes interning slow would
         // show up as an editor hitch, not a test failure. Pin it.
-        let start = std::time::Instant::now();
+        // `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+        let start = bevy::platform::time::Instant::now();
         let mesh = generate_clipmap_mesh(5, 256, 0.25);
         let elapsed = start.elapsed();
         assert!(mesh.count_vertices() > 200_000, "unexpectedly sparse");

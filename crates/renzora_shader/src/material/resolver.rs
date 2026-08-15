@@ -182,7 +182,8 @@ fn resolve_material_refs(
     asset_server: Res<AssetServer>,
 ) {
     use super::perf::MaterialKind;
-    use std::time::Instant;
+    // `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+    use bevy::platform::time::Instant;
     let Some(mut standard_materials) = standard_materials else {
         return;
     };

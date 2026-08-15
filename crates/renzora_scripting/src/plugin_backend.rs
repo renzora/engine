@@ -1075,10 +1075,19 @@ fn to_engine_draw(d: &renzora_plugin::script::DrawCmd) -> renzora::DrawCmd {
 ///
 /// Runs once, after plugin loading — `PluginScriptBackends` is filled during
 /// `renzora_plugin_init`, which happens well before the first frame.
+///
+/// `Option<ResMut<..>>` because the resource only exists where plugins can be
+/// loaded at all. On wasm there is no `dlopen`, so the host never inserts it,
+/// and a plain `ResMut` made this system fail its parameter validation on
+/// EVERY frame — roughly a thousand identical warnings per second in the
+/// browser console, drowning everything else during the web bring-up.
 pub fn adopt_plugin_backends(
-    mut registered: bevy::prelude::ResMut<renzora_plugin::host::PluginScriptBackends>,
+    registered: Option<bevy::prelude::ResMut<renzora_plugin::host::PluginScriptBackends>>,
     mut engine: bevy::prelude::ResMut<crate::engine::ScriptEngine>,
 ) {
+    let Some(mut registered) = registered else {
+        return;
+    };
     if registered.0.is_empty() {
         return;
     }

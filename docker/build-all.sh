@@ -676,14 +676,20 @@ write_web_shell() {
 <title>$title</title>
 <style>
   html, body { margin: 0; height: 100%; background: #14151a; overflow: hidden; }
-  canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  /* The canvas is sized by Bevy (`fit_canvas_to_parent`), from THIS element.
+     Hence a fixed-size parent and no width/height on the canvas itself: sizing
+     the canvas in CSS instead fights Bevy for control of the surface, and a
+     parent whose size depends on its children feeds back into a canvas that
+     grows on every resize. */
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; outline: none; }
   #boot { position: fixed; inset: 0; display: grid; place-items: center;
           font: 14px system-ui, sans-serif; color: #8a8f98; }
 </style>
 </head>
 <body>
 <div id="boot">Loading $title…</div>
-<canvas id="bevy"></canvas>
+<div id="stage"><canvas id="bevy"></canvas></div>
 <script type="module">
   import init from './$name.js';
   // WebGPU only — the engine's wasm build enables bevy's \`webgpu\` feature, so

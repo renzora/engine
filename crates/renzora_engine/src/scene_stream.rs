@@ -250,7 +250,8 @@ pub fn drive_scene_streams(world: &mut World) {
     // ones go back at the end. New streams pushed while we work (a finishing
     // main stream expanding instances) are preserved by re-appending.
     let mut streams = std::mem::take(&mut world.resource_mut::<SceneStreams>().streams);
-    let budget_start = std::time::Instant::now();
+    // `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+    let budget_start = bevy::platform::time::Instant::now();
     let mut kept: Vec<SceneStream> = Vec::new();
 
     for mut stream in streams.drain(..) {
@@ -330,7 +331,7 @@ enum SpawnOutcome {
 fn spawn_within_budget(
     world: &mut World,
     stream: &mut SceneStream,
-    budget_start: std::time::Instant,
+    budget_start: bevy::platform::time::Instant,
 ) -> SpawnOutcome {
     let registry = world.resource::<AppTypeRegistry>().clone();
     let StreamStage::Spawning {

@@ -160,6 +160,13 @@ pub fn install_panic_hook(is_editor: bool) {
 
 /// Simple timestamp without external dependency
 fn chrono_lite_timestamp() -> String {
+    // `web_time`'s SystemTime on the web, `std`'s everywhere else. std's panics
+    // on wasm ("time not implemented on this platform"), and panicking inside
+    // the crash reporter is the worst possible place for it — the report that
+    // explains the first failure would itself be the second one.
+    #[cfg(target_arch = "wasm32")]
+    use web_time::{SystemTime, UNIX_EPOCH};
+    #[cfg(not(target_arch = "wasm32"))]
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let duration = SystemTime::now()

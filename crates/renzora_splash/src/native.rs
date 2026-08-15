@@ -1232,9 +1232,18 @@ fn do_open_project(world: &mut World) {
             }
         }
     }
+    // Web: the browser's directory picker reaches the same real folder the
+    // desktop editor would open — `showDirectoryPicker` returns a handle with
+    // read/write on whatever the user chooses, so one project works on both.
+    //
+    // Only the pick is wired up so far: it opens the dialog and enumerates the
+    // folder. Nothing is loaded yet, because everything downstream of
+    // `open_project` is synchronous `std::fs` and the handle is async-only —
+    // that shim is the next piece. Watch the console for the listing.
     #[cfg(target_arch = "wasm32")]
     {
         let _ = world;
+        renzora_webfs::pick_directory();
     }
 }
 
@@ -1255,9 +1264,13 @@ fn do_new_project(world: &mut World) {
             }
         }
     }
+    // Web: same picker as Open Project. Creating the project skeleton in the
+    // chosen folder needs writes through the handle, which is the step after
+    // reading — for now this proves the dialog and the readwrite grant.
     #[cfg(target_arch = "wasm32")]
     {
         let _ = world;
+        renzora_webfs::pick_directory();
     }
 }
 

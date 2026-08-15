@@ -22,7 +22,14 @@
 //! overhead is two `Instant` reads per entry per frame (tens of ns each).
 
 use bevy::diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic};
-use std::time::Instant;
+// NOT `std::time::Instant`: it is unimplemented on wasm32-unknown-unknown and
+// panics on the first call with "time not implemented on this platform". Since
+// this file reads the clock twice per entry per frame, that made it the first
+// thing to kill the web editor — it booted all the way through plugin
+// registration, renderer init and viewport setup, then died on frame one.
+// `bevy::platform::time::Instant` is `std`'s on native and `web_time`'s on the
+// web, so this is free everywhere else.
+use bevy::platform::time::Instant;
 
 use bevy::ecs::change_detection::{CheckChangeTicks, Tick};
 use bevy::ecs::world::CommandQueue;

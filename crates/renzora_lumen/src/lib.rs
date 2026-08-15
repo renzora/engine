@@ -105,6 +105,21 @@ mod editor;
 pub struct LumenPlugin;
 
 impl Plugin for LumenPlugin {
+    /// Not on the web. The voxel GI pass binds an `RGBA16Float` storage texture
+    /// as read-write, and WebGPU allows read-write storage textures only for a
+    /// small set of formats that does not include it — so `voxel_resolve_layout`
+    /// fails to create, and every pipeline built on it follows.
+    ///
+    /// Gated rather than left to fail: the render error policy tolerates these
+    /// on wasm now, but a pass that cannot work should not re-report itself
+    /// every frame. Reviving it means a format the web permits (`rgba8unorm`) or
+    /// splitting the read and write into separate bindings.
+    #[cfg(target_arch = "wasm32")]
+    fn build(&self, _app: &mut App) {
+        info!("[runtime] LumenPlugin: voxel GI unavailable on the web (no read-write RGBA16Float storage textures)");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut App) {
         info!("[runtime] LumenPlugin (GI: Lumen + RT backend)");
 

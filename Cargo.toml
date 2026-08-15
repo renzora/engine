@@ -236,9 +236,9 @@ bevy = { version = "0.19", default-features = false, features = [
     # anisotropy and specular maps each have inspector fields and importer paths.
     # DROPPED: `pbr_clustered_decals`, `pbr_light_textures`, `experimental_pbr_pcss`
     # — zero references outside `capabilities.rs`'s strip list.
-    "pbr_transmission_textures",
-    "pbr_multi_layer_material_textures", "pbr_anisotropy_texture",
-    "pbr_specular_textures",
+    # The four optional PBR texture sets are NOT here — they live in
+    # `renzora_app`'s `cfg(not(target_arch = "wasm32"))` block, because together
+    # they blow WebGPU's per-stage sampler limit. See the note there.
     # `morph`/`morph_animation` KEPT pending a check on whether the GLTF/FBX
     # importers pass blend shapes through — no code names `MorphWeights`, but the
     # feature gates an import capability, not an API surface.
@@ -433,12 +433,27 @@ log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] 
 #   clipboard_image  fails to compile without it. Browser clipboard access is an
 #                    async permissions-gated web API; it would be a separate
 #                    implementation, not this feature.
+#   pbr_transmission_textures        Together these add roughly eight
+#   pbr_multi_layer_material_textures  texture+sampler pairs to the PBR bind
+#   pbr_anisotropy_texture             group, which took the fragment stage to
+#   pbr_specular_textures              20 samplers against WebGPU's per-stage
+#                    limit of 16. The result was not a degraded material but no
+#                    3D at all: `pbr_opaque_mesh_pipeline` failed to create, so
+#                    `main_opaque_pass_3d` produced an invalid command buffer
+#                    every single frame. The web build therefore trades
+#                    transmission, clearcoat, anisotropy and specular MAPS for
+#                    being able to render. The underlying material properties
+#                    still work — it is the per-pixel textures that are gone.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bevy = { workspace = true, features = [
     "file_watcher",
     "basis-universal",
     "system_clipboard",
     "clipboard_image",
+    "pbr_transmission_textures",
+    "pbr_multi_layer_material_textures",
+    "pbr_anisotropy_texture",
+    "pbr_specular_textures",
 ] }
 
 # WASM support: getrandom needs JS backend on wasm32 targets.

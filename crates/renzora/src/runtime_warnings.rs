@@ -26,7 +26,9 @@
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+use bevy::platform::time::Instant;
 
 use bevy::log::tracing::field::{Field, Visit};
 use bevy::log::tracing::{Event, Subscriber};

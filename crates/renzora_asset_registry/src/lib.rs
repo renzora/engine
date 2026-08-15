@@ -148,7 +148,8 @@ fn build_asset_registry_on_loading(
     };
 
     let root = project.path.clone();
-    let started = std::time::Instant::now();
+    // `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+    let started = bevy::platform::time::Instant::now();
     let mut entries = HashMap::new();
     walk_into(&root, &root, &mut entries);
     registry.entries = entries;

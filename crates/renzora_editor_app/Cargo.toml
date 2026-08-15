@@ -46,6 +46,19 @@ log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] 
 # getrandom major in the graph — see the root Cargo.toml, which carries the full
 # explanation and must stay in step with this.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# Pick the WebGPU backend explicitly. `renzora_app` gets this through its `wasm`
+# feature; this package has no features, so without it wgpu fell back to WebGL 2
+# (the first browser run reported `backend: Gl`, ANGLE over D3D11). That is not a
+# minor downgrade for an editor: WebGL 2 has no compute shaders and no storage
+# buffers, so atmosphere, SSAO, OIT, GPU clustering, Hanabi particles and
+# gaussian splatting all refused to initialise.
+#
+# `debug` names systems and parameters in ECS error messages. The web build is
+# young enough that "Encountered an error in system `<Enable the debug feature
+# to see the name>`" is a dead end every time it appears, and it appears a lot;
+# the names are worth their small cost here. Drop this once the web editor is
+# past the shakedown phase.
+bevy = { workspace = true, features = ["webgpu", "debug"] }
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }

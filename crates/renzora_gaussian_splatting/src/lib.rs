@@ -43,6 +43,25 @@ struct GaussianSplatSynced {
 pub struct GaussianSplatPlugin;
 
 impl Plugin for GaussianSplatPlugin {
+    /// Not on the web: gaussian splatting needs capabilities WebGPU does not
+    /// have, so this cannot be made to work by fixing a shader.
+    ///
+    /// The renderer writes storage buffers from the VERTEX stage
+    /// (`VERTEX_WRITABLE_STORAGE`, a native-wgpu-only feature) and its radix
+    /// sort wants five bind group layouts where WebGPU permits four. In the
+    /// first browser run these produced a wall of validation errors and — until
+    /// the render error policy stopped panicking on them — killed the editor
+    /// outright, over a feature the session was not using.
+    ///
+    /// The plugin type stays so the generated plugin list resolves on every
+    /// target; it just installs nothing here. A web-capable splat renderer would
+    /// be a compute-based rewrite, not a port.
+    #[cfg(target_arch = "wasm32")]
+    fn build(&self, _app: &mut App) {
+        info!("[runtime] GaussianSplatPlugin: unavailable on the web (WebGPU lacks VERTEX_WRITABLE_STORAGE)");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn build(&self, app: &mut App) {
         info!("[runtime] GaussianSplatPlugin (bevy_gaussian_splatting)");
         app.add_plugins(bevy_gaussian_splatting::GaussianSplattingPlugin);

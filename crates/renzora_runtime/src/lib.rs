@@ -407,6 +407,24 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
                     // (OS title bar). Decided at runtime via `is_editor`.
                     decorations: !is_editor,
                     resizable: true,
+                    // Web: bind to the canvas in the page and track its size.
+                    //
+                    // Without `canvas` winit creates its OWN canvas and appends
+                    // it, so the page's stylesheet never reaches the surface
+                    // Bevy actually draws to. Without `fit_canvas_to_parent`
+                    // (default false) the surface keeps its default resolution
+                    // regardless of the viewport — the first browser run
+                    // rendered the whole editor into a ~1280x720 box in the
+                    // corner of a black page.
+                    //
+                    // The selector must match the `<canvas id="bevy">` the
+                    // shell writes (see `xtask::wasm::write_shell` and
+                    // `build-all.sh`'s `write_web_shell` — both, they are
+                    // duplicated on purpose).
+                    #[cfg(target_arch = "wasm32")]
+                    canvas: Some("#bevy".into()),
+                    #[cfg(target_arch = "wasm32")]
+                    fit_canvas_to_parent: true,
                     ..default()
                 }),
                 ..default()
@@ -555,10 +573,33 @@ fn render_error_policy(
         // frame and carries on); crashing on them would kill the editor every
         // time you press Esc out of play mode.
         _ if is_transient_surface_error(&error.description) => RenderErrorPolicy::Ignore,
+        // On the web, a validation error is usually a CAPABILITY gap rather than
+        // a bug. WebGPU is a strict subset of native wgpu — no writable storage
+        // buffers in the vertex stage, no read-write RGBA16Float storage
+        // textures, at most 4 bind group layouts per pipeline — so a pipeline
+        // that is entirely valid on a desktop GPU can be refused in a browser.
+        // Bevy already degrades exactly this way, logging "X not loaded, GPU
+        // lacks support" and carrying on.
+        //
+        // Panicking here made one unsupported plugin fatal to the whole editor:
+        // the first browser run died on `bevy_gaussian_splatting`'s bind group
+        // layout, having otherwise booted perfectly. Log loudly and keep the
+        // frame moving instead — a web editor missing one renderer feature is
+        // enormously more useful than one that will not start.
+        #[cfg(target_arch = "wasm32")]
+        _ => {
+            bevy::log::error!(
+                "GPU feature unavailable on this platform ({:?}): {}",
+                error.ty,
+                error.description
+            );
+            RenderErrorPolicy::Ignore
+        }
         // Anything else is treated as a real bug: panic so the engine's crash
         // hook (`renzora_engine::crash`) saves a report + shows the native crash
         // window, rather than silently freezing (the old `StopRendering`) or
         // strobing (`Ignore` on a persistent fault).
+        #[cfg(not(target_arch = "wasm32"))]
         _ => panic!(
             "Unrecoverable GPU render error ({:?}): {}",
             error.ty, error.description

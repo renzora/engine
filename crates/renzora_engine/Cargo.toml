@@ -108,5 +108,13 @@ rfd = { version = "0.15", optional = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 dirs = "6"
 
+# A wall clock the web actually has. `std::time::SystemTime` is unimplemented on
+# wasm32-unknown-unknown and panics on first use, which would make the crash
+# reporter's own timestamp the second crash. Bevy pulls this same crate for
+# `bevy::platform::time::Instant`, so it costs nothing new — but it re-exports
+# only `Instant`, hence the direct dep for `SystemTime`.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1"
+
 [lints]
 workspace = true

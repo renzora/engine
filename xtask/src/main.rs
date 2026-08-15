@@ -223,11 +223,14 @@ fn main() -> ExitCode {
         // The one `cargo renzora` command that cross-compiles — every other
         // builds for the host. Nothing links a host artefact here, so that costs
         // nothing; the point of the target is that it runs in a browser.
-        "wasm" => wasm::build_and_stage(&repo),
+        "wasm" => {
+            let args: Vec<String> = std::env::args().skip(2).collect();
+            wasm::build_and_stage(&repo, &args)
+        }
         other => {
             eprintln!(
                 "[xtask] unknown command '{other}' \
-                 (expected: run | xr | dist | wasm | plugin <name> | profile | \
+                 (expected: run | xr | dist | wasm [--no-opt] | plugin <name> | profile | \
                  coverage [--check|--bless] | sync [--check] | remove <crate-name>)"
             );
             ExitCode::from(2)

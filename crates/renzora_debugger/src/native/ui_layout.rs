@@ -39,7 +39,8 @@
 //! panel about frame time. The counts refresh only while this panel is the
 //! active tab, and then only every 30 frames.
 
-use std::time::Instant;
+// `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+use bevy::platform::time::Instant;
 
 use bevy::diagnostic::{Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic};
 use bevy::prelude::*;

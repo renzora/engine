@@ -155,7 +155,8 @@ fn bake_mesh_samples(
         )>,
     >,
 ) {
-    let start = std::time::Instant::now();
+    // `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+    let start = bevy::platform::time::Instant::now();
     let mut budget = MAX_BAKES_PER_FRAME;
     let mut bakes = 0usize;
     let mut samples_emitted: u64 = 0;

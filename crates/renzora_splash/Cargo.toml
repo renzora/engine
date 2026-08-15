@@ -19,6 +19,9 @@ renzora_net = { path = "../renzora_net" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3", features = ["Window", "Storage", "console"] }
+# The browser's answer to `rfd` above: a directory picker with real read/write
+# on the folder the user chooses.
+renzora_webfs = { path = "../renzora_webfs" }
 
 [lints]
 workspace = true

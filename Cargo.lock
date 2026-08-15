@@ -7801,6 +7801,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "toml 0.8.23",
+ "web-time",
 ]
 
 [[package]]
@@ -8736,6 +8737,7 @@ dependencies = [
  "renzora_ember",
  "renzora_net",
  "renzora_ui",
+ "renzora_webfs",
  "rfd",
  "serde",
  "serde_json",
@@ -9058,6 +9060,16 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_water",
+]
+
+[[package]]
+name = "renzora_webfs"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
