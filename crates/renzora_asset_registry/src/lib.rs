@@ -165,6 +165,44 @@ fn build_asset_registry_on_loading(
 /// Recursive worker for [`build_asset_registry_on_loading`]. Skips
 /// hidden directories (anything starting with `.`) and the conventional
 /// build/cache directories so the index doesn't balloon with garbage.
+/// Web: the same walk, over the directory listings `webfs` cached when the
+/// project was adopted. Synchronous like the native version because that
+/// pre-walk already happened — indexing 0 assets was what this looked like
+/// before, since `std::fs::read_dir` on wasm simply fails.
+#[cfg(target_arch = "wasm32")]
+fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) {
+    let Some(entries) = renzora_webfs::list_dir(dir) else {
+        return;
+    };
+    for e in entries {
+        let name_lc = e.name.to_ascii_lowercase();
+        if name_lc.starts_with('.') || name_lc == "target" || name_lc == "node_modules" {
+            continue;
+        }
+        let path = dir.join(&e.name);
+        if e.is_dir {
+            walk_into(root, &path, out);
+            continue;
+        }
+        let Ok(rel) = path.strip_prefix(root) else {
+            continue;
+        };
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        out.insert(
+            rel.clone(),
+            AssetEntry {
+                kind: AssetKind::from_path(&path),
+                path: rel,
+                size_bytes: e.size,
+                // The browser reports a real `lastModified`; `0` only shows up
+                // for directories, which never reach here.
+                mtime_secs: Some(e.modified),
+            },
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn walk_into(root: &Path, dir: &PathBuf, out: &mut HashMap<String, AssetEntry>) {
     let Ok(read_dir) = std::fs::read_dir(dir) else {
         return;

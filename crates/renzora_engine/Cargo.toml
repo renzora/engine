@@ -115,6 +115,9 @@ dirs = "6"
 # only `Instant`, hence the direct dep for `SystemTime`.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-time = "1.1"
+# Assets come out of the picked project folder via the browser's directory
+# handle — see the wasm arm in `asset_reader::read`.
+renzora_webfs = { path = "../renzora_webfs" }
 
 [lints]
 workspace = true

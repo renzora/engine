@@ -21,3 +21,8 @@ rfd = "0.15"
 
 [lints]
 workspace = true
+
+# `.material` files come through the picked directory handle on the web —
+# `std::fs` there answers every read with "operation not supported".
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+renzora_webfs = { path = "../renzora_webfs" }

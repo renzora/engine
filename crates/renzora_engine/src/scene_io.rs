@@ -1174,6 +1174,14 @@ pub fn load_scene(world: &mut World, path: &Path) {
     };
 
     // Fall back to disk if Vfs didn't have it.
+    // Web: the project is behind a browser directory handle, so `path.exists()`
+    // and `read_to_string` below both answer "no" regardless of what is there.
+    // Scene files are pre-read when the project is adopted (`webfs::prewarm`),
+    // precisely because this load is a one-shot `OnEnter` system with no second
+    // attempt — a cache miss here would mean the scene never loads at all.
+    #[cfg(target_arch = "wasm32")]
+    let content = content.or_else(|| renzora_webfs::read_text_cached(path));
+
     let content = match content {
         Some(c) => c,
         None => {

@@ -2904,6 +2904,37 @@ fn refresh_listing(
 /// Read + sort a folder's non-hidden entries (folders first). Shared by the grid
 /// snapshot and the shift-range `visible_order` tracker.
 fn read_sorted_entries(folder: &Path, search: &str, sort: SortMode, desc: bool) -> Vec<Entry> {
+    let mut entries = read_entries(folder, search);
+    sort_entries(&mut entries, sort, desc);
+    entries
+}
+
+/// Web: the same listing, out of the browser's directory handle.
+///
+/// A cache miss yields nothing for this frame and starts the read; the panel
+/// already rescans on a throttle, so the folder fills in a beat later.
+/// (`list_dir` handles converting the editor's project-prefixed path into one
+/// relative to the picked directory.)
+#[cfg(target_arch = "wasm32")]
+fn read_entries(folder: &Path, search: &str) -> Vec<Entry> {
+    let Some(list) = renzora_webfs::list_dir(folder) else {
+        return Vec::new();
+    };
+    list.into_iter()
+        .filter(|e| !e.name.starts_with('.'))
+        .filter(|e| search.is_empty() || e.name.to_lowercase().contains(search))
+        .map(|e| Entry {
+            path: folder.join(&e.name),
+            name: e.name,
+            is_dir: e.is_dir,
+            size: e.size,
+            modified: e.modified,
+        })
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_entries(folder: &Path, search: &str) -> Vec<Entry> {
     let mut entries: Vec<Entry> = Vec::new();
     if let Ok(rd) = std::fs::read_dir(folder) {
         for e in rd.flatten() {
@@ -2927,7 +2958,12 @@ fn read_sorted_entries(folder: &Path, search: &str, sort: SortMode, desc: bool) 
             entries.push(Entry { path, name, is_dir, size, modified });
         }
     }
-    // Folders always first; then the chosen key (reversed when descending).
+    entries
+}
+
+/// Folders always first; then the chosen key (reversed when descending).
+/// Shared by both targets — only the reading differs.
+fn sort_entries(entries: &mut [Entry], sort: SortMode, desc: bool) {
     entries.sort_by(|a, b| {
         let dir = b.is_dir.cmp(&a.is_dir);
         if dir != std::cmp::Ordering::Equal {
@@ -2946,7 +2982,6 @@ fn read_sorted_entries(folder: &Path, search: &str, sort: SortMode, desc: bool) 
             ord
         }
     });
-    entries
 }
 
 /// Dirty token for the asset grid. The listing `Arc` is rebuilt by
@@ -3370,15 +3405,43 @@ struct TreeRow {
     is_file: bool,
 }
 
-fn has_subdirs(dir: &Path) -> bool {
-    std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.flatten().any(|e| {
-                !e.file_name().to_string_lossy().starts_with('.')
-                    && e.file_type().map(|t| t.is_dir()).unwrap_or(false)
-            })
+/// A folder's non-hidden children as `(path, name, is_dir)`.
+///
+/// The tree's three walks share this so only one of them has to know where
+/// listings come from. Deliberately does NOT stat each entry — the grid needs
+/// size and mtime, the tree needs neither, and a `metadata()` per file was
+/// previously the dominant cost on folders of hundreds of meshes.
+#[cfg(not(target_arch = "wasm32"))]
+fn dir_kinds(dir: &Path) -> Vec<(PathBuf, String, bool)> {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    rd.flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                return None;
+            }
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            Some((e.path(), name, is_dir))
         })
-        .unwrap_or(false)
+        .collect()
+}
+
+/// Web: out of the directory-handle cache. An unread folder reports empty for
+/// now and fills in once the read lands, same as the grid.
+#[cfg(target_arch = "wasm32")]
+fn dir_kinds(dir: &Path) -> Vec<(PathBuf, String, bool)> {
+    renzora_webfs::list_dir(dir)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| !e.name.starts_with('.'))
+        .map(|e| (dir.join(&e.name), e.name, e.is_dir))
+        .collect()
+}
+
+fn has_subdirs(dir: &Path) -> bool {
+    dir_kinds(dir).iter().any(|(_, _, is_dir)| *is_dir)
 }
 
 /// A 1.5px vertical guide line. `full` runs the whole row height; otherwise it
@@ -3386,14 +3449,7 @@ fn has_subdirs(dir: &Path) -> bool {
 /// Whether `dir` contains any non-hidden file (used to decide if a folder is
 /// expandable in tree-only file mode).
 fn has_visible_files(dir: &Path) -> bool {
-    std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.flatten().any(|e| {
-                !e.file_name().to_string_lossy().starts_with('.')
-                    && e.file_type().map(|t| t.is_file()).unwrap_or(false)
-            })
-        })
-        .unwrap_or(false)
+    dir_kinds(dir).iter().any(|(_, _, is_dir)| !*is_dir)
 }
 
 fn flatten_dirs(
@@ -3406,17 +3462,11 @@ fn flatten_dirs(
 ) {
     let mut subs: Vec<(PathBuf, String)> = Vec::new();
     let mut files: Vec<(PathBuf, String)> = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(dir) {
-        for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.starts_with('.') {
-                continue;
-            }
-            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                subs.push((e.path(), name));
-            } else if show_files {
-                files.push((e.path(), name));
-            }
+    for (path, name, is_dir) in dir_kinds(dir) {
+        if is_dir {
+            subs.push((path, name));
+        } else if show_files {
+            files.push((path, name));
         }
     }
     subs.sort_by_key(|a| a.1.to_lowercase());

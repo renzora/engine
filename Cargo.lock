@@ -7309,6 +7309,7 @@ dependencies = [
  "renzora_blueprint",
  "renzora_editor_framework",
  "renzora_ember",
+ "renzora_webfs",
  "zip",
 ]
 
@@ -7319,6 +7320,7 @@ dependencies = [
  "bevy",
  "renzora",
  "renzora_splash",
+ "renzora_webfs",
  "tempfile",
 ]
 
@@ -7796,6 +7798,7 @@ dependencies = [
  "renzora_scripting",
  "renzora_shader",
  "renzora_terrain",
+ "renzora_webfs",
  "rfd",
  "ron 0.8.1",
  "serde",
@@ -8181,6 +8184,7 @@ dependencies = [
  "renzora_shader",
  "renzora_splash",
  "renzora_undo",
+ "renzora_webfs",
  "rfd",
  "serde",
  "serde_json",

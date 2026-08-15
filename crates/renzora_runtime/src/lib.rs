@@ -47,9 +47,26 @@ pub fn platform_wgpu_settings() -> bevy::render::settings::WgpuSettings {
     // Web: let Bevy's wasm defaults select WebGPU/WebGL. Pinning a native
     // backend (or requesting native-only features like POLYGON_MODE_LINE) here
     // would break the browser build.
+    //
+    // The limits, though, are worth raising. `Limits::default()` is the
+    // conservative WebGPU baseline every implementation must meet — 12 uniform
+    // buffers per shader stage, among others — and Bevy's forward mesh view
+    // bind group wants 13 on a camera with this project's feature set. The
+    // result is not a degraded pipeline but no `alpha_blend_mesh_pipeline` at
+    // all, so nothing transparent draws.
+    //
+    // `using_alignment` / `using_resolution` take the ADAPTER's actual figures
+    // where they exceed the baseline, which on any desktop GPU they do by a wide
+    // margin. This asks for what the hardware has rather than what the spec
+    // guarantees; an adapter that really only offers the baseline is unchanged
+    // by it, and would need features trimmed instead.
     #[cfg(all(not(target_os = "android"), target_arch = "wasm32"))]
     {
-        bevy::render::settings::WgpuSettings::default()
+        use bevy::render::settings::{WgpuSettings, WgpuSettingsPriority};
+        WgpuSettings {
+            priority: WgpuSettingsPriority::Functionality,
+            ..default()
+        }
     }
 
     // Desktop (Windows / macOS / Linux / BSD).
@@ -444,6 +461,22 @@ pub fn add_default_rendering(app: &mut App, is_editor: bool) {
         #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
         custom_layer: renzora::runtime_warnings::runtime_warnings_layer,
         fmt_layer,
+        // Web: silence Bevy's own per-error line from the render error handler.
+        //
+        // It logs unconditionally, once per error per frame, and a single
+        // uncreatable pipeline generates a cascade of "[Invalid CommandBuffer]
+        // is invalid due to a previous error" behind it. The result is
+        // thousands of lines a second — enough to bury the one message naming
+        // the actual cause, and enough console traffic to lock up devtools.
+        //
+        // Nothing is lost: `render_error_policy` below is handed every one of
+        // these errors and reports each distinct cause itself, once.
+        //
+        // Appended to `DEFAULT_FILTER` rather than replacing it: that default
+        // carries `wgpu=error` among others, and dropping it would swap this
+        // flood for a louder one.
+        #[cfg(target_arch = "wasm32")]
+        filter: format!("{},bevy_render::error_handler=off", bevy::log::DEFAULT_FILTER),
         ..default()
     });
 
@@ -588,11 +621,33 @@ fn render_error_policy(
         // enormously more useful than one that will not start.
         #[cfg(target_arch = "wasm32")]
         _ => {
-            bevy::log::error!(
-                "GPU feature unavailable on this platform ({:?}): {}",
-                error.ty,
-                error.description
-            );
+            // Log each DISTINCT message once. A pipeline that fails to create
+            // is re-encoded every frame, and each failure drags a cascade of
+            // "[Invalid CommandBuffer] is invalid due to a previous error"
+            // behind it — thousands of lines a second, which buries the one
+            // message that says what actually went wrong and is enough console
+            // traffic to hang devtools.
+            //
+            // Cascade lines are suppressed entirely: they name a consequence,
+            // never a cause, and the cause is always reported separately.
+            use std::collections::HashSet;
+            use std::sync::{Mutex, OnceLock};
+            static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+            let cascade = error.description.contains("is invalid due to a previous error");
+            let first = SEEN
+                .get_or_init(|| Mutex::new(HashSet::new()))
+                .lock()
+                .map(|mut s| s.insert(error.description.clone()))
+                .unwrap_or(true);
+
+            if first && !cascade {
+                bevy::log::error!(
+                    "GPU feature unavailable on this platform ({:?}): {}",
+                    error.ty,
+                    error.description
+                );
+            }
             RenderErrorPolicy::Ignore
         }
         // Anything else is treated as a real bug: panic so the engine's crash

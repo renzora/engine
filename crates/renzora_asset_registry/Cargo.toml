@@ -16,3 +16,8 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+# The index is built from webfs's cached listings on the web — `std::fs` there
+# fails, which showed up as "indexed 0 assets".
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+renzora_webfs = { path = "../renzora_webfs" }

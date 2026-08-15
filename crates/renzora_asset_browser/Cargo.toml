@@ -20,3 +20,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 
 [lints]
 workspace = true
+
+# The web's `std::fs::read_dir`: listings come out of the picked directory
+# handle instead. See `read_entries` in native.rs.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+renzora_webfs = { path = "../renzora_webfs" }

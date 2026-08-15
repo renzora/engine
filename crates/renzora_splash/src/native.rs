@@ -188,8 +188,75 @@ pub(crate) fn register(app: &mut App) {
             url_click,
             animate_recent_borders,
             tick_aperture,
+            #[cfg(target_arch = "wasm32")]
+            collect_web_project_pick,
         ),
     );
+}
+
+/// Finish a web Open Project once the browser's picker has resolved.
+///
+/// The desktop path is a single blocking call — `rfd` opens the dialog and
+/// returns the chosen path. The browser's picker cannot work that way: it
+/// resolves whenever the user gets round to choosing, which is no particular
+/// frame. So the click only *starts* the pick, and this collects the result on
+/// whichever frame it lands.
+#[cfg(target_arch = "wasm32")]
+fn collect_web_project_pick(mut commands: Commands) {
+    let Some(picked) = renzora_webfs::take_picked_project() else {
+        return;
+    };
+    commands.queue(move |world: &mut World| {
+        let root = std::path::PathBuf::from(&picked.name);
+        let config: crate::project::ProjectConfig = match picked.project_toml {
+            Some(ref toml_src) => match toml::from_str(toml_src) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("[webfs] project.toml is not valid: {e}");
+                    return;
+                }
+            },
+            // A new project. Mirrors the desktop `create_project`: the same
+            // config, the same `scenes/` + `plugins/` skeleton, and the same
+            // empty interim-BSN scene, so a project made in the browser opens
+            // on the desktop and vice versa.
+            None => {
+                let config = crate::project::ProjectConfig {
+                    name: picked.name.clone(),
+                    version: "0.1.0".to_string(),
+                    main_scene: "scenes/main.bsn".to_string(),
+                    ..Default::default()
+                };
+                let Ok(toml_src) = toml::to_string_pretty(&config) else {
+                    error!("[webfs] could not serialize the new project config");
+                    return;
+                };
+                // Fire-and-forget: these are local writes that land in
+                // milliseconds, and the editor reads scenes lazily through the
+                // same cache. If a very early read ever beats the write, it
+                // shows as a missing main.bsn on first entry and is fixed by
+                // awaiting these before entering.
+                renzora_webfs::spawn_create_dir(root.join("plugins"));
+                renzora_webfs::spawn_write_text(
+                    root.join("scenes").join("main.bsn"),
+                    "// renzora interim bsn v1\n".to_string(),
+                );
+                renzora_webfs::spawn_write_text(root.join("project.toml"), toml_src);
+                info!("[webfs] created project '{}'", picked.name);
+                config
+            }
+        };
+        // The browser hands back a directory HANDLE, never a path, so the only
+        // identifier available is the folder's own name. Everything that reads
+        // `CurrentProject::path` on the web is therefore addressing the picked
+        // directory relatively — which is exactly what the handle wants anyway.
+        let project = crate::project::CurrentProject {
+            path: root,
+            config,
+        };
+        info!("[webfs] opening project '{}'", picked.name);
+        enter_project(world, project);
+    });
 }
 
 /// While a recent-project row is hovered, run a thin-film sheen around its border
@@ -1212,9 +1279,19 @@ fn do_open_recent(world: &mut World, path: &std::path::Path) {
             Err(e) => error!("Failed to open project: {e}"),
         }
     }
+    // Web: a recent entry is the folder's NAME, because the browser discloses
+    // no path — so reopening goes through the directory handle stored in
+    // IndexedDB when the project was first picked, and asks the user to
+    // re-grant permission. Declining, or a folder that has since moved, fails
+    // and leaves them to pick it again.
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = (world, path);
+        let _ = world;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.to_string_lossy().to_string());
+        renzora_webfs::reopen_project(name);
     }
 }
 
@@ -1238,12 +1315,12 @@ fn do_open_project(world: &mut World) {
     //
     // Only the pick is wired up so far: it opens the dialog and enumerates the
     // folder. Nothing is loaded yet, because everything downstream of
-    // `open_project` is synchronous `std::fs` and the handle is async-only —
-    // that shim is the next piece. Watch the console for the listing.
+    // The pick only starts here; `collect_web_project_pick` finishes it once
+    // the browser resolves. `false` = the folder must already be a project.
     #[cfg(target_arch = "wasm32")]
     {
         let _ = world;
-        renzora_webfs::pick_directory();
+        renzora_webfs::pick_directory(false);
     }
 }
 
@@ -1264,13 +1341,15 @@ fn do_new_project(world: &mut World) {
             }
         }
     }
-    // Web: same picker as Open Project. Creating the project skeleton in the
-    // chosen folder needs writes through the handle, which is the step after
-    // reading — for now this proves the dialog and the readwrite grant.
+    // Web: the same picker, but `true` — the chosen folder is allowed to have
+    // no project.toml, and `collect_web_project_pick` writes the skeleton into
+    // it. Picking a folder that IS already a project opens it rather than
+    // overwriting, which is the only safe reading of "New Project" landing on
+    // someone's existing work.
     #[cfg(target_arch = "wasm32")]
     {
         let _ = world;
-        renzora_webfs::pick_directory();
+        renzora_webfs::pick_directory(true);
     }
 }
 

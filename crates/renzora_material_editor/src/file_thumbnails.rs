@@ -226,7 +226,7 @@ fn intake_thumbnail_requests(
         // `compile: None`; the render path falls back to a plain default
         // material sphere so every `.material` gets *some* thumbnail.
         let mut cache_to_disk = true;
-        let compile_opt: Option<CompileResult> = match std::fs::read_to_string(&material_path) {
+        let compile_opt: Option<CompileResult> = match read_material_source(&material_path) {
             Ok(content) => match serde_json::from_str::<MaterialGraph>(&content) {
                 Ok(graph) if graph.domain == MaterialDomain::Surface => {
                     let result = codegen::compile(&graph);
@@ -314,6 +314,29 @@ fn intake_thumbnail_requests(
 /// least as new as the `.material` that produced it. Mirrors the model and
 /// texture caches' freshness checks; duplicated to keep this renderer
 /// self-contained.
+/// Read a `.material` file's JSON.
+///
+/// On the web this goes through the picked directory handle rather than
+/// `std::fs`, which there returns "operation not supported on this platform"
+/// for every file — a thumbnail pass over a model's material folder turned that
+/// into hundreds of identical warnings.
+///
+/// The web read is cached and asynchronous: a miss returns `NotFound` for now
+/// and fetches, so the thumbnail simply appears a frame or two later, which is
+/// already how the disk-cache path behaves.
+fn read_material_source(path: &std::path::Path) -> std::io::Result<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        renzora_webfs::read_text_cached(path).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not read yet (web)")
+        })
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::fs::read_to_string(path)
+    }
+}
+
 fn cached_thumb_is_fresh(cache_path: &std::path::Path, source_path: &std::path::Path) -> bool {
     let Ok(cache_meta) = std::fs::metadata(cache_path) else {
         return false;

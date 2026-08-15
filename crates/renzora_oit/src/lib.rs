@@ -34,7 +34,17 @@ fn sync_oit(
                     found = true;
                     break;
                 }
-                if settings.enabled {
+                // Never on the web. OIT adds its own bindings to the transparent
+                // pass, and that pass is already at WebGPU's ceiling: with it on,
+                // `alpha_blend_mesh_pipeline` needs 13 uniform buffers in the
+                // fragment stage against a per-stage limit of 12, so the pipeline
+                // fails to create and NOTHING transparent draws — a strictly
+                // worse outcome than sorted alpha blending.
+                //
+                // Bevy declines OIT itself on WebGL (no FRAGMENT_WRITABLE_STORAGE).
+                // WebGPU does have that flag, so it accepts OIT and then runs out
+                // of binding slots instead; this is the equivalent refusal.
+                if settings.enabled && !cfg!(target_arch = "wasm32") {
                     commands.entity(*target).insert(Msaa::Off).insert(
                         OrderIndependentTransparencySettings {
                             // 0.19: `layer_count` → `sorted_fragment_max_count`;

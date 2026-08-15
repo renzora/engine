@@ -394,6 +394,24 @@ impl Plugin for RuntimePlugin {
         // can carry components the engine has no Rust type for.
         app.add_plugins(plugin_scene_bridge::PluginScenePlugin);
 
+        // Web: back the shared text reader with the browser's directory handle.
+        // Its default reads through `std::fs`, which on wasm fails for every
+        // path — that is what left the material resolver reporting "Failed to
+        // read material file" for every `.material` in the project.
+        //
+        // OUTSIDE the `!is_editor` block below, deliberately. The rpak branch in
+        // there installs its own reader, but only for a shipped game; the editor
+        // never enters it, so a reader installed there would never reach the
+        // editor that actually needs one.
+        //
+        // Installed here rather than in `renzora` because that crate is the
+        // contract crate and holds no dependency beyond Bevy and serde. One
+        // override covers every `VirtualFileReader` consumer.
+        #[cfg(target_arch = "wasm32")]
+        app.insert_resource(renzora::VirtualFileReader::new(|path| {
+            renzora_webfs::read_text_cached(std::path::Path::new(path))
+        }));
+
         // Game startup: rpak/project/scene load + scene rehydration. Runs only
         // in a game session — in the editor the splash/project flow owns this.
         if !is_editor {

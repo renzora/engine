@@ -38,7 +38,11 @@
 mod web;
 
 #[cfg(target_arch = "wasm32")]
-pub use web::{pick_directory, with_handle};
+pub use web::{
+    create_dir_all, has_project, invalidate_dir, list_dir, pick_directory, read_bytes, read_text,
+    read_text_cached, reopen_project, spawn_create_dir, spawn_write_text, take_picked_project,
+    to_relative, with_handle, write_text, DirEntry, PickedProject,
+};
 
 /// Desktop stubs.
 ///
@@ -48,7 +52,7 @@ pub use web::{pick_directory, with_handle};
 #[cfg(not(target_arch = "wasm32"))]
 mod native_stub {
     /// No-op: desktop opens a native dialog through `rfd` instead.
-    pub fn pick_directory() {}
+    pub fn pick_directory(_allow_new: bool) {}
 
     /// Always `None`: there is no browser handle off the web.
     pub fn with_handle<R>(_f: impl FnOnce(&()) -> R) -> Option<R> {

@@ -211,6 +211,21 @@ impl AssetReader for EmbeddedAssetReader {
             return Ok(VecReader::new(bytes));
         }
 
+        // 3b. Web: the project lives behind a browser directory handle, so
+        // `std::fs` in step 3 found nothing. This is the one place in the
+        // editor where the async filesystem needs no shim — `read` is already
+        // an async trait method, so the handle can simply be awaited.
+        #[cfg(target_arch = "wasm32")]
+        if renzora_webfs::has_project() {
+            match renzora_webfs::read_bytes(std::path::Path::new(&normalized)).await {
+                Ok(bytes) => return Ok(VecReader::new(bytes)),
+                // Not an error worth logging: this reader is a chain of
+                // fallbacks and Bevy probes for `.meta` files it expects to be
+                // absent. A genuine miss surfaces as `NotFound` below.
+                Err(_) => {}
+            }
+        }
+
         // 4. Exe-adjacent assets (exported runtime builds)
         if let Some(bytes) = self.try_read_from_exe(&normalized) {
             return Ok(VecReader::new(bytes));

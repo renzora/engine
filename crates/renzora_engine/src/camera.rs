@@ -138,7 +138,22 @@ pub fn spawn_editor_camera(
         // Kept on the camera from spawn so binding 13 is always in PBR's layout;
         // the `WorldEnvironment` fog reconcile only *updates* it, never adds/removes
         // (toggling presence restructures the shared layout and crashes wgpu).
-        #[cfg(feature = "render_3d")]
+        //
+        // NOT on the web, where the slot cannot be spared. WebGPU allows 12
+        // uniform buffers per shader stage — Chrome reports 12 as the adapter's
+        // real maximum, not merely the spec baseline, so asking for the
+        // adapter's limits does not raise it — and the forward mesh view layout
+        // wants 13. The alternatives were all worse: without one of them
+        // `alpha_blend_mesh_pipeline` fails to create and NOTHING transparent
+        // draws at all. Of the optional uniforms, SSR and contact shadows are
+        // already absent here (SSR needs a deferred prepass, contact shadows are
+        // forward-only) and OIT contributes nothing once disabled, which leaves
+        // fog as the one remaining slot to give back.
+        //
+        // Consistently absent is safe; INTERMITTENT is what crashes wgpu, per
+        // the note above. So this is gated at the insert, and the reconcile that
+        // only ever updates it simply finds nothing to update.
+        #[cfg(all(feature = "render_3d", not(target_arch = "wasm32")))]
         entity.insert(DistanceFog {
             color: Color::NONE,
             directional_light_color: Color::NONE,
