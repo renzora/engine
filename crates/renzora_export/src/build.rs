@@ -99,7 +99,7 @@ pub fn build_lean(
     progress: &mut dyn FnMut(String),
     disabled_bevy_features: &[String],
     disabled_runtime_features: &[String],
-    panic_abort: bool,
+    profile: LeanProfile,
     static_plugins: &[StaticPluginSrc],
     cancel: &Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
@@ -128,7 +128,7 @@ pub fn build_lean(
     let ws = sync_export_workspace(workspace_dir, progress)?;
     strip_bevy_features(&ws, disabled_bevy_features, progress)?;
     strip_runtime_features(&ws, disabled_runtime_features, progress)?;
-    set_panic_abort(&ws, panic_abort, progress)?;
+    patch_lean_profile(&ws, profile, progress)?;
     stage_static_plugins(workspace_dir, &ws, static_plugins, progress)?;
     let mut features = String::from("runtime");
     if !static_plugins.is_empty() {
@@ -462,23 +462,44 @@ fn strip_bevy_features(
     Ok(())
 }
 
-/// Patch `panic = "abort"` into the export copy's `[profile.dist-lean]`.
+/// The `[profile.dist-lean]` knobs the export UI can move.
 ///
-/// The largest single size lever there is — measured 60.9 MB → 46.7 MB on a
-/// cube-and-light project, because dropping unwinding removes the landing pads
-/// and cleanup glue from `.text` and the panic message/location strings from
-/// `.rdata`, not merely the `.pdata` unwind tables.
+/// All three are size-for-something trades that the dev tree deliberately does
+/// NOT take (see the profile's notes in the root `Cargo.toml`), so they live
+/// here as per-export choices rather than as edits to the checked-in profile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LeanProfile {
+    /// `panic = "abort"` — trades fault isolation for ~24% off the binary.
+    pub panic_abort: bool,
+    /// `opt-level = "z"` instead of the profile's `"s"`. Same as `s` but with
+    /// loop vectorization off too.
+    pub opt_level_z: bool,
+    /// `codegen-units = 1` instead of the release default of 16 — one LLVM
+    /// module per crate, so thin LTO has fewer duplicated inline copies to
+    /// merge, at a large cost in build time.
+    pub codegen_units_one: bool,
+}
+
+/// Patch the export copy's `[profile.dist-lean]` to match `opts`.
 ///
-/// Only legal because the copy builds `renzora` as `rlib` only (see
+/// `panic = "abort"` is the largest single lever there is — measured 60.9 MB →
+/// 46.7 MB on a cube-and-light project, because dropping unwinding removes the
+/// landing pads and cleanup glue from `.text` and the panic message/location
+/// strings from `.rdata`, not merely the `.pdata` unwind tables. It is only legal
+/// because the copy builds `renzora` as `rlib` only (see
 /// `sync_export_workspace`); the dev tree's `dylib` would link the precompiled
 /// std's `panic_unwind` and refuse to mix strategies.
 ///
-/// Idempotent, and removes the key again when `abort` is false — the copy
-/// persists between exports, so a stale `panic = "abort"` would silently apply
-/// to a later export that had switched the capability back on.
-fn set_panic_abort(
+/// Every key is written on every export, never left to whatever the last one
+/// set: the copy persists between exports, so a stale `panic = "abort"` or
+/// `codegen-units = 1` would silently apply to a later export that had switched
+/// the toggle back off. `opt-level` is *set* to `"s"` rather than removed for
+/// the same reason in reverse — removing it would inherit `dist`'s `opt-level =
+/// 2`, which is a speed profile, whereas absent `codegen-units` correctly means
+/// the release default of 16.
+fn patch_lean_profile(
     copy_root: &Path,
-    abort: bool,
+    opts: LeanProfile,
     progress: &mut dyn FnMut(String),
 ) -> Result<(), String> {
     let manifest = copy_root.join("Cargo.toml");
@@ -494,18 +515,35 @@ fn set_panic_abort(
     else {
         return Ok(());
     };
-    let had = profile.get("panic").is_some();
-    if abort {
+
+    if opts.panic_abort {
         profile.insert("panic", toml_edit::value("abort"));
     } else {
         profile.remove("panic");
     }
-    if abort != had {
-        std::fs::write(&manifest, doc.to_string())
-            .map_err(|e| format!("write {}: {e}", manifest.display()))?;
+    profile.insert(
+        "opt-level",
+        toml_edit::value(if opts.opt_level_z { "z" } else { "s" }),
+    );
+    if opts.codegen_units_one {
+        profile.insert("codegen-units", toml_edit::value(1i64));
+    } else {
+        profile.remove("codegen-units");
     }
-    if abort {
+
+    // Only rewrite when something actually changed: an untouched manifest keeps
+    // its mtime, and cargo fingerprints the whole workspace manifest set — a
+    // gratuitous write would rebuild every crate on an otherwise no-op export.
+    write_if_changed(&manifest, &doc.to_string())?;
+
+    if opts.panic_abort {
         progress("Building with panic = abort (no unwinding)".to_string());
+    }
+    if opts.opt_level_z {
+        progress("Building with opt-level = z (no loop vectorization)".to_string());
+    }
+    if opts.codegen_units_one {
+        progress("Building with codegen-units = 1 (slower, smaller)".to_string());
     }
     Ok(())
 }
@@ -826,6 +864,90 @@ fn patch_plugin_manifest(src_dir: &Path, dest_manifest: &Path) -> Result<(), Str
     }
 
     write_if_changed(dest_manifest, &doc.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The two lines of `[profile.dist-lean]` the patcher edits, as they appear
+    /// in the real root manifest.
+    const MANIFEST: &str = "\
+[profile.dist-lean]
+inherits = \"dist\"
+lto = \"thin\"
+opt-level = \"s\"
+strip = \"symbols\"
+";
+
+    fn patch(opts: LeanProfile) -> String {
+        // Unique per test so a parallel run can't share a manifest. No tempfile
+        // dev-dependency in this crate, and one directory per (pid, opts) is
+        // enough — the values differ in every call site below.
+        let dir = std::env::temp_dir().join(format!(
+            "renzora_lean_profile_{}_{}{}{}",
+            std::process::id(),
+            opts.panic_abort as u8,
+            opts.opt_level_z as u8,
+            opts.codegen_units_one as u8,
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), MANIFEST).unwrap();
+        patch_lean_profile(&dir, opts, &mut |_| {}).unwrap();
+        let out = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        out
+    }
+
+    #[test]
+    fn all_off_leaves_the_profile_at_its_checked_in_settings() {
+        let out = patch(LeanProfile::default());
+        assert!(out.contains("opt-level = \"s\""), "{out}");
+        assert!(!out.contains("panic"), "{out}");
+        assert!(!out.contains("codegen-units"), "{out}");
+        // The knobs must not disturb what the profile already says.
+        assert!(out.contains("lto = \"thin\""), "{out}");
+        assert!(out.contains("strip = \"symbols\""), "{out}");
+    }
+
+    #[test]
+    fn all_on_writes_every_knob() {
+        let out = patch(LeanProfile {
+            panic_abort: true,
+            opt_level_z: true,
+            codegen_units_one: true,
+        });
+        assert!(out.contains("panic = \"abort\""), "{out}");
+        assert!(out.contains("opt-level = \"z\""), "{out}");
+        assert!(out.contains("codegen-units = 1"), "{out}");
+    }
+
+    /// The export copy persists between exports, so turning a knob back off has
+    /// to actually remove what the last export wrote — otherwise a stale
+    /// `panic = "abort"` silently applies to a build that asked for unwinding.
+    #[test]
+    fn turning_a_knob_back_off_reverts_the_manifest() {
+        let dir = std::env::temp_dir()
+            .join(format!("renzora_lean_profile_revert_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), MANIFEST).unwrap();
+
+        let on = LeanProfile {
+            panic_abort: true,
+            opt_level_z: true,
+            codegen_units_one: true,
+        };
+        patch_lean_profile(&dir, on, &mut |_| {}).unwrap();
+        patch_lean_profile(&dir, LeanProfile::default(), &mut |_| {}).unwrap();
+
+        let out = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!out.contains("panic"), "{out}");
+        assert!(!out.contains("codegen-units"), "{out}");
+        // `opt-level` is set rather than removed: removing it would inherit
+        // `dist`'s speed-tuned `opt-level = 2`.
+        assert!(out.contains("opt-level = \"s\""), "{out}");
+    }
 }
 
 

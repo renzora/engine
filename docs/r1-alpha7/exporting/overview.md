@@ -15,7 +15,7 @@ So an "export" is really: take the already-built game binary for a target platfo
 
 ## Exporting from the editor
 
-Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-only). Triggering Export from the editor opens a modal overlay with the target-platform list on the left and the build settings on the right, organized into horizontal tabs — **Output** (binary name, export directory, icon), **Packaging** (packaging mode + runtime template), **Features** (the lean engine-feature strip), **Plugins**, **Compression** (zstd level + mesh optimization), and **Options** (window + flags):
+Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-only). Triggering Export from the editor opens a modal overlay with the target-platform list on the left and the build settings on the right, organized into horizontal tabs — **Output** (binary name, export directory, icon), **Packaging** (packaging mode + runtime template), **Features** (the lean engine-feature strip), **Plugins**, **Compression** (zstd level, UPX binary packing + mesh optimization), and **Options** (window + flags):
 
 | Setting | What it controls |
 |---|---|
@@ -24,6 +24,7 @@ Export is driven by the editor's `renzora_export` crate (`ExportPlugin`, editor-
 | **Window mode / size** | Default `Windowed` / `Fullscreen` and resolution (e.g. `1280×720`) |
 | **Icon** | Optional window/app icon path |
 | **Compression level** | Zstd level used when packing the `.rpak` |
+| **Compress binary with UPX** | Pack the shipped executable and libraries with UPX (see [below](#compressing-the-binary-with-upx)) |
 | **Console logging** | Whether the shipped build keeps a console/log |
 | **Include server** | Also emit a dedicated-server bundle (desktop only) |
 | **Mesh optimization** | Optional simplify / quantize / LOD generation while packing |
@@ -98,8 +99,9 @@ What it strips/changes versus the copy modes:
 - **Thin LTO + size optimisation (`opt-level = "s"`) + symbol strip** (the
   `dist-lean` cargo profile) — dead code is eliminated and the binary is built
   for size. Thin rather than fat because fat LTO merges the whole program into
-  one link unit, which on a graph this size made the linker fail; `panic` stays
-  at `unwind`, since `abort` can't be mixed with the precompiled `std` on stable.
+  one link unit, which on a graph this size made the linker fail. Three of the
+  profile's settings are yours to move per export — see
+  [Build-profile knobs](#build-profile-knobs).
 - **Engine features you don't use are never compiled** — see
   [Engine features](#engine-features-the-features-tab) below.
 - On Windows it also static-links the MSVC runtime (no `VCRUNTIME140.dll`
@@ -281,6 +283,32 @@ resolves this, so you can't produce a broken combination by unticking things:
 - Turning **3D rendering** off also strips the subsystems built on it — terrain,
   water, splines, particles, the sky set and the post-process effects.
 
+### Build-profile knobs
+
+Three toggles in the **Build & diagnostics** section aren't features at all —
+nothing is stripped from the build when they're off. They edit the `dist-lean`
+cargo profile for that one export. All three are phrased as the thing you *keep*,
+so leaving them ticked reproduces exactly the profile that ships in the repo.
+
+| Toggle | On (default) | Off |
+|---|---|---|
+| **Panic unwinding** | `panic = "unwind"` | `panic = "abort"` — see below |
+| **Loop vectorization** | `opt-level = "s"` | `opt-level = "z"` |
+| **Parallel code generation** | `codegen-units = 16` | `codegen-units = 1` |
+
+**`opt-level = "z"`** is the same size-first optimisation as `"s"` with loop
+vectorization switched off as well. It is *not* reliably smaller: a scalar loop
+that runs more iterations can cost more in unrolled code than the vector version
+saved, and hot per-vertex or per-pixel CPU work loses its SIMD widening either
+way. Export once each way and compare the two files before shipping `z`.
+
+**`codegen-units = 1`** gives LLVM one module per crate instead of 16, so thin
+LTO sees whole crates at once and has fewer duplicated inline copies left to
+merge. It's the classic size trick, but it overlaps with what LTO already does
+here rather than adding to it, and it removes the parallelism that makes a lean
+export take minutes instead of the better part of an hour. Measure before you
+pay for it.
+
 ### Panic unwinding — the largest single lever
 
 **Panic unwinding** is on by default and is not a subsystem: turning it off
@@ -302,6 +330,51 @@ your game's scripts and plugins.
 reason: the dev build's `renzora` crate is a `dylib`, which links the precompiled
 `std`'s unwinding runtime and cannot be mixed with `abort`. The export copy
 builds it as an `rlib` only, so the restriction doesn't apply.)
+
+### Compressing the binary with UPX
+
+**Compression → Compress binary with UPX** packs the shipped executable — and,
+for the two copy-based modes, the sibling `bevy_dylib` / `renzora` / `std`
+libraries and any plugins in `plugins/` — with [UPX](https://upx.github.io/).
+Packed files carry a small decompressor stub and unpack themselves into memory at
+launch, which cuts what your players download by more than half.
+
+Measured on the engine's own Windows runtime (`dist/windows-x64/renzora.exe`,
+already built with the stripped `dist` profile): **187.3 MB → 31.7 MB, an 83%
+saving, in 82 seconds.** The packed binary boots normally — it was run headless
+with `--server` and came up through the full plugin and scripting startup. Expect
+a smaller ratio on a lean binary, which is already LTO'd and stripped of most of
+what compresses best, but the same order of win.
+
+Unlike everything else on this page, it is **post-build**: it changes nothing
+about what was compiled, so it stacks on top of the feature strip and the profile
+knobs, and it is the only size lever that helps the **Separate files** and
+**Single binary** modes at all — those ship an already-built runtime that no
+cargo setting can reach any more.
+
+What to know before ticking it:
+
+- **It needs `upx` on the machine.** Install it (`scoop install upx`,
+  `apt install upx-ucl`, `brew install upx`) or point `RENZORA_UPX` at the
+  executable. If it isn't found the export says so in the log and **continues
+  uncompressed** — it never fails the export over this.
+- **Windows and Linux exports only.** UPX supports Mach-O, but packing
+  invalidates the code signature and Gatekeeper refuses the result, so macOS is
+  excluded. Android ships a `.so` inside an already-compressed APK, iOS ships a
+  static library, and `.wasm` isn't an executable format UPX knows — for the web,
+  your server's gzip/brotli is the equivalent lever.
+- **It costs a little startup time**, since the whole executable is decompressed
+  before `main` runs, and it costs some memory (the unpacked image can't be paged
+  from disk the way a normal executable's code is).
+- **Some antivirus heuristics distrust packed executables.** Self-extracting
+  binaries are a malware idiom as well as a legitimate one, so a packed game is
+  more likely to be flagged, especially unsigned. If you ship signed builds or
+  have had SmartScreen trouble, leave it off.
+
+The engine's own release artefacts are compressed separately, by
+`renzora upx [dist/<platform>]`, which uses the much slower `--brute`. An export
+uses `--best --lzma`: within a few percent of brute force for a fraction of the
+time, which matters when the input is a 50–200 MB game and someone is waiting.
 
 ### Where the size actually goes
 

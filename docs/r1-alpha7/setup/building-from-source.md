@@ -172,6 +172,8 @@ renzora upx dist/windows-x64     # just one platform
 
 This runs `upx --brute` (slowest, smallest) over the host binary, the SDK dylibs (`renzora`, `renzora_editor`), `bevy_dylib`, and everything in `plugins/`. The `wasm` and `ios` outputs (`.wasm` / `.a`) are not UPX-compressible and are skipped.
 
+This command packs the **engine's own** `dist/` artefacts. To pack a *game* the same way, tick **Compress binary with UPX** in the export dialog's Compression tab — it runs the same packer over the exported executable and its libraries, at `--best --lzma` rather than `--brute` so an export doesn't take an hour. See [Exporting → overview](../exporting/overview.md#compressing-the-binary-with-upx).
+
 ## What is NOT in this repo
 
 A few things that live outside this workspace, or that older docs got wrong:

@@ -517,6 +517,14 @@ strip = "symbols"
 #
 # `codegen-units` is left at `dist`'s default (16) — forcing 1 only helped fat
 # LTO and slows the build a lot for little size gain under thin LTO.
+#
+# `panic`, `opt-level` and `codegen-units` are the three keys the exporter may
+# override PER EXPORT, by patching them into its disposable copy of this manifest
+# (`renzora_export::build::patch_lean_profile`, driven by the Features tab's
+# Panic unwinding / Loop vectorization / Parallel code generation toggles). The
+# values here are what an export gets with all three left at their defaults, so
+# changing one changes every default export — which is the point, but do it on a
+# measurement, not a hunch. Nothing patches the profile in THIS tree.
 [profile.dist-lean]
 inherits = "dist"
 lto = "thin"

@@ -835,6 +835,15 @@ fn build_compression_tab(commands: &mut Commands, fonts: &EmberFonts) -> Entity 
     commands.entity(crow).add_child(dv);
     commands.entity(cbody).add_child(crow);
 
+    // Binary compression (UPX). Sits in the same section as the asset
+    // compression level because the two answer one question — how small is the
+    // shipped folder — even though one is an rpak setting and the other a
+    // post-build pass over the executable.
+    let upx = check_state(commands, fonts, &renzora::lang::t("export.compression.upx"), |s| s.upx_compress, |s, v| s.upx_compress = v);
+    commands.entity(cbody).add_child(upx);
+    let upx_help = txt(commands, fonts, &renzora::lang::t("export.compression.upx_help"), 10.0, text_muted());
+    commands.entity(cbody).add_child(upx_help);
+
     // Mesh optimization.
     let (msec, mbody) = section(commands, fonts, "cube", &renzora::lang::t("export.section.mesh_opt"), accent());
     let simplify = check_state(commands, fonts, &renzora::lang::t("export.mesh.simplify"), |s| s.mesh_simplify, |s, v| s.mesh_simplify = v);

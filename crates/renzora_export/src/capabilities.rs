@@ -707,6 +707,38 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
+        id: "loop_vectorization",
+        section: "build",
+        label: "Loop vectorization (opt-level s)",
+        help: "Builds at `opt-level = \"s\"`, which optimizes for size but still lets LLVM \
+               vectorize loops. Turning it OFF uses `opt-level = \"z\"`, the same trade with \
+               vectorization disabled as well: smaller code, but hot per-vertex/per-pixel CPU \
+               loops lose their SIMD widening. Which one wins on size is genuinely \
+               project-dependent — `z` is not always smaller, because a scalar loop that has to \
+               run more iterations can cost more in unrolling than the vector version saved. \
+               Export both and compare before shipping `z`.",
+        bevy_features: &[],
+        runtime_features: &[],
+        default_on: true,
+        group: None,
+    },
+    Capability {
+        id: "parallel_codegen",
+        section: "build",
+        label: "Parallel code generation (16 units)",
+        help: "Splits each crate into 16 LLVM modules that compile in parallel — the release \
+               default, and what makes a lean export take minutes rather than an hour. Turning \
+               it OFF uses `codegen-units = 1`: one module per crate, so thin LTO sees whole \
+               crates at once and has fewer duplicated inline copies left to merge. It is the \
+               classic size trick, but it interacts with LTO rather than adding to it, so the \
+               win here is usually small — pay the build time only if a measured export says \
+               it's worth it.",
+        bevy_features: &[],
+        runtime_features: &[],
+        default_on: true,
+        group: None,
+    },
+    Capability {
         id: "picking",
         section: "systems",
         label: "Picking (mesh & sprite raycasts)",
@@ -923,6 +955,25 @@ pub fn use_panic_abort(state: &HashMap<String, bool>) -> bool {
     !state.get("panic_unwind").copied().unwrap_or(true)
 }
 
+/// The three `[profile.dist-lean]` knobs, read off their capability toggles.
+///
+/// None of them is a Cargo *feature*, so they can't ride the normal strip path —
+/// they are build-profile edits applied to the export copy's manifest by
+/// [`crate::build::build_lean`]. They share the Features tab because the question
+/// they answer is the same one ("what will you give up for a smaller binary?"),
+/// and because each is stated as the thing you KEEP: on = the engine's default,
+/// off = the smaller, worse-in-some-way build.
+///
+/// Missing keys default to on, so an older saved export config — or a state map
+/// built before these existed — reproduces exactly the previous behaviour.
+pub fn lean_profile(state: &HashMap<String, bool>) -> crate::build::LeanProfile {
+    crate::build::LeanProfile {
+        panic_abort: use_panic_abort(state),
+        opt_level_z: !state.get("loop_vectorization").copied().unwrap_or(true),
+        codegen_units_one: !state.get("parallel_codegen").copied().unwrap_or(true),
+    }
+}
+
 /// Bevy features to strip from the export copy (union of OFF capabilities).
 ///
 /// Mirrors [`disabled_runtime_features`]'s render_3d rule on the Bevy side: the
@@ -1089,5 +1140,40 @@ mod tests {
         for c in CAPABILITIES {
             assert!(seen.insert(c.id), "duplicate capability id `{}`", c.id);
         }
+    }
+
+    /// The three profile knobs are the only capabilities that change a build
+    /// flag instead of a feature list, so nothing else in the strip path would
+    /// catch a typo'd id — [`lean_profile`] would just read a missing key and
+    /// silently default it to "keep".
+    #[test]
+    fn profile_knobs_have_matching_capabilities() {
+        for id in ["panic_unwind", "loop_vectorization", "parallel_codegen"] {
+            let cap = CAPABILITIES
+                .iter()
+                .find(|c| c.id == id)
+                .unwrap_or_else(|| panic!("`{id}` is read by lean_profile but has no capability"));
+            assert!(
+                cap.bevy_features.is_empty() && cap.runtime_features.is_empty(),
+                "`{id}` is a build-profile knob, not a feature strip",
+            );
+            assert!(cap.default_on, "`{id}` must default to the engine's setting");
+        }
+    }
+
+    /// Defaults must reproduce the checked-in profile exactly: a fresh export,
+    /// or one whose saved state predates these toggles, has to build the same
+    /// binary it always did.
+    #[test]
+    fn a_default_state_asks_for_no_profile_changes() {
+        let state = defaults(&[], None);
+        assert_eq!(lean_profile(&state), crate::build::LeanProfile::default());
+
+        let mut smaller = state.clone();
+        smaller.insert("panic_unwind".into(), false);
+        smaller.insert("loop_vectorization".into(), false);
+        smaller.insert("parallel_codegen".into(), false);
+        let p = lean_profile(&smaller);
+        assert!(p.panic_abort && p.opt_level_z && p.codegen_units_one);
     }
 }

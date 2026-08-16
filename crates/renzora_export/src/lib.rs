@@ -20,6 +20,8 @@ mod overlay;
 mod templates;
 #[cfg(not(target_arch = "wasm32"))]
 mod toolchain;
+#[cfg(not(target_arch = "wasm32"))]
+mod upx;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use overlay::ExportOverlayState;

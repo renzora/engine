@@ -99,6 +99,13 @@ pub struct ExportOverlayState {
     pub window_height: u32,
     pub console_logging: bool,
     pub compression_level: i32,
+    /// Pack the shipped executable (and any sibling libraries) with UPX.
+    ///
+    /// Off by default: it needs a `upx` on the machine, and a self-extracting
+    /// binary is the one size lever with a runtime cost — a slower cold start and
+    /// a standing risk of a heuristic antivirus flagging the packer stub. See
+    /// [`crate::upx`].
+    pub upx_compress: bool,
     pub icon_path: Option<String>,
     pub include_server: bool,
     /// Optional override for the exported binary's filename (without extension).
@@ -159,6 +166,7 @@ impl Default for ExportOverlayState {
             window_height: 720,
             console_logging: false,
             compression_level: 3,
+            upx_compress: false,
             icon_path: None,
             include_server: false,
             binary_name: String::new(),
@@ -697,7 +705,10 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
         crate::capabilities::disabled_bevy_features(&export_state.capabilities);
     let disabled_runtime_features =
         crate::capabilities::disabled_runtime_features(&export_state.capabilities);
-    let panic_abort = crate::capabilities::use_panic_abort(&export_state.capabilities);
+    let lean_profile = crate::capabilities::lean_profile(&export_state.capabilities);
+    // UPX is post-build, so unlike the profile knobs it applies to the copy-based
+    // packaging modes too — but only where the packer supports the format.
+    let upx_compress = export_state.upx_compress && crate::upx::supports(platform);
     let project_name = project_name.to_string();
 
     // The game binary is the already-built renzora(.exe) for this platform.
@@ -770,7 +781,8 @@ pub(crate) fn run_export(world: &mut World, project_name: &str) {
             runtime_dir,
             disabled_bevy_features,
             disabled_runtime_features,
-            panic_abort,
+            lean_profile,
+            upx_compress,
             cancel,
         );
     });
@@ -804,7 +816,8 @@ fn export_worker(
     runtime_dir: std::path::PathBuf,
     disabled_bevy_features: Vec<String>,
     disabled_runtime_features: Vec<String>,
-    panic_abort: bool,
+    lean_profile: crate::build::LeanProfile,
+    upx_compress: bool,
     cancel: Arc<AtomicBool>,
 ) {
     // Pack assets
@@ -948,6 +961,49 @@ fn export_worker(
     // rather than the user's request.
     let mut linked_ids: Vec<String> = Vec::new();
 
+    // Resolve the packer once, up front: a missing UPX is a skipped step with a
+    // note, never a failed export. The user asked for a smaller game, not for the
+    // export to stop.
+    let upx_tool = if upx_compress {
+        let found = crate::upx::locate();
+        if found.is_none() {
+            let _ = tx.send(ExportMsg::Progress(crate::upx::missing_hint()));
+        }
+        found
+    } else {
+        None
+    };
+
+    // Pack the executable BEFORE anything is appended to it, working on a copy in
+    // the output dir so neither the dev runtime nor cargo's build output is ever
+    // modified in place. Returns the original path when compression is off or
+    // fails, so every caller can use the result unconditionally.
+    let compress_exe = |src: &std::path::Path,
+                        tx: &mpsc::Sender<ExportMsg>|
+     -> std::path::PathBuf {
+        let Some(upx) = upx_tool.as_ref() else {
+            return src.to_path_buf();
+        };
+        let tmp = output_dir.join(format!("{binary_name}.upx-tmp"));
+        let _ = tx.send(ExportMsg::Progress("Compressing binary with UPX…".into()));
+        match crate::upx::compress_to_temp(upx, src, &tmp) {
+            Ok((packed, before, after)) => {
+                let _ = tx.send(ExportMsg::Progress(crate::upx::savings_line(
+                    &binary_name,
+                    before,
+                    after,
+                )));
+                packed
+            }
+            Err(e) => {
+                let _ = tx.send(ExportMsg::Progress(format!(
+                    "UPX could not compress the binary ({e}) — shipping it uncompressed"
+                )));
+                src.to_path_buf()
+            }
+        }
+    };
+
     let result = if is_ios {
         export_ios_app(
             &template_path,
@@ -982,15 +1038,17 @@ fn export_worker(
             PackagingMode::SeparateFiles => {
                 let rpak_path = output_dir.join(format!("{}.rpak", binary_stem));
                 let binary_dest = output_dir.join(&binary_name);
+                let src = compress_exe(&template_path, &tx);
 
                 packer
                     .write_to_file(&rpak_path, compression_level)
-                    .and_then(|_| std::fs::copy(&template_path, &binary_dest).map(|_| ())).map(|_| ())
+                    .and_then(|_| std::fs::copy(&src, &binary_dest).map(|_| ())).map(|_| ())
             }
             PackagingMode::SingleBinary => {
                 let binary_dest = output_dir.join(&binary_name);
+                let src = compress_exe(&template_path, &tx);
                 packer
-                    .append_to_binary(&template_path, &binary_dest, compression_level).map(|_| ())
+                    .append_to_binary(&src, &binary_dest, compression_level).map(|_| ())
             }
             PackagingMode::LeanSingleBinary => {
                 // Recompile a lean static binary from the project workspace,
@@ -1057,20 +1115,31 @@ fn export_worker(
                             &mut progress,
                             &disabled_bevy_features,
                             &disabled_runtime_features,
-                            panic_abort,
+                            lean_profile,
                             &statics,
                             &cancel,
                         )
                     });
                 match built {
-                    Ok(bin) => packer
-                        .append_to_binary(&bin, &binary_dest, compression_level)
-                        .map(|_| ()),
+                    Ok(bin) => {
+                        let src = compress_exe(&bin, &tx);
+                        packer
+                            .append_to_binary(&src, &binary_dest, compression_level)
+                            .map(|_| ())
+                    }
                     Err(e) => Err(std::io::Error::other(e)),
                 }
             }
         }
     };
+
+    // The compressed copy has been consumed by the copy/append above (or was
+    // never made). Removing it here rather than in `compress_exe` keeps it alive
+    // for exactly as long as it is read, and covers the failure paths too — a
+    // leftover 50 MB temp beside a failed export would be baffling.
+    if upx_tool.is_some() {
+        let _ = std::fs::remove_file(output_dir.join(format!("{binary_name}.upx-tmp")));
+    }
 
     // The lean binary is statically linked, so it ships none of the dev
     // runtime's sibling dylibs. It DOES still ship plugins — see below.
@@ -1148,6 +1217,67 @@ fn export_worker(
                     "[export] Linked {} plugins into the binary",
                     linked_ids.len()
                 );
+            }
+
+            // Pack the shipped libraries too. For a copy-based export this is
+            // where nearly all the size is — `bevy_dylib` alone dwarfs the game
+            // binary — so compressing only the .exe would look like the toggle
+            // did almost nothing. These are packed in place, which is safe in a
+            // way the executable is not: nothing is appended to a library, so
+            // there is no payload for UPX to lose.
+            //
+            // A library that will not pack is logged and shipped as-is: UPX
+            // declines some inputs (an already-packed file, an unusual section
+            // layout), and one such file is no reason to fail an export that has
+            // otherwise succeeded.
+            if let Some(upx) = upx_tool.as_ref() {
+                let mut libs: Vec<std::path::PathBuf> = Vec::new();
+                for entry in std::fs::read_dir(&output_dir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                {
+                    let path = entry.path();
+                    let is_lib = path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .is_some_and(|e| matches!(e, "dll" | "so" | "dylib"));
+                    if is_lib {
+                        libs.push(path);
+                    }
+                }
+                for entry in std::fs::read_dir(output_dir.join("plugins"))
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                {
+                    libs.push(entry.path());
+                }
+                if !libs.is_empty() {
+                    let _ = tx.send(ExportMsg::Progress(format!(
+                        "Compressing {} shipped librar{} with UPX…",
+                        libs.len(),
+                        if libs.len() == 1 { "y" } else { "ies" }
+                    )));
+                }
+                for lib in libs {
+                    let label = lib
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    match crate::upx::compress_in_place(upx, &lib) {
+                        Ok((before, after)) => {
+                            let _ = tx.send(ExportMsg::Progress(crate::upx::savings_line(
+                                &label, before, after,
+                            )));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(ExportMsg::Progress(format!(
+                                "Skipped {label}: {e}"
+                            )));
+                        }
+                    }
+                }
             }
 
             // Server export
