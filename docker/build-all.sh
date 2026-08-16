@@ -216,6 +216,115 @@ copy_shared_libs() {
     return 0
 }
 
+# ── Build the standalone C-ABI plugins for one platform ─────────────────────
+# Usage: build_plugins <rust-target|native> <platform-name> <ext>
+#
+# `plugins/*` are separate cargo projects, NOT workspace members — deliberately,
+# because as members they would inherit the engine's feature unification and link
+# Bevy, destroying the zero-dependency property that lets a plugin built by any
+# rustc load into any engine. The cost is that `cargo build --workspace` never
+# sees them, and for a long time nothing else in CI did either: every published
+# artifact shipped an EMPTY `plugins/` directory, which is not a subtle
+# degradation — it is no Lua scripting, no HTTP, and none of the ~50 post-process
+# effects, with no error message, because the host simply finds nothing to load.
+#
+# `cargo renzora` (xtask) has always built them for the host; this is the
+# cross-compiling equivalent, and the skip list below mirrors `is_not_a_plugin`
+# there.
+#
+# **Best-effort per plugin, on purpose.** These have real third-party
+# dependencies — mlua compiles C, the HTTP plugin pulls the rustls/ring stack —
+# and any of them can fail to cross-compile for a given target without that being
+# a reason to sink the whole engine build. A plugin that fails is named in the
+# summary and simply absent from the artifact. Silence would be the bug: an empty
+# `plugins/` looked exactly like a successful build for months.
+build_plugins() {
+    local RUST_TARGET="$1" PLATFORM="$2" EXT="$3"
+    [ -d plugins ] || return 0
+
+    local TARGET_FLAG=() SRC="plugins/target/dist"
+    if [ "$RUST_TARGET" != "native" ]; then
+        TARGET_FLAG=(--target "$RUST_TARGET")
+        SRC="plugins/target/$RUST_TARGET/dist"
+    fi
+
+    echo "=== Building C-ABI plugins for $PLATFORM ==="
+    local dir name log built=0 failed=()
+    for dir in plugins/*/; do
+        [ -f "$dir/Cargo.toml" ] || continue
+        name=$(basename "$dir")
+        log=$(mktemp)
+        if ( cd "$dir" && cargo build --profile dist "${TARGET_FLAG[@]}" ) > "$log" 2>&1; then
+            built=$((built + 1))
+        else
+            failed+=("$name")
+            # The tail is what says *why*; a bare "failed" would send the next
+            # person to reproduce a 67-plugin build by hand.
+            echo "WARN: plugin '$name' failed to build for $PLATFORM:"
+            tail -15 "$log" | sed 's/^/    /'
+        fi
+        rm -f "$log"
+    done
+
+    # Sweep the built cdylibs into the staged tree. Only the profile dir's ROOT
+    # is read: dependency artifacts (including proc-macro dylibs, which crash the
+    # loader if `dlopen`'d) live in `deps/`, and the guards below are belt and
+    # braces for anything a warm cache leaves behind.
+    local OUT="$OUTPUT_DIR/$PLATFORM/plugins"
+    mkdir -p "$OUT"
+    local staged=0 f base
+    for f in "$SRC"/*."$EXT"; do
+        [ -f "$f" ] || continue
+        base=$(basename "$f")
+        [[ "$base" == *renzora_macros* ]] && continue
+        [[ "$base" == *renzora_plugin_derive* ]] && continue
+        [[ "$base" == *avian_derive* ]] && continue
+        [[ "$base" == libstd-* || "$base" == std-* ]] && continue
+        cp "$f" "$OUT/"
+        staged=$((staged + 1))
+    done
+
+    echo "=== $PLATFORM plugins: $built built, ${#failed[@]} failed, $staged staged ==="
+    if [ ${#failed[@]} -gt 0 ]; then
+        echo "    not shipped: ${failed[*]}"
+    fi
+    return 0
+}
+
+# ── Build the update sidecar for one platform ───────────────────────────────
+# Usage: build_updater <rust-target|native> <platform-name> <exe-suffix>
+#
+# `tools/updater` is its own workspace (like `plugins/*`), so `--workspace` never
+# sees it. It has to ship beside the editor: without it, Help ▸ Check for Updates
+# can find and download an update and then has nothing to install it with.
+#
+# Best-effort. A missing sidecar costs the in-place update and nothing else — the
+# editor detects its absence and says to download the new version by hand — so it
+# is not worth failing an engine build over.
+build_updater() {
+    local RUST_TARGET="$1" PLATFORM="$2" SUF="$3"
+    [ -f tools/updater/Cargo.toml ] || return 0
+
+    local TARGET_FLAG=() SRC="tools/updater/target/dist"
+    if [ "$RUST_TARGET" != "native" ]; then
+        TARGET_FLAG=(--target "$RUST_TARGET")
+        SRC="tools/updater/target/$RUST_TARGET/dist"
+    fi
+
+    echo "=== Building update sidecar for $PLATFORM ==="
+    if ! ( cd tools/updater && cargo build --profile dist "${TARGET_FLAG[@]}" ); then
+        echo "WARN: update sidecar failed to build for $PLATFORM — in-place updates disabled in this build"
+        return 0
+    fi
+    if [ -f "$SRC/renzora-update$SUF" ]; then
+        cp "$SRC/renzora-update$SUF" "$OUTPUT_DIR/$PLATFORM/"
+        chmod +x "$OUTPUT_DIR/$PLATFORM/renzora-update$SUF" 2>/dev/null || true
+    else
+        echo "WARN: renzora-update$SUF not produced for $PLATFORM"
+    fi
+    return 0
+}
+
 # ── Helper: copy the matching Rust std shared lib for a platform ─────────────
 # Usage: copy_std <output-platform> <feature> <rust-triple> <glob>
 copy_std() {
@@ -253,7 +362,7 @@ fixup_macos() {
     [ -z "$RCS" ] && echo "WARN: rcodesign not found; macOS arm64 binaries will have invalid signatures"
 
     local f dep
-    for f in "$OUT/renzora" "$OUT/renzora-editor" "$OUT/renzora-runtime" "$OUT"/*.dylib "$OUT"/plugins/*.dylib; do
+    for f in "$OUT/renzora" "$OUT/renzora-editor" "$OUT/renzora-runtime" "$OUT/renzora-update" "$OUT"/*.dylib "$OUT"/plugins/*.dylib; do
         [ -f "$f" ] || continue
         case "$f" in
             *.dylib) "$INT" -id "@rpath/$(basename "$f")" "$f" ;;
@@ -358,30 +467,45 @@ build_desktop() {
 }
 
 # ── Build one (platform, feature) pair, incl. its Rust std ───────────────────
+# The C-ABI plugins are built here rather than in a lane of their own because
+# they must land in `$OUTPUT_DIR/<platform>/plugins/` BEFORE the AppImage/.app
+# wrap moves that directory inside the bundle. `fixup_macos` likewise has to run
+# after them, so a plugin dylib gets its install name rewritten to @rpath along
+# with everything else.
 build_one() {
     local PLATFORM="$1" FEATURE="$2"
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
-            copy_std "$LINUX_PLATFORM" "$FEATURE" "$LINUX_TRIPLE"        "libstd-*.so" ;;
+            copy_std "$LINUX_PLATFORM" "$FEATURE" "$LINUX_TRIPLE"        "libstd-*.so"
+            build_plugins native "$LINUX_PLATFORM" "so"
+            build_updater native "$LINUX_PLATFORM" "" ;;
         "$LINUX_CROSS_PLATFORM")
             # Cross arch — explicit --target triple (like macOS/Windows), not
             # `native`. The .cargo/config.toml entry for this triple points the
             # linker at the GNU cross-gcc.
             build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
-            copy_std "$LINUX_CROSS_PLATFORM" "$FEATURE" "$LINUX_CROSS_TRIPLE"          "libstd-*.so" ;;
+            copy_std "$LINUX_CROSS_PLATFORM" "$FEATURE" "$LINUX_CROSS_TRIPLE"          "libstd-*.so"
+            build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so"
+            build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
             # Win10/11 ship by default (or via the VC++ Redistributable).
-            copy_std "windows-x64" "$FEATURE" "x86_64-pc-windows-msvc"    "std-*.dll" ;;
+            copy_std "windows-x64" "$FEATURE" "x86_64-pc-windows-msvc"    "std-*.dll"
+            build_plugins x86_64-pc-windows-msvc "windows-x64" "dll"
+            build_updater x86_64-pc-windows-msvc "windows-x64" ".exe" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
             copy_std "macos-x64"   "$FEATURE" "x86_64-apple-darwin"       "libstd-*.dylib"
+            build_plugins x86_64-apple-darwin "macos-x64" "dylib"
+            build_updater x86_64-apple-darwin "macos-x64" ""
             fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
             copy_std "macos-arm64" "$FEATURE" "aarch64-apple-darwin"      "libstd-*.dylib"
+            build_plugins aarch64-apple-darwin "macos-arm64" "dylib"
+            build_updater aarch64-apple-darwin "macos-arm64" ""
             fixup_macos "$OUTPUT_DIR/macos-arm64" ;;
         *)
             echo "WARN: unknown desktop platform '$PLATFORM'"; return 1 ;;
@@ -403,6 +527,9 @@ wrap_linux_appimage() {
     # external-runtime play mode, so shipping only one breaks Play.
     mv "$EDITOR_DIR/renzora" "$APPDIR/renzora"
     [ -f "$EDITOR_DIR/renzora-editor" ] && mv "$EDITOR_DIR/renzora-editor" "$APPDIR/renzora-editor"
+    # The update sidecar rides along: the editor copies it out to a temp dir at
+    # install time, which works fine from inside the AppImage's read-only mount.
+    [ -f "$EDITOR_DIR/renzora-update" ] && mv "$EDITOR_DIR/renzora-update" "$APPDIR/renzora-update"
     for f in "$EDITOR_DIR"/*.so; do [ -f "$f" ] && mv "$f" "$APPDIR/"; done
     if [ -d "$EDITOR_DIR/plugins" ]; then
         for f in "$EDITOR_DIR/plugins"/*.so; do [ -f "$f" ] && mv "$f" "$APPDIR/plugins/"; done
@@ -476,6 +603,7 @@ wrap_macos_app() {
     # `renzora` from its own directory for external-runtime play mode.
     mv "$OUT/renzora" "$MACOS_DIR/renzora"
     [ -f "$OUT/renzora-editor" ] && mv "$OUT/renzora-editor" "$MACOS_DIR/renzora-editor"
+    [ -f "$OUT/renzora-update" ] && mv "$OUT/renzora-update" "$MACOS_DIR/renzora-update"
     local f
     for f in "$OUT"/*.dylib; do [ -f "$f" ] && mv "$f" "$MACOS_DIR/"; done
     if [ -d "$OUT/plugins" ]; then

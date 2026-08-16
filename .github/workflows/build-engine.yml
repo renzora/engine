@@ -1,20 +1,36 @@
 name: Build Engine
 
-# Manually-triggered cross-compile of the engine (editor + runtime) for the
-# desktop platforms, using the same Docker toolchain images the `renzora` CLI
-# drives. Each platform job pulls its toolchain image from GHCR, mounts the
-# checkout at /app/src (where the CLI puts it, so cargo resolves BOTH the repo's
-# .cargo/config.toml and the image's /app/.cargo cross-linker sections), and runs
-# docker/build-all.sh — the exact path `renzora build <platform>` takes.
+# Cross-compile of the engine (editor + runtime) for every platform, using the
+# same Docker toolchain images the `renzora` CLI drives — and, when asked,
+# publishing the result as a GitHub release.
 #
-# Arch coverage — x86_64 and aarch64 for all three desktop platforms, plus web:
+# ── What it produces ─────────────────────────────────────────────────────────
+# Per desktop platform, two assets (see `scripts/package-release.sh`):
+#   <platform>.zip                  the ENGINE (editor + runtime together)
+#   renzora-runtime-<platform>.zip  the EXPORT TEMPLATE the editor downloads to
+#                                   build a game for a platform it isn't running
+#                                   on (`renzora_export::download`)
+# Plus `manifest.json` — the editor resolves and checksums a template from this
+# one file, by its deterministic download URL, so it needs no GitHub API call.
+#
+# ── Three ways in ────────────────────────────────────────────────────────────
+#   schedule            a nightly, tagged `<version>-nightly-<ddmonyy>`
+#                       (`r1-alpha7-nightly-16aug26`), published as a PRERELEASE.
+#                       One release per night; the 14 most recent are kept.
+#                       Skipped when nothing landed on `main` that day.
+#   push (tag r1-*)     a real release, tagged with the version itself.
+#   workflow_dispatch   build only, or build + publish as either kind.
+#
+# The version string is NOT written here — it is read out of
+# `crates/renzora/src/version.rs`, which is also what the running binary reports
+# and what the export downloader asks GitHub for. One source, three consumers.
+#
+# ── Arch coverage ────────────────────────────────────────────────────────────
 #   linux    x86_64 + aarch64  (one container cross-builds both)
 #   macos    x86_64 + aarch64  (osxcross builds both slices)
 #   windows  x86_64            (container, via xwin)
 #            aarch64           (NOT the container — a separate native job, below)
-#   wasm     wasm32            (game runtime only — there is no editor on web,
-#                               so this artifact is `renzora-runtime.js` + the
-#                               wasm-bindgen'd module, not an engine tree)
+#   wasm     wasm32            (runtime + editor bundles)
 #
 # Windows arm64 is the one target the Docker toolchain cannot produce. The only
 # MSVC pieces Microsoft lets you redistribute (so xwin can bake them into a public
@@ -22,11 +38,19 @@ name: Build Engine
 # stand in for MSVC on ARM64 (it emits MSVC NEON intrinsics as undefined externals
 # that no redistributable lib provides). See docker/windows/Dockerfile. So that
 # slice is built natively on a `windows-11-arm` runner with the real MSVC
-# toolchain, in the `windows-arm64` job at the bottom of this file.
-#
-# Triggered ONLY by hand (workflow_dispatch) — never on push.
+# toolchain, in the `windows-arm64` job below. It has no build cache and takes
+# hours, which makes it the long pole on every publishing run — the publish job
+# therefore treats it as best-effort and ships without it rather than waiting on
+# a failure.
 
 on:
+  schedule:
+    # 02:00 UTC daily. The nightly's own build time is added on top, and the
+    # windows-arm64 slice alone can run for hours.
+    - cron: "0 2 * * *"
+  push:
+    tags:
+      - "r1-alpha*"
   workflow_dispatch:
     inputs:
       platform:
@@ -39,25 +63,102 @@ on:
           - windows
           - macos
           - wasm
+      publish:
+        description: "Publish the result as a release"
+        type: choice
+        default: none
+        options:
+          - none
+          - nightly
+          - release
 
 env:
   REGISTRY: ghcr.io/renzora
+  # How many dated nightly releases to keep. Older ones (and their tags) are
+  # deleted after a successful publish so the releases page stays readable.
+  KEEP_NIGHTLIES: 14
 
 jobs:
-  # Turn the single `platform` choice into the build matrix. `all` fans out to
-  # every platform; a specific choice narrows to one.
+  # ── Decide what to build, what to call it, and whether to publish ───────────
   setup:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      publish: ${{ steps.plan.outputs.publish }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      windows_arm64: ${{ steps.plan.outputs.windows_arm64 }}
+      skip: ${{ steps.plan.outputs.skip }}
     steps:
-      - id: set
+      - uses: actions/checkout@v4
+        with:
+          # Enough history for the "did anything land today?" check below.
+          fetch-depth: 100
+
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
+          # ── Version: single source of truth ──────────────────────────────
+          version=$(grep -oP 'ENGINE_VERSION: &str = "\K[^"]+' crates/renzora/src/version.rs)
+          if [ -z "$version" ]; then
+            echo "::error::could not read ENGINE_VERSION from crates/renzora/src/version.rs"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          # ── Which platforms, and whether we publish ──────────────────────
+          # A schedule or a tag push has no inputs, so both default to the full
+          # platform set; only a manual run can narrow it.
+          platform="${{ inputs.platform || 'all' }}"
+          case "${{ github.event_name }}" in
+            schedule) publish=nightly ;;
+            push)     publish=release ;;
+            *)        publish="${{ inputs.publish || 'none' }}" ;;
+          esac
+
+          # ── The tag ──────────────────────────────────────────────────────
+          # A release is tagged with the version itself; a nightly appends the
+          # date as `16aug26`, which is what `renzora::version::channel()` keys
+          # off (tag == version → Release, anything else → Nightly).
+          case "$publish" in
+            release)
+              if [ "${{ github.event_name }}" = "push" ]; then
+                tag="${GITHUB_REF#refs/tags/}"
+              else
+                tag="$version"
+              fi
+              ;;
+            nightly)
+              tag="$version-nightly-$(date -u +%d%b%y | tr '[:upper:]' '[:lower:]')"
+              ;;
+            *)
+              tag=""
+              ;;
+          esac
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          # ── Nothing new? Don't build a nightly. ──────────────────────────
+          # A daily cron on a quiet week would otherwise publish 7 identical
+          # releases and burn ~6 runner-hours each.
+          skip=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "$(git rev-list --count --since='24 hours ago' HEAD)" = "0" ]; then
+              echo "::notice::no commits in the last 24h — skipping tonight's nightly"
+              skip=true
+            fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
+          # ── The matrix ───────────────────────────────────────────────────
           linux='{"platform":"linux","arches":"x64+arm64"}'
           windows='{"platform":"windows","arches":"x64"}'
           macos='{"platform":"macos","arches":"x64+arm64"}'
           wasm='{"platform":"wasm","arches":"wasm32"}'
-          case "${{ inputs.platform }}" in
+          case "$platform" in
             all)     inc="$linux,$windows,$macos,$wasm" ;;
             linux)   inc="$linux" ;;
             windows) inc="$windows" ;;
@@ -66,8 +167,22 @@ jobs:
           esac
           echo "matrix={\"include\":[$inc]}" >> "$GITHUB_OUTPUT"
 
+          # windows-arm64 rides along with any run that includes Windows.
+          if [ "$platform" = "all" ] || [ "$platform" = "windows" ]; then
+            echo "windows_arm64=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "windows_arm64=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "### Build Engine" >> "$GITHUB_STEP_SUMMARY"
+          echo "- version: \`$version\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- platforms: \`$platform\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- publish: \`$publish\`${tag:+ as \`$tag\`}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- skipped: \`$skip\`" >> "$GITHUB_STEP_SUMMARY"
+
   build:
     needs: setup
+    if: needs.setup.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
@@ -100,11 +215,18 @@ jobs:
       # this workflow and docker-image.yml are independent, so the hash-tagged
       # image for the current Dockerfile may not be published yet; `:latest` with
       # eventual consistency is fine for an on-demand build.
+      #
+      # RENZORA_RELEASE_TAG / RENZORA_BUILD_COMMIT are read by `option_env!` in
+      # `renzora::version` when the contract crate compiles, so a published
+      # binary knows its own tag and doesn't have to guess which release matches
+      # it. Empty on a non-publishing run, which `version.rs` reads as "dev".
       - name: Build ${{ matrix.platform }} (${{ matrix.arches }})
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/app/src" \
             -w /app/src \
+            -e RENZORA_RELEASE_TAG="${{ needs.setup.outputs.tag }}" \
+            -e RENZORA_BUILD_COMMIT="${{ github.sha }}" \
             "${REGISTRY}/${{ matrix.platform }}:latest" \
             bash docker/build-all.sh dist ${{ matrix.platform }}
 
@@ -131,12 +253,12 @@ jobs:
   #
   # It runs `cargo renzora dist` — the same xtask a contributor uses locally,
   # which compiles the workspace on the `dist` profile and stages
-  # dist/windows-arm64/ with the layout the loader expects (bevy_dylib + renzora
-  # + the editor bundle beside the exe, distribution plugins under plugins/).
-  # That is the native mirror of what build-all.sh does inside the containers,
-  # so the artifact is shaped identically to the other desktop slices.
+  # dist/windows-arm64/ with the layout the loader expects. That is the native
+  # mirror of what build-all.sh does inside the containers, so the artifact is
+  # shaped identically to the other desktop slices.
   windows-arm64:
-    if: inputs.platform == 'all' || inputs.platform == 'windows'
+    needs: setup
+    if: needs.setup.outputs.skip != 'true' && needs.setup.outputs.windows_arm64 == 'true'
     runs-on: windows-11-arm
     # A cold full-workspace bevy build on this runner is measured in hours, well
     # past the 360-minute job default it would otherwise silently inherit.
@@ -145,6 +267,8 @@ jobs:
       # No cache is restored here, so incremental artifacts are pure disk cost —
       # and disk, not time, is the tighter budget on a Windows runner.
       CARGO_INCREMENTAL: 0
+      RENZORA_RELEASE_TAG: ${{ needs.setup.outputs.tag }}
+      RENZORA_BUILD_COMMIT: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -179,10 +303,121 @@ jobs:
         if: always()
         run: Get-PSDrive -PSProvider FileSystem | Select-Object Name, Used, Free
 
+      # `dist/` (not `dist/windows-arm64/`) so the artifact has the same
+      # <artifact>/<platform>/… shape as every container lane — which is what
+      # `package-release.sh` walks.
       - name: Upload windows-arm64 build
         uses: actions/upload-artifact@v4
         with:
           name: renzora-windows-arm64
-          path: dist/windows-arm64/
+          path: dist/
           if-no-files-found: error
           retention-days: 7
+
+  # ── Publish ─────────────────────────────────────────────────────────────────
+  # `if: always()` plus an explicit result check on `build`, because
+  # `windows-arm64` is best-effort: it is the only job measured in hours and the
+  # only one with no build cache, so a release waits for it but does not depend
+  # on it. Whatever slices arrived get published; the rest are simply absent from
+  # `manifest.json`, which the editor reads as "no template for that platform".
+  publish:
+    needs: [setup, build, windows-arm64]
+    if: always() && needs.setup.outputs.publish != 'none' && needs.setup.outputs.skip != 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package release assets
+        run: |
+          bash scripts/package-release.sh artifacts release-assets \
+            "${{ needs.setup.outputs.tag }}" "${{ github.sha }}"
+
+      # A nightly re-run on the same day would collide with its own tag, and a
+      # nightly is disposable by definition — replace it rather than inventing a
+      # `-2` suffix nobody could predict the name of.
+      - name: Replace an existing nightly with the same tag
+        if: needs.setup.outputs.publish == 'nightly'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ needs.setup.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::replacing existing nightly $tag"
+            gh release delete "$tag" --yes --cleanup-tag
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ needs.setup.outputs.tag }}"
+          version="${{ needs.setup.outputs.version }}"
+          prerelease=""
+          title="Renzora Engine $tag"
+          if [ "${{ needs.setup.outputs.publish }}" = "nightly" ]; then
+            prerelease="--prerelease"
+            title="Renzora Engine $tag (nightly)"
+          fi
+
+          {
+            if [ "${{ needs.setup.outputs.publish }}" = "nightly" ]; then
+              echo "Automated nightly build of \`$version\` from [\`${GITHUB_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA})."
+              echo
+              echo "> Nightlies are unreviewed builds of \`main\`. They are the right thing to run if you are developing *against* the engine and want the latest fixes; they are not the right thing to ship a game on."
+            else
+              echo "Renzora Engine \`$version\`."
+            fi
+            echo
+            echo "### Engine"
+            echo "\`<platform>.zip\` — the editor and the game runtime together. Unzip and run \`renzora-editor\` (Linux: the \`.AppImage\`; macOS: \`Renzora Engine.app\`)."
+            echo
+            echo "### Export templates"
+            echo "\`renzora-runtime-<platform>.zip\` — the game runtime for one platform, with no editor. You do not download these by hand: the editor fetches the ones it needs from **Export → Packaging → Runtime template**, which is how you export for a platform you are not running on."
+            echo
+            echo "\`manifest.json\` lists every asset with its size and SHA-256; \`SHA256SUMS\` is the same digests in \`sha256sum -c\` form."
+          } > notes.md
+
+          # Nightlies are cut from whatever `main` is at build time; a tag push
+          # already has its own commit, and --target on an existing tag is a
+          # no-op, so passing the sha is right in both cases.
+          gh release create "$tag" \
+            --title "$title" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA" \
+            $prerelease \
+            release-assets/*
+
+      # Keep the releases page navigable. Only dated nightlies are ever removed —
+      # `r1-alpha*` releases are permanent.
+      - name: Prune old nightlies
+        if: needs.setup.outputs.publish == 'nightly'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prefix="${{ needs.setup.outputs.version }}-nightly-"
+          # `gh release list` is newest-first, so everything past KEEP_NIGHTLIES
+          # is the tail to drop.
+          gh release list --limit 200 --json tagName,createdAt \
+            --jq "[.[] | select(.tagName | startswith(\"$prefix\"))] | sort_by(.createdAt) | reverse | .[${KEEP_NIGHTLIES}:] | .[].tagName" \
+            > stale.txt || true
+          while read -r stale; do
+            [ -n "$stale" ] || continue
+            echo "pruning $stale"
+            gh release delete "$stale" --yes --cleanup-tag || true
+          done < stale.txt
+
+      - name: Summary
+        run: |
+          echo "### Published \`${{ needs.setup.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat release-assets/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

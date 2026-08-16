@@ -51,6 +51,15 @@ pub use world_environment::*;
 // `renzora::lang::t("…")` so localized call sites are greppable.
 pub mod lang;
 
+// ── Engine version / release channel ─────────────────────────────────────
+// `ENGINE_VERSION` (`r1-alphaN`) plus the release-tag resolution the export
+// downloader needs to ask GitHub for *its own* version's runtime templates
+// instead of whatever `releases/latest` happens to be. Here in the contract
+// crate because the shell, the splash, the command palette and the exporter all
+// need the same answer — they used to carry four different ones. Not
+// glob-re-exported: call sites read `renzora::version::ENGINE_VERSION`.
+pub mod version;
+
 // ── Plugin declaration ──────────────────────────────────────────────────
 // `renzora::add!(MyPlugin)` declares a plugin to `cargo renzora sync`, which
 // generates the dependency edge that links it and the list that installs it.

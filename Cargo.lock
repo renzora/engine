@@ -7705,6 +7705,7 @@ dependencies = [
  "renzora_tonemapping_editor",
  "renzora_tutorial",
  "renzora_undo",
+ "renzora_update",
  "renzora_viewport",
  "renzora_volumetric_fog",
  "renzora_volumetric_fog_editor",
@@ -8992,6 +8993,20 @@ dependencies = [
  "renzora_ember",
  "renzora_engine",
  "renzora_ui",
+]
+
+[[package]]
+name = "renzora_update"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_ember",
+ "renzora_net",
+ "serde",
+ "serde_json",
+ "sha2",
+ "zip",
 ]
 
 [[package]]

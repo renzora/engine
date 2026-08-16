@@ -348,10 +348,24 @@ struct EditorPrefFile {
     /// drop frames; users who want deeper history raise it in Settings.
     #[serde(default = "default_console_log_limit")]
     console_log_limit: u32,
+    /// Which releases the updater offers: `"stable"`, `"nightly"`, or `"auto"`.
+    ///
+    /// `"auto"` — the default — means *follow the channel this build came from*:
+    /// a nightly build is offered newer nightlies, a released build is offered
+    /// releases. Storing the choice as `"auto"` rather than resolving it once at
+    /// install time matters, because the answer changes when you update: take a
+    /// nightly user to a release and `"auto"` correctly moves them to the stable
+    /// channel, where a resolved `"nightly"` would keep them on nightlies forever.
+    #[serde(default = "default_update_channel")]
+    update_channel: String,
 }
 
 fn default_language() -> String {
     "en".to_string()
+}
+
+fn default_update_channel() -> String {
+    "auto".to_string()
 }
 
 fn default_autosave_interval_secs() -> u32 {
@@ -400,6 +414,7 @@ impl Default for EditorPrefFile {
             play_vr: false,
             scroll_speed: default_scroll_speed(),
             console_log_limit: default_console_log_limit(),
+            update_channel: default_update_channel(),
         }
     }
 }
@@ -586,6 +601,49 @@ pub fn save_language(code: &str) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.language = code.to_string();
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Load the persisted updater channel — `"auto"`, `"stable"` or `"nightly"`.
+/// See the field docs on `EditorPrefFile::update_channel` for why `"auto"` is
+/// stored rather than resolved.
+pub fn load_update_channel() -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        default_update_channel()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return default_update_channel();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return default_update_channel();
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.update_channel)
+            .unwrap_or_else(|_| default_update_channel())
+    }
+}
+
+/// Persist the updater channel (read-modify-write so other prefs survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_update_channel(channel: &str) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.update_channel = channel.to_string();
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

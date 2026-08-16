@@ -114,10 +114,17 @@ fn manage_export_modal(world: &mut World) {
 }
 
 fn scan_plugins(world: &mut World) {
-    if world.resource::<ExportOverlayState>().plugins_scanned {
-        return;
+    // Re-scan when the target platform changes: the plugin set is whatever that
+    // platform's template brought with it, not whatever the editor happens to
+    // have loaded. `plugins_scanned` alone would pin the first platform's list.
+    let platform = world.resource::<ExportOverlayState>().platform;
+    {
+        let s = world.resource::<ExportOverlayState>();
+        if s.plugins_scanned && s.plugins_scanned_for == Some(platform) {
+            return;
+        }
     }
-    let dir = world.resource::<TemplateManager>().runtime_plugins_dir();
+    let dir = world.resource::<TemplateManager>().plugins_dir_for(platform);
     let plugins = renzora_plugin::host::loader::scan_plugins(world, &dir);
 
     // Pre-select only the plugins a scene actually references, so the export
@@ -147,6 +154,7 @@ fn scan_plugins(world: &mut World) {
     let selected: Vec<String> = s.selected_plugins.iter().cloned().collect();
     s.capabilities = crate::capabilities::defaults(&selected, project_root.as_deref());
     s.plugins_scanned = true;
+    s.plugins_scanned_for = Some(platform);
 }
 
 /// The plugin ids referenced by any `.ron` scene/prefab under `root`. Matches
@@ -308,7 +316,15 @@ fn build_sidebar(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         if let Some(err) = &s.release_fetch_error {
             format!("⚠ {err}")
         } else if let Some(info) = &s.release_info {
-            format!("{} {}", renzora::lang::t("export.status.latest"), info.tag_name)
+            // Say when this is the nightly fallback rather than a release for
+            // this exact version — "where did this runtime come from?" should be
+            // answerable without reading the source.
+            let key = if info.is_fallback {
+                "export.status.nightly"
+            } else {
+                "export.status.latest"
+            };
+            format!("{} {}", renzora::lang::t(key), info.tag_name)
         } else if s.release_fetch_started {
             renzora::lang::t("export.status.loading_release")
         } else {
@@ -1176,8 +1192,15 @@ fn download_click(q: Query<&Interaction, (With<DownloadBtn>, Changed<Interaction
     if q.iter().any(|i| *i == Interaction::Pressed) {
         commands.queue(|w: &mut World| {
             let p = w.resource::<ExportOverlayState>().platform;
-            let runtime_dir = w.resource::<TemplateManager>().runtime_dir();
-            let task = download::spawn_download(p, runtime_dir);
+            // The release is resolved as soon as the modal opens, so a click can
+            // reuse it — no second GitHub round-trip, and nothing to resolve on
+            // the worker thread that could have resolved differently.
+            let Some(release) = w.resource::<ExportOverlayState>().release_info.clone() else {
+                let mut s = w.resource_mut::<ExportOverlayState>();
+                s.download_status = Some((p, DownloadProgress::Error(renzora::lang::t("export.status.no_release"))));
+                return;
+            };
+            let task = download::spawn_download(p, release);
             let mut s = w.resource_mut::<ExportOverlayState>();
             s.download_task = Some(task);
             s.download_status = Some((p, DownloadProgress::Fetching(renzora::lang::t("export.status.download_starting"))));
@@ -1190,10 +1213,13 @@ fn install_click(q: Query<&Interaction, (With<InstallBtn>, Changed<Interaction>)
         commands.queue(|w: &mut World| {
             let Some(file) = rfd::FileDialog::new().set_title(renzora::lang::t("export.dialog.select_runtime")).pick_file() else { return };
             let p = w.resource::<ExportOverlayState>().platform;
-            let runtime_dir = w.resource::<TemplateManager>().runtime_dir();
-            let _ = std::fs::create_dir_all(&runtime_dir);
-            let dest = runtime_dir.join(p.runtime_binary_name());
-            let _ = std::fs::copy(&file, &dest);
+            // Into the per-user template store, NOT the editor's own directory.
+            // `runtime_binary_name()` for a desktop platform is `renzora[.exe]`,
+            // so the old destination would have overwritten the editor's own
+            // runtime with a foreign-platform binary — and taken Play with it.
+            let Some(dir) = crate::templates::user_template_dir(p) else { return };
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::copy(&file, dir.join(p.runtime_binary_name()));
             w.resource_mut::<TemplateManager>().scan();
         });
     }
@@ -1203,8 +1229,8 @@ fn install_click(q: Query<&Interaction, (With<InstallBtn>, Changed<Interaction>)
 
 fn platform_icon(p: Platform) -> &'static str {
     match p {
-        Platform::WindowsX64 => "windows-logo",
-        Platform::LinuxX64 => "linux-logo",
+        Platform::WindowsX64 | Platform::WindowsArm64 => "windows-logo",
+        Platform::LinuxX64 | Platform::LinuxArm64 => "linux-logo",
         Platform::MacOSX64 | Platform::MacOSArm64 => "apple-logo",
         Platform::IOSArm64 => "device-mobile",
         Platform::TvOSArm64 => "television-simple",

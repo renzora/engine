@@ -604,7 +604,10 @@ fn dispatch_remote(
                         .ok()
                         .filter(|v| !v.default.is_empty())
                         .map(|v| v.default)
-                        .unwrap_or_else(|| "r1-alpha6".to_string())
+                        // The site's default is authoritative when reachable; when
+                        // it isn't, this engine's own version is the closest
+                        // guess — a hardcoded literal here just rots.
+                        .unwrap_or_else(|| renzora::version::ENGINE_VERSION.to_string())
                 });
                 renzora_auth::docs::search(version, &query)
                     .unwrap_or_default()

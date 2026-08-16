@@ -1,0 +1,40 @@
+[package]
+name = "renzora_updater"
+version = "0.1.0"
+edition = "2021"
+
+# Its OWN workspace, deliberately — the same reasoning as `plugins/*`. As a
+# member of the engine workspace this would inherit the engine's profile and
+# feature unification, and the whole point of the sidecar is that it shares
+# nothing with the tree it is about to replace. See `.cargo/config.toml` beside
+# this file for the other half of that isolation.
+[workspace]
+
+[[bin]]
+name = "renzora-update"
+path = "src/main.rs"
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(unix)'.dependencies]
+# Only for `kill(pid, 0)`. The previous updater polled `/proc/<pid>`, which does
+# not exist on macOS — so its "wait for the editor to exit" was a 30-second sleep
+# there, and it swapped the tree out from under a still-running editor.
+libc = "0.2"
+
+# Small and standalone: optimize for size, and abort on panic so a half-done swap
+# can never unwind into an ambiguous state.
+[profile.dist]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

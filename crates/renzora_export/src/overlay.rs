@@ -137,6 +137,13 @@ pub struct ExportOverlayState {
     pub collapsed_sections: std::collections::HashSet<String>,
     /// Whether plugins have been scanned yet.
     pub(crate) plugins_scanned: bool,
+    /// Platform the current plugin list was scanned for.
+    ///
+    /// The available plugins are per-platform now that cross-platform templates
+    /// exist: a downloaded Linux template brings its own `.so` plugins, and
+    /// listing the editor's `.dll`s while exporting for Linux would offer
+    /// libraries the game cannot load. Changing platform re-scans.
+    pub(crate) plugins_scanned_for: Option<Platform>,
     /// Latest GitHub release info (for runtime downloads).
     pub release_info: Option<ReleaseInfo>,
     /// Background fetch of release manifest.
@@ -184,6 +191,7 @@ impl Default for ExportOverlayState {
             capabilities: std::collections::HashMap::new(),
             collapsed_sections: std::collections::HashSet::new(),
             plugins_scanned: false,
+            plugins_scanned_for: None,
             release_info: None,
             release_fetch_rx: None,
             release_fetch_started: false,

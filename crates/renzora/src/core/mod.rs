@@ -994,6 +994,24 @@ pub struct ExportRequested;
 #[derive(Resource)]
 pub struct ImportRequested;
 
+/// Marker resource requesting the software-update dialog to open.
+///
+/// Inserted by Help ▸ Check for Updates and consumed by `renzora_update`. Here
+/// rather than in that crate so the shell can ask for the dialog without linking
+/// the updater — the same arrangement as [`ExportRequested`].
+#[derive(Resource)]
+pub struct UpdateRequested;
+
+/// Present when the updater's background check found a newer engine; carries its
+/// release tag.
+///
+/// The flow runs the other way from [`UpdateRequested`]: `renzora_update`
+/// inserts this, and the shell reads it to label the Help menu item "Update to
+/// r1-alpha8" instead of "Check for Updates". It is removed again if a later
+/// check (say, after switching channel) finds nothing.
+#[derive(Resource)]
+pub struct UpdateAvailable(pub String);
+
 /// Optional: carries the suggested target directory from the asset browser.
 #[derive(Resource)]
 pub struct ImportTargetDir(pub String);

@@ -1,0 +1,22 @@
+[package]
+name = "renzora_update"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_ember = { path = "../renzora_ember" }
+serde = { version = "1", features = ["derive"] }
+
+# Native-only, for the same reason `renzora_export` splits them out: a browser
+# tab has no filesystem to install into and no process to spawn, so the whole
+# update path is compiled out on wasm.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+renzora_net = { path = "../renzora_net" }
+serde_json = "1"
+sha2 = "0.10"
+zip = "2"
+
+[lints]
+workspace = true

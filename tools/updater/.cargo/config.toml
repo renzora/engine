@@ -1,0 +1,49 @@
+# Build settings for the update sidecar.
+#
+# Cargo discovers config by walking UP from the working directory and does not
+# stop at a workspace root, so building here would otherwise inherit the engine's
+# `.cargo/config.toml` — including `prefer-dynamic`. That is not merely unhelpful
+# here, it is fatal.
+#
+# ## Why `prefer-dynamic` must not reach the sidecar
+#
+# `prefer-dynamic` makes a binary link **std** dynamically, and cargo names that
+# library `std-<metadata>.dll`, where the metadata hashes the toolchain. The
+# sidecar's import table would then name one exact std build — which, in a normal
+# install, lives *inside the directory the sidecar is about to delete and
+# replace*. The loader resolves imports before `main` runs, so whether it works
+# would depend on when in the swap the OS happened to map it. This is the same
+# trap documented in `plugins/.cargo/config.toml`, with a worse failure mode: a
+# plugin that won't load is skipped, an updater that won't load leaves a half-
+# replaced engine and no process left to repair it.
+#
+# The rule this file encodes: **the sidecar must depend on nothing in the
+# directory it is replacing.** Note that `rustflags` arrays are *merged* across
+# config files rather than replaced, so `prefer-dynamic` has to be switched off
+# with an explicit `=no` — omitting it changes nothing.
+#
+# ## Why `crt-static` here, when the plugins deliberately skip it
+#
+# For a plugin, statically linking the MSVC runtime buys nothing: the host
+# process has already loaded VCRUNTIME140.dll before any plugin is mapped. The
+# sidecar is the opposite case — it is its own process, started as the editor
+# exits, and the fewer files it needs the smaller the window in which the swap
+# can fail. ~100 KB is a fair price for "imports KERNEL32 and nothing else".
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "prefer-dynamic=no", "-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "prefer-dynamic=no", "-C", "target-feature=+crt-static"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "prefer-dynamic=no"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "prefer-dynamic=no"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "prefer-dynamic=no"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "prefer-dynamic=no"]

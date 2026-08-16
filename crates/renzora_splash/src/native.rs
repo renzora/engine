@@ -95,7 +95,6 @@ fn card_gradient(top: Color, bot: Color) -> BackgroundGradient {
     ))])
 }
 
-const VERSION: &str = "r1-alpha6";
 /// ABI hash + source commit of the current frozen release (the canonical record
 /// lives in `releases.json` at the repo root). The splash shows the ABI hash as
 /// a link to the exact engine commit that froze it, so a plugin author can see
@@ -548,7 +547,7 @@ fn build_layout(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .spawn((Text::new("·".to_string()), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
         .id();
     let version = commands
-        .spawn((Text::new(format!("Renzora Engine · version {VERSION}")), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
+        .spawn((Text::new(format!("Renzora Engine · version {}", renzora::version::display())), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))
         .id();
     let hash_dot = commands
         .spawn((Text::new("·".to_string()), ui_font(&fonts.ui, 11.0), TextColor(text_muted()), FocusPolicy::Pass))

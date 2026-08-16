@@ -8,8 +8,10 @@ An export template is a **pre-built runtime artifact** for a target platform. Wh
 
 There are two kinds of template, and the difference matters:
 
-- **Desktop** (Windows / Linux / macOS): the template *is the `renzora` binary itself*. Because of Operation Merge, the same binary is the editor when `renzora_editor.{dll,so,dylib}` sits beside it and the shipped game when that file is absent. So "the desktop template" is just the already-built binary in `dist/<platform>/` — there is nothing extra to compile.
+- **Desktop** (Windows / Linux / macOS): the template is the **`renzora` binary and its `plugins/`** — the game runtime, with no editor. The engine ships two executables (`renzora` = runtime, `renzora-editor` = editor), so "the desktop template" is the first of those plus the plugin libraries it loads. Nothing extra has to be compiled.
 - **Mobile / web** (Android / iOS / WASM): the template is a **container shell** — an unsigned APK, an `.app` bundle, or a wasm + JS bundle — that the export step injects `game.rpak` into. These are produced by the per-platform build scripts under `templates/`.
+
+You only need a template for a platform **other than the one you are running on** — your own platform's runtime already sits beside the editor.
 
 > Templates are **packaging** templates, not project scaffolds: there's no per-template `template.toml` and no starter-project generator. (`renzora new` does exist — it clones the whole engine repo to set up a workspace, rather than instantiating a template.) The `templates/` directory holds only the Android/iOS/web container shells described below.
 
@@ -33,26 +35,47 @@ templates/
 
 There is **no `templates/windows/` (or linux/macos)** — desktop platforms use the `dist/<platform>/` binary directly.
 
-## How `renzora_export` finds templates — the `dist/` scan
+## Where the editor looks for templates
 
-`TemplateManager` (in `crates/renzora_export/src/templates.rs`) scans `dist/<platform>/` once on startup. The `dist/` root is two levels above the running editor exe (`dist/<platform>/renzora.exe` → `dist/`). For each platform it looks for:
+`TemplateManager` (in `crates/renzora_export/src/templates.rs`) checks **two** locations per platform, in this order:
 
-- **Desktop** → the game binary directly in `dist/<platform>/`.
-- **Mobile / web** → the packaged artifact under `dist/<platform>/`.
+1. **`dist/<platform>/`** — a from-source checkout that ran `renzora build <platform>`. The `dist/` root is two levels above the running editor exe. Always preferred: if you built it, you meant to use it.
+2. **`~/.renzora/templates/<version>/<platform>/`** — downloaded from the release matching this engine's version.
 
-| Platform | `dist/` directory | Template artifact the scanner expects |
+A local build in `dist/` wins over a download for the same platform; a platform is never listed twice.
+
+`build-all.sh` nests each platform's local output differently, so the `dist/` scan resolves three layouts:
+
+| Platform | `dist/` directory | Where the runtime actually is |
 |---|---|---|
-| Windows (x64) | `dist/windows-x64/` | `renzora.exe` |
-| Linux (x64) | `dist/linux-x64/` | `renzora` |
-| macOS (x64) | `dist/macos-x64/` | `renzora` |
-| macOS (ARM64) | `dist/macos-arm64/` | `renzora` |
+| Windows (x64 / ARM64) | `dist/windows-x64/`, `dist/windows-arm64/` | flat — `renzora.exe` |
+| Linux (x64 / ARM64) | `dist/linux-x64/`, `dist/linux-arm64/` | `<name>.AppDir/renzora` |
+| macOS (x64 / ARM64) | `dist/macos-x64/`, `dist/macos-arm64/` | `<name>.app/Contents/MacOS/renzora` |
 | Android (ARM64) | `dist/android-arm64/` | `renzora-runtime-android-arm64.apk` |
 | Android (x86_64) | `dist/android-x86/` | `renzora-runtime-android-x86_64.apk` |
 | Fire TV (ARM64) | `dist/firetv-arm64/` | `renzora-runtime-firetv-arm64.apk` |
 | iOS (ARM64) | `dist/ios-arm64/` | `renzora-runtime-ios-arm64.zip` |
 | Web (WASM) | `dist/web-wasm32/` | `renzora-runtime-web-wasm32.zip` |
 
-If a platform's template isn't present locally, the export modal can **Download from GitHub** (it fetches the matching `renzora-runtime-*` asset from the `renzora/engine` releases) or **Install from file…** (you point it at a template you built yourself). Both copy the artifact into the editor's runtime directory.
+A **downloaded** template is always flat — the release packaging unwraps the AppImage/`.app` bundle so the install side needs no layout knowledge at all.
+
+### Downloading a template
+
+**Export → Packaging → Runtime template → Download from GitHub** fetches `renzora-runtime-<platform>.zip` from the release matching this engine and extracts it into `~/.renzora/templates/<version>/<platform>/`. The download is checksummed against the digest GitHub publishes for the asset; a mismatch aborts and installs nothing.
+
+The store is **scoped by engine version** on purpose. The runtime and the editor are two halves of one version, so a `r1-alpha7` editor picking up a `r1-alpha6` runtime would produce a game that fails to load the scene the editor just saved. Separate directories make that impossible rather than merely unlikely.
+
+**Install from file…** does the same thing from a template you built yourself, copying into the same per-version directory.
+
+### Which release the editor asks for
+
+Not `releases/latest` — *its own version's*. Resolution, in order:
+
+1. **The tag this binary was published under**, when CI stamped one in. A release or nightly build never has to guess.
+2. **A release tagged exactly `r1-alpha7`** — the normal case once the version has shipped.
+3. **The newest nightly for this version** (`r1-alpha7-nightly-16aug26`) — the case for a build from source, whose version has no release yet. The export modal labels this "Nightly:" rather than "Release:" so the fallback is visible.
+
+There is deliberately no fourth step: falling back to the previous *version* would reintroduce exactly the mismatch this ordering exists to prevent. If nothing matches, the editor says so and you build the template yourself with `renzora build <platform>`.
 
 > ⚠️ The enum also defines an **Apple TV (tvOS)** template (`renzora-runtime-tvos-arm64.zip`), but the Docker toolchain installs no `aarch64-apple-tvos` rustup target and `docker/build-all.sh` has no tvOS lane, so no tvOS template is ever produced. Treat it as aspirational.
 
@@ -162,11 +185,13 @@ The background export worker (`crates/renzora_export/src/overlay.rs`) packs asse
 | iOS | Inject `game.rpak` into the `.app` bundle, re-zip as `.ipa` |
 | Web | Zip `renzora-runtime.js` + `_bg.wasm` + `game.rpak` + generated `index.html` |
 
-On desktop it also copies the shared libraries that sit beside the binary — `bevy_dylib`, `renzora.dll`/`librenzora.*`, and the `std-*` dylib — but **never** `renzora_editor.*`, so the export is a clean game.
+On desktop it also copies any shared libraries sitting beside the runtime — but **never** `renzora-editor`, so the export is a clean game. (Since Bevy went static there are usually none: the runtime is self-contained.)
 
 ### Plugin selection
 
-Effects and other features live in distribution-plugin cdylibs. Export scans the editor's `plugins/` directory with `renzora_plugin::host::loader::scan_plugins` (which lists each C-ABI plugin with its Editor/Runtime scope, and deliberately maps nothing to do it — see [architecture](../setup/architecture.md)), then **pre-selects just the plugins your scenes actually reference**: it matches each plugin's crate prefix (e.g. `renzora_matrix::`) against the serialized component type paths in the project's `.ron` files. Selected plugins are copied into `output/plugins/`. If no scenes can be read, it falls back to selecting everything; effects added purely from scripts aren't auto-detected, so you can tick those manually.
+Effects and other features live in distribution-plugin cdylibs. Export scans **the chosen platform's** `plugins/` directory with `renzora_plugin::host::loader::scan_plugins` (which lists each C-ABI plugin with its Editor/Runtime scope, and deliberately maps nothing to do it — see [architecture](../setup/architecture.md)), then **pre-selects just the plugins your scenes actually reference**: it matches each plugin's crate prefix (e.g. `renzora_matrix::`) against the serialized component type paths in the project's `.ron` files. Selected plugins are copied into `output/plugins/`. If no scenes can be read, it falls back to selecting everything; effects added purely from scripts aren't auto-detected, so you can tick those manually.
+
+The directory scanned is the one the resolved template brought with it, not the editor's own. That distinction only started mattering when cross-platform templates began working: a Windows editor exporting a Linux game would otherwise offer its own `.dll`s, and the game would find nothing it could load — silently, since a plugin the host can't open is simply skipped. A template with no `plugins/` of its own falls back to the editor's, which is right for a same-platform export. Changing the target platform re-scans.
 
 ### Dedicated server
 
@@ -176,9 +201,35 @@ Checking **Include server** (desktop only) writes `server.rpak` (assets stripped
 renzora --server --rpak server.rpak --port 7636 --tick-rate 64 --max-clients 32
 ```
 
-## Versioning and the ABI guard
+## Versioning
 
-There is no version manifest. Compatibility between a template and its plugins is enforced by an **ABI hash**: `build.rs` emits an FNV-1a `RENZORA_BUILD_HASH` (engine version + rustc + `bevy0.19`), and every dynamic plugin exports a `plugin_bevy_hash()` the loader compares against its own — a mismatch is rejected. So a template, its `bevy_dylib`/`renzora` shared libs, and the plugin cdylibs you ship beside it **must all come from the same engine build**. The export modal surfaces the latest GitHub release tag as "Latest" for reference, but it does not gate the export on a version string.
+Templates are matched to the engine **by version**, not by an ABI hash. The old `plugin_bevy_hash()` gate is gone along with the shared `bevy_dylib` it protected: a C-ABI plugin links no Bevy and negotiates compatibility through a version handshake plus `INTERFACE_PREFIX_HASHES` instead, so a plugin built by any rustc loads into any engine.
+
+What still has to line up is the **runtime and the editor**, because they share the scene format and the project config. That is what the version-scoped template store enforces: `~/.renzora/templates/<version>/` can only ever hand this editor a runtime published for its own version.
+
+The single source of that version is `renzora::version::ENGINE_VERSION` (`crates/renzora/src/version.rs`). It is what the About dialog shows, what the splash shows, what the release workflow tags with, and what the downloader asks GitHub for — bump it and the docs directory together.
+
+CI stamps two further values into a published binary, read by `option_env!` when the contract crate compiles:
+
+- `RENZORA_RELEASE_TAG` — the exact tag (`r1-alpha7`, or `r1-alpha7-nightly-16aug26`). Absent in a build from source, which is what makes it a *dev* build.
+- `RENZORA_BUILD_COMMIT` — the commit the release was cut from.
+
+## Releases and nightlies
+
+Templates come from GitHub releases, published by the **Build Engine** workflow (`.github/workflows/build-engine.yml`):
+
+| Trigger | Tag | Kind |
+|---|---|---|
+| Nightly schedule (02:00 UTC) | `r1-alpha7-nightly-16aug26` | Prerelease, one per night, 14 kept |
+| Push of an `r1-alpha*` tag | `r1-alpha7` | Full release |
+| Manual dispatch | either, or build without publishing | — |
+
+Every release carries two assets per platform:
+
+- `<platform>.zip` — the **engine**: editor and runtime together (Linux ships the `.AppImage`, macOS the `.app`).
+- `renzora-runtime-<platform>.zip` — the **export template**: runtime and plugins, no editor.
+
+plus `manifest.json` (every asset with its size and SHA-256) and `SHA256SUMS`. Nightlies are skipped on a day nothing landed on `main`.
 
 ## See also
 

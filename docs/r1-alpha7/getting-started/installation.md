@@ -31,11 +31,15 @@ Want the quickest start? Grab a prebuilt engine for your platform from the downl
 
 **[renzora.com/download](/download)**
 
-Each platform ships as a `.zip` archive built from the [GitHub releases](https://github.com/renzora/engine/releases) — download it, extract, and run the engine directly. The editor opens automatically because the `renzora_editor` bundle ships beside the binary inside the archive.
+Each platform ships as a `.zip` archive built from the [GitHub releases](https://github.com/renzora/engine/releases) — download it, extract, and run the engine directly. The archive contains two executables: `renzora-editor` (the editor, what you run) and `renzora` (the game runtime, which the editor launches when you hit Play), plus the plugins both load.
+
+### Nightly builds
+
+Alongside the numbered releases there are **nightlies** — an automated build of `main`, tagged like `r1-alpha7-nightly-16aug26` and marked as a prerelease. They are the right thing to run if you're developing *against* the engine and want the latest fixes; they are not the right thing to ship a game on. Nightlies are built every night there are new commits, and the last two weeks are kept.
 
 ### Windows
 
-Download the Windows `.zip`, extract it anywhere, and double-click `renzora.exe`.
+Download the Windows `.zip`, extract it anywhere, and double-click `renzora-editor.exe`.
 
 ### macOS
 
@@ -48,10 +52,25 @@ Download the macOS `.zip` and extract it, then move the Renzora app to your Appl
 Download the Linux `.zip` and extract it:
 
 ```bash
-unzip renzora-linux-*.zip
-cd renzora
-./renzora
+unzip linux-x64.zip
+./"Renzora Engine-x86_64.AppImage"
 ```
+
+## Keeping it up to date
+
+The editor updates itself. **Help ▸ Check for Updates** downloads the new version and installs it in place; when a background check at startup has already found one, that menu item reads **Update to `r1-alpha8`** instead, so you don't have to go looking.
+
+The dialog shows what you're running, what's available, and the release notes, and gives you one button that walks through Download → Install & Restart. The download is checksummed, and if anything goes wrong while the files are being replaced your existing install is put back — the worst case is that the update didn't happen.
+
+**Channel** picks what you get offered:
+
+| | |
+|---|---|
+| **Auto** (default) | Follows what you're running: a nightly is offered newer nightlies, a release is offered releases. |
+| **Stable** | Numbered `r1-alpha*` releases only. |
+| **Nightly** | The latest build of `main`, plus releases when they land. |
+
+> Running from a source checkout? The updater checks and shows you what's new, but won't install — replacing `dist/` with a release would overwrite what you just built. Use `git pull` and rebuild instead.
 
 ## Build from source (recommended)
 

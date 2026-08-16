@@ -6,7 +6,7 @@ Exporting for the machine you're sitting at needs nothing extra — the editor y
 
 An export doesn't recompile the engine (except in [lean mode](overview.md#lean-single-binary-compiled-from-source), which is host-only). It packs your project into a `.rpak` archive and combines it with a prebuilt runtime for the target platform:
 
-- **Desktop** — the template is the `renzora` binary itself. The same binary is the editor when `renzora_editor.{dll,so,dylib}` sits beside it and the shipped game when that file is absent, so your own `dist/<platform>/` build already *is* the template for your platform.
+- **Desktop** — the template is the `renzora` binary and its `plugins/`. The engine ships two executables (`renzora` = the game runtime, `renzora-editor` = the editor), so the runtime already sitting beside your editor *is* the template for your own platform.
 - **Mobile and web** — the template is a container shell (an unsigned APK, an `.app` bundle, a wasm + JS bundle) that the export step injects `game.rpak` into.
 
 So the only question a cross-platform export has to answer is: where does the target's runtime come from?
@@ -15,7 +15,9 @@ So the only question a cross-platform export has to answer is: where does the ta
 
 ### 1. Download it from the editor (easiest)
 
-If a platform's template isn't present in `dist/`, the export modal offers **Download from GitHub** — it fetches the matching `renzora-runtime-*` asset from the [`renzora/engine`](https://github.com/renzora/engine/releases) releases and caches it in the editor's runtime directory. Pick the platform, download once, export as often as you like.
+If a platform's template isn't present in `dist/`, the export modal offers **Download from GitHub** — it fetches `renzora-runtime-<platform>.zip` from the [`renzora/engine`](https://github.com/renzora/engine/releases) release **matching your engine's version** and installs it under `~/.renzora/templates/<version>/<platform>/`. Pick the platform, download once, export as often as you like.
+
+It asks for your version specifically, not for the newest release. The runtime and the editor are two halves of one version, so an `r1-alpha7` editor paired with an `r1-alpha6` runtime would produce a game that can't load the scene the editor just saved. If your exact version has no release yet — the usual case for a build from source — it falls back to the newest **nightly** for that version and labels it as such; it never falls back to an older version. The download is checksummed, and a mismatch installs nothing.
 
 This is the path most projects want. You need no cross-compiler, no SDKs, and no container.
 
@@ -38,8 +40,8 @@ You need this only if you're producing templates (engine contributors, release b
 
 | Platform | Template artifact | `dist/` directory |
 |---|---|---|
-| Windows (x64) | `renzora.exe` | `dist/windows-x64/` |
-| Linux (x64) | `renzora` | `dist/linux-x64/` |
+| Windows (x64 / ARM64) | `renzora.exe` | `dist/windows-x64/`, `dist/windows-arm64/` |
+| Linux (x64 / ARM64) | `renzora` | `dist/linux-x64/`, `dist/linux-arm64/` |
 | macOS (x64 / ARM64) | `renzora` | `dist/macos-x64/`, `dist/macos-arm64/` |
 | Android (ARM64 / x86_64) | `renzora-runtime-android-*.apk` | `dist/android-arm64/`, `dist/android-x86/` |
 | iOS (ARM64) | `renzora-runtime-ios-arm64.zip` | `dist/ios-arm64/` |

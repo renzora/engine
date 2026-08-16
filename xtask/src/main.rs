@@ -375,7 +375,35 @@ fn build(repo: &Path, features: &[&str]) -> bool {
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
-    ok && build_source_plugins(repo)
+    ok && build_source_plugins(repo) && build_updater(repo)
+}
+
+/// Build the update sidecar (`tools/updater`).
+///
+/// Its own workspace, like `plugins/*`, so `--workspace` never sees it — and it
+/// has to ship beside the editor or Help ▸ Check for Updates can find and
+/// download an update with nothing to install it.
+///
+/// Never fatal: a missing sidecar costs the in-place update and nothing else.
+/// The editor notices it isn't there and tells you to download the new version
+/// by hand, which is a fine outcome for a dev build that will be rebuilt in a
+/// minute anyway.
+fn build_updater(repo: &Path) -> bool {
+    let dir = repo.join("tools").join("updater");
+    if !dir.join("Cargo.toml").exists() {
+        return true;
+    }
+    println!("[xtask] cargo build --profile dist (updater)");
+    let ok = Command::new(cargo())
+        .current_dir(&dir)
+        .args(["build", "--profile", "dist"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        eprintln!("[xtask] WARN: update sidecar failed to build — in-place updates disabled");
+    }
+    true
 }
 
 /// Build every `renzora_plugin` cdylib under `plugins/`.
@@ -444,6 +472,21 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     copy(&src.join(&bin_name), &host_bin)?;
     #[cfg(unix)]
     make_executable(&host_bin)?;
+
+    // The update sidecar, from its own target dir (own workspace).
+    let updater_name = format!("renzora-update{}", plat.exe_suffix);
+    let updater_src = repo
+        .join("tools")
+        .join("updater")
+        .join("target")
+        .join("dist")
+        .join(&updater_name);
+    if updater_src.exists() {
+        let updater_bin = out.join(&updater_name);
+        copy(&updater_src, &updater_bin)?;
+        #[cfg(unix)]
+        make_executable(&updater_bin)?;
+    }
 
     let editor_name = format!("renzora-editor{}", plat.exe_suffix);
     let editor_src = src.join(&editor_name);
@@ -637,8 +680,11 @@ fn clean_artifacts(dir: &Path, plat: &Platform) -> std::io::Result<()> {
         // On Unix the executables have no extension, so the suffix tests above
         // miss them and a renamed/removed binary would linger. Name them
         // explicitly.
-        let is_unix_exe =
-            plat.exe_suffix.is_empty() && matches!(name.as_str(), "renzora" | "renzora-editor");
+        let is_unix_exe = plat.exe_suffix.is_empty()
+            && matches!(
+                name.as_str(),
+                "renzora" | "renzora-editor" | "renzora-update"
+            );
         if name.ends_with(&format!(".{}", plat.ext))
             || (!plat.exe_suffix.is_empty() && name.ends_with(plat.exe_suffix))
             || is_unix_exe

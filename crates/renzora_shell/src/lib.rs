@@ -5189,9 +5189,10 @@ fn spawn_top_menu(
     kind: TopMenuKind,
     pos: Vec2,
     account: Option<&str>,
+    update_tag: Option<&str>,
 ) -> Entity {
     let root = renzora_ember::widgets::screen_menu(commands, pos.x, pos.y);
-    let kids = build_menu_items(commands, fonts, kind, account);
+    let kids = build_menu_items(commands, fonts, kind, account, update_tag);
     commands.entity(root).add_children(&kids);
     root
 }
@@ -5217,6 +5218,7 @@ fn top_menu_open(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
+    update: Option<Res<renzora::core::UpdateAvailable>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
@@ -5224,6 +5226,7 @@ fn top_menu_open(
         return;
     };
     let account = account_name(&bridge);
+    let update_tag = update.as_ref().map(|u| u.0.clone());
     for (interaction, menu, rcp, cn) in &q {
         if *interaction != Interaction::Pressed {
             continue;
@@ -5240,7 +5243,7 @@ fn top_menu_open(
             open.kind = None;
             continue;
         };
-        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref()));
+        open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref(), update_tag.as_deref()));
         open.kind = Some(menu.0);
     }
 }
@@ -5257,12 +5260,14 @@ fn top_menu_hover(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     fonts: Option<Res<EmberFonts>>,
     bridge: Option<Res<renzora::core::AuthBridge>>,
+    update: Option<Res<renzora::core::UpdateAvailable>>,
     mut open: ResMut<OpenTopMenu>,
     mut commands: Commands,
 ) {
     let Some(open_kind) = open.kind else { return };
     let Some(fonts) = fonts else { return };
     let account = account_name(&bridge);
+    let update_tag = update.as_ref().map(|u| u.0.clone());
     for (interaction, menu, rcp, cn) in &q {
         if *interaction == Interaction::Hovered && menu.0 != open_kind {
             if let Some(e) = open.menu.take() {
@@ -5272,7 +5277,7 @@ fn top_menu_hover(
                 open.kind = None;
                 return;
             };
-            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref()));
+            open.menu = Some(spawn_top_menu(&mut commands, &fonts, menu.0, pos, account.as_deref(), update_tag.as_deref()));
             open.kind = Some(menu.0);
             return;
         }
@@ -5316,6 +5321,10 @@ fn build_menu_items(
     fonts: &EmberFonts,
     kind: TopMenuKind,
     account: Option<&str>,
+    // Release tag of a pending engine update, when `renzora_update`'s background
+    // check found one. Read per menu-open like `account`, so Help names the
+    // version instead of making you go and look.
+    update_tag: Option<&str>,
 ) -> Vec<Entity> {
     use renzora_ember::widgets::{menu_item, menu_sep, menu_submenu};
     match kind {
@@ -5331,11 +5340,11 @@ fn build_menu_items(
             // the label is read fresh each time.
             if let Some(name) = account {
                 let (row, content) = menu_submenu(commands, fonts, "user", name);
-                let kids = build_menu_items(commands, fonts, TopMenuKind::Account, account);
+                let kids = build_menu_items(commands, fonts, TopMenuKind::Account, account, update_tag);
                 commands.entity(content).add_children(&kids);
                 rows.push(row);
             } else {
-                rows.extend(build_menu_items(commands, fonts, TopMenuKind::Account, account));
+                rows.extend(build_menu_items(commands, fonts, TopMenuKind::Account, account, update_tag));
             }
             rows.push(menu_sep(commands));
             rows.extend(
@@ -5348,7 +5357,7 @@ fn build_menu_items(
                 .into_iter()
                 .map(|(icon, label, sub)| {
                     let (row, content) = menu_submenu(commands, fonts, icon, &label);
-                    let kids = build_menu_items(commands, fonts, sub, account);
+                    let kids = build_menu_items(commands, fonts, sub, account, update_tag);
                     commands.entity(content).add_children(&kids);
                     row
                 }),
@@ -5507,6 +5516,21 @@ fn build_menu_items(
                 open_url("https://github.com/renzora/engine")
             }),
             menu_sep(commands),
+            // Names the pending version when there is one, so "am I out of
+            // date?" is answered by the menu rather than by opening a dialog to
+            // find out.
+            menu_item(
+                commands,
+                fonts,
+                "download-simple",
+                &match update_tag {
+                    Some(tag) => format!("{} {tag}", renzora::lang::t("menu.help.update_to")),
+                    None => renzora::lang::t("menu.help.check_updates"),
+                },
+                |w| {
+                    w.insert_resource(renzora::core::UpdateRequested);
+                },
+            ),
             menu_item(commands, fonts, "info", &renzora::lang::t_or("menu.help.about_engine", "About Renzora Engine"), |w| {
                 w.insert_resource(crate::about::ShowAboutRequested);
             }),

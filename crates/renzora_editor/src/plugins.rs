@@ -87,6 +87,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_tonemapping_editor::TonemappingEditorPlugin::default());
     app.add_plugins(renzora_tutorial::TutorialPlugin::default());
     app.add_plugins(renzora_undo::UndoPlugin::default());
+    app.add_plugins(renzora_update::UpdatePlugin::default());
     app.add_plugins(renzora_viewport::ViewportPlugin::default());
     app.add_plugins(renzora_volumetric_fog_editor::VolumetricFogEditorPlugin::default());
     app.add_plugins(renzora_water_editor::WaterEditorPlugin::default());

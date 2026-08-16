@@ -23,9 +23,13 @@ use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::theme::{accent, card_bg, divider, rgb, text_muted, text_primary};
 use renzora_ember::widgets::{overlay_sized, scroll_area};
 
-/// Current dev version. Kept as the docs/release scheme (`r1-alphaN`) rather
-/// than the crate's semver, since that's what we show users everywhere else.
-const VERSION: &str = "r1-alpha7";
+/// Version line for the About modal. `renzora::version::display()` renders the
+/// docs/release scheme (`r1-alphaN`) rather than the crate's semver — and appends
+/// the nightly date or `(dev)` when this isn't a tagged release, so a bug report
+/// from a nightly names the exact build.
+fn version_line() -> String {
+    renzora::version::display()
+}
 
 /// One-paragraph "what is this" blurb shown under the title.
 const DESCRIPTION: &str = "Renzora is an open-source, Bevy-powered game engine and editor. It ships as a \
@@ -224,7 +228,7 @@ fn spawn_about(commands: &mut Commands, fonts: &EmberFonts) {
 
     let version = commands
         .spawn((
-            Text::new(format!("Version {VERSION}")),
+            Text::new(format!("Version {}", version_line())),
             ui_font(&fonts.ui, 12.0),
             TextColor(rgb(accent())),
         ))

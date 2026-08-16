@@ -136,6 +136,15 @@ jobs:
           fi
           echo "all plugins built and passed"
 
+      # `tools/updater` is its own workspace for the same reason the plugins are
+      # (it must share nothing with the tree it replaces), and so `--workspace`
+      # in the `test` job cannot reach it either. Without this it would be the
+      # one binary in the repo that nothing ever compiles — and it is the one
+      # that runs after the editor has exited, where a failure means a
+      # half-replaced install and no process left to repair it.
+      - name: Build the update sidecar
+        run: cd tools/updater && cargo build --profile dist && cargo clippy --profile dist -- -D warnings
+
   # Tests that need a real graphics adapter — render-graph nodes, pipeline
   # specialization, materials, post-process passes.
   #
