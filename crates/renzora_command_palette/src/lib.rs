@@ -305,7 +305,9 @@ fn collect_items(
         ("File: Save As...", |w| {
             w.insert_resource(renzora::core::SaveAsSceneRequested);
         }),
-        ("File: Export Project...", |w| {
+        // Export sits at the top level of the ☰ menu, not under File, so the
+        // palette label doesn't claim otherwise.
+        ("Export Project...", |w| {
             w.insert_resource(renzora::core::ExportRequested);
         }),
         ("File: Import...", |w| {

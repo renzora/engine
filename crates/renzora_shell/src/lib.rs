@@ -5353,10 +5353,21 @@ fn build_menu_items(
                     row
                 }),
             );
-            // Settings is top-level rather than buried at the bottom of File: it
-            // took the gear button's place when that left the top bar, and it's
-            // reached far too often to sit two hovers deep.
+            // Export and Settings are top-level rather than buried at the bottom
+            // of File. Settings took the gear button's place when that left the
+            // top bar, and both are reached far too often to sit two hovers deep
+            // — exporting is the end of every project, not a File housekeeping
+            // chore.
             rows.push(menu_sep(commands));
+            rows.push(menu_item(
+                commands,
+                fonts,
+                "package",
+                &renzora::lang::t("menu.file.export_project"),
+                |w| {
+                    w.insert_resource(renzora::core::ExportRequested);
+                },
+            ));
             rows.push(menu_item(
                 commands,
                 fonts,
@@ -5433,9 +5444,6 @@ fn build_menu_items(
             // ImportTargetDir here, so files land in the importer's default folder.
             menu_item(commands, fonts, "download-simple", &renzora::lang::t("menu.file.import_assets"), |w| {
                 w.insert_resource(renzora::core::ImportRequested);
-            }),
-            menu_item(commands, fonts, "package", &renzora::lang::t("menu.file.export_project"), |w| {
-                w.insert_resource(renzora::core::ExportRequested);
             }),
             menu_sep(commands),
             menu_item(commands, fonts, "plug", &renzora::lang::t_or("menu.file.install_plugin", "Install Plugin…"), |w| {
