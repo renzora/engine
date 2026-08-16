@@ -18,6 +18,7 @@ use renzora_ember::widgets::{overlay_sized, scroll_area};
 use crate::UpdateState;
 
 const GREEN: (u8, u8, u8) = (89, 191, 115);
+const AMBER: (u8, u8, u8) = (242, 166, 64);
 const RED: (u8, u8, u8) = (239, 68, 68);
 
 pub(crate) fn register(app: &mut App) {
@@ -53,8 +54,12 @@ struct CloseBtn;
 enum Action {
     Check,
     Download,
+    /// Arm the overwrite confirmation. Only reachable from a source checkout,
+    /// where installing replaces the `dist/` tree the build stages into — one
+    /// click says what will happen, the next one does it.
+    ConfirmOverwrite,
     Install,
-    /// Nothing to do — checking, downloading, up to date, or a source checkout.
+    /// Nothing to do — checking, downloading, or up to date.
     None,
 }
 
@@ -62,25 +67,23 @@ fn action_for(s: &UpdateState) -> Action {
     if s.checking || s.downloading() {
         return Action::None;
     }
+    if !s.can_install() {
+        // Layout detection failed, so there is nowhere to install to. The error
+        // line already says why.
+        return Action::None;
+    }
     if s.staged.is_some() {
-        return if s.can_install() {
-            Action::Install
+        return if s.is_source_checkout() && !s.overwrite_armed {
+            Action::ConfirmOverwrite
         } else {
-            Action::None
+            Action::Install
         };
     }
     match s.result.as_ref() {
-        Some(r) if r.update_available => {
-            if !s.can_install() {
-                Action::None
-            } else if r.download_url.is_some() {
-                Action::Download
-            } else {
-                Action::None
-            }
-        }
-        Some(_) => Action::Check,
-        None => Action::Check,
+        // Downloading is always safe: it writes to ~/.renzora/updates, never to
+        // the install. Only the install itself needs confirming.
+        Some(r) if r.update_available && r.download_url.is_some() => Action::Download,
+        _ => Action::Check,
     }
 }
 
@@ -88,6 +91,10 @@ fn action_label(s: &UpdateState) -> String {
     match action_for(s) {
         Action::Check => renzora::lang::t("update.btn.check"),
         Action::Download => renzora::lang::t("update.btn.download"),
+        Action::ConfirmOverwrite => renzora::lang::t("update.btn.overwrite"),
+        Action::Install if s.is_source_checkout() => {
+            renzora::lang::t("update.btn.confirm_overwrite")
+        }
         Action::Install => renzora::lang::t("update.btn.install"),
         Action::None => String::new(),
     }
@@ -340,6 +347,8 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         w.get_resource::<UpdateState>().is_some_and(|s| s.error.is_some())
     });
 
+    let warning = overwrite_warning(commands, fonts);
+
     // ── Buttons ──────────────────────────────────────────────────────────────
     let row = commands
         .spawn(Node {
@@ -375,14 +384,18 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         w.get_resource::<UpdateState>()
             .is_some_and(|s| action_for(s) != Action::None)
     });
+    // The action button carries its own weight: green for a normal install,
+    // amber to arm an overwrite, red once armed. A destructive button that looks
+    // like every other button is how you get a stray click.
     bind_bg(commands, action, |w| {
-        let hot = w
-            .get_resource::<UpdateState>()
-            .is_some_and(|s| matches!(action_for(s), Action::Install));
-        if hot {
-            rgb(GREEN)
-        } else {
-            rgb(accent())
+        let Some(s) = w.get_resource::<UpdateState>() else {
+            return rgb(accent());
+        };
+        match action_for(s) {
+            Action::ConfirmOverwrite => rgb(AMBER),
+            Action::Install if s.is_source_checkout() => rgb(RED),
+            Action::Install => rgb(GREEN),
+            _ => rgb(accent()),
         }
     });
 
@@ -398,6 +411,7 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
         notes_scroll,
         progress,
         error,
+        warning,
         row,
     ]);
     commands.entity(content).add_child(body);
@@ -516,6 +530,38 @@ fn action_label_sync(
     }
 }
 
+/// A line spelling out exactly what an armed overwrite is about to replace.
+///
+/// Shown only while armed, and it names the real path — "this will overwrite
+/// your build output" is much easier to act on when you can see which directory.
+fn overwrite_warning(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
+    let warn = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(&fonts.ui, 11.5),
+            TextColor(rgb(AMBER)),
+        ))
+        .id();
+    bind_text(commands, warn, |w| {
+        let Some(s) = w.get_resource::<UpdateState>() else {
+            return String::new();
+        };
+        match s.layout.as_ref() {
+            Some(l) => format!(
+                "{} {}",
+                renzora::lang::t("update.overwrite_warning"),
+                l.target.display()
+            ),
+            None => String::new(),
+        }
+    });
+    bind_display(commands, warn, |w| {
+        w.get_resource::<UpdateState>()
+            .is_some_and(|s| s.overwrite_armed && s.is_source_checkout())
+    });
+    warn
+}
+
 fn action_click(
     q: Query<&Interaction, (With<ActionBtn>, Changed<Interaction>)>,
     mut commands: Commands,
@@ -530,6 +576,9 @@ fn action_click(
         match action_for(&state) {
             Action::Check => state.start_check(),
             Action::Download => crate::start_download(&mut state),
+            // First click only arms it; the button then re-labels itself and the
+            // warning line names the directory about to be replaced.
+            Action::ConfirmOverwrite => state.overwrite_armed = true,
             // Does not return when it succeeds — the process exits so the
             // sidecar can replace the files it is running from.
             Action::Install => crate::install_and_restart(&mut state),

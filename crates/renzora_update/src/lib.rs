@@ -25,10 +25,13 @@
 //!
 //! # Running from a source checkout
 //!
-//! The editor then lives in `<checkout>/dist/<platform>/`, and installing a
-//! release over that would overwrite build output. [`install::detect_layout`]
-//! notices, and the dialog offers the check and the release notes but no
-//! install button.
+//! The editor then lives in `<checkout>/dist/<platform>/`, so installing a
+//! release replaces the tree `cargo renzora` stages into — recoverable by
+//! rebuilding, but never something to do on one stray click.
+//! [`install::detect_layout`] notices, and the dialog makes you say it twice:
+//! the action button reads "Overwrite dist/…", arms on the first click, and only
+//! installs on the second, naming the exact directory in between. Downloading is
+//! never gated — it writes to `~/.renzora/updates/`, not to the install.
 
 #[cfg(not(target_arch = "wasm32"))]
 mod check;
@@ -63,6 +66,12 @@ pub struct UpdateState {
     /// True once the check has been kicked off at least once, so opening the
     /// dialog doesn't start a second one over the top of the first.
     checked_once: bool,
+    /// Second click armed for the overwrite confirmation.
+    ///
+    /// Only ever consulted for a source checkout, where installing replaces the
+    /// `dist/` tree `cargo renzora` stages into — recoverable by rebuilding, but
+    /// never something to do on one stray click.
+    pub overwrite_armed: bool,
     check_rx: Option<std::sync::Mutex<std::sync::mpsc::Receiver<Result<UpdateCheckResult, String>>>>,
     download: Option<install::DownloadHandle>,
 }
@@ -77,6 +86,7 @@ impl UpdateState {
         self.checking = true;
         self.checked_once = true;
         self.error = None;
+        self.overwrite_armed = false;
         let channel = UpdateChannel::resolve(&self.channel_pref);
         self.check_rx = Some(std::sync::Mutex::new(check::spawn_check(channel)));
     }
@@ -93,15 +103,22 @@ impl UpdateState {
         self.staged = None;
         self.progress = None;
         self.download = None;
+        self.overwrite_armed = false;
         self.start_check();
     }
 
-    /// Can this install be updated in place?
+    /// Do we know where this engine is installed, i.e. is an install possible at
+    /// all? False only when the layout could not be detected.
     pub fn can_install(&self) -> bool {
-        self.layout
-            .as_ref()
-            .map(|l| !l.is_source_checkout)
-            .unwrap_or(false)
+        self.layout.is_some()
+    }
+
+    /// Is the editor running out of a source checkout's `dist/`?
+    ///
+    /// Not a veto any more — installing here is allowed, but it overwrites build
+    /// output, so the UI makes you say so twice.
+    pub fn is_source_checkout(&self) -> bool {
+        self.layout.as_ref().is_some_and(|l| l.is_source_checkout)
     }
 
     pub fn downloading(&self) -> bool {
@@ -133,18 +150,13 @@ impl Plugin for UpdatePlugin {
 /// is downloaded and no window appears; an editor that interrupts you at launch
 /// to talk about itself is worse than one that is out of date.
 ///
-/// Skipped for a source checkout, which rebuilds constantly and can't install
-/// anyway.
 #[cfg(not(target_arch = "wasm32"))]
 fn load_prefs_and_check(mut state: ResMut<UpdateState>) {
     state.channel_pref = renzora::core::load_update_channel();
     match install::detect_layout() {
         Ok(layout) => {
-            let checkout = layout.is_source_checkout;
             state.layout = Some(layout);
-            if !checkout {
-                state.start_check();
-            }
+            state.start_check();
         }
         Err(e) => state.error = Some(e),
     }
@@ -263,6 +275,9 @@ pub(crate) fn install_and_restart(state: &mut UpdateState) {
         return;
     };
     if let Err(e) = install::launch_sidecar(&staged, &layout) {
+        // Only reached on failure — a successful handoff exits the process.
+        // Disarm so the next attempt has to be confirmed again.
+        state.overwrite_armed = false;
         state.error = Some(e);
     }
 }

@@ -159,7 +159,11 @@ That third state earns its place. It started as a two-state "is this a nightly?"
 
 ### Running from a source checkout
 
-The editor then lives in `<checkout>/dist/<platform>/`, and installing a release over that would overwrite build output. The updater detects the checkout (a `Cargo.toml` beside `crates/` and `src/main.rs`, walking up) and offers the check and the release notes but no install button. To test the updater end to end, copy `dist/<platform>/` somewhere outside the checkout and run it from there.
+The editor then lives in `<checkout>/dist/<platform>/`, so installing a release replaces the tree `cargo renzora` stages into. That is recoverable — rebuild and it comes back — but it is not something to do on one stray click, and the next `cargo renzora` would overwrite the downloaded engine again.
+
+The updater detects the checkout (a `Cargo.toml` beside `crates/` and `src/main.rs`, walking up) and makes you say it twice. The action button reads **Overwrite dist/…** in amber; the first click arms it, a line appears naming the exact directory about to be replaced, and the button turns red and reads **Confirm — Overwrite & Restart**. Any re-check or channel switch disarms it.
+
+Downloading is never gated: it writes to `~/.renzora/updates/<tag>/`, not to the install. Only the install itself asks.
 
 ## Cutting a real release
 
