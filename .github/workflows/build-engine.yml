@@ -269,6 +269,14 @@ jobs:
       CARGO_INCREMENTAL: 0
       RENZORA_RELEASE_TAG: ${{ needs.setup.outputs.tag }}
       RENZORA_BUILD_COMMIT: ${{ github.sha }}
+      # This lane builds through `cargo renzora dist` (xtask), so it gets the
+      # `dist` profile — the fast-link one meant for local iteration — where
+      # every container lane gets the size-optimised `release`. Rather than teach
+      # xtask a profile flag for one caller, override the two keys that differ;
+      # cargo's CARGO_PROFILE_<name>_<key> env vars outrank the manifest. Keep
+      # these in step with `[profile.release]` in the root Cargo.toml.
+      CARGO_PROFILE_DIST_OPT_LEVEL: s
+      CARGO_PROFILE_DIST_LTO: thin
     steps:
       - uses: actions/checkout@v4
         with:

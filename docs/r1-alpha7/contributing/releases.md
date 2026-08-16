@@ -90,13 +90,23 @@ The whole installed tree goes from ~470 MB to ~77 MB (the plugins stay unpacked 
 
 Three things act on that, in order of where they apply:
 
-**1. `[profile.dist]` is size-optimised** — `opt-level = "s"` with `lto = "thin"`. Neither works alone here, and the profile used to carry a note that thin LTO made both binaries *bigger*. That finding is real, but it was measured at `opt-level = 2`, where thin LTO's dominant effect is cross-crate inlining, which is not size-constrained. Under `opt-level = "s"` the inliner is size-aware and LTO's dead-stripping dominates instead. This trades frame time for size, deliberately, in the editor as well as the game — **if the viewport regresses, this is the first thing to put back.**
+**1. There are two release profiles**, because shipping and iterating want opposite things — the smallest possible binary regardless of link time, versus a fast link regardless of size.
 
-It also means every local `cargo renzora` now pays thin-LTO link time. If that becomes intolerable while iterating, override it per-invocation rather than editing the profile:
+| Profile | Used by | Settings |
+|---|---|---|
+| `dist` | `cargo renzora`, `cargo dist`, every `--profile dist` command in the docs and CI | `opt-level = 2`, `lto = false` |
+| `release` | `docker/build-all.sh`, i.e. every GitHub build | `opt-level = "s"`, `lto = "thin"` |
 
-```sh
-CARGO_PROFILE_DIST_LTO=false CARGO_PROFILE_DIST_OPT_LEVEL=2 cargo renzora
-```
+`dist` is what a contributor uses all day and it is deliberately unchanged — thin LTO on this graph is minutes of link time on every build, and at `opt-level = 2` it does not even shrink anything (measured: it made both binaries *bigger*, 170 → 174 MB and 238 → 243 MB, because at that opt-level its dominant effect is cross-crate inlining, which is not size-constrained).
+
+`release` pairs size-opt with thin LTO, which is the combination that works: `opt-level = "s"` makes the inliner size-aware so LTO's cross-crate dead-stripping dominates. It is selected by `PROFILE` in `build-all.sh` (override with `RENZORA_PROFILE=dist` to reproduce a lane quickly), and it is reproducible by hand — `cargo build --profile release --workspace` — which is why it is a named profile rather than a pile of env overrides.
+
+Two exceptions to know about:
+
+- **`plugins/*` and `tools/updater` stay on their own `dist`.** Each is a separate cargo workspace with its own tuned profile, and their outputs are kilobytes.
+- **`windows-arm64` builds through xtask**, so it gets `dist`. That lane sets `CARGO_PROFILE_DIST_OPT_LEVEL` / `CARGO_PROFILE_DIST_LTO` in the workflow to match `release`; keep them in step if the profile changes.
+
+This trades frame time for size in shipped builds, deliberately, in the editor as much as the game — **if the viewport regresses in a release but not locally, this is why.**
 
 Two knobs are deliberately *not* set:
 

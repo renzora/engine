@@ -475,50 +475,74 @@ wasm-bindgen = "0.2.108"
 [build-dependencies]
 winres = "0.1"
 
+# ── Two release profiles: `dist` for iterating, `release` for shipping ───────
+#
+# They exist because the two jobs genuinely conflict. Shipping wants the smallest
+# possible binary and does not care that the link takes minutes; iterating wants
+# the link to be fast and does not care that the result is 40% bigger. One
+# profile trying to do both made local builds slow to buy size nobody sees until
+# a release.
+#
+#   cargo renzora / cargo dist / cargo check     -> `dist`     (fast link)
+#   docker/build-all.sh, i.e. every GitHub build -> `release`  (smallest)
+#
+# `dist` is what a contributor uses all day and what `--profile dist` means
+# everywhere in the docs and CI lint/test commands. `release` is only ever
+# selected by the release pipeline — but it IS reproducible by hand
+# (`cargo build --profile release --workspace`), which is the point of making it
+# a named profile rather than a pile of env overrides.
+
 [profile.dist]
 inherits = "release"
-# Size-optimised. `renzora.exe` had reached 187 MB and `renzora-editor.exe`
-# 266 MB, of which 68% was `.text` — monomorphized generic code, not data. There
-# is nothing to sweep out (symbols are already stripped, no debuginfo ships), so
-# the only lever left is compiling less code.
+# Fast to link. `opt-level = 2` and NO LTO — restated explicitly rather than
+# inherited, because `release` below turns thin LTO on and this profile must not
+# pick it up.
 #
-# `opt-level = "s"` AND `lto = "thin"` together, because neither works alone here.
-# This profile previously carried a note that thin LTO made both binaries BIGGER
-# (170 -> 174 MB, 238 -> 243 MB) and that finding still stands — but it was
-# measured at `opt-level = 2`, where thin LTO's dominant effect is cross-crate
-# *inlining*, which is not size-constrained, so the duplicated inlined bodies
-# outweigh what it dead-strips. Under `opt-level = "s"` the inliner is size-aware
-# and LTO's cross-crate dead-stripping is what dominates instead. That pairing is
-# exactly what `[profile.dist-lean]` has always used for the lean game export.
+# Do not "optimise" this by copying `release`'s settings here. Thin LTO on this
+# graph is minutes of link time on every single build, and at `opt-level = 2` it
+# does not even shrink anything: measured, it made both binaries BIGGER
+# (170 -> 174 MB, 238 -> 243 MB), because at that opt-level thin LTO's dominant
+# effect is cross-crate *inlining*, which is not size-constrained.
+opt-level = 2
+lto = false
+strip = "symbols"
+
+[profile.release]
+# Size-optimised, for what actually ships. `renzora.exe` had reached 187 MB and
+# `renzora-editor.exe` 266 MB, of which 68% was `.text` — monomorphized generic
+# code, not data. There is nothing to sweep out (symbols are already stripped and
+# no debuginfo ships), so the only lever is compiling less code.
 #
-# **This trades frame time for size** in a real-time renderer, deliberately, and
-# it applies to the editor as much as the game. If the viewport regresses, this
-# is the first thing to put back.
+# `opt-level = "s"` AND `lto = "thin"` together, because neither works alone: at
+# `opt-level = 2` thin LTO inlines more than it dead-strips (see `dist` above),
+# while size-opt without LTO leaves the cross-crate dead code in place. Measured
+# together on windows-x64:
 #
-# `codegen-units` stays at the default (16), NOT 1 — see the `dist-lean` note
-# below: forcing 1 was measured to help only fat LTO, and to cost a lot of build
-# time for little size under thin.
+#   renzora.exe         187.0 MB -> 138.2 MB   (.text 134.6 -> 90.9 MB)
+#   renzora-editor.exe  265.6 MB -> 194.3 MB
+#
+# UPX then packs those to 24.9 MB and 35.1 MB — see `compress_binaries` in
+# docker/build-all.sh.
+#
+# `codegen-units` stays at the default (16), NOT 1 — forcing 1 was measured to
+# help only fat LTO, and to cost a lot of build time for little size under thin.
 #
 # `panic` stays `unwind`. `renzora_plugin` guards every call across the C-ABI
 # boundary with `catch_unwind` (audio/net/script backends, `ecs.rs`,
 # `host/mod.rs`); under `panic = "abort"` those become no-ops and a panicking
 # third-party plugin takes the whole editor down instead of being contained. The
-# `.pdata` unwind tables it would save (~6 MB) are not worth that.
-#
-# (The historical reason this profile was frozen — its lto/codegen-units feeding
-# `bevy_dylib-<metadata>` and therefore the plugin ABI hash — no longer applies;
-# there is no shared dylib, and nothing links Bevy but the engine itself.)
+# ~6 MB of `.pdata` unwind tables it would save are not worth that.
 opt-level = "s"
 lto = "thin"
 strip = "symbols"
 
 # Lean release profile for the single-binary game export.
 #
-# Now that `dist` is itself size-optimised, this inherits the same lto/opt-level
-# and the two are numerically identical. It is kept as a SEPARATE profile anyway,
-# for one reason that still holds: the exporter patches these keys per export
-# (see the note on the three overridable keys below), and it must be able to do
-# that without touching what the engine itself is built with.
+# Numerically this is now `release` (same lto + opt-level), but it inherits
+# `dist` and restates them, which is deliberate: the exporter PATCHES these keys
+# per export (see the note on the three overridable keys below), and it must be
+# able to do that to the game it is building without touching what the engine
+# itself is built with.
 #
 # (It used to be separate because `dist`'s lto/codegen-units fed the frozen
 # plugin ABI hash and could not change. There is no such hash any more.)

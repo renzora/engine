@@ -63,6 +63,22 @@ OUTPUT_DIR="${1:?Usage: build-all.sh <output-dir> [platform ...]}"
 shift
 mkdir -p "$OUTPUT_DIR"
 
+# ── Which cargo profile the ENGINE is built with ─────────────────────────
+# `release` (size-optimised: opt-level "s" + thin LTO), not `dist`, which is the
+# fast-link profile a contributor iterates with. The two exist precisely so that
+# shipping can be slow and small while local builds stay fast — see the profile
+# comments in the root Cargo.toml.
+#
+# The cargo profile name doubles as the target-dir subdirectory, so this one
+# variable moves both. Overridable (RENZORA_PROFILE=dist) to reproduce a lane
+# quickly without waiting for LTO.
+#
+# NOTE: `plugins/*` and `tools/updater` are deliberately NOT built with it. Each
+# is its own cargo workspace with its own tuned `[profile.dist]`, and their
+# outputs are kilobytes — nothing to gain, a target-dir rename to lose.
+PROFILE="${RENZORA_PROFILE:-release}"
+echo "=== engine profile: $PROFILE ==="
+
 # The native linux lane builds the container's own arch (full toolchain, mold,
 # fastest path), so its platform name / Rust triple / AppImage arch follow uname.
 if [ "$(uname -m)" = "aarch64" ]; then
@@ -443,11 +459,11 @@ build_desktop() {
 
     local TARGET_DIR_FLAG="--target-dir target/$FEATURE"
     local TARGET_FLAG=""
-    local SRC="target/$FEATURE/dist"
+    local SRC="target/$FEATURE/$PROFILE"
 
     if [ "$RUST_TARGET" != "native" ]; then
         TARGET_FLAG="--target $RUST_TARGET"
-        SRC="target/$FEATURE/$RUST_TARGET/dist"
+        SRC="target/$FEATURE/$RUST_TARGET/$PROFILE"
     fi
 
     # Editor: build the whole workspace WITHOUT `--no-default-features`.
@@ -464,11 +480,11 @@ build_desktop() {
     # workspace members but mobile-only; exclude them from desktop.
     echo "=== Building $PLATFORM ($FEATURE) ==="
     if [ "$FEATURE" = "editor" ]; then
-        cargo build --profile dist --workspace \
+        cargo build --profile "$PROFILE" --workspace \
             --exclude renzora-android --exclude renzora-ios \
             $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     else
-        cargo build --profile dist --bin renzora --no-default-features \
+        cargo build --profile "$PROFILE" --bin renzora --no-default-features \
             --features "$FEATURE" $TARGET_DIR_FLAG $TARGET_FLAG || return 1
     fi
 
@@ -793,10 +809,10 @@ bindgen_wasm() {
 
 build_wasm() {
     echo "=== Building WASM Runtime ==="
-    cargo build --profile dist -p renzora_app --no-default-features --features wasm \
+    cargo build --profile "$PROFILE" -p renzora_app --no-default-features --features wasm \
         --target wasm32-unknown-unknown --target-dir target/wasm || return 1
     local WASM_FILE
-    WASM_FILE=$(find target/wasm/wasm32-unknown-unknown/dist -name "renzora.wasm" 2>/dev/null | head -1)
+    WASM_FILE=$(find "target/wasm/wasm32-unknown-unknown/$PROFILE" -name "renzora.wasm" 2>/dev/null | head -1)
     if [ -z "$WASM_FILE" ]; then
         echo "ERROR: renzora.wasm not produced"
         return 1
@@ -818,10 +834,10 @@ build_wasm() {
     # the in-viewport path needs no subprocess, and the Window/VR targets that
     # would need one are hidden on wasm.
     echo "=== Building WASM Editor ==="
-    cargo build --profile dist -p renzora_editor_app --bin renzora-editor \
+    cargo build --profile "$PROFILE" -p renzora_editor_app --bin renzora-editor \
         --target wasm32-unknown-unknown --target-dir target/wasm-editor || return 1
     local EDITOR_WASM
-    EDITOR_WASM=$(find target/wasm-editor/wasm32-unknown-unknown/dist -name "renzora-editor.wasm" 2>/dev/null | head -1)
+    EDITOR_WASM=$(find "target/wasm-editor/wasm32-unknown-unknown/$PROFILE" -name "renzora-editor.wasm" 2>/dev/null | head -1)
     if [ -z "$EDITOR_WASM" ]; then
         echo "ERROR: renzora-editor.wasm not produced"
         return 1
@@ -905,18 +921,18 @@ build_android() {
     fi
     if should_build android-arm64; then
         echo "=== Building Android ARM64 Runtime ==="
-        cargo build --profile dist -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
-        if [ -f target/android/aarch64-linux-android/dist/libmain.so ]; then
+        cargo build --profile "$PROFILE" -p renzora-android --target aarch64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android ARM build failed"
+        if [ -f target/android/aarch64-linux-android/$PROFILE/libmain.so ]; then
             mkdir -p "$OUTPUT_DIR/android-arm64"
-            cp target/android/aarch64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-arm64/"
+            cp target/android/aarch64-linux-android/$PROFILE/libmain.so "$OUTPUT_DIR/android-arm64/"
         fi
     fi
     if should_build android-x86; then
         echo "=== Building Android x86_64 Runtime ==="
-        cargo build --profile dist -p renzora-android --target x86_64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android x86 build failed"
-        if [ -f target/android/x86_64-linux-android/dist/libmain.so ]; then
+        cargo build --profile "$PROFILE" -p renzora-android --target x86_64-linux-android --target-dir target/android 2>&1 || echo "WARN: Android x86 build failed"
+        if [ -f target/android/x86_64-linux-android/$PROFILE/libmain.so ]; then
             mkdir -p "$OUTPUT_DIR/android-x86"
-            cp target/android/x86_64-linux-android/dist/libmain.so "$OUTPUT_DIR/android-x86/"
+            cp target/android/x86_64-linux-android/$PROFILE/libmain.so "$OUTPUT_DIR/android-x86/"
         fi
     fi
     return 0
@@ -931,10 +947,10 @@ build_ios() {
     # so it can find framework headers like <AudioUnit/AudioUnit.h>.
     SDKROOT=/opt/iphoneos.sdk \
     BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios="--target=arm64-apple-ios14.0 -isysroot /opt/iphoneos.sdk" \
-    cargo build --profile dist -p renzora-ios --target aarch64-apple-ios --target-dir target/ios 2>&1 || echo "WARN: iOS build failed"
-    if [ -f target/ios/aarch64-apple-ios/dist/librenzora_ios.a ]; then
+    cargo build --profile "$PROFILE" -p renzora-ios --target aarch64-apple-ios --target-dir target/ios 2>&1 || echo "WARN: iOS build failed"
+    if [ -f target/ios/aarch64-apple-ios/$PROFILE/librenzora_ios.a ]; then
         mkdir -p "$OUTPUT_DIR/ios-arm64"
-        cp target/ios/aarch64-apple-ios/dist/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/"
+        cp target/ios/aarch64-apple-ios/$PROFILE/librenzora_ios.a "$OUTPUT_DIR/ios-arm64/"
     fi
     return 0
 }
