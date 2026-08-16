@@ -115,6 +115,7 @@ Everything here is on by default except Labels, and each switch is saved with th
 Two things worth knowing:
 
 - **Colliders now have an off state.** The Selected Only / Always pair only ever decided *when* the wireframes appear. Turning the switch off hides them entirely; turning it back on returns to whichever of the two you were using. Picking either mode row also switches colliders back on.
+- **Collider wireframes are cross-hatched.** Every hull draws diagonals as well as edges — an X across each face of a box or mesh AABB, an X across each of the four side panels of a capsule or cylinder, and two 45° great circles on a sphere. A bare edge wireframe sitting on top of the mesh it wraps reads as a jumble of unrelated lines, and a collider that matches a boxy mesh vanishes into that mesh's own silhouette; the diagonals give each face a visible surface so the collider reads as a solid volume. Colour still carries the body type — green static, orange dynamic, blue sensor.
 - **Skeleton is the one to reach for on heavy rigs.** Bone gizmos are real meshes rebuilt every frame, so a densely-boned character costs more than the line-based gizmos. Turning it off while you work on something else is the cheapest win in the list.
 
 The same switches live in **Settings → Viewport → Gizmos**, alongside the drag opacity and the all-viewports option. They're global, not per-viewport, even though the dropdown sits on the viewport's own tool strip.

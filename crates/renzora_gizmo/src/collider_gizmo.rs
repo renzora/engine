@@ -9,6 +9,13 @@
 //! existed — and been persisted — for a while before anything read it: this
 //! drawer hard-coded selected-only, so picking "Always" in the UI silently did
 //! nothing. It is now honoured, including the `Off` state.
+//!
+//! Every hull also gets diagonals across its faces. A bare edge wireframe sits
+//! on top of the mesh it wraps and reads as a jumble of unrelated lines — you
+//! can't tell which edges belong to the near face and which to the far one, and
+//! a collider that lines up with a boxy mesh disappears into that mesh's own
+//! silhouette. The diagonals give each face a visible surface, so the collider
+//! reads as a solid volume at a glance.
 
 use bevy::camera::primitives::Aabb;
 use bevy::prelude::*;
@@ -62,17 +69,19 @@ pub fn draw_collider_gizmos(
 
         match shape.shape_type {
             CollisionShapeType::Box => {
-                let size = shape.half_extents * 2.0 * scale;
+                let half = shape.half_extents * scale;
                 let xform = Transform {
                     translation: center,
                     rotation: rot,
-                    scale: size,
+                    scale: half * 2.0,
                 };
                 gizmos.cube(xform, color);
+                draw_box_diagonals(&mut gizmos, center, rot, half, color);
             }
             CollisionShapeType::Sphere => {
                 let r = shape.radius * scale.max_element();
                 gizmos.sphere(iso, r, color);
+                draw_sphere_diagonals(&mut gizmos, center, rot, r, color);
             }
             CollisionShapeType::Capsule => {
                 let r = shape.radius * scale.x.max(scale.z);
@@ -86,19 +95,97 @@ pub fn draw_collider_gizmos(
             }
             CollisionShapeType::Mesh => {
                 if let Some(aabb) = aabb {
-                    let size = Vec3::from(aabb.half_extents) * 2.0 * scale;
+                    let half = Vec3::from(aabb.half_extents) * scale;
                     let aabb_center = trans + rot * (scale * Vec3::from(aabb.center));
                     gizmos.cube(
                         Transform {
                             translation: aabb_center,
                             rotation: rot,
-                            scale: size,
+                            scale: half * 2.0,
                         },
                         color,
                     );
+                    draw_box_diagonals(&mut gizmos, aabb_center, rot, half, color);
                 }
             }
         }
+    }
+}
+
+/// Draw an X across each of the six faces of an oriented box, given its
+/// *world-space* half extents (i.e. already multiplied by the transform scale).
+///
+/// `half` is deliberately half extents rather than the full size `gizmos.cube`
+/// wants, because every corner here is `center ± hx ± hy ± hz` — taking the full
+/// size and halving it again at each of the twelve line ends only invites the
+/// factor-of-two slip.
+fn draw_box_diagonals(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    center: Vec3,
+    rot: Quat,
+    half: Vec3,
+    color: Color,
+) {
+    let axes = [
+        rot * Vec3::X * half.x,
+        rot * Vec3::Y * half.y,
+        rot * Vec3::Z * half.z,
+    ];
+    for i in 0..3 {
+        // The two axes spanning the face whose normal is `axes[i]`.
+        let u = axes[(i + 1) % 3];
+        let v = axes[(i + 2) % 3];
+        for sign in [1.0f32, -1.0] {
+            let base = center + axes[i] * sign;
+            gizmos.line(base + u + v, base - u - v, color);
+            gizmos.line(base + u - v, base - u + v, color);
+        }
+    }
+}
+
+/// Two great circles tilted 45° off the equator — a sphere's stand-in for a face
+/// diagonal, since `gizmos.sphere` only draws the three axis-aligned ones and a
+/// sphere has no flat face to cross.
+fn draw_sphere_diagonals(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    center: Vec3,
+    rot: Quat,
+    radius: f32,
+    color: Color,
+) {
+    const TILT: f32 = std::f32::consts::FRAC_PI_4;
+    for tilt in [Quat::from_rotation_x(TILT), Quat::from_rotation_y(TILT)] {
+        gizmos.circle(Isometry3d::new(center, rot * tilt), radius, color);
+    }
+}
+
+/// Draw an X across each of the four side panels of a capsule/cylinder hull —
+/// the quads bounded by the vertical seams the wireframe already draws.
+///
+/// For a capsule this covers only the cylindrical middle; the hemispherical caps
+/// keep their arcs, which already give them a readable surface.
+fn draw_side_diagonals(
+    gizmos: &mut Gizmos<OverlayGizmoGroup>,
+    center: Vec3,
+    rot: Quat,
+    radius: f32,
+    half_height: f32,
+    color: Color,
+) {
+    let up = rot * Vec3::Y;
+    let top = center + up * half_height;
+    let bot = center - up * half_height;
+    let right = rot * Vec3::X;
+    let fwd = rot * Vec3::Z;
+
+    // The four vertical seams, in order around the hull so consecutive pairs
+    // bound one panel.
+    let seams = [right, fwd, -right, -fwd];
+    for i in 0..4 {
+        let a = seams[i] * radius;
+        let b = seams[(i + 1) % 4] * radius;
+        gizmos.line(top + a, bot + b, color);
+        gizmos.line(top + b, bot + a, color);
     }
 }
 
@@ -147,6 +234,8 @@ fn draw_capsule(
     draw_hemi_arc(gizmos, top, up, fwd, radius, color);
     draw_hemi_arc(gizmos, bot, -up, right, radius, color);
     draw_hemi_arc(gizmos, bot, -up, fwd, radius, color);
+
+    draw_side_diagonals(gizmos, center, rot, radius, half_height, color);
 }
 
 /// Draw a 180° arc from `center - side*radius` up over `center + up*radius` to
@@ -193,4 +282,6 @@ fn draw_cylinder(
     gizmos.line(top - right * radius, bot - right * radius, color);
     gizmos.line(top + fwd * radius, bot + fwd * radius, color);
     gizmos.line(top - fwd * radius, bot - fwd * radius, color);
+
+    draw_side_diagonals(gizmos, center, rot, radius, half_height, color);
 }
