@@ -17,7 +17,9 @@ A terrain is a **parent entity** (`TerrainData`) with one **chunk child** (`Terr
 
 Add a terrain from the editor's **Add** menu (it's registered as the `terrain` entity preset, icon "mountains", category "general"), or click any terrain toolbar button while no terrain exists.
 
-A fresh terrain is a **single 64 m × 64 m tile** at `chunk_resolution = 129` (129 × 129 vertices), with a checkerboard placeholder material and a flat surface sitting on the editor grid plane. The default height range is `-10 m` to `40 m`.
+A fresh terrain is a **single 64 m × 64 m tile** at `chunk_resolution = 129` (129 × 129 vertices), with a checkerboard placeholder material and a flat surface sitting just above the editor grid plane. The default height range is `-10 m` to `40 m`.
+
+The parent entity spawns at `y = 0.05` rather than `y = 0`. A new terrain's flat surface would otherwise be exactly coplanar with the grid, and the grid — which draws in the transparent pass without writing depth — breaks up into shimmering patches against a surface at its own depth. The 5 cm lift puts the terrain strictly in front, so it occludes the grid cleanly. It's an ordinary Transform, saved with the scene: move the terrain to `y = 0` yourself if you want it exactly on the plane.
 
 > Chunks each get a **trimesh collider** (`renzora_physics`'s `CollisionShapeData::mesh()`). Rebuilding a full-chunk trimesh is expensive, so the collider is **debounced**: it rebuilds ~0.25 s after the last mesh change and never mid-stroke — sculpting stays responsive, and the collider catches up on release. It is a triangle mesh, *not* a heightfield collider.
 

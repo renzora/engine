@@ -17,6 +17,21 @@ use renzora::MaterialRef;
 /// been sculpted all the way down to `min_height`.
 const TERRAIN_FLOOR_GAP: f32 = 0.5;
 
+/// How far above y=0 a freshly added terrain is parked.
+///
+/// A new terrain's flat heightmap lands exactly on y=0 (20% × range-50 +
+/// min=-10), which is also where the editor grid sits. The grid draws in the
+/// transparent pass with `depth_compare: Greater` and no depth write, so a
+/// coplanar surface leaves the comparison on a knife edge and the grid breaks up
+/// into shimmering patches as the camera moves. Lifting the terrain a hair puts
+/// it strictly in front, so it occludes the grid cleanly instead of fighting it.
+///
+/// 5 cm against a 50-unit height range is invisible while you sculpt, but big
+/// enough to stay separated at the depth precision you get zoomed out over a
+/// grown, many-chunk terrain. It only applies to the initial spawn — the value
+/// is saved with the scene, and moving the terrain yourself overrides it.
+const TERRAIN_GRID_CLEARANCE: f32 = 0.05;
+
 /// Append a perimeter-wall strip to the mesh. `edge_top_indices` lists the
 /// surface vertex indices along one chunk edge in CCW order (interior on
 /// left); `outward` is the wall's outward-facing normal. For each segment we
@@ -304,12 +319,13 @@ pub fn spawn_terrain(world: &mut World) -> Entity {
         }
     }
 
-    // Parent at origin — defaults are tuned so the initial flat heightmap
-    // (20% × range-50 + min=-10 = 0) lands on the editor grid plane.
+    // Parent at origin, plus `TERRAIN_GRID_CLEARANCE` — defaults are tuned so
+    // the initial flat heightmap (20% × range-50 + min=-10 = 0) lands on the
+    // editor grid plane, and exactly coplanar is the one place the grid glitches.
     let terrain_entity = world
         .spawn((
             Name::new("Terrain"),
-            Transform::IDENTITY,
+            Transform::from_xyz(0.0, TERRAIN_GRID_CLEARANCE, 0.0),
             Visibility::default(),
             terrain_data,
             // Paintable from frame one (`ensure_painter_system` covers
