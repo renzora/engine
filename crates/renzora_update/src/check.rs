@@ -3,7 +3,7 @@
 use serde::Deserialize;
 use std::sync::mpsc;
 
-use crate::version::{is_newer_version, ParsedVersion};
+use crate::version::ParsedVersion;
 
 const RELEASES_API: &str = "https://api.github.com/repos/renzora/engine/releases?per_page=100";
 const USER_AGENT: &str = "renzora-editor";
@@ -83,14 +83,28 @@ struct GitHubAsset {
     digest: Option<String>,
 }
 
-/// The tag this binary reports as its own. A published build knows it exactly;
-/// a build from source falls back to its version, which orders correctly against
-/// every real tag (and is what makes a dev build see the current nightlies as
-/// newer than itself).
+/// The tag this binary reports as its own, for display.
 pub fn current_tag() -> String {
     renzora::version::release_tag()
         .map(|t| t.to_string())
         .unwrap_or_else(|| renzora::version::ENGINE_VERSION.to_string())
+}
+
+/// What the running binary compares AS.
+///
+/// Not the same thing as [`current_tag`], and conflating them was a bug: a build
+/// from source has no tag, so it reported the bare `r1-alpha7` — which parses as
+/// the *finished* release and therefore outranks every `r1-alpha7-nightly-*`. A
+/// source checkout was told it was up to date while the dialog displayed the
+/// very nightly it was refusing to offer.
+///
+/// [`ParsedVersion::dev`] puts it at `Stage::Dev` instead: the least finished
+/// build of that version, below even last night's.
+fn current_version() -> Option<ParsedVersion> {
+    match renzora::version::release_tag() {
+        Some(tag) => ParsedVersion::parse(tag),
+        None => ParsedVersion::dev(renzora::version::ENGINE_VERSION),
+    }
 }
 
 /// Run the check on a worker thread and send the result back.
@@ -154,8 +168,15 @@ fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
 
     let asset = release.assets.iter().find(|a| a.name == asset_name);
 
+    // Compared as ParsedVersion, not as strings: a dev build has no tag of its
+    // own and has to compare as Stage::Dev (see `current_version`).
+    let newer = match (ParsedVersion::parse(&release.tag_name), current_version()) {
+        (Some(found), Some(running)) => found.is_newer_than(&running),
+        _ => false,
+    };
+
     Ok(UpdateCheckResult {
-        update_available: is_newer_version(&release.tag_name, &current),
+        update_available: newer,
         current_version: current,
         latest_version: Some(release.tag_name.clone()),
         release_url: Some(release.html_url.clone()),
@@ -194,6 +215,22 @@ mod tests {
             UpdateChannel::resolve("banana"),
             UpdateChannel::resolve("auto")
         );
+    }
+
+    /// The screenshot bug: the check found `r1-alpha7-nightly-16aug26`, rendered
+    /// its release notes, and still said "Renzora is up to date".
+    #[test]
+    fn a_dev_build_is_offered_its_versions_nightlies() {
+        let running = current_version().expect("dev build parses");
+        let nightly = ParsedVersion::parse("r1-alpha7-nightly-16aug26").unwrap();
+        if renzora::version::release_tag().is_none()
+            && renzora::version::ENGINE_VERSION == "r1-alpha7"
+        {
+            assert!(
+                nightly.is_newer_than(&running),
+                "a source checkout must be offered its own version's nightlies"
+            );
+        }
     }
 
     #[test]

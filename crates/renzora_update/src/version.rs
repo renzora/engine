@@ -13,14 +13,41 @@
 //! r1-alpha7-nightly-16aug26  a nightly of that pre-release
 //! ```
 //!
-//! Ordering is lexicographic over (release, pre-release, nightly), and at each
-//! level **absent sorts above present** — `r1` is newer than `r1-alpha7`, which
-//! is newer than any `r1-alpha7-nightly-*`. That last one is the rule that makes
-//! the Nightly channel behave: the day `r1-alpha7` ships, everyone on
-//! `r1-alpha7-nightly-*` is offered it, because the final release outranks every
-//! nightly leading up to it.
+//! plus the running binary itself when it was built from a checkout and has no
+//! tag at all.
+//!
+//! Ordering is lexicographic over (release, pre-release, [`Stage`]). For the
+//! first two, **absent sorts above present** — `r1` is newer than `r1-alpha7`.
+//! `Stage` then orders `Dev < Nightly(date) < Final` within one version, which
+//! gives two behaviours that both matter:
+//!
+//! * the day `r1-alpha7` ships, everyone on `r1-alpha7-nightly-*` is offered it,
+//!   because the finished release outranks every nightly leading up to it;
+//! * a build from source is offered those nightlies, because it is the *least*
+//!   finished build of that version rather than the most.
 
 use std::cmp::Ordering;
+
+/// How finished a build of one version is. Ordered least → most.
+///
+/// This is a three-state, not a two-state, and that is the whole point. It began
+/// as `nightly: Option<date>` — absent meaning "the finished release" — and a
+/// build from source had no tag of its own, so it reported bare `r1-alpha7` and
+/// therefore compared as *finished*. Since a release outranks its own nightlies,
+/// a source checkout out-ranked every nightly of its version and was told it was
+/// up to date, forever.
+///
+/// A source build is not the finished version; it is the least finished thing
+/// there is for that version, below even last night's build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Stage {
+    /// Built from a checkout — no release of its own. Sorts below everything.
+    Dev,
+    /// A dated nightly, `(yy, mm, dd)`.
+    Nightly(u32, u32, u32),
+    /// The published release itself.
+    Final,
+}
 
 /// A parsed `rN[-<pre><n>][-nightly-<ddmonyy>]` tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,8 +55,7 @@ pub struct ParsedVersion {
     release: u32,
     /// `None` = final, `Some(("alpha", 7))` = pre-release.
     pre: Option<(String, u32)>,
-    /// `None` = not a nightly, `Some((yy, mm, dd))` otherwise.
-    nightly: Option<(u32, u32, u32)>,
+    stage: Stage,
 }
 
 const MONTHS: [&str; 12] = [
@@ -46,9 +72,12 @@ impl ParsedVersion {
         // the pre-release split below would otherwise swallow it and fail to
         // parse `7-nightly-16aug26` as a number. That is exactly how the
         // recovered parser behaved — it returned None for every nightly tag.
-        let (head, nightly) = match rest.split_once("-nightly-") {
-            Some((head, date)) => (head, Some(parse_nightly_date(date)?)),
-            None => (rest, None),
+        let (head, stage) = match rest.split_once("-nightly-") {
+            Some((head, date)) => {
+                let (y, m, d) = parse_nightly_date(date)?;
+                (head, Stage::Nightly(y, m, d))
+            }
+            None => (rest, Stage::Final),
         };
 
         let (release, pre) = match head.split_once('-') {
@@ -65,13 +94,24 @@ impl ParsedVersion {
         Some(Self {
             release,
             pre,
-            nightly,
+            stage,
         })
+    }
+
+    /// The build-from-source form of a version: `r1-alpha7` at [`Stage::Dev`].
+    ///
+    /// Used for the running binary when CI stamped no tag into it, so that every
+    /// published build of the same version — release or nightly — compares as
+    /// newer.
+    pub fn dev(version: &str) -> Option<Self> {
+        let mut v = Self::parse(version)?;
+        v.stage = Stage::Dev;
+        Some(v)
     }
 
     /// True when this tag is a dated nightly rather than a published version.
     pub fn is_nightly(&self) -> bool {
-        self.nightly.is_some()
+        matches!(self.stage, Stage::Nightly(..))
     }
 
     pub fn is_newer_than(&self, other: &Self) -> bool {
@@ -122,20 +162,22 @@ impl Ord for ParsedVersion {
                 }
             }
         }
-        // Same rule again one level down: the finished `r1-alpha7` outranks
-        // every `r1-alpha7-nightly-*` that led to it.
-        match (&self.nightly, &other.nightly) {
-            (None, None) => Ordering::Equal,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(_), None) => Ordering::Less,
-            (Some(a), Some(b)) => a.cmp(b),
-        }
+        // Same rule one level down, now three-way: a source build is below every
+        // nightly, and the finished `r1-alpha7` is above all of them.
+        self.stage.cmp(&other.stage)
     }
 }
 
 /// True if `latest` is newer than `current`. An unparseable tag on either side
 /// yields `false` — never offer an "update" we cannot reason about.
-pub fn is_newer_version(latest: &str, current: &str) -> bool {
+///
+/// Test-only. The check itself compares [`ParsedVersion`]s, because the running
+/// binary may have no tag to name: a build from source compares at
+/// [`Stage::Dev`], which no string can express. This string form is kept because
+/// it is what the recovered updater's original test cases are written against,
+/// and those cases are the reason to trust the release/pre-release rules.
+#[cfg(test)]
+fn is_newer_version(latest: &str, current: &str) -> bool {
     match (ParsedVersion::parse(latest), ParsedVersion::parse(current)) {
         (Some(l), Some(c)) => l.is_newer_than(&c),
         _ => false,
@@ -201,6 +243,47 @@ mod tests {
         assert!(!is_newer_version("r1-alpha7-nightly-16aug26", "r1-alpha7"));
         // And a later version's nightly still beats the earlier release.
         assert!(is_newer_version("r1-alpha8-nightly-01sep26", "r1-alpha7"));
+    }
+
+    /// The bug this enum exists for: a source checkout of `r1-alpha7` reported
+    /// itself as the bare version, which compares as the FINISHED release and
+    /// therefore outranked every nightly of it — so the dialog said "up to date"
+    /// while showing the nightly's own release notes.
+    #[test]
+    fn a_dev_build_is_older_than_every_build_of_its_version() {
+        let dev = ParsedVersion::dev("r1-alpha7").unwrap();
+        for tag in [
+            "r1-alpha7-nightly-01jan26",
+            "r1-alpha7-nightly-16aug26",
+            "r1-alpha7",
+            "r1-alpha8",
+            "r1",
+        ] {
+            let published = ParsedVersion::parse(tag).unwrap();
+            assert!(
+                published.is_newer_than(&dev),
+                "{tag} should be newer than a dev build of r1-alpha7"
+            );
+        }
+        // ...but still older than a LATER version's dev build, and never newer
+        // than itself.
+        assert!(!dev.is_newer_than(&dev));
+        assert!(ParsedVersion::dev("r1-alpha8").unwrap().is_newer_than(&dev));
+    }
+
+    #[test]
+    fn a_dev_build_is_not_mistaken_for_a_release() {
+        let dev = ParsedVersion::dev("r1-alpha7").unwrap();
+        let released = ParsedVersion::parse("r1-alpha7").unwrap();
+        assert_ne!(dev, released);
+        assert!(!dev.is_nightly());
+    }
+
+    #[test]
+    fn stage_orders_dev_below_nightly_below_final() {
+        assert!(Stage::Dev < Stage::Nightly(26, 8, 16));
+        assert!(Stage::Nightly(26, 8, 16) < Stage::Final);
+        assert!(Stage::Nightly(26, 8, 15) < Stage::Nightly(26, 8, 16));
     }
 
     #[test]

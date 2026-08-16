@@ -153,7 +153,9 @@ The sidecar is deliberately **excluded from export templates** — `renzora-runt
 
 `auto` (the default) follows the build: a nightly is offered newer nightlies, a release is offered releases, and a build from source tracks nightlies. `stable` and `nightly` override it, stored in `~/.renzora/editor.toml` as `update_channel`. It is stored as `auto` rather than resolved once, because the answer changes when you update — taking a nightly user to a release should move them to the stable channel, which a resolved value would not do.
 
-The ordering that makes this work is in `crates/renzora_update/src/version.rs`: at every level, absent sorts above present, so `r1` > `r1-alpha7` > `r1-alpha7-nightly-16aug26`. The day a version ships, everyone on its nightlies is offered it.
+The ordering that makes this work is in `crates/renzora_update/src/version.rs`. Release and pre-release sort with absent above present (`r1` > `r1-alpha7`), and within one version a three-state `Stage` orders `Dev < Nightly(date) < Final`.
+
+That third state earns its place. It started as a two-state "is this a nightly?", which could say that `r1-alpha7` outranks `r1-alpha7-nightly-16aug26` — correct — but had no way to place a build from source, which has no tag at all. Such a build reported the bare version, parsed as the *finished* release, and so outranked every nightly of its own version: the dialog said "Renzora is up to date" while displaying the release notes of the nightly it was declining to offer. A source build is the *least* finished build of a version, not the most.
 
 ### Running from a source checkout
 
