@@ -142,8 +142,12 @@ jobs:
       # one binary in the repo that nothing ever compiles — and it is the one
       # that runs after the editor has exited, where a failure means a
       # half-replaced install and no process left to repair it.
+      # Build only. It is linted in the `clippy` job, which is the one that
+      # installs the clippy component — the base image deliberately ships
+      # without it so the parallel docker build lanes don't race on the rustup
+      # component download.
       - name: Build the update sidecar
-        run: cd tools/updater && cargo build --profile dist && cargo clippy --profile dist -- -D warnings
+        run: cd tools/updater && cargo build --profile dist
 
   # Tests that need a real graphics adapter — render-graph nodes, pipeline
   # specialization, materials, post-process passes.
@@ -253,3 +257,10 @@ jobs:
       # it owns the plugin-wiring generator.
       - name: Clippy (xtask)
         run: cargo clippy --manifest-path xtask/Cargo.toml -- -D warnings
+
+      # `tools/updater` is its own workspace too (it must share nothing with the
+      # tree it replaces), so `--workspace` above doesn't reach it either. Linted
+      # here rather than in the `plugins` job that builds it, because this is the
+      # job with the clippy component installed.
+      - name: Clippy (update sidecar)
+        run: cargo clippy --manifest-path tools/updater/Cargo.toml -- -D warnings
