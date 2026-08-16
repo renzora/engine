@@ -99,7 +99,7 @@ ENV BASH_ENV=/etc/osxcross-env.sh
 SHELL ["/bin/bash", "-c"]
 
 # ── Cargo linker config ──────────────────────────────────────────────────────
-# Only the NATIVE Linux section lives here (clang + mold + prefer-dynamic) — it's
+# Only the NATIVE Linux section lives here (clang + mold) — it's
 # all the base needs for `cargo check`/`cargo test` and the native Linux build.
 # Each platform image APPENDS its own [target.*] sections (the linker names
 # depend on tools installed in that image, e.g. osxcross's darwin<ver>-clang or
@@ -111,8 +111,27 @@ RUN if [ "$(uname -m)" = "aarch64" ]; then HOSTRUST=aarch64-unknown-linux-gnu; e
 # section (cross-gcc linker) is appended by docker/linux/Dockerfile.
 [target.${HOSTRUST}]
 linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-C", "prefer-dynamic"]
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
 TOML
+
+# ── UPX ──────────────────────────────────────────────────────────────────────
+# The official static binary (not the apt `upx-ucl`, absent from this image's
+# sources). UPX packs PE/ELF/Mach-O regardless of host OS.
+#
+# It lives in the BASE, not in the linux image, because every platform lane now
+# packs its own output (`compress_binaries` in docker/build-all.sh) — the
+# Windows and macOS lanes run in their own containers and cannot reach a tool
+# installed only in the Linux one. `renzora upx`, which the CLI still routes to
+# the linux container to pack an already-built tree, keeps working by
+# inheritance.
+ENV UPX_VERSION=5.1.1
+RUN UPX_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo arm64_linux || echo amd64_linux) \
+    && curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${UPX_ARCH}.tar.xz" \
+    -o /tmp/upx.tar.xz \
+    && tar -xJf /tmp/upx.tar.xz -C /tmp \
+    && mv /tmp/upx-${UPX_VERSION}-${UPX_ARCH}/upx /usr/local/bin/upx \
+    && chmod +x /usr/local/bin/upx \
+    && rm -rf /tmp/upx.tar.xz /tmp/upx-${UPX_VERSION}-${UPX_ARCH}
 
 # The persistent container mounts the repo at /app/src; the image just provides
 # the toolchain (no source baked in).

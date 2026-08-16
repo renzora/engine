@@ -66,11 +66,9 @@ RUN DARWIN_VER=$(cat /tmp/darwin_ver) && \
 
 [target.x86_64-apple-darwin]
 linker = "x86_64-apple-darwin${DARWIN_VER}-clang"
-rustflags = ["-C", "prefer-dynamic"]
 
 [target.aarch64-apple-darwin]
 linker = "aarch64-apple-darwin${DARWIN_VER}-clang"
-rustflags = ["-C", "prefer-dynamic"]
 TOML
 
 # ── rcodesign: ad-hoc signing for macOS arm64 binaries ───────────────────────

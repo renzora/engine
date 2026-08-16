@@ -325,14 +325,66 @@ build_updater() {
     return 0
 }
 
-# ── Helper: copy the matching Rust std shared lib for a platform ─────────────
-# Usage: copy_std <output-platform> <feature> <rust-triple> <glob>
-copy_std() {
-    local PLATFORM="$1" FEATURE="$2" TRIPLE="$3" GLOB="$4"
-    local SYSROOT; SYSROOT=$(rustc --print sysroot)
-    local f
-    for f in "$SYSROOT"/lib/rustlib/"$TRIPLE"/lib/$GLOB; do
-        [ -f "$f" ] && cp "$f" "$OUTPUT_DIR/$PLATFORM/"
+# NOTE: there was a `copy_std` helper here that shipped the toolchain's
+# `std-<hash>.{dll,so,dylib}` beside the binaries. It existed because the images
+# set `-C prefer-dynamic`, a leftover from the shared-`bevy_dylib` era. With Bevy
+# static there is nothing left to share a std with — the editor and the runtime
+# are separate processes, and a C-ABI plugin links no std of ours — so the flag
+# bought nothing and cost a *toolchain-versioned import under a hashed filename*
+# in every shipped binary. Both flag and helper are gone; std links statically.
+
+# ── Compress the staged executables with UPX ─────────────────────────────────
+# Usage: compress_binaries <platform-name> <exe-suffix>
+#
+# UPX packs an executable and prepends a decompressor stub, so the shipped file
+# unpacks itself into memory at launch. Measured on the `dist` runtime:
+# **187.3 MB -> 31.7 MB, an 83% saving**, and the packed binary boots through the
+# full plugin and scripting startup — nothing about Bevy's startup or the
+# dlopen'd plugins minds a decompressor stub.
+#
+# `--best --lzma`, not `--brute`: MEASURED on the 187 MB runtime, the two produce
+# a **byte-for-byte identical** file (33,363,456 bytes) — `--brute` took 1529 s,
+# `--best --lzma` took ~100 s. `--lzma` already pins UPX's strongest compressor,
+# and for an amd64 PE the filter space `--brute` additionally explores has
+# nothing better to find. (Measured on PE only; ELF/Mach-O were not compared.)
+#
+# ── What is deliberately NOT packed ──────────────────────────────────────────
+# * `renzora-update` — the update sidecar. It is the thing that repairs a broken
+#   install; making it the one binary with an extra layer of machinery between
+#   the OS loader and `main` is precisely the wrong trade. It is 320 KB anyway.
+# * `plugins/*` — 68 libraries totalling ~15 MB against 450 MB of executables, so
+#   the win is noise, and packing a `dlopen`ed library is the least-tested UPX
+#   path of the three.
+#
+# ── Ordering ─────────────────────────────────────────────────────────────────
+# This MUST run before `fixup_macos`. Packing rewrites the file, which
+# invalidates any code signature it already carries, and arm64 macOS refuses to
+# launch a binary with an invalid signature — so `rcodesign` has to sign the
+# PACKED file, not the other way round.
+#
+# Best-effort per file: UPX refusing a particular binary must not sink an engine
+# build that is otherwise complete. A skipped file just ships uncompressed.
+compress_binaries() {
+    local PLATFORM="$1" SUF="$2"
+    local OUT="$OUTPUT_DIR/$PLATFORM"
+    if ! command -v upx >/dev/null 2>&1; then
+        echo "WARN: upx not found in this image — $PLATFORM ships uncompressed"
+        return 0
+    fi
+
+    local f before after
+    for f in "$OUT/renzora$SUF" "$OUT/renzora-editor$SUF" "$OUT/renzora-runtime$SUF"; do
+        [ -f "$f" ] || continue
+        before=$(stat -c %s "$f" 2>/dev/null || echo 0)
+        if upx --best --lzma -q "$f" >/dev/null 2>&1; then
+            after=$(stat -c %s "$f" 2>/dev/null || echo 0)
+            if [ "$before" -gt 0 ] && [ "$after" -gt 0 ]; then
+                awk -v b="$before" -v a="$after" -v n="$(basename "$f")" \
+                    'BEGIN { printf "  packed %-22s %.1f MB -> %.1f MB (%.0f%% saved)\n", n, b/1048576, a/1048576, (1-a/b)*100 }'
+            fi
+        else
+            echo "  WARN: upx declined $(basename "$f") — shipping it uncompressed"
+        fi
     done
     return 0
 }
@@ -477,35 +529,37 @@ build_one() {
     case "$PLATFORM" in
         "$LINUX_PLATFORM")
             build_desktop "$FEATURE" native           "$LINUX_PLATFORM" "so"    || return 1
-            copy_std "$LINUX_PLATFORM" "$FEATURE" "$LINUX_TRIPLE"        "libstd-*.so"
             build_plugins native "$LINUX_PLATFORM" "so"
-            build_updater native "$LINUX_PLATFORM" "" ;;
+            build_updater native "$LINUX_PLATFORM" ""
+            compress_binaries "$LINUX_PLATFORM" "" ;;
         "$LINUX_CROSS_PLATFORM")
             # Cross arch — explicit --target triple (like macOS/Windows), not
             # `native`. The .cargo/config.toml entry for this triple points the
             # linker at the GNU cross-gcc.
             build_desktop "$FEATURE" "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so" || return 1
-            copy_std "$LINUX_CROSS_PLATFORM" "$FEATURE" "$LINUX_CROSS_TRIPLE"          "libstd-*.so"
             build_plugins "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "so"
-            build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" "" ;;
+            build_updater "$LINUX_CROSS_TRIPLE" "$LINUX_CROSS_PLATFORM" ""
+            compress_binaries "$LINUX_CROSS_PLATFORM" "" ;;
         windows-x64)
             build_desktop "$FEATURE" x86_64-pc-windows-msvc "windows-x64" "dll"   || return 1
             # MSVC ABI build — links to vcruntime140.dll / msvcp140.dll which
             # Win10/11 ship by default (or via the VC++ Redistributable).
-            copy_std "windows-x64" "$FEATURE" "x86_64-pc-windows-msvc"    "std-*.dll"
             build_plugins x86_64-pc-windows-msvc "windows-x64" "dll"
-            build_updater x86_64-pc-windows-msvc "windows-x64" ".exe" ;;
+            build_updater x86_64-pc-windows-msvc "windows-x64" ".exe"
+            compress_binaries "windows-x64" ".exe" ;;
         macos-x64)
             build_desktop "$FEATURE" x86_64-apple-darwin    "macos-x64"   "dylib" || return 1
-            copy_std "macos-x64"   "$FEATURE" "x86_64-apple-darwin"       "libstd-*.dylib"
             build_plugins x86_64-apple-darwin "macos-x64" "dylib"
             build_updater x86_64-apple-darwin "macos-x64" ""
+            # Pack BEFORE signing — packing invalidates a signature.
+            compress_binaries "macos-x64" ""
             fixup_macos "$OUTPUT_DIR/macos-x64" ;;
         macos-arm64)
             build_desktop "$FEATURE" aarch64-apple-darwin   "macos-arm64" "dylib" || return 1
-            copy_std "macos-arm64" "$FEATURE" "aarch64-apple-darwin"      "libstd-*.dylib"
             build_plugins aarch64-apple-darwin "macos-arm64" "dylib"
             build_updater aarch64-apple-darwin "macos-arm64" ""
+            # Pack BEFORE signing — packing invalidates a signature.
+            compress_binaries "macos-arm64" ""
             fixup_macos "$OUTPUT_DIR/macos-arm64" ;;
         *)
             echo "WARN: unknown desktop platform '$PLATFORM'"; return 1 ;;

@@ -77,7 +77,6 @@ RUN cat >> /app/.cargo/config.toml <<'TOML'
 [target.x86_64-pc-windows-msvc]
 linker = "lld-link"
 rustflags = [
-    "-C", "prefer-dynamic",
     "-Lnative=/xwin/crt/lib/x86_64",
     "-Lnative=/xwin/sdk/lib/um/x86_64",
     "-Lnative=/xwin/sdk/lib/ucrt/x86_64",

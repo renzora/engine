@@ -28,12 +28,12 @@
 //!
 //! ## `--best --lzma`, not `--brute`
 //!
-//! `docker/upx-compress.sh` uses `--brute` because it runs over the engine's own
-//! release artefacts once per release, where an hour of CPU is free. An export is
-//! interactive and the input is 50–200 MB; `--brute` tries every filter/algorithm
-//! combination and would add tens of minutes for a low single-digit percentage.
-//! `--best --lzma` is what min-sized-rust recommends and lands within a few
-//! percent of brute force.
+//! Not a compromise for interactivity — measured, they are the same. On the
+//! 187 MB `dist` runtime the two produce a **byte-for-byte identical** file
+//! (33,363,456 bytes); `--brute` took 1529 s and `--best --lzma` ~100 s.
+//! `--lzma` already selects UPX's strongest compressor, and the extra
+//! filter/algorithm combinations `--brute` explores have nothing better to offer
+//! on an amd64 PE. (Compared on PE only; ELF and Mach-O were not measured.)
 //!
 //! Measured on `dist/windows-x64/renzora.exe` (the stripped `dist` runtime):
 //! **187.3 MB → 31.7 MB in 82 s, an 83% saving.** The packed binary was run

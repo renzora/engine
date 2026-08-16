@@ -89,7 +89,7 @@ RUN set -eux; \
 # override a config file's `target.rustflags` (a cargo precedence quirk — config
 # wins), so the flag always reaches the linker. The wrapper strips exactly that
 # one arg and forwards everything else (incl. `-Wl,-rpath,$ORIGIN`, which GCC
-# accepts) to the real cross-gcc, so the repo's prefer-dynamic + rpath survive.
+# accepts) to the real cross-gcc, so the repo's rpath settings survive.
 RUN XGNU=$(cat /etc/renzora-linux-cross-gnu); XRUST=$(cat /etc/renzora-linux-cross-triple); \
     XRUST_US=$(echo "$XRUST" | tr - _); \
     XRUST_ENV=$(echo "$XRUST" | tr 'a-z-' 'A-Z_'); \
@@ -113,19 +113,7 @@ RUN XGNU=$(cat /etc/renzora-linux-cross-gnu); XRUST=$(cat /etc/renzora-linux-cro
 # actually wins. Lets one container emit both Linux arches.
 [target.${XRUST}]
 linker = "/usr/local/bin/renzora-cross-linker"
-rustflags = ["-C", "prefer-dynamic"]
 TOML
 
-# ── UPX (binary compression for `renzora upx`) ───────────────────────────────
-# The official static binary (not the apt `upx-ucl`, absent from this image's
-# sources). UPX packs PE/ELF/Mach-O regardless of host OS, so the Linux container
-# compresses Windows/macOS binaries too — which is why it lives here (the CLI
-# routes `renzora upx` to the linux container).
-ENV UPX_VERSION=5.1.1
-RUN UPX_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo arm64_linux || echo amd64_linux) \
-    && curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${UPX_ARCH}.tar.xz" \
-    -o /tmp/upx.tar.xz \
-    && tar -xJf /tmp/upx.tar.xz -C /tmp \
-    && mv /tmp/upx-${UPX_VERSION}-${UPX_ARCH}/upx /usr/local/bin/upx \
-    && chmod +x /usr/local/bin/upx \
-    && rm -rf /tmp/upx.tar.xz /tmp/upx-${UPX_VERSION}-${UPX_ARCH}
+# (UPX moved to docker/base/Dockerfile — every platform lane packs its own
+# binaries now, not just this one. See `compress_binaries` in build-all.sh.)

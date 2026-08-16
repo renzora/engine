@@ -334,6 +334,35 @@ jobs:
         with:
           path: artifacts
 
+      # The container lanes already packed their own output (`compress_binaries`
+      # in build-all.sh, which has to run there so macOS is packed BEFORE it is
+      # signed). `windows-arm64` is the exception: it is built natively by xtask,
+      # which does no packing — deliberately, since xtask is also the local dev
+      # path and nobody wants to iterate on a packed binary.
+      #
+      # So this catches whatever arrived unpacked. `upx -t` succeeds only on an
+      # already-packed file, which makes the pass idempotent and safe to run over
+      # every artifact rather than special-casing one lane.
+      - name: Compress any unpacked executables
+        run: |
+          set -euo pipefail
+          UPX_VERSION=5.1.1
+          curl -sSL "https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz" -o /tmp/upx.tar.xz
+          tar -xJf /tmp/upx.tar.xz -C /tmp
+          UPX=/tmp/upx-${UPX_VERSION}-amd64_linux/upx
+          while IFS= read -r -d '' f; do
+            if "$UPX" -t "$f" >/dev/null 2>&1; then continue; fi
+            before=$(stat -c %s "$f")
+            if "$UPX" --best --lzma -q "$f" >/dev/null 2>&1; then
+              after=$(stat -c %s "$f")
+              awk -v b="$before" -v a="$after" -v n="$f" \
+                'BEGIN { printf "packed %s: %.1f MB -> %.1f MB (%.0f%% saved)\n", n, b/1048576, a/1048576, (1-a/b)*100 }'
+            else
+              echo "WARN: upx declined $f — shipping it uncompressed"
+            fi
+          done < <(find artifacts \( -name 'renzora' -o -name 'renzora.exe' \
+                                     -o -name 'renzora-editor' -o -name 'renzora-editor.exe' \) -type f -print0)
+
       - name: Package release assets
         run: |
           bash scripts/package-release.sh artifacts release-assets \

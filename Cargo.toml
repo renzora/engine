@@ -477,28 +477,53 @@ winres = "0.1"
 
 [profile.dist]
 inherits = "release"
-opt-level = 2
-strip = "symbols"
-# NO LTO here — measured, not assumed. Enabling `lto = "thin"` on this profile
-# made both binaries BIGGER and the build slower:
+# Size-optimised. `renzora.exe` had reached 187 MB and `renzora-editor.exe`
+# 266 MB, of which 68% was `.text` — monomorphized generic code, not data. There
+# is nothing to sweep out (symbols are already stripped, no debuginfo ships), so
+# the only lever left is compiling less code.
 #
-#   renzora.exe         170 MB -> 174 MB
-#   renzora-editor.exe  238 MB -> 243 MB
+# `opt-level = "s"` AND `lto = "thin"` together, because neither works alone here.
+# This profile previously carried a note that thin LTO made both binaries BIGGER
+# (170 -> 174 MB, 238 -> 243 MB) and that finding still stands — but it was
+# measured at `opt-level = 2`, where thin LTO's dominant effect is cross-crate
+# *inlining*, which is not size-constrained, so the duplicated inlined bodies
+# outweigh what it dead-strips. Under `opt-level = "s"` the inliner is size-aware
+# and LTO's cross-crate dead-stripping is what dominates instead. That pairing is
+# exactly what `[profile.dist-lean]` has always used for the lean game export.
 #
-# At `opt-level = 2` thin LTO's dominant effect is cross-crate *inlining*, which
-# is not size-constrained, and the duplicated inlined bodies outweigh whatever
-# dead-stripping removes. LTO only pays for itself on size when paired with
-# `opt-level = "s"` — which is exactly what `[profile.dist-lean]` does, and why
-# that profile is the right home for size work.
+# **This trades frame time for size** in a real-time renderer, deliberately, and
+# it applies to the editor as much as the game. If the viewport regresses, this
+# is the first thing to put back.
+#
+# `codegen-units` stays at the default (16), NOT 1 — see the `dist-lean` note
+# below: forcing 1 was measured to help only fat LTO, and to cost a lot of build
+# time for little size under thin.
+#
+# `panic` stays `unwind`. `renzora_plugin` guards every call across the C-ABI
+# boundary with `catch_unwind` (audio/net/script backends, `ecs.rs`,
+# `host/mod.rs`); under `panic = "abort"` those become no-ops and a panicking
+# third-party plugin takes the whole editor down instead of being contained. The
+# `.pdata` unwind tables it would save (~6 MB) are not worth that.
 #
 # (The historical reason this profile was frozen — its lto/codegen-units feeding
 # `bevy_dylib-<metadata>` and therefore the plugin ABI hash — no longer applies;
-# there is no shared dylib. It is free to change. It just should not change to
-# this.)
+# there is no shared dylib, and nothing links Bevy but the engine itself.)
+opt-level = "s"
+lto = "thin"
+strip = "symbols"
 
-# Lean release profile for the single-binary game export. Kept SEPARATE from
-# `dist` on purpose: `dist`'s lto/codegen-units feed the frozen plugin ABI hash,
-# so they must not change. `dist-lean` is only ever invoked by the lean exporter
+# Lean release profile for the single-binary game export.
+#
+# Now that `dist` is itself size-optimised, this inherits the same lto/opt-level
+# and the two are numerically identical. It is kept as a SEPARATE profile anyway,
+# for one reason that still holds: the exporter patches these keys per export
+# (see the note on the three overridable keys below), and it must be able to do
+# that without touching what the engine itself is built with.
+#
+# (It used to be separate because `dist`'s lto/codegen-units fed the frozen
+# plugin ABI hash and could not change. There is no such hash any more.)
+#
+# `dist-lean` is only ever invoked by the lean exporter
 # (`--no-default-features --features runtime`, i.e. static Bevy + static std),
 # where there is no dylib boundary or ABI to preserve — so we maximise size
 # reduction: thin LTO to dead-strip unreachable engine code, size-opt, and full

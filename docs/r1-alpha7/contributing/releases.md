@@ -75,6 +75,48 @@ The engine asset keeps the bare `<platform>.zip` name the earlier releases used,
 
 It is **best-effort per plugin**: these have real third-party dependencies (mlua compiles C, the HTTP plugin pulls the rustls/ring stack), and one that won't cross-compile for a given target is not a reason to sink the engine build. A failed plugin is named in the lane summary, with the tail of its build log, and is simply absent from the artifact. The summary matters: before this pass existed, CI artifacts shipped an *empty* `plugins/` — no Lua scripting, no HTTP, none of the ~50 post-process effects — and looked exactly like a successful build.
 
+## Binary size
+
+The engine is large — `.text` alone was 134 MB of the runtime's 187 MB — and essentially all of it is code, not data. Symbols are already stripped (`strip = "symbols"`; there are no `.debug*` sections and no PDB path embedded in a release binary), so there is nothing to sweep out. What there is, is monomorphized generics: a release `.rdata` carries ~12,000 distinct `bevy_ecs::` type-name strings, one per instantiated system-param combination.
+
+Measured on `windows-x64`, both changes stacked:
+
+| | As shipped before | + size-opt profile | + UPX | Total |
+|---|---|---|---|---|
+| `renzora.exe` | 187.0 MB | 138.2 MB | **24.9 MB** | −86.7% |
+| `renzora-editor.exe` | 265.6 MB | 194.3 MB | **35.1 MB** | −86.8% |
+
+The whole installed tree goes from ~470 MB to ~77 MB (the plugins stay unpacked at ~15 MB). The profile change alone accounts for a 26% cut and is the more durable half: it is less code, so it is less to page in, less to decompress and a smaller working set. UPX's 83% is a disk-and-download number that costs RAM and startup time back — see below.
+
+Three things act on that, in order of where they apply:
+
+**1. `[profile.dist]` is size-optimised** — `opt-level = "s"` with `lto = "thin"`. Neither works alone here, and the profile used to carry a note that thin LTO made both binaries *bigger*. That finding is real, but it was measured at `opt-level = 2`, where thin LTO's dominant effect is cross-crate inlining, which is not size-constrained. Under `opt-level = "s"` the inliner is size-aware and LTO's dead-stripping dominates instead. This trades frame time for size, deliberately, in the editor as well as the game — **if the viewport regresses, this is the first thing to put back.**
+
+It also means every local `cargo renzora` now pays thin-LTO link time. If that becomes intolerable while iterating, override it per-invocation rather than editing the profile:
+
+```sh
+CARGO_PROFILE_DIST_LTO=false CARGO_PROFILE_DIST_OPT_LEVEL=2 cargo renzora
+```
+
+Two knobs are deliberately *not* set:
+
+- **`codegen-units = 1`** — measured to help only fat LTO, and to cost a lot of build time for little size under thin.
+- **`panic = "abort"`** — `renzora_plugin` guards every call across the C-ABI boundary with `catch_unwind` (audio/net/script backends, `ecs.rs`, `host/mod.rs`). Under `abort` those become no-ops and a panicking third-party plugin takes the editor down instead of being contained. It would save the ~6 MB of `.pdata` unwind tables; it is not worth it.
+
+The `plugins/*` and `tools/updater` builds are unaffected — each is its own workspace with its own `[profile.dist]`.
+
+**2. UPX packs the executables**, in `compress_binaries` (`docker/build-all.sh`), with `--best --lzma`. Measured on the `dist` runtime: **187.3 MB → 31.7 MB, an 83% saving**, and the packed binary boots through full plugin and scripting startup. `--brute` was measured against it and produces a **byte-for-byte identical** file on this input (33,363,456 bytes) while taking 1529 s instead of ~100 s — `--lzma` already selects UPX's strongest compressor, and the extra combinations `--brute` tries have nothing better to find on an amd64 PE. Do not "upgrade" the lanes to `--brute`.
+
+Two things are deliberately not packed: **`renzora-update`**, because it is what repairs a broken install and should be the *last* binary with extra machinery between the loader and `main`; and **`plugins/*`**, 68 libraries totalling ~15 MB against 450 MB of executables.
+
+**UPX is not free at runtime.** A normally-linked executable is demand-paged: the OS maps it and faults in only the pages actually touched, so a 138 MB binary with ~40 MB of hot code costs ~40 MB of working set. A packed executable cannot do that — the whole image is decompressed into private committed memory before `main` runs. Packing therefore trades disk for **RAM and a startup pause, on every launch**, for the editor as much as for an exported game. If that becomes the wrong trade for the editor specifically, `compress_binaries` takes an explicit list of binaries and dropping `renzora-editor` from it is a one-line change.
+
+**Ordering matters on macOS.** `compress_binaries` runs *before* `fixup_macos`, because packing rewrites the file and invalidates any signature it carries — and arm64 macOS refuses a binary whose signature does not verify. `rcodesign` must sign the packed file, not the other way round.
+
+On Linux, packing before the AppImage wrap is also the right order: LZMA beats the AppImage's own squashfs compression, so the resulting `.AppImage` lands near the UPX size rather than the squashfs one.
+
+**3. Bevy's feature set is deliberately maximal** and has *not* been trimmed. The justification recorded in `Cargo.toml` — that the shared `bevy_dylib`'s feature set was the plugin API surface and an input to the ABI hash — no longer applies, since nothing links Bevy but the engine itself. Trimming it (`bevy_solari`, `meshlet`) is therefore now possible and would be a real cut, but it removes engine capability rather than build overhead, so it is a product decision rather than a build one.
+
 ## The updater
 
 The editor updates itself from these releases: **Help ▸ Check for Updates**, or the same item labelled **Update to `<tag>`** when the background check at startup has already found one. It downloads the `<platform>.zip` for the host, verifies it against the SHA-256 GitHub publishes for the asset, and replaces the install.
