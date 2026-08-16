@@ -129,7 +129,9 @@ On Linux, packing before the AppImage wrap is also the right order: LZMA beats t
 
 ## The updater
 
-The editor updates itself from these releases: **Help ▸ Check for Updates**, or the same item labelled **Update to `<tag>`** when the background check at startup has already found one. It downloads the `<platform>.zip` for the host, verifies it against the SHA-256 GitHub publishes for the asset, and replaces the install.
+The editor updates itself from these releases: **Help ▸ Check for Updates**, or the same item labelled **Update to `<tag>`** when the background check at startup has already found one. When there is one, an **Update to `<tag>`** chip also appears on the right of the top bar, next to the window controls; it opens the same overlay.
+
+The dialog lists **every** version the channel offers, newest first — releases marked with a seal, nightlies with a moon, the running build marked *current*, and any release with no build for your platform greyed out rather than hidden. Picking a row selects it, **including an older one**: rolling back is a download like any other, and the check already fetched the whole list, so offering only the newest would be throwing information away. Selecting a different version discards anything already staged, since that download belongs to a different tag. It downloads the `<platform>.zip` for the host, verifies it against the SHA-256 GitHub publishes for the asset, and replaces the install.
 
 `crates/renzora_update` does the checking, downloading and staging. The replacement itself is `tools/updater` — a separate ~220 KB binary, `renzora-update`, that ships beside the editor:
 

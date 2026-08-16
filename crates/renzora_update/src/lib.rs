@@ -45,7 +45,7 @@ mod version;
 use bevy::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use check::{UpdateChannel, UpdateCheckResult};
+pub use check::{ReleaseEntry, UpdateChannel, UpdateCheckResult};
 
 /// Everything the dialog and its workers share.
 #[cfg(not(target_arch = "wasm32"))]
@@ -66,6 +66,13 @@ pub struct UpdateState {
     /// True once the check has been kicked off at least once, so opening the
     /// dialog doesn't start a second one over the top of the first.
     checked_once: bool,
+    /// Which version the action button targets.
+    ///
+    /// `None` means "the newest one the channel offers", which is what you want
+    /// almost always. Set by picking a row in the version list, including an
+    /// older one — going back a version is a legitimate thing to want and the
+    /// check already has every entry in hand.
+    pub selected_tag: Option<String>,
     /// Second click armed for the overwrite confirmation.
     ///
     /// Only ever consulted for a source checkout, where installing replaces the
@@ -104,6 +111,7 @@ impl UpdateState {
         self.progress = None;
         self.download = None;
         self.overwrite_armed = false;
+        self.selected_tag = None;
         self.start_check();
     }
 
@@ -123,6 +131,28 @@ impl UpdateState {
 
     pub fn downloading(&self) -> bool {
         self.download.is_some()
+    }
+
+    /// The release the action button acts on: the explicit pick, else the newest.
+    pub fn target(&self) -> Option<&ReleaseEntry> {
+        let result = self.result.as_ref()?;
+        match self.selected_tag.as_deref() {
+            Some(tag) => result.entry(tag),
+            None => result.releases.first(),
+        }
+    }
+
+    /// Pick a version from the list. Clears anything staged for the previous
+    /// pick — that download is for a different tag and must not be installed
+    /// under this one.
+    pub fn select(&mut self, tag: &str) {
+        if self.selected_tag.as_deref() == Some(tag) {
+            return;
+        }
+        self.selected_tag = Some(tag.to_string());
+        self.staged = None;
+        self.progress = None;
+        self.overwrite_armed = false;
     }
 }
 
@@ -255,10 +285,10 @@ fn poll_download(mut state: ResMut<UpdateState>) {
 /// Begin downloading the update the last check found.
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn start_download(state: &mut UpdateState) {
-    let (Some(result), Some(layout)) = (state.result.clone(), state.layout.clone()) else {
+    let (Some(entry), Some(layout)) = (state.target().cloned(), state.layout.clone()) else {
         return;
     };
-    match install::spawn_download(&result, &layout) {
+    match install::spawn_download(&entry, &layout) {
         Ok(handle) => {
             state.progress = Some((0, handle.total));
             state.download = Some(handle);

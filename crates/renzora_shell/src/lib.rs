@@ -132,7 +132,7 @@ impl Plugin for ShellPlugin {
                 ribbon_focus_rename,
                 ribbon_rename_commit,
                 content_dispatch,
-                (top_menu_open, top_menu_hover, top_menu_sync),
+                (top_menu_open, top_menu_hover, top_menu_sync, update_chip_click),
                 (play_btn_click, update_play_button, vr_active_overlay),
                 plugin_install::install_buttons,
                 palette_btn_click,
@@ -1645,6 +1645,12 @@ struct RibbonItem {
 /// The ribbon's "+" — adds a new empty workspace.
 #[derive(Component)]
 struct WorkspaceAddBtn;
+
+/// The top bar's "Update available" chip. Shown only while
+/// [`renzora::core::UpdateAvailable`] is present; opens the Software Update
+/// overlay.
+#[derive(Component)]
+struct UpdateChipBtn;
 
 /// Tags the ribbon strip + its `+` as a drop target for dock-tab drags: dropping
 /// a dragged panel here spawns a new workspace from it (see [`workspace_drop_to_new`]).
@@ -3762,7 +3768,14 @@ fn build_top_bar(commands: &mut Commands, font: &bevy::text::FontSource, fonts: 
     }
     commands.entity(window).add_children(&kids);
 
-    commands.entity(right).add_children(&[window]);
+    // ── "Update available" chip ──────────────────────────────────────────────
+    // Present only while `renzora_update`'s background check has something to
+    // offer; the resource is removed again when a later check disagrees, and the
+    // chip goes with it. Clicking opens the same overlay as Help ▸ Check for
+    // Updates — this is a shortcut to it, not a second way of doing it.
+    let update_chip = build_update_chip(commands, font);
+
+    commands.entity(right).add_children(&[update_chip, window]);
 
     commands.entity(bar).add_children(&[left, center, right]);
     bar
@@ -5180,6 +5193,74 @@ fn hamburger_menu_item(commands: &mut Commands) -> Entity {
     let icon = glyph(commands, "list", text_muted(), 15.0);
     commands.entity(item).add_child(icon);
     item
+}
+
+/// The top bar's "Update available" chip: an accent-tinted pill that appears
+/// when an engine update is waiting and opens the Software Update overlay.
+///
+/// Built unconditionally and hidden reactively rather than spawned on demand:
+/// the top bar is assembled once, and a `bind_display` costs nothing next to
+/// rebuilding the bar whenever a background check finishes.
+fn build_update_chip(commands: &mut Commands, font: &bevy::text::FontSource) -> Entity {
+    let chip = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(10.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+            Interaction::default(),
+            UpdateChipBtn,
+            renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
+            Name::new("update-chip"),
+        ))
+        .id();
+    renzora_ember::reactive::tracked::bind_display(commands, chip, |w| {
+        w.get_resource::<renzora::core::UpdateAvailable>().is_some()
+    });
+    renzora_ember::reactive::tracked::bind_bg(commands, chip, move |w| {
+        match w.get::<Interaction>(chip) {
+            Some(Interaction::Hovered) | Some(Interaction::Pressed) => {
+                Color::srgba(0.36, 0.65, 1.0, 0.34)
+            }
+            _ => Color::srgba(0.36, 0.65, 1.0, 0.20),
+        }
+    });
+    let ic = glyph(commands, "arrow-circle-up", text_primary(), 13.0);
+    commands.entity(ic).insert(bevy::ui::FocusPolicy::Pass);
+    let label = commands
+        .spawn((
+            Text::new(String::new()),
+            ui_font(font, 11.0),
+            TextColor(rgb(text_primary())),
+            bevy::ui::FocusPolicy::Pass,
+            bevy::text::TextLayout::no_wrap(),
+        ))
+        .id();
+    // Names the version, so the chip says what it is rather than only that it
+    // exists — the same reason the Help menu row does.
+    renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
+        match w.get_resource::<renzora::core::UpdateAvailable>() {
+            Some(u) => format!("{} {}", renzora::lang::t("menu.help.update_to"), u.0),
+            None => String::new(),
+        }
+    });
+    commands.entity(chip).add_children(&[ic, label]);
+    chip
+}
+
+/// Click the update chip → open the Software Update overlay.
+fn update_chip_click(
+    q: Query<&Interaction, (With<UpdateChipBtn>, Changed<Interaction>)>,
+    mut commands: Commands,
+) {
+    if q.iter().any(|i| *i == Interaction::Pressed) {
+        commands.insert_resource(renzora::core::UpdateRequested);
+    }
 }
 
 /// Spawn a top-menu dropdown anchored at `pos` and return its root.

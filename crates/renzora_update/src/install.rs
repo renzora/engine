@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-use crate::check::UpdateCheckResult;
+use crate::check::ReleaseEntry;
 
 const USER_AGENT: &str = "renzora-editor";
 /// An engine zip is 75–150 MB; the default request timeout is sized for API
@@ -147,26 +147,25 @@ pub struct DownloadHandle {
     pub outcome: Arc<Mutex<Option<Result<PathBuf, String>>>>,
 }
 
-/// Download the engine zip for this host, verify it, and extract it.
+/// Download the engine zip for one release, verify it, and extract it.
+///
+/// Takes the chosen [`ReleaseEntry`] rather than "the newest", because the
+/// dialog lets you pick a version — including going back to an older one.
 ///
 /// Returns immediately; poll [`DownloadHandle`].
-pub fn spawn_download(result: &UpdateCheckResult, layout: &InstallLayout) -> Result<DownloadHandle, String> {
-    let url = result
+pub fn spawn_download(entry: &ReleaseEntry, layout: &InstallLayout) -> Result<DownloadHandle, String> {
+    let url = entry
         .download_url
         .clone()
-        .ok_or("This release has no build for your platform.")?;
-    let tag = result
-        .latest_version
-        .clone()
-        .ok_or("Release has no tag")?;
-    let expected_sha = result.asset_sha256.clone();
-    let root = staging_root(&tag)
+        .ok_or("That release has no build for your platform.")?;
+    let expected_sha = entry.sha256.clone();
+    let root = staging_root(&entry.tag)
         .ok_or("No home directory to stage the update in (neither HOME nor USERPROFILE is set).")?;
     let kind = layout.kind.clone();
 
     let handle = DownloadHandle {
         downloaded: Arc::new(AtomicU64::new(0)),
-        total: result.asset_size,
+        total: entry.size,
         done: Arc::new(AtomicBool::new(false)),
         outcome: Arc::new(Mutex::new(None)),
     };

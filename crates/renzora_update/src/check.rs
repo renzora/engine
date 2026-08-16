@@ -46,6 +46,26 @@ impl UpdateChannel {
     }
 }
 
+/// One published version this host could install.
+#[derive(Clone, Debug)]
+pub struct ReleaseEntry {
+    pub tag: String,
+    pub is_nightly: bool,
+    pub notes: Option<String>,
+    pub url: String,
+    /// Download URL of the `<platform>.zip` engine asset for THIS host. `None`
+    /// when that release never built for this platform — the entry is still
+    /// listed, just not installable, which is more honest than hiding it.
+    pub download_url: Option<String>,
+    pub size: u64,
+    /// `sha256:<hex>` digest GitHub publishes for the asset, if it has one.
+    pub sha256: Option<String>,
+    /// Newer than the running build.
+    pub is_newer: bool,
+    /// This is the running build.
+    pub is_current: bool,
+}
+
 /// What a check found.
 #[derive(Clone, Debug)]
 pub struct UpdateCheckResult {
@@ -54,13 +74,21 @@ pub struct UpdateCheckResult {
     pub latest_version: Option<String>,
     pub release_url: Option<String>,
     pub release_notes: Option<String>,
-    /// Download URL of the `<platform>.zip` engine asset for THIS host.
-    pub download_url: Option<String>,
-    pub asset_name: Option<String>,
-    pub asset_size: u64,
-    /// `sha256:<hex>` digest GitHub publishes for the asset, if it has one.
-    pub asset_sha256: Option<String>,
+    /// Every version the channel allows, newest first.
+    ///
+    /// Kept in full rather than reduced to "the newest one" so the dialog can
+    /// offer a list and let you go *back* to a version — the check already has
+    /// the whole list in hand, and throwing it away only to fetch it again would
+    /// be worse.
+    pub releases: Vec<ReleaseEntry>,
     pub channel: UpdateChannel,
+}
+
+impl UpdateCheckResult {
+    /// Look one up by tag.
+    pub fn entry(&self, tag: &str) -> Option<&ReleaseEntry> {
+        self.releases.iter().find(|e| e.tag == tag)
+    }
 }
 
 #[derive(Deserialize)]
@@ -140,56 +168,57 @@ fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
         .json()
         .map_err(|e| format!("Failed to parse release list: {e}"))?;
 
-    // Pick the newest release the channel allows. Note the filter is on the
-    // PARSED TAG, not on GitHub's `prerelease` flag: the flag says how the
-    // release was published, the tag says what it is, and the tag is what the
-    // ordering rules are written against.
-    let newest = releases
+    // Everything the channel allows. Note the filter is on the PARSED TAG, not
+    // on GitHub's `prerelease` flag: the flag says how the release was
+    // published, the tag says what it is, and the tag is what the ordering rules
+    // are written against.
+    let allowed: Vec<(ParsedVersion, &GitHubRelease)> = releases
         .iter()
         .filter(|r| !r.draft)
         .filter_map(|r| ParsedVersion::parse(&r.tag_name).map(|v| (v, r)))
         .filter(|(v, _)| channel == UpdateChannel::Nightly || !v.is_nightly())
-        .max_by(|(a, _), (b, _)| a.cmp(b));
-
-    let Some((_, release)) = newest else {
-        return Ok(UpdateCheckResult {
-            update_available: false,
-            current_version: current,
-            latest_version: None,
-            release_url: None,
-            release_notes: None,
-            download_url: None,
-            asset_name: None,
-            asset_size: 0,
-            asset_sha256: None,
-            channel,
-        });
-    };
-
-    let asset = release.assets.iter().find(|a| a.name == asset_name);
+        .collect();
 
     // Compared as ParsedVersion, not as strings: a dev build has no tag of its
     // own and has to compare as Stage::Dev (see `current_version`).
-    let newer = match (ParsedVersion::parse(&release.tag_name), current_version()) {
-        (Some(found), Some(running)) => found.is_newer_than(&running),
-        _ => false,
-    };
+    let running = current_version();
 
+    let mut entries: Vec<(ParsedVersion, ReleaseEntry)> = allowed
+        .into_iter()
+        .map(|(v, r)| {
+            let asset = r.assets.iter().find(|a| a.name == asset_name);
+            let is_newer = running.as_ref().is_some_and(|c| v.is_newer_than(c));
+            let entry = ReleaseEntry {
+                is_nightly: v.is_nightly(),
+                is_current: r.tag_name == current,
+                is_newer,
+                tag: r.tag_name.clone(),
+                notes: r.body.clone(),
+                url: r.html_url.clone(),
+                download_url: asset.map(|a| a.browser_download_url.clone()),
+                size: asset.map(|a| a.size).unwrap_or(0),
+                sha256: asset.and_then(|a| {
+                    a.digest
+                        .as_ref()
+                        .and_then(|d| d.strip_prefix("sha256:"))
+                        .map(|h| h.to_ascii_lowercase())
+                }),
+            };
+            (v, entry)
+        })
+        .collect();
+    // Newest first — the order the list is read in.
+    entries.sort_by(|(a, _), (b, _)| b.cmp(a));
+    let releases: Vec<ReleaseEntry> = entries.into_iter().map(|(_, e)| e).collect();
+
+    let newest = releases.first();
     Ok(UpdateCheckResult {
-        update_available: newer,
+        update_available: newest.is_some_and(|e| e.is_newer),
         current_version: current,
-        latest_version: Some(release.tag_name.clone()),
-        release_url: Some(release.html_url.clone()),
-        release_notes: release.body.clone(),
-        download_url: asset.map(|a| a.browser_download_url.clone()),
-        asset_name: asset.map(|a| a.name.clone()),
-        asset_size: asset.map(|a| a.size).unwrap_or(0),
-        asset_sha256: asset.and_then(|a| {
-            a.digest
-                .as_ref()
-                .and_then(|d| d.strip_prefix("sha256:"))
-                .map(|h| h.to_ascii_lowercase())
-        }),
+        latest_version: newest.map(|e| e.tag.clone()),
+        release_url: newest.map(|e| e.url.clone()),
+        release_notes: newest.and_then(|e| e.notes.clone()),
+        releases,
         channel,
     })
 }
