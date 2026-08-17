@@ -5241,11 +5241,12 @@ fn build_update_chip(commands: &mut Commands, font: &bevy::text::FontSource) -> 
             bevy::text::TextLayout::no_wrap(),
         ))
         .id();
-    // Names the version, so the chip says what it is rather than only that it
-    // exists — the same reason the Help menu row does.
+    // Deliberately does not name the version: a bare tag in the top bar reads as
+    // the version you're *running*, not one you could move to. The overlay the
+    // chip opens spells out which release it is.
     renzora_ember::reactive::tracked::bind_text(commands, label, |w| {
         match w.get_resource::<renzora::core::UpdateAvailable>() {
-            Some(u) => format!("{} {}", renzora::lang::t("menu.help.update_to"), u.0),
+            Some(_) => renzora::lang::t("menu.help.update_new"),
             None => String::new(),
         }
     });

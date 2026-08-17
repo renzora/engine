@@ -1670,6 +1670,7 @@ version = "1.0"
 # ─── software update ───
 "menu.help.check_updates" = "Check for Updates…"
 "menu.help.update_to" = "Update to"
+"menu.help.update_new" = "New update available"
 "update.title" = "Software Update"
 "update.checking" = "Checking for updates…"
 "update.downloading" = "Downloading…"
