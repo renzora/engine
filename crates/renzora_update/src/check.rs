@@ -13,9 +13,15 @@ const USER_AGENT: &str = "renzora-editor";
 pub enum UpdateChannel {
     /// Published `r1-alpha*` releases only.
     Stable,
-    /// Nightlies **and** releases — a nightly user should still be moved onto a
-    /// version the day it ships, which the ordering in [`crate::version`] gives
-    /// for free (a release outranks its own nightlies).
+    /// Dated nightlies only.
+    ///
+    /// Deliberately NOT "nightlies and releases". It was that at first, on the
+    /// reasoning that a nightly user should be moved onto a version the day it
+    /// ships — but it made the list a mix of two things you chose between one
+    /// line above, which is confusing rather than helpful. Nightlies are cut
+    /// every day there are commits, so someone on this channel keeps moving
+    /// forward regardless; switching to Stable is one click when they want the
+    /// release.
     Nightly,
 }
 
@@ -56,6 +62,9 @@ pub struct ReleaseEntry {
     /// Download URL of the `<platform>.zip` engine asset for THIS host. `None`
     /// when that release never built for this platform — the entry is still
     /// listed, just not installable, which is more honest than hiding it.
+    /// Always `Some`. Entries whose release has no build for this platform are
+    /// dropped before the list is assembled — an option you cannot pick is
+    /// clutter, not information.
     pub download_url: Option<String>,
     pub size: u64,
     /// `sha256:<hex>` digest GitHub publishes for the asset, if it has one.
@@ -74,13 +83,20 @@ pub struct UpdateCheckResult {
     pub latest_version: Option<String>,
     pub release_url: Option<String>,
     pub release_notes: Option<String>,
-    /// Every version the channel allows, newest first.
+    /// Every version the channel allows **that has a build for this platform**,
+    /// newest first.
     ///
     /// Kept in full rather than reduced to "the newest one" so the dialog can
     /// offer a list and let you go *back* to a version — the check already has
     /// the whole list in hand, and throwing it away only to fetch it again would
     /// be worse.
     pub releases: Vec<ReleaseEntry>,
+    /// The channel had releases, but none of them built for this platform.
+    ///
+    /// Distinguished from "nothing newer" so the dialog does not report an empty
+    /// list as "up to date", which would be a lie of a specific and annoying
+    /// kind: there IS a newer engine, it just isn't for you.
+    pub no_platform_builds: bool,
     pub channel: UpdateChannel,
 }
 
@@ -176,17 +192,23 @@ fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
         .iter()
         .filter(|r| !r.draft)
         .filter_map(|r| ParsedVersion::parse(&r.tag_name).map(|v| (v, r)))
-        .filter(|(v, _)| channel == UpdateChannel::Nightly || !v.is_nightly())
+        .filter(|(v, _)| match channel {
+            UpdateChannel::Stable => !v.is_nightly(),
+            UpdateChannel::Nightly => v.is_nightly(),
+        })
         .collect();
 
     // Compared as ParsedVersion, not as strings: a dev build has no tag of its
     // own and has to compare as Stage::Dev (see `current_version`).
     let running = current_version();
 
+    let had_any = !allowed.is_empty();
+    // Only what this host can actually install. A release that never built for
+    // this platform is dropped rather than listed-and-disabled.
     let mut entries: Vec<(ParsedVersion, ReleaseEntry)> = allowed
         .into_iter()
-        .map(|(v, r)| {
-            let asset = r.assets.iter().find(|a| a.name == asset_name);
+        .filter_map(|(v, r)| {
+            let asset = r.assets.iter().find(|a| a.name == asset_name)?;
             let is_newer = running.as_ref().is_some_and(|c| v.is_newer_than(c));
             let entry = ReleaseEntry {
                 is_nightly: v.is_nightly(),
@@ -195,16 +217,15 @@ fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
                 tag: r.tag_name.clone(),
                 notes: r.body.clone(),
                 url: r.html_url.clone(),
-                download_url: asset.map(|a| a.browser_download_url.clone()),
-                size: asset.map(|a| a.size).unwrap_or(0),
-                sha256: asset.and_then(|a| {
-                    a.digest
-                        .as_ref()
-                        .and_then(|d| d.strip_prefix("sha256:"))
-                        .map(|h| h.to_ascii_lowercase())
-                }),
+                download_url: Some(asset.browser_download_url.clone()),
+                size: asset.size,
+                sha256: asset
+                    .digest
+                    .as_ref()
+                    .and_then(|d| d.strip_prefix("sha256:"))
+                    .map(|h| h.to_ascii_lowercase()),
             };
-            (v, entry)
+            Some((v, entry))
         })
         .collect();
     // Newest first — the order the list is read in.
@@ -213,6 +234,7 @@ fn perform_check(channel: UpdateChannel) -> Result<UpdateCheckResult, String> {
 
     let newest = releases.first();
     Ok(UpdateCheckResult {
+        no_platform_builds: had_any && releases.is_empty(),
         update_available: newest.is_some_and(|e| e.is_newer),
         current_version: current,
         latest_version: newest.map(|e| e.tag.clone()),

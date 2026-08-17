@@ -96,13 +96,18 @@ where
     });
 }
 
-/// Settled, checked, and nothing to install.
+/// Settled, checked, and genuinely nothing to install.
+///
+/// Excludes `no_platform_builds`: a green tick beside "No builds for your
+/// platform" would be reassuring about the wrong thing.
 fn up_to_date(w: &Rx<'_>) -> bool {
     w.get_resource::<UpdateState>().is_some_and(|s| {
         !s.checking
             && !s.downloading()
             && s.staged.is_none()
-            && s.result.as_ref().is_some_and(|r| !r.update_available)
+            && s.result
+                .as_ref()
+                .is_some_and(|r| !r.update_available && !r.no_platform_builds)
     })
 }
 
@@ -320,6 +325,9 @@ fn spawn_modal(commands: &mut Commands, fonts: &EmberFonts) {
             return renzora::lang::t("update.ready");
         }
         match s.result.as_ref() {
+            Some(r) if r.no_platform_builds => {
+                renzora::lang::t("update.no_platform_build")
+            }
             Some(r) if r.update_available => format!(
                 "{} {}",
                 renzora::lang::t("update.available"),
@@ -687,7 +695,7 @@ fn version_list_sig(s: &UpdateState) -> u64 {
     if let Some(r) = s.result.as_ref() {
         for e in &r.releases {
             feed(e.tag.as_bytes());
-            feed(&[e.is_current as u8, e.is_newer as u8, e.download_url.is_some() as u8]);
+            feed(&[e.is_current as u8, e.is_newer as u8]);
         }
     }
     feed(s.selected_tag.as_deref().unwrap_or("-").as_bytes());
@@ -712,7 +720,7 @@ fn rebuild_version_list(world: &mut World) {
     let Some(fonts) = world.get_resource::<EmberFonts>().cloned() else {
         return;
     };
-    let rows: Vec<(String, bool, bool, bool, bool)> = world
+    let rows: Vec<(String, bool, bool, bool)> = world
         .get_resource::<UpdateState>()
         .and_then(|s| {
             let selected = s.target().map(|e| e.tag.clone());
@@ -724,7 +732,6 @@ fn rebuild_version_list(world: &mut World) {
                             e.tag.clone(),
                             e.is_nightly,
                             e.is_current,
-                            e.download_url.is_some(),
                             selected.as_deref() == Some(e.tag.as_str()),
                         )
                     })
@@ -747,14 +754,13 @@ fn rebuild_version_list(world: &mut World) {
             commands.entity(e).try_despawn();
         }
         let mut kids = Vec::new();
-        for (tag, is_nightly, is_current, installable, selected) in rows {
+        for (tag, is_nightly, is_current, selected) in rows {
             kids.push(version_row(
                 &mut commands,
                 &fonts,
                 &tag,
                 is_nightly,
                 is_current,
-                installable,
                 selected,
             ));
         }
@@ -764,14 +770,12 @@ fn rebuild_version_list(world: &mut World) {
     queue.apply(world);
 }
 
-#[allow(clippy::too_many_arguments)]
 fn version_row(
     commands: &mut Commands,
     fonts: &EmberFonts,
     tag: &str,
     is_nightly: bool,
     is_current: bool,
-    installable: bool,
     selected: bool,
 ) -> Entity {
     let row = commands
@@ -808,11 +812,7 @@ fn version_row(
         .spawn((
             Text::new(tag.to_string()),
             ui_font(&fonts.ui, 12.0),
-            TextColor(rgb(if installable {
-                text_primary()
-            } else {
-                text_muted()
-            })),
+            TextColor(rgb(text_primary())),
             FocusPolicy::Pass,
             Node {
                 flex_grow: 1.0,
@@ -822,12 +822,10 @@ fn version_row(
         ))
         .id();
 
-    // One trailing note per row, in priority order: what you are running beats
-    // what you could install, which beats "there is no build for you".
+    // Every listed entry is installable now, so the only trailing note left is
+    // "this is what you are running".
     let note = if is_current {
         Some((renzora::lang::t("update.row.current"), accent()))
-    } else if !installable {
-        Some((renzora::lang::t("update.row.unavailable"), text_muted()))
     } else {
         None
     };
