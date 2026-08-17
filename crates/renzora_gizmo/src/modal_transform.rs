@@ -644,6 +644,7 @@ pub fn modal_transform_overlay_system(
     // the object (OverlayGizmoGroup's depth bias is toggled off by the
     // selection-boundary-on-top setting, which would let the object occlude it).
     mut top_gizmos: Gizmos<crate::TransformGizmoGroup>,
+    viewport_settings: Option<Res<ViewportSettings>>,
 ) {
     if !modal.active {
         return;
@@ -657,10 +658,27 @@ pub fn modal_transform_overlay_system(
             AxisConstraint::Y | AxisConstraint::PlaneXZ => Vec3::Y,
             _ => Vec3::Z,
         };
-        let angle = if let Some(deg) = modal.numeric_input.value() {
+        let raw_angle = if let Some(deg) = modal.numeric_input.value() {
             deg.to_radians()
         } else {
             (-modal.accumulated_delta.x + modal.accumulated_delta.y) * modal.sensitivity * 0.5
+        };
+        // Match the snap math in `apply_rotate` for the mouse-delta path. The
+        // typed-numeric path is intentionally NOT snapped here: `apply_rotate`
+        // returns early when `numeric_input.value()` is `Some(_)` and writes the
+        // typed value unsnapped, so the overlay must mirror that to keep the
+        // displayed angle equal to the applied angle.
+        let snap: SnapSettings = viewport_settings
+            .as_deref()
+            .map(|s| s.snap)
+            .unwrap_or_default();
+        let snap_enabled = snap.rotate_enabled && snap.rotate_snap > 0.0;
+        let angle = match (modal.numeric_input.value(), snap_enabled) {
+            (None, true) => {
+                let step = snap.rotate_snap.to_radians();
+                (raw_angle / step).round() * step
+            }
+            _ => raw_angle,
         };
         let radius = (crate::GIZMO_SIZE * gizmo_state.gizmo_scale * 0.7).max(0.01);
         let color = modal.axis_constraint.color();
