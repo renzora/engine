@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorOptions, PrimaryWindow};
 
 use renzora::core::keybindings::{EditorAction, KeyBindings};
-use renzora::core::viewport_types::ViewportState;
+use renzora::core::viewport_types::{SnapSettings, ViewportSettings, ViewportState};
 use renzora::core::InputFocusState;
 use renzora_editor_framework::{EditorCamera, EditorSelection, HideInHierarchy};
 
@@ -516,6 +516,7 @@ pub fn modal_transform_keyboard_system(
 pub fn modal_transform_apply_system(
     mut modal: ResMut<ModalTransformState>,
     viewport: Option<Res<ViewportState>>,
+    viewport_settings: Option<Res<ViewportSettings>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut transforms: Query<&mut Transform>,
     camera_query: Query<&GlobalTransform, With<EditorCamera>>,
@@ -523,6 +524,11 @@ pub fn modal_transform_apply_system(
     if !modal.active {
         return;
     }
+
+    let snap: SnapSettings = viewport_settings
+        .as_deref()
+        .map(|s| s.snap)
+        .unwrap_or_default();
 
     let Ok(mut window) = windows.single_mut() else {
         return;
@@ -596,13 +602,21 @@ pub fn modal_transform_apply_system(
 
         match mode {
             ModalTransformMode::Grab => {
-                apply_grab(&mut transform, &state, &modal, delta, cam_right, cam_up);
+                apply_grab(
+                    &mut transform,
+                    &state,
+                    &modal,
+                    delta,
+                    cam_right,
+                    cam_up,
+                    &snap,
+                );
             }
             ModalTransformMode::Rotate => {
-                apply_rotate(&mut transform, &state, &modal, delta);
+                apply_rotate(&mut transform, &state, &modal, delta, &snap);
             }
             ModalTransformMode::Scale => {
-                apply_scale(&mut transform, &state, &modal, current_cursor_pos);
+                apply_scale(&mut transform, &state, &modal, current_cursor_pos, &snap);
             }
         }
     }
@@ -643,7 +657,14 @@ pub fn modal_transform_overlay_system(
         let color = modal.axis_constraint.color();
         let rot = Quat::from_rotation_arc(Vec3::Z, normal);
         top_gizmos.circle(Isometry3d::new(modal.pivot_world, rot), radius, color);
-        crate::draw_rotation_pie(&mut top_gizmos, modal.pivot_world, normal, angle, radius, color);
+        crate::draw_rotation_pie(
+            &mut top_gizmos,
+            modal.pivot_world,
+            normal,
+            angle,
+            radius,
+            color,
+        );
         if let Ok(cam_gt) = camera.single() {
             crate::draw_angle_label(
                 &mut top_gizmos,
@@ -736,6 +757,7 @@ fn apply_grab(
     delta: Vec2,
     cam_right: Vec3,
     cam_up: Vec3,
+    snap: &SnapSettings,
 ) {
     // Numeric input: use value as distance along axis
     if let Some(value) = modal.numeric_input.value() {
@@ -797,11 +819,21 @@ fn apply_grab(
         }
     };
 
-    transform.translation = crate::transform_space::world_translation(
+    let new_local = crate::transform_space::world_translation(
         state.transform.translation,
         world_delta,
         &state.parent,
     );
+    transform.translation = if snap.translate_enabled && snap.translate_snap > 0.0 {
+        let step = snap.translate_snap;
+        Vec3::new(
+            (new_local.x / step).round() * step,
+            (new_local.y / step).round() * step,
+            (new_local.z / step).round() * step,
+        )
+    } else {
+        new_local
+    };
 }
 
 fn apply_rotate(
@@ -809,6 +841,7 @@ fn apply_rotate(
     state: &EntityStartState,
     modal: &ModalTransformState,
     delta: Vec2,
+    snap: &SnapSettings,
 ) {
     // Numeric input: degrees
     if let Some(degrees) = modal.numeric_input.value() {
@@ -832,7 +865,13 @@ fn apply_rotate(
         return;
     }
 
-    let angle = (-delta.x + delta.y) * modal.sensitivity * 0.5;
+    let raw_angle = (-delta.x + delta.y) * modal.sensitivity * 0.5;
+    let angle = if snap.rotate_enabled && snap.rotate_snap > 0.0 {
+        let step = snap.rotate_snap.to_radians();
+        (raw_angle / step).round() * step
+    } else {
+        raw_angle
+    };
 
     let rotation = match modal.axis_constraint {
         AxisConstraint::X | AxisConstraint::PlaneYZ => Quat::from_rotation_x(angle),
@@ -858,6 +897,7 @@ fn apply_scale(
     state: &EntityStartState,
     modal: &ModalTransformState,
     current_cursor: Vec2,
+    snap: &SnapSettings,
 ) {
     // Numeric input: explicit factor
     if let Some(factor) = modal.numeric_input.value() {
@@ -875,7 +915,7 @@ fn apply_scale(
     }
 
     // Distance-based scaling
-    let factor = if let Some(pivot) = modal.pivot_screen_pos {
+    let raw_factor = if let Some(pivot) = modal.pivot_screen_pos {
         let v0 = modal.initial_cursor_pos - pivot;
         let v = current_cursor - pivot;
         let initial_dist = v0.length();
@@ -887,6 +927,13 @@ fn apply_scale(
     } else {
         let dx = current_cursor.x - modal.initial_cursor_pos.x;
         1.0 + dx * modal.sensitivity * 0.1
+    };
+
+    let factor = if snap.scale_enabled && snap.scale_snap > 0.0 {
+        let step = snap.scale_snap;
+        ((raw_factor / step).round() * step).max(step)
+    } else {
+        raw_factor
     };
 
     let new_scale = state.transform.scale * axis_scale_vec(modal.axis_constraint, factor);
@@ -1101,12 +1148,12 @@ mod tests {
 
         let start = start_state(Transform::from_xyz(1.0, 2.0, 3.0));
         let mut transform = Transform::IDENTITY;
-        apply_grab(&mut transform, &start, &modal, Vec2::ZERO, Vec3::X, Vec3::Y);
+        apply_grab(&mut transform, &start, &modal, Vec2::ZERO, Vec3::X, Vec3::Y, &SnapSettings::default());
         assert_eq!(transform.translation, Vec3::new(1.0, 7.0, 3.0));
 
         // Negative value moves the other way.
         modal.numeric_input.toggle_negative();
-        apply_grab(&mut transform, &start, &modal, Vec2::ZERO, Vec3::X, Vec3::Y);
+        apply_grab(&mut transform, &start, &modal, Vec2::ZERO, Vec3::X, Vec3::Y, &SnapSettings::default());
         assert_eq!(transform.translation, Vec3::new(1.0, -3.0, 3.0));
     }
 
@@ -1123,6 +1170,7 @@ mod tests {
             Vec2::new(10.0, 20.0),
             Vec3::X,
             Vec3::Y,
+            &SnapSettings::default(),
         );
         let expected = Vec3::new(0.2, -0.4, 0.0); // (right*10 - up*20) * 0.02
         assert!((transform.translation - expected).length() < 1e-5);
@@ -1143,6 +1191,7 @@ mod tests {
             Vec2::new(10.0, 20.0),
             Vec3::X,
             Vec3::Y,
+            &SnapSettings::default(),
         );
         // The free-move delta would be (0.2, -0.4, 0.0); XZ plane drops Y.
         assert!((transform.translation - Vec3::new(0.2, 0.0, 0.0)).length() < 1e-5);
@@ -1163,6 +1212,7 @@ mod tests {
             Vec2::new(10.0, 20.0),
             Vec3::X,
             Vec3::Y,
+            &SnapSettings::default(),
         );
         // X projects fully onto cam_right: proj = dx = 10 → 10 * 0.02 along X.
         assert!((transform.translation - Vec3::new(0.2, 0.0, 0.0)).length() < 1e-5);
@@ -1179,7 +1229,7 @@ mod tests {
 
         let start = start_state(Transform::IDENTITY);
         let mut transform = Transform::IDENTITY;
-        apply_rotate(&mut transform, &start, &modal, Vec2::ZERO);
+        apply_rotate(&mut transform, &start, &modal, Vec2::ZERO, &SnapSettings::default());
         assert!(quat_approx_eq(
             transform.rotation,
             Quat::from_rotation_y(FRAC_PI_2)
@@ -1196,7 +1246,7 @@ mod tests {
         let initial = Quat::from_rotation_x(FRAC_PI_2);
         let start = start_state(Transform::from_rotation(initial));
         let mut transform = Transform::IDENTITY;
-        apply_rotate(&mut transform, &start, &modal, Vec2::ZERO);
+        apply_rotate(&mut transform, &start, &modal, Vec2::ZERO, &SnapSettings::default());
         // 90° + 90° about X = 180° about X — applied to start, not accumulated.
         assert!(quat_approx_eq(
             transform.rotation,
@@ -1212,7 +1262,7 @@ mod tests {
         };
         let start = start_state(Transform::IDENTITY);
         let mut transform = Transform::IDENTITY;
-        apply_rotate(&mut transform, &start, &modal, Vec2::new(10.0, 0.0));
+        apply_rotate(&mut transform, &start, &modal, Vec2::new(10.0, 0.0), &SnapSettings::default());
         // angle = (-dx + dy) * sensitivity * 0.5 = -0.05 about Z.
         assert!(quat_approx_eq(
             transform.rotation,
@@ -1229,12 +1279,12 @@ mod tests {
 
         let start = start_state(Transform::from_scale(Vec3::new(1.0, 2.0, 3.0)));
         let mut transform = Transform::IDENTITY;
-        apply_scale(&mut transform, &start, &modal, Vec2::ZERO);
+        apply_scale(&mut transform, &start, &modal, Vec2::ZERO, &SnapSettings::default());
         assert_eq!(transform.scale, Vec3::new(2.0, 4.0, 6.0));
 
         // Single-axis constraint scales only that component.
         modal.axis_constraint = AxisConstraint::X;
-        apply_scale(&mut transform, &start, &modal, Vec2::ZERO);
+        apply_scale(&mut transform, &start, &modal, Vec2::ZERO, &SnapSettings::default());
         assert_eq!(transform.scale, Vec3::new(2.0, 2.0, 3.0));
     }
 
@@ -1248,7 +1298,7 @@ mod tests {
         let start = start_state(Transform::from_scale(Vec3::ONE));
         let mut transform = Transform::IDENTITY;
         // Cursor now 20px from pivot → factor 2.
-        apply_scale(&mut transform, &start, &modal, Vec2::new(120.0, 100.0));
+        apply_scale(&mut transform, &start, &modal, Vec2::new(120.0, 100.0), &SnapSettings::default());
         assert!((transform.scale - Vec3::splat(2.0)).length() < 1e-5);
     }
 
@@ -1263,7 +1313,7 @@ mod tests {
         };
         let start = start_state(Transform::from_scale(Vec3::splat(3.0)));
         let mut transform = Transform::IDENTITY;
-        apply_scale(&mut transform, &start, &modal, Vec2::new(500.0, 100.0));
+        apply_scale(&mut transform, &start, &modal, Vec2::new(500.0, 100.0), &SnapSettings::default());
         assert_eq!(transform.scale, Vec3::splat(3.0));
     }
 
@@ -1277,7 +1327,7 @@ mod tests {
         };
         let start = start_state(Transform::from_scale(Vec3::ONE));
         let mut transform = Transform::IDENTITY;
-        apply_scale(&mut transform, &start, &modal, Vec2::new(150.0, 100.0));
+        apply_scale(&mut transform, &start, &modal, Vec2::new(150.0, 100.0), &SnapSettings::default());
         // factor = 1 + 50 * 0.01 * 0.1 = 1.05
         assert!((transform.scale - Vec3::splat(1.05)).length() < 1e-5);
     }
@@ -1286,9 +1336,18 @@ mod tests {
     fn axis_scale_vec_covers_all_constraints() {
         let f = 2.0;
         assert_eq!(axis_scale_vec(AxisConstraint::None, f), Vec3::splat(2.0));
-        assert_eq!(axis_scale_vec(AxisConstraint::X, f), Vec3::new(2.0, 1.0, 1.0));
-        assert_eq!(axis_scale_vec(AxisConstraint::Y, f), Vec3::new(1.0, 2.0, 1.0));
-        assert_eq!(axis_scale_vec(AxisConstraint::Z, f), Vec3::new(1.0, 1.0, 2.0));
+        assert_eq!(
+            axis_scale_vec(AxisConstraint::X, f),
+            Vec3::new(2.0, 1.0, 1.0)
+        );
+        assert_eq!(
+            axis_scale_vec(AxisConstraint::Y, f),
+            Vec3::new(1.0, 2.0, 1.0)
+        );
+        assert_eq!(
+            axis_scale_vec(AxisConstraint::Z, f),
+            Vec3::new(1.0, 1.0, 2.0)
+        );
         assert_eq!(
             axis_scale_vec(AxisConstraint::PlaneYZ, f),
             Vec3::new(1.0, 2.0, 2.0)
