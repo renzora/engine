@@ -451,13 +451,58 @@ fn decode_all(mut payload: &[u8]) -> Vec<CollabMsg> {
 mod tests {
     use super::*;
 
-    /// The envelope is the one place where the engine and the server must agree
-    /// byte for byte. A wrong endianness here would not fail loudly — it would
-    /// route a message to peer 50331648 instead of peer 3 and simply lose it.
+    // ── Golden vectors ──────────────────────────────────────────────────────
+    //
+    // The envelope is the one place where this crate and the *server* must
+    // agree byte for byte, and they are separate codebases in separate repos
+    // that are deployed independently. So both assert the same literal bytes:
+    // the server's copy is in `crates/api/src/collab.rs` in the website repo
+    // (`mod tests`, same constant names), and the layout is written up in
+    // `docs/r1-alpha7/platform-api/collab.md`.
+    //
+    // Literal bytes rather than `3u32.to_le_bytes()`, because a test phrased in
+    // terms of the implementation's own helper passes just as happily when the
+    // helper is wrong. The point is to pin the wire, so the wire is spelled out.
+
+    /// Peer 3, payload `b"hi"`.
+    const PEER_3_HI: &[u8] = &[0x03, 0x00, 0x00, 0x00, b'h', b'i'];
+    /// The host (peer 0), payload `b"hi"`.
+    const HOST_HI: &[u8] = &[0x00, 0x00, 0x00, 0x00, b'h', b'i'];
+    /// The broadcast target, payload `b"hi"`. Understood by the server; this
+    /// client does not send it yet (see the module docs).
+    const BROADCAST_HI: &[u8] = &[0xFF, 0xFF, 0xFF, 0xFF, b'h', b'i'];
+
+    #[test]
+    fn envelope_is_little_endian() {
+        assert_eq!(envelope(3, b"hi"), PEER_3_HI);
+        assert_eq!(envelope(HOST_PEER, b"hi"), HOST_HI);
+        assert_eq!(envelope(u32::MAX, b"hi"), BROADCAST_HI);
+
+        assert_eq!(unwrap_envelope(PEER_3_HI), Some((3, &b"hi"[..])));
+        assert_eq!(unwrap_envelope(HOST_HI), Some((HOST_PEER, &b"hi"[..])));
+        assert_eq!(unwrap_envelope(BROADCAST_HI), Some((u32::MAX, &b"hi"[..])));
+    }
+
+    /// The failure this pins down is silent: read the header big-endian and a
+    /// message for peer 3 is addressed to peer 50331648, which matches nobody
+    /// and is dropped without an error anywhere.
+    #[test]
+    fn big_endian_would_be_a_different_peer() {
+        assert_eq!(u32::from_be_bytes([0x03, 0x00, 0x00, 0x00]), 50_331_648);
+        assert_eq!(unwrap_envelope(PEER_3_HI).map(|(peer, _)| peer), Some(3));
+    }
+
+    /// A guest always addresses the host as peer 0, and that is the byte the
+    /// server expects to see in front of a guest's traffic.
+    #[test]
+    fn the_host_is_peer_zero() {
+        assert_eq!(HOST_PEER, 0);
+        assert_eq!(&envelope(HOST_PEER, b"")[..], &[0x00, 0x00, 0x00, 0x00]);
+    }
+
     #[test]
     fn envelope_round_trips() {
         let wrapped = envelope(7, b"payload");
-        assert_eq!(&wrapped[..4], &7u32.to_le_bytes());
         let (peer, payload) = unwrap_envelope(&wrapped).expect("well-formed");
         assert_eq!(peer, 7);
         assert_eq!(payload, b"payload");
@@ -497,5 +542,67 @@ mod tests {
     #[test]
     fn malformed_payloads_do_not_loop() {
         assert!(decode_all(b"not a frame at all").is_empty());
+    }
+
+    /// What the server does to a guest's message, restated here.
+    ///
+    /// Not a mock of the relay — a written-down assumption about it. If the
+    /// server ever stops rewriting the tag, or starts touching the payload, the
+    /// engine's expectation is at least stated somewhere a reader can check
+    /// against `crates/api/src/collab.rs` rather than having to infer it.
+    fn as_the_relay_would(from_guest: u32, sent: &[u8]) -> Vec<u8> {
+        let (_ignored_target, payload) = unwrap_envelope(sent).expect("well-formed");
+        envelope(from_guest, payload)
+    }
+
+    /// A message survives the whole path: encoded here, wrapped, passed through
+    /// the relay's rewrite, and decoded on the other side.
+    ///
+    /// This is the end the golden vectors cannot reach on their own. They prove
+    /// the header is the right four bytes; this proves the payload behind it is
+    /// still a frame this crate can read after the server has handled it.
+    #[test]
+    fn a_message_survives_the_relay_round_trip() {
+        let original = CollabMsg::EntityDespawn { ids: vec![11, 22, 33] };
+
+        // Guest side: encode, address the host.
+        let sent = envelope(HOST_PEER, &encode(&original).expect("encode"));
+        assert_eq!(&sent[..4], &[0x00, 0x00, 0x00, 0x00]);
+
+        // Server side: retag as coming from guest 4, payload untouched.
+        let relayed = as_the_relay_would(4, &sent);
+        assert_eq!(&relayed[..4], &[0x04, 0x00, 0x00, 0x00]);
+
+        // Host side: unwrap, and route by the peer the relay named.
+        let (peer, payload) = unwrap_envelope(&relayed).expect("well-formed");
+        assert_eq!(peer, 4);
+        let decoded = decode_all(payload);
+        assert_eq!(decoded.len(), 1);
+        match &decoded[0] {
+            CollabMsg::EntityDespawn { ids } => assert_eq!(ids, &vec![11, 22, 33]),
+            other => panic!("expected EntityDespawn, got {}", other.label()),
+        }
+    }
+
+    /// The payload is opaque to the relay, so a frame large enough to be split
+    /// across reads must come back byte-identical.
+    #[test]
+    fn a_large_payload_survives_the_round_trip() {
+        let original = CollabMsg::SceneReset {
+            bsn: "x".repeat(200_000),
+            ids: vec![(1, 2); 1000],
+        };
+        let encoded = encode(&original).expect("encode");
+        let relayed = as_the_relay_would(1, &envelope(HOST_PEER, &encoded));
+        let (_, payload) = unwrap_envelope(&relayed).expect("well-formed");
+        assert_eq!(payload, &encoded[..], "the relay must not touch the payload");
+
+        match &decode_all(payload)[0] {
+            CollabMsg::SceneReset { bsn, ids } => {
+                assert_eq!(bsn.len(), 200_000);
+                assert_eq!(ids.len(), 1000);
+            }
+            other => panic!("expected SceneReset, got {}", other.label()),
+        }
     }
 }

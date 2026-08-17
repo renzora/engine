@@ -134,6 +134,37 @@ forge traffic as another, and the host would have no way to tell them apart.
 
 Payloads must be at least 4 bytes and at most **32 MB**.
 
+### The byte layout, exactly
+
+This is the canonical statement of the header. The engine and the server are
+separate codebases in separate repositories, deployed independently, and each
+implements this on its own — so both assert these **same literal bytes** in their
+tests rather than trusting a shared description:
+
+| What | Bytes |
+|---|---|
+| Peer 3, payload `hi` | `03 00 00 00 68 69` |
+| The host (peer 0), payload `hi` | `00 00 00 00 68 69` |
+| Broadcast, payload `hi` | `FF FF FF FF 68 69` |
+| Peer 1, empty payload | `01 00 00 00` |
+
+Little-endian, four bytes, payload immediately after. An empty payload is valid.
+
+The reason this is written down to the byte rather than left as "a u32": getting
+the endianness wrong does not fail loudly. A message for peer 3 read big-endian
+addresses peer `50331648`, which matches nobody, so it is dropped — and the only
+symptom is a collaborator whose edits silently never arrive.
+
+Where the tests live:
+
+- Server — `crates/api/src/collab.rs`, `mod tests` (website repo). Also drives
+  two real WebSocket clients through a real relay to check routing, guest-tag
+  rewriting, and that guests never see each other.
+- Engine — `crates/renzora_collab/src/relay.rs`, `mod tests`.
+
+Both use the same constant names (`PEER_3_HI`, `HOST_HI`, `BROADCAST_HI`), so a
+change on one side that is not mirrored is easy to spot.
+
 ### Control frames
 
 Relay control travels as WebSocket **text** frames carrying JSON, so it can never
