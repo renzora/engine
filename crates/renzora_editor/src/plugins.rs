@@ -29,6 +29,7 @@ pub(crate) fn add_editor_plugins(app: &mut App) {
     app.add_plugins(renzora_camera::CameraPlugin::default());
     app.add_plugins(renzora_clouds_editor::CloudsEditorPlugin::default());
     app.add_plugins(renzora_code_editor::CodeEditorPlugin::default());
+    app.add_plugins(renzora_collab::CollabPlugin::default());
     app.add_plugins(renzora_command_palette::CommandPalettePlugin::default());
     app.add_plugins(renzora_console::ConsolePlugin::default());
     app.add_plugins(renzora_context_menu::ContextMenuPlugin::default());

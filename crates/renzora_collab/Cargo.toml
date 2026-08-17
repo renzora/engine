@@ -1,0 +1,35 @@
+[package]
+name = "renzora_collab"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+# The scene snapshot/apply primitives the whole sync is built on.
+renzora_engine = { path = "../renzora_engine" }
+# bevy_ui-native panel content.
+renzora_ember = { path = "../renzora_ember" }
+# Creating and looking up relay rooms is ordinary REST against renzora.com.
+renzora_net = { path = "../renzora_net" }
+renzora_auth = { path = "../renzora_auth" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+
+# Native-only: the transport is a std `TcpStream` on worker threads, neither of
+# which exists on wasm. The editor's wasm port has no story for hosting a socket
+# anyway — a browser tab can only ever be a guest, and only over the relay that
+# `Transport` is shaped to accept later.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bincode = { version = "2", features = ["serde"] }
+crossbeam-channel = "0.5"
+# The relay transport speaks WebSocket to renzora.com. Same pin as
+# `renzora_social`'s live socket, deliberately: two different rustls crypto
+# providers in one process makes rustls panic on first use, so both must ask for
+# ring. See `relay::ensure_crypto_provider`.
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+
+[lints]
+workspace = true

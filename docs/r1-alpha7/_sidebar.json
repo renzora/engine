@@ -22,6 +22,7 @@
             { "slug": "editor/scenes", "title": "Scenes & Hierarchy" },
             { "slug": "editor/panels-windows", "title": "Panels & Windows" },
             { "slug": "editor/community", "title": "Community & Hub" },
+            { "slug": "editor/collaboration", "title": "Collaboration" },
             { "slug": "editor/inspector", "title": "Inspector" },
             { "slug": "editor/viewport", "title": "Viewport & Camera" },
             { "slug": "editor/vr", "title": "VR Preview" },
@@ -126,6 +127,7 @@
             { "slug": "editor-dev/theming", "title": "Theming System" },
             { "slug": "editor-dev/inspector-fields", "title": "Custom Inspector Fields" },
             { "slug": "editor-dev/undo", "title": "Making Edits Undoable" },
+            { "slug": "editor-dev/collaboration", "title": "Collaborative Editing" },
             { "slug": "editor-dev/profiling", "title": "Profiling with Tracy" }
           ]
         },
@@ -189,6 +191,7 @@
             { "slug": "platform-api/game-services", "title": "Game Services API" },
             { "slug": "platform-api/credits", "title": "Credits API" },
             { "slug": "platform-api/websocket", "title": "WebSocket API" },
+            { "slug": "platform-api/collab", "title": "Collaboration Relay" },
             { "slug": "platform-api/messaging", "title": "Messaging API" },
             { "slug": "platform-api/feed", "title": "Feed API" }
           ]

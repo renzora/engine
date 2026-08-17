@@ -253,6 +253,7 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 # entry here pointing at a directory that no longer exists stops cargo
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
+renzora_collab = { path = "../renzora_collab" }
 renzora_update = { path = "../renzora_update" }
 # ── end generated ──
 [lints]

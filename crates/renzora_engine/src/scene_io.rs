@@ -22,7 +22,7 @@ use renzora::{
 #[cfg(feature = "render_3d")]
 use renzora::{MeshColor, MeshPrimitive, ShapeRegistry};
 use renzora_lighting::Sun;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
 /// Chainable stand-in for the two `bevy_ui` camera-target denies.
@@ -211,7 +211,12 @@ pub struct SceneLoadedWithSkippedTypes {
 /// pass the direct `Without<HideInHierarchy>` save filter and get serialized into
 /// the scene, where on reload they paint full-window over the editor (blank) and
 /// the game (black). Mirrors the ancestor walk the scene-clear despawn path uses.
-fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
+///
+/// Public because anything that decides "is this entity part of the *document*?"
+/// must answer it the same way a save does. `renzora_collab` asks per replication
+/// tick; a divergence there would mean a peer receiving editor chrome as scene
+/// content, which is exactly the failure this walk exists to prevent.
+pub fn has_hidden_ancestor(world: &World, mut e: Entity) -> bool {
     while let Some(parent) = world.get::<ChildOf>(e).map(|c| c.parent()) {
         if world.get::<HideInHierarchy>(parent).is_some() {
             return true;
@@ -695,6 +700,26 @@ pub fn load_scene_from_string(world: &mut World, ron: &str) {
 /// children are rebuilt by `rehydrate_mesh_instances` on restore). Returns `None`
 /// if nothing serializable was captured.
 pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<String> {
+    snapshot_entities(world, roots, Descend::Subtree)
+}
+
+/// Whether a snapshot follows the hierarchy down from the entities it is given.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Descend {
+    /// Include every descendant. What a delete-undo needs: deleting a parent
+    /// took its children with it, so restoring it must bring them back.
+    Subtree,
+    /// Include exactly the entities listed and nothing else.
+    ///
+    /// This is for incremental replication, where the set is already "everything
+    /// that changed". Descending there would be actively wrong at scale: nudging
+    /// a tilemap layer would re-send all of its thousands of tile children
+    /// several times a second because their *parent* moved.
+    ExactSet,
+}
+
+/// [`snapshot_entity_subtrees`], with control over whether children come too.
+pub fn snapshot_entities(world: &mut World, roots: &[Entity], descend: Descend) -> Option<String> {
     let type_registry = world.resource::<AppTypeRegistry>().clone();
 
     let mut all: Vec<Entity> = Vec::new();
@@ -708,6 +733,9 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
             continue;
         }
         all.push(e);
+        if descend == Descend::ExactSet {
+            continue;
+        }
         // Don't descend into gltf-owned runtime subtrees (rehydrated on restore).
         if world.get::<MeshInstanceData>(e).is_some() {
             continue;
@@ -768,11 +796,56 @@ pub fn snapshot_entity_subtrees(world: &mut World, roots: &[Entity]) -> Option<S
     BsnSerializer.serialize(&scene, &registry).ok()
 }
 
+/// How an entity the snapshot *references* but does not *contain* — the parent
+/// of a restored root — is resolved against this world.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExternalParents {
+    /// The snapshot's ids are this world's ids, so a live entity bearing the
+    /// same id **is** the parent. True for undo, where the snapshot was taken
+    /// from this very world moments ago.
+    Identity,
+    /// The snapshot's ids come from another world and mean nothing here; only
+    /// the caller's seed may resolve them. True for a collaborator's snapshot,
+    /// where an id that happens to be live locally is pure coincidence and
+    /// honouring it would reparent the entity onto an unrelated object.
+    MappedOnly,
+}
+
 /// Respawn entities from a [`snapshot_entity_subtrees`] string, returning the
 /// old→new entity id map (so a delete-undo command can find the restored roots).
 pub fn spawn_entities_from_snapshot(
     world: &mut World,
     ron: &str,
+) -> bevy::ecs::entity::EntityHashMap<Entity> {
+    apply_entity_snapshot(
+        world,
+        ron,
+        &bevy::ecs::entity::EntityHashMap::default(),
+        ExternalParents::Identity,
+    )
+}
+
+/// Write a [`snapshot_entity_subtrees`] string into `world`, **patching the
+/// entities named in `seed` in place** and spawning the rest.
+///
+/// The seed is what separates this from a plain restore. `write_to_world` remaps
+/// every entity reference through the map it is handed, and an id already
+/// present in that map resolves to the mapped entity instead of a fresh one — so
+/// pre-seeding `snapshot entity → local entity` makes the write land on the
+/// entity that is already there. That is the whole mechanism behind live
+/// co-editing: a peer's changed entity arrives as a snapshot and is applied onto
+/// the local copy, keeping its identity, its children, and anything holding a
+/// reference to it.
+///
+/// **It adds and overwrites; it does not remove.** A component that vanished on
+/// the sender is simply absent from the snapshot, and absent means "unchanged"
+/// here. Callers that need removals to propagate must diff the component sets
+/// themselves and remove the leftovers — `renzora_collab` does exactly that.
+pub fn apply_entity_snapshot(
+    world: &mut World,
+    ron: &str,
+    seed: &bevy::ecs::entity::EntityHashMap<Entity>,
+    external: ExternalParents,
 ) -> bevy::ecs::entity::EntityHashMap<Entity> {
     let mut entity_map = bevy::ecs::entity::EntityHashMap::default();
     if ron.trim().is_empty() {
@@ -781,10 +854,17 @@ pub fn spawn_entities_from_snapshot(
     let (scene, _skipped) = match deserialize_scene_lossy(world, ron) {
         Ok(pair) => pair,
         Err(e) => {
-            error!("[undo] failed to deserialize entity snapshot: {}", e);
+            error!("failed to deserialize entity snapshot: {}", e);
             return entity_map;
         }
     };
+
+    // Entities the caller has already matched to local ones — patch, don't spawn.
+    for (&from, &to) in seed.iter() {
+        if world.get_entity(to).is_ok() {
+            entity_map.insert(from, to);
+        }
+    }
 
     // A snapshot keeps each entity's `ChildOf`, but the parent of a deleted
     // *root* lives outside the snapshot, so its id is absent from `entity_map`.
@@ -797,43 +877,65 @@ pub fn spawn_entities_from_snapshot(
     // straight off its own `ChildOf` links — not the whole world. Snapshot-
     // internal entities are deliberately left unseeded: they still receive fresh
     // ids, so the links between them follow the remap.
-    let snapshot_ids: bevy::ecs::entity::EntityHashSet =
-        scene.entities.iter().map(|e| e.entity).collect();
-    for dynamic_entity in &scene.entities {
-        for component in &dynamic_entity.components {
-            let Some(child_of) = ChildOf::from_reflect(component.as_partial_reflect()) else {
-                continue;
-            };
-            let parent = child_of.parent();
-            if !snapshot_ids.contains(&parent) && world.get_entity(parent).is_ok() {
-                entity_map.insert(parent, parent);
+    if external == ExternalParents::Identity {
+        let snapshot_ids: bevy::ecs::entity::EntityHashSet =
+            scene.entities.iter().map(|e| e.entity).collect();
+        for dynamic_entity in &scene.entities {
+            for component in &dynamic_entity.components {
+                let Some(child_of) = ChildOf::from_reflect(component.as_partial_reflect()) else {
+                    continue;
+                };
+                let parent = child_of.parent();
+                if !snapshot_ids.contains(&parent)
+                    && !entity_map.contains_key(&parent)
+                    && world.get_entity(parent).is_ok()
+                {
+                    entity_map.insert(parent, parent);
+                }
             }
         }
     }
 
+    // Parent links as they stand *before* the write, for the entities being
+    // patched in place. Compared afterwards so an unchanged link is left alone —
+    // see the re-insert below for why touching it is not free.
+    let parents_before: Vec<(Entity, Option<Entity>)> = entity_map
+        .values()
+        .map(|&e| (e, world.get::<ChildOf>(e).map(|c| c.parent())))
+        .collect();
+    let parents_before: HashMap<Entity, Option<Entity>> = parents_before.into_iter().collect();
+
     if let Err(e) = scene.write_to_world(world, &mut entity_map) {
-        error!("[undo] failed to restore entity snapshot: {}", e);
+        error!("failed to write entity snapshot: {}", e);
         return entity_map;
     }
 
     // Narrow the returned map to the snapshot's own old->new pairs; the identity
-    // seeds above are scaffolding for the remap, not results. The sole caller
-    // (`DeleteEntitiesCmd::undo`) only looks up restored roots.
+    // seeds above are scaffolding for the remap, not results. Callers only look
+    // up entities the snapshot actually described.
     let restored: bevy::ecs::entity::EntityHashMap<Entity> = scene
         .entities
         .iter()
         .filter_map(|e| entity_map.get(&e.entity).map(|new| (e.entity, *new)))
         .collect();
 
-    // Re-insert ChildOf so hierarchy hooks fire (same as load_scene_from_string).
+    // Re-insert ChildOf so hierarchy hooks fire (same as load_scene_from_string):
+    // `write_to_world` writes the component reflectively, which does not run the
+    // relationship hook that maintains the parent's `Children`.
+    //
+    // Only where the link actually changed, though. A live sync applies snapshots
+    // onto existing entities many times a second, and an unconditional
+    // remove+insert would rewrite `Children` on every parent every tick — churning
+    // change detection for every system that watches the hierarchy, for links that
+    // are already correct.
     let children_with_parents: Vec<(Entity, Entity)> = restored
         .values()
         .filter_map(|&entity| {
-            world
-                .get_entity(entity)
-                .ok()?
-                .get::<ChildOf>()
-                .map(|c| (entity, c.parent()))
+            let parent = world.get_entity(entity).ok()?.get::<ChildOf>()?.parent();
+            match parents_before.get(&entity) {
+                Some(&Some(before)) if before == parent => None,
+                _ => Some((entity, parent)),
+            }
         })
         .collect();
     for (child, parent) in children_with_parents {
