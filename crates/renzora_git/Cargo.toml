@@ -1,0 +1,24 @@
+[package]
+name = "renzora_git"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false, features = ["editor"] }
+renzora_ember = { path = "../renzora_ember" }
+
+# Native-only, for the same reason `renzora_update` splits its deps out: every
+# operation here is `Command::new("git")`, and a browser tab has no process to
+# spawn. On wasm the plugin still exists (the generated plugin list names it
+# unconditionally) but installs nothing.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Reloading the open scene after a checkout/pull rewrites it on disk.
+renzora_engine = { path = "../renzora_engine" }
+# `EditorCommands`, for deferring `&mut World` work out of a UI system.
+renzora_editor_framework = { path = "../renzora_editor_framework" }
+# `Toasts` (operation results) + `DocumentTabState` (which tab to invalidate).
+renzora_ui = { path = "../renzora_ui" }
+
+[lints]
+workspace = true

@@ -34,6 +34,7 @@
             { "slug": "editor/particles", "title": "Particles & VFX" },
             { "slug": "editor/audio", "title": "Audio" },
             { "slug": "editor/terminal", "title": "Terminal" },
+            { "slug": "editor/version-control", "title": "Version Control (Git)" },
             { "slug": "editor/undo-redo", "title": "Undo & Redo" },
             { "slug": "editor/shortcuts", "title": "Keyboard Shortcuts" }
           ]
