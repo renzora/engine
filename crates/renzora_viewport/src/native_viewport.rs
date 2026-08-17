@@ -148,6 +148,12 @@ fn build_viewport(commands: &mut Commands, fonts: &EmberFonts, index: usize) -> 
     if index == 0 {
         let ruler = crate::native_height_ruler::build(commands, fonts);
         commands.entity(content).add_child(ruler);
+
+        // Tool shelf, left edge — the two-column brush palette. Primary slot
+        // only, for the same reason as the ruler: it drives the one shared
+        // ActiveTool, and four copies of a palette would all fight over it.
+        let shelf = crate::native_tool_shelf::build(commands, fonts);
+        commands.entity(content).add_child(shelf);
     }
 
     // The primary viewport (slot 0) owns the shared header + the UI editor; the

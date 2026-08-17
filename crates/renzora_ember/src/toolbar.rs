@@ -86,3 +86,49 @@ pub fn build_viewport_top_strip(commands: &mut Commands, fonts: &EmberFonts) -> 
         .unwrap_or_default();
     builders.iter().map(|b| b(commands, fonts)).collect()
 }
+
+/// Groups spliced *into* the in-viewport tool strip, alongside the built-in
+/// ones (tools, view controls, Play). Unlike [`register_viewport_tool_trailing`]
+/// these are full arrangement groups: each carries a stable key, so the user can
+/// drag it to a new position and the position is remembered.
+///
+/// This is how a crate the viewport can't depend on mounts a context bar — the
+/// terrain brush settings are the first user. The strip already wraps, so a wide
+/// group moves to a second line rather than overflowing.
+static VIEWPORT_TOOL_GROUPS: OnceLock<Mutex<Vec<(&'static str, ToolbarBuilder)>>> = OnceLock::new();
+
+fn viewport_tool_groups() -> &'static Mutex<Vec<(&'static str, ToolbarBuilder)>> {
+    VIEWPORT_TOOL_GROUPS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Add an arrangeable group to the primary in-viewport tool strip. `key` is the
+/// stable identifier the group's saved position is keyed by — keep it constant
+/// across releases or users' toolbars will reset.
+///
+/// The builder should hide its own root (a `bind_display` on the group) when the
+/// group isn't relevant; an always-visible group would take space in every
+/// context.
+pub fn register_viewport_tool_group<F>(key: &'static str, build: F)
+where
+    F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static,
+{
+    if let Ok(mut items) = viewport_tool_groups().lock() {
+        items.push((key, Arc::new(build)));
+    }
+}
+
+/// Build everything registered via [`register_viewport_tool_group`], paired with
+/// each group's arrangement key.
+pub fn build_viewport_tool_groups(
+    commands: &mut Commands,
+    fonts: &EmberFonts,
+) -> Vec<(Entity, &'static str)> {
+    let builders: Vec<(&'static str, ToolbarBuilder)> = viewport_tool_groups()
+        .lock()
+        .map(|items| items.clone())
+        .unwrap_or_default();
+    builders
+        .iter()
+        .map(|(key, b)| (b(commands, fonts), *key))
+        .collect()
+}

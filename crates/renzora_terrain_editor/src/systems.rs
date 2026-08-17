@@ -16,6 +16,51 @@ use renzora_terrain::painter::{PaintLayer, Painter};
 use renzora_terrain::sculpt;
 use renzora_terrain::undo::TerrainUndoEntry;
 
+// ── Viewport ray ─────────────────────────────────────────────────────────────
+
+/// The world-space ray under the cursor, or `None` if the cursor isn't over the
+/// viewport (or there's nothing to cast from).
+///
+/// Every terrain tool needs this and they all need it identically, so it lives
+/// here rather than being copied per tool. The one subtle step is the last:
+/// the cursor arrives in *window* pixels, but the viewport is a panel that may
+/// be rendering at Half or Quarter resolution, so the position has to be
+/// rescaled into the render target's own pixels before `viewport_to_world`. Get
+/// that wrong and the brush drifts further from the cursor the further you are
+/// from the panel's top-left corner — which is exactly the bug that keeps coming
+/// back when someone re-derives this inline.
+pub fn viewport_cursor_ray(
+    viewport: &ViewportState,
+    window_query: &Query<&Window, With<PrimaryWindow>>,
+    camera_query: &Query<(&Camera, &GlobalTransform), With<EditorCamera>>,
+) -> Option<Ray3d> {
+    if !viewport.hovered {
+        return None;
+    }
+    let window = window_query.single().ok()?;
+    let cursor_pos = window.cursor_position()?;
+
+    let vp_pos = viewport.screen_position;
+    let vp_size = viewport.screen_size;
+    if cursor_pos.x < vp_pos.x
+        || cursor_pos.y < vp_pos.y
+        || cursor_pos.x > vp_pos.x + vp_size.x
+        || cursor_pos.y > vp_pos.y + vp_size.y
+    {
+        return None;
+    }
+    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
+        return None;
+    }
+
+    let (camera, cam_transform) = camera_query.iter().next()?;
+    let local_pos = Vec2::new(
+        (cursor_pos.x - vp_pos.x) / vp_size.x * viewport.current_size.x as f32,
+        (cursor_pos.y - vp_pos.y) / vp_size.y * viewport.current_size.y as f32,
+    );
+    camera.viewport_to_world(cam_transform, local_pos).ok()
+}
+
 // ── Height sampling ──────────────────────────────────────────────────────────
 
 /// Get terrain height at terrain-local coordinates (0..total_width, 0..total_depth).
@@ -142,49 +187,13 @@ pub fn terrain_sculpt_hover_system(
 ) {
     sculpt_state.brush_visible = false;
 
-    if !viewport.hovered {
+    let Some(ray) = viewport_cursor_ray(&viewport, &window_query, &camera_query) else {
         sculpt_state.hover_position = None;
-        sculpt_state.active_terrain = None;
-        return;
-    }
-
-    let Ok(window) = window_query.single() else {
-        return;
-    };
-    let Some(cursor_pos) = window.cursor_position() else {
-        sculpt_state.hover_position = None;
-        return;
-    };
-
-    // Check viewport bounds
-    let vp_pos = viewport.screen_position;
-    let vp_size = viewport.screen_size;
-    if cursor_pos.x < vp_pos.x
-        || cursor_pos.y < vp_pos.y
-        || cursor_pos.x > vp_pos.x + vp_size.x
-        || cursor_pos.y > vp_pos.y + vp_size.y
-    {
-        sculpt_state.hover_position = None;
-        return;
-    }
-
-    let Some((camera, cam_transform)) = camera_query.iter().next() else {
-        sculpt_state.hover_position = None;
-        return;
-    };
-
-    // Viewport-local cursor mapped into render-target pixels (the target may be
-    // smaller than the panel at Half / Quarter resolution).
-    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
-        sculpt_state.hover_position = None;
-        return;
-    }
-    let local_pos = Vec2::new(
-        (cursor_pos.x - vp_pos.x) / vp_size.x * viewport.current_size.x as f32,
-        (cursor_pos.y - vp_pos.y) / vp_size.y * viewport.current_size.y as f32,
-    );
-    let Ok(ray) = camera.viewport_to_world(cam_transform, local_pos) else {
-        sculpt_state.hover_position = None;
+        // Only drop the active terrain when the cursor has actually left the
+        // viewport; a momentarily missing ray inside it shouldn't end the stroke.
+        if !viewport.hovered {
+            sculpt_state.active_terrain = None;
+        }
         return;
     };
 
@@ -589,46 +598,11 @@ pub fn terrain_paint_hover_system(
 ) {
     paint_state.brush_visible = false;
 
-    if !viewport.hovered {
+    let Some(ray) = viewport_cursor_ray(&viewport, &window_query, &camera_query) else {
         paint_state.hover_position = None;
-        paint_state.active_entity = None;
-        return;
-    }
-
-    let Ok(window) = window_query.single() else {
-        return;
-    };
-    let Some(cursor_pos) = window.cursor_position() else {
-        paint_state.hover_position = None;
-        return;
-    };
-
-    let vp_pos = viewport.screen_position;
-    let vp_size = viewport.screen_size;
-    if cursor_pos.x < vp_pos.x
-        || cursor_pos.y < vp_pos.y
-        || cursor_pos.x > vp_pos.x + vp_size.x
-        || cursor_pos.y > vp_pos.y + vp_size.y
-    {
-        paint_state.hover_position = None;
-        return;
-    }
-
-    let Some((camera, cam_transform)) = camera_query.iter().next() else {
-        paint_state.hover_position = None;
-        return;
-    };
-
-    if vp_size.x <= 0.0 || vp_size.y <= 0.0 {
-        paint_state.hover_position = None;
-        return;
-    }
-    let local_pos = Vec2::new(
-        (cursor_pos.x - vp_pos.x) / vp_size.x * viewport.current_size.x as f32,
-        (cursor_pos.y - vp_pos.y) / vp_size.y * viewport.current_size.y as f32,
-    );
-    let Ok(ray) = camera.viewport_to_world(cam_transform, local_pos) else {
-        paint_state.hover_position = None;
+        if !viewport.hovered {
+            paint_state.active_entity = None;
+        }
         return;
     };
 

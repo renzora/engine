@@ -38,7 +38,17 @@ There's also a small button cluster on the right edge of each viewport for **Pan
 
 While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Grid and Scene Icons circles that used to sit under them are gone: both already have switches in the toolbar's Display and Gizmos dropdowns, and in *Settings → Viewport*.)
 
-Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain tools, and any tools plugins add: draw box, draw polyline, tilemap paint, …), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. It hides during play mode, all except Play, which becomes Stop and stays where it is.
+Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain tools, and any tools plugins add: draw box, draw polyline, tilemap paint, …), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. Context bars join the row too — the terrain brush's size, strength and falloff appear here while a terrain brush is in hand — and drag to a new position like any other group. It hides during play mode, all except Play, which becomes Stop and stays where it is.
+
+## The tool shelf
+
+Down the **left edge of the viewport** sits the **tool shelf**: a two-column palette of icon buttons, the shape image editors use for their brushes. It appears only when something has brushes to offer — pick up the terrain sculpt tool and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes — and collapses completely the rest of the time, so it costs nothing in an ordinary scene.
+
+The shelf exists because the top strip is the wrong shape for a palette. A handful of modes fits across it; seventeen brushes wrap it into a second row and push everything else down, and a row of seventeen identical squares is hard to hunt through. Down the left edge there is nothing competing for the space, and two columns keeps the palette a compact block instead of a ribbon running off the bottom of the view.
+
+Clicking a brush never reaches the scene behind it — the shelf blocks the pointer, so a click on a tool can't also select an object or start a box-select.
+
+Plugins add to it the same way they add to the top strip: register a `ToolEntry` in a `ToolSection::Shelf(group)` section. See *Extending → Plugins*.
 
 ## Different views of your scene
 

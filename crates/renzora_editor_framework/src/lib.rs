@@ -233,6 +233,11 @@ pub enum ActiveTool {
     TerrainSculpt,
     TerrainPaint,
     FoliagePaint,
+    /// Grow/shrink the terrain's chunk grid by clicking ghost tiles in the
+    /// scene. Deliberately *not* one of [`ActiveTool::is_terrain`]'s brush
+    /// tools: it edits the grid, never the heightmap, so the undo-stroke
+    /// systems that record height edits must stay disengaged while it's on.
+    TerrainRegion,
     /// No built-in tool active. Plugins that own their own input mode (mesh
     /// draw, brush tools, etc.) set this so the gizmo + select-click systems
     /// disengage while the plugin is driving.
@@ -251,15 +256,32 @@ impl ActiveTool {
         }
     }
 
+    /// A terrain *brush* is active — the tools that write heights or splat
+    /// weights. Gates the undo-stroke capture, so [`ActiveTool::TerrainRegion`]
+    /// is excluded on purpose (it resizes the grid, it doesn't paint).
     pub fn is_terrain(&self) -> bool {
         matches!(self, Self::TerrainSculpt | Self::TerrainPaint)
     }
 
+    /// A brush that paints onto a terrain — heights, splat weights or foliage.
+    ///
+    /// These are the tools that take over the scroll wheel to size their brush,
+    /// so the camera checks this before treating a scroll as dolly-zoom. Keep
+    /// [`ActiveTool::TerrainRegion`] out of it: it has no radius to size, and
+    /// including it would leave the wheel doing nothing at all while that tool
+    /// is active.
     pub fn is_terrain_or_foliage(&self) -> bool {
         matches!(
             self,
             Self::TerrainSculpt | Self::TerrainPaint | Self::FoliagePaint
         )
+    }
+
+    /// Any tool that is meaningless without a terrain selected — the brushes
+    /// plus the region tool. Used to decide when to fall back to `Select`
+    /// because the selection moved off the terrain.
+    pub fn needs_terrain_selection(&self) -> bool {
+        self.is_terrain_or_foliage() || matches!(self, Self::TerrainRegion)
     }
 }
 

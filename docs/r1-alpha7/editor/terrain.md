@@ -25,13 +25,44 @@ The parent entity spawns at `y = 0.05` rather than `y = 0`. A new terrain's flat
 
 ### The Terrain inspector component
 
-Selecting the terrain root shows a **Terrain** section in the inspector: **Chunks X/Z** (1–8), **Chunk Size** (8–512 m), **Resolution** (33/65/129/257 — fixed steps so neighbouring chunk edges share vertices), and **Min/Max Height** (clamped to keep ≥1 m of range). Grid or resolution changes respawn the chunks with bilinear-resampled heights; size and height-range edits rebuild the existing meshes in place.
+Selecting the terrain root shows a **Terrain** section in the inspector: a read-only **Size** summary, an **Edit Terrain…** button that opens the [Terrain Settings overlay](#the-terrain-settings-overlay), and the live fields — **Min/Max Height** (clamped to keep ≥1 m of range) and the **Stream Chunks** / **Stream Radius** pair.
+
+> The *structural* fields — grid size, chunk size and resolution — are deliberately **not** live inspector fields. A scrubbable field writes on every tick of the drag, and each write respawns every chunk with a fresh trimesh collider, so dragging the grid from 1 to 8 built every size in between. They live in the overlay instead, which stages the edit and applies it once. What's left in the inspector is the set that rebuilds in place, where a live drag is cheap.
 
 A **Layers** section sits below it, editing the *active* paint layer: a layer picker, **Name**, **Material** (`.material` drop), **Height Offset**, **Coverage Threshold**, an **Enabled** toggle (hides that layer's overlay), plus **Add Layer** / **Remove Layer** buttons. It's the same data the Terrain Tools panel's layer list edits.
 
+## The Terrain Settings overlay
+
+**Edit Terrain…** opens a modal holding everything that changes the terrain's structure. Nothing is written until you press **Apply**, so the expensive rebuild happens exactly once, for the size you actually chose.
+
+- **Grid** — click a cell in the picker to set the chunk grid; the clicked cell is the far corner, so the top-left cell is a 1×1 terrain. Sizes past 12 per side go through the **Chunks X** / **Chunks Z** fields beside it. The cap is 32 per axis.
+- **Chunk Size** (8–512 m) and **Resolution** (33/65/129/257 — fixed steps, so neighbouring chunk edges share vertices exactly).
+- **Min / Max Height**, **Stream Chunks**, **Stream Radius**.
+- A live **cost readout**: chunk count, total vertices, estimated memory and collider count, with a warning band past ~2 M vertices. Every chunk also builds a triangle-mesh collider, which is the part that actually makes a big rebuild slow.
+
+**Cancel** or **Escape** discards the draft and leaves the terrain untouched.
+
+## Resizing with the Region tool
+
+The **Resize Terrain** toolbar button turns on the Region tool, which grows and shrinks the terrain by clicking in the scene rather than by typing numbers.
+
+- Ghost tiles ring the terrain, each marked with a `+`. **Click one** to grow the terrain to meet it.
+- **Ctrl+click** an edge tile to remove that whole row or column; the row that would go is highlighted in red first.
+- Only edge-adjacent ghosts are offered — there are no diagonal ghosts, since a rectangle can't grow "diagonally" without adding two rows at once.
+
+The chunk grid is centred on its parent, so changing the count re-centres every chunk. The tool compensates for that: growing on the −X or −Z side re-indexes the surviving chunks and shifts the terrain's transform by half a chunk the other way, so **terrain you have already sculpted does not move**. That arithmetic lives in `renzora_terrain::grid` and is unit-tested on all four edges in both directions.
+
+> The grid stays a dense rectangle. Sparse, non-contiguous regions would be a rewrite of `TerrainData`, the chunk addressing and the scene format.
+
+## The tool shelf and the brush bar
+
+With a terrain tool active, the brushes live on the **tool shelf** — a two-column palette floating down the viewport's left edge, in the shape image editors use. The sculpt palette shows all 17 sculpt brushes; switching to the paint tool swaps it for the 4 paint brushes. The shelf collapses entirely when no shelf tool applies.
+
+The active brush's settings sit in the **viewport toolbar** as a group you can drag to a different position on the bar: **Size**, **Strength** and **Falloff** sliders, the **shape** toggles (circle / square / diamond) and the five **falloff-curve** letters (S / L / O / T / F). Whatever the current brush adds appears beside them and nothing else does — Flatten's mode and target height, Noise's mode/scale/octaves/persistence, Terrace's steps and sharpness, Stamp's blend/rotation/scale.
+
 ## The Terrain Tools panel
 
-The **Terrain Tools** panel (panel id `terrain_tools`, category "Terrain" in the dock's panel picker) has a full-width **Enable Terrain Mode** toggle at the top, then two tabs: **Sculpt** and **Paint**.
+The **Terrain Tools** panel (panel id `terrain_tools`, category "Terrain" in the dock's panel picker) is the secondary surface: it carries heightmap import/export, stamp loading and the layer list. It still has its own brush grids, and they stay in sync with the shelf for free — both write the same `TerrainSettings.brush_type`.
 
 The panel and the viewport toolbar drive the same state, from either direction:
 
@@ -39,19 +70,20 @@ The panel and the viewport toolbar drive the same state, from either direction:
 - Clicking the panel's **Sculpt**/**Paint** tab switches the active tool with it.
 - Activating a terrain tool from the viewport toolbar reveals the panel body and switches its tab to match.
 
-Three toolbar buttons appear in the viewport toolbar whenever a terrain exists in the scene (section "Terrain"):
+Four toolbar buttons appear in the viewport toolbar whenever a terrain exists in the scene (section "Terrain"):
 
 | Button | Tool | Inspector tab |
 |--------|------|---------------|
 | **Sculpt Terrain** | `TerrainSculpt` | Sculpt |
 | **Paint Terrain Layers** | `TerrainPaint` | Paint |
 | **Paint Foliage** | `FoliagePaint` | — (Foliage panel) |
+| **Resize Terrain** | `TerrainRegion` | Region |
 
 Clicking a button selects the first terrain, switches the tab, and activates the tool. Click the active button again to return to the **Select** tool.
 
 ## Sculpting
 
-On the **Sculpt** tab, pick a brush from the 16-tool grid, then paint in the viewport. The brush position is found by **mesh raycast** against the actual sculpted surface, so the gizmo hugs the terrain. Hold the left mouse button and drag to sculpt continuously.
+Pick a brush from the shelf (or the panel's grid), then paint in the viewport. The brush position is found by **mesh raycast** against the actual sculpted surface, so the gizmo hugs the terrain. Hold the left mouse button and drag to sculpt continuously.
 
 | Brush | Behaviour | Shift held |
 |-------|-----------|------------|
@@ -72,21 +104,24 @@ On the **Sculpt** tab, pick a brush from the 16-tool grid, then paint in the vie
 | **Retop** | Wide 5×5 aggressive smooth | — |
 | **Cliff** | Amplify the local slope gradient (steepen) | Soften |
 
-The 17th tool is **Stamp** — click (don't drag) to stamp a heightmap shape once. Its Tool Settings offer a **Shape** preset (Dome, Cone, Bell, Mesa, Ridge, Crater, Noise), a **Load PNG…** button for a custom grayscale stamp, a **Blend** mode (Add / Subtract / Replace / Max / Min), **Rotation** (degrees), and **Height Scale**. Brush size sets the stamp footprint; picking Stamp with nothing loaded auto-selects the Dome preset.
+The 17th tool is **Stamp** — click (don't drag) to stamp a heightmap shape once. Its settings offer a **Shape** preset (Dome, Cone, Bell, Mesa, Ridge, Crater, Noise), a **Load PNG…** button for a custom grayscale stamp, a **Blend** mode (Add / Subtract / Replace / Max / Min), **Rotation** (degrees), and **Height Scale**. Brush size sets the stamp footprint; picking Stamp with nothing loaded auto-selects the Dome preset.
 
-### Tool Settings
+### Brush settings
 
-- **Strength** (`0.01`–`1.0`) — always shown.
-- **Flatten** brush adds a **Mode** combo (Both / Raise / Lower) and a **Target Height** drag (`0`–`1`).
-- **Noise** brush adds **Mode**, **Scale**, **Octaves**, **Lacunarity**, **Persistence**, **Seed**, and (in Warped mode) **Warp** strength.
-- **Terrace** brush adds **Steps** and **Sharpness**.
-
-### Brush Settings
+These live in the viewport toolbar's terrain group (and, in fuller form, in the Terrain Tools panel).
 
 - **Size** — brush radius in **world metres** (`1`–`200`). The scroll wheel resizes it (×1.1 / ×0.9) while hovering the viewport.
+- **Strength** (`0.01`–`1.0`).
 - **Falloff** (`0`–`1`) — how far the soft edge reaches in from the rim.
 - **Shape** — **Circle**, **Square**, or **Diamond**.
-- **Falloff Type** — **Smooth** (cosine), **Linear**, **Spherical**, **Tip**, or **Flat**.
+- **Falloff curve** — **S**mooth (cosine), **L**inear, Spherical (**O**), **T**ip, or **F**lat.
+
+Per-brush additions, shown only for the brush that uses them:
+
+- **Flatten** — **Mode** (Both / Raise / Lower) and **Target Height** (`0`–`1`).
+- **Noise** — **Mode**, **Scale**, **Octaves**, **Persistence** on the toolbar; **Lacunarity**, **Seed** and (in Warped mode) **Warp** strength in the panel.
+- **Terrace** — **Steps** and **Sharpness**.
+- **Stamp** — **Blend**, **Rotation** and **Height Scale** on the toolbar; the preset picker and **Load PNG…** in the panel.
 
 The gizmo draws an outer ring plus an inner falloff ring (and a vertex-density grid preview for the Stamp brush).
 
@@ -103,7 +138,7 @@ The Sculpt tab's **Heightmap Import** section has **Import Heightmap…** and **
 
 ## Painting layers
 
-The **Paint** tab paints coverage masks into the terrain's **`Painter`** component — a stack of paint layers on the terrain root entity. Pick a paint mode from the 4-tool grid:
+The **Paint Terrain Layers** tool paints coverage masks into the terrain's **`Painter`** component — a stack of paint layers on the terrain root entity. Pick a paint mode from the shelf (or the panel's grid):
 
 | Tool | Effect |
 |------|--------|

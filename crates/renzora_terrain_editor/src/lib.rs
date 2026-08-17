@@ -1,7 +1,11 @@
 //! Terrain Editor — sculpting, painting, and brush gizmo systems.
 
 mod brush_layer_paint;
+mod brush_bar;
 mod native;
+mod region_tool;
+mod settings_overlay;
+mod shelf;
 mod spline_gizmos;
 mod systems;
 mod terrain_inspector;
@@ -84,6 +88,53 @@ impl Plugin for TerrainEditorPlugin {
             .on_activate(|w| {
                 activate_terrain_tool(w, TerrainInspectorTab::Foliage, ActiveTool::FoliagePaint)
             }),
+        );
+        app.register_tool(
+            ToolEntry::new(
+                "builtin.terrain_region",
+                "selection-plus",
+                "Resize Terrain — click a ghost tile to add, Ctrl+click an edge to remove",
+                ToolSection::Terrain,
+            )
+            .order(3)
+            .visible_if(terrain_exists_in_scene)
+            .active_if(|w| {
+                w.get_resource::<ActiveTool>()
+                    .copied() == Some(ActiveTool::TerrainRegion)
+            })
+            .on_activate(|w| {
+                activate_terrain_tool(w, TerrainInspectorTab::Region, ActiveTool::TerrainRegion)
+            }),
+        );
+
+        // The brush palette on the viewport's left shelf, and the active brush's
+        // settings as a group in the viewport toolbar. Between them these are the
+        // surfaces that make the brushes *findable* — the Terrain Tools dock panel
+        // still works and still shares their state, but it is no longer the only
+        // way to reach a brush.
+        shelf::register(app);
+        brush_bar::register();
+        app.add_systems(
+            Update,
+            (brush_bar::shape_click, brush_bar::falloff_click)
+                .run_if(renzora::core::not_in_play_mode),
+        );
+
+        // Terrain Settings overlay — the deferred-apply editor for grid size,
+        // resolution and height range.
+        settings_overlay::register(app);
+
+        // Region tool — grow/shrink the chunk grid by clicking ghost tiles.
+        app.init_resource::<region_tool::RegionHover>().add_systems(
+            Update,
+            (
+                region_tool::region_hover_system,
+                region_tool::region_gizmo_system,
+                region_tool::region_click_system,
+            )
+                .chain()
+                .run_if(region_tool::region_tool_active)
+                .run_if(renzora::core::not_in_play_mode),
         );
 
         app
@@ -240,15 +291,19 @@ fn activate_terrain_tool(world: &mut World, tab: TerrainInspectorTab, tool: Acti
     world.insert_resource(tool);
 }
 
-/// Resolutions the inspector offers — powers-of-two-plus-one so chunk edges
-/// share vertices cleanly. Free-typed values aren't allowed; an off-grid
-/// resolution breaks the shared-edge math between neighbouring chunks.
-const RESOLUTION_LABELS: [&str; 4] = ["33", "65", "129", "257"];
-
 fn terrain_data_entry() -> InspectorEntry {
     // Every real `TerrainData` change triggers a chunk rebuild pass, so all
     // set_fns compare through `Deref` first and only write when the value
     // actually moved — a no-op drag tick must not flag the component.
+    //
+    // The *structural* fields — grid size, chunk size and resolution — are
+    // deliberately not here. A scrubbable field writes on every tick of the
+    // drag, and each of those writes despawns and respawns every chunk with a
+    // fresh trimesh collider; dragging the grid from 1 to 8 built every size in
+    // between and hung the editor. They live in the Terrain Settings overlay
+    // instead (see `settings_overlay`), which stages the edit and applies it
+    // once. What's left below is the set that `terrain_data_changed_system`
+    // handles on its cheap in-place path, where a live drag is fine.
     InspectorEntry {
         type_id: "terrain_data",
         display_name: "Terrain",
@@ -261,77 +316,26 @@ fn terrain_data_entry() -> InspectorEntry {
         set_enabled_fn: None,
         fields: vec![
             FieldDef {
-                name: "Chunks X",
-                field_type: FieldType::Int { min: 1.0, max: 8.0 },
+                name: "Size",
+                field_type: FieldType::ReadOnly,
                 get_fn: |w, e| {
-                    w.get::<TerrainData>(e)
-                        .map(|t| FieldValue::Float(t.chunks_x as f32))
+                    w.get::<TerrainData>(e).map(|t| {
+                        FieldValue::String(format!(
+                            "{} × {} chunks · {:.0} × {:.0} m",
+                            t.chunks_x,
+                            t.chunks_z,
+                            t.total_width(),
+                            t.total_depth()
+                        ))
+                    })
                 },
-                set_fn: |w, e, v| {
-                    if let FieldValue::Float(x) = v {
-                        let want = (x.round() as u32).clamp(1, 8);
-                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
-                            if t.chunks_x != want {
-                                t.chunks_x = want;
-                            }
-                        }
-                    }
-                },
+                set_fn: |_, _, _| {},
             },
             FieldDef {
-                name: "Chunks Z",
-                field_type: FieldType::Int { min: 1.0, max: 8.0 },
-                get_fn: |w, e| {
-                    w.get::<TerrainData>(e)
-                        .map(|t| FieldValue::Float(t.chunks_z as f32))
-                },
-                set_fn: |w, e, v| {
-                    if let FieldValue::Float(z) = v {
-                        let want = (z.round() as u32).clamp(1, 8);
-                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
-                            if t.chunks_z != want {
-                                t.chunks_z = want;
-                            }
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Chunk Size",
-                field_type: FieldType::Float { speed: 0.5, min: 8.0, max: 512.0 },
-                get_fn: |w, e| {
-                    w.get::<TerrainData>(e)
-                        .map(|t| FieldValue::Float(t.chunk_size))
-                },
-                set_fn: |w, e, v| {
-                    if let FieldValue::Float(s) = v {
-                        let want = s.clamp(8.0, 512.0);
-                        if let Some(mut t) = w.get_mut::<TerrainData>(e) {
-                            if t.chunk_size != want {
-                                t.chunk_size = want;
-                            }
-                        }
-                    }
-                },
-            },
-            FieldDef {
-                name: "Resolution",
-                field_type: FieldType::Enum { options: &RESOLUTION_LABELS },
-                get_fn: |w, e| {
-                    w.get::<TerrainData>(e)
-                        .map(|t| FieldValue::Enum(t.chunk_resolution.to_string()))
-                },
-                set_fn: |w, e, v| {
-                    if let FieldValue::Enum(label) = v {
-                        if let Ok(want) = label.parse::<u32>() {
-                            if let Some(mut t) = w.get_mut::<TerrainData>(e) {
-                                if t.chunk_resolution != want {
-                                    t.chunk_resolution = want;
-                                }
-                            }
-                        }
-                    }
-                },
+                name: "Edit Terrain…",
+                field_type: FieldType::Button { icon: "resize" },
+                get_fn: |_, _| None,
+                set_fn: |w, e, _| settings_overlay::open(w, e),
             },
             FieldDef {
                 name: "Min Height",

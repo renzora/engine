@@ -24,6 +24,7 @@ mod native_game;
 pub mod native_header;
 mod native_height_ruler;
 mod native_nav;
+mod native_tool_shelf;
 mod native_viewport;
 pub mod particle_drop;
 pub mod persistence;
@@ -33,6 +34,7 @@ pub mod scene_drop;
 pub mod settings;
 pub mod shape_drop;
 pub mod sprite_drop;
+mod tool_buttons;
 mod world_ui_pointer;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

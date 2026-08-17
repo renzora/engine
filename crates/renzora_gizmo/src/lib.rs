@@ -696,13 +696,9 @@ fn auto_switch_tool_on_selection(world: &mut World) {
 
     let active = *world.resource::<ActiveTool>();
 
-    // Brush tools only make sense while a terrain is selected; revert to
+    // Terrain tools only make sense while a terrain is selected; revert to
     // Select if the user deselected (or selected a non-terrain entity).
-    let is_brush = matches!(
-        active,
-        ActiveTool::TerrainSculpt | ActiveTool::TerrainPaint | ActiveTool::FoliagePaint
-    );
-    if is_brush {
+    if active.needs_terrain_selection() {
         if !renzora_editor_framework::is_terrain_selected(world) {
             world.insert_resource(ActiveTool::Select);
         }

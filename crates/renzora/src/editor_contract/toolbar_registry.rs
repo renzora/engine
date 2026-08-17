@@ -14,6 +14,12 @@ use bevy::prelude::*;
 use std::sync::Arc;
 
 /// Logical grouping on the toolbar. Entries within a section share a divider.
+///
+/// Sections also choose *which surface* an entry renders on. `Transform`,
+/// `Terrain` and `Custom` land in the horizontal strip across the viewport's top
+/// edge; [`ToolSection::Shelf`] lands in the vertical two-column shelf down its
+/// left edge. Everything else about an entry is identical either way, so moving
+/// a tool between surfaces is a one-word change.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ToolSection {
     /// Gizmo tools: select, translate, rotate, scale.
@@ -22,6 +28,15 @@ pub enum ToolSection {
     Terrain,
     /// Plugin-defined section. The str is a stable identifier used for sort grouping.
     Custom(&'static str),
+    /// The vertical shelf on the viewport's left edge — a two-column grid of
+    /// icon buttons, in the shape image editors use for their brush palette.
+    ///
+    /// Meant for a *set of interchangeable brushes* rather than a handful of
+    /// modes: the strip along the top runs out of room past a few buttons and
+    /// wraps into a second row, while the shelf grows downwards where there's
+    /// nothing competing for the space. The str groups entries; groups render in
+    /// alphabetical order separated by a rule.
+    Shelf(&'static str),
 }
 
 pub type ToolPredicate = Arc<dyn Fn(&World) -> bool + Send + Sync>;
@@ -124,6 +139,23 @@ impl ToolbarRegistry {
             .iter()
             .filter_map(|e| match e.section {
                 ToolSection::Custom(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
+    /// Distinct [`ToolSection::Shelf`] group ids, in render order. The shelf
+    /// renderer lives in `renzora_viewport` and reads this to lay its groups out
+    /// top to bottom.
+    pub fn shelf_groups(&self) -> Vec<&'static str> {
+        let mut ids: Vec<&'static str> = self
+            .entries
+            .iter()
+            .filter_map(|e| match e.section {
+                ToolSection::Shelf(id) => Some(id),
                 _ => None,
             })
             .collect();

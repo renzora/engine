@@ -16,6 +16,8 @@ pub enum TerrainInspectorTab {
     Sculpt,
     Paint,
     Foliage,
+    /// Grid resizing by clicking ghost tiles in the scene.
+    Region,
     // Retained as part of the tab model; not yet surfaced by the native panel.
     #[allow(dead_code)]
     Heightmap,
@@ -28,6 +30,7 @@ impl TerrainInspectorTab {
             Self::Sculpt => ActiveTool::TerrainSculpt,
             Self::Paint => ActiveTool::TerrainPaint,
             Self::Foliage => ActiveTool::FoliagePaint,
+            Self::Region => ActiveTool::TerrainRegion,
             Self::Size | Self::Heightmap => ActiveTool::Select,
         }
     }
@@ -53,7 +56,7 @@ pub fn sync_active_tool_system(
     } else {
         // If the user switched away from a terrain while a terrain tool was
         // active, drop back to Select so brush gizmos stop rendering.
-        if active.is_terrain() || *active == ActiveTool::FoliagePaint {
+        if active.needs_terrain_selection() {
             ActiveTool::Select
         } else {
             *active

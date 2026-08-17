@@ -20,7 +20,6 @@ use renzora::core::viewport_types::{
 use renzora::core::ShapeRegistry;
 use renzora_undo::{execute, SpawnShapeCmd, UndoContext};
 use bevy::ecs::world::CommandQueue;
-use std::sync::Arc;
 
 use renzora_editor_framework::{EditorCommands, GizmoSpace, ToolSection, ToolbarRegistry};
 use renzora_ember::font::{icon_glyph, icon_text, ui_font, EmberFonts};
@@ -37,16 +36,15 @@ use renzora_ember::theme::{
 use renzora_ember::cursor_icon::HoverCursor;
 use renzora_theme::ThemeManager;
 
+use crate::tool_buttons::{
+    tool_button, tool_separator, ToolSepVis, ToolsPopulated, SIDE_BTN, SIDE_ICON,
+};
+
 /// Height of the viewport header bar (matches the egui `HEADER_HEIGHT`).
 pub const HEADER_HEIGHT: f32 = 28.0;
 
 const BTN_W: f32 = 26.0;
 const BTN_H: f32 = 22.0;
-
-/// Side-toolbar buttons are slightly larger than the header widgets — they
-/// float over the scene, so they can afford the bigger hit target.
-const SIDE_BTN: f32 = 28.0;
-const SIDE_ICON: f32 = 15.0;
 
 /// One of the fixed "session action" buttons in the header's left strip.
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
@@ -388,6 +386,13 @@ pub(crate) fn build_side_toolbar(commands: &mut Commands, fonts: &EmberFonts, sl
     let mut groups: Vec<(Entity, &str)> = vec![(tools, "tools")];
     if slot == 0 {
         groups.extend(header_groups(commands, fonts));
+        // Context bars mounted by crates the viewport can't depend on — the
+        // terrain brush settings are the first. They're ordinary arrangement
+        // groups, so they drag and persist like the built-in ones, and each
+        // hides itself when its tool isn't active.
+        groups.extend(renzora_ember::toolbar::build_viewport_tool_groups(
+            commands, fonts,
+        ));
     }
     let play_at = play.map(|p| {
         groups.push((p, "play"));
@@ -717,7 +722,7 @@ pub(crate) fn register(app: &mut App) {
             update_click_rows,
             update_panel_buttons,
             update_camera_snap_triggers,
-            tool_button_click,
+            crate::tool_buttons::tool_button_click,
             // Nested tuple: keeps the top-level system count within Bevy's
             // 20-element tuple limit for `add_systems`.
             (
@@ -734,7 +739,12 @@ pub(crate) fn register(app: &mut App) {
     // Exclusive (need `&World` for the registry predicates / shape registry).
     app.add_systems(
         Update,
-        (populate_tools, update_tool_buttons, populate_shapes)
+        (
+            populate_tools,
+            crate::native_tool_shelf::populate_shelf,
+            crate::tool_buttons::update_tool_buttons,
+            populate_shapes,
+        )
             .run_if(in_state(SplashState::Editor)),
     );
 }
@@ -2461,32 +2471,6 @@ fn update_camera_snap_triggers(
 #[derive(Component)]
 struct ToolContainer;
 
-/// Marks a container that's already been populated (so we don't refill it, but a
-/// freshly re-created panel still gets filled).
-#[derive(Component)]
-struct ToolsPopulated;
-
-/// A separator between tool sections. Tools hide per-mode via their `visible`
-/// predicates, and a whole section can vanish (e.g. the terrain tools outside
-/// Terrain mode) — which used to leave its separators stacked up as dangling
-/// lines at the strip's end. The separator shows only while at least one tool
-/// on EACH side of it is visible.
-#[derive(Component)]
-struct ToolSepVis {
-    before: Vec<Entity>,
-    after: Vec<Entity>,
-}
-
-/// A registry-backed tool button: carries the predicates/activator so the
-/// per-frame systems can highlight, show/hide, and fire it.
-#[derive(Component, Clone)]
-struct ToolButton {
-    glyph: Entity,
-    visible: Arc<dyn Fn(&World) -> bool + Send + Sync>,
-    is_active: Arc<dyn Fn(&World) -> bool + Send + Sync>,
-    activate: Arc<dyn Fn(&mut World) + Send + Sync>,
-}
-
 /// Fill an empty `ToolContainer` from the registry (Transform / Terrain / custom
 /// sections with separators). Exclusive because the visibility/active predicates
 /// take `&World`; runs until the registry is populated and the container exists.
@@ -2564,165 +2548,6 @@ fn populate_tools(world: &mut World) {
     queue.apply(world);
 }
 
-/// A vertical rule between sections of the horizontal tool strip.
-fn tool_separator(commands: &mut Commands) -> Entity {
-    commands
-        .spawn((
-            Node {
-                width: Val::Px(1.0),
-                height: Val::Px(20.0),
-                margin: UiRect::horizontal(Val::Px(4.0)),
-                ..default()
-            },
-            BackgroundColor(rgb(border())),
-            Name::new("vp-tool-sep"),
-        ))
-        .id()
-}
-
-fn tool_button(
-    commands: &mut Commands,
-    fonts: &EmberFonts,
-    entry: &renzora_editor_framework::ToolEntry,
-) -> Entity {
-    // `entry.icon` is either a kebab-case Phosphor name (resolved via `icon_glyph`)
-    // or, for entries that still pass a raw glyph constant, the glyph char itself —
-    // fall back to rendering it verbatim when it isn't a known name.
-    let glyph_str = icon_glyph(entry.icon)
-        .map(|c| c.to_string())
-        .unwrap_or_else(|| entry.icon.to_string());
-    let glyph = commands
-        .spawn((
-            Text::new(glyph_str),
-            TextFont {
-                // 0.19 Parley: font -> FontSource, font_size -> FontSize.
-                font: bevy::text::FontSource::Handle(fonts.phosphor.clone()),
-                font_size: bevy::text::FontSize::Px(SIDE_ICON),
-                ..default()
-            },
-            TextColor(rgb(text_primary())),
-        ))
-        .id();
-    let btn = commands
-        .spawn((
-            Node {
-                width: Val::Px(SIDE_BTN),
-                height: Val::Px(SIDE_BTN),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(3.0)),
-                ..default()
-            },
-            BackgroundColor(Color::NONE),
-            Interaction::default(),
-            ToolButton {
-                glyph,
-                visible: entry.visible.clone(),
-                is_active: entry.is_active.clone(),
-                activate: entry.activate.clone(),
-            },
-            HoverCursor(SystemCursorIcon::Pointer),
-            renzora_ember::widgets::HoverTooltip::new(entry.tooltip),
-            Name::new(format!("vp-tool:{}", entry.id)),
-        ))
-        .id();
-    commands.entity(btn).add_child(glyph);
-    btn
-}
-
-/// Per-frame: evaluate each tool's `visible` (show/hide) and `is_active`
-/// (accent highlight). Exclusive because the predicates take `&World`.
-fn update_tool_buttons(world: &mut World) {
-    let mut q = world.query::<(Entity, &ToolButton, &Interaction)>();
-    let collected: Vec<(Entity, ToolButton, Interaction)> = q
-        .iter(world)
-        .map(|(e, b, i)| (e, b.clone(), *i))
-        .collect();
-    if collected.is_empty() {
-        return;
-    }
-    let (accent, hovered, icon_active, icon_inactive) = {
-        let Some(tm) = world.get_resource::<ThemeManager>() else {
-            return;
-        };
-        (
-            col(tm.active_theme.semantic.accent),
-            col(tm.active_theme.widgets.hovered_bg),
-            // White-ish on the accent fill when active; a clear neutral otherwise
-            // (so tool icons stay legible on light themes).
-            col(tm.active_theme.widgets.active_fg),
-            col(tm.active_theme.text.secondary),
-        )
-    };
-    let results: Vec<(Entity, bool, Color, Entity, Color)> = collected
-        .iter()
-        .map(|(e, b, inter)| {
-            let visible = (b.visible)(world);
-            let active = (b.is_active)(world);
-            let bg = if active {
-                accent
-            } else if *inter == Interaction::Hovered {
-                hovered
-            } else {
-                Color::NONE
-            };
-            let icol = if active { icon_active } else { icon_inactive };
-            (*e, visible, bg, b.glyph, icol)
-        })
-        .collect();
-    for (e, visible, bg, glyph, icol) in &results {
-        if let Some(mut node) = world.get_mut::<Node>(*e) {
-            let want = if *visible { Display::Flex } else { Display::None };
-            if node.display != want {
-                node.display = want;
-            }
-        }
-        if let Some(mut bgc) = world.get_mut::<BackgroundColor>(*e) {
-            if bgc.0 != *bg {
-                bgc.0 = *bg;
-            }
-        }
-        if let Some(mut tc) = world.get_mut::<TextColor>(*glyph) {
-            if tc.0 != *icol {
-                tc.0 = *icol;
-            }
-        }
-    }
-
-    // Section separators: visible only while a tool on each side of them is
-    // visible, so hidden sections never leave dangling divider lines.
-    let vis: std::collections::HashMap<Entity, bool> =
-        results.iter().map(|(e, v, ..)| (*e, *v)).collect();
-    let any_visible =
-        |ents: &[Entity]| ents.iter().any(|e| vis.get(e).copied().unwrap_or(false));
-    let mut sq = world.query::<(Entity, &ToolSepVis)>();
-    let seps: Vec<(Entity, bool)> = sq
-        .iter(world)
-        .map(|(e, s)| (e, any_visible(&s.before) && any_visible(&s.after)))
-        .collect();
-    for (e, show) in seps {
-        if let Some(mut node) = world.get_mut::<Node>(e) {
-            let want = if show { Display::Flex } else { Display::None };
-            if node.display != want {
-                node.display = want;
-            }
-        }
-    }
-}
-
-fn tool_button_click(
-    q: Query<(&Interaction, &ToolButton), Changed<Interaction>>,
-    cmds: Option<Res<EditorCommands>>,
-) {
-    let Some(cmds) = cmds else { return };
-    for (interaction, btn) in &q {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        let activate = btn.activate.clone();
-        cmds.push(move |w: &mut World| (activate)(w));
-    }
-}
 
 // ── Add-shape dropdown ───────────────────────────────────────────────────────
 //

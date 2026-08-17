@@ -1,6 +1,7 @@
 pub mod brush_layer;
 pub mod data;
 pub mod foliage;
+pub mod grid;
 pub mod height_layers;
 pub mod heightmap_import;
 pub mod material;

@@ -251,4 +251,45 @@ pub struct Health {
 }
 ```
 
+### Viewport tools
+
+`App::register_tool(ToolEntry)` adds a button to the viewport. A `ToolEntry` is an icon, a tooltip, and three closures: `visible_if` (show it at all), `active_if` (draw it highlighted) and `on_activate` (what clicking does). The **section** decides which surface it renders on:
+
+| Section | Where it renders |
+|---|---|
+| `ToolSection::Transform` | the horizontal strip across the viewport's top edge, with Select / Move / Rotate / Scale |
+| `ToolSection::Terrain` | the same strip, after a divider |
+| `ToolSection::Custom(id)` | the same strip, after the built-in sections; `id` groups and sorts |
+| `ToolSection::Shelf(group)` | the **two-column vertical shelf** down the viewport's left edge |
+
+Everything else about an entry is identical either way, so moving a tool between surfaces is a one-word change.
+
+```rust
+app.register_tool(
+    ToolEntry::new("mytool.brush.smooth", "waves", "Smooth", ToolSection::Shelf("mytool.brushes"))
+        .order(3)
+        .visible_if(|w| /* only while my tool is active */ true)
+        .active_if(|w| /* is this the chosen brush? */ false)
+        .on_activate(|w| { /* choose it */ }),
+);
+```
+
+Use the **shelf** for a *palette* — a set of interchangeable brushes you pick between. Use the **strip** for a handful of *modes*. The strip runs out of room past a few buttons and wraps into a second row, taking Play and the view controls down with it; the shelf grows downward where nothing competes for the space. Shelf groups render in alphabetical order, separated by a rule, and the whole shelf collapses when none of its entries are visible.
+
+### Viewport toolbar groups
+
+A tool's *settings* — as opposed to the tool button itself — can be mounted as a group in the toolbar with `renzora_ember::toolbar::register_viewport_tool_group(key, builder)`. The `key` is a stable identifier: the group is draggable like every other group on the bar, and its position is saved under that key, so changing it resets users' toolbars.
+
+```rust
+renzora_ember::toolbar::register_viewport_tool_group("mytool-settings", |commands, fonts| {
+    let group = commands.spawn(/* … */).id();
+    // Hide the group when it isn't relevant — an always-visible group holds
+    // its width in every other context for nothing.
+    bind_display(commands, group, |w| /* my tool is active */ true);
+    group
+});
+```
+
+This exists because `renzora_viewport` can't depend on the crates that want to mount things in it. Two narrower registries sit beside it in the same module: `register_viewport_tool_trailing` (widgets pinned to the strip's right-hand end) and `register_viewport_top_strip` (full-width bars under the strip).
+
 See **Script API Bindings** for exposing functions to Lua/Rhai, **[Post-Processing Effects](./post-processing.md)** for camera effects (which are [standalone plugins](./standalone-plugins.md) now, not distribution plugins), and **Custom Blueprint Nodes** / **Custom Material Nodes** for those subsystems — each has its own registration path layered on the same `add!` model described here.
