@@ -73,7 +73,7 @@ pub fn request_host(requests: &mut OnlineRequests, token: String, project: Strin
                 },
                 _ => OnlineEvent::Failed("the site returned an unexpected reply".into()),
             },
-            Err(e) => OnlineEvent::Failed(e),
+            Err(e) => OnlineEvent::Failed(e.into()),
         };
         let _ = tx.send(event);
     });
@@ -112,7 +112,11 @@ pub fn request_join(requests: &mut OnlineRequests, token: String, code: String) 
                     }
                 }
             }
-            Err(e) => OnlineEvent::Failed(e),
+            // A 404 here is the common case and the API's own "Not found" says
+            // nothing about what to do next.
+            Err(e) => OnlineEvent::Failed(
+                e.or_say(404, "No session with that code — check it, or ask for a new one"),
+            ),
         };
         let _ = tx.send(event);
     });
@@ -126,7 +130,7 @@ pub fn request_invite(requests: &OnlineRequests, token: String, code: String, us
             format!("{}/api/collab/sessions/{code}/invite", renzora_auth::client::api_base());
         let body = serde_json::json!({ "user_id": user_id });
         if let Err(e) = post_json(&url, &token, &body) {
-            let _ = tx.send(OnlineEvent::Failed(e));
+            let _ = tx.send(OnlineEvent::Failed(e.into()));
         }
     });
 }
@@ -166,11 +170,42 @@ fn spawn(name: &str, work: impl FnOnce() + Send + 'static) {
     }
 }
 
+/// A failed request, with the status kept alongside the message.
+///
+/// The status is carried rather than folded straight into a string because the
+/// *same* status means different things to different callers, and only the
+/// caller can phrase it usefully. A 404 from the session lookup means "no
+/// session with that code"; the API's own body just says "Not found", which is
+/// what a user saw four times in a row while trying to work out why their code
+/// would not take.
+struct ApiFailure {
+    status: u16,
+    message: String,
+}
+
+impl ApiFailure {
+    /// Replace the message when the status matches, leaving the API's own
+    /// wording in place otherwise.
+    fn or_say(self, status: u16, message: &str) -> String {
+        if self.status == status {
+            message.to_string()
+        } else {
+            self.message
+        }
+    }
+}
+
+impl From<ApiFailure> for String {
+    fn from(failure: ApiFailure) -> String {
+        failure.message
+    }
+}
+
 fn post_json(
     url: &str,
     token: &str,
     body: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, ApiFailure> {
     let response = renzora_net::Request::post(url)
         .bearer(token)
         .json(body)
@@ -179,31 +214,31 @@ fn post_json(
     parse(response)
 }
 
-fn get_json(url: &str, token: &str) -> Result<serde_json::Value, String> {
+fn get_json(url: &str, token: &str) -> Result<serde_json::Value, ApiFailure> {
     let response = renzora_net::Request::get(url).bearer(token).send().map_err(describe)?;
     parse(response)
 }
 
-fn parse(response: renzora_net::Response) -> Result<serde_json::Value, String> {
+fn parse(response: renzora_net::Response) -> Result<serde_json::Value, ApiFailure> {
     let status = response.status;
     let text = response.text();
     if !(200..300).contains(&status) {
-        // The API answers failures as `{"error": "..."}`; surface that rather
-        // than a bare status, because these are messages meant for the user
-        // ("You can only invite friends to a session").
+        // The API answers failures as `{"error": "..."}`; prefer that, because
+        // those are messages meant for the user ("You can only invite friends
+        // to a session"). Callers override it where they can say more.
         let message = serde_json::from_str::<serde_json::Value>(&text)
             .ok()
             .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(str::to_string))
             .unwrap_or_else(|| match status {
                 401 => "You need to sign in to renzora.com first".to_string(),
-                404 => "No session with that code — it may have ended".to_string(),
                 _ => format!("The site returned {status}"),
             });
-        return Err(message);
+        return Err(ApiFailure { status, message });
     }
-    serde_json::from_str(&text).map_err(|e| format!("could not read the site's reply: {e}"))
+    serde_json::from_str(&text)
+        .map_err(|e| ApiFailure { status, message: format!("could not read the site's reply: {e}") })
 }
 
-fn describe(error: renzora_net::Error) -> String {
-    format!("could not reach renzora.com: {error}")
+fn describe(error: renzora_net::Error) -> ApiFailure {
+    ApiFailure { status: 0, message: format!("could not reach renzora.com: {error}") }
 }

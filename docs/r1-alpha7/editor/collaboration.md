@@ -109,7 +109,9 @@ added them as a friend or not — the same way a meeting link works. Codes are
 random, unguessable, and last as long as the session (up to 12 hours). Ending
 the session invalidates the code immediately.
 
-You can host up to three sessions at once on one account.
+You can host up to three sessions at once on one account. Signing in as the
+same account in two editors is fine — the second one joins as a guest, which is
+the simplest way to try the feature on your own.
 
 ## What syncs, and what doesn't
 
@@ -150,7 +152,6 @@ project, which is useful as a snapshot but is not what the host has.
 |---|---|
 | *Sign in to renzora.com to host an online session* | Online sessions authenticate everyone, so the host sees real names rather than addresses. Sign in from the Account panel. |
 | *No session with that code* | Mistyped, or the session has ended. Codes exclude `0/O` and `1/I/L` to make them easier to read out. |
-| *That session already has a host connected* | You are already hosting it from another editor. |
 | *Could not host on port 7700* | Something else is using the port, or the OS refused it. Change the port and try again. |
 | *Could not reach …* | Wrong address, the host has not started hosting, or a firewall is in the way. |
 | *Host speaks protocol N* | The two editors are different versions. Both must be rebuilt from the same commit. |

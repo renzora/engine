@@ -67,6 +67,17 @@ const HOST_PEER: u32 = 0;
 /// lose, which is exactly what made the same trick unsafe over `read_exact`.
 const READ_TICK: Duration = Duration::from_millis(250);
 
+/// Send a keep-alive if nothing else has gone out for this long.
+///
+/// Not optional. A relayed session is idle whenever nobody is editing — which
+/// on a "let me show you something" session is most of it — and Cloudflare
+/// closes an idle WebSocket after about 100 seconds. The symptom is the whole
+/// session ending on its own with `Connection reset without closing handshake`,
+/// several minutes after it was opened, for no reason the user did anything to
+/// cause. `renzora_social`'s live socket carries the same 30-second ping for the
+/// same reason.
+const KEEPALIVE: Duration = Duration::from_secs(30);
+
 // ── Envelope ────────────────────────────────────────────────────────────────
 
 /// Wrap a frame for the relay.
@@ -121,10 +132,18 @@ pub fn join(url: String, token: String) -> Link {
             // before handing it over — a guest cannot address anyone else, by
             // construction rather than by rule.
             let mut buffer = Vec::new();
+            let mut last_sent = std::time::Instant::now();
             loop {
                 if shutdown.load(Ordering::Relaxed) {
                     let _ = socket.close(None);
                     return;
+                }
+                if last_sent.elapsed() >= KEEPALIVE {
+                    last_sent = std::time::Instant::now();
+                    if socket.send(tungstenite::Message::Ping(Vec::new())).is_err() {
+                        let _ = inbox_tx.send(LinkEvent::Closed("relay keep-alive failed".into()));
+                        return;
+                    }
                 }
                 while let Ok(msg) = out_rx.try_recv() {
                     let Some(bytes) = encode(&msg) else { continue };
@@ -134,6 +153,7 @@ pub fn join(url: String, token: String) -> Link {
                         let _ = inbox_tx.send(LinkEvent::Closed("relay send failed".into()));
                         return;
                     }
+                    last_sent = std::time::Instant::now();
                 }
                 match read(&mut socket) {
                     Ok(Some(Frame::Data(data))) => {
@@ -214,10 +234,19 @@ fn host_loop(url: String, token: String, incoming: Sender<Link>, shutdown: Arc<A
     let (write_tx, write_rx) = unbounded::<Vec<u8>>();
     let guests: Arc<Mutex<HashMap<u32, Guest>>> = Arc::new(Mutex::new(HashMap::new()));
 
+    let mut last_sent = std::time::Instant::now();
     loop {
         if shutdown.load(Ordering::Relaxed) {
             let _ = socket.close(None);
             break;
+        }
+
+        if last_sent.elapsed() >= KEEPALIVE {
+            last_sent = std::time::Instant::now();
+            if socket.send(tungstenite::Message::Ping(Vec::new())).is_err() {
+                log::warn!("[collab] relay keep-alive failed");
+                break;
+            }
         }
 
         while let Ok(bytes) = write_rx.try_recv() {
@@ -225,6 +254,7 @@ fn host_loop(url: String, token: String, incoming: Sender<Link>, shutdown: Arc<A
                 log::warn!("[collab] relay send failed");
                 break;
             }
+            last_sent = std::time::Instant::now();
         }
 
         match read(&mut socket) {
