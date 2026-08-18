@@ -1,492 +1,578 @@
-// Procedural Clouds Shader — realistic two-layer sky with spherical projection.
+// Volumetric clouds — a raymarch through a spherical cloud deck wrapped around
+// a virtual planet, after "The Real-Time Volumetric Cloudscapes of Horizon Zero
+// Dawn" (Schneider/Vos) and "Physically Based Sky, Atmosphere and Cloud
+// Rendering in Frostbite" (Hillaire).
 //
-// Layer 1: Cumulus (lower, dense, billowy) lit with a light-march toward the sun.
-// Layer 2: Cirrus (higher, stretched, wispy) for upper-atmosphere streaks.
+// This replaces an earlier 2.5D dome that painted FBM straight onto a sphere.
+// The difference that matters is that density here is a *field with thickness*:
+// a second march toward the sun gives every sample its own shadow, so clouds
+// have bright sunward faces and dark undersides instead of a fake vertical
+// gradient, and the deck curves down to the horizon on its own because the
+// march is against real shell geometry rather than a painted gradient.
 //
-// The cumulus lighting follows the physically-based volumetric-cloud model
-// (Schneider/Hillaire-style scattering), adapted to our 2.5D dome:
-//   * A secondary "light march" steps the density field TOWARD the sun and
-//     accumulates optical depth → Beer-Lambert transmittance. This — not a
-//     view-elevation gradient — is what gives clouds bright sun-facing sides and
-//     dark shadow sides (the single biggest realism cue).
-//   * A dual-lobe Henyey-Greenstein phase function provides directional
-//     forward-scatter (the silver lining) plus a softer back lobe.
-//   * A 3-octave multi-scatter approximation (Wrenninge) keeps shadowed cloud
-//     interiors lit instead of pure black.
-//   * Shadowed regions fall back to the (bluish) Shadow Color, which is what
-//     lights real cloud undersides: scattered blue skylight, not darkness.
-// Compositing uses the over-operator so cumulus sits in front of cirrus.
+// The mesh is still a dome centred on the camera, but only as a way to get one
+// fragment per sky pixel — nothing about the shading uses its surface. The
+// march starts at the camera, so flying up through the deck works: the entry
+// interval is solved for all three cases (below, inside, above).
+//
+// Everything here is in KILOMETRES with y = altitude above the surface. At a
+// 6371 km planet radius, `length(planet_space_position) - radius` in metres
+// loses the whole 1.15 km deck to f32 rounding; kilometres plus the analytic
+// height expansion in `height_at` keeps every intermediate small.
 
 #import bevy_pbr::forward_io::VertexOutput
-#import bevy_pbr::mesh_view_bindings::globals
+#import bevy_pbr::mesh_view_bindings::view
 
-@group(3) @binding(0) var<uniform> params_a: vec4<f32>;  // coverage, density, scale, speed
-@group(3) @binding(1) var<uniform> params_b: vec4<f32>;  // wind_dir_x, wind_dir_y, altitude, sun_elevation
-@group(3) @binding(2) var<uniform> cloud_color: vec4<f32>;
-@group(3) @binding(3) var<uniform> shadow_color: vec4<f32>;
-@group(3) @binding(4) var<uniform> params_c: vec4<f32>;  // sun_dir.xyz, absorption
-@group(3) @binding(5) var<uniform> params_d: vec4<f32>;  // silver_intensity, silver_spread, powder_strength, ambient_brightness
-@group(3) @binding(6) var<uniform> horizon_color: vec4<f32>; // rgb = haze color, a = atmosphere_strength
+struct CloudsUniform {
+    // xyz = unit vector toward the sun, w unused.
+    sun_direction: vec4<f32>,
+    // rgb = sun radiance reaching the deck, w unused.
+    sun_color: vec4<f32>,
+    // rgb = skylight filling the top of the deck, w unused.
+    ambient_top: vec4<f32>,
+    // rgb = skylight filling the base of the deck, w unused.
+    ambient_bottom: vec4<f32>,
+    // rgb = horizon haze in the sun's half of the sky, a = how strongly it
+    // takes over near the horizon.
+    haze_sunward: vec4<f32>,
+    // rgb = horizon haze opposite the sun, w unused.
+    haze_away: vec4<f32>,
+    // xyz = accumulated wind displacement, km. Applied to the *sample*
+    // position, so the deck drifts without the ray geometry moving with it.
+    wind_offset: vec4<f32>,
+    // xy = the warp field's own scroll in km, z = the detail volume's phase in
+    // whole turns. Both drive shape evolution; see `shape_warp`.
+    morph_offset: vec4<f32>,
 
-const PI: f32 = 3.14159265359;
+    planet_radius: f32,
+    bottom_height: f32,
+    top_height: f32,
+    base_scale: f32,
+    detail_scale: f32,
+    coverage: f32,
+    // Extinction per km at full density.
+    extinction: f32,
+    detail_strength: f32,
+    edge_softness: f32,
+    base_softness: f32,
+    powder_strength: f32,
+    min_transmittance: f32,
+    forward_scattering: f32,
+    backward_scattering: f32,
+    scattering_blend: f32,
+    view_steps: u32,
+    shadow_steps: u32,
+    // 1 in daylight, 0 at night. Fades the deck out rather than leaving an
+    // unlit silhouette punched through the night sky.
+    day_factor: f32,
+}
 
-// Virtual atmosphere geometry — scene units, NOT physical km.
-// Larger EARTH_R relative to cloud heights gives stronger horizon compression.
-const EARTH_R: f32 = 260.0;
-const CUMULUS_H: f32 = 2.0;
-const CIRRUS_H: f32 = 5.5;
+@group(3) @binding(0) var<uniform> clouds: CloudsUniform;
+@group(3) @binding(1) var base_texture: texture_2d<f32>;
+@group(3) @binding(2) var base_sampler: sampler;
+@group(3) @binding(3) var detail_texture: texture_3d<f32>;
+@group(3) @binding(4) var detail_sampler: sampler;
 
-// Sun light-march: how many shadow samples and how far each steps through the
-// noise field. Kept small (this is a dome, not a full volume) but enough to
-// resolve a cloud's own thickness against the sun. 3 steps reads
-// near-indistinguishably from 5 on a dome while cutting the light-march — the
-// single biggest slice of the per-pixel cost — by 40%.
-const LIGHT_STEPS: i32 = 3;
-const LIGHT_STEP: f32 = 0.57;
+// Ceiling on the span a view ray is considered to cover: it bounds the step size
+// below, and stands in as the distance for haze on a ray that met no cloud at
+// all. Near the horizon the deck's chord runs for hundreds of km, and by this
+// distance the haze has taken the deck over completely anyway.
+const MAX_MARCH_KM: f32 = 120.0;
 
-// Multi-scatter octaves. Each successive octave scatters less, extincts less,
-// and has a more isotropic phase — the cheap stand-in for light that bounced
-// several times inside the cloud before reaching the eye.
-const MS_OCTAVES: i32 = 3;
-const MS_SCATTER: f32 = 0.55; // contribution falloff per octave
-const MS_EXTINCT: f32 = 0.55; // extinction falloff per octave (deeper light reach)
-const MS_PHASE: f32 = 0.5;    // phase eccentricity falloff per octave
-
-// ── Gradient noise (quintic interpolation) ──
-
-// Integer bit-mix hash → two gradient components in [-1, 1].
+// The view march steps geometrically rather than uniformly. A uniform step has
+// to choose between resolving the cloud the camera is *inside* and reaching the
+// one on the horizon: fly into the deck and a step sized for the horizon puts
+// two samples between you and the far side, so the envelope you should be
+// swimming through turns into a flat wall. Growing the step spends resolution
+// where the eye is and distance where it is not — which is also the order in
+// which the haze stops caring.
 //
-// This replaces a `fract(sin(dot(p,k)) * 43758.5453)` hash that cost TWO `sin`
-// per call. `grad_noise` calls this 4× and a cloud pixel runs up to ~75
-// `grad_noise`, so the old hash was ~600 transcendental (`sin`) ops per pixel —
-// the dominant cost of the whole dome, and brutal on integrated GPUs whose
-// special-function unit throughput is a fraction of a discrete card's. A PCG-
-// style integer mix is a handful of ALU ops with equivalent noise quality.
+// The start is capped as well as the growth, so a ray whose span runs for a
+// hundred km still begins with fine samples instead of scaling its whole
+// schedule up.
+const VIEW_STEP_GROWTH: f32 = 1.12;
+const VIEW_STEP_START: f32 = 0.05;
+const VIEW_STEP_MAX: f32 = 0.9;
+
+// The sun march steps a fixed fraction of the deck's thickness, growing each
+// step. Six default steps at 1% reach roughly 8% of the thickness before the
+// density has saturated the transmittance, which is enough to separate a lit
+// face from a shadowed one; tying it to the thickness means a stylised 8 km-deep
+// deck gets a proportionally longer march instead of a useless 100 m one.
+const SHADOW_STEP_FRACTION: f32 = 0.01;
+const SHADOW_STEP_GROWTH: f32 = 1.3;
+// Floor on the sun's slope when stretching that march. Without it a sun on the
+// horizon asks for an unbounded path and every cloud in the sky turns black.
+const SHADOW_MIN_SLOPE: f32 = 0.12;
+
+// Multiple scattering, after Wrenninge: each octave carries less light, is
+// extincted less (so it reaches deeper into the cloud), and scatters more
+// isotropically. Without it a single Henyey-Greenstein lobe spans a 400:1 range
+// across the sky, and everything more than about 60 degrees off the sun is lit
+// by ambient alone — which is exactly what a flat grey cloud looks like.
+const MS_OCTAVES: u32 = 3u;
+const MS_ATTENUATION: f32 = 0.5;
+const MS_EXTINCTION: f32 = 0.5;
+const MS_ECCENTRICITY: f32 = 0.5;
+
+// Distance over which haze accumulates, and over which the erosion detail fades
+// out. The detail volume is 32 cells repeating every few hundred metres: close
+// up that reads as wisps, but a few km out it is below a pixel and all that
+// survives is the repeat, tiled across the horizon. Fading it is both the fix
+// for that and the cheapest thing in the march to stop paying for.
+const HAZE_DISTANCE_KM: f32 = 45.0;
+const DETAIL_FADE_KM: f32 = 14.0;
+
+// How much wider than the base silhouette the coverage modulation runs, and the
+// rotation applied to it. See `weather`.
+const WEATHER_SPREAD: f32 = 11.0;
+const WEATHER_ROTATION: vec2<f32> = vec2<f32>(0.8624, 0.5062);
+
+// Shape evolution. Wind alone only *translates* the deck, and a cloud whose
+// silhouette never changes reads as a cutout sliding across the sky however
+// fast it moves. A vector field displaces the base sample position, and that
+// field scrolls along its own axis at its own speed — so at any fixed point in
+// the world the displacement is changing, and clouds deform in place rather
+// than merely passing through. It runs at a third of the silhouette's frequency:
+// low enough that one cloud spans several times its own width of it and
+// stretches and folds, rather than just shifting whole.
 //
-// `grad_noise` only ever calls this on the integer lattice corners (`floor(p)`
-// plus 0/1 offsets), so truncating to `i32` is exact.
-fn hash_grad(p: vec2<f32>) -> vec2<f32> {
-    let qx = bitcast<u32>(i32(p.x));
-    let qy = bitcast<u32>(i32(p.y));
-    var h = (qx * 1597334677u) ^ (qy * 3812015801u);
-    h = h ^ (h >> 16u);
-    h = h * 2246822519u;
-    h = h ^ (h >> 13u);
-    let hx = h;
-    let hy = (h * 2654435761u) ^ (h >> 15u);
-    // Map the two u32 words to [-1, 1).
-    return vec2<f32>(
-        f32(hx) * (1.0 / 2147483647.5) - 1.0,
-        f32(hy) * (1.0 / 2147483647.5) - 1.0,
-    );
+// `WARP_SPREAD` is duplicated in `lib.rs`, which needs it to wrap the scroll.
+const WARP_SPREAD: f32 = 3.0;
+// Displacement at full swing, as a fraction of the base silhouette's period.
+const WARP_FRACTION: f32 = 0.16;
+
+// ── Small helpers ────────────────────────────────────────────────────────────
+
+fn linear_step(lo: f32, hi: f32, v: f32) -> f32 {
+    return clamp((v - lo) / (hi - lo), 0.0, 1.0);
 }
 
-fn grad_noise(p: vec2<f32>) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-
-    let g00 = dot(hash_grad(i + vec2<f32>(0.0, 0.0)), f - vec2<f32>(0.0, 0.0));
-    let g10 = dot(hash_grad(i + vec2<f32>(1.0, 0.0)), f - vec2<f32>(1.0, 0.0));
-    let g01 = dot(hash_grad(i + vec2<f32>(0.0, 1.0)), f - vec2<f32>(0.0, 1.0));
-    let g11 = dot(hash_grad(i + vec2<f32>(1.0, 1.0)), f - vec2<f32>(1.0, 1.0));
-
-    return mix(mix(g00, g10, u.x), mix(g01, g11, u.x), u.y) * 0.5 + 0.5;
+fn remap(v: f32, lo: f32, hi: f32) -> f32 {
+    return (v - lo) / (hi - lo);
 }
 
-fn rot2(a: f32) -> mat2x2<f32> {
-    let c = cos(a);
-    let s = sin(a);
-    return mat2x2<f32>(c, s, -s, c);
+fn hash13(p_in: vec3<f32>) -> f32 {
+    var p = fract(p_in * 1031.1031);
+    p += dot(p, p.yzx + 19.19);
+    return fract((p.x + p.y) * p.z);
 }
 
-// ── Normalized FBM (always in [0,1]) ──
-
-fn fbm6(p_in: vec2<f32>) -> f32 {
-    var p = p_in;
-    var value = 0.0;
-    var amplitude = 0.5;
-    var total = 0.0;
-    let r = rot2(0.8);
-    for (var i = 0; i < 6; i = i + 1) {
-        value += amplitude * grad_noise(p);
-        total += amplitude;
-        p = r * p * 2.0 + vec2<f32>(100.0);
-        amplitude *= 0.5;
-    }
-    return value / total;
-}
-
-// Normalized 3-octave FBM — cheap density for the sun light-march, where we need
-// the broad cloud mass between a point and the sun, not fine detail.
-fn fbm3n(p_in: vec2<f32>) -> f32 {
-    var p = p_in;
-    var value = 0.0;
-    var amplitude = 0.5;
-    var total = 0.0;
-    let r = rot2(0.7);
-    for (var i = 0; i < 3; i = i + 1) {
-        value += amplitude * grad_noise(p);
-        total += amplitude;
-        p = r * p * 2.0 + vec2<f32>(70.0);
-        amplitude *= 0.5;
-    }
-    return value / total;
-}
-
-// Ridged FBM — produces cumulus billow shapes
-fn fbm_ridged(p_in: vec2<f32>) -> f32 {
-    var p = p_in;
-    var value = 0.0;
-    var amplitude = 0.5;
-    var total = 0.0;
-    let r = rot2(1.2);
-    for (var i = 0; i < 4; i = i + 1) {
-        let n = grad_noise(p);
-        value += amplitude * (1.0 - abs(n * 2.0 - 1.0));
-        total += amplitude;
-        p = r * p * 2.0 + vec2<f32>(37.0);
-        amplitude *= 0.5;
-    }
-    return value / total;
-}
-
-fn fbm3(p_in: vec2<f32>) -> f32 {
-    var p = p_in;
-    var value = 0.0;
-    var amplitude = 0.5;
-    let r = rot2(0.6);
-    for (var i = 0; i < 3; i = i + 1) {
-        value += amplitude * grad_noise(p);
-        p = r * p * 2.0 + vec2<f32>(50.0);
-        amplitude *= 0.5;
-    }
-    return value;
-}
-
-// ── Henyey-Greenstein phase (includes the 1/4π normalization) ──
-
-fn hg(cos_t: f32, g: f32) -> f32 {
+// Henyey-Greenstein phase, without the 1/4pi — the radiance here is an artistic
+// scale, not a calibrated one, and folding the normalisation in would only mean
+// multiplying the sun colour back up by 4pi.
+fn henyey_greenstein(cos_theta: f32, g: f32) -> f32 {
     let g2 = g * g;
-    let denom = 1.0 + g2 - 2.0 * g * cos_t;
-    return (1.0 - g2) / (4.0 * PI * pow(max(denom, 1e-4), 1.5));
+    return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cos_theta, 1e-4), 1.5);
 }
 
-// Dual-lobe blend: a tight forward lobe (silver lining) + a softer wide lobe.
-fn dual_hg(cos_t: f32, g0: f32, g1: f32, blend: f32) -> f32 {
-    return mix(hg(cos_t, g0), hg(cos_t, g1), blend);
+// ── Shell geometry ───────────────────────────────────────────────────────────
+
+struct Roots {
+    near: f32,
+    far: f32,
+    hit: bool,
 }
 
-// ── Spherical-shell projection ──
-// Intersect view ray (from virtual ground at (0, EARTH_R, 0)) with cloud shell
-// of radius EARTH_R + h. Returns distance along ray — large near horizon, small near zenith.
-fn shell_t(dir: vec3<f32>, h: f32) -> f32 {
-    let y = max(dir.y, 0.0);
-    let r = EARTH_R + h;
-    let b = EARTH_R * y;
-    let disc = b * b + r * r - EARTH_R * EARTH_R;
-    return -b + sqrt(max(disc, 0.0));
+// Intersect a ray leaving radius `r0` at cosine-to-local-up `mu` with the
+// concentric sphere of radius `r`.
+//
+// Solved in the stable quadratic form rather than the textbook one: for the
+// near-horizontal rays that cover most of a sky, the linear term and the
+// discriminant agree to six digits, and subtracting them for the near root
+// cancels away everything f32 had. `r0^2 - r^2` is likewise written as a
+// product, because at a planetary radius the two squares agree to seven digits
+// on their own.
+fn sphere_roots(r0: f32, mu: f32, r: f32) -> Roots {
+    let b = r0 * mu;
+    let c = (r0 - r) * (r0 + r);
+    let disc = b * b - c;
+    if disc < 0.0 {
+        return Roots(0.0, 0.0, false);
+    }
+    let sq = sqrt(disc);
+    let q = -(b + select(-sq, sq, b >= 0.0));
+    if abs(q) < 1e-9 {
+        return Roots(0.0, 0.0, false);
+    }
+    let t0 = q;
+    let t1 = c / q;
+    return Roots(min(t0, t1), max(t0, t1), true);
 }
 
-fn shell_uv(dir: vec3<f32>, h: f32) -> vec2<f32> {
-    let t = shell_t(dir, h);
-    return vec2<f32>(dir.x, dir.z) * t;
-}
+// The span of the view ray that lies inside the deck. `y <= x` means this pixel
+// sees no clouds at all — below the horizon, blocked by the planet, or (from
+// above the deck) pointing up and away from it.
+fn layer_interval(r0: f32, mu: f32) -> vec2<f32> {
+    let miss = vec2<f32>(1.0, -1.0);
+    let rb = clouds.planet_radius + clouds.bottom_height;
+    let rt = clouds.planet_radius + clouds.top_height;
 
-// ── Layer output ──
+    let bottom = sphere_roots(r0, mu, rb);
+    let top = sphere_roots(r0, mu, rt);
+    let ground = sphere_roots(r0, mu, clouds.planet_radius);
 
-struct Layer {
-    color: vec3<f32>,
-    alpha: f32,
-}
+    var t0 = 0.0;
+    var t1 = 0.0;
 
-// Two-stage domain warp shared by the shape and the light-march, so both sample
-// the same billowy field. Returns the warped coordinate in shape space.
-fn warp_pos(animated: vec2<f32>) -> vec2<f32> {
-    let warp1 = vec2<f32>(
-        fbm3(animated),
-        fbm3(animated + vec2<f32>(5.2, 1.3)),
-    );
-    let w1 = animated + warp1 * 0.45;
-    let warp2 = vec2<f32>(
-        fbm3(w1 * 2.0 + vec2<f32>(12.0, 3.0)),
-        fbm3(w1 * 2.0 + vec2<f32>(-7.0, 9.0)),
-    );
-    return w1 + warp2 * 0.18;
-}
-
-// Full-detail cumulus density at a warped position, remapped by coverage and
-// eroded at the edges. Returns [0,1].
-fn cumulus_density(warped: vec2<f32>, coverage: f32) -> f32 {
-    let base = fbm6(warped);
-    let billows = fbm_ridged(warped * 2.0);
-    let shape = base * 0.55 + billows * 0.45;
-
-    let edge_low = 1.0 - coverage;
-    let edge_high = edge_low + 0.22;
-    let cloud_shape = smoothstep(edge_low, edge_high, shape);
-    if cloud_shape < 0.001 {
-        return 0.0;
+    if r0 < rb {
+        // Under the deck. Inside both shells, so each has exactly one root
+        // ahead of the ray: in through the base, out through the top.
+        t0 = bottom.far;
+        t1 = top.far;
+    } else if r0 > rt {
+        // Above the deck — only rays angled back down ever reach it.
+        if !top.hit || top.near <= 0.0 {
+            return miss;
+        }
+        t0 = top.near;
+        t1 = select(top.far, bottom.near, bottom.hit && bottom.near > 0.0);
+    } else {
+        // Inside the deck. Start at the eye and leave through whichever shell
+        // comes first — this is the case that lets a camera fly through cloud.
+        t0 = 0.0;
+        t1 = select(top.far, bottom.near, bottom.hit && bottom.near > 0.0);
     }
 
-    let detail = fbm3(warped * 5.5 + vec2<f32>(77.0, 33.0));
-    return saturate(cloud_shape - detail * 0.18);
+    // The planet itself is opaque, so a ray that meets the ground stops there.
+    // This is also what removes the clouds below the horizon: from under the
+    // deck a downward ray hits the ground long before the base shell, which
+    // collapses the interval to nothing.
+    if ground.hit && ground.near > 0.0 {
+        t1 = min(t1, ground.near);
+    }
+
+    return vec2<f32>(max(t0, 0.0), t1);
 }
 
-// Cheap density used along the sun light-march — coarse mass only.
-fn cumulus_density_cheap(warped: vec2<f32>, coverage: f32) -> f32 {
-    let base = fbm3n(warped);
-    let billows = fbm_ridged(warped * 2.0);
-    let shape = base * 0.5 + billows * 0.5;
-    let edge_low = 1.0 - coverage;
-    let edge_high = edge_low + 0.25;
-    return smoothstep(edge_low, edge_high, shape);
+// Altitude above the surface at distance `t` along the ray, from the two-term
+// expansion of sqrt(r0^2 + 2*r0*mu*t + t^2) - planet_radius.
+//
+// The leading `a + mu*t` is the flat-earth answer and the quadratic term is the
+// curvature drop; the first term dropped is on the order of t^4/r0^3, which at
+// the ~175 km tangent distance of a 2.4 km deck is under half a metre.
+fn height_at(a: f32, mu: f32, r0: f32, t: f32) -> f32 {
+    return a + mu * t + (1.0 - mu * mu) * t * t / (2.0 * r0);
 }
 
-// ── Cumulus: dense billowy front-layer clouds with sun light-march + dual-lobe phase ──
+// ── Density field ────────────────────────────────────────────────────────────
 
-fn sample_cumulus(
-    dir: vec3<f32>,
-    time: f32,
+// `p` is a world-space position in km with y = altitude; `h` is the same point's
+// position through the deck, 0 at the base and 1 at the top.
+//
+// Both textures tile, so the wind offset can grow without ever leaving them and
+// the sample coordinates never need wrapping by hand.
+fn cloud_base(p: vec3<f32>, h: f32, warp: vec2<f32>) -> f32 {
+    let uv = (p.xz + warp + clouds.wind_offset.xz) * (0.05 * clouds.base_scale);
+    let c = textureSampleLevel(base_texture, base_sampler, uv, 0.0).rgb;
+
+    // Guerrilla's height-remap: subtracting a profile that is small in the
+    // middle of the deck and large at both ends before the remap is what makes
+    // bases flat and tops cauliflower, from a map with no vertical detail.
+    let profile = h * h * c.b + pow(1.0 - h, 16.0);
+    return remap(c.r - profile, c.g, 1.0);
+}
+
+fn cloud_detail(p: vec3<f32>) -> f32 {
+    // The reference's 1/32 is folded in here because the volume is sampled in
+    // normalised coordinates, not texels — which is also what buys the trilinear
+    // filtering it had to fake with a manual lerp along one axis.
+    let q = (p + clouds.wind_offset.xyz)
+        * (1.6 * clouds.base_scale * clouds.detail_scale / 32.0);
+    // Walking the volume's third axis over time makes the erosion evolve instead
+    // of being carried along rigidly — the fine-grained half of the morph, and
+    // free, because the volume is 3D whether or not anything moves through it.
+    let morph = vec3<f32>(0.0, clouds.morph_offset.z, 0.0);
+    return textureSampleLevel(detail_texture, detail_sampler, q + morph, 0.0).r;
+}
+
+// Erodes a little off both ends of the deck so it does not terminate in a slab.
+fn deck_gradient(h: f32) -> f32 {
+    return linear_step(0.0, 0.1, h) - linear_step(0.8, 1.2, h);
+}
+
+// Low-frequency coverage modulation — a weather map, in the Guerrilla sense.
+//
+// The base atlas repeats every ~13 km of world at the default scale, which at
+// cloud altitude is close enough together to read as wallpaper along the
+// horizon. Sampling the same atlas an order of magnitude wider, and rotated so
+// the two lattices never line up, gives every repeat of the silhouette a
+// different amount of cloud in it and the eye stops finding the period. The two
+// together only come back into phase after a thousand km.
+//
+// Sampled once per *view* step and carried into the sun march rather than being
+// folded into `cloud_density`: it varies over tens of km, so it is constant to
+// well inside a texel across the ~150 m the sun march covers, and doing it there
+// would multiply this fetch by seven.
+fn weather(xz: vec2<f32>) -> f32 {
+    let rotated = vec2<f32>(
+        xz.x * WEATHER_ROTATION.x - xz.y * WEATHER_ROTATION.y,
+        xz.x * WEATHER_ROTATION.y + xz.y * WEATHER_ROTATION.x,
+    );
+    let uv = (rotated + clouds.wind_offset.xz)
+        * (0.05 * clouds.base_scale / WEATHER_SPREAD);
+    let c = textureSampleLevel(base_texture, base_sampler, uv, 0.0).r;
+    // Centred on 1 so the authored coverage still means what it says on average,
+    // but swinging wide enough on either side to open real gaps and pile up real
+    // banks. A timid range here leaves an even blanket, which is the look that
+    // gives the repeat away however well the noise itself tiles.
+    return clamp(0.35 + 1.3 * c, 0.0, 1.65);
+}
+
+// The displacement applied to the base silhouette, in km. See the note on
+// `WARP_SPREAD`. Like `weather`, sampled once per view step.
+fn shape_warp(xz: vec2<f32>) -> vec2<f32> {
+    let uv = (xz + clouds.morph_offset.xy)
+        * (0.05 * clouds.base_scale / WARP_SPREAD);
+    let c = textureSampleLevel(base_texture, base_sampler, uv, 0.0).gb;
+    // `g` is the remap window, in [-1, 0]; `b` is the height modifier, in [0, 1].
+    // Neither was authored as a vector field, but reading two decorrelated
+    // channels as one is a free way to get a smooth pseudo-random displacement,
+    // and the atlas is already in the cache.
+    let swing = vec2<f32>(c.x + 0.5, c.y - 0.5) * 2.0;
+    return swing * (WARP_FRACTION / (0.05 * clouds.base_scale));
+}
+
+// Normalised density, 0..1. Extinction is applied by the callers so this stays
+// a pure shape function that both marches can share.
+//
+// `coverage` and `detail_fade` come from the view step this sample belongs to,
+// for the reasons above.
+fn cloud_density(
+    p: vec3<f32>,
+    h: f32,
     coverage: f32,
-    density: f32,
-    scale: f32,
-    speed: f32,
-    wind_dir: vec2<f32>,
-    lit_col: vec3<f32>,
-    shad_col: vec3<f32>,
-    sun_dir: vec3<f32>,
-    absorption: f32,
-    silver_i: f32,
-    silver_s: f32,
-    powder: f32,
-    ambient: f32,
-) -> Layer {
-    var out: Layer;
-    out.color = vec3<f32>(0.0);
-    out.alpha = 0.0;
+    warp: vec2<f32>,
+    detail_fade: f32,
+) -> f32 {
+    var m = cloud_base(p, h, warp) * deck_gradient(h);
 
-    let uv = shell_uv(dir, CUMULUS_H) * scale * 0.22;
-    let animated = uv + wind_dir * time * speed;
-    let warped = warp_pos(animated);
-
-    let d0 = cumulus_density(warped, coverage);
-    if d0 < 0.001 {
-        return out;
+    // Erode only where the base shape is thin. Detail carved into a dense core
+    // would punch holes through the middle of a cloud rather than fray its rim.
+    let erosion = smoothstep(1.0, 0.5, m) * detail_fade;
+    if erosion > 0.0 {
+        m -= cloud_detail(p) * erosion * clouds.detail_strength;
     }
 
-    // ── Sun light-march: accumulate optical depth from this point toward the sun.
-    // Horizontal shadow direction = sun's projected azimuth; a low sun stretches
-    // the shadow further through the field, just like long evening cloud shadows.
-    let sun_xz = vec2<f32>(sun_dir.x, sun_dir.z);
-    let sun_uv = normalize(sun_xz + vec2<f32>(1e-4, 0.0));
-    let sun_reach = LIGHT_STEP / clamp(sun_dir.y * 0.5 + 0.5, 0.4, 1.0);
-
-    var light_od = 0.0;
-    for (var i = 1; i <= LIGHT_STEPS; i = i + 1) {
-        let sp = warped + sun_uv * sun_reach * f32(i);
-        light_od += cumulus_density_cheap(sp, coverage);
-    }
-    light_od *= sun_reach * density * absorption;
-
-    // Self optical depth of THIS sample (controls how opaque it reads).
-    let self_od = d0 * density * absorption;
-
-    // ── Multi-scatter Beer-Lambert toward the sun.
-    // Each octave reaches deeper (less extinction) and contributes less — the
-    // classic stand-in for in-cloud multiple scattering so cores aren't black.
-    let cos_t = dot(dir, sun_dir);
-    var direct = 0.0;
-    var atten = 1.0;
-    var extinct = 1.0;
-    var ecc = 1.0;
-    for (var ms = 0; ms < MS_OCTAVES; ms = ms + 1) {
-        let transmit = exp(-light_od * extinct);
-        // Dual-lobe phase, eccentricity shrinking toward isotropic each octave.
-        let phase = dual_hg(cos_t, 0.75 * ecc, -0.2 * ecc, 0.4);
-        direct += atten * transmit * phase;
-        atten *= MS_SCATTER;
-        extinct *= MS_EXTINCT;
-        ecc *= MS_PHASE;
-    }
-    // Phase carries a 1/4π factor; lift back to a perceptual scale.
-    direct *= 4.0 * PI;
-
-    // Powder: thin sunlit edges look darker because little has scattered yet.
-    let powder_term = 1.0 - exp(-self_od * 2.0);
-    let direct_lit = direct * mix(1.0, powder_term, powder);
-
-    // ── Compose radiance.
-    // Sunlit scattering uses the lit color; shadowed regions are filled by the
-    // (bluish) shadow color standing in for scattered skylight + ambient — which
-    // is exactly what lights real cloud undersides.
-    let sky_fill = shad_col * (ambient + 0.15);
-    var lit = lit_col * direct_lit + sky_fill;
-
-    // Explicit silver lining: a sharp forward-scatter rim near the sun, strongest
-    // on thin/edge regions, layered on top so the inspector knobs stay meaningful.
-    let sun_facing = pow(saturate(cos_t), 1.0 / max(silver_s, 0.01));
-    let edge_mask = 1.0 - smoothstep(0.0, 0.5, d0);
-    lit += lit_col * silver_i * sun_facing * edge_mask;
-
-    out.color = lit;
-    out.alpha = saturate(d0 * density);
-    return out;
+    // Coverage slides the whole field through the smoothstep window: 0 puts
+    // everything below it (clear sky), 1 puts everything above (overcast).
+    m = smoothstep(0.0, clouds.edge_softness, m + coverage - 1.0);
+    m *= min(h / clouds.base_softness, 1.0);
+    return clamp(m, 0.0, 1.0);
 }
 
-// ── Cirrus: wispy, stretched high-altitude streaks ──
-
-fn sample_cirrus(
-    dir: vec3<f32>,
-    time: f32,
+// Optical depth from a sample toward the sun — the term that gives a cloud a
+// lit face and a shadowed one, and the single largest realism cue in the model.
+//
+// Depth rather than transmittance, because the multiple-scattering octaves each
+// attenuate the *same* path at a different rate; re-marching it once per octave
+// would be three times the fetches for a number that is already in hand.
+//
+// Steps grow geometrically: the near samples decide the rim lighting and need
+// resolution, the far ones only need to notice that a neighbouring cloud is in
+// the way.
+fn sun_optical_depth(
+    origin: vec3<f32>,
+    thickness: f32,
     coverage: f32,
-    density: f32,
-    scale: f32,
-    speed: f32,
-    wind_dir: vec2<f32>,
-    lit_col: vec3<f32>,
-    sun_dir: vec3<f32>,
-    silver_i: f32,
-    silver_s: f32,
-    ambient: f32,
-) -> Layer {
-    var out: Layer;
-    out.color = vec3<f32>(0.0);
-    out.alpha = 0.0;
+    warp: vec2<f32>,
+    detail_fade: f32,
+) -> f32 {
+    let sun = clouds.sun_direction.xyz;
+    // Stretch the march as the sun drops. Light from overhead crosses the deck
+    // by the shortest path there is; light from 20 degrees up crosses three
+    // times as much cloud to reach the same point, and that is the whole reason
+    // a midday sky is bright and flat while an evening one is deep and modelled.
+    // A march of fixed length would sample the same 150 m at every sun angle and
+    // throw all of that away — the sun's height would change the light's colour
+    // and nothing about its shape.
+    var step_km = thickness * SHADOW_STEP_FRACTION / max(sun.y, SHADOW_MIN_SLOPE);
+    var t = step_km * 0.5;
+    var optical_depth = 0.0;
 
-    // Use cirrus-altitude shell for natural perspective
-    let uv = shell_uv(dir, CIRRUS_H) * scale * 0.16;
-    // Cirrus drifts slower; independent wind axis rotation gives cross-layer parallax
-    let cirrus_wind = rot2(0.6) * wind_dir;
-    let animated = uv + cirrus_wind * time * speed * 0.55;
-
-    // Stretch along primary axis for horizontal streaks
-    let stretch = mat2x2<f32>(1.0, 0.0, 0.0, 0.28);
-    let stretched = stretch * animated;
-
-    let warp = vec2<f32>(
-        fbm3(stretched),
-        fbm3(stretched + vec2<f32>(19.0, 7.0)),
-    );
-    let warped = stretched + warp * 0.3;
-
-    let shape = fbm6(warped);
-
-    // Cirrus has lower coverage threshold — always a bit thinner
-    let cirrus_cov = coverage * 0.55 + 0.1;
-    let edge_low = 1.0 - cirrus_cov;
-    let edge_high = edge_low + 0.3;
-    let cloud_shape = smoothstep(edge_low, edge_high, shape);
-
-    if cloud_shape < 0.001 {
-        return out;
+    for (var i = 0u; i < clouds.shadow_steps; i += 1u) {
+        // Local up is +Y to well inside a texel over the few km this march
+        // covers — curvature only matters across the whole view ray.
+        let p = origin + sun * t;
+        let h = (p.y - clouds.bottom_height) / thickness;
+        if h > 1.0 || h < 0.0 {
+            break;
+        }
+        optical_depth += cloud_density(p, h, coverage, warp, detail_fade) * step_km;
+        step_km *= SHADOW_STEP_GROWTH;
+        t += step_km;
     }
 
-    let detail = fbm3(warped * 7.0 + vec2<f32>(131.0, 29.0));
-    let eroded = saturate(cloud_shape - detail * 0.22);
-
-    if eroded < 0.001 {
-        return out;
-    }
-
-    // Cirrus is high above the sun-facing clouds — mostly bright and translucent
-    var lit = lit_col * (ambient * 0.6 + 0.55);
-    let sun_dot = dot(dir, sun_dir);
-    let silver = pow(saturate(sun_dot), 1.0 / max(silver_s * 1.4, 0.01)) * silver_i;
-    lit += lit_col * silver * 0.6;
-
-    out.color = lit;
-    // Cirrus is inherently thin — cap alpha contribution
-    out.alpha = saturate(eroded * density * 0.55);
-    return out;
+    return optical_depth * clouds.extinction;
 }
 
-// ── Sun-tinted horizon glow (added to haze so the sky near the sun warms up) ──
-
-fn sky_sun_glow(dir: vec3<f32>, sun_dir: vec3<f32>, base_haze: vec3<f32>) -> vec3<f32> {
-    let sun_dot = saturate(dot(dir, sun_dir));
-    let halo = pow(sun_dot, 6.0) * 0.30 + pow(sun_dot, 48.0) * 0.55;
-    return base_haze + vec3<f32>(1.0, 0.93, 0.82) * halo;
-}
+// ── Fragment ─────────────────────────────────────────────────────────────────
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Unpack uniforms
-    let coverage = params_a.x;
-    let density = params_a.y;
-    let scale = params_a.z;
-    let speed = params_a.w;
-    let wind_dir = vec2<f32>(params_b.x, params_b.y);
-    let altitude = params_b.z;
-    let sun_elevation = params_b.w;
-    let sun_dir = normalize(vec3<f32>(params_c.x, params_c.y, params_c.z));
-    let absorption = params_c.w;
-    let silver_i = params_d.x;
-    let silver_s = params_d.y;
-    let powder = params_d.z;
-    let ambient = params_d.w;
-    let haze_base = horizon_color.rgb;
-    let atmo_strength = horizon_color.a;
+    // The dome is centred on the camera, so the view direction is the offset
+    // from the eye to this fragment — not the fragment's own position, which
+    // would shear the whole sky once the camera leaves the world origin.
+    let dir = normalize(in.world_position.xyz - view.world_position);
 
-    let dir = normalize(in.world_position.xyz);
+    let camera_km = view.world_position * 0.001;
+    let altitude = camera_km.y;
+    let r0 = clouds.planet_radius + altitude;
+    let mu = dir.y;
 
-    // Below-horizon discard
-    if dir.y < 0.005 {
-        discard;
+    if clouds.day_factor < 0.002 {
+        return vec4<f32>(0.0);
     }
 
-    // Altitude masking — fade clouds near horizon base and zenith top
-    let alt_fade = smoothstep(altitude * 0.25, altitude * 0.25 + 0.22, dir.y);
-    let alt_top = smoothstep(0.99, 0.88, dir.y);
-    let alt_mask = alt_fade * alt_top;
-
-    if alt_mask < 0.001 {
-        discard;
+    let span = layer_interval(r0, mu);
+    if span.y <= span.x {
+        // Premultiplied transparent black is a true no-op against the blend
+        // equation, and returning it lets the shader leave here — `discard` in
+        // WGSL only flags the invocation, it does not stop it.
+        return vec4<f32>(0.0);
     }
 
-    let time = globals.time;
+    let thickness = clouds.top_height - clouds.bottom_height;
+    let march = min(span.y - span.x, MAX_MARCH_KM);
+    let steps = max(clouds.view_steps, 1u);
 
-    // Sample both layers
-    let cumulus = sample_cumulus(
-        dir, time, coverage, density, scale, speed, wind_dir,
-        cloud_color.rgb, shadow_color.rgb, sun_dir, absorption,
-        silver_i, silver_s, powder, ambient,
+    // Size the first step so a geometric schedule of `steps` of them would cover
+    // the whole span, then cap it: see the note on VIEW_STEP_GROWTH.
+    let growth_sum =
+        (pow(VIEW_STEP_GROWTH, f32(steps)) - 1.0) / (VIEW_STEP_GROWTH - 1.0);
+    var dt = min(march / growth_sum, thickness * VIEW_STEP_START);
+
+    // Dither the ray start so the step boundaries do not read as concentric
+    // bands. The hash is of the view direction, not of time or screen position,
+    // so the pattern is pinned to the sky: it neither crawls as the camera turns
+    // nor flickers frame to frame, which leaves it in a form TAA can resolve.
+    var t = span.x + dt * hash13(dir * 4096.0);
+
+    // Frostbite's dual-lobe phase, once per multiple-scattering octave. The
+    // phase depends only on the angle to the sun, so all of it is hoisted out of
+    // the march rather than recomputed at every sample.
+    let cos_theta = dot(dir, clouds.sun_direction.xyz);
+    var phases: array<f32, 3>;
+    var eccentricity = 1.0;
+    for (var octave = 0u; octave < MS_OCTAVES; octave += 1u) {
+        phases[octave] = mix(
+            henyey_greenstein(cos_theta, clouds.forward_scattering * eccentricity),
+            henyey_greenstein(cos_theta, clouds.backward_scattering * eccentricity),
+            clouds.scattering_blend,
+        );
+        eccentricity *= MS_ECCENTRICITY;
+    }
+
+    var scattered = vec3<f32>(0.0);
+    var transmittance = 1.0;
+    // Distance to the first cloud the ray meets, for the haze below. -1 = none.
+    var hit_distance = -1.0;
+
+    for (var i = 0u; i < steps; i += 1u) {
+        // The schedule can overshoot the exit, and `h` is clamped, so a sample
+        // past the top of the deck would still report the gradient's value there
+        // rather than nothing at all.
+        if t > span.y {
+            break;
+        }
+
+        let h_km = height_at(altitude, mu, r0, t);
+        let h = clamp((h_km - clouds.bottom_height) / thickness, 0.0, 1.0);
+        let p = vec3<f32>(camera_km.x + dir.x * t, h_km, camera_km.z + dir.z * t);
+
+        // All three are constant across this sample's sun march (see `weather`).
+        let coverage = clamp(clouds.coverage * weather(p.xz), 0.0, 1.0);
+        let warp = shape_warp(p.xz);
+        let detail_fade = 1.0 - clamp(t / DETAIL_FADE_KM, 0.0, 1.0);
+
+        let density = cloud_density(p, h, coverage, warp, detail_fade);
+        if density > 0.0 {
+            if hit_distance < 0.0 {
+                hit_distance = t;
+            }
+
+            let sigma = density * clouds.extinction;
+            let step_transmittance = exp(-sigma * dt);
+            let sun_depth = sun_optical_depth(p, thickness, coverage, warp, detail_fade);
+
+            // Multiple scattering, as a sum of octaves over the one sun path:
+            // each carries less light, is extincted less, and scatters more
+            // isotropically than the last. The deepest octave is what keeps a
+            // cloud's shaded body lit instead of collapsing to the ambient term.
+            var direct = 0.0;
+            var attenuation = 1.0;
+            var extinction = 1.0;
+            for (var octave = 0u; octave < MS_OCTAVES; octave += 1u) {
+                direct += attenuation * exp(-sun_depth * extinction) * phases[octave];
+                attenuation *= MS_ATTENUATION;
+                extinction *= MS_EXTINCTION;
+            }
+
+            // Powder: a thin sunlit edge has had little chance to scatter light
+            // back toward the eye yet, so it reads darker than its density
+            // alone suggests. Without it, cloud rims look like cut paper.
+            //
+            // Measured over a fixed slice of the deck rather than over `dt`,
+            // which is thirty times longer at the horizon than overhead — keying
+            // it to the step would darken distant cloud for no reason but the
+            // step size the march happened to pick.
+            let powder = 1.0 - exp(-sigma * thickness * 0.1);
+            let sunlight =
+                clouds.sun_color.rgb * direct * mix(1.0, powder, clouds.powder_strength);
+            let skylight = mix(clouds.ambient_bottom.rgb, clouds.ambient_top.rgb, h);
+
+            // Hillaire's energy-conserving integration: integrate the source
+            // term across the whole segment analytically instead of sampling it
+            // at one point and multiplying by dt, which is what keeps the result
+            // stable as the step size changes from zenith to horizon.
+            scattered += transmittance * (sunlight + skylight) * (1.0 - step_transmittance);
+            transmittance *= step_transmittance;
+
+            if transmittance < clouds.min_transmittance {
+                transmittance = 0.0;
+                break;
+            }
+        }
+
+        t += dt;
+        dt = min(dt * VIEW_STEP_GROWTH, thickness * VIEW_STEP_MAX);
+    }
+
+    let alpha = 1.0 - transmittance;
+    if alpha < 0.002 {
+        return vec4<f32>(0.0);
+    }
+
+    // Atmospheric perspective, by distance rather than by elevation. Distant
+    // cloud is seen through more air than near cloud, and the depth of air is
+    // what the eye reads as depth of field in a sky. Keying it to how far the
+    // ray actually travelled before hitting cloud — rather than to how low in
+    // the sky the pixel is — also does the work of hiding the base map's
+    // repeat, which only becomes visible at the distances haze is thickest at.
+    let distance_km = select(march, hit_distance, hit_distance >= 0.0);
+    let haze = clamp(
+        (1.0 - exp(-distance_km / HAZE_DISTANCE_KM)) * clouds.haze_sunward.a,
+        0.0,
+        1.0,
     );
-    let cirrus = sample_cirrus(
-        dir, time, coverage, density, scale, speed, wind_dir,
-        cloud_color.rgb, sun_dir, silver_i, silver_s, ambient,
+
+    // The haze colour is sampled from the atmosphere at two bearings — toward
+    // the sun and away from it — and blended by azimuth, because at sunrise and
+    // sunset the two halves of the horizon are not remotely the same colour and
+    // a single value paints the whole rim the same shade of orange. `dir_xz`
+    // vanishes at the zenith, where haze is thinnest anyway; the max() keeps a
+    // NaN from propagating out of that corner.
+    let dir_xz = vec2<f32>(dir.x, dir.z);
+    let sun_xz = vec2<f32>(clouds.sun_direction.x, clouds.sun_direction.z);
+    let alignment = clamp(
+        dot(dir_xz, sun_xz) / max(length(dir_xz) * length(sun_xz), 1e-4),
+        -1.0,
+        1.0,
     );
+    let haze_color = mix(clouds.haze_away.rgb, clouds.haze_sunward.rgb, 0.5 + 0.5 * alignment);
 
-    if cumulus.alpha + cirrus.alpha < 0.002 {
-        discard;
-    }
-
-    // Over-composite: cirrus is behind (higher/farther), cumulus in front
-    var pre_color = cirrus.color * cirrus.alpha;
-    var pre_alpha = cirrus.alpha;
-    pre_color = cumulus.color * cumulus.alpha + pre_color * (1.0 - cumulus.alpha);
-    pre_alpha = cumulus.alpha + pre_alpha * (1.0 - cumulus.alpha);
-
-    // De-premultiply so atmospheric mix works on straight color
-    var color = pre_color;
-    if pre_alpha > 0.001 {
-        color = pre_color / pre_alpha;
-    }
-
-    // Atmospheric perspective — haze near horizon, warmed near sun
-    let sky_haze = sky_sun_glow(dir, sun_dir, haze_base);
-    let horizon_t = 1.0 - pow(max(dir.y, 0.0), 0.35);
-    let atmo = saturate(horizon_t * atmo_strength);
-    color = mix(color, sky_haze, atmo);
-
-    // Day/night fade
-    let day_factor = smoothstep(-0.05, 0.15, sun_elevation);
-
-    let final_alpha = pre_alpha * alt_mask * day_factor;
-
-    if final_alpha < 0.001 {
-        discard;
-    }
-
-    return vec4<f32>(color, final_alpha);
+    // The colours are premultiplied, so the haze is scaled by alpha to stay in
+    // that space, and the night fade scales the whole result.
+    let color = mix(scattered, haze_color * alpha, haze);
+    return vec4<f32>(color, alpha) * clouds.day_factor;
 }

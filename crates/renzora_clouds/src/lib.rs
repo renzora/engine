@@ -1,49 +1,141 @@
-//! Renzora Clouds — procedural cloud dome rendered with FBM noise shader.
+//! Renzora Clouds — volumetric clouds raymarched through a spherical deck.
+//!
+//! The model is the Horizon Zero Dawn one (Schneider/Vos) with Frostbite's
+//! scattering integration (Hillaire): a tileable Perlin-Worley base map defines
+//! the silhouette, a 3D Worley volume erodes it, a height profile turns a map
+//! with no vertical detail into flat-bottomed billowing cumulus, and a second
+//! march toward the sun gives every sample its own shadow.
+//!
+//! Three pieces:
+//!
+//! * [`noise`] bakes the two noise fields once, on the GPU.
+//! * [`sky`] reads the scene's atmosphere so the deck relights with it.
+//! * [`material`] carries them plus one uniform block to the shader.
+//! * `sync_clouds` here keeps a camera-centred dome alive and packs the uniform.
+//!
+//! The dome is *only* a way to get one fragment per sky pixel; `clouds.wgsl`
+//! marches from the camera against real shell geometry and never touches the
+//! dome surface. That is what lets the deck curve down to the horizon by itself
+//! and what lets a camera climb up through it.
 
-use bevy::pbr::Material;
+use bevy::light::atmosphere::ScatteringMedium;
+use bevy::light::Atmosphere;
 use bevy::prelude::*;
-use bevy::render::render_resource::AsBindGroup;
-use bevy::shader::ShaderRef;
 use serde::{Deserialize, Serialize};
+
+pub mod material;
+pub mod noise;
+pub mod sky;
+
+pub use material::{CloudMaterial, CloudsUniform};
+pub use noise::CloudNoiseTextures;
+pub use sky::SkyTransfer;
 
 // ============================================================================
 // Data
 // ============================================================================
 
-/// Procedural clouds settings.
+/// Volumetric cloud settings.
+///
+/// Heights are metres above the world's ground plane; the shader works in km
+/// and converts on the way in.
 #[derive(Component, Clone, Debug, Reflect, Serialize, Deserialize)]
+#[serde(default)]
 #[reflect(Component, Default, Serialize, Deserialize)]
 pub struct CloudsData {
     pub enabled: bool,
-    /// Cloud coverage (0 = clear, 1 = overcast)
+
+    // ── Deck geometry ──
+    /// Altitude of the base of the cloud deck, in metres.
+    pub bottom_height: f32,
+    /// Altitude of the top of the cloud deck, in metres.
+    pub top_height: f32,
+    /// Radius of the virtual planet the deck wraps, in metres. This is what sets
+    /// how sharply clouds compress toward the horizon: shrink it for a small,
+    /// storybook world, leave it at Earth's radius for a realistic sky.
+    pub planet_radius: f32,
+
+    // ── Shape ──
+    /// 0 = clear sky, 1 = solid overcast.
     pub coverage: f32,
-    /// Cloud density/opacity (0 = transparent, 1 = opaque)
+    /// How opaque the cloud material is, 0..1.
     pub density: f32,
-    /// Noise scale (larger = bigger cloud formations)
+    /// Size of the cloud formations — smaller means larger, broader systems.
     pub scale: f32,
-    /// Wind animation speed
+    /// Frequency of the erosion detail relative to the base shape.
+    pub detail_scale: f32,
+    /// How much the detail volume eats into the base silhouette.
+    pub detail_strength: f32,
+    /// Width of the coverage threshold. Low values give crisp cauliflower edges,
+    /// high values give soft haze.
+    pub edge_softness: f32,
+    /// Fraction of the deck's depth over which density fades in from the base.
+    pub base_softness: f32,
+
+    // ── Wind ──
+    /// Wind speed in metres per second. Cloud features are kilometres across, so
+    /// this has to be weather-system fast — a literal 2 m/s breeze moves the
+    /// deck by a thousandth of a cloud per second and reads as a still image.
     pub speed: f32,
-    /// Wind direction in degrees (0-360)
+    /// Wind direction in degrees (0–360).
     pub wind_direction: f32,
-    /// Altitude threshold (0 = horizon, 1 = zenith)
-    pub altitude: f32,
-    /// Cloud color (lit side) RGB
+    /// How fast cloud shapes evolve, in metres per second, independently of the
+    /// wind that carries them. Wind alone only translates the deck, and a cloud
+    /// whose silhouette never changes reads as a cutout sliding across the sky
+    /// however fast it goes. 0 freezes the shapes and leaves pure drift.
+    pub morph_speed: f32,
+
+    // ── Lighting ──
+    /// Tint of the sunlight scattering out of the cloud.
     pub color: (f32, f32, f32),
-    /// Shadow color (dark underside) RGB
+    /// Overall brightness of the deck.
+    ///
+    /// This is a *trim* on the scene sun, not a substitute for it: the sunlight
+    /// and the skylight both scale with the `Sun` component's illuminance
+    /// first, so dimming the scene's sun dims the clouds with everything else,
+    /// and this only says how bright the deck sits within that.
+    pub brightness: f32,
+    /// Skylight filling the top of the deck.
+    pub ambient_color: (f32, f32, f32),
+    /// Skylight filling the base of the deck. This is what actually lights a
+    /// real cloud's underside — scattered blue sky, not darkness.
+    ///
+    /// Keep it *saturated*, not merely dark. Grey cloud is almost never a
+    /// brightness problem: a warm direct term summed with a near-neutral fill
+    /// lands on neutral across most of a cloud whatever the levels are, and the
+    /// only way out is for the two to disagree about hue.
     pub shadow_color: (f32, f32, f32),
-    /// Beer's law absorption coefficient (higher = darker thick clouds)
-    pub absorption: f32,
-    /// Silver lining intensity (forward scattering glow at cloud edges toward sun)
-    pub silver_intensity: f32,
-    /// Silver lining spread (lower = tighter around sun direction)
-    pub silver_spread: f32,
-    /// Powder effect strength (darkens thin cloud edges)
-    pub powder_strength: f32,
-    /// Minimum ambient brightness floor
+    /// Multiplier on both ambient colours.
     pub ambient_brightness: f32,
-    /// Horizon haze color RGB
+    /// Extinction multiplier: how fast light is absorbed inside the cloud, and
+    /// therefore how hard the sun-facing/shadowed contrast is.
+    pub absorption: f32,
+    /// Eccentricity of the forward scattering lobe — the silver lining.
+    pub forward_scattering: f32,
+    /// Eccentricity of the backward lobe, which lights clouds seen against the
+    /// sun. Negative by convention.
+    pub backward_scattering: f32,
+    /// Mix between the two lobes, 0 = all forward, 1 = all backward.
+    pub scattering_blend: f32,
+    /// Darkening of thin sunlit edges, which have scattered little light back
+    /// toward the eye yet. Without it, rims look like cut paper.
+    pub powder_strength: f32,
+
+    // ── March ──
+    /// Samples along each view ray. The dominant cost knob.
+    pub raymarch_steps: u32,
+    /// Samples along each sun-shadow ray.
+    pub shadow_steps: u32,
+
+    // ── Atmosphere ──
+    /// Drive the cloud lighting from the scene's atmosphere: sunlight reddens
+    /// and dims as it does in the sky, and the haze follows the real horizon.
+    /// Every authored colour below is then a *noon* value that the atmosphere
+    /// modulates. Turn it off for a stylised sky that ignores the sun's height.
+    pub atmosphere_lighting: bool,
+    /// Colour distant cloud fades into.
     pub horizon_color: (f32, f32, f32),
-    /// Atmospheric perspective strength (0 = none, 1 = full haze at horizon)
+    /// How strongly that haze takes over toward the horizon.
     pub atmosphere_strength: f32,
 }
 
@@ -51,82 +143,102 @@ impl Default for CloudsData {
     fn default() -> Self {
         Self {
             enabled: true,
-            coverage: 0.55,
-            density: 0.95,
-            scale: 2.2,
-            speed: 0.005,
+
+            bottom_height: 2200.0,
+            top_height: 4200.0,
+            planet_radius: 6_371_000.0,
+
+            coverage: 0.4,
+            density: 0.5,
+            scale: 3.4,
+            detail_scale: 42.0,
+            detail_strength: 0.27,
+            edge_softness: 0.1,
+            base_softness: 0.25,
+
+            speed: 40.0,
             wind_direction: 220.0,
-            altitude: 0.05,
-            color: (1.0, 1.0, 1.0),
-            shadow_color: (0.45, 0.52, 0.62),
-            absorption: 1.6,
-            silver_intensity: 0.9,
-            silver_spread: 0.12,
-            powder_strength: 0.5,
-            ambient_brightness: 0.32,
-            horizon_color: (0.80, 0.87, 0.94),
-            atmosphere_strength: 0.80,
+            morph_speed: 50.0,
+
+            color: (1.0, 0.93, 0.80),
+            brightness: 3.2,
+            ambient_color: (0.58, 0.72, 0.96),
+            shadow_color: (0.28, 0.44, 0.74),
+            ambient_brightness: 1.1,
+            absorption: 1.0,
+            forward_scattering: 0.85,
+            backward_scattering: -0.2,
+            scattering_blend: 0.3,
+            powder_strength: 0.3,
+
+            raymarch_steps: 32,
+            shadow_steps: 6,
+
+            atmosphere_lighting: true,
+            horizon_color: (0.72, 0.83, 0.96),
+            atmosphere_strength: 0.8,
         }
     }
 }
 
 // ============================================================================
-// Cloud Material
+// Tuning constants
 // ============================================================================
 
-#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
-pub struct CloudMaterial {
-    /// coverage, density, scale, speed
-    #[uniform(0)]
-    pub params_a: Vec4,
-    /// wind_dir_x, wind_dir_y, altitude, unused
-    #[uniform(1)]
-    pub params_b: Vec4,
-    /// Cloud lit color
-    #[uniform(2)]
-    pub cloud_color: LinearRgba,
-    /// Cloud shadow color
-    #[uniform(3)]
-    pub shadow_color: LinearRgba,
-    /// sun_dir.x, sun_dir.y, sun_dir.z, absorption
-    #[uniform(4)]
-    pub params_c: Vec4,
-    /// silver_intensity, silver_spread, powder_strength, ambient_brightness
-    #[uniform(5)]
-    pub params_d: Vec4,
-    /// Horizon haze (rgb = color, a = atmosphere_strength)
-    #[uniform(6)]
-    pub horizon_color: LinearRgba,
-}
+/// Extinction per km at `density == 1`. Chosen so the default `0.5` lands on the
+/// reference model's 0.03 per metre.
+const MAX_EXTINCTION_PER_KM: f32 = 60.0;
 
-impl Material for CloudMaterial {
-    fn fragment_shader() -> ShaderRef {
-        ShaderRef::Path("embedded://renzora_clouds/clouds.wgsl".into())
-    }
+/// Transmittance below which a ray is called opaque and stops. The reference
+/// uses 0.1, which leaves a tenth of the sky bleeding through the thickest
+/// clouds; that is only invisible there because it composites against its own
+/// sky texture rather than blending over a real one.
+const MIN_TRANSMITTANCE: f32 = 0.02;
 
-    fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Blend
-    }
+/// Sun elevation, in degrees, over which the deck fades out into night.
+///
+/// The window sits *below* the horizon on purpose. Golden hour is the best the
+/// clouds ever look, and a fade centred on 0 would have them half-transparent
+/// through all of it; this keeps them solid until the sun has properly gone and
+/// then takes them out over the following ten degrees of twilight.
+const NIGHT_ELEVATION: f32 = -12.0;
+const DAY_ELEVATION: f32 = -2.0;
 
-    /// The dome is centered on the camera, so its transparent-sort distance is
-    /// ~0 — the nearest item in the phase — making it draw *last* and blend
-    /// clouds over every transparent that doesn't write depth (gaussian
-    /// splats). Bias the sort distance to -inf so the dome always draws first,
-    /// as sky background; it still depth-tests against opaque geometry.
-    fn depth_bias(&self) -> f32 {
-        f32::NEG_INFINITY
-    }
 
-    fn specialize(
-        _pipeline: &bevy::pbr::MaterialPipeline,
-        descriptor: &mut bevy::render::render_resource::RenderPipelineDescriptor,
-        _layout: &bevy::mesh::MeshVertexBufferLayoutRef,
-        _key: bevy::pbr::MaterialPipelineKey<Self>,
-    ) -> Result<(), bevy::render::render_resource::SpecializedMeshPipelineError> {
-        descriptor.primitive.cull_mode = None;
-        Ok(())
-    }
-}
+/// Step caps below `High`. Both marches are per-pixel, so the tier cap is the
+/// difference between clouds costing a slice of the frame and costing the frame.
+const MEDIUM_VIEW_STEPS: u32 = 16;
+const MEDIUM_SHADOW_STEPS: u32 = 4;
+
+/// The directional-light illuminance the authored colours are calibrated
+/// against, in lux. Cloud radiance is scaled by the scene sun's illuminance over
+/// this, so brightening or dimming the sun carries the deck with it instead of
+/// leaving it lit by a number of its own.
+const REFERENCE_ILLUMINANCE: f32 = 40_000.0;
+
+/// Earth's radii, used when a scene has no `Atmosphere` of its own to measure.
+/// Match bevy's own defaults.
+const FALLBACK_INNER_RADIUS: f32 = 6_360_000.0;
+const FALLBACK_OUTER_RADIUS: f32 = 6_460_000.0;
+
+/// How far the warp field runs relative to the base silhouette. **Must match
+/// `WARP_SPREAD` in `clouds.wgsl`** — it is only here so the scroll can be
+/// wrapped at the field's own period.
+const WARP_SPREAD: f32 = 3.0;
+
+/// Turns of the detail volume per second, per metre-per-second of morph speed.
+/// The default 50 m/s morph therefore rolls the erosion right through once every
+/// 50 seconds, which reads as evolving rather than boiling.
+const DETAIL_MORPH_RATE: f32 = 0.0004;
+
+/// Degrees the morph scroll is offset from the wind. Sharing the wind's bearing
+/// would make the deformation read as more translation in the same direction;
+/// crossing it is what makes shapes look like they are changing rather than
+/// moving.
+const MORPH_BEARING_OFFSET: f32 = 55.0;
+
+/// Fallback dome radius when no camera reports a usable far plane.
+const DEFAULT_DOME_RADIUS: f32 = 4000.0;
 
 // ============================================================================
 // Marker & State
@@ -140,33 +252,167 @@ struct CloudsState {
     entity: Option<Entity>,
     material_handle: Option<Handle<CloudMaterial>>,
     mesh_handle: Option<Handle<Mesh>>,
-    /// Last camera position the dome was re-centred on. The dome is a radius-800
-    /// sphere centred on the camera, so it only needs re-centring when the camera
-    /// actually moves — re-inserting `Transform` every frame otherwise re-marks it
-    /// changed and forces transform propagation + a mesh re-extract for nothing.
+    /// Last camera position the dome was re-centred on. The dome is a sphere
+    /// centred on the camera, so it only needs re-centring when the camera
+    /// actually moves — re-inserting `Transform` every frame otherwise re-marks
+    /// it changed and forces transform propagation + a mesh re-extract for
+    /// nothing.
     last_cam_pos: Option<Vec3>,
+    last_radius: f32,
+    /// Accumulated wind displacement in km, wrapped to the noise period.
+    wind_offset: Vec3,
+    /// Accumulated scroll of the warp field in km, wrapped to its own period.
+    morph_offset: Vec3,
+    /// Phase through the detail volume, in whole turns.
+    detail_phase: f32,
+    /// Cached noon reference for the atmosphere coupling, with the key it was
+    /// built from: `(medium, inner radius, outer radius, deck mid-altitude)`.
+    /// `None` for the medium means the scene had no `Atmosphere`. The `bool` is
+    /// whether the fallback medium ended up being the one measured.
+    ///
+    /// Only the medium *asset* is keyed, not its contents — nothing in the
+    /// engine mutates a `ScatteringMedium` in place, and `renzora_atmosphere`
+    /// swaps between two persistent handles to turn the sky on and off, which
+    /// this does catch.
+    #[allow(clippy::type_complexity)]
+    sky_reference: Option<(
+        (Option<AssetId<ScatteringMedium>>, f32, f32, f32),
+        bool,
+        sky::SkyReference,
+    )>,
 }
 
 // ============================================================================
 // Sync System
 // ============================================================================
 
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Radius to give the dome: just inside the tightest active far plane.
+///
+/// This has to track the camera rather than be a constant, because the dome is
+/// depth-tested against the scene. Too small and terrain further away than the
+/// dome still gets clouds painted over it; too large and the dome is clipped by
+/// the far plane and the sky goes empty.
+fn dome_radius(projection: Option<&Projection>) -> f32 {
+    let far = match projection {
+        Some(Projection::Perspective(p)) => p.far,
+        Some(Projection::Orthographic(p)) => p.far,
+        _ => return DEFAULT_DOME_RADIUS,
+    };
+    if far.is_finite() && far > 1.0 {
+        far * 0.9
+    } else {
+        DEFAULT_DOME_RADIUS
+    }
+}
+
+/// Resolve what the sky is currently doing to the cloud lighting, rebuilding the
+/// cached noon reference whenever the atmosphere it came from changes.
+///
+/// Returns the identity only when the coupling is switched off.
+///
+/// Two situations look like "no atmosphere" and are deliberately *not* treated
+/// as one: a scene that never spawned an `Atmosphere` because it is lit by a
+/// skybox or an HDRI, and a scene that switched its sky off (which
+/// `renzora_atmosphere` represents with a zero-density medium). Both still have
+/// a sun in them, and their clouds still have to know what time of day it is — a
+/// deck that stays noon-white while everything underneath it goes to dusk is the
+/// single most conspicuous way for a sky to look wrong. Both measure Earth's
+/// medium instead.
+fn atmosphere_transfer(
+    state: &mut CloudsState,
+    atmospheres: &Query<&Atmosphere>,
+    media: &Assets<ScatteringMedium>,
+    fallback: &ScatteringMedium,
+    clouds_data: &CloudsData,
+    sun_dir: Vec3,
+) -> SkyTransfer {
+    if !clouds_data.atmosphere_lighting {
+        return SkyTransfer::NONE;
+    }
+
+    let scene_atmosphere = atmospheres
+        .iter()
+        .next()
+        .and_then(|a| media.get(&a.medium).map(|medium| (a, medium)));
+    let (medium, inner_radius, outer_radius, medium_id) = match scene_atmosphere {
+        Some((atmosphere, medium)) => (
+            medium,
+            atmosphere.inner_radius,
+            atmosphere.outer_radius,
+            Some(atmosphere.medium.id()),
+        ),
+        None => (
+            fallback,
+            FALLBACK_INNER_RADIUS,
+            FALLBACK_OUTER_RADIUS,
+            None,
+        ),
+    };
+
+    let deck_altitude = (clouds_data.bottom_height + clouds_data.top_height) * 0.5;
+    let key = (medium_id, inner_radius, outer_radius, deck_altitude);
+
+    let earth = || sky::Sky::new(fallback, FALLBACK_INNER_RADIUS, FALLBACK_OUTER_RADIUS);
+
+    // The reference is three ray integrations and depends on nothing that moves,
+    // so only the four live ones are paid for per frame.
+    let (use_fallback, reference) = match &state.sky_reference {
+        Some((cached, used_fallback, reference)) if *cached == key => {
+            (*used_fallback, *reference)
+        }
+        _ => {
+            // Measure the scene's own medium, and fall back to Earth's if it
+            // turns out not to scatter — which is how a switched-off sky reads.
+            // A scene that dropped the procedural sky for a skybox still has a
+            // sun in it, and its clouds still have to follow that sun down.
+            let scene = sky::Sky::new(medium, inner_radius, outer_radius);
+            let scene_reference = scene.reference(deck_altitude);
+            let resolved = if scene_reference.is_usable() {
+                (false, scene_reference)
+            } else {
+                (true, earth().reference(deck_altitude))
+            };
+            state.sky_reference = Some((key, resolved.0, resolved.1));
+            resolved
+        }
+    };
+
+    if use_fallback {
+        earth().transfer(deck_altitude, sun_dir, &reference)
+    } else {
+        sky::Sky::new(medium, inner_radius, outer_radius)
+            .transfer(deck_altitude, sun_dir, &reference)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn sync_clouds(
     mut commands: Commands,
+    time: Res<Time>,
     mut clouds_state: ResMut<CloudsState>,
     clouds_query: Query<&CloudsData>,
-    camera_query: Query<(&Transform, &Camera), With<Camera3d>>,
-    sun_query: Query<&Transform, With<DirectionalLight>>,
-    sun_data_query: Query<&renzora_lighting::Sun>,
+    camera_query: Query<(&GlobalTransform, &Camera, Option<&Projection>), With<Camera3d>>,
+    sun_query: Query<(&GlobalTransform, &DirectionalLight)>,
+    atmosphere_query: Query<&Atmosphere>,
+    media: Res<Assets<ScatteringMedium>>,
+    // Earth's medium, built once, for scenes with no `Atmosphere` to measure.
+    fallback_medium: Local<ScatteringMedium>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    noise: Option<Res<CloudNoiseTextures>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
 ) {
-    // The dome's full-screen FBM shader is the single largest scene-independent
+    // Two per-pixel marches make this the single largest scene-independent
     // raster cost on a weak GPU, so the graphics-quality tier can switch it off
     // entirely (the `Low` tier does). Treated exactly like the inspector toggle:
     // no active clouds ⇒ the dome is despawned below.
-    let clouds_allowed = quality.as_ref().map(|q| q.0.clouds()).unwrap_or(true);
+    let tier = quality.as_ref().map(|q| q.0);
+    let clouds_allowed = tier.map(|t| t.clouds()).unwrap_or(true);
 
     // First *enabled* clouds component. Honors the inspector toggle — without
     // the `enabled` check, switching clouds off left the dome rendering.
@@ -186,109 +432,210 @@ fn sync_clouds(
         return;
     };
 
-    let Some((camera_transform, _)) = camera_query
+    // The material cannot exist before the noise handles do, and they are built
+    // in `CloudNoisePlugin::finish`.
+    let Some(noise) = noise else {
+        return;
+    };
+
+    let Some((camera_transform, _, projection)) = camera_query
         .iter()
-        .find(|(_, cam)| cam.is_active)
+        .find(|(_, cam, _)| cam.is_active)
         .or_else(|| camera_query.iter().next())
     else {
         return;
     };
 
-    let camera_pos = camera_transform.translation;
+    // `GlobalTransform`, not `Transform`: a camera parented to a rig — which is
+    // what a flying player camera usually is — has a local translation relative
+    // to that rig, and centring the dome on it would leave the deck somewhere
+    // else entirely the moment the rig moved. The shader reads the true eye
+    // position from the view uniform, so the two have to agree.
+    let camera_pos = camera_transform.translation();
+    let radius = dome_radius(projection);
 
+    // ── Wind ──
     let wind_rad = clouds_data.wind_direction.to_radians();
-    let wind_dir = Vec2::new(wind_rad.cos(), wind_rad.sin());
+    let wind_dir = Vec3::new(wind_rad.cos(), 0.0, wind_rad.sin());
+    clouds_state.wind_offset += wind_dir * (clouds_data.speed * 0.001 * time.delta_secs());
 
-    let params_a = Vec4::new(
-        clouds_data.coverage,
-        clouds_data.density,
-        clouds_data.scale,
-        clouds_data.speed,
-    );
-    // Sun elevation in radians for day/night fading (positive = above horizon)
-    let sun_elevation = sun_data_query
+    // Wrap to the base map's world period. An offset that only ever grew would
+    // eventually coarsen to metres of f32 resolution and the deck would visibly
+    // jitter. The detail volume repeats `detail_scale` times inside one base
+    // period, so subtracting a whole base period leaves both samples untouched
+    // whenever `detail_scale` is a whole number — which is why its default is.
+    let base_period_km = 1.0 / (0.05 * clouds_data.scale.max(0.01));
+    clouds_state.wind_offset.x %= base_period_km;
+    clouds_state.wind_offset.z %= base_period_km;
+
+    // ── Morph ──
+    // The warp field and the detail volume evolve on their own clock, crossing
+    // the wind rather than following it.
+    let morph_rad = (clouds_data.wind_direction + MORPH_BEARING_OFFSET).to_radians();
+    let morph_dir = Vec3::new(morph_rad.cos(), 0.0, morph_rad.sin());
+    let morph_step = clouds_data.morph_speed * 0.001 * time.delta_secs();
+    clouds_state.morph_offset += morph_dir * morph_step;
+    let warp_period_km = base_period_km * WARP_SPREAD;
+    clouds_state.morph_offset.x %= warp_period_km;
+    clouds_state.morph_offset.z %= warp_period_km;
+    clouds_state.detail_phase = (clouds_state.detail_phase
+        + clouds_data.morph_speed * DETAIL_MORPH_RATE * time.delta_secs())
+        % 1.0;
+
+    // ── Sun ──
+    // Read from the `DirectionalLight` rather than from a `Sun` component, so
+    // this works in any scene that has a sun at all — `renzora_lighting` mirrors
+    // `Sun` onto the light anyway, and plenty of scenes carry only the light.
+    // Brightest wins: a scene with fill lights should still be read by its key.
+    let sun = sun_query
         .iter()
-        .next()
-        .map(|s| s.elevation.to_radians())
-        .unwrap_or(1.0); // default to daytime if no Sun component
+        .max_by(|(_, a), (_, b)| a.illuminance.total_cmp(&b.illuminance));
 
-    let params_b = Vec4::new(wind_dir.x, wind_dir.y, clouds_data.altitude, sun_elevation);
-    let cloud_color = LinearRgba::new(
-        clouds_data.color.0,
-        clouds_data.color.1,
-        clouds_data.color.2,
-        1.0,
+    let sun_dir = sun
+        .map(|(transform, _)| -transform.forward().as_vec3())
+        .unwrap_or_else(|| Vec3::new(0.5, 0.7, 0.5).normalize())
+        .normalize_or(Vec3::Y);
+
+    // Elevation comes from where the light points, not from an authored field,
+    // for the same reason.
+    let elevation = sun_dir.y.clamp(-1.0, 1.0).asin().to_degrees();
+    let sun_tint = sun
+        .map(|(_, light)| {
+            let c = light.color.to_linear();
+            Vec3::new(c.red, c.green, c.blue)
+        })
+        .unwrap_or(Vec3::ONE);
+    // Both the direct light and the skylight filling the shadows come from the
+    // sun in the end, so both track its illuminance.
+    let sun_power = sun
+        .map(|(_, light)| (light.illuminance / REFERENCE_ILLUMINANCE).clamp(0.0, 4.0))
+        .unwrap_or(1.0);
+    let day = smoothstep(NIGHT_ELEVATION, DAY_ELEVATION, elevation);
+
+    // ── Atmosphere ──
+    // Every authored colour below is a *noon* value; the transfer says what the
+    // sky is doing to it right now. Identity when the coupling is off, when there
+    // is no atmosphere in the scene, or when the sky has been switched off (which
+    // `renzora_atmosphere` does with a zero-density medium).
+    let transfer = atmosphere_transfer(
+        &mut clouds_state,
+        &atmosphere_query,
+        &media,
+        &fallback_medium,
+        clouds_data,
+        sun_dir,
     );
-    let shadow_color = LinearRgba::new(
+
+    let tint = Vec3::new(clouds_data.color.0, clouds_data.color.1, clouds_data.color.2);
+    let sun_color = tint * sun_tint * clouds_data.brightness * sun_power * transfer.sun;
+
+    // No night term here: `day_factor` fades the deck out in the shader, and the
+    // atmosphere transfer has already darkened these colours on the way down.
+    let ambient = clouds_data.ambient_brightness * sun_power;
+    let ambient_top = Vec3::new(
+        clouds_data.ambient_color.0,
+        clouds_data.ambient_color.1,
+        clouds_data.ambient_color.2,
+    ) * ambient
+        * transfer.zenith;
+    // The base of the deck sees the whole sky ring, not one bearing of it, so
+    // the two horizon samples are averaged rather than picking a side.
+    let ambient_bottom = Vec3::new(
         clouds_data.shadow_color.0,
         clouds_data.shadow_color.1,
         clouds_data.shadow_color.2,
-        1.0,
-    );
+    ) * ambient
+        * (transfer.horizon_sunward + transfer.horizon_away)
+        * 0.5;
 
-    // Auto-detect sun direction from directional light, fallback to default
-    let sun_dir = sun_query
-        .iter()
-        .next()
-        .map(|t| -t.forward().as_vec3())
-        .unwrap_or(Vec3::new(0.5, 0.7, 0.5).normalize());
-
-    let params_c = Vec4::new(sun_dir.x, sun_dir.y, sun_dir.z, clouds_data.absorption);
-    let params_d = Vec4::new(
-        clouds_data.silver_intensity,
-        clouds_data.silver_spread,
-        clouds_data.powder_strength,
-        clouds_data.ambient_brightness,
-    );
-    let horizon_col = LinearRgba::new(
+    let horizon = Vec3::new(
         clouds_data.horizon_color.0,
         clouds_data.horizon_color.1,
         clouds_data.horizon_color.2,
-        clouds_data.atmosphere_strength,
     );
+
+    // ── Step budget ──
+    let (view_steps, shadow_steps) = match tier {
+         Some(renzora::core::viewport_types::GraphicsQuality::High) | None => {
+            (clouds_data.raymarch_steps, clouds_data.shadow_steps)
+        }
+        _ => (
+            clouds_data.raymarch_steps.min(MEDIUM_VIEW_STEPS),
+            clouds_data.shadow_steps.min(MEDIUM_SHADOW_STEPS),
+        ),
+    };
+
+    // Keep the deck at least a metre thick: the shader divides by its thickness.
+    let bottom_km = clouds_data.bottom_height * 0.001;
+    let top_km = (clouds_data.top_height * 0.001).max(bottom_km + 0.001);
+
+    let uniform = CloudsUniform {
+        sun_direction: sun_dir.extend(0.0),
+        sun_color: sun_color.extend(0.0),
+        ambient_top: ambient_top.extend(0.0),
+        ambient_bottom: ambient_bottom.extend(0.0),
+        haze_sunward: (horizon * transfer.horizon_sunward)
+            .extend(clouds_data.atmosphere_strength),
+        haze_away: (horizon * transfer.horizon_away).extend(0.0),
+        wind_offset: clouds_state.wind_offset.extend(0.0),
+        morph_offset: Vec4::new(
+            clouds_state.morph_offset.x,
+            clouds_state.morph_offset.z,
+            clouds_state.detail_phase,
+            0.0,
+        ),
+
+        planet_radius: (clouds_data.planet_radius * 0.001).max(1.0),
+        bottom_height: bottom_km,
+        top_height: top_km,
+        base_scale: clouds_data.scale.max(0.01),
+        detail_scale: clouds_data.detail_scale.max(0.01),
+        coverage: clouds_data.coverage,
+        extinction: clouds_data.density * MAX_EXTINCTION_PER_KM * clouds_data.absorption,
+        detail_strength: clouds_data.detail_strength,
+        edge_softness: clouds_data.edge_softness.max(1e-3),
+        base_softness: clouds_data.base_softness.max(1e-3),
+        powder_strength: clouds_data.powder_strength,
+        min_transmittance: MIN_TRANSMITTANCE,
+        forward_scattering: clouds_data.forward_scattering,
+        backward_scattering: clouds_data.backward_scattering,
+        scattering_blend: clouds_data.scattering_blend,
+        view_steps: view_steps.max(1),
+        shadow_steps,
+        day_factor: day,
+    };
 
     if let Some(dome_entity) = clouds_state.entity {
         if commands.get_entity(dome_entity).is_ok() {
             if let Some(ref mat_handle) = clouds_state.material_handle {
                 // Only touch the material when a uniform actually changed. A bare
                 // `get_mut` marks the asset `Modified` every frame, which rebuilds
-                // the bind group + re-uploads the uniforms — pure waste on a static
-                // sky (the sun barely moves, the knobs don't move at all).
+                // the bind group + re-uploads the uniforms — pure waste on a still
+                // sky. The wind offset does move every frame while `speed` is
+                // non-zero, which is exactly when a re-upload is earned.
                 let changed = cloud_materials
                     .get(mat_handle)
-                    .map(|m| {
-                        m.params_a != params_a
-                            || m.params_b != params_b
-                            || m.cloud_color != cloud_color
-                            || m.shadow_color != shadow_color
-                            || m.params_c != params_c
-                            || m.params_d != params_d
-                            || m.horizon_color != horizon_col
-                    })
+                    .map(|m| m.uniform != uniform)
                     .unwrap_or(true);
                 if changed {
                     if let Some(mut mat) = cloud_materials.get_mut(mat_handle) {
-                        mat.params_a = params_a;
-                        mat.params_b = params_b;
-                        mat.cloud_color = cloud_color;
-                        mat.shadow_color = shadow_color;
-                        mat.params_c = params_c;
-                        mat.params_d = params_d;
-                        mat.horizon_color = horizon_col;
+                        mat.uniform = uniform;
                     }
                 }
             }
-            // Re-centre the dome only when the camera has actually moved (the dome
-            // radius is 800, so sub-unit jitter never pushes the camera out of it).
+            // Re-centre the dome only when the camera has actually moved, or the
+            // far plane changed under it.
             let moved = clouds_state
                 .last_cam_pos
                 .map(|p| p.distance_squared(camera_pos) > 1.0)
-                .unwrap_or(true);
+                .unwrap_or(true)
+                || (clouds_state.last_radius - radius).abs() > 1.0;
             if moved {
                 let transform =
-                    Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
+                    Transform::from_translation(camera_pos).with_scale(Vec3::splat(radius));
                 commands.entity(dome_entity).insert(transform);
                 clouds_state.last_cam_pos = Some(camera_pos);
+                clouds_state.last_radius = radius;
             }
         } else {
             clouds_state.entity = None;
@@ -299,18 +646,17 @@ fn sync_clouds(
     }
 
     if clouds_state.entity.is_none() {
-        let mesh_handle = meshes.add(Sphere::new(1.0).mesh().uv(64, 32));
+        // A fine tessellation, because the view direction is interpolated from
+        // the dome's vertices: a coarse sphere is a faceted approximation of one,
+        // and the resulting directions warp the sky along the facet seams.
+        let mesh_handle = meshes.add(Sphere::new(1.0).mesh().uv(96, 48));
         let material_handle = cloud_materials.add(CloudMaterial {
-            params_a,
-            params_b,
-            cloud_color,
-            shadow_color,
-            params_c,
-            params_d,
-            horizon_color: horizon_col,
+            uniform,
+            base_noise: noise.base.clone(),
+            detail_noise: noise.detail.clone(),
         });
 
-        let transform = Transform::from_translation(camera_pos).with_scale(Vec3::splat(800.0));
+        let transform = Transform::from_translation(camera_pos).with_scale(Vec3::splat(radius));
 
         let dome_entity = commands
             .spawn((
@@ -327,6 +673,7 @@ fn sync_clouds(
         clouds_state.mesh_handle = Some(mesh_handle);
         clouds_state.material_handle = Some(material_handle);
         clouds_state.last_cam_pos = Some(camera_pos);
+        clouds_state.last_radius = radius;
     }
 }
 
@@ -341,11 +688,63 @@ impl Plugin for CloudsPlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] CloudsPlugin");
         bevy::asset::embedded_asset!(app, "clouds.wgsl");
+        bevy::asset::embedded_asset!(app, "clouds_bake.wgsl");
         app.register_type::<CloudsData>()
-            .add_plugins(MaterialPlugin::<CloudMaterial>::default())
+            .add_plugins((
+                MaterialPlugin::<CloudMaterial>::default(),
+                noise::CloudNoisePlugin,
+            ))
             .init_resource::<CloudsState>()
             .add_systems(Update, sync_clouds);
     }
 }
 
 renzora::add!(CloudsPlugin);
+
+#[cfg(test)]
+mod tests {
+    /// Compile a WGSL module exactly as wgpu will.
+    fn validate(name: &str, source: &str) {
+        let module = naga::front::wgsl::parse_str(source)
+            .unwrap_or_else(|err| panic!("{name}: {}", err.emit_to_string(source)));
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        );
+        if let Err(err) = validator.validate(&module) {
+            panic!("{name}: {}", err.emit_to_string(source));
+        }
+    }
+
+    #[test]
+    fn bake_shader_compiles() {
+        validate("clouds_bake", include_str!("clouds_bake.wgsl"));
+    }
+
+    /// The dome shader imports two Bevy modules that naga cannot resolve on its
+    /// own, so they are swapped for the minimum this shader actually reads. That
+    /// leaves the raymarch itself — the part with the arithmetic in it — under
+    /// exactly the validation wgpu would apply.
+    #[test]
+    fn dome_shader_compiles() {
+        const STUB: &str = "
+            struct View { world_position: vec3<f32> }
+            @group(0) @binding(0) var<uniform> view: View;
+            struct VertexOutput {
+                @builtin(position) position: vec4<f32>,
+                @location(0) world_position: vec4<f32>,
+            }
+        ";
+        let source: String = std::iter::once(STUB.to_string())
+            .chain(
+                include_str!("clouds.wgsl")
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("#import"))
+                    .map(|line| line.to_string()),
+            )
+            .collect::<Vec<_>>()
+            .join("
+");
+        validate("clouds", &source);
+    }
+}

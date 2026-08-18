@@ -152,6 +152,7 @@
             { "slug": "rendering/shaders", "title": "WGSL Shaders" },
             { "slug": "rendering/camera", "title": "Camera System" },
             { "slug": "rendering/water", "title": "Water & Oceans" },
+            { "slug": "rendering/clouds", "title": "Volumetric Clouds" },
             { "slug": "rendering/2d-lighting", "title": "2D Lighting" },
             { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" }
           ]

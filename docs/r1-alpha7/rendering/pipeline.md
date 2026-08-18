@@ -201,17 +201,17 @@ if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
 ## Graphics quality tiers
 
 Most of the cost of an idle scene is **fullscreen, resolution-bound** work on the
-active camera — the per-frame atmosphere→IBL cubemap bake, the procedural cloud
-dome, a raymarched sky, screen-space GI, SSAO, the auto-exposure histogram, bloom,
-and TAA — **not geometry**. That cost is scene-independent (one cube costs the same
+active camera — the per-frame atmosphere→IBL cubemap bake, the volumetric
+cloud raymarch, a raymarched sky, screen-space GI, SSAO, the auto-exposure
+histogram, bloom, and TAA — **not geometry**. That cost is scene-independent (one cube costs the same
 as a full level) and scales with pixel count, so it dominates on weak GPUs and
 high-DPI displays where the physical framebuffer is 2–4× the logical size. The
 quality tier is the single switch that trades those passes for frame rate:
 
 | Tier | IBL bake | Shadows | Clouds | Atmosphere | Screen-space GI | SSAO | Auto-exp | Bloom | TAA |
 |---|---|---|---|---|---|---|---|---|---|
-| **High** | 256² | 2048² | on | Raymarched | on | on | on | on | on |
-| **Medium** *(default)* | **128²** | **1024²** | on | **LookupTexture** | **off** | **off** | on | on | on |
+| **High** | 256² | 2048² | full march | Raymarched | on | on | on | on | on |
+| **Medium** *(default)* | **128²** | **1024²** | **capped steps** | **LookupTexture** | **off** | **off** | on | on | on |
 | **Low** | **64²** | **512²** | **off** | LookupTexture | off | off | **off** | **off** | **off** |
 
 (Shadows = per-cascade `DirectionalLightShadowMap` resolution; each of the up-to-4
@@ -274,9 +274,9 @@ their untouched scene sources. Where a tier leaves an effect on, the inspector
 still fully owns it. Every mutation is one a router already performs dynamically,
 so nothing grows a camera's bind-group layout after first render: GI flips an
 `enabled` flag; bloom / TAA / auto-exposure / SSAO remove the routed component; the
-atmosphere switches `rendering_method` (a field, not an add/remove); clouds despawn
-their separate dome entity; and the IBL probe's *face size* is chosen at camera
-spawn. The spawn-locked **prepass bundle** and the atmosphere/IBL *components*
+atmosphere switches `rendering_method` (a field, not an add/remove); clouds cap
+their march step counts, then despawn their separate dome entity outright; and
+the IBL probe's *face size* is chosen at camera spawn. The spawn-locked **prepass bundle** and the atmosphere/IBL *components*
 themselves stay resident at every tier (only their cheaper settings change) —
 toggling those at runtime trips a wgpu validation crash.
 
