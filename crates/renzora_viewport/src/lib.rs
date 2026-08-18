@@ -102,8 +102,6 @@ impl Plugin for ViewportPlugin {
             .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>>()
             .init_resource::<render_systems::LastVizState<renzora_terrain::material::TerrainCheckerboardMaterial>>()
             .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::material::TerrainCheckerboardMaterial>>()
-            .init_resource::<render_systems::LastVizState<renzora_terrain::foliage::material::GrassMaterial>>()
-            .init_resource::<render_systems::DebugMaterialCache<renzora_terrain::foliage::material::GrassMaterial>>()
             .add_systems(PostStartup, (setup_viewport, camera_preview::setup_camera_preview))
             // Bring scene-loaded model instances onto the production
             // material-binding path the moment Bevy finishes spawning the
@@ -134,7 +132,9 @@ impl Plugin for ViewportPlugin {
                     render_systems::apply_visualization_mode_for::<StandardMaterial>,
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::splatmap_material::TerrainSplatmapMaterial>,
                     render_systems::apply_visualization_mode_for_custom::<renzora_terrain::material::TerrainCheckerboardMaterial>,
-                    render_systems::apply_visualization_mode_for_custom::<renzora_terrain::foliage::material::GrassMaterial>,
+                    // Grass is not here: it draws through its own instanced
+                    // pipeline rather than a `Material`, so there is no material
+                    // asset to swap for a debug view.
                 ),
                 render_systems::update_shadow_settings,
                 (

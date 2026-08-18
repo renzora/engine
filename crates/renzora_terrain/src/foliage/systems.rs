@@ -1,15 +1,64 @@
 //! Foliage runtime systems — mesh rebuilding and uniform updates.
 
+// `bevy::platform::time::Instant`, never `std`'s — std's panics on wasm.
+use bevy::platform::time::Instant;
 use bevy::prelude::*;
+use std::sync::Arc;
 
 use crate::data::TerrainData;
 
+use super::blades::scatter_foliage_chunk;
 use super::data::{FoliageBatch, FoliageConfig, FoliageDensityMap};
-use super::material::GrassMaterial;
-use super::mesh_gen::generate_foliage_chunk_mesh;
+use super::instance::{BladeSetId, GrassChunk};
 
-/// Rebuilds foliage meshes when a chunk's density map is marked dirty.
-pub fn foliage_mesh_rebuild_system(
+/// Share of wall-clock time a live foliage preview may spend rebuilding.
+const LIVE_BUDGET: f32 = 0.15;
+/// Never rebuild more often than this while a stroke is in progress — past
+/// roughly 20 Hz the extra rebuilds are invisible and only cost frames.
+const MIN_LIVE_INTERVAL: f32 = 0.05;
+/// Never leave a stroke without feedback for longer than this, however
+/// expensive the chunk is.
+const MAX_LIVE_INTERVAL: f32 = 0.5;
+
+/// Rolling cost of rescattering one chunk's foliage, in seconds.
+///
+/// A rebuild rescatters the chunk's *entire* blade set, and that cost spans
+/// orders of magnitude with how much of the chunk is painted — which is why the
+/// brush originally deferred every rebuild to mouse-release and you saw nothing
+/// until you let go. The editor's brush now previews as you drag, paced by this
+/// measurement rather than by a guessed interval: a bare chunk redraws at the
+/// cap, a heavily grassed one backs off on its own.
+///
+/// Instancing made this a lot cheaper — the scatter no longer builds vertices —
+/// so in practice most strokes now sit at the fastest interval.
+#[derive(Resource, Default, Debug, Clone, Copy)]
+pub struct FoliageRebuildCost {
+    /// Exponential moving average of recent rebuilds' wall time, in seconds.
+    /// Zero until the first rebuild has been measured.
+    pub seconds: f32,
+}
+
+impl FoliageRebuildCost {
+    /// Seconds a live preview should leave between rebuilds.
+    pub fn live_interval(&self) -> f32 {
+        (self.seconds / LIVE_BUDGET).clamp(MIN_LIVE_INTERVAL, MAX_LIVE_INTERVAL)
+    }
+
+    /// Fold one rebuild's measured duration into the average.
+    fn record(&mut self, elapsed: f32) {
+        // Seeded rather than averaged from zero: the first rebuild of a stroke
+        // is the one whose pacing matters most, so it must not be judged against
+        // a "free" history that doesn't exist yet.
+        self.seconds = if self.seconds <= 0.0 {
+            elapsed
+        } else {
+            self.seconds * 0.7 + elapsed * 0.3
+        };
+    }
+}
+
+/// Rescatters a chunk's blades when its density map is marked dirty.
+pub fn foliage_scatter_rebuild_system(
     mut commands: Commands,
     foliage_config: Res<FoliageConfig>,
     mut density_query: Query<(
@@ -20,14 +69,14 @@ pub fn foliage_mesh_rebuild_system(
     )>,
     terrain_query: Query<&TerrainData>,
     existing_batches: Query<(Entity, &FoliageBatch)>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<GrassMaterial>>,
+    mut cost: ResMut<FoliageRebuildCost>,
 ) {
     for (chunk_entity, mut density_map, chunk_data, chunk_transform) in density_query.iter_mut() {
         if !density_map.dirty {
             continue;
         }
         density_map.dirty = false;
+        let started = Instant::now();
 
         // Find parent terrain data
         let terrain = terrain_query.iter().next();
@@ -44,9 +93,9 @@ pub fn foliage_mesh_rebuild_system(
 
         let chunk_world = chunk_transform.translation();
 
-        // Generate mesh for each foliage type
+        // Scatter blades for each foliage type
         for (type_idx, foliage_type) in foliage_config.types.iter().enumerate() {
-            let mesh = generate_foliage_chunk_mesh(
+            let blades = scatter_foliage_chunk(
                 foliage_type,
                 type_idx,
                 &density_map,
@@ -58,54 +107,46 @@ pub fn foliage_mesh_rebuild_system(
                 chunk_data.chunk_x * 1000 + chunk_data.chunk_z,
             );
 
-            let Some(mesh) = mesh else {
+            let Some(blades) = blades else {
                 continue;
             };
 
-            let mesh_handle = meshes.add(mesh);
-            let mut mat = GrassMaterial::default();
-            mat.uniforms.color_base = Vec4::new(
-                foliage_type.color_base.red,
-                foliage_type.color_base.green,
-                foliage_type.color_base.blue,
-                1.0,
+            // The blade set is bounded by the terrain chunk in x/z and by the
+            // tallest blade in y. Spelled out because there is no `Mesh3d` on
+            // this path for Bevy to derive an `Aabb` from, and without one the
+            // chunk is never frustum-culled.
+            let size = terrain_data.chunk_size;
+            let (mut low, mut high) = (f32::MAX, f32::MIN);
+            for blade in &blades {
+                low = low.min(blade.position_height[1]);
+                high = high.max(blade.position_height[1] + blade.position_height[3]);
+            }
+            let aabb = bevy::camera::primitives::Aabb::from_min_max(
+                Vec3::new(0.0, low, 0.0),
+                Vec3::new(size, high, size),
             );
-            mat.uniforms.color_tip = Vec4::new(
-                foliage_type.color_tip.red,
-                foliage_type.color_tip.green,
-                foliage_type.color_tip.blue,
-                1.0,
-            );
-            mat.uniforms.wind_strength = foliage_type.wind_strength;
-            mat.uniforms.chunk_world_x = chunk_world.x;
-            mat.uniforms.chunk_world_z = chunk_world.z;
-            let mat_handle = materials.add(mat);
 
             commands.spawn((
-                Mesh3d(mesh_handle),
-                MeshMaterial3d(mat_handle),
+                GrassChunk {
+                    id: BladeSetId::next(),
+                    blades: Arc::from(blades),
+                    color_base: foliage_type.color_base,
+                    color_tip: foliage_type.color_tip,
+                    wind_strength: foliage_type.wind_strength,
+                },
                 Transform::from_translation(chunk_world),
-                Visibility::default(),
+                aabb,
                 FoliageBatch {
                     foliage_type_index: type_idx,
                     chunk_entity,
                 },
             ));
         }
-    }
-}
 
-/// Updates time and wind uniforms on all grass materials each frame.
-pub fn foliage_uniform_update_system(
-    time: Res<Time>,
-    batch_query: Query<&MeshMaterial3d<GrassMaterial>>,
-    mut materials: ResMut<Assets<GrassMaterial>>,
-) {
-    let t = time.elapsed_secs();
-    for mat_handle in batch_query.iter() {
-        if let Some(mut mat) = materials.get_mut(&mat_handle.0) {
-            mat.uniforms.time = t;
-        }
+        // Measured around the scatter only — the spawn is a deferred command
+        // and the GPU upload happens in the render world, but the scatter is
+        // what dominates and what scales with the amount of grass painted.
+        cost.record(started.elapsed().as_secs_f32());
     }
 }
 
@@ -124,5 +165,56 @@ pub fn foliage_follow_terrain_system(
         if chunk.mesh_stale {
             density_map.dirty = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Before anything has been measured the brush still has to pick a rate.
+    /// The floor is the right guess: an unmeasured chunk is usually an empty
+    /// one, and previewing too eagerly costs a frame, not a stroke.
+    #[test]
+    fn unmeasured_cost_previews_at_the_fastest_rate() {
+        assert_eq!(
+            FoliageRebuildCost::default().live_interval(),
+            MIN_LIVE_INTERVAL
+        );
+    }
+
+    /// The whole point of measuring: an expensive chunk must slow the preview
+    /// down rather than rebuild every frame and stall the drag.
+    #[test]
+    fn expensive_chunks_back_off_but_never_go_silent() {
+        let mut cost = FoliageRebuildCost::default();
+        cost.record(0.020); // a 20 ms rebuild
+        let interval = cost.live_interval();
+        assert!(
+            interval > MIN_LIVE_INTERVAL,
+            "20 ms rebuild should not preview at the cap"
+        );
+
+        cost.seconds = 10.0; // absurdly expensive
+        assert_eq!(
+            cost.live_interval(),
+            MAX_LIVE_INTERVAL,
+            "a stroke must never be left without feedback"
+        );
+    }
+
+    /// The first measurement seeds the average outright. Blending it against a
+    /// zero history would report a chunk as ~3x cheaper than it is, on exactly
+    /// the rebuild whose pacing matters most.
+    #[test]
+    fn first_measurement_seeds_rather_than_blends() {
+        let mut cost = FoliageRebuildCost::default();
+        cost.record(0.040);
+        assert_eq!(cost.seconds, 0.040);
+        cost.record(0.040);
+        assert!(
+            (cost.seconds - 0.040).abs() < 1e-6,
+            "a steady cost must stay put"
+        );
     }
 }

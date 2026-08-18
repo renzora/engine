@@ -56,7 +56,7 @@ The chunk grid is centred on its parent, so changing the count re-centres every 
 
 ## The tool shelf and the brush bar
 
-With a terrain tool active, the brushes live on the **tool shelf** — a two-column palette floating down the viewport's left edge, in the shape image editors use. The sculpt palette shows all 17 sculpt brushes; switching to the paint tool swaps it for the 4 paint brushes. The shelf collapses entirely when no shelf tool applies.
+With a terrain tool active, the brushes live on the **tool shelf** — a two-column palette floating down the viewport's left edge, in the shape image editors use. The sculpt palette shows all 17 sculpt brushes; switching to the paint tool swaps it for the 4 paint brushes, and switching to Paint Foliage swaps it for the [foliage palette](#the-foliage-shelf). The shelf collapses entirely when no shelf tool applies.
 
 The active brush's settings sit in the **viewport toolbar** as a group you can drag to a different position on the bar: **Size**, **Strength** and **Falloff** sliders, the **shape** toggles (circle / square / diamond) and the five **falloff-curve** letters (S / L / O / T / F). Whatever the current brush adds appears beside them and nothing else does — Flatten's mode and target height, Noise's mode/scale/octaves/persistence, Terrace's steps and sharpness, Stamp's blend/rotation/scale.
 
@@ -167,6 +167,45 @@ Paint strokes, including a stroke that auto-created a layer, undo/redo as single
 ## Foliage
 
 Foliage is the separate **Paint Foliage** tool (`renzora_foliage_editor`, panel id `foliage_painting`) — not part of the Terrain Tools panel, which only links to it. You paint a per-chunk **density map** (`FoliageDensityMap`), and the runtime bakes animated grass blades into the painted areas, re-baking as you sculpt underneath. The density map serializes with the scene.
+
+Grass appears **as you drag**. A rebuild rescatters the chunk's entire blade set, so the preview runs on a duty cycle paced by what that actually costs (`FoliageRebuildCost`, measured live): a bare chunk previews at 20 Hz, an expensive one backs off to as slow as 2 Hz, and every chunk the stroke touched is rebuilt once more on release so the result never ends on a stale preview. Since blades became GPU instances the scatter no longer builds geometry, so most strokes now sit at the fastest interval.
+
+### How grass renders
+
+Grass draws through its **own instanced render pipeline** (`renzora_terrain::foliage::render`), not through a Bevy `Material`. One draw call per chunk per foliage type, `24` vertices by however many blades that chunk scattered.
+
+The blade's *shape* is rebuilt in the vertex shader from `@builtin(vertex_index)`, so it costs no memory at all; the only per-blade data that reaches the GPU is a 48-byte instance record — position, height, width, wind phase, bend, lean, and the sine/cosine of its rotation. The previous design baked every blade into one giant mesh per chunk at roughly **560 bytes a blade**, which is what forced a low blade budget, made repainting expensive, and put a ceiling on density. Instancing is a **~12×** reduction, and it is why the budget could go from 250 K blades to 2 M.
+
+Blades are drawn **double-sided**. A back-face-culled blade simply vanishes when you walk behind it — about half of them at any moment — and the fragment shader flips the normal so the back face is still lit rather than reading as a black cut-out.
+
+> **Grass does not cast shadows and does not write into the depth prepass.** The old baked mesh was an ordinary `Material`, so it landed in the shadow and prepass pipelines for free; a hand-written pipeline does not. Depth-driven effects (SSAO, contact shadows) currently see through grass. Restoring it means a second pipeline running the same vertex expansion against the `Shadow` and prepass phases. Grass is also absent from the viewport's debug visualization modes for the same reason — there is no material asset to swap.
+
+### The foliage shelf
+
+With **Paint Foliage** active, the same left-edge [tool shelf](#the-tool-shelf-and-the-brush-bar) the terrain brushes use swaps to the foliage palette, in two groups:
+
+- **Paint / Erase** — the brush mode.
+- **A numbered button per foliage type** — 1 to 8, matching the numbering in the panel's Foliage Types list. A button appears only once that type exists, and its tooltip shows the type's current name, so renaming a type in the panel renames it on the shelf.
+
+Eight is the ceiling: a density map carries eight weights per texel, so the panel's **Add** button disappears at eight types. Shelf and panel write the same `FoliagePaintSettings` — click either.
+
+### Foliage type settings
+
+A type's geometry is described by five numbers in the panel's **Properties** section. The first two multiply, and together they are what decides whether the ground shows through:
+
+| Setting | Range | What it does |
+|---|---|---|
+| **Density** | `1`–`128` | Scatter **clumps** per square metre (default `48`). This is the grid, not the blade count. |
+| **Blades / Clump** | `1`–`16` | Blades grown from each scatter point (default `5`). One blade per grid cell always leaves visible ground between cells — grass reads as grass when it comes in tufts, and a tuft is much cheaper than a finer grid because the whole clump shares one density lookup. |
+| **Height Range** | `0.01`–`2` | Min/max blade height, in metres. |
+| **Width Range** | `0.002`–`0.5` | Min/max blade width, in metres. This is the blade's *actual* width — it is not scaled by the height. |
+| **Wind Strength** | `0`–`2` | Amplitude of the vertex-shader wind. |
+
+Blades per square metre is `Density × Blades / Clump` — `240` at the defaults, which a chunk painted wall to wall carries at full density. A chunk is still capped, at **2,000,000 blades** (~490/m² over a 64 m chunk); past that the scatter thins uniformly, so density degrades rather than frame rate. The cap is a backstop against a pathological config, not a limit normal use should meet.
+
+The painted weight sets coverage **in proportion**, with no floor under it: half the paint scatters half the blades, all the way down to bare ground. That is what keeps a patch inside the brush — the brush's own falloff leaves a weight gradient at the rim, which becomes a density gradient rather than a hard circle somewhere outside the gizmo. Coverage tops out at weight `0.25`, well before `1.0`, because a moving stroke never drives a texel near `1.0`.
+
+The paint mask itself is sized in **world units** — 4 texels per metre, capped at 256² per chunk — and sampled bilinearly. A fixed 64² mask gave a 64 m chunk one texel per metre, and since the smallest brush is 0.01 of a chunk side (0.64 m on a 64 m chunk), it painted a single texel that then rendered as a hard 1 m square of grass around a 1.3 m gizmo. Chunks in scenes saved before this keep the mask they were saved with; only new chunks get the finer one.
 
 > A `TerrainFoliageConfig` component (splatmap-weighted auto-scatter of arbitrary meshes) still exists as a registered type, but no system currently consumes it — hand-painted density is the supported foliage path.
 

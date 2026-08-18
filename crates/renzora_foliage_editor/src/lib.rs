@@ -1,11 +1,12 @@
 //! Foliage Editor — painting foliage onto terrain with brush tools.
 
 mod native;
+mod shelf;
 pub mod systems;
 
 use bevy::prelude::*;
 use renzora_editor_framework::ActiveTool;
-use renzora_terrain::data::TerrainChunkData;
+use renzora_terrain::data::{TerrainChunkData, TerrainData};
 use renzora_terrain::foliage::{FoliageDensityMap, FoliagePaintSettings};
 
 #[derive(Default)]
@@ -17,6 +18,9 @@ impl Plugin for FoliageEditorPlugin {
         // Native (bevy_ui/ember) port of the egui foliage panel; its registered
         // content overrides the egui panel body for id "foliage_painting".
         app.add_plugins(native::NativeFoliage);
+        // The brush + foliage-type palette on the viewport's left shelf, beside
+        // the terrain brushes and driving the same settings the panel does.
+        shelf::register(app);
         app.init_resource::<FoliagePaintSettings>()
             .init_resource::<systems::FoliagePaintState>()
             .add_systems(
@@ -38,12 +42,23 @@ impl Plugin for FoliageEditorPlugin {
 }
 
 /// Auto-add FoliageDensityMap to terrain chunks that don't have one yet.
+///
+/// Sized from the terrain's chunk size, not a constant — the mask has to hold a
+/// fixed number of texels per *metre* for the smallest brush to paint a disc
+/// rather than a square. Chunks in a scene saved before that keep the mask they
+/// were saved with; only new ones get the finer one.
 fn ensure_density_maps(
     mut commands: Commands,
     chunks_without: Query<Entity, (With<TerrainChunkData>, Without<FoliageDensityMap>)>,
+    terrain: Query<&TerrainData>,
 ) {
+    let Some(chunk_size) = terrain.iter().next().map(|t| t.chunk_size) else {
+        return;
+    };
     for entity in chunks_without.iter() {
-        commands.entity(entity).insert(FoliageDensityMap::new(64));
+        commands
+            .entity(entity)
+            .insert(FoliageDensityMap::for_chunk(chunk_size));
     }
 }
 

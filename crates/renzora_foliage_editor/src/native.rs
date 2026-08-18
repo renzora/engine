@@ -21,9 +21,10 @@ use renzora_ember::widgets::{
     bind_text_input, checkbox, collapsible, drag_value, text_input, DragRange,
 };
 
-use renzora_terrain::data::TerrainChunkData;
+use renzora_terrain::data::{TerrainChunkData, TerrainData};
 use renzora_terrain::foliage::{
     FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType,
+    MAX_FOLIAGE_TYPES,
 };
 
 use crate::systems::FoliageToolState;
@@ -194,6 +195,10 @@ fn types_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let add = action_button(commands, fonts, "plus", "Add");
     commands.entity(add).insert(AddTypeBtn);
+    // A density map carries `MAX_FOLIAGE_TYPES` weights per texel, so a ninth
+    // type could be created and named but never painted — the paint system drops
+    // any index past the end. Hide the button rather than offer a dead slot.
+    bind_display(commands, add, |w| config(w).types.len() < MAX_FOLIAGE_TYPES);
     let remove = action_button(commands, fonts, "trash", "Remove");
     commands.entity(remove).insert(RemoveTypeBtn);
     // Hide Remove when only one type remains (matches egui's `len() > 1` guard).
@@ -385,7 +390,10 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     );
     commands.entity(name_row).add_child(name_in);
 
-    let density = labelled_drag(commands, fonts, "Density", 1.0, 50.0, 0.5, type_get(|t| t.density), type_set(|t, v| t.density = v));
+    // Density is clumps per square unit, not blades — the two multiply, so the
+    // pair sits together above the size fields they scale.
+    let density = labelled_drag(commands, fonts, "Density", 1.0, 128.0, 0.5, type_get(|t| t.density), type_set(|t, v| t.density = v));
+    let clump = labelled_drag(commands, fonts, "Blades / Clump", 1.0, 16.0, 1.0, type_get(|t| t.blades_per_clump as f32), type_set(|t, v| t.blades_per_clump = v.round().clamp(1.0, 16.0) as u32));
 
     // Height Range (min / max on one row).
     let hr_label = field_label(commands, fonts, "Height Range");
@@ -400,6 +408,22 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let hr_min = num_field(commands, fonts, "min", 0.01, 2.0, 0.01, type_get(|t| t.height_range.x), type_set(|t, v| t.height_range.x = v));
     let hr_max = num_field(commands, fonts, "max", 0.01, 2.0, 0.01, type_get(|t| t.height_range.y), type_set(|t, v| t.height_range.y = v));
     commands.entity(hr_row).add_children(&[hr_min, hr_max]);
+
+    // Width Range (min / max on one row). World units — a blade this wide is a
+    // blade this wide, so it is the most direct control over how much ground the
+    // grass actually covers.
+    let wr_label = field_label(commands, fonts, "Width Range");
+    let wr_row = commands
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(6.0),
+            margin: UiRect::bottom(Val::Px(3.0)),
+            ..default()
+        })
+        .id();
+    let wr_min = num_field(commands, fonts, "min", 0.002, 0.5, 0.002, type_get(|t| t.width_range.x), type_set(|t, v| t.width_range.x = v));
+    let wr_max = num_field(commands, fonts, "max", 0.002, 0.5, 0.002, type_get(|t| t.width_range.y), type_set(|t, v| t.width_range.y = v));
+    commands.entity(wr_row).add_children(&[wr_min, wr_max]);
 
     let wind = labelled_drag(commands, fonts, "Wind Strength", 0.0, 2.0, 0.01, type_get(|t| t.wind_strength), type_set(|t, v| t.wind_strength = v));
 
@@ -435,7 +459,9 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     commands.entity(en_row).add_children(&[en_box, en_lbl]);
 
-    commands.entity(body).add_children(&[name_row, density, hr_label, hr_row, wind, en_row]);
+    commands.entity(body).add_children(&[
+        name_row, density, clump, hr_label, hr_row, wr_label, wr_row, wind, en_row,
+    ]);
     root
 }
 
@@ -612,6 +638,9 @@ fn foliage_add_type(
         return;
     }
     let mut cfg = config.map(|c| c.clone()).unwrap_or_default();
+    if cfg.types.len() >= MAX_FOLIAGE_TYPES {
+        return;
+    }
     cfg.types.push(FoliageType::default());
     commands.insert_resource(cfg);
 }
@@ -659,11 +688,18 @@ fn foliage_ensure_density_maps(
     tool: Option<Res<FoliageToolState>>,
     mut commands: Commands,
     chunks: Query<Entity, (With<TerrainChunkData>, Without<FoliageDensityMap>)>,
+    terrain: Query<&TerrainData>,
 ) {
     if !tool.is_some_and(|t| t.active) {
         return;
     }
+    // Sized per metre of chunk, not a constant — see `ensure_density_maps`.
+    let Some(chunk_size) = terrain.iter().next().map(|t| t.chunk_size) else {
+        return;
+    };
     for entity in &chunks {
-        commands.entity(entity).insert(FoliageDensityMap::new(64));
+        commands
+            .entity(entity)
+            .insert(FoliageDensityMap::for_chunk(chunk_size));
     }
 }

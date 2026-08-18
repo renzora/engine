@@ -14,6 +14,15 @@ renzora = { path = "../renzora", default-features = false }
 # the avian backend. `renzora_runtime`'s `physics` feature turns the backend on
 # (via `renzora_physics/avian`); a no-physics export keeps the data, drops avian.
 renzora_physics = { path = "../renzora_physics", default-features = false }
+# Grass blades are uploaded straight into an instance-stepped vertex buffer, so
+# `GrassInstance` has to be `Pod` for `RawBufferVec` to accept it.
+bytemuck = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+# Compile-checks `grass.wgsl` (see `foliage::shader_test`). Bevy compiles shaders
+# at run time, so a hand-written pipeline's WGSL is otherwise only validated by a
+# GPU nobody has in CI. Pinned to the naga wgpu itself uses.
+naga = "29"
 
 [lints]
 workspace = true

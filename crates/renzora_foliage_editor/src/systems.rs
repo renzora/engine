@@ -6,7 +6,8 @@ use bevy::window::{CursorOptions, PrimaryWindow};
 
 use renzora_terrain::data::{compute_brush_falloff, BrushShape, TerrainChunkData, TerrainData};
 use renzora_terrain::foliage::{
-    FoliageBrushType, FoliageDensityMap, FoliagePaintSettings, MAX_FOLIAGE_TYPES,
+    FoliageBrushType, FoliageDensityMap, FoliagePaintSettings, FoliageRebuildCost,
+    MAX_FOLIAGE_TYPES,
 };
 
 // ── Resources ──────────────────────────────────────────────────────────────
@@ -19,8 +20,11 @@ pub struct FoliagePaintState {
     pub active_chunk: Option<Entity>,
     /// Was painting last frame — used to detect paint-end and trigger rebuild.
     pub was_painting: bool,
-    /// Chunks modified during the current paint stroke (rebuild deferred until release).
+    /// Chunks modified during the current paint stroke, rebuilt once more on
+    /// release so the final mesh matches the last texels of the stroke exactly.
     pub dirty_chunks: Vec<Entity>,
+    /// Seconds since the stroke's last live-preview rebuild.
+    pub since_preview: f32,
 }
 
 #[derive(Resource, Default, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +126,7 @@ pub fn foliage_paint_system(
     mut paint_state: ResMut<FoliagePaintState>,
     settings: Res<FoliagePaintSettings>,
     time: Res<Time>,
+    cost: Res<FoliageRebuildCost>,
     mut density_query: Query<&mut FoliageDensityMap>,
 ) {
     if !paint_state.is_painting {
@@ -137,14 +142,27 @@ pub fn foliage_paint_system(
         return;
     };
 
-    // Track this chunk for deferred rebuild
+    // Track this chunk for the final rebuild on release
     if !paint_state.dirty_chunks.contains(&entity) {
         paint_state.dirty_chunks.push(entity);
     }
 
     let res = density_map.resolution;
     let dt = time.delta_secs();
-    let strength = settings.brush_strength * dt * 4.0;
+
+    // `was_painting` is still last frame's value here — `foliage_paint_finish_system`
+    // updates it at the end of the chain — so this is the first frame of a stroke.
+    // Arm the preview so the first blades land immediately rather than an
+    // interval later, which on an expensive chunk is half a second of nothing.
+    if !paint_state.was_painting {
+        paint_state.since_preview = f32::MAX;
+    }
+    // Paced against `FULL_COVERAGE_WEIGHT` in `mesh_gen`: coverage is now
+    // proportional to the painted weight with nothing propping it up from below,
+    // so the brush has to actually reach that weight within the handful of frames
+    // a moving cursor spends over any one texel. At 4x it reached ~0.03 and a
+    // normal stroke laid down a tenth of the grass it asked for.
+    let strength = settings.brush_strength * dt * 12.0;
     let type_idx = settings.active_type;
     if type_idx >= MAX_FOLIAGE_TYPES {
         return;
@@ -197,9 +215,20 @@ pub fn foliage_paint_system(
         }
     }
 
-    // Don't mark dirty during painting — defer rebuild until mouse released to avoid freezing.
-    // Track this chunk for deferred rebuild.
-    // (dirty flag will be set by foliage_paint_finish_system)
+    // Live preview. A rebuild regenerates the whole chunk mesh, so this used to
+    // wait for mouse-release entirely — which meant a stroke showed nothing until
+    // you let go, and you were painting blind. Instead it runs on a duty cycle
+    // paced by what a rebuild actually costs on *this* chunk
+    // (`FoliageRebuildCost`), so a bare chunk previews at 20 Hz and a heavily
+    // grassed one backs off to a rate it can afford. Only the chunk under the
+    // cursor is marked — it's the only one this stroke can have touched — and
+    // `foliage_paint_finish_system` still rebuilds every touched chunk on release
+    // so the result never ends on a stale preview.
+    paint_state.since_preview += dt;
+    if paint_state.since_preview >= cost.live_interval() {
+        paint_state.since_preview = 0.0;
+        density_map.dirty = true;
+    }
 }
 
 /// Scroll wheel resizes foliage brush (no modifier key needed).
@@ -258,8 +287,11 @@ pub fn foliage_brush_gizmo_system(
     }
 }
 
-/// Hide cursor while painting, show it when stopped. Also triggers deferred
-/// mesh rebuild when a paint stroke ends (mouse released).
+/// Hide cursor while painting, show it when stopped. Also triggers the final
+/// mesh rebuild when a paint stroke ends (mouse released) — the stroke previews
+/// as it's drawn, but the last texels painted since the previous preview tick
+/// have not been baked yet, and a chunk left behind mid-stroke is still showing
+/// the preview it had when the cursor moved off it.
 pub fn foliage_paint_finish_system(
     mut paint_state: ResMut<FoliagePaintState>,
     mut density_query: Query<&mut FoliageDensityMap>,
