@@ -7510,25 +7510,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "renzora_collab"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bincode 2.0.1",
- "crossbeam-channel",
- "log",
- "renzora",
- "renzora_auth",
- "renzora_ember",
- "renzora_engine",
- "renzora_net",
- "rustls",
- "serde",
- "serde_json",
- "tungstenite",
-]
-
-[[package]]
 name = "renzora_command_palette"
 version = "0.1.0"
 dependencies = [
@@ -7646,7 +7627,6 @@ dependencies = [
  "renzora_clouds",
  "renzora_clouds_editor",
  "renzora_code_editor",
- "renzora_collab",
  "renzora_command_palette",
  "renzora_console",
  "renzora_context_menu",
