@@ -101,24 +101,14 @@ join whether they were invited or not.
 
 ## `GET /api/ws/collab/:code?token=…`
 
-The relay socket. Role is decided by the server: the first connection from the
-account that created the room becomes the host, and **every** later connection
-is a guest — including a second one from that same account, so testing with two
-editors signed in as yourself works. That cannot strand a live host, because a
-host disconnecting takes the room with it.
+The relay socket. Role is decided by the server: the account that created the
+room becomes the host, everyone else is a guest.
 
 | Status | Meaning |
 |---|---|
 | 401 | Bad or expired token |
 | 404 | No such session |
-
-### Clients must send keep-alives
-
-**Ping at least every 60 seconds.** A session is idle whenever nobody is
-editing, and Cloudflare closes an idle WebSocket after about 100 seconds. A
-client that stays silent gets its session torn down on its own, several minutes
-in, reported as `Connection reset without closing handshake` — with nothing the
-user did to cause it. The editor pings every 30 seconds.
+| 409 | That session already has a host connected |
 
 ### The envelope
 
