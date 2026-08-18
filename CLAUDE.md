@@ -172,7 +172,13 @@ refuses. That is not a blocker, because `.cargo/config.toml` pins the linker to
 raises the cap far enough for the normal build. Native links succeed; we simply
 never use `link.exe`.
 
-Pinned toolchain — **Rust 1.95.0**, **Bevy 0.19**. The Rust version lives in TWO
+Pinned toolchain — **Rust 1.95.0**, **Bevy 0.19** (currently 0.19.**1**, and the
+patch matters: `renzora_wind`'s prepass vertex shader reads the material bind
+group, which bevy_pbr 0.19.0's `PrepassPipeline::specialize` replaces with an
+*empty* layout on any depth-only opaque prepass. 0.19.1 added the
+`prepass_reads_material()` escape hatch that keeps it bound. Downgrading to
+0.19.0 brings back a wgpu validation crash — "group 3 binding 100 is not
+available in the pipeline layout" — the moment a swaying mesh renders). The Rust version lives in TWO
 files kept in lockstep: `docker/base/Dockerfile` (`FROM rust:1.95.0`, the
 container) and `rust-toolchain.toml` (native `cargo renzora` / `cargo check`); a
 bump must edit both. The base image is the foundation every platform image builds

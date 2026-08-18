@@ -17,6 +17,11 @@
 //!
 //! Slice 1 ships only [`FogSection`]; the remaining sections (`background`,
 //! `ibl`, `ssao`, `ssr`, `gi`) land in later slices.
+//!
+//! [`crate::wind::WindSection`] is the odd one out: it is authored here like
+//! any other section, but it is not a camera-side render component and so it
+//! has nothing to reconcile *onto*. `renzora_wind` reads it into the global
+//! `WindState` resource instead — see that module's docs.
 
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -28,6 +33,7 @@ use serde::{Deserialize, Serialize};
 pub struct WorldEnvironment {
     pub fog: FogSection,
     pub ssao: SsaoSection,
+    pub wind: crate::wind::WindSection,
     // Future sections — each `{ enabled, ...params }`, resident + gated:
     //   pub background: Background,   // Color | Procedural(atmosphere) | Skybox
     //   pub ibl: IblSection,

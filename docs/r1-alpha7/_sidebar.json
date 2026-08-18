@@ -153,6 +153,7 @@
             { "slug": "rendering/camera", "title": "Camera System" },
             { "slug": "rendering/water", "title": "Water & Oceans" },
             { "slug": "rendering/clouds", "title": "Volumetric Clouds" },
+            { "slug": "rendering/wind", "title": "Wind" },
             { "slug": "rendering/2d-lighting", "title": "2D Lighting" },
             { "slug": "rendering/gaussian-splatting", "title": "Gaussian Splatting" }
           ]

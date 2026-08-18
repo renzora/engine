@@ -41,6 +41,12 @@ pub use gi::*;
 pub mod world_environment;
 pub use world_environment::*;
 
+// One world-global wind, shared by foliage, cloth, the ocean and the cloud
+// deck. Here rather than in `renzora_wind` for the usual reason: four crates
+// read `WindState` and must all see the same `TypeId`.
+pub mod wind;
+pub use wind::*;
+
 // ── Language / localization contract ─────────────────────────────────────
 // The process-global translation table + `t()` lookup every crate calls, plus
 // the plugin-facing registration API. Lives here in the shared dylib so the

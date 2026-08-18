@@ -285,6 +285,7 @@ renzora_night_stars = { path = "../renzora_night_stars", optional = true }
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
 renzora_net = { path = "../renzora_net" }
+renzora_wind = { path = "../renzora_wind" }
 # ── end generated ──
 [lints]
 workspace = true

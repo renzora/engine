@@ -19,10 +19,13 @@
 //!   the leaf child on load.
 //! - [`prune_stale_leaves`] cleans up any orphaned/empty leaf entities left by
 //!   scenes saved before the tag took effect.
+//! - [`sway_generated_trees`] tags both meshes with [`renzora::WindSway`] so the
+//!   tree moves in the world wind. The generator writes per-vertex wind weights
+//!   into `UV_1`, so this is the piece that turns those weights into motion.
 
 use bevy::prelude::*;
-use bevy_procedural_tree::{Leaves, TreeProceduralGenerationPlugin};
-use renzora::HideInHierarchy;
+use bevy_procedural_tree::{Leaves, Tree, TreeProceduralGenerationPlugin};
+use renzora::{HideInHierarchy, WindSway};
 
 /// Runtime-scope plugin that installs the procedural tree generator.
 #[derive(Default)]
@@ -32,7 +35,10 @@ impl Plugin for ProceduralTreePlugin {
     fn build(&self, app: &mut App) {
         info!("[runtime] ProceduralTreePlugin (bevy_procedural_tree)");
         app.add_plugins(TreeProceduralGenerationPlugin);
-        app.add_systems(Update, (tag_generated_leaves, prune_stale_leaves));
+        app.add_systems(
+            Update,
+            (tag_generated_leaves, prune_stale_leaves, sway_generated_trees),
+        );
     }
 }
 
@@ -48,6 +54,43 @@ fn tag_generated_leaves(
     for leaves in trees.iter() {
         if needs_tag.get(leaves.0).is_ok() {
             commands.entity(leaves.0).insert(HideInHierarchy);
+        }
+    }
+}
+
+/// Give every generated tree its wind response.
+///
+/// Two different tunings, because they are two different materials on two
+/// different meshes: the trunk bends slowly and does not flutter at all, while
+/// the leaf canopy is floppier and flutters fully. Sharing one `WindSway`
+/// between them would either give the trunk a rustle or take the rustle off the
+/// leaves.
+///
+/// Only ever *inserts*, so a value an author changed in the inspector — or one
+/// restored from a scene — is never overwritten on the next frame.
+fn sway_generated_trees(
+    mut commands: Commands,
+    trees: Query<(Entity, &Leaves), With<Tree>>,
+    needs_sway: Query<(), Without<WindSway>>,
+) {
+    for (trunk, leaves) in trees.iter() {
+        if needs_sway.get(trunk).is_ok() {
+            commands.entity(trunk).insert(WindSway {
+                // Wood is stiff, and the trunk mesh's `UV_1` weights already
+                // ramp from 0 at the base — this scales what is left.
+                response: 0.55,
+                flutter: 0.0,
+                amplitude: 0.25,
+                ..default()
+            });
+        }
+        if needs_sway.get(leaves.0).is_ok() {
+            commands.entity(leaves.0).insert(WindSway {
+                response: 1.0,
+                flutter: 1.0,
+                amplitude: 0.4,
+                ..default()
+            });
         }
     }
 }

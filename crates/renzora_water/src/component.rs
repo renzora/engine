@@ -138,6 +138,10 @@ fn default_time_scale() -> f32 {
 
 /// Serde/reflect default for [`WaterSurface::enable_sea_spray`]. Scenes saved
 /// before the field existed keep spray on, which is what they looked like.
+fn default_one() -> f32 {
+    1.0
+}
+
 fn default_true() -> bool {
     true
 }
@@ -217,6 +221,28 @@ pub struct WaterSurface {
     pub sea_depth: f32,
     /// Seed for the spectrum's Gaussian noise. Changing it re-rolls the sea.
     pub seed: u32,
+    /// Scale the whole sea state with the world wind (`renzora::WindState`).
+    ///
+    /// The authored per-cascade `wind_speed`/`wind_direction` become the sea's
+    /// *shape* — the swell-to-wind-sea balance and the relative bearings — and
+    /// the world wind then scales and rotates the set as a whole. That keeps a
+    /// hand-tuned ocean recognisable at every wind strength instead of
+    /// flattening every cascade to one number.
+    ///
+    /// It follows [`WindState::sea_state_speed`](renzora::WindState), which lags
+    /// the wind by tens of seconds. That is not a shortcut: `wind_speed` is a
+    /// JONSWAP spectrum input, so every change rebuilds the cascade textures,
+    /// and a real sea takes hours to build to a new wind. The lag is both
+    /// cheaper and more correct than tracking gusts would be.
+    #[serde(default = "default_true")]
+    #[reflect(default = "default_true")]
+    pub follow_world_wind: bool,
+    /// How much of the world wind reaches this surface, while
+    /// [`follow_world_wind`](Self::follow_world_wind) is on. A sheltered bay is
+    /// ~0.4; open ocean is 1.0.
+    #[serde(default = "default_one")]
+    #[reflect(default = "default_one")]
+    pub wind_response: f32,
     /// Simulation resolution per cascade — 128, 256, 512 or 1024. Cost scales
     /// with the square, so this is the main performance dial.
     pub map_size: u32,
@@ -262,6 +288,8 @@ impl Default for WaterSurface {
             cascades: default_ocean_cascades(),
             sea_depth: 20.0,
             seed: 1234,
+            follow_world_wind: true,
+            wind_response: 1.0,
             map_size: 512,
             updates_per_second: 50.0,
             enable_sea_spray: true,

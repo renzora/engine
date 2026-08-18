@@ -1,0 +1,23 @@
+[package]
+name = "renzora_wind"
+version = "0.1.0"
+edition = "2021"
+description = "World-global wind: evaluates WorldEnvironment's wind section into the shared WindState, and sways meshes tagged WindSway via a StandardMaterial extension."
+
+# No `editor` feature: lean runtime crate. The inspector section lives in the
+# nested renzora_wind_editor crate (crates/renzora_wind/editor).
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+renzora_scripting = { path = "../renzora_scripting" }
+
+[dev-dependencies]
+# The real scene saver's builder, so the persistence test exercises the same
+# extraction path `renzora_engine::scene_io::save_scene` uses rather than a
+# lookalike.
+renzora_bsn = { path = "../renzora_bsn" }
+ron = "0.8"
+
+[lints]
+workspace = true

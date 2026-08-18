@@ -24,7 +24,9 @@ pub struct FoliageType {
     /// Min/max blade width, in world units. This is the blade's actual width —
     /// it is not scaled by the blade's height.
     pub width_range: Vec2,
-    /// Wind animation strength (0 = no wind, 1 = full).
+    /// How strongly this foliage layer responds to the world wind
+    /// (`renzora::WindState`), 0 = rigid, 1 = full. It is a multiplier, not a
+    /// wind: turning the world wind down calms every layer regardless.
     pub wind_strength: f32,
     /// Base color (dark, at root).
     pub color_base: LinearRgba,

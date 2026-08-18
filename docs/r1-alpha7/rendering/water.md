@@ -115,6 +115,24 @@ many exist.
 | Displacement Scale | Contribution to vertex displacement. Reduce as you add cascades. |
 | Normal Scale | Contribution to the shading normal. |
 
+### Following the world wind
+
+By default a surface scales its whole sea state with the scene's
+[wind](wind.md), via **Follow World Wind** and **Wind Response** (how much of
+the wind reaches this surface — a sheltered bay is ~0.4, open ocean 1.0).
+
+The per-cascade values above become the sea's *shape* — the swell-to-wind-sea
+balance and the relative bearings — and the world wind scales and rotates that
+set as a whole. Turn the wind up and the same ocean gets harsher without
+becoming a different ocean. Turn Follow World Wind off and the sea you authored
+comes straight back.
+
+It follows a heavily smoothed wind, so the sea takes tens of seconds to build
+after the dial moves. That lag is deliberate twice over: Wind Speed is a
+spectrum input, so every change re-bakes the cascade textures, and a real sea
+takes hours to build to a new wind. Watching the swell arrive after the gust is
+the effect working, not lag.
+
 **Time Scale is not a wind knob.** It leaves the spectrum untouched and rescales
 only the `exp(i·ω·t)` propagation, so the waves keep their shape and simply
 travel faster or slower. Running a long-swell cascade slower than the wind sea

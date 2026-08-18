@@ -37,6 +37,15 @@ struct MeshAttributes {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    /// Per-vertex wind weights, written to `UV_1`: `x` = branch sway (0 at the
+    /// rigid trunk base, 1 at a twig tip), `y` = leaf flutter (0 on wood, 1 at
+    /// a leaf's outer edge). Read by `renzora_wind`'s sway material.
+    ///
+    /// `UV_1` and not vertex colour: StandardMaterial multiplies base colour by
+    /// `VERTEX_COLORS` unconditionally, so a mask stored there would tint every
+    /// leaf by its own stiffness. Nothing samples `UV_1` unless a texture slot
+    /// is explicitly set to `UvChannel::Uv1`, so it is free to carry this.
+    wind: Vec<[f32; 2]>,
     indices: Vec<u16>
 }
 
@@ -46,6 +55,8 @@ struct MeshAttributes {
     positions: Vec<[f32; 3]>,
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    /// See the `u16` variant — same field, same contract.
+    wind: Vec<[f32; 2]>,
     indices: Vec<u32>
 }
 
@@ -84,6 +95,7 @@ fn generate_branches_internal(settings: &TreeMeshSettings, state: BranchGenState
     branches_mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, branches_attributes.positions);
     branches_mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, branches_attributes.normals);
     branches_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, branches_attributes.uvs);
+    branches_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, branches_attributes.wind);
     #[cfg(not(feature = "u32_indices"))]
     branches_mesh.insert_indices(Indices::U16(branches_attributes.indices));
     #[cfg(feature = "u32_indices")]
@@ -95,6 +107,7 @@ fn generate_branches_internal(settings: &TreeMeshSettings, state: BranchGenState
     leaves_mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, leaves_attributes.positions);
     leaves_mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, leaves_attributes.normals);
     leaves_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, leaves_attributes.uvs);
+    leaves_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_1, leaves_attributes.wind);
     #[cfg(not(feature = "u32_indices"))]
     leaves_mesh.insert_indices(Indices::U16(leaves_attributes.indices));
     #[cfg(feature = "u32_indices")]
@@ -172,6 +185,23 @@ fn recurse_a_branch(
     // iterate over sections + one final ring
     // the =sections is needed because to have x sections, we need x+1 rows of vertices
     for section_counter in 0..=state.sections {
+        // Wind sway weight for this ring: how far along the path from the root
+        // of the whole tree to a twig tip it sits. `recursion_count` counts
+        // branch generations (for a deciduous trunk it also counts the trunk's
+        // own continuation pieces, which is what we want — higher up the trunk
+        // is more flexible), and the section index interpolates within one.
+        //
+        // Squared so the trunk stays visibly stiffer than a linear ramp would
+        // leave it. A linear ramp bends the base of the tree, which reads as
+        // the whole trunk being made of rubber.
+        let branch_sway = {
+            let depth = (state.recursion_count as f32
+                + section_counter as f32 / state.sections as f32)
+                / (f32::from(settings.branch.levels) + 1.0);
+            let d = depth.clamp(0.0, 1.0);
+            d * d
+        };
+
         // update radius
         if section_counter == state.sections && !((state.level == 0) && matches!(settings.tree_type, TreeType::Deciduous)) {
             // last ring of the last section is a tip (except the main branch/trunk of deciduous trees)
@@ -205,6 +235,8 @@ fn recurse_a_branch(
             branches_attributes.positions.push(vertex.to_array());
             branches_attributes.normals.push(normal.to_array());
             branches_attributes.uvs.push([u,v]);
+            // Wood bends but does not flutter, so the flutter weight is 0.
+            branches_attributes.wind.push([branch_sway, 0.0]);
             // color code levels for debugging
             // match BranchRecursionLevel::try_from(state.recursion_count as u8).unwrap() {
             //     BranchRecursionLevel::Zero => branches_colors.push([1.0, 0.0, 0.0, 1.0]),
@@ -220,6 +252,7 @@ fn recurse_a_branch(
         branches_attributes.positions.push(first_pos.to_array());
         branches_attributes.normals.push(first_nrm.to_array());
         branches_attributes.uvs.push([1.0, first_v]);
+        branches_attributes.wind.push([branch_sway, 0.0]);
         // color code levels for debugging
         // match BranchRecursionLevel::try_from(state.recursion_count as u8).unwrap() {
         //     BranchRecursionLevel::Zero => branches_colors.push([1.0, 0.0, 0.0, 1.0]),
@@ -518,6 +551,12 @@ fn generate_leaf(
 
         // uvs and indices
         leaves_attributes.uvs.extend_from_slice(&[[0.0, 0.0],[0.0, 1.0],[1.0, 1.0],[1.0, 0.0]]);
+        // Leaves only ever grow at the outermost branch generation, so they
+        // take the full branch sway. Flutter is the leaf's own local axis: the
+        // quad's base sits at local y = 0 (uv.y = 1) and its tip at y = size
+        // (uv.y = 0), so flutter = 1 - uv.y makes the leaf pivot about where it
+        // joins the twig rather than sliding sideways as a rigid card.
+        leaves_attributes.wind.extend_from_slice(&[[1.0, 1.0],[1.0, 0.0],[1.0, 0.0],[1.0, 1.0]]);
         leaves_attributes.indices.extend_from_slice(&[indices_start, indices_start+1, indices_start+2, indices_start, indices_start+2, indices_start+3]);
         indices_start += 4;
     }

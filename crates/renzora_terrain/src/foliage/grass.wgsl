@@ -13,10 +13,12 @@ const BLADE_SEGMENTS: u32 = 4u;
 @group(0) @binding(0) var<uniform> view: View;
 
 struct GrassParams {
-    // xyz = chunk origin in world space, w = wind strength
+    // xyz = chunk origin in world space, w = this layer's wind strength
     origin_wind: vec4<f32>,
-    // xy = wind direction, z = time in seconds, w unused
+    // xy = world wind direction, z = time in seconds, w = world wind strength
     wind_dir_time: vec4<f32>,
+    // x = gust depth, y = gusts/sec, z = turbulence, w unused
+    wind_gust: vec4<f32>,
     color_base: vec4<f32>,
     color_tip: vec4<f32>,
 };
@@ -88,20 +90,35 @@ fn vertex(
     let world_pos = grass.origin_wind.xyz + blade_pos + vec3<f32>(rx, y, rz);
 
     // ── Wind model ────────────────────────────────────────────────────────
+    // Driven by the world wind (`renzora::WindState`), so a blade of grass and
+    // the tree behind it lean the same way and gust at the same moment.
+    //
+    // The gust envelope below is a copy of `wind_gust` in
+    // `renzora_wind/src/wind_common.wgsl` and must stay in step with it. It is
+    // copied rather than imported because that module declares its uniform in
+    // the *material* bind group, which this hand-written pipeline does not have.
     let wind_dir = grass.wind_dir_time.xy;
     let time = grass.wind_dir_time.z;
-    let wind_strength = grass.origin_wind.w;
-    let base_wind = 0.08;
+    let world_strength = grass.wind_dir_time.w;
+    let layer_strength = grass.origin_wind.w;
+    let gust_depth = grass.wind_gust.x;
+    let gust_freq = grass.wind_gust.y;
+    let turbulence = grass.wind_gust.z;
 
-    // Large-scale gusts (travel spatially)
-    let gust_phase = world_pos.x * 0.08 + world_pos.z * 0.06 + time * 0.5;
-    let gust = (sin(gust_phase) * 0.5 + 0.5) * sin(time * 0.35 + world_pos.z * 0.04);
-    let gust_strength = gust * 0.15;
+    let gust_travel = dot(world_pos.xz, wind_dir) * 0.02;
+    let gust_phase = time * gust_freq * 6.2831853 - gust_travel;
+    let gust = 0.5 + 0.5 * (sin(gust_phase) * 0.6 + sin(gust_phase * 0.37 + 1.7) * 0.4);
 
-    // Medium turbulence (per-blade)
-    let turb1 = sin(time * 1.8 + phase + world_pos.x * 0.25 + world_pos.z * 0.15);
-    let turb2 = sin(time * 2.3 + phase * 1.3 + world_pos.z * 0.3);
-    let turb3 = sin(time * 1.1 + phase * 0.7 + world_pos.x * 0.18);
+    // Instantaneous strength for this blade. `layer_strength` is the foliage
+    // layer's own stiffness (authored per grass type); `world_strength` is how
+    // hard it is blowing right now.
+    let wind_strength = world_strength * layer_strength * (1.0 + gust * gust_depth);
+
+    // Medium turbulence (per-blade). Scaled by the world turbulence knob so a
+    // steady wind lays the whole field over cleanly and a turbulent one churns.
+    let turb1 = sin(time * 1.8 + phase + world_pos.x * 0.25 + world_pos.z * 0.15) * turbulence;
+    let turb2 = sin(time * 2.3 + phase * 1.3 + world_pos.z * 0.3) * turbulence;
+    let turb3 = sin(time * 1.1 + phase * 0.7 + world_pos.x * 0.18) * turbulence;
 
     // High-frequency flutter (tip only)
     let flutter = sin(time * 5.5 + phase * 4.0) * 0.02 * t;
@@ -110,13 +127,16 @@ fn vertex(
     let bend_factor = bend * 0.7 + 0.3;
     let wind_pow = t * t * (3.0 - 2.0 * t); // smoothstep
 
-    let wind_x = (wind_dir.x * base_wind
-                + wind_dir.x * gust_strength
-                + turb1 * 0.06 + turb3 * 0.03
+    // The steady push never reverses — wind blows one way — so the blade
+    // oscillates around a laid-over pose rather than swinging back upright
+    // through vertical, which is what a plain sine would do.
+    let push = 0.55 + 0.45 * sin(time * 1.2 + phase * 0.5);
+
+    let wind_x = (wind_dir.x * push
+                + turb1 * 0.35 + turb3 * 0.18
                 + flutter) * wind_pow * bend_factor * wind_strength;
-    let wind_z = (wind_dir.y * base_wind
-                + wind_dir.y * gust_strength
-                + turb2 * 0.04
+    let wind_z = (wind_dir.y * push
+                + turb2 * 0.25
                 + flutter * 0.7) * wind_pow * bend_factor * wind_strength;
 
     let displaced = vec3<f32>(world_pos.x + wind_x, world_pos.y, world_pos.z + wind_z);

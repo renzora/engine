@@ -40,7 +40,7 @@ use bevy::ecs::{
         SystemParamItem,
     },
 };
-use bevy::math::{Vec2, Vec4};
+use bevy::math::Vec4;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use bevy::render::render_resource::DynamicUniformBuffer;
@@ -72,9 +72,10 @@ use bevy::shader::Shader;
 
 use super::instance::{BladeSetId, GrassChunk, GrassInstance, VERTS_PER_BLADE};
 
-/// Wind travel direction on the XZ plane. Constant for now — when foliage grows
-/// a world-wind setting this is where it plugs in.
-const WIND_DIRECTION: Vec2 = Vec2::new(0.7, 0.3);
+// Wind comes from the one world-global `renzora::WindState` (authored on the
+// `WorldEnvironment` entity, evaluated by `renzora_wind`). This used to be a
+// hardcoded `const WIND_DIRECTION: Vec2`, which meant grass could lean east
+// under a cloud deck drifting west.
 
 pub struct GrassRenderPlugin;
 
@@ -114,10 +115,13 @@ impl Plugin for GrassRenderPlugin {
 /// Per-chunk shader parameters. One dynamic-uniform slot per chunk.
 #[derive(Clone, Copy, ShaderType)]
 struct GrassParamsUniform {
-    /// xyz = chunk origin in world space, w = wind strength.
+    /// xyz = chunk origin in world space, w = this layer's wind strength.
     origin_wind: Vec4,
-    /// xy = wind direction, z = seconds, w unused.
+    /// xy = world wind direction, z = seconds, w = world wind strength
+    /// (1.0 at `renzora::REFERENCE_WIND_SPEED`).
     wind_dir_time: Vec4,
+    /// x = gust depth, y = gusts/sec, z = turbulence, w unused.
+    wind_gust: Vec4,
     color_base: Vec4,
     color_tip: Vec4,
 }
@@ -166,6 +170,7 @@ struct EnqueuedGrass {
 fn extract_grass_chunks(
     mut commands: Commands,
     time: Extract<Res<Time>>,
+    wind: Extract<Option<Res<renzora::WindState>>>,
     chunks: Extract<
         Query<(
             RenderEntity,
@@ -176,7 +181,10 @@ fn extract_grass_chunks(
     >,
     mut grass_time: ResMut<GrassTime>,
 ) {
-    grass_time.0 = time.elapsed_secs();
+    grass_time.seconds = time.elapsed_secs();
+    // Absent when the wind plugin is stripped from a lean export — dead calm
+    // is the correct fallback, not a panic.
+    grass_time.wind = wind.as_deref().copied().unwrap_or_default();
     for (render_entity, chunk, transform, visibility) in chunks.iter() {
         let visible = visibility.is_none_or(|v| v.get());
         if !visible || chunk.is_empty() {
@@ -196,9 +204,14 @@ fn extract_grass_chunks(
 #[derive(Component)]
 struct ExtractedGrassOrigin(Vec3);
 
-/// Seconds, extracted once per frame rather than read per chunk.
+/// Seconds plus the world wind, extracted once per frame rather than read per
+/// chunk. `WindState` is `Copy`, so this is a plain snapshot — the render world
+/// never touches the main-world resource.
 #[derive(Resource, Default)]
-pub(super) struct GrassTime(f32);
+pub(super) struct GrassTime {
+    seconds: f32,
+    wind: renzora::WindState,
+}
 
 // ── Prepare ─────────────────────────────────────────────────────────────────
 
@@ -256,10 +269,22 @@ fn prepare_grass_uniforms(
     else {
         return;
     };
+    let wind = time.wind;
     for (entity, chunk, origin) in chunks.iter() {
         let offset = writer.write(&GrassParamsUniform {
             origin_wind: origin.0.extend(chunk.wind_strength),
-            wind_dir_time: Vec4::new(WIND_DIRECTION.x, WIND_DIRECTION.y, time.0, 0.0),
+            wind_dir_time: Vec4::new(
+                wind.direction.x,
+                wind.direction.y,
+                time.seconds,
+                wind.strength01(),
+            ),
+            wind_gust: Vec4::new(
+                wind.gust_strength,
+                wind.gust_frequency,
+                wind.turbulence,
+                0.0,
+            ),
             color_base: Vec4::new(
                 chunk.color_base.red,
                 chunk.color_base.green,

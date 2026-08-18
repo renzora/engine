@@ -108,4 +108,5 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_volumetric_fog::VolumetricFogPlugin::default());
     #[cfg(feature = "water")]
     app.add_plugins(renzora_water::WaterPlugin::default());
+    app.add_plugins(renzora_wind::WindPlugin::default());
 }

@@ -445,6 +445,7 @@ Verbs that are actually observed in the current code:
 | Networking (`renzora_network`) | `net_connect`, `net_disconnect`, `net_rpc` (`net_send`, `net_send_message`, `net_spawn`, `net_host_server` are stubs) |
 | Physics (`renzora_physics`) | `kinematic_slide`, `apply_force`, `apply_impulse`, `set_velocity` |
 | Navmesh (`renzora_navmesh`) | `nav_set_destination`, `nav_clear_destination` |
+| Wind (`renzora_wind`) | `set_wind`, `set_wind_gusts` |
 
 > For widget *data* (a slider value, a bar fill), prefer reflection: `set_on("VolumeSlider", "SliderData.value", 0.5)`. There is **no** cross-scene variable store: `global_set` / `global_get` were removed along with the lifecycle graph that backed them, and a replacement is being designed.
 
@@ -458,6 +459,7 @@ Domain crates inject extra functions into the VM when their plugin is active. Th
 | `renzora_navmesh` | `nav_set_destination(x, y, z)`, `nav_clear_destination()`, `nav_stop()` |
 | `renzora_animation` | `set_anim_param(name, v)`, `set_anim_bool(name, v)`, `set_anim_trigger(name)`, `get_animation_length(name)` |
 | `renzora_engine` (camera) | `set_fov(degrees)`, `camera_fov()` |
+| `renzora_wind` | `set_wind(speed, direction)`, `set_wind_gusts(strength, frequency, turbulence)` — speed in m/s, direction in degrees the wind travels *toward*. Reads go through reflection: `get("WindState.speed")`. See [Wind](../rendering/wind.md). |
 
 ## Capabilities not exposed as functions
 
