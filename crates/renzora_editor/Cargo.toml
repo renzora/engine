@@ -254,7 +254,6 @@ renzora_navmesh_editor  = { path = "../renzora_navmesh/editor", optional = true 
 # loading the workspace, including to run the generator that would fix
 # it. If you hit that, delete the offending line below.
 renzora_collab = { path = "../renzora_collab" }
-renzora_git = { path = "../renzora_git" }
 renzora_update = { path = "../renzora_update" }
 # ── end generated ──
 [lints]

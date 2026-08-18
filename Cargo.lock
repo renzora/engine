@@ -7666,7 +7666,6 @@ dependencies = [
  "renzora_foliage_editor",
  "renzora_forward_decal_editor",
  "renzora_gamepad",
- "renzora_git",
  "renzora_gizmo",
  "renzora_grid",
  "renzora_hanabi",
@@ -7934,18 +7933,6 @@ dependencies = [
  "serde",
  "serde_json",
  "zip",
-]
-
-[[package]]
-name = "renzora_git"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "renzora",
- "renzora_editor_framework",
- "renzora_ember",
- "renzora_engine",
- "renzora_ui",
 ]
 
 [[package]]
