@@ -25,13 +25,13 @@ follows [bevy-volumetric-clouds](https://github.com/evroon/bevy-volumetric-cloud
    broader weather systems.
 
 Everything else updates live. The defaults are a fair-weather cumulus deck from
-2200 m to 4200 m, drifting at 40 m/s — cloud features are kilometres across, so
+1690 m to 2960 m, drifting at 40 m/s — cloud features are kilometres across, so
 wind has to be weather-system fast before the sky reads as moving at all.
 
 The clouds pick up the scene's sun automatically — direction, colour,
 elevation and illuminance all come off the brightest `DirectionalLight`, so this
 works in any scene that has a sun at all, with or without a **Sun** component.
-The deck relights as the day advances and fades out below the horizon. It also
+The deck relights as the day advances and fades out as the sun sets. It also
 reads the scene's **atmosphere**, so sunlight reaching it reddens and dims
 exactly as the sky does; see [Atmosphere coupling](#atmosphere-coupling).
 
@@ -183,13 +183,20 @@ each cloud.
 
 | Field | What it does |
 |---|---|
-| **Wind Speed** | Metres per second. Weather-system speeds, not breezes — the default 40 m/s moves the deck about one cloud every thirty seconds. |
-| **Wind Direction** | Degrees, 0–360. |
+| **Follow World Wind** | Take heading and drift from the scene's [wind](wind.md) instead of the two fields below. On by default. |
+| **Wind Speed** | Metres per second. Weather-system speeds, not breezes — the default 40 m/s moves the deck about one cloud every thirty seconds. While Follow World Wind is on this is the drift the deck reaches at reference wind, and the world wind scales it. |
+| **Wind Direction** | Degrees, 0–360. Ignored while Follow World Wind is on. |
 | **Morph Speed** | How fast shapes evolve, independent of the wind carrying them. 0 freezes them into pure drift. |
 
 Wind moves the *sample* position through the noise, not the geometry, so the
 deck drifts without the horizon moving with it. See
 [Morphing](#morphing) for why drift alone is not enough.
+
+**The deck ignores gusts, and never fully stops.** Cloud features are kilometres
+across, so a two-second gust does not move them — the deck scales off sustained
+wind only. And even in a dead-calm scene it keeps a slow drift, because air
+aloft is always moving and a frozen sky looks more wrong than a drifting one.
+Turn Follow World Wind off for a deliberately decoupled sky.
 
 ### Lighting
 
@@ -246,11 +253,16 @@ flying rig still gets the deck put where its eye actually is.
 
 ## Day and night
 
-The deck fades out below the horizon, between −2° and −12° of sun elevation. The
-window sits entirely below the horizon on purpose: golden hour is the best the
-clouds ever look, and a fade centred on 0° would have them half-transparent
-through all of it. Above −2° they are fully solid; by −12° they are gone, so
-night skies show stars rather than an unlit silhouette punched through them.
+The deck thins out as the sun sets and is gone by the time it reaches the
+horizon. Above 8° of sun elevation the clouds are fully solid; through the last
+few degrees of the descent they fade steadily; at 0° and below there is no deck
+at all, so night skies show stars rather than a bank of lit cloud hanging over
+them.
+
+Ending the fade *at* the horizon rather than below it is deliberate. The sky and
+the stars are driven by the atmosphere, which reaches night at 0° — so a deck
+still lit at −1° reads as broken, however good it looks on its own. Matching the
+horizon keeps the deck and the sky telling the same story.
 
 ## Performance
 

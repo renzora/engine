@@ -79,20 +79,35 @@ struct CloudsUniform {
 // distance the haze has taken the deck over completely anyway.
 const MAX_MARCH_KM: f32 = 120.0;
 
-// The view march steps geometrically rather than uniformly. A uniform step has
-// to choose between resolving the cloud the camera is *inside* and reaching the
-// one on the horizon: fly into the deck and a step sized for the horizon puts
-// two samples between you and the far side, so the envelope you should be
-// swimming through turns into a flat wall. Growing the step spends resolution
-// where the eye is and distance where it is not — which is also the order in
-// which the haze stops caring.
+// The view march skips empty space rather than stepping uniformly.
 //
-// The start is capped as well as the growth, so a ray whose span runs for a
-// hundred km still begins with fine samples instead of scaling its whole
-// schedule up.
-const VIEW_STEP_GROWTH: f32 = 1.12;
-const VIEW_STEP_START: f32 = 0.05;
-const VIEW_STEP_MAX: f32 = 0.9;
+// A uniform step has to choose between resolving cloud and reaching the horizon,
+// and there is no setting of it that does both: sized for the deck it runs out
+// of budget within a few km, and sized for the horizon it lays down slabs
+// thicker than the clouds themselves, which is exactly what a deck of
+// camera-centred shells looks like. A geometric ramp only moves the problem to
+// the tail of the ray.
+//
+// So the march strides in coarse steps through clear air, and drops to cloud
+// resolution on contact. Most of any ray is empty — even an overcast deck is
+// mostly the gaps between what the ray happens to cross — so the same budget
+// buys several times the reach at a step size the clouds can actually be seen at.
+//
+// The two sizes are set from the deck's own thickness, so a stylised 8 km-deep
+// deck is sampled as well as a 2 km one instead of being sliced into the same
+// number of pieces.
+const FINE_STEP_FRACTION: f32 = 1.0 / 18.0;
+const COARSE_STEP_RATIO: f32 = 5.0;
+// Clear fine steps before striding again. Long enough not to flip back and forth
+// through a ragged cloud edge, short enough not to waste the budget in a gap.
+const EMPTY_RUN_TO_STRIDE: u32 = 8u;
+
+// Cycles of erosion detail per march step: the value below which all of it is
+// kept (four samples per cycle), and the value by which none of it is (two, the
+// Nyquist limit). `detail_resolved` crossfades between them, and a unit test
+// pins the shipped defaults below the first.
+const DETAIL_NYQUIST_SAFE: f32 = 0.25;
+const DETAIL_NYQUIST_LIMIT: f32 = 0.5;
 
 // The sun march steps a fixed fraction of the deck's thickness, growing each
 // step. Six default steps at 1% reach roughly 8% of the thickness before the
@@ -286,6 +301,27 @@ fn cloud_detail(p: vec3<f32>) -> f32 {
     return textureSampleLevel(detail_texture, detail_sampler, q + morph, 0.0).r;
 }
 
+// How much of the erosion detail the current step can actually resolve.
+//
+// The detail volume is high-frequency by design, and its frequency is tied to
+// the silhouette's, so raising **Scale** or **Detail Scale** raises it too. Once
+// consecutive samples land about a cycle apart it stops being wisps and starts
+// beating against the march, and the artefact does not read as noise: it reads
+// as combed vertical streaks hanging off the underside of every cloud, which is
+// very easy to mistake for something wrong with the cloud shapes.
+//
+// So it is faded out where the march cannot keep up, which makes the knobs safe
+// to turn rather than quietly ruinous past some value nobody documented.
+fn detail_resolved(step_km: f32) -> f32 {
+    let cycles_per_step =
+        step_km * 1.6 * clouds.base_scale * clouds.detail_scale / 32.0;
+    return 1.0 - smoothstep(DETAIL_NYQUIST_SAFE, DETAIL_NYQUIST_LIMIT, cycles_per_step);
+}
+
+fn thickness_km() -> f32 {
+    return max(clouds.top_height - clouds.bottom_height, 1e-4);
+}
+
 // Erodes a little off both ends of the deck so it does not terminate in a slab.
 fn deck_gradient(h: f32) -> f32 {
     return linear_step(0.0, 0.1, h) - linear_step(0.8, 1.2, h);
@@ -344,6 +380,7 @@ fn cloud_density(
     coverage: f32,
     warp: vec2<f32>,
     detail_fade: f32,
+    step_km: f32,
 ) -> f32 {
     var m = cloud_base(p, h, warp) * deck_gradient(h);
 
@@ -356,7 +393,17 @@ fn cloud_density(
 
     // Coverage slides the whole field through the smoothstep window: 0 puts
     // everything below it (clear sky), 1 puts everything above (overcast).
-    m = smoothstep(0.0, clouds.edge_softness, m + coverage - 1.0);
+    //
+    // The window is never allowed to be narrower than one march step is deep.
+    // A threshold sharper than the sampling makes density binary *as sampled*:
+    // every step either fully hits or fully misses, so the cloud surface gets
+    // quantised to the step positions and the deck comes out as a stack of
+    // horizontal plates. Widening it to the step puts the transition across more
+    // than one sample and the surface comes back — which is ordinary analytic
+    // antialiasing, and it means Edge Softness can be taken to zero for a crisp
+    // look without falling off a cliff.
+    let softness = max(clouds.edge_softness, step_km / thickness_km());
+    m = smoothstep(0.0, softness, m + coverage - 1.0);
     m *= min(h / clouds.base_softness, 1.0);
     return clamp(m, 0.0, 1.0);
 }
@@ -398,7 +445,8 @@ fn sun_optical_depth(
         if h > 1.0 || h < 0.0 {
             break;
         }
-        optical_depth += cloud_density(p, h, coverage, warp, detail_fade) * step_km;
+        optical_depth +=
+            cloud_density(p, h, coverage, warp, detail_fade, step_km) * step_km;
         step_km *= SHADOW_STEP_GROWTH;
         t += step_km;
     }
@@ -436,17 +484,21 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let march = min(span.y - span.x, MAX_MARCH_KM);
     let steps = max(clouds.view_steps, 1u);
 
-    // Size the first step so a geometric schedule of `steps` of them would cover
-    // the whole span, then cap it: see the note on VIEW_STEP_GROWTH.
-    let growth_sum =
-        (pow(VIEW_STEP_GROWTH, f32(steps)) - 1.0) / (VIEW_STEP_GROWTH - 1.0);
-    var dt = min(march / growth_sum, thickness * VIEW_STEP_START);
+    let fine_km = thickness * FINE_STEP_FRACTION;
+    let coarse_km = fine_km * COARSE_STEP_RATIO;
 
     // Dither the ray start so the step boundaries do not read as concentric
     // bands. The hash is of the view direction, not of time or screen position,
     // so the pattern is pinned to the sky: it neither crawls as the camera turns
     // nor flickers frame to frame, which leaves it in a form TAA can resolve.
-    var t = span.x + dt * hash13(dir * 4096.0);
+    var dt = coarse_km;
+    var empty_run = 0u;
+    // Dithered by the *fine* step, not the stride. The stride only decides where
+    // first contact is noticed, and the rewind refines that anyway; scattering
+    // the entry point by a whole stride instead just puts a stride's worth of
+    // per-pixel disagreement along every cloud edge, which is where the salt-
+    // and-pepper speckle on the rims comes from.
+    var t = span.x + fine_km * hash13(dir * 4096.0);
 
     // Frostbite's dual-lobe phase, once per multiple-scattering octave. The
     // phase depends only on the angle to the sun, so all of it is hoisted out of
@@ -483,59 +535,79 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         // All three are constant across this sample's sun march (see `weather`).
         let coverage = clamp(clouds.coverage * weather(p.xz), 0.0, 1.0);
         let warp = shape_warp(p.xz);
-        let detail_fade = 1.0 - clamp(t / DETAIL_FADE_KM, 0.0, 1.0);
+        let detail_fade =
+            (1.0 - clamp(t / DETAIL_FADE_KM, 0.0, 1.0)) * detail_resolved(dt);
 
-        let density = cloud_density(p, h, coverage, warp, detail_fade);
-        if density > 0.0 {
-            if hit_distance < 0.0 {
-                hit_distance = t;
+        let density = cloud_density(p, h, coverage, warp, detail_fade, dt);
+
+        if density <= 0.0 {
+            empty_run += 1u;
+            if empty_run >= EMPTY_RUN_TO_STRIDE {
+                dt = coarse_km;
             }
+            t += dt;
+            continue;
+        }
 
-            let sigma = density * clouds.extinction;
-            let step_transmittance = exp(-sigma * dt);
-            let sun_depth = sun_optical_depth(p, thickness, coverage, warp, detail_fade);
+        // First contact while striding: back up and re-enter at cloud
+        // resolution. Shading this sample where it stands would put a whole
+        // coarse step of optical depth into one slab, and at cloud densities
+        // that is opaque on its own — every cloud would gain a hard front face.
+        if dt > fine_km {
+            t = max(t - dt, span.x);
+            dt = fine_km;
+            empty_run = 0u;
+            continue;
+        }
 
-            // Multiple scattering, as a sum of octaves over the one sun path:
-            // each carries less light, is extincted less, and scatters more
-            // isotropically than the last. The deepest octave is what keeps a
-            // cloud's shaded body lit instead of collapsing to the ambient term.
-            var direct = 0.0;
-            var attenuation = 1.0;
-            var extinction = 1.0;
-            for (var octave = 0u; octave < MS_OCTAVES; octave += 1u) {
-                direct += attenuation * exp(-sun_depth * extinction) * phases[octave];
-                attenuation *= MS_ATTENUATION;
-                extinction *= MS_EXTINCTION;
-            }
+        empty_run = 0u;
 
-            // Powder: a thin sunlit edge has had little chance to scatter light
-            // back toward the eye yet, so it reads darker than its density
-            // alone suggests. Without it, cloud rims look like cut paper.
-            //
-            // Measured over a fixed slice of the deck rather than over `dt`,
-            // which is thirty times longer at the horizon than overhead — keying
-            // it to the step would darken distant cloud for no reason but the
-            // step size the march happened to pick.
-            let powder = 1.0 - exp(-sigma * thickness * 0.1);
-            let sunlight =
-                clouds.sun_color.rgb * direct * mix(1.0, powder, clouds.powder_strength);
-            let skylight = mix(clouds.ambient_bottom.rgb, clouds.ambient_top.rgb, h);
+        if hit_distance < 0.0 {
+            hit_distance = t;
+        }
 
-            // Hillaire's energy-conserving integration: integrate the source
-            // term across the whole segment analytically instead of sampling it
-            // at one point and multiplying by dt, which is what keeps the result
-            // stable as the step size changes from zenith to horizon.
-            scattered += transmittance * (sunlight + skylight) * (1.0 - step_transmittance);
-            transmittance *= step_transmittance;
+        let sigma = density * clouds.extinction;
+        let step_transmittance = exp(-sigma * dt);
+        let sun_depth = sun_optical_depth(p, thickness, coverage, warp, detail_fade);
 
-            if transmittance < clouds.min_transmittance {
-                transmittance = 0.0;
-                break;
-            }
+        // Multiple scattering, as a sum of octaves over the one sun path:
+        // each carries less light, is extincted less, and scatters more
+        // isotropically than the last. The deepest octave is what keeps a
+        // cloud's shaded body lit instead of collapsing to the ambient term.
+        var direct = 0.0;
+        var attenuation = 1.0;
+        var extinction = 1.0;
+        for (var octave = 0u; octave < MS_OCTAVES; octave += 1u) {
+            direct += attenuation * exp(-sun_depth * extinction) * phases[octave];
+            attenuation *= MS_ATTENUATION;
+            extinction *= MS_EXTINCTION;
+        }
+
+        // Powder: a thin sunlit edge has had little chance to scatter light
+        // back toward the eye yet, so it reads darker than its density
+        // alone suggests. Without it, cloud rims look like cut paper.
+        //
+        // Measured over a fixed slice of the deck rather than over `dt`, which
+        // the march resizes as it goes — keying it to the step would darken
+        // cloud for no reason but which stride the march happened to be on.
+        let powder = 1.0 - exp(-sigma * thickness * 0.1);
+        let sunlight =
+            clouds.sun_color.rgb * direct * mix(1.0, powder, clouds.powder_strength);
+        let skylight = mix(clouds.ambient_bottom.rgb, clouds.ambient_top.rgb, h);
+
+        // Hillaire's energy-conserving integration: integrate the source
+        // term across the whole segment analytically instead of sampling it
+        // at one point and multiplying by dt, which is what keeps the result
+        // stable as the step size changes from zenith to horizon.
+        scattered += transmittance * (sunlight + skylight) * (1.0 - step_transmittance);
+        transmittance *= step_transmittance;
+
+        if transmittance < clouds.min_transmittance {
+            transmittance = 0.0;
+            break;
         }
 
         t += dt;
-        dt = min(dt * VIEW_STEP_GROWTH, thickness * VIEW_STEP_MAX);
     }
 
     let alpha = 1.0 - transmittance;

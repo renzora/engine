@@ -77,8 +77,22 @@ pub struct CloudsData {
     /// this has to be weather-system fast — a literal 2 m/s breeze moves the
     /// deck by a thousandth of a cloud per second and reads as a still image.
     pub speed: f32,
-    /// Wind direction in degrees (0–360).
+    /// Wind direction in degrees (0–360). Ignored while
+    /// [`follow_world_wind`](Self::follow_world_wind) is set.
     pub wind_direction: f32,
+    /// Take heading and drift from the world wind (`renzora::WindState`)
+    /// instead of the two fields above.
+    ///
+    /// On by default, because a deck sliding one way over grass leaning the
+    /// other is the single most obvious way a sky reads as fake. `speed` still
+    /// matters when this is on — it is the drift the deck reaches at reference
+    /// wind, so the authored value keeps its meaning and the world wind scales
+    /// it. Turn this off for a deliberately decoupled sky (a stylised level, or
+    /// a cutscene where the ground wind is scripted and the sky must not be).
+    ///
+    /// Note the deck ignores gusts entirely: cloud features are kilometres
+    /// across and a two-second gust does not move them.
+    pub follow_world_wind: bool,
     /// How fast cloud shapes evolve, in metres per second, independently of the
     /// wind that carries them. Wind alone only translates the deck, and a cloud
     /// whose silhouette never changes reads as a cutout sliding across the sky
@@ -144,20 +158,21 @@ impl Default for CloudsData {
         Self {
             enabled: true,
 
-            bottom_height: 2200.0,
-            top_height: 4200.0,
+            bottom_height: 1690.0,
+            top_height: 2960.0,
             planet_radius: 6_371_000.0,
 
-            coverage: 0.4,
-            density: 0.5,
-            scale: 3.4,
-            detail_scale: 42.0,
+            coverage: 0.5,
+            density: 0.2,
+            scale: 1.5,
+            detail_scale: 30.5,
             detail_strength: 0.27,
-            edge_softness: 0.1,
-            base_softness: 0.25,
+            edge_softness: 0.2,
+            base_softness: 0.3,
 
             speed: 40.0,
             wind_direction: 220.0,
+            follow_world_wind: true,
             morph_speed: 50.0,
 
             color: (1.0, 0.93, 0.80),
@@ -171,7 +186,7 @@ impl Default for CloudsData {
             scattering_blend: 0.3,
             powder_strength: 0.3,
 
-            raymarch_steps: 32,
+            raymarch_steps: 42,
             shadow_steps: 6,
 
             atmosphere_lighting: true,
@@ -197,17 +212,24 @@ const MIN_TRANSMITTANCE: f32 = 0.02;
 
 /// Sun elevation, in degrees, over which the deck fades out into night.
 ///
-/// The window sits *below* the horizon on purpose. Golden hour is the best the
-/// clouds ever look, and a fade centred on 0 would have them half-transparent
-/// through all of it; this keeps them solid until the sun has properly gone and
-/// then takes them out over the following ten degrees of twilight.
-const NIGHT_ELEVATION: f32 = -12.0;
-const DAY_ELEVATION: f32 = -2.0;
+/// The window ends *at* the horizon: the deck is at full strength by
+/// [`DAY_ELEVATION`], thins steadily as the sun drops through the last few
+/// degrees, and is gone once the sun reaches 0. Sunset is the cue.
+///
+/// This deliberately reverses an earlier choice to sit the whole window below
+/// the horizon (-12°..-2°), which kept clouds solid all through golden hour.
+/// That looked better in isolation but read as broken in context: the sky and
+/// the stars are driven by the atmosphere, which goes to night at 0, so a deck
+/// still lit at -1° hung as a bank of bright white cloud over a starfield.
+/// Matching the horizon is what keeps the deck and the sky telling the same
+/// story. Widen [`DAY_ELEVATION`] for a slower fade.
+const NIGHT_ELEVATION: f32 = 0.0;
+const DAY_ELEVATION: f32 = 8.0;
 
 
 /// Step caps below `High`. Both marches are per-pixel, so the tier cap is the
 /// difference between clouds costing a slice of the frame and costing the frame.
-const MEDIUM_VIEW_STEPS: u32 = 16;
+const MEDIUM_VIEW_STEPS: u32 = 24;
 const MEDIUM_SHADOW_STEPS: u32 = 4;
 
 /// The directional-light illuminance the authored colours are calibrated
@@ -289,6 +311,21 @@ struct CloudsState {
 fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+/// Whether a `DirectionalLight` can light the scene the cloud dome is in.
+///
+/// The dome carries no `RenderLayers`, so it sits on the default layer; a light
+/// that shares no layer with it cannot illuminate it and must not be mistaken
+/// for the sun. A light with no `RenderLayers` is on the default layer too, so
+/// `None` counts as scene lighting.
+///
+/// This exists because the editor keeps several preview rigs alive in the same
+/// World, each with its own key and fill lights on its own layer. See the call
+/// site for what that cost us.
+fn lights_the_scene(layers: Option<&bevy::camera::visibility::RenderLayers>) -> bool {
+    let scene = bevy::camera::visibility::RenderLayers::default();
+    layers.is_none_or(|layers| layers.intersects(&scene))
 }
 
 /// Radius to give the dome: just inside the tightest active far plane.
@@ -397,12 +434,17 @@ fn sync_clouds(
     mut clouds_state: ResMut<CloudsState>,
     clouds_query: Query<&CloudsData>,
     camera_query: Query<(&GlobalTransform, &Camera, Option<&Projection>), With<Camera3d>>,
-    sun_query: Query<(&GlobalTransform, &DirectionalLight)>,
+    sun_query: Query<(
+        &GlobalTransform,
+        &DirectionalLight,
+        Option<&bevy::camera::visibility::RenderLayers>,
+    )>,
     atmosphere_query: Query<&Atmosphere>,
     media: Res<Assets<ScatteringMedium>>,
     // Earth's medium, built once, for scenes with no `Atmosphere` to measure.
     fallback_medium: Local<ScatteringMedium>,
     quality: Option<Res<renzora::ResolvedGraphicsQuality>>,
+    wind: Option<Res<renzora::WindState>>,
     noise: Option<Res<CloudNoiseTextures>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut cloud_materials: ResMut<Assets<CloudMaterial>>,
@@ -455,9 +497,22 @@ fn sync_clouds(
     let radius = dome_radius(projection);
 
     // ── Wind ──
-    let wind_rad = clouds_data.wind_direction.to_radians();
+    // Bearing and drift come from the world wind unless the deck opts out. The
+    // floor of 0.35 is not a fudge: air aloft is always moving, so a deck that
+    // froze solid in a dead-calm scene would look more wrong than one that
+    // keeps drifting.
+    let world_wind = wind.as_deref().copied().unwrap_or_default();
+    let (wind_bearing, wind_speed) = if clouds_data.follow_world_wind {
+        (
+            world_wind.direction_degrees(),
+            clouds_data.speed * (0.35 + 0.65 * world_wind.strength01()),
+        )
+    } else {
+        (clouds_data.wind_direction, clouds_data.speed)
+    };
+    let wind_rad = wind_bearing.to_radians();
     let wind_dir = Vec3::new(wind_rad.cos(), 0.0, wind_rad.sin());
-    clouds_state.wind_offset += wind_dir * (clouds_data.speed * 0.001 * time.delta_secs());
+    clouds_state.wind_offset += wind_dir * (wind_speed * 0.001 * time.delta_secs());
 
     // Wrap to the base map's world period. An offset that only ever grew would
     // eventually coarsen to metres of f32 resolution and the deck would visibly
@@ -471,7 +526,7 @@ fn sync_clouds(
     // ── Morph ──
     // The warp field and the detail volume evolve on their own clock, crossing
     // the wind rather than following it.
-    let morph_rad = (clouds_data.wind_direction + MORPH_BEARING_OFFSET).to_radians();
+    let morph_rad = (wind_bearing + MORPH_BEARING_OFFSET).to_radians();
     let morph_dir = Vec3::new(morph_rad.cos(), 0.0, morph_rad.sin());
     let morph_step = clouds_data.morph_speed * 0.001 * time.delta_secs();
     clouds_state.morph_offset += morph_dir * morph_step;
@@ -487,12 +542,24 @@ fn sync_clouds(
     // this works in any scene that has a sun at all — `renzora_lighting` mirrors
     // `Sun` onto the light anyway, and plenty of scenes carry only the light.
     // Brightest wins: a scene with fill lights should still be read by its key.
+    //
+    // Restricted to lights that share the dome's render layer, which is the
+    // default one. The editor keeps several *preview* rigs alive in the same
+    // World — the material, model-thumbnail, particle and animation-studio
+    // previews each spawn their own key and fill lights at 2000–12000 lux, on
+    // their own layers. Those cannot light this scene, but they were winning
+    // `max_by` the moment the real sun dimmed: `renzora_lighting::sync_sun`
+    // takes the sun's illuminance to exactly 0 at -1° elevation, so from there
+    // down the brightest `DirectionalLight` in the World was a preview light
+    // pointing wherever its little rig points. That read back as a sun roughly
+    // 30° *up*, and the deck faded out at 0° and then snapped back at -1°.
     let sun = sun_query
         .iter()
-        .max_by(|(_, a), (_, b)| a.illuminance.total_cmp(&b.illuminance));
+        .filter(|(_, _, layers)| lights_the_scene(*layers))
+        .max_by(|(_, a, _), (_, b, _)| a.illuminance.total_cmp(&b.illuminance));
 
     let sun_dir = sun
-        .map(|(transform, _)| -transform.forward().as_vec3())
+        .map(|(transform, _, _)| -transform.forward().as_vec3())
         .unwrap_or_else(|| Vec3::new(0.5, 0.7, 0.5).normalize())
         .normalize_or(Vec3::Y);
 
@@ -500,7 +567,7 @@ fn sync_clouds(
     // for the same reason.
     let elevation = sun_dir.y.clamp(-1.0, 1.0).asin().to_degrees();
     let sun_tint = sun
-        .map(|(_, light)| {
+        .map(|(_, light, _)| {
             let c = light.color.to_linear();
             Vec3::new(c.red, c.green, c.blue)
         })
@@ -508,7 +575,7 @@ fn sync_clouds(
     // Both the direct light and the skylight filling the shadows come from the
     // sun in the end, so both track its illuminance.
     let sun_power = sun
-        .map(|(_, light)| (light.illuminance / REFERENCE_ILLUMINANCE).clamp(0.0, 4.0))
+        .map(|(_, light, _)| (light.illuminance / REFERENCE_ILLUMINANCE).clamp(0.0, 4.0))
         .unwrap_or(1.0);
     let day = smoothstep(NIGHT_ELEVATION, DAY_ELEVATION, elevation);
 
@@ -703,6 +770,86 @@ renzora::add!(CloudsPlugin);
 
 #[cfg(test)]
 mod tests {
+    use super::CloudsData;
+
+    /// The editor keeps preview rigs (material, model thumbnail, particle,
+    /// animation studio) alive in the same World, each with its own key and
+    /// fill lights at 2000-12000 lux on its own render layer. Those must never
+    /// be mistaken for the scene's sun.
+    ///
+    /// This is a real regression, not a hypothetical: `sync_sun` drops the
+    /// sun's illuminance to exactly 0 at -1 degree of elevation, so below that
+    /// the brightest `DirectionalLight` in the World was a preview light. It
+    /// pointed roughly 30 degrees up, so the deck correctly vanished at 0 and
+    /// then snapped back to full daylight at -1.
+    #[test]
+    fn preview_rig_lights_are_not_mistaken_for_the_sun() {
+        use super::lights_the_scene;
+        use bevy::camera::visibility::RenderLayers;
+
+        // The scene's sun: usually no RenderLayers at all, sometimes an
+        // explicit default layer.
+        assert!(lights_the_scene(None));
+        assert!(lights_the_scene(Some(&RenderLayers::default())));
+        assert!(lights_the_scene(Some(&RenderLayers::layer(0))));
+
+        // Preview rigs live on their own layers and light nothing here.
+        for layer in [1, 2, 3, 17, 20] {
+            assert!(
+                !lights_the_scene(Some(&RenderLayers::layer(layer))),
+                "a light confined to layer {layer} cannot light the dome"
+            );
+        }
+
+        // A light on its own layer *and* the default one does light the scene.
+        assert!(lights_the_scene(Some(&RenderLayers::from_layers(&[0, 17]))));
+    }
+
+    /// The deck must be *fully* gone at and below the horizon, and must get
+    /// there gradually rather than snapping. Sunset is the cue, so a partially
+    /// lit deck at 0 is the bug this guards: the sky and stars are driven by
+    /// the atmosphere, which is already night by then.
+    #[test]
+    fn the_deck_fades_out_by_the_time_the_sun_reaches_the_horizon() {
+        use super::{smoothstep, DAY_ELEVATION, NIGHT_ELEVATION};
+        let day = |elev: f32| smoothstep(NIGHT_ELEVATION, DAY_ELEVATION, elev);
+
+        // At and below the horizon: nothing. The shader early-outs under
+        // 0.002, so anything at or under that reads as fully gone.
+        for elev in [0.0, -0.5, -2.0, -12.0, -45.0, -90.0] {
+            assert!(
+                day(elev) <= 0.002,
+                "sun at {elev}° should leave no cloud, got {}",
+                day(elev)
+            );
+        }
+
+        // Well up in the sky: full strength.
+        for elev in [DAY_ELEVATION, 20.0, 60.0, 90.0] {
+            assert!(
+                day(elev) > 0.999,
+                "sun at {elev}° should be full daylight, got {}",
+                day(elev)
+            );
+        }
+
+        // In between: monotonically increasing, and actually partial — a fade
+        // that jumped straight from 0 to 1 would pass the two checks above.
+        let mut previous = 0.0;
+        let mut saw_partial = false;
+        for step in 0..=64 {
+            let elev = NIGHT_ELEVATION
+                + (DAY_ELEVATION - NIGHT_ELEVATION) * (step as f32 / 64.0);
+            let d = day(elev);
+            assert!(d >= previous, "fade reversed at {elev}°");
+            if d > 0.05 && d < 0.95 {
+                saw_partial = true;
+            }
+            previous = d;
+        }
+        assert!(saw_partial, "fade must pass through partial coverage");
+    }
+
     /// Compile a WGSL module exactly as wgpu will.
     fn validate(name: &str, source: &str) {
         let module = naga::front::wgsl::parse_str(source)
@@ -714,6 +861,60 @@ mod tests {
         if let Err(err) = validator.validate(&module) {
             panic!("{name}: {}", err.emit_to_string(source));
         }
+    }
+
+    /// Reads a `const NAME: f32 = ...;` out of the shader. Handles a bare literal
+    /// and a single division, which is all the shader uses.
+    fn wgsl_const(source: &str, name: &str) -> f32 {
+        let prefix = format!("const {name}: f32 =");
+        let line = source
+            .lines()
+            .find(|line| line.trim_start().starts_with(&prefix))
+            .unwrap_or_else(|| panic!("`{name}` is not declared in clouds.wgsl"));
+        let value = line.split('=').nth(1).unwrap().trim().trim_end_matches(';');
+        match value.split_once('/') {
+            Some((numerator, denominator)) => {
+                numerator.trim().parse::<f32>().unwrap()
+                    / denominator.trim().parse::<f32>().unwrap()
+            }
+            None => value.parse().unwrap(),
+        }
+    }
+
+    /// The erosion detail's frequency is tied to `scale` and `detail_scale`, and
+    /// the march samples the deck `1 / FINE_STEP_FRACTION` times. Let those two
+    /// drift apart and consecutive samples land about a cycle apart, at which
+    /// point the detail stops being wisps and starts beating against the steps.
+    ///
+    /// It is worth pinning because of how the failure looks: not like noise, but
+    /// like combed vertical streaks hanging off the underside of every cloud —
+    /// which reads as something wrong with the cloud *shapes*, and sends you
+    /// looking in the wrong place. It has already happened twice, once when the
+    /// deck was made thicker and once when `scale` went up.
+    ///
+    /// Checked against the shader's own constants rather than a remembered
+    /// number, so tuning one side cannot silently invalidate the other.
+    #[test]
+    fn the_default_detail_stays_inside_what_the_default_march_resolves() {
+        let shader = include_str!("clouds.wgsl");
+        let fine_fraction = wgsl_const(shader, "FINE_STEP_FRACTION");
+        let safe = wgsl_const(shader, "DETAIL_NYQUIST_SAFE");
+
+        let clouds = CloudsData::default();
+        let thickness_km = (clouds.top_height - clouds.bottom_height) * 0.001;
+        let fine_step_km = thickness_km * fine_fraction;
+
+        // Mirrors `detail_resolved` in the shader.
+        let cycles_per_step =
+            fine_step_km * 1.6 * clouds.scale * clouds.detail_scale / 32.0;
+
+        assert!(
+            cycles_per_step < safe,
+            "the default erosion detail runs at {cycles_per_step:.3} cycles per \
+             march step, past the {safe} the shader keeps all of it below; it \
+             will be faded out, and near the limit it combs. Lower `detail_scale` \
+             or `scale`, or take smaller steps.",
+        );
     }
 
     #[test]
