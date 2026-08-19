@@ -1343,6 +1343,8 @@ mod tests {
             grid_color_2d: [128, 200, 255, 60],
             show_gizmos_2d: false,
             show_axis_gizmo: false,
+            // Defaults to true, so false is the non-default this test wants.
+            gizmo_pivot_bottom: false,
             show_scene_icons: false,
             show_labels: true,
             label_size: 2.5,
