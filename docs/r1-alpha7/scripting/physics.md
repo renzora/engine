@@ -213,5 +213,6 @@ These appear in older docs or the internal `ScriptCommand` enum but have **no na
 
 ## Related
 
+- [Parkour & Traversal](/docs/r1-alpha7/scripting/parkour) — a character controller that owns movement outright, adding vaults, mantles, ledge hangs, ladders, wall runs and swings on top of the same collide-and-slide primitive
 - [Scripting Overview](/docs/r1-alpha7/scripting/overview) — how scripts attach and run
 - [Blueprints](/docs/r1-alpha7/scripting/blueprints) — collision and physics nodes for visual scripting

@@ -294,6 +294,20 @@ end
 
 > When `renzora_physics` is active it adds `move_controller` (collide-and-slide) and re-routes `apply_force`/`apply_impulse`/`set_linear_velocity` through its own action handlers — see [Extension functions](#extension-functions).
 
+## Parkour
+
+**Lua.** Provided by `renzora_parkour`. These **replace** `move_controller` for the entity: the parkour controller owns gravity, ground contact and collision itself, because a ledge hang and a rope swing are positions it has to set rather than forces it can ask for. Driving one entity with both fights over its `Transform`.
+
+| Function | Description |
+|----------|-------------|
+| `parkour_move(x, y, z)` | Movement intent in world space; `x`/`z` steer, `y` climbs ladders and hangs. Consumed each frame, so call it every frame |
+| `parkour_sprint(on)` | Move at `run_speed` instead of `walk_speed` |
+| `parkour_jump()` | Jump, wall-jump, climb up from a hang, or let go of a swing with a boost |
+| `parkour_action()` | Context traversal: vault, mantle, grab a ledge, mount a ladder, grab a rope |
+| `parkour_release()` | Let go of a ledge, ladder or swing |
+
+Reads go through reflection: `get("ParkourReadState.state")`, `.event`, `.grounded`, `.speed`, `.traversing`, `.can_vault`, `.can_mantle`, `.can_grab`, `.near_ladder`, `.ledge_height`. See [Parkour & Traversal](../scripting/parkour.md).
+
 ## Spawning & scenes
 
 | Function | Backends | Description |
@@ -444,6 +458,7 @@ Verbs that are actually observed in the current code:
 | Audio (`renzora_audio`) | `play_sound`, `play_music`, `stop_music`, `stop_all_sounds`, `play_audio_player` |
 | Networking (`renzora_network`) | `net_connect`, `net_disconnect`, `net_rpc` (`net_send`, `net_send_message`, `net_spawn`, `net_host_server` are stubs) |
 | Physics (`renzora_physics`) | `kinematic_slide`, `apply_force`, `apply_impulse`, `set_velocity` |
+| Parkour (`renzora_parkour`) | `parkour_move`, `parkour_sprint`, `parkour_jump`, `parkour_action`, `parkour_release` |
 | Navmesh (`renzora_navmesh`) | `nav_set_destination`, `nav_clear_destination` |
 | Wind (`renzora_wind`) | `set_wind`, `set_wind_gusts` |
 
@@ -457,6 +472,7 @@ Domain crates inject extra functions into the VM when their plugin is active. Th
 |--------|-----------|
 | `renzora_physics` | `move_controller(x, y, z)` (collide-and-slide), plus re-registered `apply_force(x, y, z)`, `apply_impulse(x, y, z)`, `set_linear_velocity(x, y, z)` (routed through `ScriptAction`) |
 | `renzora_navmesh` | `nav_set_destination(x, y, z)`, `nav_clear_destination()`, `nav_stop()` |
+| `renzora_parkour` | `parkour_move(x, y, z)`, `parkour_sprint(on)`, `parkour_jump()`, `parkour_action()`, `parkour_release()` — the traversal controller, which replaces `move_controller` on that entity. See [Parkour & Traversal](../scripting/parkour.md). |
 | `renzora_animation` | `set_anim_param(name, v)`, `set_anim_bool(name, v)`, `set_anim_trigger(name)`, `get_animation_length(name)` |
 | `renzora_engine` (camera) | `set_fov(degrees)`, `camera_fov()` |
 | `renzora_wind` | `set_wind(speed, direction)`, `set_wind_gusts(strength, frequency, turbulence)` — speed in m/s, direction in degrees the wind travels *toward*. Reads go through reflection: `get("WindState.speed")`. See [Wind](../rendering/wind.md). |

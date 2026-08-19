@@ -1,0 +1,50 @@
+[package]
+name = "renzora_parkour"
+version = "0.1.0"
+edition = "2021"
+description = "Traversal/parkour character controller: vaulting, mantling, ledge hang + shimmy, ladder climbing, wall running, wall jumps and rope/bar swinging, driven from scripts."
+
+[features]
+default = ["editor"]
+# The script functions this crate declares (its `ScriptExtension`). Purely
+# declarative — no interpreter is linked either way — but the declaration itself
+# needs the scripting crate, so a game exported without scripting drops it.
+# Deliberately NOT in `default`: `renzora_runtime` owns the switch and forwards
+# it, so the whole engine agrees on one answer.
+scripting = ["dep:renzora_scripting"]
+# Forwards to `renzora/editor` so the components below register into the
+# Inspector's "Add Component" list. Off in lean exports.
+editor = ["renzora/editor"]
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../renzora", default-features = false }
+# The read-state mirror is Serialize/Deserialize for the same reason
+# `PhysicsReadState` is: reflection registers those impls, and the scene
+# serializer needs them to round-trip the component.
+serde = { version = "1", features = ["derive"] }
+renzora_macros = { path = "../renzora_macros" }
+renzora_scripting = { path = "../renzora_scripting", default-features = false, optional = true }
+# Traversals hand the skeleton a clip through the same command queue the
+# animation crate's own scripting API uses, rather than reaching into bevy's
+# AnimationPlayer — so a parkour crossfade and a `crossfade_animation()` call
+# from a script go through one path and can't fight each other.
+renzora_animation = { path = "../renzora_animation", default-features = false }
+# For `shape_cast_slide`, the collide-and-slide primitive the `move_controller`
+# script action already uses. Parkour is a 3D-only feature, so it asks for the
+# 3D backend explicitly rather than inheriting whichever one the game picked —
+# a 2D export drops the whole `parkour` feature instead.
+renzora_physics = { path = "../renzora_physics", default-features = false, features = ["avian3d"] }
+
+[dependencies.avian3d]
+version = "0.7"
+default-features = false
+features = ["3d", "f32", "default-collider", "parry-f32"]
+
+# Tests only: system/param names in ECS validation errors, so a failing
+# headless test says WHICH resource is missing.
+[dev-dependencies]
+bevy = { workspace = true, features = ["debug"] }
+
+[lints]
+workspace = true

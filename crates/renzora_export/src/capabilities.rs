@@ -408,6 +408,16 @@ pub const CAPABILITIES: &[Capability] = &[
         group: None,
     },
     Capability {
+        id: "parkour",
+        section: "simulation",
+        label: "Parkour traversal",
+        help: "Vault/mantle/ledge-hang/ladder/wall-run/swing character controller. 3D only, and it pulls in 3D physics on its own.",
+        bevy_features: &[],
+        runtime_features: &["parkour"],
+        default_on: true,
+        group: None,
+    },
+    Capability {
         id: "gaussian_splatting",
         section: "render_3d",
         label: "Gaussian splatting",
@@ -1024,7 +1034,7 @@ pub fn disabled_runtime_features(state: &HashMap<String, bool>) -> Vec<String> {
             "bloom", "ssao", "ssr", "dof", "motion_blur", "distance_fog",
             "volumetric_fog", "lens_distortion", "auto_exposure", "oit", "antialiasing",
             // 3D-only extras that build on bevy_pbr
-            "lumen", "cloth", "ragdoll", "gaussian_splatting", "text3d",
+            "lumen", "cloth", "ragdoll", "parkour", "gaussian_splatting", "text3d",
             "forward_decal", "pool_water", "procedural_tree",
         ] {
             if !out.iter().any(|x| x == f) {

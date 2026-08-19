@@ -1,0 +1,19 @@
+[package]
+name = "renzora_parkour_editor"
+version = "0.1.0"
+edition = "2021"
+description = "Editor-only diagnostic gizmo for renzora_parkour: draws the controller's swept capsule, its ground and ledge probes, and the traversal path it is playing. Registered via renzora::add!(.., Editor) and linked only by the editor bundle."
+
+[dependencies]
+bevy = { workspace = true }
+renzora = { path = "../../renzora", default-features = false, features = ["editor"] }
+renzora_parkour = { path = ".." }
+# The overlay gizmo group (depth-biased, render layer 1) every other editor
+# gizmo draws into, plus its capsule helper — so the parkour capsule is drawn
+# by exactly the same code as a physics capsule collider and cannot drift from
+# it visually.
+renzora_gizmo = { path = "../../renzora_gizmo" }
+renzora_editor_framework = { path = "../../renzora_editor_framework" }
+
+[lints]
+workspace = true

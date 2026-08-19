@@ -7694,6 +7694,7 @@ dependencies = [
  "renzora_night_stars_editor",
  "renzora_oit",
  "renzora_oit_editor",
+ "renzora_parkour_editor",
  "renzora_particle_editor",
  "renzora_physics",
  "renzora_physics_editor",
@@ -8363,6 +8364,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "renzora_parkour"
+version = "0.1.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "renzora",
+ "renzora_animation",
+ "renzora_macros",
+ "renzora_physics",
+ "renzora_scripting",
+ "serde",
+]
+
+[[package]]
+name = "renzora_parkour_editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "renzora",
+ "renzora_editor_framework",
+ "renzora_gizmo",
+ "renzora_parkour",
+]
+
+[[package]]
 name = "renzora_particle_editor"
 version = "0.1.0"
 dependencies = [
@@ -8572,6 +8598,7 @@ dependencies = [
  "renzora_network",
  "renzora_night_stars",
  "renzora_oit",
+ "renzora_parkour",
  "renzora_physics",
  "renzora_pool_water",
  "renzora_postprocess",

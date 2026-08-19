@@ -71,6 +71,8 @@ pub(crate) fn add_runtime_plugins(app: &mut App) {
     app.add_plugins(renzora_night_stars::NightStarsPlugin::default());
     #[cfg(feature = "oit")]
     app.add_plugins(renzora_oit::OitPlugin::default());
+    #[cfg(feature = "parkour")]
+    app.add_plugins(renzora_parkour::ParkourPlugin::default());
     #[cfg(feature = "pool_water")]
     app.add_plugins(renzora_pool_water::PoolWaterPlugin::default());
     #[cfg(feature = "procedural_tree")]
