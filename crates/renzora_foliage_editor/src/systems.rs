@@ -168,6 +168,16 @@ pub fn foliage_paint_system(
         return;
     }
 
+    // Grow / Trim write the chunk's height channel instead of a type's density
+    // weight. The channel is unallocated until the first such stroke, so this is
+    // where it gets sized — see `FoliageDensityMap::height_scale`.
+    let brush = settings.brush_type;
+    let paints_height = brush.paints_height();
+    if paints_height {
+        density_map.ensure_height_scale();
+    }
+    let target = brush.target(settings.brush_height);
+
     // Brush radius is in UV space (0..1), convert to texel space
     let radius_texels = (settings.brush_radius * res as f32).max(1.0);
     let center_x = uv.x * (res - 1) as f32;
@@ -198,20 +208,29 @@ pub fn foliage_paint_system(
             let effect = (strength * falloff).min(1.0);
 
             let idx = (tz * res + tx) as usize;
-            if idx >= density_map.density_weights.len() {
-                continue;
-            }
 
-            match settings.brush_type {
-                FoliageBrushType::Paint => {
-                    let w = &mut density_map.density_weights[idx][type_idx];
-                    *w = (*w + effect * (1.0 - *w)).min(1.0);
+            // Every mode is the same stroke — an exponential approach toward the
+            // mode's target at the falloff-weighted rate — so only the cell it
+            // moves differs. Grow and Trim are one-directional on purpose: a
+            // brush that also drags an already-taller texel *back* toward its
+            // target would trim while you were trying to grow wherever the two
+            // strokes overlapped.
+            let cell = if paints_height {
+                let Some(cell) = density_map.height_scale.get_mut(idx) else {
+                    continue;
+                };
+                let growing = matches!(brush, FoliageBrushType::Grow);
+                if (growing && *cell >= target) || (!growing && *cell <= target) {
+                    continue;
                 }
-                FoliageBrushType::Erase => {
-                    let w = &mut density_map.density_weights[idx][type_idx];
-                    *w = (*w - effect * *w).max(0.0);
-                }
-            }
+                cell
+            } else {
+                let Some(weights) = density_map.density_weights.get_mut(idx) else {
+                    continue;
+                };
+                &mut weights[type_idx]
+            };
+            *cell += effect * (target - *cell);
         }
     }
 
@@ -268,6 +287,12 @@ pub fn foliage_brush_gizmo_system(
     let color = match settings.brush_type {
         FoliageBrushType::Paint => Color::srgba(0.3, 0.9, 0.3, 0.8),
         FoliageBrushType::Erase => Color::srgba(0.9, 0.4, 0.2, 0.8),
+        // The height brushes are a different channel, not a different amount of
+        // the same one, so they get their own hue rather than a shade of green —
+        // otherwise Grow over unpainted ground looks like it should be laying
+        // down grass and silently does nothing.
+        FoliageBrushType::Grow => Color::srgba(0.4, 0.7, 1.0, 0.8),
+        FoliageBrushType::Trim => Color::srgba(0.8, 0.6, 1.0, 0.8),
     };
 
     // Draw circle on XZ plane at hover position

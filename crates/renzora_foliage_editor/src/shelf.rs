@@ -36,7 +36,8 @@ use renzora_terrain::foliage::{FoliageBrushType, FoliageConfig, FoliagePaintSett
 const BRUSH: ToolSection = ToolSection::Shelf("terrain.d-foliage-brush");
 const TYPES: ToolSection = ToolSection::Shelf("terrain.e-foliage-types");
 
-/// Brush modes. Two, so they fill one shelf row exactly.
+/// Brush modes. Four, so they fill two shelf rows exactly — density on the first
+/// row, blade height on the second.
 const BRUSHES: &[(FoliageBrushType, &str, &str)] = &[
     (
         FoliageBrushType::Paint,
@@ -47,6 +48,16 @@ const BRUSHES: &[(FoliageBrushType, &str, &str)] = &[
         FoliageBrushType::Erase,
         "eraser",
         "Erase the active foliage type",
+    ),
+    (
+        FoliageBrushType::Grow,
+        "arrow-fat-line-up",
+        "Grow grass up to the panel's Height target",
+    ),
+    (
+        FoliageBrushType::Trim,
+        "scissors",
+        "Trim grass down to the panel's Height target",
     ),
 ];
 
@@ -123,6 +134,8 @@ fn brush_id(brush: FoliageBrushType) -> &'static str {
     match brush {
         FoliageBrushType::Paint => "foliage.brush.paint",
         FoliageBrushType::Erase => "foliage.brush.erase",
+        FoliageBrushType::Grow => "foliage.brush.grow",
+        FoliageBrushType::Trim => "foliage.brush.trim",
     }
 }
 

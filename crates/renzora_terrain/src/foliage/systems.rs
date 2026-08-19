@@ -12,10 +12,20 @@ use super::data::{FoliageBatch, FoliageConfig, FoliageDensityMap};
 use super::instance::{BladeSetId, GrassChunk};
 
 /// Share of wall-clock time a live foliage preview may spend rebuilding.
-const LIVE_BUDGET: f32 = 0.15;
-/// Never rebuild more often than this while a stroke is in progress — past
-/// roughly 20 Hz the extra rebuilds are invisible and only cost frames.
-const MIN_LIVE_INTERVAL: f32 = 0.05;
+///
+/// Raised from 0.15 once the scatter went parallel (`blades::ScatterCtx`). The
+/// budget is what converts rebuild cost into a tick rate, so with the cost cut
+/// several-fold a stricter share was just leaving the preview slower than the
+/// machine could afford.
+const LIVE_BUDGET: f32 = 0.25;
+/// Never rebuild more often than once a frame. Anything tighter is a second
+/// rebuild nobody can see, since only one of them reaches the screen.
+///
+/// This used to be 0.05 — 20 Hz — on the reasoning that faster was invisible.
+/// It isn't: at 20 Hz the grass trails the cursor by up to 50 ms on top of
+/// whatever the pacing adds, and that is exactly the "small delay" a stroke
+/// feels.
+const MIN_LIVE_INTERVAL: f32 = 0.016;
 /// Never leave a stroke without feedback for longer than this, however
 /// expensive the chunk is.
 const MAX_LIVE_INTERVAL: f32 = 0.5;
@@ -68,7 +78,13 @@ pub fn foliage_scatter_rebuild_system(
         &GlobalTransform,
     )>,
     terrain_query: Query<&TerrainData>,
-    existing_batches: Query<(Entity, &FoliageBatch)>,
+    mut existing_batches: Query<(
+        Entity,
+        &FoliageBatch,
+        &mut GrassChunk,
+        &mut Transform,
+        &mut bevy::camera::primitives::Aabb,
+    )>,
     mut cost: ResMut<FoliageRebuildCost>,
 ) {
     for (chunk_entity, mut density_map, chunk_data, chunk_transform) in density_query.iter_mut() {
@@ -84,12 +100,14 @@ pub fn foliage_scatter_rebuild_system(
             continue;
         };
 
-        // Remove existing foliage batches for this chunk
-        for (batch_entity, batch) in existing_batches.iter() {
-            if batch.chunk_entity == chunk_entity {
-                commands.entity(batch_entity).despawn();
-            }
-        }
+        // This chunk's existing batch entities, by foliage type. They are
+        // *updated*, not replaced — see the reuse note where they are written.
+        let existing: Vec<(usize, Entity)> = existing_batches
+            .iter()
+            .filter(|(_, batch, ..)| batch.chunk_entity == chunk_entity)
+            .map(|(entity, batch, ..)| (batch.foliage_type_index, entity))
+            .collect();
+        let mut reused: Vec<Entity> = Vec::new();
 
         let chunk_world = chunk_transform.translation();
 
@@ -126,21 +144,63 @@ pub fn foliage_scatter_rebuild_system(
                 Vec3::new(size, high, size),
             );
 
-            commands.spawn((
-                GrassChunk {
-                    id: BladeSetId::next(),
-                    blades: Arc::from(blades),
-                    color_base: foliage_type.color_base,
-                    color_tip: foliage_type.color_tip,
-                    wind_strength: foliage_type.wind_strength,
-                },
-                Transform::from_translation(chunk_world),
-                aabb,
-                FoliageBatch {
-                    foliage_type_index: type_idx,
-                    chunk_entity,
-                },
-            ));
+            let scattered = GrassChunk {
+                id: BladeSetId::next(),
+                blades: Arc::from(blades),
+                color_base: foliage_type.color_base,
+                color_tip: foliage_type.color_tip,
+                wind_strength: foliage_type.wind_strength,
+            };
+
+            // Update this type's batch entity in place if it already has one.
+            //
+            // Despawning and respawning it instead costs a **blank frame**, and
+            // during a paint stroke that lands as the whole chunk's grass
+            // strobing: `queue_grass` only enqueues chunks that already carry a
+            // `GrassInstanceBuffer`, and that buffer is created in the render
+            // schedule's Prepare — which runs *after* Queue. So a batch entity
+            // is invisible for the entire first frame of its life, and a preview
+            // ticking at 20 Hz respawned one three times a second.
+            //
+            // Reuse also restores what the render world was built to do: it
+            // keeps its GPU buffer per chunk and re-uploads only when
+            // `BladeSetId` changes. A fresh entity every rebuild threw that
+            // buffer away and reallocated instead of refilling it.
+            match existing
+                .iter()
+                .find(|(idx, _)| *idx == type_idx)
+                .map(|(_, entity)| *entity)
+            {
+                Some(entity) => {
+                    if let Ok((_, _, mut slot, mut slot_transform, mut slot_aabb)) =
+                        existing_batches.get_mut(entity)
+                    {
+                        *slot = scattered;
+                        *slot_aabb = aabb;
+                        slot_transform.translation = chunk_world;
+                        reused.push(entity);
+                    }
+                }
+                None => {
+                    commands.spawn((
+                        scattered,
+                        Transform::from_translation(chunk_world),
+                        aabb,
+                        FoliageBatch {
+                            foliage_type_index: type_idx,
+                            chunk_entity,
+                        },
+                    ));
+                }
+            }
+        }
+
+        // Batches whose type scattered nothing this time — erased back to bare
+        // ground, or the type was disabled — have nothing left to update.
+        for (_, entity) in existing {
+            if !reused.contains(&entity) {
+                commands.entity(entity).despawn();
+            }
         }
 
         // Measured around the scatter only — the spawn is a deferred command

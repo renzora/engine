@@ -15,7 +15,8 @@ pub mod systems;
 pub use blades::{scatter_foliage_chunk, MAX_BLADES_PER_CHUNK};
 pub use data::{
     FoliageBatch as DensityFoliageBatch, FoliageBrushType, FoliageConfig, FoliageDensityMap,
-    FoliagePaintSettings, FoliageType, MAX_FOLIAGE_TYPES,
+    FoliagePaintSettings, FoliageType, MAX_FOLIAGE_TYPES, MAX_HEIGHT_SCALE, MIN_HEIGHT_SCALE,
+    NEUTRAL_HEIGHT_SCALE,
 };
 pub use instance::{BladeSetId, GrassChunk, GrassInstance};
 pub use scatter::{generate_foliage_instances, FoliageBatch, TerrainFoliageConfig};

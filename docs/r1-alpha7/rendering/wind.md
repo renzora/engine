@@ -43,8 +43,27 @@ foliage settings, which is now a *response multiplier* rather than a wind: stiff
 sedge at 0.4, tall meadow grass at 1.0. Turning the world wind down calms every
 layer regardless of what they are set to.
 
+How far a blade leans also scales with **how long the blade is**, normalised
+against a 0.25 m reference so the default height range keeps the motion it
+already had. Grass grown with the [Grow brush](../editor/terrain.md#painting-grass-height)
+therefore sweeps further than the cropped grass beside it, rather than leaning
+the same absolute distance and reading as stiffer.
+
 Gusts travel spatially, so a gust front visibly sweeps across a field rather
-than every blade surging at once.
+than every blade surging at once. That front is also broken up by a noise field
+drifting downwind, so a surge arrives as patchy cells rather than a straight band
+running to the horizon — the envelope decides *when* a gust happens, the noise
+decides *where* it lands.
+
+Individual blades are decorrelated on top of that. Every blade gets its own
+sway **speed**, amplitude and heading, hashed from where it stands, so
+neighbouring blades beat against each other and the field never resynchronises.
+This is why grass doesn't read as a repeating pulse: a field of oscillators that
+all run at one frequency returns to its starting arrangement every cycle no
+matter how their phases are offset, and what you see is the whole field
+breathing in and out on a fixed period. Turbulence widens the per-blade heading
+spread, so a steady wind still combs the field one way while a gusty one
+scatters it.
 
 ### Trees and plants
 

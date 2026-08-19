@@ -6,6 +6,7 @@
 //! here emits a vertex. Each blade costs one 48-byte [`GrassInstance`].
 
 use bevy::prelude::*;
+use bevy::tasks::{ComputeTaskPool, TaskPool};
 
 use super::data::{FoliageDensityMap, FoliageType};
 use super::instance::GrassInstance;
@@ -120,6 +121,197 @@ fn survey_mask(density_map: &FoliageDensityMap, type_index: usize) -> Option<Mas
     })
 }
 
+/// Below this many expected blades the scatter stays on the calling thread.
+///
+/// Handing a few thousand blades to the task pool costs more in scheduling than
+/// the work itself takes, and most strokes are small — the parallel path exists
+/// for the fully-painted chunk, not for the common case.
+const PARALLEL_SCATTER_THRESHOLD: usize = 20_000;
+
+/// Everything one scatter needs, so a band of grid rows can be handed to a
+/// worker thread as a single borrow.
+///
+/// This exists because the rows are scattered **in parallel**. A 64 m chunk
+/// painted wall to wall asks for roughly a million blades, and regenerating all
+/// of them on the main thread is what held the editor's live preview down to a
+/// visible stutter: the preview paces itself against measured rebuild cost, so
+/// making the rebuild cheaper speeds the preview up on its own.
+struct ScatterCtx<'a> {
+    foliage_type: &'a FoliageType,
+    type_index: usize,
+    density_map: &'a FoliageDensityMap,
+    heights: &'a [f32],
+    chunk_resolution: u32,
+    chunk_size: f32,
+    min_height: f32,
+    height_range: f32,
+    seed: u32,
+    spacing: f32,
+    per_clump: u32,
+    budget_keep: f32,
+    vert_spacing: f32,
+    gx_lo: u32,
+    gx_hi: u32,
+}
+
+impl ScatterCtx<'_> {
+    /// Scatter grid rows `gz_lo..gz_hi`. All of the per-blade work lives here;
+    /// the caller decides whether to run one of these or several at once.
+    ///
+    /// Rows are the unit of division because a blade depends only on its own
+    /// grid cell — there is no carry between rows, and no shared mutable state
+    /// — so a band is exactly as deterministic as the serial loop was.
+    fn scatter_rows(&self, gz_lo: u32, gz_hi: u32, reserve: usize) -> Vec<GrassInstance> {
+        let &ScatterCtx {
+            type_index,
+            chunk_resolution,
+            chunk_size,
+            min_height,
+            height_range,
+            seed,
+            spacing,
+            per_clump,
+            budget_keep,
+            vert_spacing,
+            gx_lo,
+            gx_hi,
+            ..
+        } = self;
+        let foliage_type = self.foliage_type;
+        let density_map = self.density_map;
+        let heights = self.heights;
+
+        let mut blades: Vec<GrassInstance> = Vec::with_capacity(reserve);
+        for gz in gz_lo..gz_hi {
+            for gx in gx_lo..gx_hi {
+                let cell_seed = seed.wrapping_add(gx * 7919 + gz * 6271);
+
+                for blade in 0..per_clump {
+                    // Each blade in a clump gets its own decorrelated stream, so the
+                    // clump is a tuft of independent blades rather than a stack of
+                    // identical ones.
+                    let seed_val = cell_seed.wrapping_add(blade.wrapping_mul(104_729));
+
+                    // Grid position with jitter
+                    let jitter_x = hash_pos(gx, gz, seed_val) - 0.5;
+                    let jitter_z = hash_pos(gz, gx, seed_val.wrapping_add(1)) - 0.5;
+                    let local_x = (gx as f32 + 0.5 + jitter_x * 0.9) * spacing;
+                    let local_z = (gz as f32 + 0.5 + jitter_z * 0.9) * spacing;
+
+                    if local_x < 0.0
+                        || local_x >= chunk_size
+                        || local_z < 0.0
+                        || local_z >= chunk_size
+                    {
+                        continue;
+                    }
+
+                    // Sample density weight from the painted density map
+                    let uv_x = local_x / chunk_size;
+                    let uv_z = local_z / chunk_size;
+                    let weight = density_map.sample(uv_x, uv_z, type_index);
+                    if weight < MIN_PAINTED_WEIGHT {
+                        continue;
+                    }
+
+                    // Coverage is proportional to how much paint is here, all the way
+                    // down to nothing. That is what makes a patch stop where the brush
+                    // stopped: the brush's own falloff leaves a weight gradient at the
+                    // rim, and this turns it into a density gradient instead of a
+                    // circle with a hard edge somewhere past the gizmo.
+                    let coverage = (weight / FULL_COVERAGE_WEIGHT).min(1.0);
+                    if hash_pos(gx * 83, gz * 89, seed_val.wrapping_add(9)) >= coverage {
+                        continue;
+                    }
+
+                    // Chunk-wide budget. Applied per blade and uniformly, so thinning
+                    // costs density evenly rather than clipping the mesh at whichever
+                    // corner the loop happened to fill it from.
+                    if budget_keep < 1.0
+                        && hash_pos(gx * 97, gz * 101, seed_val.wrapping_add(10)) >= budget_keep
+                    {
+                        continue;
+                    }
+
+                    // Bilinear height interpolation
+                    let fx = local_x / vert_spacing;
+                    let fz = local_z / vert_spacing;
+                    let vx0 = (fx.floor() as u32).min(chunk_resolution - 1);
+                    let vz0 = (fz.floor() as u32).min(chunk_resolution - 1);
+                    let vx1 = (vx0 + 1).min(chunk_resolution - 1);
+                    let vz1 = (vz0 + 1).min(chunk_resolution - 1);
+                    let tx = fx.fract();
+                    let tz = fz.fract();
+
+                    let get_h = |x: u32, z: u32| -> f32 {
+                        heights
+                            .get((z * chunk_resolution + x) as usize)
+                            .copied()
+                            .unwrap_or(0.0)
+                    };
+                    let h_norm = get_h(vx0, vz0) * (1.0 - tx) * (1.0 - tz)
+                        + get_h(vx1, vz0) * tx * (1.0 - tz)
+                        + get_h(vx0, vz1) * (1.0 - tx) * tz
+                        + get_h(vx1, vz1) * tx * tz;
+                    let y = min_height + h_norm * height_range;
+
+                    // Per-blade random attributes
+                    let h_rand = hash_pos(gx * 13, gz * 17, seed_val.wrapping_add(2));
+                    let base_height = foliage_type.height_range.x
+                        + (foliage_type.height_range.y - foliage_type.height_range.x) * h_rand;
+
+                    let w_rand = hash_pos(gx * 23, gz * 29, seed_val.wrapping_add(3));
+                    let base_width = foliage_type.width_range.x
+                        + (foliage_type.width_range.y - foliage_type.width_range.x) * w_rand;
+
+                    let phase = hash_pos(gx * 37, gz * 41, seed_val.wrapping_add(4))
+                        * std::f32::consts::TAU;
+
+                    // Floppiness within the *type*, so it has to come off the
+                    // unscaled height: a blade at the top of its range is the limp
+                    // one whether or not the ground it stands on has been grown or
+                    // trimmed. The painted scale changes how tall the blade is, not
+                    // where it sits among its neighbours.
+                    let bend = ((base_height - foliage_type.height_range.x)
+                        / (foliage_type.height_range.y - foliage_type.height_range.x).max(0.01)
+                        * 0.7
+                        + hash_pos(gx * 47, gz * 53, seed_val.wrapping_add(6)).abs() * 0.3)
+                        .clamp(0.0, 1.0);
+
+                    // Painted blade height (the Grow / Trim brushes). Neutral, and
+                    // free, on any chunk nobody has run them over.
+                    let height_scale = density_map.height_at(uv_x, uv_z);
+                    let blade_height = base_height * height_scale;
+                    // Width follows, but at the square root. A blade three times
+                    // taller and exactly as wide reads as a wire; three times wider
+                    // as well reads as a leaf. The half-power is what keeps grown
+                    // grass looking like the same plant, only bigger.
+                    let blade_width = base_width * height_scale.sqrt();
+
+                    let lean_x =
+                        (hash_pos(gx * 59, gz * 61, seed_val.wrapping_add(7)) - 0.5) * 0.06;
+                    let lean_z =
+                        (hash_pos(gx * 67, gz * 71, seed_val.wrapping_add(8)) - 0.5) * 0.06;
+
+                    let color_var = (phase * 3.7).sin() * 0.12;
+
+                    // Y-axis rotation, stored resolved: the vertex shader would
+                    // otherwise run these two trig calls for every vertex of every
+                    // blade, and they are constant across the blade.
+                    let angle = phase * 2.5;
+
+                    blades.push(GrassInstance {
+                        position_height: [local_x, y, local_z, blade_height],
+                        width_phase_bend_var: [blade_width, phase, bend, color_var],
+                        lean_rotation: [lean_x, lean_z, angle.sin(), angle.cos()],
+                    });
+                }
+            }
+        }
+        blades
+    }
+}
+
 /// Scatter one chunk's blades for one foliage type.
 ///
 /// Returns the instance records, in chunk-local space. `None` when the type is
@@ -185,116 +377,62 @@ pub fn scatter_foliage_chunk(
     };
 
     let est_blades = (expected_blades.max(0.0) as usize).min(MAX_BLADES_PER_CHUNK);
-    let mut blades: Vec<GrassInstance> = Vec::with_capacity(est_blades);
-
     let vert_spacing = chunk_size / (chunk_resolution - 1) as f32;
 
-    for gz in gz_lo..gz_hi {
-        for gx in gx_lo..gx_hi {
-            let cell_seed = seed.wrapping_add(gx * 7919 + gz * 6271);
+    let ctx = ScatterCtx {
+        foliage_type,
+        type_index,
+        density_map,
+        heights,
+        chunk_resolution,
+        chunk_size,
+        min_height,
+        height_range,
+        seed,
+        spacing,
+        per_clump,
+        budget_keep,
+        vert_spacing,
+        gx_lo,
+        gx_hi,
+    };
 
-            for blade in 0..per_clump {
-                // Each blade in a clump gets its own decorrelated stream, so the
-                // clump is a tuft of independent blades rather than a stack of
-                // identical ones.
-                let seed_val = cell_seed.wrapping_add(blade.wrapping_mul(104_729));
-
-                // Grid position with jitter
-                let jitter_x = hash_pos(gx, gz, seed_val) - 0.5;
-                let jitter_z = hash_pos(gz, gx, seed_val.wrapping_add(1)) - 0.5;
-                let local_x = (gx as f32 + 0.5 + jitter_x * 0.9) * spacing;
-                let local_z = (gz as f32 + 0.5 + jitter_z * 0.9) * spacing;
-
-                if local_x < 0.0 || local_x >= chunk_size || local_z < 0.0 || local_z >= chunk_size
-                {
-                    continue;
-                }
-
-                // Sample density weight from the painted density map
-                let uv_x = local_x / chunk_size;
-                let uv_z = local_z / chunk_size;
-                let weight = density_map.sample(uv_x, uv_z, type_index);
-                if weight < MIN_PAINTED_WEIGHT {
-                    continue;
-                }
-
-                // Coverage is proportional to how much paint is here, all the way
-                // down to nothing. That is what makes a patch stop where the brush
-                // stopped: the brush's own falloff leaves a weight gradient at the
-                // rim, and this turns it into a density gradient instead of a
-                // circle with a hard edge somewhere past the gizmo.
-                let coverage = (weight / FULL_COVERAGE_WEIGHT).min(1.0);
-                if hash_pos(gx * 83, gz * 89, seed_val.wrapping_add(9)) >= coverage {
-                    continue;
-                }
-
-                // Chunk-wide budget. Applied per blade and uniformly, so thinning
-                // costs density evenly rather than clipping the mesh at whichever
-                // corner the loop happened to fill it from.
-                if budget_keep < 1.0
-                    && hash_pos(gx * 97, gz * 101, seed_val.wrapping_add(10)) >= budget_keep
-                {
-                    continue;
-                }
-
-                // Bilinear height interpolation
-                let fx = local_x / vert_spacing;
-                let fz = local_z / vert_spacing;
-                let vx0 = (fx.floor() as u32).min(chunk_resolution - 1);
-                let vz0 = (fz.floor() as u32).min(chunk_resolution - 1);
-                let vx1 = (vx0 + 1).min(chunk_resolution - 1);
-                let vz1 = (vz0 + 1).min(chunk_resolution - 1);
-                let tx = fx.fract();
-                let tz = fz.fract();
-
-                let get_h = |x: u32, z: u32| -> f32 {
-                    heights
-                        .get((z * chunk_resolution + x) as usize)
-                        .copied()
-                        .unwrap_or(0.0)
-                };
-                let h_norm = get_h(vx0, vz0) * (1.0 - tx) * (1.0 - tz)
-                    + get_h(vx1, vz0) * tx * (1.0 - tz)
-                    + get_h(vx0, vz1) * (1.0 - tx) * tz
-                    + get_h(vx1, vz1) * tx * tz;
-                let y = min_height + h_norm * height_range;
-
-                // Per-blade random attributes
-                let h_rand = hash_pos(gx * 13, gz * 17, seed_val.wrapping_add(2));
-                let blade_height = foliage_type.height_range.x
-                    + (foliage_type.height_range.y - foliage_type.height_range.x) * h_rand;
-
-                let w_rand = hash_pos(gx * 23, gz * 29, seed_val.wrapping_add(3));
-                let blade_width = foliage_type.width_range.x
-                    + (foliage_type.width_range.y - foliage_type.width_range.x) * w_rand;
-
-                let phase =
-                    hash_pos(gx * 37, gz * 41, seed_val.wrapping_add(4)) * std::f32::consts::TAU;
-
-                let bend = ((blade_height - foliage_type.height_range.x)
-                    / (foliage_type.height_range.y - foliage_type.height_range.x).max(0.01)
-                    * 0.7
-                    + hash_pos(gx * 47, gz * 53, seed_val.wrapping_add(6)).abs() * 0.3)
-                    .clamp(0.0, 1.0);
-
-                let lean_x = (hash_pos(gx * 59, gz * 61, seed_val.wrapping_add(7)) - 0.5) * 0.06;
-                let lean_z = (hash_pos(gx * 67, gz * 71, seed_val.wrapping_add(8)) - 0.5) * 0.06;
-
-                let color_var = (phase * 3.7).sin() * 0.12;
-
-                // Y-axis rotation, stored resolved: the vertex shader would
-                // otherwise run these two trig calls for every vertex of every
-                // blade, and they are constant across the blade.
-                let angle = phase * 2.5;
-
-                blades.push(GrassInstance {
-                    position_height: [local_x, y, local_z, blade_height],
-                    width_phase_bend_var: [blade_width, phase, bend, color_var],
-                    lean_rotation: [lean_x, lean_z, angle.sin(), angle.cos()],
-                });
+    let rows = gz_hi.saturating_sub(gz_lo);
+    let blades = if est_blades < PARALLEL_SCATTER_THRESHOLD || rows < 2 {
+        ctx.scatter_rows(gz_lo, gz_hi, est_blades)
+    } else {
+        // Banded rather than one task per row: a full chunk is ~450 rows, and
+        // handing the pool that many microtasks spends more on scheduling than
+        // on blades.
+        // `get_or_init`, not `get`: the latter panics when no pool has been
+        // installed, which is every headless unit test and any caller that
+        // scatters before `DefaultPlugins` has run. A scatter is not a good
+        // place to be the first thing that demands a task pool.
+        let pool = ComputeTaskPool::get_or_init(TaskPool::default);
+        let bands = (pool.thread_num() * 4).clamp(1, rows as usize) as u32;
+        let band_rows = rows.div_ceil(bands);
+        let reserve = est_blades / bands as usize + 1;
+        let per_band = pool.scope(|scope| {
+            let mut lo = gz_lo;
+            while lo < gz_hi {
+                let hi = (lo + band_rows).min(gz_hi);
+                let ctx = &ctx;
+                scope.spawn(async move { ctx.scatter_rows(lo, hi, reserve) });
+                lo = hi;
             }
+        });
+        // `scope` hands results back in spawn order, and the bands were spawned
+        // in row order, so this concatenation reproduces the serial scatter's
+        // output *exactly* — same blades, same order. That matters: the blade
+        // order is what the instance buffer is uploaded in, and a scatter whose
+        // result depended on thread timing would reshuffle the field every
+        // rebuild.
+        let mut all = Vec::with_capacity(est_blades);
+        for band in per_band {
+            all.extend(band);
         }
-    }
+        all
+    };
 
     if blades.is_empty() {
         return None;
@@ -305,6 +443,7 @@ pub fn scatter_foliage_chunk(
 
 #[cfg(test)]
 mod tests {
+    use super::super::data::MIN_HEIGHT_SCALE;
     use super::*;
 
     fn painted_map(res: u32, weight: f32) -> FoliageDensityMap {
@@ -454,6 +593,115 @@ mod tests {
             blades as f32 > asked_for as f32 * 0.9,
             "{blades} blades vs the {asked_for} the defaults ask for"
         );
+    }
+
+    /// The parallel path splits the row range into bands and concatenates the
+    /// results in spawn order. That only reproduces the serial scatter if a band
+    /// depends on nothing outside itself, so splitting the range anywhere has to
+    /// give the same blades in the same order.
+    ///
+    /// Order matters as much as content: the blade order is the order the
+    /// instance buffer is uploaded in, so a scatter whose result depended on
+    /// thread timing would reshuffle the whole field on every rebuild.
+    #[test]
+    fn banding_the_rows_does_not_change_the_scatter() {
+        let ft = FoliageType::default();
+        let map = painted_map(64, 1.0);
+        let heights = vec![0.0f32; 129 * 129];
+        let ctx = ScatterCtx {
+            foliage_type: &ft,
+            type_index: 0,
+            density_map: &map,
+            heights: &heights,
+            chunk_resolution: 129,
+            chunk_size: 64.0,
+            min_height: 0.0,
+            height_range: 1.0,
+            seed: 7,
+            spacing: 1.0 / ft.density.sqrt(),
+            per_clump: ft.blades_per_clump,
+            budget_keep: 1.0,
+            vert_spacing: 64.0 / 128.0,
+            gx_lo: 0,
+            gx_hi: 40,
+        };
+
+        let whole = ctx.scatter_rows(0, 30, 0);
+        // Split on a deliberately unaligned row, not the midpoint.
+        let mut banded = ctx.scatter_rows(0, 11, 0);
+        banded.extend(ctx.scatter_rows(11, 30, 0));
+
+        assert!(!whole.is_empty(), "the fixture should scatter something");
+        assert_eq!(whole.len(), banded.len());
+        for (i, (a, b)) in whole.iter().zip(&banded).enumerate() {
+            assert_eq!(a.position_height, b.position_height, "blade {i} position");
+            assert_eq!(a.width_phase_bend_var, b.width_phase_bend_var, "blade {i}");
+            assert_eq!(a.lean_rotation, b.lean_rotation, "blade {i} rotation");
+        }
+    }
+
+    /// A painted height multiplier has to reach the blade. This is the whole
+    /// feature: without it the Grow / Trim brushes write a channel nothing reads.
+    #[test]
+    fn painted_height_scales_the_blade() {
+        let ft = FoliageType {
+            blades_per_clump: 1,
+            width_range: Vec2::splat(0.5),
+            height_range: Vec2::splat(0.1),
+            ..default()
+        };
+        let mut map = painted_map(16, 1.0);
+        map.ensure_height_scale();
+        map.height_scale.fill(2.0);
+        for blade in &gen(&ft, &map).unwrap() {
+            assert!(
+                (blade.position_height[3] - 0.2).abs() < 1e-5,
+                "height {} should be twice the 0.1 the type asks for",
+                blade.position_height[3]
+            );
+            // Width follows at the square root, so a doubled blade is ~1.41x wide.
+            let want = 0.5 * 2.0f32.sqrt();
+            assert!(
+                (blade.width_phase_bend_var[0] - want).abs() < 1e-4,
+                "width {} should be {want}",
+                blade.width_phase_bend_var[0]
+            );
+        }
+    }
+
+    /// An unpainted height channel must leave the scatter bit-for-bit as it was.
+    /// Every scene that predates the channel loads into this case, so a drift
+    /// here would silently resize the grass in all of them.
+    #[test]
+    fn an_unpainted_height_channel_changes_nothing() {
+        let ft = FoliageType::default();
+        let plain = gen(&ft, &painted_map(16, 1.0)).unwrap();
+
+        // Explicitly allocated at neutral must match never-allocated exactly.
+        let mut neutral = painted_map(16, 1.0);
+        neutral.ensure_height_scale();
+        let allocated = gen(&ft, &neutral).unwrap();
+
+        assert_eq!(plain.len(), allocated.len());
+        for (a, b) in plain.iter().zip(&allocated) {
+            assert_eq!(a.position_height, b.position_height);
+            assert_eq!(a.width_phase_bend_var, b.width_phase_bend_var);
+        }
+    }
+
+    /// Trimming shortens without thinning: height and density are separate
+    /// channels, and a height brush that also removed blades would be an eraser
+    /// wearing a different icon.
+    #[test]
+    fn trimming_does_not_change_the_blade_count() {
+        let ft = FoliageType::default();
+        let map = painted_map(16, 1.0);
+        let before = count(&ft, &map);
+
+        let mut trimmed = painted_map(16, 1.0);
+        trimmed.ensure_height_scale();
+        trimmed.height_scale.fill(MIN_HEIGHT_SCALE);
+        assert_eq!(count(&ft, &trimmed), before);
     }
 
     /// Bilinear sampling, and the scan bounds derived from the painted texels,

@@ -56,6 +56,52 @@ fn strip_vertex(vertex_index: u32) -> vec2<u32> {
     return vec2<u32>(segment + row_offset, side);
 }
 
+const TAU: f32 = 6.2831853;
+
+/// Blade height that gets a wind response of exactly 1.0.
+///
+/// The midpoint of `FoliageType::default().height_range`, picked so a scene that
+/// never touches the height brushes keeps the motion it already had.
+const WIND_REFERENCE_HEIGHT: f32 = 0.25;
+
+/// Three decorrelated randoms in 0..1 from a point on the XZ plane.
+///
+/// Sine-free on purpose: the classic `fract(sin(x) * 43758.5)` returns visibly
+/// different numbers on different vendors, because some drivers evaluate `sin`
+/// at reduced precision once the argument gets large — and a field of grass that
+/// is laid out differently per GPU is not something anyone can debug. This is
+/// the integer-free bit-mixing hash instead, which is stable everywhere.
+///
+/// Three at once rather than three calls: the wind wants several independent
+/// per-blade streams and this is barely more expensive than one.
+fn hash23(p_in: vec2<f32>) -> vec3<f32> {
+    var p = fract(vec3<f32>(p_in.x, p_in.y, p_in.x) * vec3<f32>(0.1031, 0.1030, 0.0973));
+    p = p + vec3<f32>(dot(p, p.yxz + vec3<f32>(33.33)));
+    return fract((p.xxy + p.yzz) * p.zyx);
+}
+
+fn hash21(p_in: vec2<f32>) -> f32 {
+    var p = fract(vec3<f32>(p_in.x, p_in.y, p_in.x) * 0.1031);
+    p = p + vec3<f32>(dot(p, p.yzx + vec3<f32>(33.33)));
+    return fract((p.x + p.y) * p.z);
+}
+
+/// Smoothed value noise on the XZ plane, 0..1 with a mean near 0.5.
+///
+/// Value rather than gradient noise: the gust field only has to be *blobby*, and
+/// nothing here differentiates it, so the extra cost of proper band-limiting
+/// buys nothing visible.
+fn vnoise2(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = hash21(i);
+    let b = hash21(i + vec2<f32>(1.0, 0.0));
+    let c = hash21(i + vec2<f32>(0.0, 1.0));
+    let d = hash21(i + vec2<f32>(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
 @vertex
 fn vertex(
     @builtin(vertex_index) vertex_index: u32,
@@ -93,10 +139,13 @@ fn vertex(
     // Driven by the world wind (`renzora::WindState`), so a blade of grass and
     // the tree behind it lean the same way and gust at the same moment.
     //
-    // The gust envelope below is a copy of `wind_gust` in
+    // `gust_wave` below is a copy of `wind_gust` in
     // `renzora_wind/src/wind_common.wgsl` and must stay in step with it. It is
     // copied rather than imported because that module declares its uniform in
     // the *material* bind group, which this hand-written pipeline does not have.
+    // Everything layered on top of it here is grass-only and has no counterpart
+    // there — a tree is one object swaying as a unit, where a field is a hundred
+    // thousand of them and reads as a pattern the moment they agree too closely.
     let wind_dir = grass.wind_dir_time.xy;
     let time = grass.wind_dir_time.z;
     let world_strength = grass.wind_dir_time.w;
@@ -105,9 +154,37 @@ fn vertex(
     let gust_freq = grass.wind_gust.y;
     let turbulence = grass.wind_gust.z;
 
+    // Per-blade randoms, hashed from where the blade stands rather than taken
+    // from `phase`: the CPU spends `phase` on the blade's yaw and its colour as
+    // well, so reusing it would tie a blade's timing to which way it faces.
+    //
+    // `rate` is the important one. Phase offsets alone are not variety — a field
+    // of oscillators that all run at ONE frequency and differ only in phase
+    // returns to its starting arrangement every 2π/ω, and what you see is the
+    // whole field breathing in and out on a fixed period. Give each blade its
+    // own speed and the arrangement drifts apart and never lands back on itself.
+    let blade_world = grass.origin_wind.xyz + blade_pos;
+    let rnd = hash23(blade_world.xz * 1.7);
+    let rate = 0.7 + 0.6 * rnd.x;
+    let amp_var = 0.75 + 0.5 * rnd.y;
+
+    // The coherent gust envelope: a front sweeping downwind, shared with trees.
     let gust_travel = dot(world_pos.xz, wind_dir) * 0.02;
-    let gust_phase = time * gust_freq * 6.2831853 - gust_travel;
-    let gust = 0.5 + 0.5 * (sin(gust_phase) * 0.6 + sin(gust_phase * 0.37 + 1.7) * 0.4);
+    let gust_phase = time * gust_freq * TAU - gust_travel;
+    let gust_wave = 0.5 + 0.5 * (sin(gust_phase) * 0.6 + sin(gust_phase * 0.37 + 1.7) * 0.4);
+
+    // ...and the patchiness on top of it. On its own that envelope is a function
+    // of distance along the wind and nothing else, so its fronts are perfectly
+    // straight bands running to the horizon — in a large field that is the most
+    // obvious "this is a shader" tell there is. Two octaves of noise, advected
+    // downwind, break the band into travelling cells: the envelope still decides
+    // WHEN a surge happens, the noise decides WHERE it lands. The cells average
+    // 0.5, so the pair averages back to `gust_wave` and the overall strength is
+    // unchanged.
+    let flow = world_pos.xz - wind_dir * time * 5.0;
+    let gust_cells = vnoise2(flow * 0.055) * 0.65
+        + vnoise2(flow * 0.017 + vec2<f32>(19.0, 7.0)) * 0.35;
+    let gust = gust_wave * (0.35 + 1.3 * gust_cells);
 
     // Instantaneous strength for this blade. `layer_strength` is the foliage
     // layer's own stiffness (authored per grass type); `world_strength` is how
@@ -116,29 +193,61 @@ fn vertex(
 
     // Medium turbulence (per-blade). Scaled by the world turbulence knob so a
     // steady wind lays the whole field over cleanly and a turbulent one churns.
-    let turb1 = sin(time * 1.8 + phase + world_pos.x * 0.25 + world_pos.z * 0.15) * turbulence;
-    let turb2 = sin(time * 2.3 + phase * 1.3 + world_pos.z * 0.3) * turbulence;
-    let turb3 = sin(time * 1.1 + phase * 0.7 + world_pos.x * 0.18) * turbulence;
+    // Each carries the blade's own `rate`, so neighbours beat against each other
+    // instead of tracing one curve a few hundred milliseconds apart.
+    let turb1 = sin(time * 1.8 * rate + phase + world_pos.x * 0.25 + world_pos.z * 0.15) * turbulence;
+    let turb2 = sin(time * 2.3 * rate + phase * 1.3 + world_pos.z * 0.3) * turbulence;
+    let turb3 = sin(time * 1.1 * rate + phase * 0.7 + world_pos.x * 0.18) * turbulence;
 
-    // High-frequency flutter (tip only)
-    let flutter = sin(time * 5.5 + phase * 4.0) * 0.02 * t;
+    // High-frequency flutter (tip only). Its rate is jittered per blade too —
+    // this is the fastest term in the model, so a shared frequency here is the
+    // one that shows up as a visible shimmer crawling across the field.
+    let flutter = sin(time * (4.5 + 2.5 * rnd.y) + phase * 4.0 + rnd.z * TAU) * 0.02 * t;
 
     // Cubic falloff from base to tip, scaled by flexibility
     let bend_factor = bend * 0.7 + 0.3;
     let wind_pow = t * t * (3.0 - 2.0 * t); // smoothstep
 
+    // How far the blade leans scales with how long it is. It did not used to:
+    // the offset below is in absolute metres, so a blade twice as tall travelled
+    // the same distance and read as twice as stiff. That was survivable while
+    // every blade of a type sat inside one narrow authored range, and stopped
+    // being survivable the moment the Grow / Trim brushes could stand a 3x blade
+    // next to a neutral one — which is the whole point of those brushes.
+    //
+    // Clamped at both ends: a mown blade should still stir, and a 2 m reed
+    // should sweep, not fold flat.
+    let height_response = clamp(blade_height / WIND_REFERENCE_HEIGHT, 0.35, 4.0);
+
     // The steady push never reverses — wind blows one way — so the blade
     // oscillates around a laid-over pose rather than swinging back upright
-    // through vertical, which is what a plain sine would do.
-    let push = 0.55 + 0.45 * sin(time * 1.2 + phase * 0.5);
+    // through vertical, which is what a plain sine would do. Two incommensurate
+    // sines rather than one, so the sum has no period short enough to read, and
+    // `phase` spans the whole turn on both: it used to be halved on the single
+    // term that mattered, which left every blade within half a cycle of its
+    // neighbour and set the entire field pulsing in near-unison.
+    let sway_t = time * 1.2 * rate;
+    let s1 = sin(sway_t + phase);
+    let s2 = sin(sway_t * 0.53 + phase * 1.7 + rnd.z * TAU);
+    let push = (0.55 + 0.45 * (s1 * 0.65 + s2 * 0.35)) * amp_var;
 
-    let wind_x = (wind_dir.x * push
+    // Blades don't all lie down along exactly the same heading. The yaw spread
+    // opens with the turbulence knob, so a steady wind still combs the field one
+    // way while a gusty one scatters it.
+    let yaw = (rnd.z - 0.5) * (0.25 + 0.55 * turbulence);
+    let cy = cos(yaw);
+    let sy = sin(yaw);
+    let bend_dir = vec2<f32>(
+        wind_dir.x * cy - wind_dir.y * sy,
+        wind_dir.x * sy + wind_dir.y * cy,
+    );
+
+    let wind_x = (bend_dir.x * push
                 + turb1 * 0.35 + turb3 * 0.18
-                + flutter) * wind_pow * bend_factor * wind_strength;
-    let wind_z = (wind_dir.y * push
+                + flutter) * wind_pow * bend_factor * wind_strength * height_response;
+    let wind_z = (bend_dir.y * push
                 + turb2 * 0.25
-                + flutter * 0.7) * wind_pow * bend_factor * wind_strength;
-
+                + flutter * 0.7) * wind_pow * bend_factor * wind_strength * height_response;
     let displaced = vec3<f32>(world_pos.x + wind_x, world_pos.y, world_pos.z + wind_z);
 
     // Normal: perpendicular to the blade, tilted by wind + lean.

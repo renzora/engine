@@ -13,9 +13,9 @@ use bevy::prelude::*;
 use renzora_editor_framework::SplashState;
 use renzora_ember::font::{icon_text, ui_font, EmberFonts};
 use renzora_ember::panel::RegisterPanelContent;
-use renzora_ember::reactive::{KeyedSnapshot};
-use renzora_ember::reactive::Rx;
 use renzora_ember::reactive::tracked::{bind_2way, bind_bg, bind_display, keyed_list};
+use renzora_ember::reactive::KeyedSnapshot;
+use renzora_ember::reactive::Rx;
 use renzora_ember::theme::*;
 use renzora_ember::widgets::{
     bind_text_input, checkbox, collapsible, drag_value, text_input, DragRange,
@@ -24,7 +24,7 @@ use renzora_ember::widgets::{
 use renzora_terrain::data::{TerrainChunkData, TerrainData};
 use renzora_terrain::foliage::{
     FoliageBrushType, FoliageConfig, FoliageDensityMap, FoliagePaintSettings, FoliageType,
-    MAX_FOLIAGE_TYPES,
+    MAX_FOLIAGE_TYPES, MAX_HEIGHT_SCALE, MIN_HEIGHT_SCALE,
 };
 
 use crate::systems::FoliageToolState;
@@ -37,33 +37,40 @@ impl Plugin for NativeFoliage {
     fn build(&self, app: &mut App) {
         app.register_panel_content("foliage_painting", true, build)
             .systems(
-            Update,
-            (
-                foliage_type_select,
-                foliage_add_type,
-                foliage_remove_type,
-                foliage_brush_select,
-                foliage_ensure_density_maps,
-            )
-                .run_if(in_state(SplashState::Editor)),
-        );
+                Update,
+                (
+                    foliage_type_select,
+                    foliage_add_type,
+                    foliage_remove_type,
+                    foliage_brush_select,
+                    foliage_ensure_density_maps,
+                )
+                    .run_if(in_state(SplashState::Editor)),
+            );
     }
 }
 
 // ── State accessors (mirror the egui panel's `get_resource` reads) ───────────
 
 fn tool_active(w: &Rx) -> bool {
-    w.get_resource::<FoliageToolState>().map(|t| t.active).unwrap_or_default()
+    w.get_resource::<FoliageToolState>()
+        .map(|t| t.active)
+        .unwrap_or_default()
 }
 
 fn set_tool_active(w: &mut World, active: bool) {
-    let mut t = w.get_resource::<FoliageToolState>().copied().unwrap_or_default();
+    let mut t = w
+        .get_resource::<FoliageToolState>()
+        .copied()
+        .unwrap_or_default();
     t.active = active;
     w.insert_resource(t);
 }
 
 fn settings(w: &Rx) -> FoliagePaintSettings {
-    w.get_resource::<FoliagePaintSettings>().cloned().unwrap_or_default()
+    w.get_resource::<FoliagePaintSettings>()
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn set_settings(w: &mut World, f: impl FnOnce(&mut FoliagePaintSettings)) {
@@ -73,7 +80,9 @@ fn set_settings(w: &mut World, f: impl FnOnce(&mut FoliagePaintSettings)) {
 }
 
 fn config(w: &Rx) -> FoliageConfig {
-    w.get_resource::<FoliageConfig>().cloned().unwrap_or_default()
+    w.get_resource::<FoliageConfig>()
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn set_config(w: &mut World, f: impl FnOnce(&mut FoliageConfig)) {
@@ -118,7 +127,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     // `false` is a transient seed — `bind_2way` corrects it from the live world
     // on its first run (state → model wins the initial tie).
     let enable = checkbox(commands, false);
-    bind_2way(commands, enable, tool_active, |w, v: &bool| set_tool_active(w, *v));
+    bind_2way(commands, enable, tool_active, |w, v: &bool| {
+        set_tool_active(w, *v)
+    });
     let tree_icon = icon_text(commands, &fonts.phosphor, "tree", text_primary(), 14.0);
     let title = commands
         .spawn((
@@ -127,7 +138,9 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             TextColor(rgb(text_primary())),
         ))
         .id();
-    commands.entity(header).add_children(&[enable, tree_icon, title]);
+    commands
+        .entity(header)
+        .add_children(&[enable, tree_icon, title]);
 
     // ── Inactive hint (shown only when the tool is off) ──────────────────────
     let hint = commands
@@ -135,7 +148,10 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             Text::new("Enable to paint foliage on terrain."),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            Node { margin: UiRect::top(Val::Px(2.0)), ..default() },
+            Node {
+                margin: UiRect::top(Val::Px(2.0)),
+                ..default()
+            },
         ))
         .id();
     bind_display(commands, hint, |w| !tool_active(w));
@@ -153,9 +169,13 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
     let types_sec = types_section(commands, fonts);
     let brush_sec = brush_section(commands, fonts);
     let props_sec = properties_section(commands, fonts);
-    commands.entity(sections).add_children(&[types_sec, brush_sec, props_sec]);
+    commands
+        .entity(sections)
+        .add_children(&[types_sec, brush_sec, props_sec]);
 
-    commands.entity(root).add_children(&[header, hint, sections]);
+    commands
+        .entity(root)
+        .add_children(&[header, hint, sections]);
     root
 }
 
@@ -296,19 +316,63 @@ fn brush_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         .id();
     let paint = brush_mode_button(commands, fonts, "paint-brush", FoliageBrushType::Paint);
     let erase = brush_mode_button(commands, fonts, "eraser", FoliageBrushType::Erase);
-    commands.entity(modes).add_children(&[paint, erase]);
+    // Grow / Trim write the chunk's blade-height channel rather than the active
+    // type's density, so they sit in the same row but read as a second pair.
+    let grow = brush_mode_button(commands, fonts, "arrow-fat-line-up", FoliageBrushType::Grow);
+    let trim = brush_mode_button(commands, fonts, "scissors", FoliageBrushType::Trim);
+    commands
+        .entity(modes)
+        .add_children(&[paint, erase, grow, trim]);
 
-    let size = labelled_drag(commands, fonts, "Size", 0.01, 0.5, 0.005, {
-        |w| settings(w).brush_radius
-    }, |w, v| set_settings(w, |s| s.brush_radius = *v));
-    let strength = labelled_drag(commands, fonts, "Strength", 0.01, 1.0, 0.01, {
-        |w| settings(w).brush_strength
-    }, |w, v| set_settings(w, |s| s.brush_strength = *v));
-    let falloff = labelled_drag(commands, fonts, "Falloff", 0.0, 1.0, 0.01, {
-        |w| settings(w).brush_falloff
-    }, |w, v| set_settings(w, |s| s.brush_falloff = *v));
+    let size = labelled_drag(
+        commands,
+        fonts,
+        "Size",
+        0.01,
+        0.5,
+        0.005,
+        |w| settings(w).brush_radius,
+        |w, v| set_settings(w, |s| s.brush_radius = *v),
+    );
+    let strength = labelled_drag(
+        commands,
+        fonts,
+        "Strength",
+        0.01,
+        1.0,
+        0.01,
+        |w| settings(w).brush_strength,
+        |w, v| set_settings(w, |s| s.brush_strength = *v),
+    );
+    let falloff = labelled_drag(
+        commands,
+        fonts,
+        "Falloff",
+        0.0,
+        1.0,
+        0.01,
+        |w| settings(w).brush_falloff,
+        |w, v| set_settings(w, |s| s.brush_falloff = *v),
+    );
+    // Grow and Trim both aim at this, one from below and one from above, so it
+    // is the only control either of them needs. Left visible in every mode
+    // rather than swapped in with the brush: the section is four short rows, and
+    // a row that appears and disappears under the cursor is worse than one that
+    // is simply inert for two of the four modes.
+    let height = labelled_drag(
+        commands,
+        fonts,
+        "Height",
+        MIN_HEIGHT_SCALE,
+        MAX_HEIGHT_SCALE,
+        0.05,
+        |w| settings(w).brush_height,
+        |w, v| set_settings(w, |s| s.brush_height = *v),
+    );
 
-    commands.entity(body).add_children(&[modes, size, strength, falloff]);
+    commands
+        .entity(body)
+        .add_children(&[modes, size, strength, falloff, height]);
     root
 }
 
@@ -377,7 +441,11 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         name_in,
         |w| {
             let i = active_type(w);
-            config(w).types.get(i).map(|t| t.name.clone()).unwrap_or_default()
+            config(w)
+                .types
+                .get(i)
+                .map(|t| t.name.clone())
+                .unwrap_or_default()
         },
         |w, v| {
             let i = active_type(&Rx::new(&*w));
@@ -392,8 +460,26 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
 
     // Density is clumps per square unit, not blades — the two multiply, so the
     // pair sits together above the size fields they scale.
-    let density = labelled_drag(commands, fonts, "Density", 1.0, 128.0, 0.5, type_get(|t| t.density), type_set(|t, v| t.density = v));
-    let clump = labelled_drag(commands, fonts, "Blades / Clump", 1.0, 16.0, 1.0, type_get(|t| t.blades_per_clump as f32), type_set(|t, v| t.blades_per_clump = v.round().clamp(1.0, 16.0) as u32));
+    let density = labelled_drag(
+        commands,
+        fonts,
+        "Density",
+        1.0,
+        128.0,
+        0.5,
+        type_get(|t| t.density),
+        type_set(|t, v| t.density = v),
+    );
+    let clump = labelled_drag(
+        commands,
+        fonts,
+        "Blades / Clump",
+        1.0,
+        16.0,
+        1.0,
+        type_get(|t| t.blades_per_clump as f32),
+        type_set(|t, v| t.blades_per_clump = v.round().clamp(1.0, 16.0) as u32),
+    );
 
     // Height Range (min / max on one row).
     let hr_label = field_label(commands, fonts, "Height Range");
@@ -405,8 +491,26 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let hr_min = num_field(commands, fonts, "min", 0.01, 2.0, 0.01, type_get(|t| t.height_range.x), type_set(|t, v| t.height_range.x = v));
-    let hr_max = num_field(commands, fonts, "max", 0.01, 2.0, 0.01, type_get(|t| t.height_range.y), type_set(|t, v| t.height_range.y = v));
+    let hr_min = num_field(
+        commands,
+        fonts,
+        "min",
+        0.01,
+        2.0,
+        0.01,
+        type_get(|t| t.height_range.x),
+        type_set(|t, v| t.height_range.x = v),
+    );
+    let hr_max = num_field(
+        commands,
+        fonts,
+        "max",
+        0.01,
+        2.0,
+        0.01,
+        type_get(|t| t.height_range.y),
+        type_set(|t, v| t.height_range.y = v),
+    );
     commands.entity(hr_row).add_children(&[hr_min, hr_max]);
 
     // Width Range (min / max on one row). World units — a blade this wide is a
@@ -421,11 +525,38 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
             ..default()
         })
         .id();
-    let wr_min = num_field(commands, fonts, "min", 0.002, 0.5, 0.002, type_get(|t| t.width_range.x), type_set(|t, v| t.width_range.x = v));
-    let wr_max = num_field(commands, fonts, "max", 0.002, 0.5, 0.002, type_get(|t| t.width_range.y), type_set(|t, v| t.width_range.y = v));
+    let wr_min = num_field(
+        commands,
+        fonts,
+        "min",
+        0.002,
+        0.5,
+        0.002,
+        type_get(|t| t.width_range.x),
+        type_set(|t, v| t.width_range.x = v),
+    );
+    let wr_max = num_field(
+        commands,
+        fonts,
+        "max",
+        0.002,
+        0.5,
+        0.002,
+        type_get(|t| t.width_range.y),
+        type_set(|t, v| t.width_range.y = v),
+    );
     commands.entity(wr_row).add_children(&[wr_min, wr_max]);
 
-    let wind = labelled_drag(commands, fonts, "Wind Strength", 0.0, 2.0, 0.01, type_get(|t| t.wind_strength), type_set(|t, v| t.wind_strength = v));
+    let wind = labelled_drag(
+        commands,
+        fonts,
+        "Wind Strength",
+        0.0,
+        2.0,
+        0.01,
+        type_get(|t| t.wind_strength),
+        type_set(|t, v| t.wind_strength = v),
+    );
 
     // Enabled checkbox.
     let en_row = commands
@@ -455,7 +586,11 @@ fn properties_section(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         },
     );
     let en_lbl = commands
-        .spawn((Text::new("Enabled"), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_muted()))))
+        .spawn((
+            Text::new("Enabled"),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_muted())),
+        ))
         .id();
     commands.entity(en_row).add_children(&[en_box, en_lbl]);
 
@@ -482,7 +617,11 @@ fn field_row(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Entity
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            Node { width: Val::Px(LABEL_W), flex_shrink: 0.0, ..default() },
+            Node {
+                width: Val::Px(LABEL_W),
+                flex_shrink: 0.0,
+                ..default()
+            },
         ))
         .id();
     commands.entity(row).add_child(lbl);
@@ -495,7 +634,10 @@ fn field_label(commands: &mut Commands, fonts: &EmberFonts, label: &str) -> Enti
             Text::new(label.to_string()),
             ui_font(&fonts.ui, 11.0),
             TextColor(rgb(text_muted())),
-            Node { margin: UiRect::bottom(Val::Px(2.0)), ..default() },
+            Node {
+                margin: UiRect::bottom(Val::Px(2.0)),
+                ..default()
+            },
         ))
         .id()
 }
@@ -580,7 +722,11 @@ fn action_button(commands: &mut Commands, fonts: &EmberFonts, icon: &str, label:
     });
     let ic = icon_text(commands, &fonts.phosphor, icon, text_muted(), 12.0);
     let t = commands
-        .spawn((Text::new(label.to_string()), ui_font(&fonts.ui, 11.0), TextColor(rgb(text_primary()))))
+        .spawn((
+            Text::new(label.to_string()),
+            ui_font(&fonts.ui, 11.0),
+            TextColor(rgb(text_primary())),
+        ))
         .id();
     commands.entity(b).add_children(&[ic, t]);
     b
@@ -621,7 +767,9 @@ fn foliage_type_select(
     q: Query<(&Interaction, &TypeRow), Changed<Interaction>>,
     mut settings: Option<ResMut<FoliagePaintSettings>>,
 ) {
-    let Some(settings) = settings.as_mut() else { return };
+    let Some(settings) = settings.as_mut() else {
+        return;
+    };
     for (interaction, row) in &q {
         if *interaction == Interaction::Pressed {
             settings.active_type = row.index;
@@ -674,7 +822,9 @@ fn foliage_brush_select(
     q: Query<(&Interaction, &BrushModeBtn), Changed<Interaction>>,
     mut settings: Option<ResMut<FoliagePaintSettings>>,
 ) {
-    let Some(settings) = settings.as_mut() else { return };
+    let Some(settings) = settings.as_mut() else {
+        return;
+    };
     for (interaction, btn) in &q {
         if *interaction == Interaction::Pressed {
             settings.brush_type = btn.mode;

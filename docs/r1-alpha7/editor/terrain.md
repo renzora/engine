@@ -168,13 +168,17 @@ Paint strokes, including a stroke that auto-created a layer, undo/redo as single
 
 Foliage is the separate **Paint Foliage** tool (`renzora_foliage_editor`, panel id `foliage_painting`) — not part of the Terrain Tools panel, which only links to it. You paint a per-chunk **density map** (`FoliageDensityMap`), and the runtime bakes animated grass blades into the painted areas, re-baking as you sculpt underneath. The density map serializes with the scene.
 
-Grass appears **as you drag**. A rebuild rescatters the chunk's entire blade set, so the preview runs on a duty cycle paced by what that actually costs (`FoliageRebuildCost`, measured live): a bare chunk previews at 20 Hz, an expensive one backs off to as slow as 2 Hz, and every chunk the stroke touched is rebuilt once more on release so the result never ends on a stale preview. Since blades became GPU instances the scatter no longer builds geometry, so most strokes now sit at the fastest interval.
+Grass appears **as you drag**. A rebuild rescatters the chunk's entire blade set, so the preview runs on a duty cycle paced by what that actually costs (`FoliageRebuildCost`, measured live): a bare chunk previews every frame, an expensive one backs off to as slow as 2 Hz, and every chunk the stroke touched is rebuilt once more on release so the result never ends on a stale preview. Since blades became GPU instances the scatter no longer builds geometry, so most strokes now sit at the fastest interval.
+
+The scatter runs **in parallel across grid rows** (`ComputeTaskPool`, banded so the pool isn't handed ~450 microtasks). A 64 m chunk painted wall to wall asks for roughly a million blades, and regenerating those on the main thread is what held the preview to a visible stutter — the pacing keys off measured cost, so a cheaper rebuild speeds the preview up on its own. Bands are concatenated in spawn order, which reproduces the serial scatter exactly: the blade order is the order the instance buffer uploads in, and a result that depended on thread timing would reshuffle the field on every rebuild. Below `PARALLEL_SCATTER_THRESHOLD` (20 K expected blades) it stays on the calling thread, since scheduling a small stroke costs more than scattering it.
 
 ### How grass renders
 
 Grass draws through its **own instanced render pipeline** (`renzora_terrain::foliage::render`), not through a Bevy `Material`. One draw call per chunk per foliage type, `24` vertices by however many blades that chunk scattered.
 
 The blade's *shape* is rebuilt in the vertex shader from `@builtin(vertex_index)`, so it costs no memory at all; the only per-blade data that reaches the GPU is a 48-byte instance record — position, height, width, wind phase, bend, lean, and the sine/cosine of its rotation. The previous design baked every blade into one giant mesh per chunk at roughly **560 bytes a blade**, which is what forced a low blade budget, made repainting expensive, and put a ceiling on density. Instancing is a **~12×** reduction, and it is why the budget could go from 250 K blades to 2 M.
+
+A rebuild **updates the chunk's batch entity in place** rather than despawning and respawning it. That is not just an optimisation: `queue_grass` only enqueues chunks that already carry a `GrassInstanceBuffer`, and that buffer is created in the render schedule's Prepare — which runs *after* Queue. A freshly spawned batch entity is therefore invisible for the whole first frame of its life, so respawning one on every preview tick made the entire painted area strobe while you dragged. Reuse also restores the intended upload path: the render world keeps one GPU buffer per chunk and refills it only when `BladeSetId` changes, instead of reallocating on every stroke.
 
 Blades are drawn **double-sided**. A back-face-culled blade simply vanishes when you walk behind it — about half of them at any moment — and the fragment shader flips the normal so the back face is still lit rather than reading as a black cut-out.
 
@@ -184,7 +188,7 @@ Blades are drawn **double-sided**. A back-face-culled blade simply vanishes when
 
 With **Paint Foliage** active, the same left-edge [tool shelf](#the-tool-shelf-and-the-brush-bar) the terrain brushes use swaps to the foliage palette, in two groups:
 
-- **Paint / Erase** — the brush mode.
+- **Paint / Erase / Grow / Trim** — the brush mode. Paint and Erase work the active type's density; [Grow and Trim](#painting-grass-height) work the chunk's blade height.
 - **A numbered button per foliage type** — 1 to 8, matching the numbering in the panel's Foliage Types list. A button appears only once that type exists, and its tooltip shows the type's current name, so renaming a type in the panel renames it on the shelf.
 
 Eight is the ceiling: a density map carries eight weights per texel, so the panel's **Add** button disappears at eight types. Shelf and panel write the same `FoliagePaintSettings` — click either.
@@ -204,6 +208,24 @@ A type's geometry is described by five numbers in the panel's **Properties** sec
 Blades per square metre is `Density × Blades / Clump` — `240` at the defaults, which a chunk painted wall to wall carries at full density. A chunk is still capped, at **2,000,000 blades** (~490/m² over a 64 m chunk); past that the scatter thins uniformly, so density degrades rather than frame rate. The cap is a backstop against a pathological config, not a limit normal use should meet.
 
 The painted weight sets coverage **in proportion**, with no floor under it: half the paint scatters half the blades, all the way down to bare ground. That is what keeps a patch inside the brush — the brush's own falloff leaves a weight gradient at the rim, which becomes a density gradient rather than a hard circle somewhere outside the gizmo. Coverage tops out at weight `0.25`, well before `1.0`, because a moving stroke never drives a texel near `1.0`.
+
+### Painting grass height
+
+`Height Range` above sets how tall a type's blades are *everywhere*. **Grow** and **Trim** vary that across the ground: they paint a per-texel **height multiplier** into the chunk, and every blade scattered there is scaled by it. Unpainted ground is `1.0`.
+
+Both aim at the Brush section's **Height** slider (`0.25`–`3.0`, default `2.0`), approaching it at the brush's Strength and through its falloff — exactly the way Paint and Erase approach `1.0` and `0.0`. The slider is what makes them precise rather than merely directional: set it to `1.0` and Trim returns grown ground to *exactly* neutral. Direction still decides which brush can act — Grow only raises, Trim only lowers — so where two strokes overlap, neither undoes the other.
+
+Use it for a meadow that thickens into long grass in the hollows, a mown lawn with rough at the edges, or a worn path that stays cropped without going bald.
+
+Three things to know:
+
+- **The multiplier is per chunk, not per foliage type.** Height is a property of the ground — a sheltered hollow grows everything in it taller — so growing an area grows every type painted there. A per-type copy would carry 8 floats per texel and double a map that already reaches 2 MB a chunk in the scene file.
+- **It changes height, not coverage.** Trimming shortens blades without removing any; the density mask is still the tool for cutting a gap. `0.25` is a mown lawn, not bare earth, which is why Trim's floor isn't zero.
+- **Blade width follows at the square root.** A blade three times taller and exactly as wide reads as a wire, three times wider reads as a leaf; the half-power keeps grown grass looking like the same plant, only bigger.
+
+The channel is **allocated lazily** — a chunk nobody has run a height brush over stores nothing and serializes nothing, and a scene saved before the feature existed loads as neutral everywhere.
+
+> **Related:** blade wind deflection now scales with blade length, normalised so the default `0.1`–`0.4` height range keeps the motion it already had. It didn't before — the displacement was in absolute metres, so a taller blade travelled the same distance and read as stiffer. That was invisible while every blade of a type sat inside one narrow authored range, and obvious the moment Grow could put a 3× blade next to a neutral one. See [Wind](../rendering/wind.md).
 
 The paint mask itself is sized in **world units** — 4 texels per metre, capped at 256² per chunk — and sampled bilinearly. A fixed 64² mask gave a 64 m chunk one texel per metre, and since the smallest brush is 0.01 of a chunk side (0.64 m on a 64 m chunk), it painted a single texel that then rendered as a hard 1 m square of grass around a 1.3 m gizmo. Chunks in scenes saved before this keep the mask they were saved with; only new chunks get the finer one.
 

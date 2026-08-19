@@ -34,6 +34,13 @@ impl Plugin for FoliageEditorPlugin {
                     systems::foliage_paint_finish_system,
                 )
                     .chain()
+                    // Ordered ahead of the rescatter so a stroke's texels reach
+                    // the blades in the frame they were painted. Unordered, the
+                    // two systems land either way round and the preview lags a
+                    // whole frame behind the cursor about half the time — which
+                    // reads as the brush being spongy rather than as a fixed
+                    // delay, and is the more annoying of the two.
+                    .before(renzora_terrain::foliage::systems::foliage_scatter_rebuild_system)
                     .run_if(|tool: Option<Res<ActiveTool>>| {
                         tool.is_some_and(|t| *t == ActiveTool::FoliagePaint)
                     }),
