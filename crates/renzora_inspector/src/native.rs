@@ -602,16 +602,21 @@ fn inspected_entity(w: &Rx) -> Option<Entity> {
     locked.or_else(|| w.get_resource::<EditorSelection>().and_then(|s| s.get()))
 }
 
-/// `(display_name, icon)` for every registered component currently on `entity`,
-/// in registry order — the source list for the filter dropdown (matches the set
-/// of sections `collect_sections` would show with no filter).
-fn present_components(world: &Rx, entity: Entity) -> Vec<(&'static str, &'static str)> {
+/// `(display_name, icon, category)` for every registered component currently on
+/// `entity`, in registry order — the source list for the filter dropdown and the
+/// vertical menu (matches the set of sections `collect_sections` would show with
+/// no filter). The category rides along so the menu can tint each button the same
+/// way that component's section header is tinted.
+fn present_components(
+    world: &Rx,
+    entity: Entity,
+) -> Vec<(&'static str, &'static str, &'static str)> {
     let Some(reg) = world.get_resource::<InspectorRegistry>() else {
         return Vec::new();
     };
     reg.iter()
         .filter(|e| (e.has_fn)(world.untracked(), entity))
-        .map(|e| (e.display_name, e.icon))
+        .map(|e| (e.display_name, e.icon, e.category))
         .collect()
 }
 
@@ -710,11 +715,17 @@ fn build_component_menu_host(commands: &mut Commands) -> Entity {
                 flex_shrink: 0.0,
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
+                // The rail stretches the panel's full height, so centre the
+                // stack in it rather than letting it hang off the top bar.
+                justify_content: JustifyContent::Center,
                 row_gap: Val::Px(3.0),
                 padding: UiRect::all(Val::Px(4.0)),
                 ..default()
             },
-            BackgroundColor(c(renzora_ember::theme::window_bg())),
+            // No fill: the rail dissolves into the inspector panel, so the only
+            // things that read are the category-tinted glyphs and the single
+            // filled pill marking the active component.
+            BackgroundColor(Color::NONE),
             ComponentMenuHost,
             Name::new("inspector-component-menu"),
         ))
@@ -732,15 +743,15 @@ fn build_component_menu_host(commands: &mut Commands) -> Entity {
 fn build_filter_dropdown(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    present: &[(&'static str, &'static str)],
+    present: &[(&'static str, &'static str, &'static str)],
     selected: &Option<String>,
 ) -> Entity {
     // Options: "All components" + one per present component, each with its icon.
     let filter_all = renzora::lang::t("inspector.filter_all");
-    let names: Vec<&str> = present.iter().map(|(n, _)| *n).collect();
+    let names: Vec<&str> = present.iter().map(|(n, _, _)| *n).collect();
     let mut options: Vec<(&str, &str)> = Vec::with_capacity(present.len() + 1);
     options.push(("list", filter_all.as_str()));
-    options.extend(present.iter().map(|(name, icon)| (*icon, *name)));
+    options.extend(present.iter().map(|(name, icon, _)| (*icon, *name)));
 
     let init = selected
         .as_deref()
@@ -793,28 +804,42 @@ fn build_filter_dropdown(
 /// filter) followed by one icon button per present component. Clicking a button
 /// filters the inspector to that component; the active one is highlighted. Each
 /// carries `ComponentMenuButton` so `component_menu_click` can toggle the filter.
+///
+/// `colors` is the per-component `(accent, header_bg)` pair from
+/// [`category_rgb`], parallel to `present` — the rail can't read the theme
+/// itself because the caller holds `Commands` (and so a `&mut World`) while
+/// building. Tinting each button by category makes the rail readable at a glance
+/// and matches the header colour of the section it filters to.
 fn build_component_menu(
     commands: &mut Commands,
     fonts: &EmberFonts,
-    present: &[(&'static str, &'static str)],
+    present: &[(&'static str, &'static str, &'static str)],
+    colors: &[((u8, u8, u8), (u8, u8, u8))],
     selected: &Option<String>,
 ) -> Vec<Entity> {
     let mut out = Vec::with_capacity(present.len() + 1);
-    // "All" first — active when no specific component is selected.
+    // "All" first — no category of its own, so it stays on the neutral theme
+    // accent rather than borrowing some component's colour.
     out.push(component_menu_button(
         commands,
         fonts,
         "list",
         None,
+        (renzora_ember::theme::accent(), renzora_ember::theme::panel_bg()),
         selected.is_none(),
     ));
-    for (name, icon) in present {
+    for (i, (name, icon, _)) in present.iter().enumerate() {
         let active = selected.as_deref() == Some(*name);
+        let tint = colors
+            .get(i)
+            .copied()
+            .unwrap_or((renzora_ember::theme::accent(), renzora_ember::theme::panel_bg()));
         out.push(component_menu_button(
             commands,
             fonts,
             icon,
             Some((*name).to_string()),
+            tint,
             active,
         ));
     }
@@ -825,31 +850,36 @@ fn build_component_menu(
 /// button carries a [`HoverTooltip`] naming its component — the shared global
 /// bubble can't be clipped by the rail/panel the way the old per-button
 /// bubble children were.
+///
+/// `tint` is the component category's `(accent, header_bg)`. Idle buttons draw
+/// only their glyph in the category accent — no fill, so the rail stays quiet
+/// and the one filled button is unambiguously the active one.
 fn component_menu_button(
     commands: &mut Commands,
     fonts: &EmberFonts,
     icon: &str,
     name: Option<String>,
+    tint: ((u8, u8, u8), (u8, u8, u8)),
     active: bool,
 ) -> Entity {
+    let (accent, _header_bg) = tint;
     let (bg, glyph_color) = if active {
-        (renzora_ember::theme::accent(), renzora_ember::theme::on_accent())
+        (c(accent), renzora_ember::theme::on_accent())
     } else {
-        // Inactive buttons blend into the (darker) rail so only the active one reads.
-        (renzora_ember::theme::window_bg(), renzora_ember::theme::text_muted())
+        (Color::NONE, accent)
     };
     let label = name.clone().unwrap_or_else(|| renzora::lang::t("inspector.filter_all"));
     let btn = commands
         .spawn((
             Node {
-                width: Val::Px(26.0),
-                height: Val::Px(26.0),
+                width: Val::Px(32.0),
+                height: Val::Px(32.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
-            BackgroundColor(c(bg)),
+            BackgroundColor(bg),
             Interaction::default(),
             FocusPolicy::Block,
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
@@ -858,7 +888,7 @@ fn component_menu_button(
             Name::new("component-menu-button"),
         ))
         .id();
-    let glyph = phosphor_glyph(commands, fonts, icon, glyph_color, 15.0);
+    let glyph = phosphor_glyph(commands, fonts, icon, glyph_color, 20.0);
     commands.entity(btn).add_child(glyph);
     btn
 }
@@ -956,7 +986,7 @@ fn rebuild_inspector(
     // (e.g. selection changed) so we don't strand the inspector on an empty list.
     if let Some(sel) = world.resource::<NativeInspectorState>().selected.clone() {
         let still_present = entity
-            .map(|e| present_components(&Rx::new(&*world), e).iter().any(|(n, _)| *n == sel))
+            .map(|e| present_components(&Rx::new(&*world), e).iter().any(|(n, _, _)| *n == sel))
             .unwrap_or(false);
         if !still_present {
             world.resource_mut::<NativeInspectorState>().selected = None;
@@ -997,8 +1027,22 @@ fn rebuild_inspector(
     let dropdown_host_children: Vec<Entity> = dropdown_host
         .and_then(|h| world.get::<Children>(h).map(|ch| ch.iter().collect()))
         .unwrap_or_default();
-    let present: Vec<(&'static str, &'static str)> =
+    let present: Vec<(&'static str, &'static str, &'static str)> =
         entity.map(|e| present_components(&Rx::new(&*world), e)).unwrap_or_default();
+    // Resolve each component's category colours up front: the rail is built
+    // through `Commands` (which borrows the world mutably), so it can't reach
+    // `ThemeManager` itself.
+    let menu_colors: Vec<((u8, u8, u8), (u8, u8, u8))> = {
+        let theme = world.get_resource::<ThemeManager>();
+        present
+            .iter()
+            .map(|(_, _, category)| {
+                theme
+                    .map(|tm| category_rgb(&tm.active_theme, category))
+                    .unwrap_or(((120, 140, 200), (44, 44, 54)))
+            })
+            .collect()
+    };
     let selected_now = world.resource::<NativeInspectorState>().selected.clone();
 
     // Native-drawer sections: (body, drawer, entity) — filled after the queue
@@ -1023,8 +1067,13 @@ fn rebuild_inspector(
         match style {
             InspectorComponentFilterStyle::VerticalMenu => {
                 if let Some(host) = menu_host {
-                    let buttons =
-                        build_component_menu(&mut commands, &fonts, &present, &selected_now);
+                    let buttons = build_component_menu(
+                        &mut commands,
+                        &fonts,
+                        &present,
+                        &menu_colors,
+                        &selected_now,
+                    );
                     commands.entity(host).add_children(&buttons);
                 }
             }
