@@ -34,10 +34,19 @@ impl Plugin for TerrainEditorPlugin {
             .init_resource::<TerrainInspectorTab>()
             .init_resource::<terrain_layers_ui::ActiveBrushLayer>();
 
-        // Terrain toolbar buttons — visible whenever a terrain exists in the
-        // scene (even if not currently selected). Clicking selects the terrain,
-        // switches the inspector tab, and activates the brush tool. Clicking
-        // the active button again reverts to Select.
+        // The terrain mode row, in the strip across the viewport's top edge —
+        // visible whenever a terrain exists in the scene (even if not currently
+        // selected). Clicking selects the terrain, switches the inspector tab,
+        // and activates the brush tool. Clicking the active button again reverts
+        // to Select.
+        //
+        // These stay on the strip while their brushes live on the shelf, because
+        // they are what *opens* the shelf: one row you can always see that says
+        // which terrain mode is on, above the palette that mode reveals.
+        //
+        // Resize Terrain is the exception and lives on the shelf instead — it
+        // opens no palette of its own, and it pairs there with the numeric size
+        // editor that does the same job by typing. See [`shelf::register`].
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_sculpt",
@@ -89,24 +98,6 @@ impl Plugin for TerrainEditorPlugin {
                 activate_terrain_tool(w, TerrainInspectorTab::Foliage, ActiveTool::FoliagePaint)
             }),
         );
-        app.register_tool(
-            ToolEntry::new(
-                "builtin.terrain_region",
-                "selection-plus",
-                "Resize Terrain — click a ghost tile to add, Ctrl+click an edge to remove",
-                ToolSection::Terrain,
-            )
-            .order(3)
-            .visible_if(terrain_exists_in_scene)
-            .active_if(|w| {
-                w.get_resource::<ActiveTool>()
-                    .copied() == Some(ActiveTool::TerrainRegion)
-            })
-            .on_activate(|w| {
-                activate_terrain_tool(w, TerrainInspectorTab::Region, ActiveTool::TerrainRegion)
-            }),
-        );
-
         // The brush palette on the viewport's left shelf, and the active brush's
         // settings as a group in the viewport toolbar. Between them these are the
         // surfaces that make the brushes *findable* — the Terrain Tools dock panel

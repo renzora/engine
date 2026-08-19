@@ -59,32 +59,42 @@ pub fn build_viewport_tool_trailing(commands: &mut Commands, fonts: &EmberFonts)
 }
 
 /// Full-width bars mounted inside the primary viewport panel, between its tool
-/// strip and the rendered scene — the shell's scene tabs are the one that lives
-/// here.
-static VIEWPORT_TOP_STRIP: OnceLock<Mutex<Vec<ToolbarBuilder>>> = OnceLock::new();
+/// strip and the rendered scene — the shell's scene tabs and the terrain brush's
+/// settings are the two that live here.
+///
+/// Each carries an `order` because registration order is *plugin build* order,
+/// which no caller can see and which changes when a plugin is added. Two bars
+/// whose stacking matters — tabs above, context bar below, hard against the
+/// scene — cannot be left to that.
+static VIEWPORT_TOP_STRIP: OnceLock<Mutex<Vec<(i32, ToolbarBuilder)>>> = OnceLock::new();
 
-fn viewport_top_strip() -> &'static Mutex<Vec<ToolbarBuilder>> {
+fn viewport_top_strip() -> &'static Mutex<Vec<(i32, ToolbarBuilder)>> {
     VIEWPORT_TOP_STRIP.get_or_init(|| Mutex::new(Vec::new()))
 }
 
 /// Add a full-width bar inside the primary viewport panel, under its tool strip.
-/// Bars stack in registration order.
-pub fn register_viewport_top_strip<F>(build: F)
+/// Lower `order` stacks higher (nearer the tool strip); ties keep registration
+/// order. The shell's scene tabs are `0`; context bars that want to sit against
+/// the scene use a large one.
+pub fn register_viewport_top_strip<F>(order: i32, build: F)
 where
     F: Fn(&mut Commands, &EmberFonts) -> Entity + Send + Sync + 'static,
 {
     if let Ok(items) = viewport_top_strip().lock().as_mut() {
-        items.push(Arc::new(build));
+        items.push((order, Arc::new(build)));
     }
 }
 
-/// Build everything registered via [`register_viewport_top_strip`].
+/// Build everything registered via [`register_viewport_top_strip`], top to
+/// bottom.
 pub fn build_viewport_top_strip(commands: &mut Commands, fonts: &EmberFonts) -> Vec<Entity> {
-    let builders: Vec<ToolbarBuilder> = viewport_top_strip()
+    let mut builders: Vec<(i32, ToolbarBuilder)> = viewport_top_strip()
         .lock()
         .map(|items| items.clone())
         .unwrap_or_default();
-    builders.iter().map(|b| b(commands, fonts)).collect()
+    // Stable, so same-order bars keep the order they registered in.
+    builders.sort_by_key(|(order, _)| *order);
+    builders.iter().map(|(_, b)| b(commands, fonts)).collect()
 }
 
 /// Groups spliced *into* the in-viewport tool strip, alongside the built-in
@@ -92,9 +102,13 @@ pub fn build_viewport_top_strip(commands: &mut Commands, fonts: &EmberFonts) -> 
 /// these are full arrangement groups: each carries a stable key, so the user can
 /// drag it to a new position and the position is remembered.
 ///
-/// This is how a crate the viewport can't depend on mounts a context bar — the
-/// terrain brush settings are the first user. The strip already wraps, so a wide
-/// group moves to a second line rather than overflowing.
+/// This is how a crate the viewport can't depend on adds a *few controls* to the
+/// strip. It is not the way to add a context bar: the terrain brush settings
+/// were the first user and moved out, because three sliders plus two sets of
+/// toggles are wider than the room the strip has left, so it wrapped them onto a
+/// line of their own — one whose position moved with the panel width. Anything
+/// that will reliably need its own line wants
+/// [`register_viewport_top_strip`] instead. Nothing registers here today.
 static VIEWPORT_TOOL_GROUPS: OnceLock<Mutex<Vec<(&'static str, ToolbarBuilder)>>> = OnceLock::new();
 
 fn viewport_tool_groups() -> &'static Mutex<Vec<(&'static str, ToolbarBuilder)>> {

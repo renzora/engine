@@ -100,15 +100,45 @@ impl Default for MeshDrawRecipe {
 /// Close the polyline when clicking within this world-space distance of the first point.
 const POLY_CLOSE_RADIUS: f32 = 0.25;
 
-/// Mesh-draw tools rasterise into 3D world space (ground-plane drag,
-/// vertical extrude). They have no meaning in 2D / UI viewports, so
-/// the toolbar hides them via `visible_if`.
-fn is_3d_view(world: &World) -> bool {
-    use renzora::core::viewport_types::{ViewportSettings, ViewportView};
+/// Where box and polyline live: the top group of the tool shelf, above mesh
+/// editing's own select / ops / brush groups.
+///
+/// The `modeling.` prefix is deliberate even though this is a different crate.
+/// Shelf groups sort by id string *globally*, and these two now show in mesh
+/// **Edit** mode alongside `renzora_mesh_edit`'s groups — so they have to sort
+/// with them, not into some `mesh_draw.` island somewhere else in the column.
+/// `renzora_foliage_editor` borrows the `terrain.` prefix for the same reason.
+const SECTION: ToolSection = ToolSection::Shelf("modeling.a-draw");
+
+/// Mesh-draw tools rasterise into 3D world space (ground-plane drag, vertical
+/// extrude), and they build a *new* mesh — so they belong with the mesh-editing
+/// tools rather than floating in every 3D view. 2D / UI viewports have no
+/// meaning for them at all.
+fn in_edit_mode(world: &World) -> bool {
+    use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportView};
     world
         .get_resource::<ViewportSettings>()
-        .map(|s| s.viewport_view == ViewportView::Three)
-        .unwrap_or(true)
+        .is_some_and(|s| {
+            s.viewport_view == ViewportView::Three && s.viewport_mode == ViewportMode::Edit
+        })
+}
+
+/// Join is the odd one out: it merges *several selected objects*, which is a
+/// scene-level action, not something you do to the mesh you are inside. It
+/// stays on the top strip with the other single context actions.
+const JOIN_SECTION: ToolSection = ToolSection::Custom("mesh_draw");
+
+/// Mirror [`MeshDrawState::active`] into the contract's [`ModalToolActive`], so
+/// the mesh editor's picking stands down while a draw tool has the mouse. Read
+/// from the tool's own state every frame rather than set at the toggle points,
+/// so no exit path can leave the flag stuck on.
+fn publish_modal_flag(
+    state: Res<MeshDrawState>,
+    mut flag: ResMut<renzora::core::viewport_types::ModalToolActive>,
+) {
+    if flag.0 != state.active {
+        flag.0 = state.active;
+    }
 }
 
 // ── Plugin ─────────────────────────────────────────────────────────────────
@@ -121,15 +151,16 @@ impl Plugin for MeshDrawPlugin {
         info!("[editor] MeshDrawPlugin");
         app.register_type::<MeshDrawRecipe>()
             .init_resource::<MeshDrawState>()
+            .init_resource::<renzora::core::viewport_types::ModalToolActive>()
             .register_tool(
                 ToolEntry::new(
                     "mesh_draw.box",
                     "cube",
                     "Draw Box (click-drag, release, move to extrude, click to commit)",
-                    ToolSection::Custom("mesh_draw"),
+                    SECTION,
                 )
                 .order(0)
-                .visible_if(is_3d_view)
+                .visible_if(in_edit_mode)
                 .active_if(|w| is_active_with(w, ToolMode::Box))
                 .on_activate(|w| toggle_tool(w, ToolMode::Box)),
             )
@@ -138,10 +169,10 @@ impl Plugin for MeshDrawPlugin {
                     "mesh_draw.polyline",
                     "polygon",
                     "Draw Polyline (click to drop points, click first point or Enter to close)",
-                    ToolSection::Custom("mesh_draw"),
+                    SECTION,
                 )
                 .order(1)
-                .visible_if(is_3d_view)
+                .visible_if(in_edit_mode)
                 .active_if(|w| is_active_with(w, ToolMode::Polyline))
                 .on_activate(|w| toggle_tool(w, ToolMode::Polyline)),
             )
@@ -150,7 +181,7 @@ impl Plugin for MeshDrawPlugin {
                     "mesh_draw.join",
                     "link",
                     "Join Selected Meshes — Ctrl+J (merge 2+ selected into one)",
-                    ToolSection::Custom("mesh_draw"),
+                    JOIN_SECTION,
                 )
                 .order(2)
                 .visible_if(|w| selected_mesh_count(w) >= 2)
@@ -181,6 +212,7 @@ impl Plugin for MeshDrawPlugin {
             .add_systems(
                 Update,
                 (
+                    publish_modal_flag,
                     update_cursor_state,
                     handle_mouse_input,
                     draw_preview_gizmos,

@@ -43,6 +43,23 @@ impl Default for ViewportState {
     }
 }
 
+/// `true` while a **modal draw tool** owns the viewport's left mouse button —
+/// mesh draw's box and polyline are the ones that set it.
+///
+/// Those tools now live in Edit mode, alongside mesh editing's own vert / edge /
+/// face picking, and both read raw `ButtonInput<MouseButton>` off the same
+/// click. Without this, one press starts a box *and* picks a vertex. There is no
+/// existing signal that separates them: mesh editing forces `ActiveTool::None`
+/// on every frame it holds a target, which is the same value a draw tool sets
+/// when it arms, so the two are indistinguishable through `ActiveTool`.
+///
+/// Lives in the contract crate because the tool that sets it and the systems
+/// that must stand down for it are in crates that don't (and shouldn't) know
+/// about each other. Republished every frame from the owning tool's own state,
+/// so there is no way to leave it stuck on.
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModalToolActive(pub bool);
+
 /// The OS cursor the viewport interaction layer wants while the pointer is
 /// over the viewport (e.g. Move over a selected sprite, a directional resize
 /// cursor over a handle). `None` = no opinion. Written by the 2D picker each

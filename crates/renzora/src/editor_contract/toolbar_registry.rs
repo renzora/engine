@@ -1,9 +1,10 @@
 //! Viewport toolbar registry — lets plugins add buttons to the vertical tool
 //! overlay without editing the viewport crate.
 //!
-//! Built-in tools (Select/Translate/Rotate/Scale/TerrainSculpt/TerrainPaint/
-//! FoliagePaint) register through this same registry at editor plugin build
-//! time. Community plugins register their own tools the same way via
+//! Built-in tools (Select/Translate/Rotate/Scale and the terrain / modeling mode
+//! buttons on the strip; the brushes, select modes and ops those modes open on
+//! the shelf) register through this same registry at editor plugin build time.
+//! Community plugins register their own tools the same way via
 //! `App::register_tool()`.
 //!
 //! The toolbar renderer (in `renzora_viewport`) iterates entries grouped by
@@ -15,11 +16,18 @@ use std::sync::Arc;
 
 /// Logical grouping on the toolbar. Entries within a section share a divider.
 ///
-/// Sections also choose *which surface* an entry renders on. `Transform`,
-/// `Terrain` and `Custom` land in the horizontal strip across the viewport's top
-/// edge; [`ToolSection::Shelf`] lands in the vertical two-column shelf down its
-/// left edge. Everything else about an entry is identical either way, so moving
-/// a tool between surfaces is a one-word change.
+/// Sections also choose *which surface* an entry renders on. `Transform` and
+/// `Custom` land in the horizontal strip across the viewport's top edge;
+/// [`ToolSection::Shelf`] lands in the vertical two-column shelf down its left
+/// edge. Everything else about an entry is identical either way, so moving a
+/// tool between surfaces is a one-word change.
+///
+/// The two surfaces split by **depth, not by feature**. A tool that *opens* a
+/// set of other tools stays on the strip — the terrain modes, mesh Edit/Sculpt —
+/// so there is one row you can always see that says what the viewport is set to
+/// do. What that choice reveals goes on the shelf: the brushes, the select
+/// modes, the ops. Left as one flat list on the strip those wrap it into a
+/// second row and push Play and the view controls down with them.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ToolSection {
     /// Gizmo tools: select, translate, rotate, scale.
@@ -31,11 +39,18 @@ pub enum ToolSection {
     /// The vertical shelf on the viewport's left edge — a two-column grid of
     /// icon buttons, in the shape image editors use for their brush palette.
     ///
-    /// Meant for a *set of interchangeable brushes* rather than a handful of
-    /// modes: the strip along the top runs out of room past a few buttons and
-    /// wraps into a second row, while the shelf grows downwards where there's
-    /// nothing competing for the space. The str groups entries; groups render in
-    /// alphabetical order separated by a rule.
+    /// Meant for what a mode on the strip *reveals* — its brushes, its select
+    /// modes, its ops: the strip runs out of room past a few buttons and wraps
+    /// into a second row, while the shelf grows downwards where there's nothing
+    /// competing for the space.
+    ///
+    /// The str groups entries, and groups render top-to-bottom in **alphabetical
+    /// order of that string**, separated by a rule. That ordering is global, not
+    /// per-crate, so a feature whose groups must stay in a fixed order relative
+    /// to each other encodes it in the id: the terrain toolset uses
+    /// `terrain.a-sculpt` → `terrain.b-paint` → `terrain.c-foliage-brush` →
+    /// `terrain.d-foliage-types`, the last two from `renzora_foliage_editor`,
+    /// which is a separate crate but part of the same palette.
     Shelf(&'static str),
 }
 

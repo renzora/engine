@@ -22,8 +22,34 @@ use renzora_editor_framework::{ActiveTool, AppEditorExt, ToolEntry, ToolSection}
 use renzora_terrain::data::{TerrainBrushType, TerrainSettings};
 use renzora_terrain::paint::{PaintBrushType, SurfacePaintSettings};
 
-const SCULPT: ToolSection = ToolSection::Shelf("terrain.a-sculpt");
-const PAINT: ToolSection = ToolSection::Shelf("terrain.b-paint");
+/// The terrain toolset's shelf groups, in the order they stack down the shelf.
+///
+/// Shelf groups sort by their id string *globally*, across every crate that
+/// registers one, so the leading `terrain.` and the `a`/`b`/`c` letters are what
+/// fix their order. `renzora_foliage_editor` continues the same sequence with
+/// `terrain.d-…` / `terrain.e-…`: it is a separate crate, but foliage painting
+/// is one of the terrain modes and its palette belongs with the others.
+///
+/// The mode buttons that turn the palettes on (Sculpt / Paint / Foliage) are
+/// *not* here — they stay in the viewport's top strip, in
+/// [`ToolSection::Terrain`], so there is always one visible row saying which
+/// mode is on above the palette it opens.
+///
+/// [`REGION`] is the exception, and the reason it is: Resize Terrain opens no
+/// palette, so on the strip it was a mode button with nothing under it. Here it
+/// sits with the terrain's *extent* controls, which is what it actually is —
+/// paired with the numeric size / resolution editor that reaches the same
+/// settings by typing instead of by clicking ghost tiles.
+///
+/// Like every other group here it shows only once a terrain tool is in hand, not
+/// merely because a terrain exists somewhere in the scene. The shelf is what a
+/// mode opens; a group that appeared before you picked one would sit over the
+/// viewport in scenes you were not editing terrain in at all. Resize is still
+/// reachable in one hop — click any terrain mode on the top strip and the whole
+/// column, this group included, comes up together.
+const REGION: ToolSection = ToolSection::Shelf("terrain.a-region");
+const SCULPT: ToolSection = ToolSection::Shelf("terrain.b-sculpt");
+const PAINT: ToolSection = ToolSection::Shelf("terrain.c-paint");
 
 /// Sculpt brushes, in shelf order, with the icon and tooltip each shows.
 ///
@@ -60,6 +86,46 @@ const PAINT_BRUSHES: &[(PaintBrushType, &str, &str)] = &[
 ];
 
 pub fn register(app: &mut App) {
+    // Resize by dragging the grid out, or by typing the numbers — same terrain
+    // extent, two ways at it.
+    app.register_tool(
+        ToolEntry::new(
+            "builtin.terrain_region",
+            "selection-plus",
+            "Resize Terrain — click a ghost tile to add, Ctrl+click an edge to remove",
+            REGION,
+        )
+        .order(0)
+        .visible_if(any_terrain_tool)
+        .active_if(|w| tool_is(w, ActiveTool::TerrainRegion))
+        .on_activate(|w| {
+            crate::activate_terrain_tool(
+                w,
+                crate::TerrainInspectorTab::Region,
+                ActiveTool::TerrainRegion,
+            )
+        }),
+    );
+    app.register_tool(
+        ToolEntry::new(
+            "terrain.settings",
+            "gear",
+            "Terrain Size & Resolution — grid size, chunk resolution, height range",
+            REGION,
+        )
+        .order(1)
+        .visible_if(any_terrain_tool)
+        // An overlay you open, not a mode you are in, so it never highlights.
+        .active_if(|_| false)
+        .on_activate(|w| {
+            // Same entry point as the inspector's "Edit Terrain…" button; the
+            // overlay is a deferred-apply draft, so opening it twice is harmless.
+            if let Some(entity) = crate::first_terrain_entity(w) {
+                crate::settings_overlay::open(w, entity);
+            }
+        }),
+    );
+
     for (order, (brush, icon, tooltip)) in SCULPT_BRUSHES.iter().enumerate() {
         let brush = *brush;
         app.register_tool(
@@ -105,6 +171,24 @@ pub fn register(app: &mut App) {
 
 fn tool_is(w: &World, want: ActiveTool) -> bool {
     w.get_resource::<ActiveTool>().copied() == Some(want)
+}
+
+/// True while *any* terrain tool is the active one.
+///
+/// The sculpt and paint groups each key off their own tool, because each is that
+/// tool's palette. The region group is not a palette — it belongs to the terrain
+/// as a whole — so it rides along with all four, and stays put while you switch
+/// between them instead of blinking out and back.
+fn any_terrain_tool(w: &World) -> bool {
+    matches!(
+        w.get_resource::<ActiveTool>().copied(),
+        Some(
+            ActiveTool::TerrainSculpt
+                | ActiveTool::TerrainPaint
+                | ActiveTool::FoliagePaint
+                | ActiveTool::TerrainRegion
+        )
+    )
 }
 
 /// `ToolEntry::id` is `&'static str` (it's a stable key for debug + keybind
@@ -170,6 +254,12 @@ mod tests {
         for (_, icon, _) in PAINT_BRUSHES {
             assert!(icon_glyph(icon).is_some(), "unknown paint icon {icon:?}");
         }
+        // The region group is two hand-written registrations rather than a
+        // table, so its icons are listed again here — the point of the test is
+        // that a typo ships as the literal name crammed into a 28px button.
+        for icon in ["selection-plus", "gear"] {
+            assert!(icon_glyph(icon).is_some(), "unknown region icon {icon:?}");
+        }
     }
 
     #[test]
@@ -192,4 +282,25 @@ mod tests {
     fn paint_group_fills_whole_rows() {
         assert_eq!(PAINT_BRUSHES.len() % 2, 0);
     }
+
+    /// The shelf stacks its groups in **alphabetical order of the group id**, so
+    /// the `a-`/`b-`/`c-` letters are the only thing fixing region above sculpt
+    /// above paint above foliage. A well-meant rename to something more
+    /// descriptive would silently reorder the palette.
+    #[test]
+    fn group_ids_sort_into_shelf_order() {
+        let ids: Vec<&str> = [REGION, SCULPT, PAINT]
+            .iter()
+            .map(|s| match s {
+                ToolSection::Shelf(id) => *id,
+                _ => panic!("terrain groups must be shelf sections"),
+            })
+            .collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        assert_eq!(ids, sorted, "terrain shelf groups are out of order");
+        // `renzora_foliage_editor` continues the sequence with `terrain.d-…`.
+        assert!(*ids.last().unwrap() < "terrain.d-foliage-brush");
+    }
+
 }

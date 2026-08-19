@@ -38,17 +38,36 @@ There's also a small button cluster on the right edge of each viewport for **Pan
 
 While you're dragging Zoom, a **height ruler** slides in on the right: a strip of ticks with a single white number on the centre line — your height, in **metres**. The scale picks itself from how high you are, so it reads the same whether you're a metre off the floor or a kilometre up, and it stops at **0 m**; nothing counts below the ground. The white bar down its right edge is the **zoom range**: the marker rides from the top (fully zoomed out) to the bottom (fully in) so you can see how much room is left before the drag stops moving, and it grows longer the higher you get. It fades out shortly after you let go. (The Grid and Scene Icons circles that used to sit under them are gone: both already have switches in the toolbar's Display and Gizmos dropdowns, and in *Settings → Viewport*.)
 
-Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain tools, and any tools plugins add: draw box, draw polyline, tilemap paint, …), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. Context bars join the row too — the terrain brush's size, strength and falloff appear here while a terrain brush is in hand — and drag to a new position like any other group. It hides during play mode, all except Play, which becomes Stop and stays where it is.
+Along the **top edge of the viewport** runs its toolbar: the session actions — **Undo**, **Redo**, and **Save** — then the tool buttons (**Select / Move / Rotate / Scale**, the terrain modes **Sculpt / Paint Layers / Paint Foliage**, mesh **Edit Mode** and **X Symmetry**, and any modes plugins add), the inline **snap steps** for move / rotate / scale (click the icon to toggle that snap, drag or type the number to set its step), the shape / display / gizmos / camera menus, **Play**, and this viewport's own view-angle, World/Local and **maximize** controls, left to right, wrapping onto another line when they need to. It hides during play mode, all except Play, which becomes Stop and stays where it is.
+
+The toolbar holds the buttons that say *what the viewport is set to do*. What each of those opens — the brushes, the select modes, the ops — is on the tool shelf down the left edge, described below. There's no Sculpt Mode button: the **Mode** dropdown beside the 3D/2D/UI selector already lists Scene / Edit / Sculpt, and one control for it is enough.
+
+Below the scene tabs, hard against the top of the scene, sits the **brush settings bar**: the active terrain brush's size, strength and falloff, its shape and falloff-curve toggles, and whatever that particular brush adds (Flatten's target height, Noise's octaves, Stamp's rotation). It appears only while a terrain brush is in hand, and it sits directly above the shelf's first button, so the brush you picked and the settings for it are next to each other.
 
 ## The tool shelf
 
-Down the **left edge of the viewport** sits the **tool shelf**: a two-column palette of icon buttons, the shape image editors use for their brushes. It appears only when something has brushes to offer — pick up the terrain sculpt tool and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes — and collapses completely the rest of the time, so it costs nothing in an ordinary scene.
+Down the **left edge of the viewport** sits the **tool shelf**: a two-column palette of icon buttons, the shape image editors use for their brushes. It holds what the toolbar's modes *open*, stacked in groups separated by a rule, each group appearing only when it applies:
 
-The shelf exists because the top strip is the wrong shape for a palette. A handful of modes fits across it; seventeen brushes wrap it into a second row and push everything else down, and a row of seventeen identical squares is hard to hunt through. Down the left edge there is nothing competing for the space, and two columns keeps the palette a compact block instead of a ribbon running off the bottom of the view.
+| Group | Shows when | Holds |
+|---|---|---|
+| Draw | Edit mode | Draw Box, Draw Polyline |
+| Modeling — select | Edit mode | Vertex, Edge, Face, Loop Cut |
+| Modeling — ops | Edit mode | Subdivide, Inset, Merge, Delete |
+| Modeling — brushes | Sculpt mode | Draw, Smooth, Grab, Inflate, Flatten, Pinch |
+| Terrain — size | any terrain tool is in hand | Resize Terrain, Terrain Size & Resolution |
+| Terrain — sculpt | Sculpt Terrain is the active tool | all 17 sculpt brushes |
+| Terrain — paint | Paint Terrain Layers is active | Paint, Erase, Smooth, Fill |
+| Foliage | Paint Foliage is active | Paint / Erase, then one button per foliage type |
+
+Pick up the terrain sculpt tool in the toolbar and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes. Enter Edit mode and you get the two draw tools, the select modes, and the ops. The shelf collapses completely when nothing in it applies.
+
+Every group is an even number of buttons, so none of them ends on a half-empty row — which is why Loop Cut sits with the select modes rather than with the ops (it's modal like they are: it arms and previews, where the four ops fire on click), and why **Resize Terrain** is on the shelf rather than in the toolbar's terrain row. Resize opens no palette of its own, so up there it was a mode button with nothing under it; here it pairs with **Terrain Size & Resolution**, which opens the numeric editor for the same grid size, chunk resolution and height range — one reaches them by dragging the grid out, the other by typing. Like everything else on the shelf, the pair appears once a terrain tool is in hand: pick any terrain mode in the toolbar and the whole column comes up together, this group included.
+
+The shelf exists because the top strip is the wrong shape for this. A handful of modes fits across it; seventeen brushes — or the ten buttons Edit mode wants — wrap it into a second row and push Play and the view controls down with them, and a row of identical squares is hard to hunt through. Down the left edge there is nothing competing for the space, and two columns keeps the palette a compact block instead of a ribbon running off the bottom of the view.
 
 Clicking a brush never reaches the scene behind it — the shelf blocks the pointer, so a click on a tool can't also select an object or start a box-select.
 
-Plugins add to it the same way they add to the top strip: register a `ToolEntry` in a `ToolSection::Shelf(group)` section. See *Extending → Plugins*.
+Plugins add to it the same way they add to the top strip: register a `ToolEntry` in a `ToolSection::Shelf(group)` section. Groups stack in alphabetical order of that string. See *Extending → Plugins*.
 
 ## Different views of your scene
 

@@ -106,7 +106,14 @@ impl Plugin for MeshEditPlugin {
                 systems::draw_overlay,
             )
                 .chain()
-                .run_if(in_mode(ViewportMode::Edit)),
+                .run_if(in_mode(ViewportMode::Edit))
+                // Box and polyline draw live in Edit mode too, and they read the
+                // same raw left-click these do. Whichever ran second would act on
+                // a press the other had already consumed — one click starting a
+                // box *and* picking a vertex. The drawing tool wins while it is
+                // armed; `ActiveTool` can't arbitrate, because `enter_edit_mode`
+                // holds it at `None` for exactly as long as a draw tool would.
+                .run_if(no_modal_tool),
         );
 
         // Scene-mode: Ctrl+J joins the selected mesh entities into one.
@@ -130,6 +137,13 @@ impl Plugin for MeshEditPlugin {
                 .run_if(in_mode(ViewportMode::Sculpt)),
         );
     }
+}
+
+/// False while a modal draw tool has the mouse — see [`ModalToolActive`].
+fn no_modal_tool(
+    flag: Option<Res<renzora::core::viewport_types::ModalToolActive>>,
+) -> bool {
+    !flag.is_some_and(|f| f.0)
 }
 
 fn in_editing_mode(s: Option<Res<ViewportSettings>>) -> bool {

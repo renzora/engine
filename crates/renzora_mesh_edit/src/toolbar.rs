@@ -1,12 +1,28 @@
-//! Viewport-toolbar buttons for the modeling feature.
+//! Viewport buttons for the modeling feature, split across the two surfaces.
 //!
-//! Registered in a `ToolSection::Custom("modeling")` section that the header
-//! renders after the built-in sections. Two always-relevant mode toggles
-//! (Edit / Sculpt) appear whenever a mesh is selected; the rest are
-//! context-sensitive — select-mode switches and op buttons in Edit mode,
-//! brush pickers in Sculpt mode. Buttons reuse the same funnels as the
-//! keyboard: mode writes go to `ViewportSettings`, ops go through
-//! [`PendingOps`], loop cut arms the same modal the Ctrl+R shortcut does.
+//! **Edit Mode** and **X Symmetry** stay in the strip across the viewport's top
+//! edge, in `ToolSection::Custom("modeling")`: they say what the viewport is set
+//! to do, and they appear whenever a mesh is selected. What Edit and Sculpt
+//! *open* goes on the left-edge **shelf** — select modes and ops in Edit, brush
+//! pickers in Sculpt.
+//!
+//! There is deliberately **no Sculpt Mode button**: the viewport's Mode dropdown
+//! already lists Scene / Edit / Sculpt, so a second control for the same thing
+//! is just a second thing to keep in sync. Edit keeps its button because it is
+//! the one you flip constantly and it carries the Tab shortcut.
+//!
+//! Splitting the surfaces at all is a shape argument: all of these together on
+//! the strip is well past what a horizontal row holds before it wraps and shoves
+//! Play and the view menus onto a second line. On the shelf they are stacked
+//! groups, each with its own rule and each an even number of buttons, so no
+//! group ends on a half-empty row. Shelf group sorting is by id string
+//! *globally* across every crate that registers one, hence the `a`/`b`/`c`
+//! letters — they are load-bearing, not decoration, and `modeling.a-draw` (box
+//! and polyline, from `renzora_mesh_draw`) sorts in ahead of these.
+//!
+//! Buttons reuse the same funnels as the keyboard: mode writes go to
+//! `ViewportSettings`, ops go through [`PendingOps`], loop cut arms the same
+//! modal the Ctrl+R shortcut does.
 
 use bevy::prelude::*;
 use renzora::core::viewport_types::{ViewportMode, ViewportSettings, ViewportView};
@@ -16,7 +32,23 @@ use crate::sculpt::{BrushKind, SculptBrush};
 use crate::selection::{MeshSelection, SelectMode};
 use crate::tools::{LoopCutState, ModelingOp, ModelingSettings, PendingOps};
 
-const SECTION: ToolSection = ToolSection::Custom("modeling");
+/// Edit Mode and X-symmetry: the switches that decide what the shelf below
+/// shows, so they stay on the top strip. Symmetry rides with them because it
+/// applies in Edit *and* Sculpt — on the shelf it would need a rule and a row
+/// all to itself in both.
+const MODE: ToolSection = ToolSection::Custom("modeling");
+/// Vertex / Edge / Face, plus loop cut — Edit mode only.
+///
+/// Loop cut sits with the select modes rather than with the ops below because it
+/// is *modal* like they are: it arms, previews, and reads as active until you
+/// commit or cancel, where the four ops fire the moment you click. It also makes
+/// both groups four buttons — two clean 2×2 blocks instead of a 3 and a 5, each
+/// of which would end on a row with one button and a gap.
+const SELECT: ToolSection = ToolSection::Shelf("modeling.b-select");
+/// The one-shot mesh ops — Edit mode only.
+const OPS: ToolSection = ToolSection::Shelf("modeling.c-ops");
+/// The sculpt brush palette — Sculpt mode only.
+const BRUSHES: ToolSection = ToolSection::Shelf("modeling.d-sculpt");
 
 // ── Predicates ─────────────────────────────────────────────────────────────
 
@@ -76,9 +108,9 @@ fn push_op(world: &mut World, op: ModelingOp) {
 // ── Registration ───────────────────────────────────────────────────────────
 
 pub fn register(app: &mut App) {
-    // Mode toggles.
+    // Edit Mode. Sculpt has no button — see the module docs.
     app.register_tool(
-        ToolEntry::new("modeling.edit_mode", "cube", "Edit Mode (Tab)", SECTION)
+        ToolEntry::new("modeling.edit_mode", "cube", "Edit Mode (Tab)", MODE)
             .order(0)
             .visible_if(modeling_context)
             .active_if(in_edit)
@@ -91,21 +123,6 @@ pub fn register(app: &mut App) {
                 set_mode(w, next);
             }),
     );
-    app.register_tool(
-        ToolEntry::new("modeling.sculpt_mode", "hand", "Sculpt Mode", SECTION)
-            .order(1)
-            .visible_if(modeling_context)
-            .active_if(in_sculpt)
-            .on_activate(|w| {
-                let next = if in_sculpt(w) {
-                    ViewportMode::Scene
-                } else {
-                    ViewportMode::Sculpt
-                };
-                set_mode(w, next);
-            }),
-    );
-
     // Select-mode switches (Edit mode).
     for (id, icon, tooltip, order, sel_mode) in [
         (
@@ -131,7 +148,7 @@ pub fn register(app: &mut App) {
         ),
     ] {
         app.register_tool(
-            ToolEntry::new(id, icon, tooltip, SECTION)
+            ToolEntry::new(id, icon, tooltip, SELECT)
                 .order(order)
                 .visible_if(in_edit)
                 .active_if(move |w| {
@@ -143,15 +160,16 @@ pub fn register(app: &mut App) {
         );
     }
 
-    // X-symmetry switch (Edit + Sculpt).
+    // X-symmetry switch (Edit + Sculpt) — rides with the mode toggles, being
+    // the one switch that means something in both.
     app.register_tool(
         ToolEntry::new(
             "modeling.symmetry_x",
             "arrows-left-right",
             "X Symmetry",
-            SECTION,
+            MODE,
         )
-        .order(20)
+        .order(1)
         .visible_if(in_edit_or_sculpt)
         .active_if(|w| {
             w.get_resource::<ModelingSettings>()
@@ -165,10 +183,11 @@ pub fn register(app: &mut App) {
         }),
     );
 
-    // Loop cut arms the same modal as Ctrl+R.
+    // Loop cut closes the select group: it arms the same modal as Ctrl+R, so
+    // unlike the one-shot ops below it it can read as active.
     app.register_tool(
-        ToolEntry::new("modeling.loop_cut", "knife", "Loop Cut (Ctrl+R)", SECTION)
-            .order(21)
+        ToolEntry::new("modeling.loop_cut", "knife", "Loop Cut (Ctrl+R)", SELECT)
+            .order(13)
             .visible_if(in_edit)
             .active_if(|w| {
                 matches!(
@@ -221,7 +240,7 @@ pub fn register(app: &mut App) {
         ),
     ] {
         app.register_tool(
-            ToolEntry::new(id, icon, tooltip, SECTION)
+            ToolEntry::new(id, icon, tooltip, OPS)
                 .order(order)
                 .visible_if(in_edit)
                 .on_activate(move |w| push_op(w, op)),
@@ -274,7 +293,7 @@ pub fn register(app: &mut App) {
         ),
     ] {
         app.register_tool(
-            ToolEntry::new(id, icon, tooltip, SECTION)
+            ToolEntry::new(id, icon, tooltip, BRUSHES)
                 .order(order)
                 .visible_if(in_sculpt)
                 .active_if(move |w| {

@@ -17,7 +17,7 @@ use renzora_ember::widgets::{
 };
 use bevy::ui::{BackgroundGradient, ColorStop, LinearGradient};
 use renzora_ember::theme::{
-    accent, border, divider, header_bg, panel_bg, placeholder, play_green, rgb, tab_active,
+    accent, border, divider, header_bg, mix, panel_bg, placeholder, play_green, rgb, tab_active,
     text_muted, text_primary, window_bg,
 };
 use renzora_ember::EmberPlugin;
@@ -121,7 +121,7 @@ impl Plugin for ShellPlugin {
         app.init_resource::<ThemeMenuOpen>();
         // The document tabs render inside the primary viewport panel (see
         // [`build_doc_tabs`]); registering here is what puts them there.
-        renzora_ember::toolbar::register_viewport_top_strip(build_doc_tabs);
+        renzora_ember::toolbar::register_viewport_top_strip(0, build_doc_tabs);
         app.add_systems(
             Update,
             (
@@ -4372,17 +4372,6 @@ const DOC_TAB_CHARS: usize = 18;
 /// to the soft boundaries between names inside it.
 fn doc_tab_divider() -> Color {
     rgb(border())
-}
-
-/// `t` of the way from `a` to `b`, in sRGB.
-///
-/// Interpolating between two *theme* colours rather than toward an absolute
-/// black or white is what makes this work in light and dark themes alike: the
-/// result is always between two surfaces the theme author chose, so it can't
-/// invert the way "lighten by 10%" does when the palette flips.
-fn mix(a: (u8, u8, u8), b: (u8, u8, u8), t: f32) -> Color {
-    let c = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t) / 255.0;
-    Color::srgb(c(a.0, b.0), c(a.1, b.1), c(a.2, b.2))
 }
 
 /// Shorten `s` to `max` characters, ending in an ellipsis when it doesn't fit.

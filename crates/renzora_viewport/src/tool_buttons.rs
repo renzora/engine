@@ -38,14 +38,24 @@ pub(crate) struct ToolButton {
     pub activate: Arc<dyn Fn(&mut World) + Send + Sync>,
 }
 
-/// A separator between tool sections. Tools hide per-mode via their `visible`
-/// predicates, and a whole section can vanish (e.g. the terrain tools outside
-/// Terrain mode) — which used to leave its separators stacked up as dangling
-/// lines at the strip's end. The separator shows only while at least one tool
-/// on EACH side of it is visible.
+/// A separator between tool groups. Tools hide per-mode via their `visible`
+/// predicates, and a whole group can vanish (e.g. the terrain brushes outside a
+/// terrain tool) — which used to leave its separators stacked up as dangling
+/// lines at the strip's end. The separator shows only while at least one tool on
+/// EACH side of it is visible.
+///
+/// The two sides are deliberately asymmetric: `before` is every tool in *all*
+/// the groups ahead of the rule, `after` is only the one group immediately
+/// behind it. That is what makes exactly one rule appear between each pair of
+/// adjacent visible groups. With `after` spanning the rest of the list instead,
+/// a shelf whose only visible groups are #0 and #6 draws all six rules between
+/// them — each one has a visible group somewhere ahead and somewhere behind —
+/// and 40px of stacked lines opens up between two buttons.
 #[derive(Component)]
 pub(crate) struct ToolSepVis {
+    /// Every tool in the groups ahead of this rule.
     pub before: Vec<Entity>,
+    /// The tools of the single group immediately behind this rule.
     pub after: Vec<Entity>,
 }
 

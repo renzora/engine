@@ -28,8 +28,13 @@ use renzora_editor_framework::{ActiveTool, AppEditorExt, ToolEntry, ToolSection}
 use renzora_ember::widgets::HoverTooltip;
 use renzora_terrain::foliage::{FoliageBrushType, FoliageConfig, FoliagePaintSettings};
 
-const BRUSH: ToolSection = ToolSection::Shelf("foliage.a-brush");
-const TYPES: ToolSection = ToolSection::Shelf("foliage.b-types");
+// Shelf groups sort by id string across *every* crate that registers one, so
+// these carry the `terrain.` prefix rather than a `foliage.` one: foliage
+// painting is one of the terrain modes, and its palette has to stack with the
+// sculpt and paint palettes it is a sibling of. A `foliage.` prefix would sort
+// ahead of `terrain.` and float the foliage types above them instead.
+const BRUSH: ToolSection = ToolSection::Shelf("terrain.d-foliage-brush");
+const TYPES: ToolSection = ToolSection::Shelf("terrain.e-foliage-types");
 
 /// Brush modes. Two, so they fill one shelf row exactly.
 const BRUSHES: &[(FoliageBrushType, &str, &str)] = &[

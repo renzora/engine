@@ -264,6 +264,10 @@ pub struct Health {
 
 Everything else about an entry is identical either way, so moving a tool between surfaces is a one-word change.
 
+> **The two surfaces split by depth, not by feature.** A tool that *opens* other tools stays on the strip — the gizmo modes, the terrain modes (Sculpt / Paint / Foliage), mesh Edit Mode — so there is always one visible row saying what the viewport is set to do. What each of those reveals goes on the shelf: the 17 terrain sculpt brushes, the paint brushes, the foliage types, and in Edit mode the two draw tools, the select modes and the ops. A tool that opens nothing and has no palette under it is better on the shelf with its neighbours than alone on the strip — that's why Resize Terrain sits with the terrain size controls rather than in the terrain mode row.
+>
+> **Keep shelf groups even.** The shelf is two buttons wide and every group starts on a fresh row, so an odd group ends on a row with a hole in it that reads as a missing button — and a group of one reads as a mistake. Where a group won't come out even, move a member to the neighbouring group where it also makes sense, or pair it with the control it belongs next to.
+
 ```rust
 app.register_tool(
     ToolEntry::new("mytool.brush.smooth", "waves", "Smooth", ToolSection::Shelf("mytool.brushes"))
@@ -274,7 +278,9 @@ app.register_tool(
 );
 ```
 
-Use the **shelf** for a *palette* — a set of interchangeable brushes you pick between. Use the **strip** for a handful of *modes*. The strip runs out of room past a few buttons and wraps into a second row, taking Play and the view controls down with it; the shelf grows downward where nothing competes for the space. Shelf groups render in alphabetical order, separated by a rule, and the whole shelf collapses when none of its entries are visible.
+Use the **strip** for the mode that turns your tool on, and the **shelf** for what that mode opens. The strip runs out of room past a few buttons and wraps into a second row, taking Play and the view controls down with it; the shelf grows downward where nothing competes for the space.
+
+Shelf groups render top to bottom in **alphabetical order of the group string**, separated by a rule, and the whole shelf collapses when none of its entries are visible. That sort is *global*, across every crate that registers a group — so if your feature has several groups that must stay in a fixed order, encode it in the id. The terrain toolset does exactly this: `terrain.a-region` → `terrain.b-sculpt` → `terrain.c-paint` → `terrain.d-foliage-brush` → `terrain.e-foliage-types`, the last two registered by a different crate (`renzora_foliage_editor`) but part of the same palette, and therefore carrying the same `terrain.` prefix. The modeling groups do the same across two crates: `modeling.a-draw` comes from `renzora_mesh_draw`, `modeling.b-select` onward from `renzora_mesh_edit`.
 
 ### Viewport toolbar groups
 

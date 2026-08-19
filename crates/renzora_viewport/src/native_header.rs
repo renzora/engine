@@ -2490,6 +2490,9 @@ fn populate_tools(world: &mut World) {
     };
 
     // Build the ordered section list: Transform, Terrain, then custom sections.
+    // These are the *mode* buttons — the ones that say what the viewport is set
+    // to do. What each mode opens (brushes, select modes, ops) renders on the
+    // shelf instead; see `native_tool_shelf`.
     let mut sections: Vec<Vec<renzora_editor_framework::ToolEntry>> = Vec::new();
     let by_section = |sec| {
         let mut v: Vec<_> = registry
@@ -2536,7 +2539,7 @@ fn populate_tools(world: &mut World) {
                 let sep = tool_separator(&mut commands);
                 commands.entity(sep).insert(ToolSepVis {
                     before: section_buttons[..si].concat(),
-                    after: section_buttons[si..].concat(),
+                    after: btns.clone(),
                 });
                 children.push(sep);
             }

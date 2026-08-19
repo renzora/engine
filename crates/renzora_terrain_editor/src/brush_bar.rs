@@ -1,18 +1,32 @@
-//! The terrain brush's settings, mounted as a group in the viewport toolbar.
+//! The terrain brush's settings, as their own bar across the top of the scene.
 //!
 //! The shelf ([`crate::shelf`]) answers *which* brush; this answers *how it
 //! behaves*. Splitting them that way is the point: size and strength are the
 //! two things you change constantly, often between one stroke and the next, and
 //! putting them in a dock panel means every adjustment is a trip across the
-//! screen and back. On the toolbar they're a few pixels from the viewport you're
-//! painting in.
+//! screen and back.
 //!
-//! The group is registered through [`renzora_ember::toolbar::register_viewport_tool_group`]
-//! rather than built into the viewport crate, because `renzora_viewport` must not
-//! depend on terrain. It's an ordinary arrangement group, so it can be dragged to
-//! a new spot on the bar and stays there.
+//! # Why it is its own bar
 //!
-//! Everything is context-gated. The whole group hides unless a terrain brush is
+//! It used to be an *arrangement group* spliced into the viewport toolbar
+//! alongside Select/Move/Rotate/Scale and the view menus. Three sliders plus the
+//! shape and falloff toggles is wider than the room that row has left, so the
+//! toolbar wrapped and the brush settings ended up on a line of their own
+//! anyway — but a line that moved, because where it broke depended on how wide
+//! the panel was and what else was showing.
+//!
+//! So it is now a bar in its own right, registered at the bottom of the
+//! viewport's top-strip stack: under the scene tabs, hard against the top of the
+//! rendered scene, directly above the tool shelf's first button. That puts the
+//! brush's settings between the tool that opened them and the surface they act
+//! on, and it stops moving.
+//!
+//! Registration goes through
+//! [`renzora_ember::toolbar::register_viewport_top_strip`] rather than being
+//! built into the viewport crate, because `renzora_viewport` must not depend on
+//! terrain. Its `order` is what puts it below the tabs — see that function.
+//!
+//! Everything is context-gated. The whole bar hides unless a terrain brush is
 //! active, and within it each brush's own controls (`Flatten`'s target height,
 //! `Noise`'s octaves, `Stamp`'s rotation…) appear only for that brush — so the
 //! bar is never wider than the brush in hand actually needs.
@@ -40,27 +54,51 @@ use renzora_terrain::paint::SurfacePaintSettings;
 /// them plus the toggles still fit one line on a typical viewport.
 const SLIDER_W: f32 = 78.0;
 
+/// Stacking order among the viewport's full-width bars. The shell's scene tabs
+/// are 0; this sits below them, hard against the scene.
+const BAR_ORDER: i32 = 100;
+
 pub fn register() {
-    renzora_ember::toolbar::register_viewport_tool_group("terrain-brush", build);
+    renzora_ember::toolbar::register_viewport_top_strip(BAR_ORDER, build);
 }
 
 fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
-    let group = commands
+    // The bar: full width, its own band of chrome, closed off underneath against
+    // the scene. Same treatment as the scene-tab strip immediately above it —
+    // a half-step off `panel` toward the theme's contrasting surface, mixing
+    // between two *theme* colours so it stays differentiated on light themes
+    // too. Wraps rather than overflows: a brush with many options (Stamp) is
+    // wider than a narrow viewport.
+    let bar = commands
         .spawn((
             Node {
+                width: Val::Percent(100.0),
                 flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(8.0),
+                row_gap: Val::Px(4.0),
+                padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)),
                 flex_shrink: 0.0,
+                min_width: Val::Px(0.0),
+                border: UiRect::bottom(Val::Px(1.0)),
                 ..default()
             },
-            bevy::ui::FocusPolicy::Pass,
+            BackgroundColor(mix(panel_bg(), header_bg(), 0.55)),
+            BorderColor::all(rgb(divider())),
+            // The bar spans the top of the viewport's picking area, so it has to
+            // swallow pointer events — otherwise a click on the gap between two
+            // sliders falls through and deselects whatever is in the scene.
+            bevy::ui::RelativeCursorPosition::default(),
+            renzora_ember::widgets::OverlaySurface,
             Name::new("vp-terrain-brush"),
         ))
         .id();
-    // Invisible unless a terrain brush is in hand. An always-present group would
-    // hold its width in every other context for nothing.
-    bind_display(commands, group, |w| {
+    // The whole bar goes away unless a terrain brush is in hand — including its
+    // background and its 1px rule, which is why the binding is on the bar and
+    // not on a row inside it. An always-present bar would eat a strip of the
+    // scene in every other context for nothing.
+    bind_display(commands, bar, |w| {
         matches!(
             w.get_resource::<ActiveTool>().copied(),
             Some(ActiveTool::TerrainSculpt) | Some(ActiveTool::TerrainPaint)
@@ -77,8 +115,8 @@ fn build(commands: &mut Commands, fonts: &EmberFonts) -> Entity {
         terrace_opts(commands, fonts),
         stamp_opts(commands, fonts),
     ];
-    commands.entity(group).add_children(&kids);
-    group
+    commands.entity(bar).add_children(&kids);
+    bar
 }
 
 // ── The always-there controls ───────────────────────────────────────────────

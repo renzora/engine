@@ -1,24 +1,35 @@
-//! The tool shelf — a two-column grid of brush buttons floating down the
+//! The tool shelf — a two-column grid of tool buttons floating down the
 //! viewport's left edge, in the shape image editors have settled on.
 //!
-//! The strip across the top of the viewport is the right home for a *handful of
-//! modes*: select, move, rotate, scale, and whichever context tools the current
-//! selection adds. It is the wrong home for a *palette*. Terrain alone has 17
-//! sculpt brushes; laid out horizontally they wrap the strip into a second row
-//! and push everything else — Play included — down with them, and a row of 17
-//! identical squares is a poor thing to hunt through.
+//! The two surfaces split by **depth**. A tool that *opens* other tools stays on
+//! the strip across the viewport's top edge — the gizmo modes, terrain
+//! sculpt/paint/foliage/resize, mesh Edit/Sculpt — so there is always one
+//! visible row saying what the viewport is set to do. Everything those modes
+//! reveal comes here: the brushes, the select modes, the ops.
 //!
-//! Down the left edge there is nothing competing for the space. Two columns keeps
-//! the palette a compact block rather than a 17-tall ribbon that would run past
-//! the bottom of a short viewport, and it puts roughly a screenful of brushes
-//! within one glance. The left edge is genuinely free: the nav cluster, the axis
-//! gizmo and the height ruler all live on the right.
+//! That is a shape argument, not a taste one. Terrain alone has 17 sculpt
+//! brushes and mesh Edit mode wants nine more buttons; laid out horizontally
+//! each of those wraps the strip into a second row and pushes everything else —
+//! Play included — down with it, and a row of identical squares is a poor thing
+//! to hunt through. Down the left edge there is nothing competing for the space.
+//! Two columns keeps a palette a compact block rather than a 17-tall ribbon that
+//! would run past the bottom of a short viewport, and it puts roughly a
+//! screenful of buttons within one glance. The left edge is genuinely free: the
+//! nav cluster, the axis gizmo and the height ruler all live on the right.
+//!
+//! Mesh draw (box / polyline / join) is the one group with no mode above it — it
+//! needs no selection and no mode, so it is simply always there in 3D, and being
+//! first in the sort it gives the shelf a row that doesn't move while the
+//! contextual palettes come and go beneath it.
 //!
 //! Entries come from the same [`ToolbarRegistry`] the top strip reads, tagged
-//! [`ToolSection::Shelf`]. Nothing here is terrain-specific — terrain simply
-//! happens to be the first crate with a palette. The buttons, their
-//! show/hide/highlight driver and their click handler are shared with the top
-//! strip; see [`crate::tool_buttons`].
+//! [`ToolSection::Shelf`]. Nothing here is feature-specific: groups render top
+//! to bottom in alphabetical order of their group string, which is a *global*
+//! sort across every crate that registers one — see [`ToolSection::Shelf`] for
+//! how a multi-group feature (terrain, whose foliage groups come from a
+//! different crate) pins its own order. The buttons, their show/hide/highlight
+//! driver and their click handler are shared with the top strip; see
+//! [`crate::tool_buttons`].
 
 use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
@@ -39,6 +50,12 @@ const PAD: f32 = 3.0;
 /// Two columns of buttons plus the gap between them and the padding either side.
 const SHELF_W: f32 = SIDE_BTN * 2.0 + GAP + PAD * 2.0;
 
+/// Inset from the viewport's left edge. Everything on the shelf is 3D-only, and
+/// in 3D that edge is empty — the nav cluster, the axis gizmo and the height
+/// ruler are all on the right. A shelf group that could show in **2D** would
+/// need to dodge the vertical ruler bar, which owns the first 18px there.
+const INSET: f32 = 8.0;
+
 /// The shelf's button container; filled from `ToolbarRegistry` once it exists.
 #[derive(Component)]
 struct ShelfContainer;
@@ -51,7 +68,7 @@ pub(crate) fn build(commands: &mut Commands, _fonts: &EmberFonts) -> Entity {
         .spawn((
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(8.0),
+                left: Val::Px(INSET),
                 top: Val::Px(8.0),
                 width: Val::Px(SHELF_W),
                 flex_direction: FlexDirection::Column,
@@ -157,7 +174,7 @@ pub(crate) fn populate_shelf(world: &mut World) {
                 let sep = shelf_separator(&mut commands, SHELF_W - PAD * 2.0);
                 commands.entity(sep).insert(ToolSepVis {
                     before: group_buttons[..gi].concat(),
-                    after: group_buttons[gi..].concat(),
+                    after: btns.clone(),
                 });
                 children.push(sep);
             }
