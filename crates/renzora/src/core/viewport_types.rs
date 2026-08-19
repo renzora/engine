@@ -891,6 +891,17 @@ pub struct ViewportSettings {
     /// on to see a (correctly-sized) handle in all viewports simultaneously.
     /// Settings → Viewport.
     pub gizmos_all_viewports: bool,
+    /// Anchor the transform gizmo at the BOTTOM centre of the selection's
+    /// bounds rather than the middle of them. On by default.
+    ///
+    /// The middle of the bounding box is where the handles float in mid-air on
+    /// anything that stands on the ground: a character gets its move gizmo at
+    /// chest height, and dropping it precisely onto a floor means eyeballing an
+    /// offset. Anchoring at the base puts the handles where the object meets
+    /// the ground, and rotate/scale then pivot about the base too — so a
+    /// scaled or turned object stays standing on the surface instead of
+    /// sinking into it. Settings → Viewport.
+    pub gizmo_pivot_bottom: bool,
 }
 
 impl Default for ViewportSettings {
@@ -933,6 +944,7 @@ impl Default for ViewportSettings {
             gizmo_drag_opacity: default_gizmo_drag_opacity(),
             graphics_quality: GraphicsQuality::default(),
             gizmos_all_viewports: false,
+            gizmo_pivot_bottom: true,
         }
     }
 }

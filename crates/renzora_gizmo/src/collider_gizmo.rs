@@ -10,6 +10,9 @@
 //! drawer hard-coded selected-only, so picking "Always" in the UI silently did
 //! nothing. It is now honoured, including the `Off` state.
 //!
+//! Colour says what the body is: green static, violet kinematic, orange
+//! dynamic, blue sensor.
+//!
 //! Every hull also gets diagonals across its faces. A bare edge wireframe sits
 //! on top of the mesh it wraps and reads as a jumble of unrelated lines — you
 //! can't tell which edges belong to the near face and which to the far one, and
@@ -29,6 +32,12 @@ use crate::OverlayGizmoGroup;
 const COLOR_STATIC: Color = Color::srgb(0.30, 0.85, 0.40);
 const COLOR_DYNAMIC: Color = Color::srgb(1.0, 0.55, 0.15);
 const COLOR_SENSOR: Color = Color::srgb(0.30, 0.70, 1.0);
+/// Kinematic bodies used to share the dynamic colour, which hid the one
+/// difference most worth seeing: a character that is supposed to be driven by a
+/// controller but was left on the default (dynamic) body type looks identical
+/// to a correctly set up one, while the solver quietly fights whatever is
+/// moving it. Violet is deliberately far from the dynamic orange.
+const COLOR_KINEMATIC: Color = Color::srgb(0.70, 0.45, 1.0);
 
 pub fn draw_collider_gizmos(
     mut gizmos: Gizmos<OverlayGizmoGroup>,
@@ -59,6 +68,7 @@ pub fn draw_collider_gizmos(
         } else {
             match body.map(|b| b.body_type) {
                 Some(renzora_physics::PhysicsBodyType::StaticBody) => COLOR_STATIC,
+                Some(renzora_physics::PhysicsBodyType::KinematicBody) => COLOR_KINEMATIC,
                 _ => COLOR_DYNAMIC,
             }
         };
@@ -189,7 +199,7 @@ fn draw_side_diagonals(
     }
 }
 
-fn draw_capsule(
+pub fn draw_capsule(
     gizmos: &mut Gizmos<OverlayGizmoGroup>,
     center: Vec3,
     rot: Quat,

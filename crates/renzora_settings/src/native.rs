@@ -2478,6 +2478,17 @@ fn tab_viewport(
     );
     settings_row(commands, fonts, body, 8, &tr("settings.row.gizmos_all_viewports"), t);
     note_row(commands, fonts, body, &tr("settings.hint.gizmos_all_viewports"));
+
+    // Anchor the transform gizmo on the base of the selection rather than the
+    // middle of its bounding box.
+    let t = ctl_toggle(
+        commands,
+        vp.gizmo_pivot_bottom,
+        |w| w.resource::<ViewportSettings>().gizmo_pivot_bottom,
+        |w, &v| w.resource_mut::<ViewportSettings>().gizmo_pivot_bottom = v,
+    );
+    settings_row(commands, fonts, body, 8, &tr("settings.row.gizmo_pivot_bottom"), t);
+    note_row(commands, fonts, body, &tr("settings.hint.gizmo_pivot_bottom"));
 }
 
 // ── Scripting ────────────────────────────────────────────────────────────────

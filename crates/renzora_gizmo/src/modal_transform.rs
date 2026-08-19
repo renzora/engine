@@ -305,7 +305,16 @@ pub fn modal_transform_input_system(
             continue;
         }
         if let Ok(gt) = global_transforms.get(entity) {
-            avg_pos += crate::compute_gizmo_pivot(entity, &aabbs, &children, gt);
+            avg_pos += crate::compute_gizmo_pivot(
+                entity,
+                &aabbs,
+                &children,
+                gt,
+                viewport_settings
+                    .as_ref()
+                    .map(|s| s.gizmo_pivot_bottom)
+                    .unwrap_or(true),
+            );
             count += 1;
         }
     }

@@ -60,21 +60,35 @@ pub(crate) const GIZMO_PLANE_OFFSET: f32 = 0.6;
 /// would put the gizmo at the world origin instead of on top of the mesh —
 /// which is what users hit when dropping large scene GLBs into the editor.
 ///
-/// We instead compute the world-space AABB center over the entity's mesh and
-/// every descendant mesh, falling back to the entity's transform if no AABBs
-/// are available yet (e.g. just-spawned entities before mesh load).
+/// We instead compute the world-space AABB over the entity's mesh and every
+/// descendant mesh, falling back to the entity's transform if no AABBs are
+/// available yet (e.g. just-spawned entities before mesh load).
+///
+/// `bottom` anchors on the base of those bounds instead of their middle
+/// (`ViewportSettings::gizmo_pivot_bottom`, on by default). The middle is where
+/// the handles float in mid-air on anything that stands on the ground; the base
+/// is where the object meets the floor, which is where you want to grab it. It
+/// is also the drag pivot, so rotate and scale turn about the base and the
+/// object stays standing rather than sinking through the surface.
 pub(crate) fn compute_gizmo_pivot(
     entity: Entity,
     aabbs: &Query<(Option<&bevy::camera::primitives::Aabb>, &GlobalTransform), With<Mesh3d>>,
     children: &Query<&Children>,
     fallback_gt: &GlobalTransform,
+    bottom: bool,
 ) -> Vec3 {
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
     collect_pivot_aabb(entity, aabbs, children, &mut min, &mut max);
     if min.x <= max.x {
-        (min + max) * 0.5
+        let centre = (min + max) * 0.5;
+        if bottom {
+            Vec3::new(centre.x, min.y, centre.z)
+        } else {
+            centre
+        }
     } else {
+        // No bounds to sit on the base of — the origin is all there is.
         fallback_gt.translation()
     }
 }
@@ -957,6 +971,11 @@ fn update_gizmo_transforms(
     // Reset per-slot draw flags; set below only for slots we actually size.
     per_slot.draw = [false; VIEWPORT_COUNT];
 
+    let pivot_bottom = viewport_settings
+        .as_ref()
+        .map(|s| s.gizmo_pivot_bottom)
+        .unwrap_or(true);
+
     // Selection pivot + world rotation (shared across slots — same object). The
     // handle *basis* is resolved per slot below, because each viewport can be in a
     // different Local/World space.
@@ -966,7 +985,7 @@ fn update_gizmo_transforms(
             // the visible mesh even when the entity's pivot was authored at world
             // (0,0,0) (common for scene-style GLBs). Hover hit-test + line gizmos
             // use the same pivot so visual, pick, and drag agree.
-            let sel_world = compute_gizmo_pivot(s, &aabbs, &children_q, sel_gt);
+            let sel_world = compute_gizmo_pivot(s, &aabbs, &children_q, sel_gt, pivot_bottom);
             (sel_world, sel_gt.rotation())
         })
     });
@@ -1297,7 +1316,11 @@ fn draw_line_gizmos(
     let Ok(sel_gt) = transform_q.get(selected) else {
         return;
     };
-    let pos = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt);
+    let pivot_bottom = viewport_settings
+        .as_ref()
+        .map(|s| s.gizmo_pivot_bottom)
+        .unwrap_or(true);
+    let pos = compute_gizmo_pivot(selected, &aabbs, &children_q, sel_gt, pivot_bottom);
 
     if matches!(*mode, GizmoMode::Select | GizmoMode::None) {
         return;
@@ -2265,6 +2288,9 @@ fn gizmo_hover_detect(
     window_q: Query<&Window, With<PrimaryWindow>>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     modal: Res<modal_transform::ModalTransformState>,
+    // The hit-test has to anchor exactly where the handles are drawn, or the
+    // grab area sits somewhere the user cannot see.
+    viewport_settings: Option<Res<ViewportSettings>>,
 ) {
     if modal.active {
         gizmo_state.hovered_axis = None;
@@ -2305,7 +2331,11 @@ fn gizmo_hover_detect(
         return;
     };
 
-    let entity_pos = compute_gizmo_pivot(selected, &aabbs, &children_q, entity_gt);
+    let pivot_bottom = viewport_settings
+        .as_ref()
+        .map(|s| s.gizmo_pivot_bottom)
+        .unwrap_or(true);
+    let entity_pos = compute_gizmo_pivot(selected, &aabbs, &children_q, entity_gt, pivot_bottom);
     let gs = gizmo_state.gizmo_scale.max(0.01);
     let gizmo_size = GIZMO_SIZE * gs;
     let threshold = pick_threshold(cam_gt, entity_pos, projection, viewport.screen_size.y);
@@ -2432,6 +2462,10 @@ fn gizmo_drag(
     mut cursor_options: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mut commands: Commands,
 ) {
+    let pivot_bottom = viewport_settings
+        .as_ref()
+        .map(|s| s.gizmo_pivot_bottom)
+        .unwrap_or(true);
     let snap: SnapSettings = viewport_settings
         .as_deref()
         .map(|s| s.snap)
@@ -2495,7 +2529,13 @@ fn gizmo_drag(
             let mut pivot_n = 0u32;
             for &e in &selected_entities {
                 if let Ok(gt) = geom.global.get(e) {
-                    pivot_sum += compute_gizmo_pivot(e, &geom.pivot_aabbs, &geom.children, gt);
+                    pivot_sum += compute_gizmo_pivot(
+                        e,
+                        &geom.pivot_aabbs,
+                        &geom.children,
+                        gt,
+                        pivot_bottom,
+                    );
                     pivot_n += 1;
                 }
             }
@@ -2617,7 +2657,13 @@ fn gizmo_drag(
         let mut n = 0u32;
         for &e in &selected_entities {
             if let Ok(gt) = geom.global.get(e) {
-                sum += compute_gizmo_pivot(e, &geom.pivot_aabbs, &geom.children, gt);
+                sum += compute_gizmo_pivot(
+                    e,
+                    &geom.pivot_aabbs,
+                    &geom.children,
+                    gt,
+                    pivot_bottom,
+                );
                 n += 1;
             }
         }
