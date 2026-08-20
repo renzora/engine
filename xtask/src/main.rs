@@ -536,12 +536,28 @@ fn stage(repo: &Path, plat: &Platform) -> std::io::Result<PathBuf> {
     // One shared `plugins/target/` for all of them now (see
     // `plugins/.cargo/config.toml`), so this is a single directory read rather
     // than a walk over 61 per-plugin target dirs.
-    let ex = repo.join("plugins").join("target").join("dist");
+    let src_root = repo.join("plugins");
+    let ex = src_root.join("target").join("dist");
     if let Ok(files) = std::fs::read_dir(&ex) {
         for f in files.flatten() {
             let path = f.path();
             let name = file_name(&path);
             if path.is_file() && name.ends_with(&format!(".{}", plat.ext)) {
+                // Cargo never sweeps the shared `plugins/target/`, so deleting a
+                // plugin's source leaves its cdylib sitting there and an
+                // unfiltered copy would restage it on every build — the deleted
+                // plugin appears to come back from the dead, and gets loaded
+                // against an ABI it was not compiled for (`renzora_git` did
+                // exactly this, spamming "panel op N is not one this build has").
+                // Stage only what still has a source directory.
+                let stem = name.trim_end_matches(&format!(".{}", plat.ext));
+                // `lib` on Unix, empty on Windows — strip only when non-empty,
+                // so `libgit.so` and `git.dll` both resolve to `plugins/git`.
+                let stem = stem.strip_prefix(plat.lib_prefix).unwrap_or(stem);
+                if !src_root.join(stem).join("Cargo.toml").exists() {
+                    println!("[xtask] skipping orphaned plugin artifact {name} (no plugins/{stem}/)");
+                    continue;
+                }
                 copy(&path, &plugins.join(&name))?;
                 count += 1;
             }
