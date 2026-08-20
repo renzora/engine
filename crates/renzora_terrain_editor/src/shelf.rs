@@ -35,19 +35,20 @@ use renzora_terrain::paint::{PaintBrushType, SurfacePaintSettings};
 /// [`ToolSection::Terrain`], so there is always one visible row saying which
 /// mode is on above the palette it opens.
 ///
-/// [`REGION`] is the exception, and the reason it is: Resize Terrain opens no
-/// palette, so on the strip it was a mode button with nothing under it. Here it
-/// sits with the terrain's *extent* controls, which is what it actually is —
-/// paired with the numeric size / resolution editor that reaches the same
-/// settings by typing instead of by clicking ghost tiles.
+/// [`TERRAIN`] is the exception, and the reason it is: none of the three
+/// buttons in it opens a palette, so on the strip each was a mode button with
+/// nothing under it. Together they are the operations that act on the terrain
+/// *as a whole* rather than on the patch under a brush — fill it with
+/// procedural mountains, drag its extent out, or type that extent in — and they
+/// read as a set the moment they sit next to each other.
 ///
 /// Like every other group here it shows only once a terrain tool is in hand, not
 /// merely because a terrain exists somewhere in the scene. The shelf is what a
 /// mode opens; a group that appeared before you picked one would sit over the
-/// viewport in scenes you were not editing terrain in at all. Resize is still
+/// viewport in scenes you were not editing terrain in at all. All three stay
 /// reachable in one hop — click any terrain mode on the top strip and the whole
 /// column, this group included, comes up together.
-const REGION: ToolSection = ToolSection::Shelf("terrain.a-region");
+const TERRAIN: ToolSection = ToolSection::Shelf("terrain.a-terrain");
 const SCULPT: ToolSection = ToolSection::Shelf("terrain.b-sculpt");
 const PAINT: ToolSection = ToolSection::Shelf("terrain.c-paint");
 
@@ -86,6 +87,26 @@ const PAINT_BRUSHES: &[(PaintBrushType, &str, &str)] = &[
 ];
 
 pub fn register(app: &mut App) {
+    // Generate first: it is what you reach for on a terrain that is still flat,
+    // and the other two are about the box it lives in rather than what is in it.
+    app.register_tool(
+        ToolEntry::new(
+            "builtin.terrain_generate",
+            crate::generate_tool::TOOL_ICON,
+            "Generate Terrain — procedural mountains over a region you drag",
+            TERRAIN,
+        )
+        .order(0)
+        .visible_if(any_terrain_tool)
+        .active_if(|w| tool_is(w, ActiveTool::TerrainGenerate))
+        .on_activate(|w| {
+            crate::activate_terrain_tool(
+                w,
+                crate::TerrainInspectorTab::Generate,
+                ActiveTool::TerrainGenerate,
+            )
+        }),
+    );
     // Resize by dragging the grid out, or by typing the numbers — same terrain
     // extent, two ways at it.
     app.register_tool(
@@ -93,9 +114,9 @@ pub fn register(app: &mut App) {
             "builtin.terrain_region",
             "selection-plus",
             "Resize Terrain — click a ghost tile to add, Ctrl+click an edge to remove",
-            REGION,
+            TERRAIN,
         )
-        .order(0)
+        .order(1)
         .visible_if(any_terrain_tool)
         .active_if(|w| tool_is(w, ActiveTool::TerrainRegion))
         .on_activate(|w| {
@@ -111,9 +132,9 @@ pub fn register(app: &mut App) {
             "terrain.settings",
             "gear",
             "Terrain Size & Resolution — grid size, chunk resolution, height range",
-            REGION,
+            TERRAIN,
         )
-        .order(1)
+        .order(2)
         .visible_if(any_terrain_tool)
         // An overlay you open, not a mode you are in, so it never highlights.
         .active_if(|_| false)
@@ -187,6 +208,7 @@ fn any_terrain_tool(w: &World) -> bool {
                 | ActiveTool::TerrainPaint
                 | ActiveTool::FoliagePaint
                 | ActiveTool::TerrainRegion
+                | ActiveTool::TerrainGenerate
         )
     )
 }
@@ -254,11 +276,16 @@ mod tests {
         for (_, icon, _) in PAINT_BRUSHES {
             assert!(icon_glyph(icon).is_some(), "unknown paint icon {icon:?}");
         }
-        // The region group is two hand-written registrations rather than a
-        // table, so its icons are listed again here — the point of the test is
-        // that a typo ships as the literal name crammed into a 28px button.
-        for icon in ["selection-plus", "gear"] {
-            assert!(icon_glyph(icon).is_some(), "unknown region icon {icon:?}");
+        // The whole-terrain group is three hand-written registrations rather
+        // than a table, so its icons are listed again here — the point of the
+        // test is that a typo ships as the literal name crammed into a 28px
+        // button.
+        for icon in [
+            crate::generate_tool::TOOL_ICON,
+            "selection-plus",
+            "gear",
+        ] {
+            assert!(icon_glyph(icon).is_some(), "unknown terrain icon {icon:?}");
         }
     }
 
@@ -289,7 +316,7 @@ mod tests {
     /// descriptive would silently reorder the palette.
     #[test]
     fn group_ids_sort_into_shelf_order() {
-        let ids: Vec<&str> = [REGION, SCULPT, PAINT]
+        let ids: Vec<&str> = [TERRAIN, SCULPT, PAINT]
             .iter()
             .map(|s| match s {
                 ToolSection::Shelf(id) => *id,

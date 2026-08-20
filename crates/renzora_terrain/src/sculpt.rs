@@ -199,54 +199,6 @@ pub fn eval_noise(
     }
 }
 
-// ── Whole-terrain noise generation ───────────────────────────────────────────
-
-/// Fill a chunk's heightmap with procedural noise using the current noise settings.
-///
-/// `additive`: if true, adds noise on top of existing heights; if false, replaces.
-pub fn generate_noise_for_chunk(
-    chunk: &mut TerrainChunkData,
-    terrain: &TerrainData,
-    settings: &TerrainSettings,
-    additive: bool,
-) {
-    let resolution = terrain.chunk_resolution;
-    let spacing = terrain.vertex_spacing();
-    let chunk_origin_x = chunk.chunk_x as f32 * terrain.chunk_size;
-    let chunk_origin_z = chunk.chunk_z as f32 * terrain.chunk_size;
-    let scale = settings.noise_scale.max(0.1);
-    let strength = settings.brush_strength;
-
-    for vz in 0..resolution {
-        for vx in 0..resolution {
-            let world_x = chunk_origin_x + vx as f32 * spacing;
-            let world_z = chunk_origin_z + vz as f32 * spacing;
-
-            let n = eval_noise(
-                world_x / scale,
-                world_z / scale,
-                settings.noise_mode,
-                settings.noise_octaves.clamp(1, 8),
-                settings.noise_lacunarity,
-                settings.noise_persistence,
-                settings.noise_seed,
-                settings.warp_strength,
-            );
-
-            let idx = (vz * resolution + vx) as usize;
-            if idx < chunk.base_heights.len() {
-                if additive {
-                    let current = chunk.base_heights[idx];
-                    chunk.base_heights[idx] = (current + (n - 0.5) * strength).clamp(0.0, 1.0);
-                } else {
-                    chunk.base_heights[idx] = (n * strength).clamp(0.0, 1.0);
-                }
-            }
-        }
-    }
-    chunk.dirty = true;
-}
-
 // ── Brush Application ────────────────────────────────────────────────────────
 
 /// Apply the stamp brush to a chunk's heightmap (single application, not continuous).

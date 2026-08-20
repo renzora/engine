@@ -52,7 +52,7 @@ use renzora_terrain::paint::SurfacePaintSettings;
 
 /// Slider width in the bar. Wide enough to aim with, narrow enough that three of
 /// them plus the toggles still fit one line on a typical viewport.
-const SLIDER_W: f32 = 78.0;
+pub(crate) const SLIDER_W: f32 = 78.0;
 
 /// Stacking order among the viewport's full-width bars. The shell's scene tabs
 /// are 0; this sits below them, hard against the scene.
@@ -491,7 +491,7 @@ pub fn falloff_click(
 // ── Builders ────────────────────────────────────────────────────────────────
 
 /// A horizontal run of related controls.
-fn cluster(commands: &mut Commands, name: &str) -> Entity {
+pub(crate) fn cluster(commands: &mut Commands, name: &str) -> Entity {
     commands
         .spawn((
             Node {
@@ -528,7 +528,7 @@ fn only_when_brush(commands: &mut Commands, row: Entity, brush: TerrainBrushType
 /// its own box: a toolbar has no room for a third element per setting, and the
 /// number is only ever glanced at.
 #[allow(clippy::too_many_arguments)]
-fn labelled_slider<G, S>(
+pub(crate) fn labelled_slider<G, S>(
     commands: &mut Commands,
     fonts: &EmberFonts,
     label: &'static str,
@@ -582,7 +582,7 @@ where
 /// whose setter rounds into an integer; without it the model and the rounded
 /// read-back fight each other mid-drag.
 #[allow(clippy::too_many_arguments)]
-fn labelled_drag<G, S>(
+pub(crate) fn labelled_drag<G, S>(
     commands: &mut Commands,
     fonts: &EmberFonts,
     label: &str,
@@ -625,7 +625,7 @@ where
     row
 }
 
-fn labelled_dropdown<G, S>(
+pub(crate) fn labelled_dropdown<G, S>(
     commands: &mut Commands,
     fonts: &EmberFonts,
     label: &str,
@@ -697,7 +697,7 @@ fn toggle_bg(w: &Rx, btn: Entity, active: bool) -> Color {
 
 // ── Resource accessors ──────────────────────────────────────────────────────
 
-fn tool_is(w: &Rx, want: ActiveTool) -> bool {
+pub(crate) fn tool_is(w: &Rx, want: ActiveTool) -> bool {
     w.get_resource::<ActiveTool>().copied() == Some(want)
 }
 

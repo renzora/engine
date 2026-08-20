@@ -1,13 +1,13 @@
 # Terrain
 
-Sculpt and paint heightmap terrain in the editor with a live brush gizmo, then save it straight into your RON scene.
+Generate, sculpt and paint heightmap terrain in the editor with live gizmos, then save it straight into your RON scene.
 
 ## How it works
 
 Terrain is two crates working together:
 
 - **`renzora_terrain`** — the runtime. `TerrainPlugin` registers the data types, builds chunk meshes, composes heightmaps, uploads splatmaps, and scatters foliage. It self-registers with `renzora::add!(TerrainPlugin)`, so terrain renders in **both the editor and your shipped game**.
-- **`renzora_terrain_editor`** — the editor-only tools (`TerrainEditorPlugin`, `Editor` scope): the brush gizmo, sculpt/paint systems, the **Terrain Tools** panel, undo/redo, and heightmap import/export. Foliage painting is a separate editor crate, `renzora_foliage_editor`.
+- **`renzora_terrain_editor`** — the editor-only tools (`TerrainEditorPlugin`, `Editor` scope): the brush gizmo, the [Generate](#generating-a-landscape) region gizmo, sculpt/paint systems, the **Terrain Tools** panel, undo/redo, and heightmap import/export. Foliage painting is a separate editor crate, `renzora_foliage_editor`.
 
 A terrain is a **parent entity** (`TerrainData`) with one **chunk child** (`TerrainChunkData`) per tile. Each chunk stores a square grid of heights normalized to `[0, 1]`; the chunk's `TerrainData` maps that range onto world `min_height..max_height`. Sculpting writes the chunk's `base_heights`; a composition pass adds any per-layer carve deltas to produce the final `heights` the mesh and collider read.
 
@@ -44,7 +44,7 @@ A **Layers** section sits below it, editing the *active* paint layer: a layer pi
 
 ## Resizing with the Region tool
 
-The **Resize Terrain** toolbar button turns on the Region tool, which grows and shrinks the terrain by clicking in the scene rather than by typing numbers.
+The **Resize Terrain** shelf button turns on the Region tool, which grows and shrinks the terrain by clicking in the scene rather than by typing numbers.
 
 - Ghost tiles ring the terrain, each marked with a `+`. **Click one** to grow the terrain to meet it.
 - **Ctrl+click** an edge tile to remove that whole row or column; the row that would go is highlighted in red first.
@@ -54,9 +54,64 @@ The chunk grid is centred on its parent, so changing the count re-centres every 
 
 > The grid stays a dense rectangle. Sparse, non-contiguous regions would be a rewrite of `TerrainData`, the chunk addressing and the scene format.
 
+## Generating a landscape
+
+The **Generate Terrain** button at the top of the [tool shelf](#the-tool-shelf-and-the-brush-bar) (icon: magic wand) turns on the Generate tool — a procedural mountain generator you aim with a gizmo instead of a brush. It sits with **Resize Terrain** and **Terrain Size & Resolution**: the three operations that act on the terrain as a whole rather than on the patch under a brush. Like the rest of the shelf they appear once any terrain mode is in hand, so it's one hop — click Sculpt on the toolbar and the column comes up with Generate at the top of it.
+
+Everything it does is decided by one parameter set evaluated over one rectangle, so the result is a function of the settings and nothing else. Change a number and press Generate again and you get the same landscape with that one thing different — which is the whole reason it exists alongside the [Noise brush](#sculpting), whose result depends on where your strokes happened to overlap.
+
+### The region gizmo
+
+A blue rectangle sits on the terrain's ground plane, with a handle at each corner and each edge midpoint, and vertical posts running up to the surface above it.
+
+- **Drag a corner** to resize from that corner — the opposite one stays put.
+- **Drag an edge midpoint** to move just that edge.
+- **Drag inside the rectangle** to move the whole region without resizing it.
+
+The region starts as the whole terrain and follows it as you resize the terrain with the [Region tool](#resizing-with-the-region-tool). The first handle drag pins it to an explicit rectangle, after which it stays where you put it.
+
+Handles are picked against the terrain's flat ground plane rather than against the sculpted surface — a grab point that slid down a hillside as you dragged would make the rectangle impossible to place. A drag that runs off the terrain is clamped to it, and a drag that would collapse the rectangle to a line stops at a four-vertex minimum so the handles stay grabbable.
+
+### The preview
+
+Above the rectangle, a wireframe shows the surface the current settings would produce, blended against the heights that are already there. **Nothing is written until you press Generate** — every slider on the bar is preview-only until then.
+
+The preview and the apply pass call the same `renzora_terrain::generate::blended_height`, so it is the result rather than an approximation of it. Its brightness follows the region weight, which makes the **Feather** band visible as the preview fading into the ground instead of a number you have to imagine.
+
+Turn the wireframe off with the bar's **Preview** switch if it's in the way; the rectangle and handles stay.
+
+### Settings
+
+They sit in their own bar across the top of the scene, the same surface the brush settings use, and they appear only while the Generate tool is on.
+
+| Setting | What it does |
+|---|---|
+| **Noise** | FBM / Ridge / Billow / Warped / Hybrid. **Hybrid** is the default — ridged noise with FBM mixed back in, which gives sharp crest lines with flanks that don't look machined. |
+| **Scale** | Metres per unit of noise: the size of the largest features. The dial that decides "alpine range" from "gravel". Set it wider than the terrain to get one mountain rather than a range. |
+| **Oct** | Octaves, 1–8. More detail per doubling of frequency. |
+| **Rough** | Persistence — how much each octave contributes relative to the one before. |
+| **Peaks** | Raises the noise to this power before it becomes a height. Above 1 it pushes the midrange down, turning rolling lumps into peaks separated by valley floors; below 1 it flattens the tops into plateaus. |
+| **Height** | Peak-to-floor amplitude in world metres. Capped by the terrain's own `max_height - min_height` — asking for 500 m on a 50 m terrain gives you 50, not a plateau of clipped values. |
+| **Base** | Elevation the noise floor sits at, in world metres. |
+| **Blend** | How the result meets what is already there: Replace / Add / Subtract / Max / Min. **Replace** is the default, for the usual case of a flat terrain you just spawned. |
+| **Feather** | Width of the edge blend, as a fraction of the region's half-extent. 0 is a hard edge. It blends toward whatever is already there, not toward a fixed level, so a region generated over an existing hillside still lands on that hillside. |
+| **Seed** | The landscape. |
+
+Three buttons finish the bar:
+
+- **Re-roll** advances the seed by one. Nothing is written — the preview just becomes a different landscape, so you can walk through them until one looks right. Stepping rather than randomising means you can walk back to the one you passed.
+- **Generate** commits it, as **one** undo step labelled "Generate Terrain".
+- **Flatten** levels the terrain's base layer to the **Base** height, as its own undo step. It's the forwards way out of a generate you don't like.
+
+### What it writes
+
+Generate writes each chunk's `base_heights` — the same layer the sculpt brushes write — so a generated landscape is something the brushes then carve into, and the height-layer stack composes on top of it exactly as it does for hand-sculpted ground. Chunks the region never touches are skipped whole and never flagged for a mesh rebuild.
+
+The generator's maths lives in `renzora_terrain::generate` and takes no `World`, so it is unit-tested directly; the tool in `renzora_terrain_editor::generate_tool` is only the cursor-to-rectangle part.
+
 ## The tool shelf and the brush bar
 
-With a terrain tool active, the brushes live on the **tool shelf** — a two-column palette floating down the viewport's left edge, in the shape image editors use. The sculpt palette shows all 17 sculpt brushes; switching to the paint tool swaps it for the 4 paint brushes, and switching to Paint Foliage swaps it for the [foliage palette](#the-foliage-shelf). The shelf collapses entirely when no shelf tool applies.
+With a terrain tool active, the brushes live on the **tool shelf** — a two-column palette floating down the viewport's left edge, in the shape image editors use. At the top of it sits the whole-terrain group — **Generate Terrain**, **Resize Terrain**, **Terrain Size & Resolution** — and below that the palette for the current mode. The sculpt palette shows all 17 sculpt brushes; switching to the paint tool swaps it for the 4 paint brushes, and switching to Paint Foliage swaps it for the [foliage palette](#the-foliage-shelf). The shelf collapses entirely when no shelf tool applies.
 
 The active brush's settings sit in the **viewport toolbar** as a group you can drag to a different position on the bar: **Size**, **Strength** and **Falloff** sliders, the **shape** toggles (circle / square / diamond) and the five **falloff-curve** letters (S / L / O / T / F). Whatever the current brush adds appears beside them and nothing else does — Flatten's mode and target height, Noise's mode/scale/octaves/persistence, Terrace's steps and sharpness, Stamp's blend/rotation/scale.
 
@@ -83,7 +138,7 @@ Clicking a button selects the first terrain, switches the tab, and activates the
 
 ## Sculpting
 
-Pick a brush from the shelf (or the panel's grid), then paint in the viewport. The brush position is found by **mesh raycast** against the actual sculpted surface, so the gizmo hugs the terrain. Hold the left mouse button and drag to sculpt continuously.
+Pick a brush from the shelf (or the panel's grid), then paint in the viewport. The brush position is found by **mesh raycast** against the actual sculpted surface, so the [cursor hugs the terrain](#the-brush-cursor). Hold the left mouse button and drag to sculpt continuously.
 
 | Brush | Behaviour | Shift held |
 |-------|-----------|------------|
@@ -105,6 +160,19 @@ Pick a brush from the shelf (or the panel's grid), then paint in the viewport. T
 | **Cliff** | Amplify the local slope gradient (steepen) | Soften |
 
 The 17th tool is **Stamp** — click (don't drag) to stamp a heightmap shape once. Its settings offer a **Shape** preset (Dome, Cone, Bell, Mesa, Ridge, Crater, Noise), a **Load PNG…** button for a custom grayscale stamp, a **Blend** mode (Add / Subtract / Replace / Max / Min), **Rotation** (degrees), and **Height Scale**. Brush size sets the stamp footprint; picking Stamp with nothing loaded auto-selects the Dome preset.
+
+### The brush cursor
+
+Both terrain brush tools draw the same cursor, and both find it the same way: a **mesh raycast** against the chunk meshes, filtered to chunks only so paint-layer overlays and grass don't swallow the ray and leave the brush dead over ground you've already worked on.
+
+The cursor is two rings, and both ride the surface — every point around them samples the heightmap, so the cursor lies on a hillside instead of hovering flat above it:
+
+- the **outer ring** at the brush radius, drawn in the shape you picked (circle, square or diamond);
+- the **inner ring** at the edge of the full-strength core — the gap between the two is the falloff band, so you can see how soft the brush is rather than reading it off a slider.
+
+The colour says which brush is in hand.
+
+> Paint used to draw a flat circle here that ignored both the shape and the falloff it lets you set, which meant discovering the brush by painting and undoing. It draws the shared cursor now. The code is `renzora_terrain_editor::brush_gizmo`; the **Stamp** brush adds its wireframe grid preview on top of the same outer ring.
 
 ### Brush settings
 
@@ -161,8 +229,10 @@ Paint strokes, including a stroke that auto-created a layer, undo/redo as single
 
 ### Paint Brush Settings
 
-- **Size** (`0.01`–`0.5`) — brush radius as a **fraction of a chunk side** (the scroll wheel resizes within that range).
+- **Size** (`0.01`–`0.5`) — brush radius as a **fraction of a chunk side** (the scroll wheel resizes within that range), so the brush scales with the terrain rather than with a metre count.
 - **Strength** (`0.01`–`1.0`), **Falloff** (`0`–`1`), and **Shape** (Circle / Square / Diamond).
+
+All three show in the [brush cursor](#the-brush-cursor), which is the same surface-following one the sculpt brushes use.
 
 ## Foliage
 

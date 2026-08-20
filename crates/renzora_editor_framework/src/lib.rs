@@ -238,6 +238,12 @@ pub enum ActiveTool {
     /// tools: it edits the grid, never the heightmap, so the undo-stroke
     /// systems that record height edits must stay disengaged while it's on.
     TerrainRegion,
+    /// Place a rectangle on the terrain and fill it with procedural mountains.
+    /// Like [`ActiveTool::TerrainRegion`] it is deliberately *not* one of
+    /// [`ActiveTool::is_terrain`]'s brush tools — it commits one edit on a
+    /// button press rather than accumulating a stroke, so it records its own
+    /// undo entry and must not arm the per-stroke capture.
+    TerrainGenerate,
     /// No built-in tool active. Plugins that own their own input mode (mesh
     /// draw, brush tools, etc.) set this so the gizmo + select-click systems
     /// disengage while the plugin is driving.
@@ -281,7 +287,8 @@ impl ActiveTool {
     /// plus the region tool. Used to decide when to fall back to `Select`
     /// because the selection moved off the terrain.
     pub fn needs_terrain_selection(&self) -> bool {
-        self.is_terrain_or_foliage() || matches!(self, Self::TerrainRegion)
+        self.is_terrain_or_foliage()
+            || matches!(self, Self::TerrainRegion | Self::TerrainGenerate)
     }
 }
 

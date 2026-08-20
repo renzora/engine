@@ -145,7 +145,7 @@ pub fn region_hover_system(
 }
 
 /// Where the cursor ray meets the terrain's ground plane, in terrain-local space.
-fn ray_to_terrain_plane(ray: Ray3d, xform: &GlobalTransform) -> Option<Vec3> {
+pub(crate) fn ray_to_terrain_plane(ray: Ray3d, xform: &GlobalTransform) -> Option<Vec3> {
     // The plane is the terrain's own XZ plane, so it tilts with the terrain
     // rather than being a fixed world-Y plane.
     let origin = xform.translation();

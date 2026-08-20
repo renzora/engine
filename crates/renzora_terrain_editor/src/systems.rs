@@ -16,6 +16,8 @@ use renzora_terrain::painter::{PaintLayer, Painter};
 use renzora_terrain::sculpt;
 use renzora_terrain::undo::TerrainUndoEntry;
 
+use crate::brush_gizmo;
+
 // ── Viewport ray ─────────────────────────────────────────────────────────────
 
 /// The world-space ray under the cursor, or `None` if the cursor isn't over the
@@ -109,63 +111,6 @@ fn get_terrain_height_at(
         let height_normalized = h0 * (1.0 - tz) + h1 * tz;
 
         return Some(terrain.min_height + height_normalized * terrain.height_range());
-    }
-
-    None
-}
-
-/// Sample terrain height at a world position (for brush gizmo).
-fn sample_brush_height(
-    world_x: f32,
-    world_z: f32,
-    terrain: &TerrainData,
-    terrain_pos: Vec3,
-    chunk_query: &Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    terrain_entity: Entity,
-) -> Option<f32> {
-    let half_w = terrain.total_width() / 2.0;
-    let half_d = terrain.total_depth() / 2.0;
-    let local_x = world_x - terrain_pos.x + half_w;
-    let local_z = world_z - terrain_pos.z + half_d;
-
-    let cx = (local_x / terrain.chunk_size).floor() as i32;
-    let cz = (local_z / terrain.chunk_size).floor() as i32;
-    if cx < 0 || cz < 0 || cx >= terrain.chunks_x as i32 || cz >= terrain.chunks_z as i32 {
-        return None;
-    }
-    let cx = cx as u32;
-    let cz = cz as u32;
-
-    for (chunk, chunk_of, _) in chunk_query.iter() {
-        if chunk_of.0 != terrain_entity || chunk.chunk_x != cx || chunk.chunk_z != cz {
-            continue;
-        }
-
-        let in_x = local_x - cx as f32 * terrain.chunk_size;
-        let in_z = local_z - cz as f32 * terrain.chunk_size;
-        let spacing = terrain.vertex_spacing();
-        let fx = in_x / spacing;
-        let fz = in_z / spacing;
-
-        let vx0 = (fx.floor() as u32).min(terrain.chunk_resolution - 1);
-        let vz0 = (fz.floor() as u32).min(terrain.chunk_resolution - 1);
-        let vx1 = (vx0 + 1).min(terrain.chunk_resolution - 1);
-        let vz1 = (vz0 + 1).min(terrain.chunk_resolution - 1);
-        let tx = fx - fx.floor();
-        let tz = fz - fz.floor();
-
-        let h00 = chunk.get_height(vx0, vz0, terrain.chunk_resolution);
-        let h10 = chunk.get_height(vx1, vz0, terrain.chunk_resolution);
-        let h01 = chunk.get_height(vx0, vz1, terrain.chunk_resolution);
-        let h11 = chunk.get_height(vx1, vz1, terrain.chunk_resolution);
-
-        let h0 = h00 * (1.0 - tx) + h10 * tx;
-        let h1 = h01 * (1.0 - tx) + h11 * tx;
-        let height_normalized = h0 * (1.0 - tz) + h1 * tz;
-
-        return Some(
-            terrain.min_height + height_normalized * terrain.height_range() + terrain_pos.y,
-        );
     }
 
     None
@@ -271,6 +216,16 @@ pub fn terrain_sculpt_system(
         if let Some(hover_pos) = sculpt_state.hover_position {
             if let Some(terrain_entity) = sculpt_state.active_terrain {
                 if let Ok((terrain_data, terrain_transform)) = terrain_query.get(terrain_entity) {
+                    // Borrowed once for the whole cursor: the two rings sample
+                    // ~96 points, and walking the query per point is the
+                    // difference between a free gizmo and a visible cost on a
+                    // large grid. Dropped before the apply loop below takes the
+                    // same chunks mutably.
+                    let chunks: Vec<&TerrainChunkData> = chunk_query
+                        .iter()
+                        .filter(|(_, of, _)| of.0 == terrain_entity)
+                        .map(|(chunk, _, _)| chunk)
+                        .collect();
                     if is_stamp && stamp_data.is_loaded() {
                         draw_stamp_gizmo(
                             &mut gizmos,
@@ -279,8 +234,7 @@ pub fn terrain_sculpt_system(
                             &stamp_data,
                             terrain_data,
                             terrain_transform.translation(),
-                            &chunk_query,
-                            terrain_entity,
+                            &chunks,
                         );
                     } else {
                         draw_brush_gizmo(
@@ -289,8 +243,7 @@ pub fn terrain_sculpt_system(
                             &settings,
                             terrain_data,
                             terrain_transform.translation(),
-                            &chunk_query,
-                            terrain_entity,
+                            &chunks,
                         );
                     }
                 }
@@ -375,50 +328,28 @@ pub fn terrain_brush_scroll_system(
 
 // ── Brush gizmo ──────────────────────────────────────────────────────────────
 
+/// The sculpt brush cursor. The ring itself is [`crate::brush_gizmo`], shared
+/// with the paint tool — only the colour is this tool's own.
+#[allow(clippy::too_many_arguments)]
 fn draw_brush_gizmo(
     gizmos: &mut Gizmos,
     hover_pos: Vec3,
     settings: &TerrainSettings,
     terrain: &TerrainData,
     terrain_pos: Vec3,
-    chunk_query: &Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    terrain_entity: Entity,
+    chunks: &[&TerrainChunkData],
 ) {
-    let color = brush_color(settings.brush_type);
-    let radius = settings.brush_radius;
-    let segments = 48usize;
-
-    // Outer ring
-    let _outer = sample_ring(
+    brush_gizmo::draw_brush_cursor(
         gizmos,
         hover_pos,
-        radius,
-        segments,
-        settings,
+        settings.brush_radius,
+        settings.brush_shape,
+        settings.falloff,
+        brush_color(settings.brush_type),
         terrain,
         terrain_pos,
-        chunk_query,
-        terrain_entity,
-        color,
+        chunks,
     );
-
-    // Inner falloff ring
-    if settings.falloff < 0.99 {
-        let inner_radius = radius * (1.0 - settings.falloff);
-        let inner_color = color.with_alpha(0.4);
-        sample_ring(
-            gizmos,
-            hover_pos,
-            inner_radius,
-            segments,
-            settings,
-            terrain,
-            terrain_pos,
-            chunk_query,
-            terrain_entity,
-            inner_color,
-        );
-    }
 }
 
 /// Draw a stamp preview gizmo — shows the stamp shape as a raised wireframe grid
@@ -430,8 +361,7 @@ fn draw_stamp_gizmo(
     stamp: &StampBrushData,
     terrain: &TerrainData,
     terrain_pos: Vec3,
-    chunk_query: &Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    terrain_entity: Entity,
+    chunks: &[&TerrainChunkData],
 ) {
     let color = brush_color(settings.brush_type);
     let radius = settings.brush_radius;
@@ -458,9 +388,8 @@ fn draw_stamp_gizmo(
 
         let stamp_h = stamp.sample(u, v) * height_scale;
 
-        let terrain_y =
-            sample_brush_height(wx, wz, terrain, terrain_pos, chunk_query, terrain_entity)
-                .unwrap_or(hover_pos.y);
+        let terrain_y = brush_gizmo::surface_height(wx, wz, terrain, terrain_pos, chunks)
+            .unwrap_or(hover_pos.y);
 
         Vec3::new(wx, terrain_y + stamp_h + 0.1, wz)
     };
@@ -483,82 +412,16 @@ fn draw_stamp_gizmo(
     }
 
     // Outer boundary ring
-    let boundary_color = color.with_alpha(0.5);
-    let segments = 48;
-    sample_ring(
+    brush_gizmo::draw_ring(
         gizmos,
         hover_pos,
         radius,
-        segments,
-        settings,
+        settings.brush_shape,
         terrain,
         terrain_pos,
-        chunk_query,
-        terrain_entity,
-        boundary_color,
+        chunks,
+        color.with_alpha(0.5),
     );
-}
-
-fn sample_ring(
-    gizmos: &mut Gizmos,
-    center: Vec3,
-    radius: f32,
-    segments: usize,
-    settings: &TerrainSettings,
-    terrain: &TerrainData,
-    terrain_pos: Vec3,
-    chunk_query: &Query<(&mut TerrainChunkData, &TerrainChunkOf, &GlobalTransform)>,
-    terrain_entity: Entity,
-    color: Color,
-) -> Vec<Vec3> {
-    let mut points = Vec::with_capacity(segments);
-
-    for i in 0..segments {
-        let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
-        let (sin_a, cos_a) = angle.sin_cos();
-
-        let (dx, dz) = match settings.brush_shape {
-            BrushShape::Circle => (cos_a * radius, sin_a * radius),
-            BrushShape::Square => {
-                let t = angle / std::f32::consts::FRAC_PI_2;
-                let side = (t.floor() as i32) % 4;
-                let frac = t.fract();
-                match side {
-                    0 => (radius, (frac * 2.0 - 1.0) * radius),
-                    1 => ((1.0 - frac * 2.0) * radius, radius),
-                    2 => (-radius, (1.0 - frac * 2.0) * radius),
-                    _ => ((frac * 2.0 - 1.0) * radius, -radius),
-                }
-            }
-            BrushShape::Diamond => {
-                let t = angle / std::f32::consts::FRAC_PI_2;
-                let side = (t.floor() as i32) % 4;
-                let frac = t.fract();
-                match side {
-                    0 => ((1.0 - frac) * radius, frac * radius),
-                    1 => (-frac * radius, (1.0 - frac) * radius),
-                    2 => (-(1.0 - frac) * radius, -frac * radius),
-                    _ => (frac * radius, -(1.0 - frac) * radius),
-                }
-            }
-        };
-
-        let wx = center.x + dx;
-        let wz = center.z + dz;
-
-        let height = sample_brush_height(wx, wz, terrain, terrain_pos, chunk_query, terrain_entity)
-            .unwrap_or(center.y);
-
-        points.push(Vec3::new(wx, height + 0.15, wz));
-    }
-
-    // Draw line segments
-    for i in 0..segments {
-        let next = (i + 1) % segments;
-        gizmos.line(points[i], points[next], color);
-    }
-
-    points
 }
 
 fn brush_color(brush_type: TerrainBrushType) -> Color {

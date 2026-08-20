@@ -1,7 +1,10 @@
 //! Terrain Editor — sculpting, painting, and brush gizmo systems.
 
-mod brush_layer_paint;
 mod brush_bar;
+mod brush_gizmo;
+mod brush_layer_paint;
+mod generate_bar;
+mod generate_tool;
 mod native;
 mod region_tool;
 mod settings_overlay;
@@ -44,9 +47,10 @@ impl Plugin for TerrainEditorPlugin {
         // they are what *opens* the shelf: one row you can always see that says
         // which terrain mode is on, above the palette that mode reveals.
         //
-        // Resize Terrain is the exception and lives on the shelf instead — it
-        // opens no palette of its own, and it pairs there with the numeric size
-        // editor that does the same job by typing. See [`shelf::register`].
+        // Resize Terrain and Generate Terrain are the exceptions and live on
+        // the shelf instead — neither opens a palette of its own, and there
+        // they sit together as the operations that act on the terrain as a
+        // whole. See [`shelf::register`].
         app.register_tool(
             ToolEntry::new(
                 "builtin.terrain_sculpt",
@@ -105,6 +109,7 @@ impl Plugin for TerrainEditorPlugin {
         // way to reach a brush.
         shelf::register(app);
         brush_bar::register();
+        generate_bar::register(app);
         app.add_systems(
             Update,
             (brush_bar::shape_click, brush_bar::falloff_click)
@@ -114,6 +119,21 @@ impl Plugin for TerrainEditorPlugin {
         // Terrain Settings overlay — the deferred-apply editor for grid size,
         // resolution and height range.
         settings_overlay::register(app);
+
+        // Generate tool — drag a region gizmo, preview the result, commit it
+        // with the bar's Generate button. Chained: the gizmo draws the
+        // rectangle the hover system has just moved, so running them the other
+        // way round would draw one frame behind the cursor.
+        app.init_resource::<generate_tool::GenerateHover>().add_systems(
+            Update,
+            (
+                generate_tool::generate_hover_system,
+                generate_tool::generate_gizmo_system,
+            )
+                .chain()
+                .run_if(generate_tool::generate_tool_active)
+                .run_if(renzora::core::not_in_play_mode),
+        );
 
         // Region tool — grow/shrink the chunk grid by clicking ghost tiles.
         app.init_resource::<region_tool::RegionHover>().add_systems(

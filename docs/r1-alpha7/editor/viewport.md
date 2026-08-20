@@ -54,14 +54,14 @@ Down the **left edge of the viewport** sits the **tool shelf**: a two-column pal
 | Modeling — select | Edit mode | Vertex, Edge, Face, Loop Cut |
 | Modeling — ops | Edit mode | Subdivide, Inset, Merge, Delete |
 | Modeling — brushes | Sculpt mode | Draw, Smooth, Grab, Inflate, Flatten, Pinch |
-| Terrain — size | any terrain tool is in hand | Resize Terrain, Terrain Size & Resolution |
+| Terrain — whole | any terrain tool is in hand | Generate Terrain, Resize Terrain, Terrain Size & Resolution |
 | Terrain — sculpt | Sculpt Terrain is the active tool | all 17 sculpt brushes |
 | Terrain — paint | Paint Terrain Layers is active | Paint, Erase, Smooth, Fill |
 | Foliage | Paint Foliage is active | Paint / Erase, then one button per foliage type |
 
 Pick up the terrain sculpt tool in the toolbar and all 17 sculpt brushes are there at once; switch to terrain paint and it swaps to the paint brushes. Enter Edit mode and you get the two draw tools, the select modes, and the ops. The shelf collapses completely when nothing in it applies.
 
-Every group is an even number of buttons, so none of them ends on a half-empty row — which is why Loop Cut sits with the select modes rather than with the ops (it's modal like they are: it arms and previews, where the four ops fire on click), and why **Resize Terrain** is on the shelf rather than in the toolbar's terrain row. Resize opens no palette of its own, so up there it was a mode button with nothing under it; here it pairs with **Terrain Size & Resolution**, which opens the numeric editor for the same grid size, chunk resolution and height range — one reaches them by dragging the grid out, the other by typing. Like everything else on the shelf, the pair appears once a terrain tool is in hand: pick any terrain mode in the toolbar and the whole column comes up together, this group included.
+Every group is an even number of buttons, so none of them ends on a half-empty row — which is why Loop Cut sits with the select modes rather than with the ops (it's modal like they are: it arms and previews, where the four ops fire on click), and why **Generate Terrain** and **Resize Terrain** are on the shelf rather than in the toolbar's terrain row. Neither opens a palette of its own, so up there each was a mode button with nothing under it; here they sit together as the operations that act on the terrain *as a whole* — fill it with procedural mountains, drag its extent out, or type that extent in via **Terrain Size & Resolution**. Like everything else on the shelf, the group appears once a terrain tool is in hand: pick any terrain mode in the toolbar and the whole column comes up together, this group included.
 
 The shelf exists because the top strip is the wrong shape for this. A handful of modes fits across it; seventeen brushes — or the ten buttons Edit mode wants — wrap it into a second row and push Play and the view controls down with them, and a row of identical squares is hard to hunt through. Down the left edge there is nothing competing for the space, and two columns keeps the palette a compact block instead of a ribbon running off the bottom of the view.
 

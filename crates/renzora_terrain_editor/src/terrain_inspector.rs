@@ -18,6 +18,8 @@ pub enum TerrainInspectorTab {
     Foliage,
     /// Grid resizing by clicking ghost tiles in the scene.
     Region,
+    /// Procedural generation over a region gizmo in the scene.
+    Generate,
     // Retained as part of the tab model; not yet surfaced by the native panel.
     #[allow(dead_code)]
     Heightmap,
@@ -31,6 +33,7 @@ impl TerrainInspectorTab {
             Self::Paint => ActiveTool::TerrainPaint,
             Self::Foliage => ActiveTool::FoliagePaint,
             Self::Region => ActiveTool::TerrainRegion,
+            Self::Generate => ActiveTool::TerrainGenerate,
             Self::Size | Self::Heightmap => ActiveTool::Select,
         }
     }

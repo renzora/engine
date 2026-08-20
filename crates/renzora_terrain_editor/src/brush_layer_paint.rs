@@ -9,13 +9,15 @@ use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use renzora::viewport_types::ViewportState;
 use renzora_editor_framework::EditorSelection;
-use renzora_terrain::data::{TerrainChunkOf, TerrainData};
+use renzora_terrain::data::{TerrainChunkData, TerrainChunkOf, TerrainData};
 use renzora_terrain::paint::{
     PaintBrushType, SurfacePaintCommand, SurfacePaintSettings, SurfacePaintState, MAX_LAYERS,
 };
 use renzora_terrain::painter::{
     painter_grid_size, push_layer, remove_layer, PaintLayer, Painter, PainterLayerMesh,
 };
+
+use crate::brush_gizmo;
 
 /// Drain the panel's pending layer commands into the target terrain's
 /// `Painter`, and keep `Painter.active_layer` following the panel's row
@@ -100,20 +102,42 @@ pub fn brush_layer_paint_system(
     paint_state: Res<SurfacePaintState>,
     paint_settings: Res<SurfacePaintSettings>,
     chunk_query: Query<&TerrainChunkOf>,
+    chunk_heights: Query<(&TerrainChunkData, &TerrainChunkOf)>,
     mut painter_query: Query<(&mut Painter, &TerrainData, &GlobalTransform)>,
     time: Res<Time>,
     mut gizmos: Gizmos,
 ) {
     // Brush cursor ring is drawn whenever we have a hover + the hit chunk's
-    // terrain has a Painter.
+    // terrain has a Painter. It is the same cursor the sculpt brushes draw —
+    // surface-following, shaped, with the falloff ring inside it — because the
+    // toolbar offers paint all three of those settings and a cursor that
+    // ignored them meant discovering the brush by painting and undoing.
     if paint_state.brush_visible {
         if let (Some(hover_pos), Some(chunk_entity)) =
             (paint_state.hover_position, paint_state.active_entity)
         {
             if let Ok(of) = chunk_query.get(chunk_entity) {
-                if let Ok((_, terrain, _)) = painter_query.get(of.0) {
+                if let Ok((_, terrain, terrain_gt)) = painter_query.get(of.0) {
+                    let chunks: Vec<&TerrainChunkData> = chunk_heights
+                        .iter()
+                        .filter(|(_, owner)| owner.0 == of.0)
+                        .map(|(chunk, _)| chunk)
+                        .collect();
+                    // Paint's radius is a fraction of a chunk, not metres —
+                    // the mask it writes into is per-chunk and resolution
+                    // independent, so the brush scales with the terrain.
                     let world_radius = paint_settings.brush_radius * terrain.chunk_size;
-                    draw_cursor_ring(&mut gizmos, hover_pos, world_radius, &paint_settings);
+                    brush_gizmo::draw_brush_cursor(
+                        &mut gizmos,
+                        hover_pos,
+                        world_radius,
+                        paint_settings.brush_shape,
+                        paint_settings.brush_falloff,
+                        paint_color(paint_settings.brush_type),
+                        terrain,
+                        terrain_gt.translation(),
+                        &chunks,
+                    );
                 }
             }
         }
@@ -234,33 +258,14 @@ fn stamp_into_mask(
     layer.mesh_dirty = true;
 }
 
-fn draw_cursor_ring(
-    gizmos: &mut Gizmos,
-    center: Vec3,
-    world_radius: f32,
-    settings: &SurfacePaintSettings,
-) {
-    let color = match settings.brush_type {
+/// One colour per paint brush, so the cursor says which one is in hand — the
+/// same job [`crate::systems::brush_color`] does for the sculpt brushes.
+fn paint_color(brush_type: PaintBrushType) -> Color {
+    match brush_type {
         PaintBrushType::Paint => Color::srgba(0.2, 0.7, 0.9, 0.9),
         PaintBrushType::Erase => Color::srgba(0.9, 0.3, 0.2, 0.9),
         PaintBrushType::Smooth => Color::srgba(0.3, 0.6, 0.9, 0.9),
         PaintBrushType::Fill => Color::srgba(0.9, 0.8, 0.2, 0.9),
-    };
-    const SEGMENTS: u32 = 48;
-    for i in 0..SEGMENTS {
-        let a0 = (i as f32 / SEGMENTS as f32) * std::f32::consts::TAU;
-        let a1 = ((i + 1) as f32 / SEGMENTS as f32) * std::f32::consts::TAU;
-        let p0 = Vec3::new(
-            center.x + a0.cos() * world_radius,
-            center.y + 0.1,
-            center.z + a0.sin() * world_radius,
-        );
-        let p1 = Vec3::new(
-            center.x + a1.cos() * world_radius,
-            center.y + 0.1,
-            center.z + a1.sin() * world_radius,
-        );
-        gizmos.line(p0, p1, color);
     }
 }
 

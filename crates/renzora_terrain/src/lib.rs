@@ -1,6 +1,7 @@
 pub mod brush_layer;
 pub mod data;
 pub mod foliage;
+pub mod generate;
 pub mod grid;
 pub mod height_layers;
 pub mod heightmap_import;
@@ -33,6 +34,7 @@ impl Plugin for TerrainPlugin {
             .init_resource::<data::TerrainSettings>()
             .init_resource::<data::TerrainSculptState>()
             .init_resource::<data::StampBrushData>()
+            .init_resource::<generate::TerrainGenSettings>()
             .init_resource::<paint::SurfacePaintSettings>()
             .init_resource::<paint::SurfacePaintState>()
             .init_resource::<undo::TerrainStrokeSnapshot>()
