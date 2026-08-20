@@ -183,7 +183,9 @@ The colors map to the 3D axes: **X is red, Y is green, Z is blue**. A handle tur
 
 Because the handles draw on top of everything, they'd normally hide the object as you drag it. To keep the object visible, the whole gizmo **fades to translucent while you're dragging a handle** and snaps back to fully opaque on release. How transparent it gets is up to you — set **Settings → Viewport → Gizmos → Drag Opacity** (`0` = invisible during the drag, `1` = no fade). The setting is saved per project.
 
-Rotating and scaling pivot around the object's **bounding-box center**, so objects transform in place rather than drifting — this holds even for imported models whose pivot was authored at the world origin.
+Rotating and scaling pivot around the **base of the object's bounding box** — centred on X and Z, sitting on the bottom in Y — so an object turns and scales about the point where it meets the floor and stays standing instead of sinking through the surface. This holds even for imported models whose pivot was authored at the world origin. Prefer the middle? Turn off **Settings → Viewport → Gizmos → Gizmo at Object Base** and both the handles and the drag pivot move back to the bounding-box centre.
+
+While you drag a rotate ring, the swept angle fills in as a pie sector with the **angle in degrees** printed beside it. With the toolbar's rotate snap on, that readout steps with the object rather than counting through every intermediate degree, so the number you see is always the rotation actually applied — which also means it stays at `0.0` until your drag reaches the first step. The same readout appears for the keyboard `R` rotate.
 
 ### World vs Local space
 

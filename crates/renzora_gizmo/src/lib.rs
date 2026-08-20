@@ -1498,7 +1498,12 @@ fn draw_transform_lines<G: GizmoConfigGroup, P: GizmoConfigGroup>(
             // the object. Only the focused slot draws this readout.
             if let Some(cam_pos) = readout {
                 if let Some(active_axis) = gizmo_state.active_axis {
-                    if gizmo_state.drag_angle.abs() > 1e-4 {
+                    // Test the value that is actually drawn, not the raw
+                    // accumulator. With snap on, a drag shorter than half a step
+                    // applies no rotation, and guarding on the raw angle drew a
+                    // zero-width pie and a `0.0` label for it — a readout the
+                    // object was not following.
+                    if gizmo_state.drag_angle_snapped.abs() > 1e-4 {
                         draw_rotation_pie(
                             gizmos,
                             pos,
@@ -1644,21 +1649,7 @@ pub(crate) fn draw_angle_label<C: GizmoConfigGroup>(
     }
     let up = forward.cross(right);
     let rot = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
-    // Bevy 0.19's gizmo stroke font only contains glyphs for printable ASCII
-    // (32–126); the U+00B0 degree character is outside that range and renders
-    // as no glyph at all (advance only, no visible stroke), so including it in
-    // the format string produced visually-empty trailing advance. Drop the
-    // degree symbol so the label reads cleanly. `{:.1}` then renders positive
-    // three-digit values as 5 chars (`100.0`); negative three-digit values
-    // still render as 6 chars (`-100.0`) and are acceptable for current usage.
-    // Also normalize values within ±0.05° of zero to a single `0.0` so the HUD
-    // doesn't flicker between `0.0` and `-0.0` from IEEE-754 rounding noise as
-    // the rotation crosses zero in either direction.
-    let mut degrees = radians.to_degrees();
-    if degrees.abs() < 0.05 {
-        degrees = 0.0;
-    }
-    let text = format!("{:.1}", degrees);
+    let text = angle_label_text(radians);
     let size = (radius * 0.35).max(0.05);
     gizmos.text(
         Isometry3d::new(pivot, rot),
@@ -2770,14 +2761,8 @@ fn gizmo_drag(
             let delta_angle = screen_delta_to_angle(total_delta, world_axis, cam_gt);
             gizmo_state.drag_angle += delta_angle;
 
-            // If snap is on, snap the accumulated drag_angle to the step and
-            // apply the delta needed to reach the snapped value from starts.
-            let effective_angle = if snap.rotate_enabled && snap.rotate_snap > 0.0 {
-                let step = snap.rotate_snap.to_radians();
-                (gizmo_state.drag_angle / step).round() * step
-            } else {
-                gizmo_state.drag_angle
-            };
+            // Apply the delta needed to reach the snapped value from starts.
+            let effective_angle = snap_rotation(gizmo_state.drag_angle, &snap);
             gizmo_state.drag_angle_snapped = effective_angle;
             let world_rot = Quat::from_axis_angle(world_axis, effective_angle);
             let pivot = gizmo_state.drag_pivot;
@@ -2848,6 +2833,39 @@ fn gizmo_drag(
                 }
             }
         }
+    }
+}
+
+/// Format the rotate HUD's degrees readout.
+///
+/// Carries no `°` suffix on purpose. Bevy's gizmo stroke font only holds
+/// glyphs for printable ASCII (32-126) and U+00B0 falls outside that range, so
+/// the lookup misses and the character draws as a blank advance. It was never
+/// visible at any angle — all the suffix bought was a trailing gap.
+///
+/// Values within ±0.05° of zero collapse to one `0.0` so the label doesn't
+/// flicker between `0.0` and `-0.0` as the rotation crosses zero. Which sign
+/// you land on depends on the direction of travel, so dragging back and forth
+/// over zero made it alternate.
+fn angle_label_text(radians: f32) -> String {
+    let degrees = radians.to_degrees();
+    let degrees = if degrees.abs() < 0.05 { 0.0 } else { degrees };
+    format!("{degrees:.1}")
+}
+
+/// Round `radians` to the rotate-snap step, or pass it through when the snap
+/// pill is off.
+///
+/// Three places have to agree on this exactly: the ring drag below, the modal
+/// `R` shortcut's `apply_rotate`, and the modal overlay that draws the readout.
+/// While the overlay was the odd one out, the HUD counted through every
+/// intermediate degree for an object that was moving in steps.
+pub(crate) fn snap_rotation(radians: f32, snap: &SnapSettings) -> f32 {
+    if snap.rotate_enabled && snap.rotate_snap > 0.0 {
+        let step = snap.rotate_snap.to_radians();
+        (radians / step).round() * step
+    } else {
+        radians
     }
 }
 
@@ -3689,12 +3707,17 @@ mod tests {
 
     // ── compute_gizmo_pivot ─────────────────────────────────────────────────
 
-    fn run_compute_pivot(world: &mut World, entity: Entity, fallback: GlobalTransform) -> Vec3 {
+    fn run_compute_pivot(
+        world: &mut World,
+        entity: Entity,
+        fallback: GlobalTransform,
+        bottom: bool,
+    ) -> Vec3 {
         world
             .run_system_once(
                 move |aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
                       children: Query<&Children>| {
-                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback, false)
+                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback, bottom)
                 },
             )
             .unwrap()
@@ -3715,7 +3738,7 @@ mod tests {
             .id();
         // Pivot anchors on the mesh AABB, not the (bogus) fallback transform.
         let fallback = GlobalTransform::from_translation(Vec3::splat(99.0));
-        let pivot = run_compute_pivot(&mut world, entity, fallback);
+        let pivot = run_compute_pivot(&mut world, entity, fallback, false);
         assert!((pivot - Vec3::new(10.0, 2.0, 0.0)).length() < 1e-4, "got {pivot}");
     }
 
@@ -3735,7 +3758,7 @@ mod tests {
             ChildOf(parent),
         ));
         let fallback = GlobalTransform::IDENTITY;
-        let pivot = run_compute_pivot(&mut world, parent, fallback);
+        let pivot = run_compute_pivot(&mut world, parent, fallback, false);
         assert!((pivot - Vec3::new(0.0, 0.0, -6.0)).length() < 1e-4, "got {pivot}");
     }
 
@@ -3744,7 +3767,123 @@ mod tests {
         let mut world = World::new();
         let entity = world.spawn(Name::new("JustSpawned")).id();
         let fallback = GlobalTransform::from_translation(Vec3::new(1.0, 2.0, 3.0));
-        let pivot = run_compute_pivot(&mut world, entity, fallback);
+        let pivot = run_compute_pivot(&mut world, entity, fallback, false);
         assert_eq!(pivot, Vec3::new(1.0, 2.0, 3.0));
+    }
+
+    #[test]
+    fn compute_gizmo_pivot_bottom_anchors_on_the_aabb_base() {
+        let mut meshes = Assets::<Mesh>::default();
+        let mesh = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
+
+        let mut world = World::new();
+        // Unit-radius AABB centred at y = 2 → base sits at y = 1, and X/Z stay
+        // on the centre so the handles keep straddling the object.
+        let entity = world
+            .spawn((
+                Mesh3d(mesh),
+                Aabb::from_min_max(Vec3::splat(-1.0), Vec3::splat(1.0)),
+                GlobalTransform::from_translation(Vec3::new(10.0, 2.0, -3.0)),
+            ))
+            .id();
+        let fallback = GlobalTransform::from_translation(Vec3::splat(99.0));
+        let pivot = run_compute_pivot(&mut world, entity, fallback, true);
+        assert!((pivot - Vec3::new(10.0, 1.0, -3.0)).length() < 1e-4, "got {pivot}");
+    }
+
+    #[test]
+    fn compute_gizmo_pivot_bottom_uses_the_lowest_descendant() {
+        let mut meshes = Assets::<Mesh>::default();
+        let mesh = meshes.add(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)));
+
+        let mut world = World::new();
+        // Two children at different heights: the base must come from the lower
+        // one, not from whichever mesh is visited first.
+        let parent = world.spawn(Name::new("Root")).id();
+        world.spawn((
+            Mesh3d(mesh.clone()),
+            Aabb::from_min_max(Vec3::splat(-1.0), Vec3::splat(1.0)),
+            GlobalTransform::from_translation(Vec3::new(0.0, 8.0, 0.0)),
+            ChildOf(parent),
+        ));
+        world.spawn((
+            Mesh3d(mesh),
+            Aabb::from_min_max(Vec3::splat(-1.0), Vec3::splat(1.0)),
+            GlobalTransform::from_translation(Vec3::new(0.0, 3.0, 0.0)),
+            ChildOf(parent),
+        ));
+        let fallback = GlobalTransform::IDENTITY;
+        let pivot = run_compute_pivot(&mut world, parent, fallback, true);
+        // Combined bounds span y = 2..9 → centre y = 5.5, base y = 2.
+        assert!((pivot.y - 2.0).abs() < 1e-4, "got {pivot}");
+        let centre = run_compute_pivot(&mut world, parent, fallback, false);
+        assert!((centre.y - 5.5).abs() < 1e-4, "got {centre}");
+    }
+
+    #[test]
+    fn compute_gizmo_pivot_bottom_falls_back_without_aabbs() {
+        // No bounds to sit on the base of — `bottom` must not change the
+        // fallback, or a just-spawned entity would snap to y = 0.
+        let mut world = World::new();
+        let entity = world.spawn(Name::new("JustSpawned")).id();
+        let fallback = GlobalTransform::from_translation(Vec3::new(1.0, 2.0, 3.0));
+        let pivot = run_compute_pivot(&mut world, entity, fallback, true);
+        assert_eq!(pivot, Vec3::new(1.0, 2.0, 3.0));
+    }
+
+    // ── rotate HUD readout ──────────────────────────────────────────────────
+
+    #[test]
+    fn angle_label_text_drops_the_degree_symbol() {
+        // The stroke font is ASCII-only; a non-ASCII char would draw as a gap.
+        let text = angle_label_text(std::f32::consts::FRAC_PI_4);
+        assert!(text.is_ascii(), "got {text}");
+        assert_eq!(text, "45.0");
+    }
+
+    #[test]
+    fn angle_label_text_collapses_negative_zero() {
+        // Both sides of zero, and the rounding noise just inside the clamp,
+        // must render as one string or the label flickers as you cross zero.
+        assert_eq!(angle_label_text(0.0), "0.0");
+        assert_eq!(angle_label_text(-0.0), "0.0");
+        assert_eq!(angle_label_text(-0.04_f32.to_radians()), "0.0");
+        assert_eq!(angle_label_text(0.04_f32.to_radians()), "0.0");
+    }
+
+    #[test]
+    fn angle_label_text_is_unbounded_past_three_digits() {
+        // Nothing truncates this — a full turn and beyond must read out whole.
+        assert_eq!(angle_label_text(100.0_f32.to_radians()), "100.0");
+        assert_eq!(angle_label_text(450.0_f32.to_radians()), "450.0");
+        assert_eq!(angle_label_text(-100.0_f32.to_radians()), "-100.0");
+    }
+
+    fn rotate_snap(step_degrees: f32) -> SnapSettings {
+        SnapSettings {
+            rotate_enabled: true,
+            rotate_snap: step_degrees,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn snap_rotation_rounds_to_the_nearest_step() {
+        let snap = rotate_snap(15.0);
+        let deg = |r: f32| snap_rotation(r.to_radians(), &snap).to_degrees();
+        assert!((deg(22.0) - 15.0).abs() < 1e-3, "got {}", deg(22.0));
+        assert!((deg(23.0) - 30.0).abs() < 1e-3, "got {}", deg(23.0));
+        // Rounds symmetrically through zero, so dragging back retraces steps.
+        assert!((deg(-23.0) + 30.0).abs() < 1e-3, "got {}", deg(-23.0));
+        // Under half a step applies nothing — the readout guard relies on this.
+        assert!(deg(7.0).abs() < 1e-3, "got {}", deg(7.0));
+    }
+
+    #[test]
+    fn snap_rotation_passes_through_when_disabled() {
+        let raw = 0.371_f32;
+        assert_eq!(snap_rotation(raw, &SnapSettings::default()), raw);
+        // Enabled but with a zero step would divide by zero — guarded off.
+        assert_eq!(snap_rotation(raw, &rotate_snap(0.0)), raw);
     }
 }

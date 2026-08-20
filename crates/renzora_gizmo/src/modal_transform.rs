@@ -663,22 +663,19 @@ pub fn modal_transform_overlay_system(
         } else {
             (-modal.accumulated_delta.x + modal.accumulated_delta.y) * modal.sensitivity * 0.5
         };
-        // Match the snap math in `apply_rotate` for the mouse-delta path. The
-        // typed-numeric path is intentionally NOT snapped here: `apply_rotate`
-        // returns early when `numeric_input.value()` is `Some(_)` and writes the
-        // typed value unsnapped, so the overlay must mirror that to keep the
-        // displayed angle equal to the applied angle.
+        // Share `apply_rotate`'s snap math for the mouse-delta path. The
+        // typed-numeric path is deliberately NOT snapped: `apply_rotate` returns
+        // early when `numeric_input.value()` is `Some(_)` and writes the typed
+        // value as-is, so the overlay mirrors that to keep the angle it displays
+        // equal to the one applied.
         let snap: SnapSettings = viewport_settings
             .as_deref()
             .map(|s| s.snap)
             .unwrap_or_default();
-        let snap_enabled = snap.rotate_enabled && snap.rotate_snap > 0.0;
-        let angle = match (modal.numeric_input.value(), snap_enabled) {
-            (None, true) => {
-                let step = snap.rotate_snap.to_radians();
-                (raw_angle / step).round() * step
-            }
-            _ => raw_angle,
+        let angle = if modal.numeric_input.value().is_some() {
+            raw_angle
+        } else {
+            crate::snap_rotation(raw_angle, &snap)
         };
         let radius = (crate::GIZMO_SIZE * gizmo_state.gizmo_scale * 0.7).max(0.01);
         let color = modal.axis_constraint.color();
@@ -893,12 +890,7 @@ fn apply_rotate(
     }
 
     let raw_angle = (-delta.x + delta.y) * modal.sensitivity * 0.5;
-    let angle = if snap.rotate_enabled && snap.rotate_snap > 0.0 {
-        let step = snap.rotate_snap.to_radians();
-        (raw_angle / step).round() * step
-    } else {
-        raw_angle
-    };
+    let angle = crate::snap_rotation(raw_angle, snap);
 
     let rotation = match modal.axis_constraint {
         AxisConstraint::X | AxisConstraint::PlaneYZ => Quat::from_rotation_x(angle),
