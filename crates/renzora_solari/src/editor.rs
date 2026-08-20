@@ -10,7 +10,9 @@
 
 use bevy::prelude::*;
 use bevy::solari::realtime::SolariLighting;
-use renzora::{AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, SolariGi};
+use renzora::{
+    bool_field, AppEditorExt, FieldDef, FieldType, FieldValue, InspectorEntry, SolariGi,
+};
 
 pub(crate) fn register_inspectors(app: &mut App) {
     app.register_inspector(solari_inspector_entry());
@@ -38,6 +40,15 @@ fn solari_inspector_entry() -> InspectorEntry {
             }
         }),
         fields: vec![
+            // Solari traces visibility instead of sampling shadow maps, and its
+            // camera carries `SkipDeferredLighting` — which removes the only
+            // pass that would read one. Every cascade and point-light cubemap is
+            // therefore rendered and discarded. Suppression is applied to the
+            // EXTRACTED lights in the render world, so toggling this never
+            // writes to the user's light components (see `suppress_shadow_maps`
+            // in lib.rs); it is exposed here because keeping raster shadows is a
+            // legitimate thing to want while comparing backends.
+            bool_field!("Suppress Shadow Maps", SolariGi, suppress_shadow_maps),
             // Solari's realtime component (`SolariLighting`) exposes exactly one
             // runtime knob: `reset`, which clears the temporal history. Surface
             // it as a button — handy after a camera cut or when ghosting/dark

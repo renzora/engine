@@ -205,11 +205,38 @@ pub struct GpuIsIntegrated {
 #[reflect(Component, Serialize, Deserialize)]
 pub struct SolariGi {
     pub enabled: bool,
+    /// Stop rendering shadow maps while Solari is lighting the scene.
+    ///
+    /// Solari replaces shadow mapping with traced visibility, and its camera
+    /// carries `SkipDeferredLighting` — which removes the only pass that would
+    /// ever *read* a shadow map. Every sun cascade and every point-light cubemap
+    /// is therefore rendered and then thrown away, which in a scene with many
+    /// lamps is a large amount of wasted GPU time. Bevy's own guidance is to
+    /// turn shadow maps off on all lights while Solari is on.
+    ///
+    /// The suppression is applied in the *render world*, to the extracted
+    /// lights, so your `PointLight`/`DirectionalLight` components are never
+    /// touched and a scene saved while Solari is active doesn't silently
+    /// persist shadows-off. Turn this off if you want to compare against, or
+    /// keep, raster shadows.
+    #[serde(default = "shadow_map_suppression_default")]
+    #[reflect(default = "shadow_map_suppression_default")]
+    pub suppress_shadow_maps: bool,
+}
+
+/// Default for [`SolariGi::suppress_shadow_maps`], used both by `serde` and by
+/// reflection so a scene saved before the field existed loads with suppression
+/// on rather than with `bool::default()` (`false`).
+fn shadow_map_suppression_default() -> bool {
+    true
 }
 
 impl Default for SolariGi {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            suppress_shadow_maps: shadow_map_suppression_default(),
+        }
     }
 }
 
