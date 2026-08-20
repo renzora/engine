@@ -3694,7 +3694,7 @@ mod tests {
             .run_system_once(
                 move |aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
                       children: Query<&Children>| {
-                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback)
+                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback, false)
                 },
             )
             .unwrap()
