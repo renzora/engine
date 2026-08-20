@@ -228,6 +228,31 @@ pub fn foliage_follow_terrain_system(
     }
 }
 
+/// Despawns blade sets whose terrain chunk is gone.
+///
+/// Batch entities are deliberately roots rather than children of the chunk they
+/// belong to: they carry a world-space `Transform`, and parenting them would put
+/// one entity per chunk per foliage type into the scene tree. The cost of that
+/// choice is that no hierarchy despawn reaches them — deleting the terrain
+/// despawns its chunks recursively and every blade set it seeded stays behind,
+/// grass floating over an empty scene with nothing left to select it by.
+///
+/// Keyed on the density map rather than on the chunk entity merely existing,
+/// because that is what the scatter above iterates: the moment a batch's source
+/// stops matching, the batch is stale. Streaming a chunk out keeps both, so this
+/// does not fight the streamer.
+pub fn foliage_despawn_orphaned_batches_system(
+    mut commands: Commands,
+    batches: Query<(Entity, &FoliageBatch)>,
+    chunks: Query<(), With<FoliageDensityMap>>,
+) {
+    for (entity, batch) in batches.iter() {
+        if !chunks.contains(batch.chunk_entity) {
+            commands.entity(entity).try_despawn();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,6 +285,50 @@ mod tests {
             cost.live_interval(),
             MAX_LIVE_INTERVAL,
             "a stroke must never be left without feedback"
+        );
+    }
+
+    /// Deleting the terrain despawns its chunks, but the blade sets they seeded
+    /// are root entities that no hierarchy despawn reaches — so without this the
+    /// grass stayed on screen over an empty scene.
+    #[test]
+    fn orphaned_blade_sets_are_despawned() {
+        let mut app = App::new();
+        app.add_systems(Update, foliage_despawn_orphaned_batches_system);
+
+        let live_chunk = app
+            .world_mut()
+            .spawn(FoliageDensityMap::for_chunk(64.0))
+            .id();
+        let doomed_chunk = app
+            .world_mut()
+            .spawn(FoliageDensityMap::for_chunk(64.0))
+            .id();
+        let kept = app
+            .world_mut()
+            .spawn(FoliageBatch {
+                foliage_type_index: 0,
+                chunk_entity: live_chunk,
+            })
+            .id();
+        let orphan = app
+            .world_mut()
+            .spawn(FoliageBatch {
+                foliage_type_index: 0,
+                chunk_entity: doomed_chunk,
+            })
+            .id();
+
+        app.world_mut().entity_mut(doomed_chunk).despawn();
+        app.update();
+
+        assert!(
+            app.world().get_entity(orphan).is_err(),
+            "a blade set whose chunk is gone must not survive"
+        );
+        assert!(
+            app.world().get_entity(kept).is_ok(),
+            "a blade set whose chunk is still there must be left alone"
         );
     }
 

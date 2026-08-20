@@ -45,6 +45,7 @@ impl Plugin for FoliagePlugin {
                         .after(crate::height_layers::compose_height_layers_system)
                         .before(crate::mesh::terrain_chunk_mesh_update_system),
                     systems::foliage_scatter_rebuild_system,
+                    systems::foliage_despawn_orphaned_batches_system,
                 ),
             );
     }
