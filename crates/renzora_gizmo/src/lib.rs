@@ -321,6 +321,11 @@ pub struct GizmoState {
     pub drag_starts: Vec<(Entity, Vec3, Quat, Vec3)>,
     pub drag_offset: Vec3,
     pub drag_angle: f32,
+    /// Snapped counterpart of [`Self::drag_angle`] for the rotate HUD. Stores
+    /// the same value the drag handler applied to the entity so the pie-sector
+    /// and degrees label read in step increments instead of scrolling through
+    /// every intermediate degree. `0.0` when no rotate drag is active.
+    pub drag_angle_snapped: f32,
     pub drag_scale_factor: f32,
     pub gizmo_scale: f32,
     /// +1 or -1 per axis — flipped so each arrow points toward the camera
@@ -355,6 +360,7 @@ impl Default for GizmoState {
             drag_starts: Vec::new(),
             drag_offset: Vec3::ZERO,
             drag_angle: 0.0,
+            drag_angle_snapped: 0.0,
             drag_scale_factor: 0.0,
             gizmo_scale: 1.0,
             axis_signs: Vec3::ONE,
@@ -1497,7 +1503,7 @@ fn draw_transform_lines<G: GizmoConfigGroup, P: GizmoConfigGroup>(
                             gizmos,
                             pos,
                             basis * active_axis.direction(),
-                            gizmo_state.drag_angle,
+                            gizmo_state.drag_angle_snapped,
                             radius,
                             highlight,
                         );
@@ -1505,7 +1511,7 @@ fn draw_transform_lines<G: GizmoConfigGroup, P: GizmoConfigGroup>(
                             gizmos,
                             pos,
                             cam_pos,
-                            gizmo_state.drag_angle,
+                            gizmo_state.drag_angle_snapped,
                             radius,
                             highlight,
                         );
@@ -1638,7 +1644,21 @@ pub(crate) fn draw_angle_label<C: GizmoConfigGroup>(
     }
     let up = forward.cross(right);
     let rot = Quat::from_mat3(&Mat3::from_cols(right, up, forward));
-    let text = format!("{:.1}\u{00B0}", radians.to_degrees());
+    // Bevy 0.19's gizmo stroke font only contains glyphs for printable ASCII
+    // (32–126); the U+00B0 degree character is outside that range and renders
+    // as no glyph at all (advance only, no visible stroke), so including it in
+    // the format string produced visually-empty trailing advance. Drop the
+    // degree symbol so the label reads cleanly. `{:.1}` then renders positive
+    // three-digit values as 5 chars (`100.0`); negative three-digit values
+    // still render as 6 chars (`-100.0`) and are acceptable for current usage.
+    // Also normalize values within ±0.05° of zero to a single `0.0` so the HUD
+    // doesn't flicker between `0.0` and `-0.0` from IEEE-754 rounding noise as
+    // the rotation crosses zero in either direction.
+    let mut degrees = radians.to_degrees();
+    if degrees.abs() < 0.05 {
+        degrees = 0.0;
+    }
+    let text = format!("{:.1}", degrees);
     let size = (radius * 0.35).max(0.05);
     gizmos.text(
         Isometry3d::new(pivot, rot),
@@ -2564,6 +2584,7 @@ fn gizmo_drag(
             gizmo_state.drag_parents = parents;
             gizmo_state.drag_offset = Vec3::ZERO;
             gizmo_state.drag_angle = 0.0;
+            gizmo_state.drag_angle_snapped = 0.0;
             gizmo_state.drag_scale_factor = 0.0;
             // Leave the cursor visible and free while dragging — the drag tracks
             // raw mouse motion either way, and locking it in place feels frozen.
@@ -2757,6 +2778,7 @@ fn gizmo_drag(
             } else {
                 gizmo_state.drag_angle
             };
+            gizmo_state.drag_angle_snapped = effective_angle;
             let world_rot = Quat::from_axis_angle(world_axis, effective_angle);
             let pivot = gizmo_state.drag_pivot;
             for (i, &entity) in selected_entities.iter().enumerate() {
@@ -3672,7 +3694,7 @@ mod tests {
             .run_system_once(
                 move |aabbs: Query<(Option<&Aabb>, &GlobalTransform), With<Mesh3d>>,
                       children: Query<&Children>| {
-                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback)
+                    compute_gizmo_pivot(entity, &aabbs, &children, &fallback, false)
                 },
             )
             .unwrap()

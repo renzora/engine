@@ -171,7 +171,7 @@ pub(crate) fn header_groups(
         |w, v| set_snap(w, |s| &mut s.translate_snap, v),
     );
     let rotate = snap_pair(
-        commands, fonts, SnapToggle::Rotate, "arrow-clockwise", 1.0, 90.0, 1.0,
+        commands, fonts, SnapToggle::Rotate, "arrow-clockwise", 1.0, 180.0, 1.0,
         |w| snap_val(w, |s| s.rotate_snap),
         |w, v| set_snap(w, |s| &mut s.rotate_snap, v),
     );
