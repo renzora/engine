@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_shader = { path = "../renzora_shader" }
+renzora_shader = { path = "../renzora_shader", features = ["editor"] }
 # bevy_ui-native panel content (the egui → bevy_ui migration).
 renzora_ember = { path = "../renzora_ember" }
 
