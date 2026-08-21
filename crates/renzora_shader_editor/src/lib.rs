@@ -62,6 +62,7 @@ impl Plugin for ShaderEditorPlugin {
         app.add_plugins(native_preview::NativeShaderPreview);
         app.add_plugins(native_compiler_log::NativeShaderCompilerLog);
         app.add_plugins(native_properties::NativeShaderProperties);
+        app.add_plugins(renzora_shader::material::hot_reload::WgslHotReloadPlugin);
     }
 }
 

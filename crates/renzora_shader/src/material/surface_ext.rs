@@ -194,6 +194,64 @@ impl From<&SurfaceGraphExt> for SurfaceGraphExtKey {
     }
 }
 
+/// Swap the descriptor's fragment shader to the per-instance compiled
+/// `Handle<Shader>` identified by `shader_uuid`. Skips the swap on prepass
+/// and shadow pipelines, where the generated WGSL (which imports
+/// `apply_pbr_lighting` gated on `#ifndef PREPASS_FRAGMENT`) is invalid.
+///
+/// Pulled out of the trait `specialize` so the logic can be unit-tested
+/// without constructing a `MaterialExtensionPipeline` (whose inner
+/// `MeshPipeline` requires a `RenderDevice` that needs a GPU).
+pub(crate) fn swap_graph_fragment_shader(
+    descriptor: &mut RenderPipelineDescriptor,
+    layout: &MeshVertexBufferLayoutRef,
+    shader_uuid: Option<Uuid>,
+) {
+    let label = descriptor.label.as_deref().unwrap_or("");
+    let is_prepass_or_shadow = label.contains("prepass") || label.contains("shadow");
+
+    // Skip the swap on prepass / shadow pipelines. Our generated shader is
+    // forward-only — it imports `apply_pbr_lighting`, which is gated on
+    // `#ifndef PREPASS_FRAGMENT`, and reads `forward_io::VertexOutput`
+    // which differs from `prepass_io::VertexOutput`. Forcing our shader
+    // into the prepass triggers naga errors. Letting Bevy keep
+    // StandardMaterial's prepass shader handles alpha cutout for `Mask`
+    // materials and depth correctly.
+    if is_prepass_or_shadow {
+        return;
+    }
+    // Ensure `VERTEX_UVS_A` is in the fragment shader defines when the mesh
+    // has a UV0 attribute. Without this define, the graph shader's
+    // `#ifdef VERTEX_UVS_A let mat_uv = in.uv; #else let mat_uv = vec2(0,0); #endif`
+    // always falls back to the zero-UV branch — every fragment samples the
+    // same texel regardless of the UV Scale node's value, so tiling is
+    // impossible on UV-aware meshes (large planes, tiled ground, etc.).
+    //
+    // Conditional on UV0 being present: forcing the define for a mesh
+    // without UV0 would reference a non-existent `in.uv` field in
+    // `forward_io::VertexOutput` and break the shader for that mesh.
+    //
+    // Idempotent: skip the push if Bevy already added it.
+    if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_0) {
+        if let Some(ref mut frag) = descriptor.fragment {
+            let already = frag.shader_defs.iter().any(|d| {
+                matches!(
+                    d,
+                    bevy::shader::ShaderDefVal::Bool(name, _) if name == "VERTEX_UVS_A"
+                )
+            });
+            if !already {
+                frag.shader_defs.push("VERTEX_UVS_A".into());
+            }
+        }
+    }
+    if let Some(uuid) = shader_uuid {
+        if let Some(ref mut frag) = descriptor.fragment {
+            frag.shader = Handle::<Shader>::Uuid(uuid, PhantomData);
+        }
+    }
+}
+
 impl MaterialExtension for SurfaceGraphExt {
     fn fragment_shader() -> ShaderRef {
         // Default — overridden per-instance via `specialize()` when the
@@ -204,26 +262,10 @@ impl MaterialExtension for SurfaceGraphExt {
     fn specialize(
         _pipeline: &MaterialExtensionPipeline,
         descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
+        layout: &MeshVertexBufferLayoutRef,
         key: MaterialExtensionKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        // Skip the swap on prepass / shadow pipelines. Our generated shader is
-        // forward-only — it imports `apply_pbr_lighting`, which is gated on
-        // `#ifndef PREPASS_FRAGMENT`, and reads `forward_io::VertexOutput`
-        // which differs from `prepass_io::VertexOutput`. Forcing our shader
-        // into the prepass triggers naga errors. Letting Bevy keep
-        // StandardMaterial's prepass shader handles alpha cutout for `Mask`
-        // materials and depth correctly.
-        let label = descriptor.label.as_deref().unwrap_or("");
-        let is_prepass_or_shadow = label.contains("prepass") || label.contains("shadow");
-        if is_prepass_or_shadow {
-            return Ok(());
-        }
-        if let Some(uuid) = key.bind_group_data.shader_uuid {
-            if let Some(ref mut frag) = descriptor.fragment {
-                frag.shader = Handle::<Shader>::Uuid(uuid, PhantomData);
-            }
-        }
+        swap_graph_fragment_shader(descriptor, layout, key.bind_group_data.shader_uuid);
         Ok(())
     }
 }
@@ -257,5 +299,273 @@ pub fn new_graph_material(fallback: &super::runtime::FallbackTexture) -> GraphMa
             params: SurfaceGraphParams::default(),
             shader_uuid: None,
         },
+    }
+}
+
+// ── Diagnostic + safety tests for `SurfaceGraphExt::specialize` ────────────
+//
+// These tests construct a `RenderPipelineDescriptor` by hand and pass it to
+// `SurfaceGraphExt::specialize` directly. They prove:
+//   - When the mesh layout contains `ATTRIBUTE_UV_0` and the descriptor's
+//     fragment `shader_defs` does NOT contain `VERTEX_UVS_A`, the
+//     extension-specialize step will not silently lose the define.
+//   - When the mesh layout has no `ATTRIBUTE_UV_0`, the define is not
+//     forced on (a mesh without UVs would fail to compile if we did).
+//
+// The diagnostic logging added in `specialize` prints the pre/post
+// `shader_defs` so these tests double as documentation of the actual
+// behavior of the specialize step in isolation — useful because the
+// GPU-render path can't run in a headless container without a Vulkan ICD.
+//
+// We do NOT need a real `MeshPipeline` to call `specialize`; the parameter
+// is `_pipeline` (unused). The `mem::zeroed()` below is sound because
+// `MaterialExtensionPipeline::mesh_pipeline` is never dereferenced.
+#[cfg(test)]
+mod specialize_diagnostic_tests {
+    use super::*;
+    use bevy::render::render_resource::{FragmentState, RenderPipelineDescriptor, VertexState};
+    use bevy::shader::ShaderDefVal;
+
+    fn make_plane_layout() -> bevy::mesh::MeshVertexBufferLayoutRef {
+        let mut layouts = bevy::mesh::MeshVertexBufferLayouts::default();
+        let mesh = bevy::mesh::Mesh::from(
+            bevy::math::primitives::Plane3d::default()
+                .mesh()
+                .size(2.0, 2.0),
+        );
+        mesh.get_mesh_vertex_buffer_layout(&mut layouts)
+    }
+
+    fn make_position_only_layout() -> bevy::mesh::MeshVertexBufferLayoutRef {
+        let mut layouts = bevy::mesh::MeshVertexBufferLayouts::default();
+        let mesh = bevy::mesh::Mesh::new(
+            bevy::mesh::PrimitiveTopology::TriangleList,
+            bevy::asset::RenderAssetUsages::default(),
+        )
+        .with_inserted_attribute(
+            bevy::mesh::Mesh::ATTRIBUTE_POSITION,
+            vec![[0.0_f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        );
+        mesh.get_mesh_vertex_buffer_layout(&mut layouts)
+    }
+
+    /// Build a fake descriptor whose `fragment.shader_defs` mirror what
+    /// `MeshPipeline::specialize` + `MaterialPipelineSpecializer::specialize`
+    /// would have produced for the given layout. Vertex and fragment use
+    /// the same define list (matching Bevy's actual code).
+    fn make_descriptor(
+        layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        label: &str,
+    ) -> RenderPipelineDescriptor {
+        let mut shader_defs: Vec<ShaderDefVal> = vec![
+            "MESH_PIPELINE".into(),
+            "VERTEX_OUTPUT_INSTANCE_INDEX".into(),
+        ];
+        if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_POSITION) {
+            shader_defs.push("VERTEX_POSITIONS".into());
+        }
+        if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_NORMAL) {
+            shader_defs.push("VERTEX_NORMALS".into());
+        }
+        if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_0) {
+            shader_defs.push("VERTEX_UVS".into());
+            shader_defs.push("VERTEX_UVS_A".into());
+        }
+        if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_1) {
+            shader_defs.push("VERTEX_UVS".into());
+            shader_defs.push("VERTEX_UVS_B".into());
+        }
+        if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_TANGENT) {
+            shader_defs.push("VERTEX_TANGENTS".into());
+        }
+        if layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_COLOR) {
+            shader_defs.push("VERTEX_COLORS".into());
+        }
+        shader_defs.push(ShaderDefVal::UInt("MATERIAL_BIND_GROUP".into(), 3));
+
+        RenderPipelineDescriptor {
+            label: Some(label.to_string().into()),
+            vertex: VertexState {
+                shader: default(),
+                shader_defs: shader_defs.clone(),
+                buffers: vec![],
+                entry_point: default(),
+            },
+            fragment: Some(FragmentState {
+                shader: default(),
+                shader_defs,
+                targets: vec![],
+                entry_point: default(),
+            }),
+            ..default()
+        }
+    }
+
+    fn names(descriptor: &RenderPipelineDescriptor) -> Vec<String> {
+        descriptor
+            .fragment
+            .as_ref()
+            .unwrap()
+            .shader_defs
+            .iter()
+            .map(|d| match d {
+                ShaderDefVal::Bool(s, _) => s.clone(),
+                ShaderDefVal::Int(s, _) => s.clone(),
+                ShaderDefVal::UInt(s, _) => s.clone(),
+            })
+            .collect()
+    }
+
+    /// 1. Mesh WITH UV0: the descriptor built from the layout already has
+    ///    VERTEX_UVS_A. swap_graph_fragment_shader must not strip it.
+    #[test]
+    fn mesh_with_uv0_keeps_vertex_uvs_a() {
+        let layout = make_plane_layout();
+        assert!(layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_0));
+
+        let mut descriptor = make_descriptor(&layout, "opaque_mesh_pipeline");
+        let names_before = names(&descriptor);
+        assert!(
+            names_before.contains(&"VERTEX_UVS_A".to_string()),
+            "mesh with UV0: VERTEX_UVS_A should be in shader_defs BEFORE specialize, got {:?}",
+            names_before
+        );
+
+        swap_graph_fragment_shader(&mut descriptor, &layout, Some(Uuid::from_u128(1)));
+
+        let names_after = names(&descriptor);
+        assert!(
+            names_after.contains(&"VERTEX_UVS_A".to_string()),
+            "mesh with UV0: VERTEX_UVS_A must SURVIVE swap_graph_fragment_shader, got {:?}",
+            names_after
+        );
+    }
+
+    /// 2. Mesh WITHOUT UV0: the descriptor has no VERTEX_UVS_A, and the
+    ///    shader-swap step must not silently add one (it would fail
+    ///    compilation if VertexOutput has no `uv` field).
+    #[test]
+    fn mesh_without_uv0_does_not_get_vertex_uvs_a() {
+        let layout = make_position_only_layout();
+        assert!(!layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_0));
+
+        let mut descriptor = make_descriptor(&layout, "opaque_mesh_pipeline");
+        let names_before = names(&descriptor);
+        assert!(
+            !names_before.contains(&"VERTEX_UVS_A".to_string()),
+            "mesh without UV0: VERTEX_UVS_A should NOT be in shader_defs BEFORE specialize, got {:?}",
+            names_before
+        );
+
+        swap_graph_fragment_shader(&mut descriptor, &layout, Some(Uuid::from_u128(2)));
+
+        let names_after = names(&descriptor);
+        assert!(
+            !names_after.contains(&"VERTEX_UVS_A".to_string()),
+            "mesh without UV0: VERTEX_UVS_A must NOT appear after specialize, got {:?}",
+            names_after
+        );
+    }
+
+    /// 3. Prepass pipeline (label "prepass") — must skip the shader swap.
+    ///    Fragment shader_defs should be unchanged.
+    #[test]
+    fn prepass_label_is_skipped() {
+        let layout = make_plane_layout();
+        let mut descriptor = make_descriptor(&layout, "prepass_mesh_pipeline");
+        let names_before = names(&descriptor);
+
+        swap_graph_fragment_shader(&mut descriptor, &layout, Some(Uuid::from_u128(3)));
+
+        let names_after = names(&descriptor);
+        assert_eq!(
+            names_before, names_after,
+            "prepass pipeline: specialize must be a no-op"
+        );
+    }
+
+    /// 4. Shadow pipeline (label "shadow") — must skip the shader swap.
+    #[test]
+    fn shadow_label_is_skipped() {
+        let layout = make_position_only_layout();
+        let mut descriptor = make_descriptor(&layout, "shadow_mesh_pipeline");
+        let names_before = names(&descriptor);
+
+        swap_graph_fragment_shader(&mut descriptor, &layout, Some(Uuid::from_u128(4)));
+
+        let names_after = names(&descriptor);
+        assert_eq!(
+            names_before, names_after,
+            "shadow pipeline: specialize must be a no-op"
+        );
+    }
+
+    /// 5. IDEMPOTENCY: mesh WITH UV0 whose descriptor is missing
+    ///    VERTEX_UVS_A (synthetic state, manually stripped in setup;
+    ///    Bevy 0.19.1's `MeshPipeline::specialize` and `PrepassPipeline::specialize`
+    ///    already push this define for UV-aware meshes, so this branch is
+    ///    unreachable in production today). The defensive push must add the
+    ///    define so the `#ifdef VERTEX_UVS_A let mat_uv = in.uv;` branch is
+    ///    taken, defending against a hypothetical future Bevy where the
+    ///    define is dropped.
+    #[test]
+    fn mesh_with_uv0_missing_vertex_uvs_a_gets_it_added() {
+        let layout = make_plane_layout();
+        assert!(layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_0));
+
+        // Simulate the buggy state: build a descriptor but strip
+        // VERTEX_UVS_A from shader_defs.
+        let mut descriptor = make_descriptor(&layout, "opaque_mesh_pipeline");
+        if let Some(frag) = descriptor.fragment.as_mut() {
+            frag.shader_defs
+                .retain(|d| !matches!(d, ShaderDefVal::Bool(name, _) if name == "VERTEX_UVS_A"));
+        }
+        let names_before = names(&descriptor);
+        assert!(
+            !names_before.contains(&"VERTEX_UVS_A".to_string()),
+            "test setup: VERTEX_UVS_A must be stripped before swap_graph_fragment_shader, got {:?}",
+            names_before
+        );
+
+        swap_graph_fragment_shader(&mut descriptor, &layout, Some(Uuid::from_u128(5)));
+
+        let names_after = names(&descriptor);
+        assert!(
+            names_after.contains(&"VERTEX_UVS_A".to_string()),
+            "mesh with UV0: VERTEX_UVS_A must be RE-ADDED by the fix, got {:?}",
+            names_after
+        );
+    }
+
+    /// 6. IDEMPOTENT: mesh WITH UV0 whose descriptor already has
+    ///    VERTEX_UVS_A — the fix must not push a second copy.
+    #[test]
+    fn mesh_with_uv0_existing_vertex_uvs_a_not_duplicated() {
+        let layout = make_plane_layout();
+        assert!(layout.0.contains(bevy::mesh::Mesh::ATTRIBUTE_UV_0));
+
+        let mut descriptor = make_descriptor(&layout, "opaque_mesh_pipeline");
+        let count_before = names(&descriptor)
+            .iter()
+            .filter(|n| n.as_str() == "VERTEX_UVS_A")
+            .count();
+        assert_eq!(
+            count_before, 1,
+            "make_descriptor should produce exactly one VERTEX_UVS_A entry, got {}",
+            count_before
+        );
+
+        swap_graph_fragment_shader(&mut descriptor, &layout, Some(Uuid::from_u128(6)));
+
+        let names_after = names(&descriptor);
+        let count_after = names_after
+            .iter()
+            .filter(|n| n.as_str() == "VERTEX_UVS_A")
+            .count();
+        assert_eq!(
+            count_after, 1,
+            "fix must be idempotent: VERTEX_UVS_A should not be pushed twice, got {:?}",
+            names_after
+        );
     }
 }

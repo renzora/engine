@@ -90,6 +90,9 @@ pub fn try_build_standard_material(
         } else {
             match conn.from_pin.as_str() {
                 "color" | "rgb" => {
+                    if !uv_input_is_trivial(graph, src.id) {
+                        return None;
+                    }
                     mat.base_color_texture = Some(asset_server.load(texture_path(src)?));
                 }
                 _ => return None,
@@ -117,6 +120,9 @@ pub fn try_build_standard_material(
             }
         } else {
             if !is_texture_sample(src) || conn.from_pin != "a" {
+                return None;
+            }
+            if !uv_input_is_trivial(graph, src.id) {
                 return None;
             }
             // Must be the same texture as base_color.
@@ -153,6 +159,9 @@ pub fn try_build_standard_material(
         (PinSource::Texture(m_node), PinSource::Texture(r_node)) if m_node == r_node => {
             // glTF MR layout: G=roughness, B=metallic on a single texture.
             let src = graph.get_node(m_node)?;
+            if !uv_input_is_trivial(graph, src.id) {
+                return None;
+            }
             let path = texture_path(src)?;
             mat.metallic_roughness_texture = Some(asset_server.load(path));
         }
@@ -165,6 +174,9 @@ pub fn try_build_standard_material(
     if let Some(conn) = graph.connection_to(output.id, "normal") {
         let src = graph.get_node(conn.from_node)?;
         if src.node_type != "texture/sample_normal" || conn.from_pin != "normal" {
+            return None;
+        }
+        if !uv_input_is_trivial(graph, src.id) {
             return None;
         }
         mat.normal_map_texture = Some(asset_server.load(texture_path(src)?));
@@ -194,6 +206,9 @@ pub fn try_build_standard_material(
         } else {
             match conn.from_pin.as_str() {
                 "rgb" | "color" => {
+                    if !uv_input_is_trivial(graph, src.id) {
+                        return None;
+                    }
                     mat.emissive_texture = Some(asset_server.load(texture_path(src)?));
                     // If no factor was set, default to white so the texture
                     // shows through unmodulated.
@@ -210,6 +225,9 @@ pub fn try_build_standard_material(
     if let Some(conn) = graph.connection_to(output.id, "ao") {
         let src = graph.get_node(conn.from_node)?;
         if !is_texture_sample(src) || conn.from_pin != "r" {
+            return None;
+        }
+        if !uv_input_is_trivial(graph, src.id) {
             return None;
         }
         mat.occlusion_texture = Some(asset_server.load(texture_path(src)?));
@@ -347,6 +365,18 @@ fn pin_texture_source(
 /// non-StandardMaterial sampling logic.
 fn is_texture_sample(node: &MaterialNode) -> bool {
     node.node_type == "texture/sample"
+}
+
+/// Returns true if `sample_id` (a `texture/sample`-family node) has nothing
+/// wired into its `uv` input. The trivial fast path can only model a texture
+/// that samples raw mesh UVs (`VERTEX_UVS_A`); any node piped into the
+/// sample's `uv` pin — `input/uv_scale`, `input/uv_rotator`,
+/// `input/uv_panner`, `input/uv_polar`, math, even a redundant `input/uv`
+/// — needs the full codegen + ExtendedMaterial path. Returning false here
+/// causes `try_build_standard_material` to fall through to that path so
+/// the user's UV math is honored.
+fn uv_input_is_trivial(graph: &MaterialGraph, sample_id: NodeId) -> bool {
+    graph.connection_to(sample_id, "uv").is_none()
 }
 
 /// Returns true if `node` is one of the named-parameter nodes. Parameter
@@ -550,5 +580,34 @@ mod tests {
         let asset_server = app.world().resource::<AssetServer>();
         let mat = try_build_standard_material(&graph, asset_server).expect("trivial");
         assert!((mat.metallic - 0.7).abs() < 1e-4);
+    }
+
+    #[test]
+    fn rejects_uv_scale_driving_base_color() {
+        // Reproduction for the user's bug: a `texture/sample` whose `uv` is
+        // driven by `input/uv_scale` (or any node at all) must NOT be
+        // classified as trivial. The trivial fast path can only model a
+        // sample that uses raw mesh UVs — anything else needs full codegen.
+        let mut graph = MaterialGraph::new("Tiled", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let sampler = graph.add_node("texture/sample", [-200.0, -200.0]);
+        if let Some(n) = graph.get_node_mut(sampler) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("tex.png".into()));
+        }
+        let uv_scale = graph.add_node("input/uv_scale", [-400.0, -300.0]);
+        if let Some(n) = graph.get_node_mut(uv_scale) {
+            n.input_values
+                .insert("scale".into(), PinValue::Vec2([50.0, 50.0]));
+        }
+        graph.connect(uv_scale, "uv", sampler, "uv");
+        graph.connect(sampler, "color", output_id, "base_color");
+
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        assert!(
+            try_build_standard_material(&graph, asset_server).is_none(),
+            "graph with uv_scale feeding texture/sample.uv must fall through to codegen"
+        );
     }
 }
