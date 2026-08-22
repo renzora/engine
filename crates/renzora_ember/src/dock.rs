@@ -368,7 +368,10 @@ impl DockTree {
         }
     }
 
-    fn is_empty(&self) -> bool {
+    /// No panels anywhere — either the `Empty` variant or a leaf with no tabs.
+    /// Consumers use this to decide whether a dock area is worth showing at
+    /// all; an empty one renders as a bare bordered slab.
+    pub fn is_empty(&self) -> bool {
         matches!(self, DockTree::Empty)
             || matches!(self, DockTree::Leaf { tabs, .. } if tabs.is_empty())
     }
@@ -656,6 +659,7 @@ impl Plugin for DockPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Dock>()
             .init_resource::<DockDirty>()
+            .init_resource::<FixedDock>()
             .init_resource::<DockWindows>()
             .init_resource::<DockWindowRequests>()
             .init_resource::<DockWindowCloseRequests>()
@@ -676,6 +680,11 @@ impl Plugin for DockPlugin {
                 (
                     crate::font::load_fonts,
                     crate::font::scan_project_fonts,
+                    // Before anything that routes by area: until the fixed
+                    // area's entity is known, its leaves look like the
+                    // primary's to `area_tree_mut` and a drag would edit the
+                    // wrong tree.
+                    track_fixed_dock_area,
                     // Screen-space cursor first: divider/tab drags and the
                     // tear-off window follow all read it this frame.
                     track_global_cursor,
@@ -750,22 +759,32 @@ pub struct Dock {
 /// log capture, which must keep collecting while hidden) ungated.
 pub fn panel_active(
     id: &'static str,
-) -> impl Fn(Option<Res<Dock>>, Option<Res<DockWindows>>) -> bool + Clone {
-    move |dock: Option<Res<Dock>>, wins: Option<Res<DockWindows>>| {
+) -> impl Fn(Option<Res<Dock>>, Option<Res<FixedDock>>, Option<Res<DockWindows>>) -> bool + Clone {
+    move |dock: Option<Res<Dock>>,
+          fixed: Option<Res<FixedDock>>,
+          wins: Option<Res<DockWindows>>| {
         dock.is_some_and(|d| d.tree.is_active_tab(id))
+            || fixed.is_some_and(|f| f.tree.is_active_tab(id))
             || wins.is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(id)))
     }
 }
 
-/// Is `panel` the active (visible) tab in the primary dock or any floating dock
-/// window? The non-run-condition companion to [`panel_active`] for callers that
-/// check from a `World` or with resources in hand.
+/// Is `panel` the active (visible) tab in the primary dock, the [`FixedDock`],
+/// or any floating dock window? The non-run-condition companion to
+/// [`panel_active`] for callers that check from a `World` or with resources in
+/// hand.
+///
+/// The fixed area must be counted here or a panel docked into it would be
+/// gated off by its own `panel_active` run-condition — visible on screen and
+/// not updating, which is worse than the wasted work the gate exists to avoid.
 pub fn panel_visible_anywhere(
     id: &str,
     dock: Option<&Dock>,
+    fixed: Option<&FixedDock>,
     wins: Option<&DockWindows>,
 ) -> bool {
     dock.is_some_and(|d| d.tree.is_active_tab(id))
+        || fixed.is_some_and(|f| f.tree.is_active_tab(id))
         || wins.is_some_and(|w| w.0.iter().any(|s| s.tree.is_active_tab(id)))
 }
 
@@ -774,6 +793,61 @@ impl Default for Dock {
         Self {
             tree: DockTree::Empty,
         }
+    }
+}
+
+/// A second, non-floating dock area pinned wherever the consumer puts its
+/// [`FixedDockArea`] node — the editor shell renders it as the global bottom
+/// panel, overlaid on the primary dock and shared by every workspace.
+///
+/// It is a peer of [`Dock`], not a region inside it. That is the whole point:
+/// the primary tree belongs to whichever workspace is active and is swapped
+/// wholesale on a workspace switch, so anything living inside it is
+/// per-workspace by construction. A tree held out here survives the swap, and
+/// resizing it cannot perturb the workspace's split ratios because it isn't in
+/// that tree to begin with.
+///
+/// `area` is filled in by [`track_fixed_dock_area`] once the consumer's node
+/// exists; the routing helpers use it to tell this area's leaves apart from the
+/// primary's. `dirty` is the per-area rebuild flag — the fixed counterpart of
+/// [`DockDirty`], mirroring how each floating window carries its own.
+#[derive(Resource)]
+pub struct FixedDock {
+    pub tree: DockTree,
+    /// The [`FixedDockArea`] node, once it has been spawned. `None` before then
+    /// (and after a chrome rebuild despawns it, until the next one is tracked).
+    pub area: Option<Entity>,
+    pub dirty: bool,
+}
+
+impl Default for FixedDock {
+    fn default() -> Self {
+        Self {
+            tree: DockTree::Empty,
+            area: None,
+            dirty: false,
+        }
+    }
+}
+
+/// Tag the node the [`FixedDock`] should render into. The consumer owns where
+/// this sits and how big it is; the dock only fills it.
+#[derive(Component)]
+pub struct FixedDockArea;
+
+/// Keep [`FixedDock::area`] pointing at the live [`FixedDockArea`] node.
+///
+/// The shell despawns and respawns its whole chrome (theme switches, DPI
+/// changes), so this cannot be a one-shot at startup — the entity changes
+/// identity underneath us. Re-tracking also re-arms `dirty`, because a freshly
+/// spawned area is empty and nothing else would ask for it to be filled.
+fn track_fixed_dock_area(
+    mut fixed: ResMut<FixedDock>,
+    areas: Query<Entity, Added<FixedDockArea>>,
+) {
+    if let Some(area) = areas.iter().next() {
+        fixed.area = Some(area);
+        fixed.dirty = true;
     }
 }
 
@@ -1074,6 +1148,23 @@ struct InsertMarker;
 #[derive(Component)]
 struct TabClose;
 
+/// The empty stretch of a tab bar in a non-movable area (see `movable` on
+/// `rebuild_area`) — the filler between the tabs and the bar's right-hand
+/// controls. Carries an `Interaction` so the consumer can use it as a drag
+/// surface of its own.
+///
+/// Public because the consumer, not the dock, decides what dragging a pinned
+/// area's header means; the dock doesn't know which way such an area resizes,
+/// or whether it resizes at all.
+///
+/// On the *filler* deliberately, not on the tab bar. `apply_cursor_icon` takes
+/// the first hovered entity carrying a `HoverCursor` and does no topmost
+/// resolution, so a cursor on the bar competes with every tab nested inside it
+/// — which showed the resize cursor while hovering tabs. Scoping the marker to
+/// the filler means it can only ever be hovered where there is nothing else.
+#[derive(Component)]
+pub struct FixedAreaHeader;
+
 #[derive(Component)]
 struct DropOverlay;
 
@@ -1277,24 +1368,46 @@ impl DropAction {
 #[derive(Resource, Default)]
 struct PendingSwitch(Option<(Entity, String)>);
 
-// ── Tree routing (primary dock vs floating windows) ─────────────────────────
+// ── Tree routing (primary dock vs fixed area vs floating windows) ───────────
 
 /// The live tree owning dock area `area`: a floating window's tree if `area`
-/// belongs to one, else the primary [`Dock`]'s.
+/// belongs to one, the [`FixedDock`]'s if it is that area, else the primary
+/// [`Dock`]'s.
+///
+/// The primary is the fallback rather than a match, so a new area kind that
+/// forgets to register here silently mutates the primary tree instead of its
+/// own. That is why [`FixedDock::area`] is checked explicitly before falling
+/// through: every drag, drop, tab switch and close routes through this one
+/// function, so getting it wrong once corrupts the workspace layout from eight
+/// different call sites.
 fn area_tree_mut<'a>(
     area: Entity,
     dock: &'a mut Dock,
+    fixed: &'a mut FixedDock,
     wins: &'a mut DockWindows,
 ) -> &'a mut DockTree {
+    if fixed.area == Some(area) {
+        return &mut fixed.tree;
+    }
     match wins.0.iter_mut().find(|s| s.area == area) {
         Some(st) => &mut st.tree,
         None => &mut dock.tree,
     }
 }
 
-/// Flag `area`'s tree for rebuild — [`DockDirty`] for the primary dock, the
-/// per-window flag for a floating one.
-fn flag_area_dirty(area: Entity, dirty: &mut DockDirty, wins: &mut DockWindows) {
+/// Flag `area`'s tree for rebuild — [`DockDirty`] for the primary dock,
+/// [`FixedDock::dirty`] for the fixed area, the per-window flag for a floating
+/// one.
+fn flag_area_dirty(
+    area: Entity,
+    dirty: &mut DockDirty,
+    fixed: &mut FixedDock,
+    wins: &mut DockWindows,
+) {
+    if fixed.area == Some(area) {
+        fixed.dirty = true;
+        return;
+    }
     match wins.0.iter_mut().find(|s| s.area == area) {
         Some(st) => st.dirty = true,
         None => dirty.0 = true,
@@ -1405,6 +1518,7 @@ fn divider_drag(
     computed: Query<&bevy::ui::ComputedNode>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
+    mut fixed: ResMut<FixedDock>,
     mut wins: ResMut<DockWindows>,
     mut snap: ResMut<BottomSnapRequest>,
     mut grab: ResMut<GrabRootDivider>,
@@ -1525,7 +1639,7 @@ fn divider_drag(
             n.height = Val::Percent(ratio * 100.0);
         }
     }
-    area_tree_mut(darea, &mut dock, &mut wins).update_ratio(&dpath, ratio);
+    area_tree_mut(darea, &mut dock, &mut fixed, &mut wins).update_ratio(&dpath, ratio);
 }
 
 /// Drag a tab to re-dock; a plain click switches the active tab.
@@ -1580,6 +1694,7 @@ fn tab_drag(
     mut nodes: Query<&mut Node>,
     model: (
         ResMut<Dock>,
+        ResMut<FixedDock>,
         ResMut<DockDirty>,
         ResMut<DockWindows>,
         ResMut<DockWindowRequests>,
@@ -1588,7 +1703,7 @@ fn tab_drag(
     mut watch: ResMut<DockDragWatch>,
 ) {
     let (mouse, keys, global) = input;
-    let (mut dock, mut dirty, mut wins, mut requests, mut close_queue) = model;
+    let (mut dock, mut fixed, mut dirty, mut wins, mut requests, mut close_queue) = model;
 
     if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
         // A grip press outranks a tab press (the grip sits inside the bar but
@@ -1670,14 +1785,14 @@ fn tab_drag(
                     // (see the `group` skips below), so the take can't
                     // invalidate the drop target.
                     if state.group {
-                        let taken = area_tree_mut(state.source_area, &mut dock, &mut wins)
+                        let taken = area_tree_mut(state.source_area, &mut dock, &mut fixed, &mut wins)
                             .take_leaf_containing(&state.id);
                         if let Some(leaf_tree) = taken {
-                            let target = area_tree_mut(target_area, &mut dock, &mut wins);
+                            let target = area_tree_mut(target_area, &mut dock, &mut fixed, &mut wins);
                             insert_leaf_action(target, leaf_tree, &action);
-                            flag_area_dirty(target_area, &mut dirty, &mut wins);
+                            flag_area_dirty(target_area, &mut dirty, &mut fixed, &mut wins);
                             if !same_area {
-                                flag_area_dirty(state.source_area, &mut dirty, &mut wins);
+                                flag_area_dirty(state.source_area, &mut dirty, &mut fixed, &mut wins);
                                 close_empty_dock_window(
                                     state.source_area,
                                     &wins,
@@ -1702,10 +1817,10 @@ fn tab_drag(
                     };
                     // Move the panel: out of the source tree, into the target's
                     // (the same tree when the drop stayed in-window).
-                    area_tree_mut(state.source_area, &mut dock, &mut wins)
+                    area_tree_mut(state.source_area, &mut dock, &mut fixed, &mut wins)
                         .remove_panel(&state.id);
                     insert_action(
-                        area_tree_mut(target_area, &mut dock, &mut wins),
+                        area_tree_mut(target_area, &mut dock, &mut fixed, &mut wins),
                         &state.id,
                         &action,
                     );
@@ -1740,9 +1855,9 @@ fn tab_drag(
                             }
                         }
                         None => {
-                            flag_area_dirty(target_area, &mut dirty, &mut wins);
+                            flag_area_dirty(target_area, &mut dirty, &mut fixed, &mut wins);
                             if !same_area {
-                                flag_area_dirty(state.source_area, &mut dirty, &mut wins);
+                                flag_area_dirty(state.source_area, &mut dirty, &mut fixed, &mut wins);
                                 // Dragging the last panel out of a floating
                                 // window leaves an empty shell — close it.
                                 close_empty_dock_window(
@@ -1800,7 +1915,7 @@ fn tab_drag(
                 scale,
                 global.pos,
                 true,
-                (&mut dock, &mut dirty, &mut wins, &mut requests, &mut close_queue),
+                (&mut dock, &mut fixed, &mut dirty, &mut wins, &mut requests, &mut close_queue),
             );
             drag.0 = None;
             watch.dragging = None;
@@ -2289,8 +2404,9 @@ fn tear_off_panel(
     scale: f32,
     cursor: Option<Vec2>,
     grab: bool,
-    (dock, dirty, wins, requests, closes): (
+    (dock, fixed, dirty, wins, requests, closes): (
         &mut Dock,
+        &mut FixedDock,
         &mut DockDirty,
         &mut DockWindows,
         &mut DockWindowRequests,
@@ -2302,8 +2418,8 @@ fn tear_off_panel(
         (size.x.clamp(240.0 * scale, 1600.0 * scale)) as u32,
         (size.y + FLOAT_TITLEBAR_H * scale).clamp(160.0 * scale, 1200.0 * scale) as u32,
     );
-    area_tree_mut(source_area, dock, wins).remove_panel(id);
-    flag_area_dirty(source_area, dirty, wins);
+    area_tree_mut(source_area, dock, fixed, wins).remove_panel(id);
+    flag_area_dirty(source_area, dirty, fixed, wins);
     close_empty_dock_window(source_area, wins, closes);
     // Put the title bar under the cursor so the tear-off reads as grabbing the
     // new window by its header.
@@ -2627,6 +2743,7 @@ fn tab_grip_interact(
     primary: Query<Entity, With<bevy::window::PrimaryWindow>>,
     global: Res<GlobalCursor>,
     mut dock: ResMut<Dock>,
+    mut fixed: ResMut<FixedDock>,
     mut dirty: ResMut<DockDirty>,
     mut wins: ResMut<DockWindows>,
     mut requests: ResMut<DockWindowRequests>,
@@ -2648,7 +2765,7 @@ fn tab_grip_interact(
             scale,
             global.pos,
             true,
-            (&mut dock, &mut dirty, &mut wins, &mut requests, &mut close_queue),
+            (&mut dock, &mut fixed, &mut dirty, &mut wins, &mut requests, &mut close_queue),
         );
     }
 }
@@ -2814,6 +2931,7 @@ fn float_window_drag(
     root_overlays: Query<(Entity, &RootDropOverlay)>,
     mut nodes: Query<&mut Node>,
     mut dock: ResMut<Dock>,
+    mut fixed: ResMut<FixedDock>,
     mut dirty: ResMut<DockDirty>,
     mut wins: ResMut<DockWindows>,
     mut close_queue: ResMut<DockWindowCloseRequests>,
@@ -2845,11 +2963,11 @@ fn float_window_drag(
                     st.tree.remove_panel(&panel);
                 }
                 insert_action(
-                    area_tree_mut(action.area(), &mut dock, &mut wins),
+                    area_tree_mut(action.area(), &mut dock, &mut fixed, &mut wins),
                     &panel,
                     &action,
                 );
-                flag_area_dirty(action.area(), &mut dirty, &mut wins);
+                flag_area_dirty(action.area(), &mut dirty, &mut fixed, &mut wins);
                 close_queue.0.push(state.window);
             }
         }
@@ -3073,6 +3191,7 @@ fn guard_dock_target_cameras(
 fn rebuild_dock(
     mut dirty: ResMut<DockDirty>,
     mut wins: ResMut<DockWindows>,
+    mut fixed: ResMut<FixedDock>,
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
     dock: Res<Dock>,
@@ -3088,13 +3207,33 @@ fn rebuild_dock(
     let Some(fonts) = fonts else {
         return;
     };
+    // The primary is "the non-floating area that isn't the fixed one". It used
+    // to be just "the non-floating one", which was unambiguous while the fixed
+    // area didn't exist; with it spawned, whichever the query happened to yield
+    // first would get the primary's tree built into it.
+    let fixed_area = fixed.area;
     if dirty.0 {
-        if let Some((area_entity, children, _)) = areas.iter().find(|(.., f)| f.is_none()) {
+        if let Some((area_entity, children, _)) = areas
+            .iter()
+            .find(|(e, _, f)| f.is_none() && Some(*e) != fixed_area)
+        {
             rebuild_area(
                 &mut commands, &fonts, &markers.0, &dock.tree, area_entity, children, &leaves,
-                &alive, false,
+                &alive, false, true,
             );
             dirty.0 = false;
+        }
+    }
+    if fixed.dirty {
+        // Same retry-next-frame rule as a floating window: the consumer's node
+        // is spawned with commands, so it may not exist the frame it is asked
+        // for. Leaving the flag set is what makes a chrome respawn refill it.
+        if let Some((area_entity, children, _)) = fixed_area.and_then(|a| areas.get(a).ok()) {
+            rebuild_area(
+                &mut commands, &fonts, &markers.0, &fixed.tree, area_entity, children, &leaves,
+                &alive, false, false,
+            );
+            fixed.dirty = false;
         }
     }
     for st in wins.0.iter_mut().filter(|s| s.dirty) {
@@ -3103,7 +3242,7 @@ fn rebuild_dock(
         if let Ok((area_entity, children, _)) = areas.get(st.area) {
             rebuild_area(
                 &mut commands, &fonts, &markers.0, &st.tree, area_entity, children, &leaves,
-                &alive, true,
+                &alive, true, true,
             );
             st.dirty = false;
         }
@@ -3124,6 +3263,10 @@ fn rebuild_area(
     leaves: &Query<&DockLeaf>,
     alive: &Query<Entity>,
     floating: bool,
+    // Whether whole leaves in this area may be dragged elsewhere. `false` drops
+    // the leaf grip from every tab bar — for an area pinned to a fixed slot,
+    // where moving the leaf is not a thing that can happen.
+    movable: bool,
 ) {
     // Preserve each leaf's content entity (keyed by its active panel) and detach
     // it from the hierarchy so the despawn below doesn't take it — `build_tree`
@@ -3202,6 +3345,7 @@ fn rebuild_area(
         markers,
         area_entity,
         floating,
+        movable,
         None,
         Vec::new(),
         tree,
@@ -3299,6 +3443,7 @@ fn apply_focus_request(
 fn apply_tab_switch(
     mut pending: ResMut<PendingSwitch>,
     mut dock: ResMut<Dock>,
+    mut fixed: ResMut<FixedDock>,
     mut wins: ResMut<DockWindows>,
     mut focused: ResMut<FocusedPanel>,
     tabs: Query<(Entity, &DockTab)>,
@@ -3311,7 +3456,7 @@ fn apply_tab_switch(
     // Switching to a tab focuses it.
     focused.0 = Some(id.clone());
     if let Ok(ld) = leaves.get(leaf) {
-        area_tree_mut(ld.area, &mut dock, &mut wins).set_active_tab(&id);
+        area_tree_mut(ld.area, &mut dock, &mut fixed, &mut wins).set_active_tab(&id);
     }
 
     for (_tab_entity, tab) in &tabs {
@@ -3390,6 +3535,7 @@ fn tab_close_click(
     tabs: Query<&DockTab>,
     leaves: Query<&DockLeaf>,
     mut dock: ResMut<Dock>,
+    mut fixed: ResMut<FixedDock>,
     mut dirty: ResMut<DockDirty>,
     mut wins: ResMut<DockWindows>,
     mut close_queue: ResMut<DockWindowCloseRequests>,
@@ -3404,8 +3550,8 @@ fn tab_close_click(
         if let Ok(tab) = tabs.get(parent.parent()) {
             let area = leaves.get(tab.leaf).map(|l| l.area).ok();
             let Some(area) = area else { break };
-            if area_tree_mut(area, &mut dock, &mut wins).remove_panel(&tab.id) {
-                flag_area_dirty(area, &mut dirty, &mut wins);
+            if area_tree_mut(area, &mut dock, &mut fixed, &mut wins).remove_panel(&tab.id) {
+                flag_area_dirty(area, &mut dirty, &mut fixed, &mut wins);
                 close_empty_dock_window(area, &wins, &mut close_queue);
             }
         }
@@ -3442,6 +3588,7 @@ fn build_tree(
     markers: &[String],
     area: Entity,
     floating: bool,
+    movable: bool,
     parent: Option<ParentSplit>,
     path: Vec<bool>,
     tree: &DockTree,
@@ -3500,8 +3647,8 @@ fn build_tree(
                 path: path.clone(),
             };
             let child_a = build_tree(
-                commands, font, phosphor, markers, area, floating, Some(info_a), path_a, first,
-                preserved,
+                commands, font, phosphor, markers, area, floating, movable, Some(info_a), path_a,
+                first, preserved,
             );
             commands.entity(wrap_a).add_child(child_a);
 
@@ -3624,8 +3771,8 @@ fn build_tree(
                 path: path.clone(),
             };
             let child_b = build_tree(
-                commands, font, phosphor, markers, area, floating, Some(info_b), path_b, second,
-                preserved,
+                commands, font, phosphor, markers, area, floating, movable, Some(info_b), path_b,
+                second, preserved,
             );
             commands.entity(wrap_b).add_child(child_b);
 
@@ -3635,7 +3782,7 @@ fn build_tree(
             container
         }
         DockTree::Leaf { tabs, active_tab } => build_leaf(
-            commands, font, phosphor, markers, area, floating, parent, tabs, *active_tab,
+            commands, font, phosphor, markers, area, floating, movable, parent, tabs, *active_tab,
             preserved,
         ),
         DockTree::Empty => {
@@ -3779,6 +3926,7 @@ fn build_leaf(
     markers: &[String],
     area: Entity,
     floating: bool,
+    movable: bool,
     parent: Option<ParentSplit>,
     tabs: &[String],
     active: usize,
@@ -3813,7 +3961,8 @@ fn build_leaf(
         ))
         .id();
     populate_leaf(
-        commands, font, phosphor, markers, area, floating, parent, leaf, tabs, active, preserved,
+        commands, font, phosphor, markers, area, floating, movable, parent, leaf, tabs, active,
+        preserved,
     );
     leaf
 }
@@ -3998,6 +4147,7 @@ fn populate_leaf(
     markers: &[String],
     area: Entity,
     floating: bool,
+    movable: bool,
     parent: Option<ParentSplit>,
     leaf: Entity,
     tabs: &[String],
@@ -4047,27 +4197,34 @@ fn populate_leaf(
         let mut bar_kids: Vec<Entity> = Vec::new();
         // Whole-leaf drag handle at the far left of the bar: grab it to move
         // the leaf's entire tab set as one unit (see [`LeafGrip`]).
-        let leaf_grip_icon =
-            icon_text(commands, phosphor, "dots-six-vertical", text_muted(), 12.0);
-        let leaf_grip = commands
-            .spawn((
-                Node {
-                    height: Val::Percent(100.0),
-                    width: Val::Px(14.0),
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    flex_shrink: 0.0,
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-                Interaction::default(),
-                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
-                LeafGrip { leaf },
-                Name::new("leaf-grip"),
-            ))
-            .id();
-        commands.entity(leaf_grip).add_child(leaf_grip_icon);
-        bar_kids.push(leaf_grip);
+        //
+        // Omitted in an area that isn't movable — the editor's global bottom
+        // panel is pinned to its slot, so offering a handle whose whole purpose
+        // is relocating the leaf would advertise something that cannot happen.
+        // Individual tabs still drag in and out; it is the *leaf* that is fixed.
+        if movable {
+            let leaf_grip_icon =
+                icon_text(commands, phosphor, "dots-six-vertical", text_muted(), 12.0);
+            let leaf_grip = commands
+                .spawn((
+                    Node {
+                        height: Val::Percent(100.0),
+                        width: Val::Px(14.0),
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Interaction::default(),
+                    crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Grab),
+                    LeafGrip { leaf },
+                    Name::new("leaf-grip"),
+                ))
+                .id();
+            commands.entity(leaf_grip).add_child(leaf_grip_icon);
+            bar_kids.push(leaf_grip);
+        }
         // Tabs live inside a horizontally-clipping strip so a leaf with more
         // tabs than fit never pushes the "+"/collapse controls off the bar:
         // the overflowing tabs scroll instead (see [`tab_strip_wheel`]). The
@@ -4238,6 +4395,19 @@ fn populate_leaf(
                 Name::new("tabbar-filler"),
             ))
             .id();
+        // In a pinned area the header's *empty* space is a drag surface for the
+        // consumer (the editor's bottom panel resizes from it). Tagged on the
+        // filler rather than the bar: `apply_cursor_icon` picks the first
+        // hovered entity carrying a `HoverCursor` with no topmost resolution, so
+        // a cursor on the bar competes with every tab inside it and wins often
+        // enough that hovering a tab showed the resize cursor.
+        if !movable {
+            commands.entity(filler).insert((
+                Interaction::default(),
+                FixedAreaHeader,
+                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
+            ));
+        }
         // Is this leaf a collapsible bottom region? Either the primary dock's
         // whole bottom region (root vertical split, second child — content-
         // agnostic), or a nested bottom strip: the bottom child of any

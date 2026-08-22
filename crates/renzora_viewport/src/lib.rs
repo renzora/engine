@@ -437,6 +437,7 @@ fn resolve_viewport_slots(
     resize_req: Res<ViewportResizeRequest>,
     docking: Option<Res<DockingState>>,
     ember_dock: Option<Res<renzora_ember::dock::Dock>>,
+    ember_fixed: Option<Res<renzora_ember::dock::FixedDock>>,
     ember_windows: Option<Res<renzora_ember::dock::DockWindows>>,
     modals: Query<(), With<renzora_ember::widgets::ModalSurface>>,
     resolution: Option<Res<renzora::core::viewport_types::ViewportRenderResolution>>,
@@ -476,9 +477,12 @@ fn resolve_viewport_slots(
         let docked = match (ember_dock.as_ref(), docking.as_ref()) {
             // Floating dock windows count as docked too — a viewport torn off
             // onto another monitor is still visible and must keep its camera.
+            // So does the fixed bottom area: a viewport dragged down there is
+            // on screen and must keep rendering.
             (Some(d), _) => renzora_ember::dock::panel_visible_anywhere(
                 VIEWPORT_PANEL_IDS[i],
                 Some(d),
+                ember_fixed.as_deref(),
                 ember_windows.as_deref(),
             ),
             (None, Some(d)) => d.tree.contains_panel(VIEWPORT_PANEL_IDS[i]),

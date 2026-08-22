@@ -35,6 +35,94 @@ pub struct ClosedBottom {
 /// never lived below a vertical divider). Matches the default scene layout.
 pub const BOTTOM_PANEL_RATIO: f32 = 0.72;
 
+/// Opening height of the global bottom panel, logical px. Roughly the old
+/// 0.72 split on a 1080p window, so an upgraded layout looks unchanged.
+pub const BOTTOM_DOCK_HEIGHT: f32 = 280.0;
+
+/// Smallest height the bottom panel can be dragged to before it reads as a
+/// tab strip with no room for content. Below this the drag snaps it closed.
+pub const BOTTOM_DOCK_MIN_HEIGHT: f32 = 80.0;
+
+/// Pull `tree`'s bottom strip out and fold its panels into `bottom`, adopting
+/// only ids the bottom panel doesn't already hold.
+///
+/// For restoring a pristine default tree: [`workspace_layouts`] still describes
+/// each workspace with its bottom strip in-tree (that is what
+/// [`migrate_bottom_dock`] reads on a first run), so a reset that used those
+/// trees verbatim would put `console`/`assets` in the workspace *and* leave
+/// them in the global bottom panel. Duplicate panels are allowed when a user
+/// makes them deliberately; a reset producing them by itself is just a bug.
+pub fn absorb_bottom_strip(tree: &mut DockTree, bottom: &mut DockTree) {
+    let Some(stash) = take_bottom_strip(tree) else {
+        return;
+    };
+    let mut ids = Vec::new();
+    stash.tree.collect_panels(&mut ids);
+    for id in ids {
+        if !bottom.contains_panel(&id) {
+            bottom.adopt_panel(&id);
+        }
+    }
+}
+
+/// Fold every workspace's bottom strip — and every persisted closed-bottom
+/// stash — into the one global bottom panel, mutating the workspace trees to
+/// remove what was taken.
+///
+/// Runs once, when a layout file has no `bottom_dock` (or when there is no
+/// layout file at all). It has to be non-lossy in both directions: a panel in
+/// a *closed* stash exists nowhere else, and a panel in an *open* strip is
+/// about to have its region cut out of the workspace tree. Both sets are
+/// merged, deduplicated by panel id, into a single leaf.
+///
+/// Deduplicating is right even though duplicate panels are otherwise allowed:
+/// every workspace's strip holds much the same thing (console, assets), so
+/// preserving them verbatim would produce one bottom panel with five `console`
+/// tabs. Duplicates the user *creates* later are untouched — this is a
+/// one-time fold of layouts that were authored under the old per-workspace
+/// model.
+pub fn migrate_bottom_dock(
+    workspaces: &mut [(String, DockTree)],
+    closed: &BTreeMap<String, ClosedBottom>,
+) -> BottomDockLayout {
+    let mut tabs: Vec<String> = Vec::new();
+    let mut push = |tree: &DockTree| {
+        let mut ids = Vec::new();
+        tree.collect_panels(&mut ids);
+        for id in ids {
+            if !tabs.contains(&id) {
+                tabs.push(id);
+            }
+        }
+    };
+
+    // Closed stashes first: those panels are homeless, so they lead the tab
+    // order rather than trailing whatever happened to still be open.
+    for stash in closed.values() {
+        push(&stash.tree);
+    }
+    for (_, tree) in workspaces.iter_mut() {
+        if let Some(stash) = take_bottom_strip(tree) {
+            push(&stash.tree);
+        }
+    }
+
+    BottomDockLayout {
+        tree: if tabs.is_empty() {
+            DockTree::Empty
+        } else {
+            DockTree::Leaf {
+                tabs,
+                active_tab: 0,
+            }
+        },
+        height: BOTTOM_DOCK_HEIGHT,
+        // Matches the old startup behaviour: every launch began with the
+        // bottom strip stashed, and Ctrl+Space brought it back.
+        open: false,
+    }
+}
+
 /// Does `tree`'s root have a bottom region holding the classic bottom-strip
 /// panels (assets/console)? Startup collapses only strips like these; a
 /// workspace whose bottom region is something else (Animation's timeline)
@@ -169,6 +257,19 @@ pub struct FloatingLayout {
     pub size: (u32, u32),
 }
 
+/// The global bottom panel's persisted state — one per editor, not one per
+/// workspace, which is the whole point of it (see [`renzora_ember::dock::FixedDock`]).
+///
+/// `height` is logical px, not a ratio: the panel is overlaid on the dock area
+/// rather than splitting it, so there is no sibling to be a fraction of, and a
+/// ratio would silently rescale the panel when the window resizes.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct BottomDockLayout {
+    pub tree: DockTree,
+    pub height: f32,
+    pub open: bool,
+}
+
 /// The on-disk dock layout file: every workspace plus the active index, plus
 /// any floating dock windows (`#[serde(default)]` keeps pre-floating layout
 /// files loading).
@@ -180,8 +281,18 @@ struct PersistedLayout {
     floating: Vec<FloatingLayout>,
     /// Bottom-panel stashes for workspaces whose bottom panel is closed, keyed
     /// by workspace name (see [`ClosedBottom`] for why these must persist).
+    ///
+    /// Retained only so a layout file written before the global bottom panel
+    /// can still be read and migrated — the panels inside a closed stash exist
+    /// nowhere else, so dropping the field would delete them. Nothing writes it
+    /// any more.
     #[serde(default)]
     closed_bottoms: BTreeMap<String, ClosedBottom>,
+    /// `None` in a layout file that predates the global bottom panel, which is
+    /// the signal to migrate: fold every workspace's bottom strip (and every
+    /// `closed_bottoms` stash) into one shared tree.
+    #[serde(default)]
+    bottom_dock: Option<BottomDockLayout>,
 }
 
 /// Path to the persisted dock layout: `~/.renzora/layout.json`. Resolves the
@@ -204,6 +315,7 @@ pub fn load_dock_layouts() -> Option<(
     usize,
     Vec<FloatingLayout>,
     BTreeMap<String, ClosedBottom>,
+    Option<BottomDockLayout>,
 )> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -225,7 +337,17 @@ pub fn load_dock_layouts() -> Option<(
             tree.retire_panels(RETIRED_PANELS);
         }
         let active = data.active.min(workspaces.len() - 1);
-        Some((workspaces, active, data.floating, data.closed_bottoms))
+        let mut bottom_dock = data.bottom_dock;
+        if let Some(b) = bottom_dock.as_mut() {
+            b.tree.retire_panels(RETIRED_PANELS);
+        }
+        Some((
+            workspaces,
+            active,
+            data.floating,
+            data.closed_bottoms,
+            bottom_dock,
+        ))
     }
 }
 
@@ -237,7 +359,7 @@ pub fn layout_json(
     workspaces: &[(String, DockTree)],
     active: usize,
     floating: &[FloatingLayout],
-    closed_bottoms: &BTreeMap<String, ClosedBottom>,
+    bottom_dock: &BottomDockLayout,
 ) -> Option<String> {
     let data = PersistedLayout {
         active,
@@ -249,7 +371,12 @@ pub fn layout_json(
             })
             .collect(),
         floating: floating.to_vec(),
-        closed_bottoms: closed_bottoms.clone(),
+        // Always empty now: the per-workspace stashes were folded into
+        // `bottom_dock` on load and nothing recreates them. Writing the field
+        // (rather than skipping it) keeps a downgrade to an older build from
+        // tripping over a missing key.
+        closed_bottoms: BTreeMap::new(),
+        bottom_dock: Some(bottom_dock.clone()),
     };
     serde_json::to_string_pretty(&data).ok()
 }
@@ -330,7 +457,10 @@ fn layout_scripting() -> DockTree {
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::leaf("code_editor"),
-                DockTree::tabs(&["console", "problems"]),
+                // No `console` here: it lives in the global bottom panel, which
+                // is present in every workspace. A copy in the workspace would
+                // be a second, independent instance sitting right above it.
+                DockTree::leaf("problems"),
                 0.72,
             ),
             DockTree::leaf("viewport"),
@@ -340,28 +470,28 @@ fn layout_scripting() -> DockTree {
     )
 }
 
-/// Animation: Hierarchy | (StudioPreview/StateMachine) | (Properties/Params) | Timeline
+/// Animation: Hierarchy | (StudioPreview/StateMachine) | (Properties/Params)
+///
+/// No `timeline` region: it lives in the global bottom panel now, spanning
+/// every workspace, so a copy here would be a second independent instance
+/// directly above it.
 fn layout_animation() -> DockTree {
-    DockTree::vertical(
+    DockTree::horizontal(
+        DockTree::leaf("hierarchy"),
         DockTree::horizontal(
-            DockTree::leaf("hierarchy"),
-            DockTree::horizontal(
-                DockTree::vertical(
-                    DockTree::leaf("studio_preview"),
-                    DockTree::leaf("animator_state_machine"),
-                    0.55,
-                ),
-                DockTree::vertical(
-                    DockTree::leaf("animation"),
-                    DockTree::leaf("animator_params"),
-                    0.55,
-                ),
-                0.72,
+            DockTree::vertical(
+                DockTree::leaf("studio_preview"),
+                DockTree::leaf("animator_state_machine"),
+                0.55,
             ),
-            0.15,
+            DockTree::vertical(
+                DockTree::leaf("animation"),
+                DockTree::leaf("animator_params"),
+                0.55,
+            ),
+            0.72,
         ),
-        DockTree::leaf("timeline"),
-        0.60,
+        0.15,
     )
 }
 
@@ -489,4 +619,113 @@ fn layout_hub() -> DockTree {
         ),
         0.18,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The one-time fold to the global bottom panel must not lose a panel.
+    /// A closed stash is the only place its panels exist, and an open strip is
+    /// about to be cut out of the workspace tree — drop either and the panel is
+    /// gone from the user's layout with no way to get it back.
+    #[test]
+    fn migrate_keeps_panels_from_both_open_strips_and_closed_stashes() {
+        let mut workspaces = vec![(
+            "Scene".to_string(),
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::tabs(&["console", "assets"]),
+                0.7,
+            ),
+        )];
+        let mut closed = BTreeMap::new();
+        closed.insert(
+            "Animation".to_string(),
+            ClosedBottom {
+                tree: DockTree::tabs(&["timeline", "mixer"]),
+                ratio: 0.7,
+                anchor: Vec::new(),
+            },
+        );
+
+        let bottom = migrate_bottom_dock(&mut workspaces, &closed);
+
+        let mut ids = Vec::new();
+        bottom.tree.collect_panels(&mut ids);
+        for want in ["console", "assets", "timeline", "mixer"] {
+            assert!(ids.contains(&want.to_string()), "lost {want}: {ids:?}");
+        }
+        // The strip is cut out of the workspace, not copied — leaving it would
+        // put console/assets in two places on the very first launch.
+        assert!(
+            !workspaces[0].1.contains_panel("console"),
+            "strip should be removed from the workspace tree"
+        );
+        assert!(workspaces[0].1.contains_panel("viewport"));
+    }
+
+    /// Every workspace ships much the same strip, so a verbatim fold would
+    /// produce a bottom panel tabbing `console` once per workspace.
+    #[test]
+    fn migrate_deduplicates_the_same_panel_across_workspaces() {
+        let strip = || {
+            DockTree::vertical(
+                DockTree::leaf("viewport"),
+                DockTree::tabs(&["console", "assets"]),
+                0.7,
+            )
+        };
+        let mut workspaces = vec![
+            ("Scene".to_string(), strip()),
+            ("Scripting".to_string(), strip()),
+            ("Debug".to_string(), strip()),
+        ];
+
+        let bottom = migrate_bottom_dock(&mut workspaces, &BTreeMap::new());
+
+        let mut ids = Vec::new();
+        bottom.tree.collect_panels(&mut ids);
+        assert_eq!(
+            ids.iter().filter(|i| *i == "console").count(),
+            1,
+            "console tabbed once per workspace: {ids:?}"
+        );
+        assert_eq!(ids.iter().filter(|i| *i == "assets").count(), 1);
+    }
+
+    /// A layout with nothing to fold must not leave the bottom panel holding an
+    /// empty leaf — `sync_bottom_dock_node` keys "is there anything to show" off
+    /// `is_empty`, and an empty leaf would render a bare bordered slab.
+    #[test]
+    fn migrate_with_no_strips_yields_an_empty_tree() {
+        let mut workspaces = vec![(
+            "Bare".to_string(),
+            DockTree::horizontal(DockTree::leaf("viewport"), DockTree::leaf("inspector"), 0.5),
+        )];
+
+        let bottom = migrate_bottom_dock(&mut workspaces, &BTreeMap::new());
+
+        assert!(bottom.tree.is_empty());
+    }
+
+    /// Restoring a pristine default must lift its in-tree strip back out rather
+    /// than restoring a second copy beside the global panel's.
+    #[test]
+    fn absorb_moves_a_default_strip_into_the_existing_bottom_panel() {
+        let mut tree = DockTree::vertical(
+            DockTree::leaf("viewport"),
+            DockTree::tabs(&["console", "assets"]),
+            0.7,
+        );
+        let mut bottom = DockTree::leaf("console");
+
+        absorb_bottom_strip(&mut tree, &mut bottom);
+
+        let mut ids = Vec::new();
+        bottom.collect_panels(&mut ids);
+        assert_eq!(ids.iter().filter(|i| *i == "console").count(), 1);
+        assert!(ids.contains(&"assets".to_string()));
+        assert!(!tree.contains_panel("console"));
+    }
 }

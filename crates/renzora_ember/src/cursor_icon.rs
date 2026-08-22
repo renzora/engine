@@ -66,7 +66,7 @@ pub fn parse_cursor(name: &str) -> Option<SystemCursorIcon> {
 
 fn apply_cursor_icon(
     #[cfg(feature = "game_ui")] drag: Res<DragState>,
-    hovered: Query<(&Interaction, &HoverCursor)>,
+    hovered: Query<(&Interaction, &HoverCursor, &bevy::ui::ComputedNode)>,
     viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
     windows: Query<(Entity, &Window)>,
     cursor_opts: Query<&bevy::window::CursorOptions>,
@@ -82,10 +82,27 @@ fn apply_cursor_icon(
     let target = if dragging {
         SystemCursorIcon::Grabbing
     } else {
+        // Skip nodes that aren't laid out. `Interaction` is only updated for
+        // entities the focus pass can see, so a node hidden with
+        // `Display::None` keeps whatever value it held at the moment it was
+        // hidden — hide one while the cursor is on it (closing a panel by
+        // clicking its own toggle does exactly that) and it stays `Hovered`
+        // forever. Since this picks the *first* match rather than the topmost,
+        // one stale entry then owns the cursor for the whole app: the editor's
+        // bottom panel showed `pointer` over its resize handle and `ns-resize`
+        // over its toggle, each supplied by a hidden node from the other state.
+        //
+        // A zero computed size is the test that catches it, and it covers a
+        // `Display::None` ancestor too, which checking this node's own `display`
+        // would miss.
         let widget = hovered
             .iter()
-            .find(|(i, _)| matches!(i, Interaction::Hovered | Interaction::Pressed))
-            .map(|(_, hc)| hc.0);
+            .find(|(i, _, cn)| {
+                matches!(i, Interaction::Hovered | Interaction::Pressed)
+                    && cn.size().x > 0.0
+                    && cn.size().y > 0.0
+            })
+            .map(|(_, hc, _)| hc.0);
         let request = viewport_request.and_then(|r| r.0);
         // A concrete widget cursor (a button's `pointer`, a text field's `text`)
         // always wins. But the viewport paints a blanket `crosshair` over its
