@@ -8689,9 +8689,7 @@ name = "renzora_shader"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "crossbeam-channel",
  "naga 27.0.3",
- "notify-debouncer-full",
  "renzora",
  "serde",
  "serde_json",
@@ -8703,6 +8701,8 @@ name = "renzora_shader_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "crossbeam-channel",
+ "notify-debouncer-full",
  "renzora",
  "renzora_ember",
  "renzora_shader",

@@ -6,9 +6,15 @@ edition = "2021"
 [dependencies]
 bevy = { workspace = true }
 renzora = { path = "../renzora", default-features = false, features = ["editor"] }
-renzora_shader = { path = "../renzora_shader", features = ["editor"] }
+renzora_shader = { path = "../renzora_shader" }
 # bevy_ui-native panel content (the egui → bevy_ui migration).
 renzora_ember = { path = "../renzora_ember" }
+# WGSL hot-reload (`hot_reload.rs`). Declared here rather than on
+# `renzora_shader` behind a feature: cargo unifies features across a
+# `cargo build --workspace`, which is how the editor lane builds, so a feature
+# there would pull these into the runtime binary too.
+crossbeam-channel = "0.5"
+notify-debouncer-full = "0.7"
 
 [lints]
 workspace = true

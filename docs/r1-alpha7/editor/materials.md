@@ -123,9 +123,18 @@ The **Preview** panel renders your material on a test shape with an orbit camera
 
 > The HDRI is built into the editor, so the backdrop works in any project with nothing to set up.
 
+## Editing the compiled shader by hand
+
+Saving a material writes two files next to the `.material`: a compiled **`.wgsl`** and a `.wgsl.meta` sidecar describing its textures and parameters. The engine watches your project for changes to those `.wgsl` files, so if you open one in an external editor and save, the viewport picks it up within about a fifth of a second — no restart, and no need to touch the graph.
+
+This is a one-way door, though: the next time you press **Apply** in the graph editor, the `.wgsl` is regenerated from the nodes and your hand edits are overwritten. Treat it as a way to experiment with shader code quickly, not as a place to keep changes.
+
+> Watching is editor-only — a shipped game reads the compiled `.wgsl` as-is and never watches for changes.
+
 ## Tips
 
 - **Keep roughness above ~0.05.** Perfectly smooth surfaces can sparkle with artifacts.
+- **UV math needs the full path.** A material that samples a texture straight from the mesh's UVs compiles to the engine's fast path. Wire anything into a sampler's **UV** input — UV Scale for tiling, a panner, a rotator, or plain arithmetic — and it compiles as a custom shader instead. That's what makes tiling work, and it costs a little more per material, which is why the fast path is used whenever it can express the graph exactly.
 - **Metallic is usually 0 or 1.** In-between values are rarely realistic.
 - **Reuse materials and instances.** Objects sharing a material draw faster, and instances of one master share a single compiled shader.
 - **Keep graphs simple when you can.** A plain texture-plus-color material runs on the engine's fast path; heavy procedural nodes are a little more expensive.

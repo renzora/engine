@@ -271,6 +271,22 @@ For work that must continue while the panel is hidden, use `.always(..)` on the 
 
 Gate only **view** systems. Leave always-on work ungated — a console that must keep capturing logs while hidden, an async poll that has to drain in-flight requests, or a flag another panel reads each frame.
 
+"Visible" spans every dock area, not just the workspace one: `panel_active` counts a panel as active if it is the live tab in the primary [`Dock`], in the global bottom panel ([`FixedDock`]), or in any floating dock window. A panel dragged into the bottom panel keeps updating, as it must — it is on screen.
+
+#### Dock areas
+
+The editor renders three kinds of dock area, all driven by the same [`DockTree`] model and reconciler:
+
+| Area | Tree | Notes |
+|---|---|---|
+| Primary | `Dock::tree` | The active workspace's layout. Swapped wholesale on a workspace switch. |
+| Global bottom panel | `FixedDock::tree` | One tree shared by every workspace, held outside the workspace layouts so a switch can't disturb it. Overlaid on the primary area rather than splitting it. |
+| Floating window | `DockWindowState::tree` | One per torn-off OS window. |
+
+An area can be declared **non-movable**, which the bottom panel is. That drops the whole-leaf drag grip from its tab bars — the leaf is pinned, though individual tabs still drag in and out — and marks the tab bar's filler [`FixedAreaHeader`], which the consumer can use as a drag surface of its own (the shell resizes the bottom panel from it).
+
+> A dock area overlaid on another needs a `GlobalZIndex` tier, not merely a later sibling. `GlobalZIndex` lifts a node into the **root** stacking order, and the node-graph widget puts its canvas and nodes on one — so a graph panel will paint straight over an untiered overlay regardless of sibling order. The bottom panel sits at 100: above panel content, below the dock's drop overlay (200), modals and dropdowns (500), menus (700) and drag ghosts (1000).
+
 #### The regression guard
 
 `crates/renzora_ember/tests/panel_systems_gated.rs` fails the build if a file that calls `register_panel_content` also uses a bare `app.add_systems` without gating. It checks for *gating*, not for a particular style — a per-system `.run_if(panel_active(..))` still passes, so correctly-gated older panels aren't churned.

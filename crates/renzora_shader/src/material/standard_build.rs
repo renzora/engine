@@ -50,6 +50,26 @@ pub fn try_build_standard_material(
         return None;
     }
 
+    // Anything wired into a `uv` pin puts the graph outside the trivial subset.
+    // A plain `StandardMaterial` samples raw mesh UVs and has nowhere to put UV
+    // math, so a graph with `input/uv_scale` (or a panner, rotator, polar, or
+    // plain arithmetic) feeding a sampler used to compile to a texture that
+    // ignored it entirely — the mesh rendered stretched, with the UV Scale node
+    // silently doing nothing.
+    //
+    // Checked once over the whole graph rather than at each texture-acceptance
+    // site. There are six of those today and they reach samplers through two
+    // different paths (directly, and via `pin_texture_source` for the shared
+    // metallic/roughness texture), so a per-site guard has to be repeated
+    // correctly six times and again for every site added later. A graph-wide
+    // check cannot be missed, and being stricter than strictly necessary — it
+    // also rejects a `uv` connection in a subgraph that never reaches the
+    // output — is the right direction here: failing means "compile via codegen",
+    // which is always correct, just slower.
+    if graph.connections.iter().any(|c| c.to_pin == "uv") {
+        return None;
+    }
+
     let output = graph.output_node()?;
 
     // Apply graph-level flags first; nothing below should override these.
@@ -90,9 +110,6 @@ pub fn try_build_standard_material(
         } else {
             match conn.from_pin.as_str() {
                 "color" | "rgb" => {
-                    if !uv_input_is_trivial(graph, src.id) {
-                        return None;
-                    }
                     mat.base_color_texture = Some(asset_server.load(texture_path(src)?));
                 }
                 _ => return None,
@@ -120,9 +137,6 @@ pub fn try_build_standard_material(
             }
         } else {
             if !is_texture_sample(src) || conn.from_pin != "a" {
-                return None;
-            }
-            if !uv_input_is_trivial(graph, src.id) {
                 return None;
             }
             // Must be the same texture as base_color.
@@ -159,9 +173,6 @@ pub fn try_build_standard_material(
         (PinSource::Texture(m_node), PinSource::Texture(r_node)) if m_node == r_node => {
             // glTF MR layout: G=roughness, B=metallic on a single texture.
             let src = graph.get_node(m_node)?;
-            if !uv_input_is_trivial(graph, src.id) {
-                return None;
-            }
             let path = texture_path(src)?;
             mat.metallic_roughness_texture = Some(asset_server.load(path));
         }
@@ -174,9 +185,6 @@ pub fn try_build_standard_material(
     if let Some(conn) = graph.connection_to(output.id, "normal") {
         let src = graph.get_node(conn.from_node)?;
         if src.node_type != "texture/sample_normal" || conn.from_pin != "normal" {
-            return None;
-        }
-        if !uv_input_is_trivial(graph, src.id) {
             return None;
         }
         mat.normal_map_texture = Some(asset_server.load(texture_path(src)?));
@@ -206,9 +214,6 @@ pub fn try_build_standard_material(
         } else {
             match conn.from_pin.as_str() {
                 "rgb" | "color" => {
-                    if !uv_input_is_trivial(graph, src.id) {
-                        return None;
-                    }
                     mat.emissive_texture = Some(asset_server.load(texture_path(src)?));
                     // If no factor was set, default to white so the texture
                     // shows through unmodulated.
@@ -225,9 +230,6 @@ pub fn try_build_standard_material(
     if let Some(conn) = graph.connection_to(output.id, "ao") {
         let src = graph.get_node(conn.from_node)?;
         if !is_texture_sample(src) || conn.from_pin != "r" {
-            return None;
-        }
-        if !uv_input_is_trivial(graph, src.id) {
             return None;
         }
         mat.occlusion_texture = Some(asset_server.load(texture_path(src)?));
@@ -365,18 +367,6 @@ fn pin_texture_source(
 /// non-StandardMaterial sampling logic.
 fn is_texture_sample(node: &MaterialNode) -> bool {
     node.node_type == "texture/sample"
-}
-
-/// Returns true if `sample_id` (a `texture/sample`-family node) has nothing
-/// wired into its `uv` input. The trivial fast path can only model a texture
-/// that samples raw mesh UVs (`VERTEX_UVS_A`); any node piped into the
-/// sample's `uv` pin — `input/uv_scale`, `input/uv_rotator`,
-/// `input/uv_panner`, `input/uv_polar`, math, even a redundant `input/uv`
-/// — needs the full codegen + ExtendedMaterial path. Returning false here
-/// causes `try_build_standard_material` to fall through to that path so
-/// the user's UV math is honored.
-fn uv_input_is_trivial(graph: &MaterialGraph, sample_id: NodeId) -> bool {
-    graph.connection_to(sample_id, "uv").is_none()
 }
 
 /// Returns true if `node` is one of the named-parameter nodes. Parameter
@@ -608,6 +598,61 @@ mod tests {
         assert!(
             try_build_standard_material(&graph, asset_server).is_none(),
             "graph with uv_scale feeding texture/sample.uv must fall through to codegen"
+        );
+    }
+
+    /// The `uv` check covers the metallic/roughness texture too, which reaches
+    /// its sampler through `pin_texture_source` rather than directly — the path
+    /// a per-site guard is most likely to miss, since the sampler is found via
+    /// a shared helper instead of at the acceptance site.
+    #[test]
+    fn rejects_uv_scale_driving_the_metallic_roughness_texture() {
+        let mut graph = MaterialGraph::new("TiledMR", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let sampler = graph.add_node("texture/sample", [-200.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(sampler) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("mr.png".into()));
+        }
+        let uv_scale = graph.add_node("input/uv_scale", [-400.0, 0.0]);
+        graph.connect(uv_scale, "uv", sampler, "uv");
+        graph.connect(sampler, "b", output_id, "metallic");
+        graph.connect(sampler, "g", output_id, "roughness");
+
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        assert!(
+            try_build_standard_material(&graph, asset_server).is_none(),
+            "uv math on the shared MR sampler must fall through to codegen"
+        );
+    }
+
+    /// The graph-wide check is deliberately stricter than a per-site one: a
+    /// `uv` connection in a subgraph that never reaches the output still
+    /// rejects. That is the safe direction — rejecting means "compile via
+    /// codegen", which is always correct and only slower, whereas a permissive
+    /// classifier renders a graph wrong with no fallback.
+    #[test]
+    fn rejects_uv_math_even_in_a_disconnected_subgraph() {
+        let mut graph = MaterialGraph::new("Orphan", MaterialDomain::Surface);
+        let output_id = graph.output_node().unwrap().id;
+        let used = graph.add_node("texture/sample", [-200.0, 0.0]);
+        if let Some(n) = graph.get_node_mut(used) {
+            n.input_values
+                .insert("texture".into(), PinValue::TexturePath("base.png".into()));
+        }
+        graph.connect(used, "color", output_id, "base_color");
+
+        // An orphaned sampler with UV math, wired to nothing downstream.
+        let orphan = graph.add_node("texture/sample", [-200.0, -400.0]);
+        let uv_scale = graph.add_node("input/uv_scale", [-400.0, -400.0]);
+        graph.connect(uv_scale, "uv", orphan, "uv");
+
+        let app = asset_app();
+        let asset_server = app.world().resource::<AssetServer>();
+        assert!(
+            try_build_standard_material(&graph, asset_server).is_none(),
+            "a uv connection anywhere in the graph rejects the trivial path"
         );
     }
 }

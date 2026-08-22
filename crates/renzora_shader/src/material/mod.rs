@@ -1,7 +1,5 @@
 pub mod codegen;
 pub mod graph;
-#[cfg(feature = "editor")]
-pub mod hot_reload;
 pub mod instance;
 pub mod material_ref;
 pub mod nodes;

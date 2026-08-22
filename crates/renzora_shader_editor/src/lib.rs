@@ -1,6 +1,7 @@
 //! Shader Editor — code-based shader authoring with multi-language support.
 
 mod code_panel;
+mod hot_reload;
 mod native_compiler_log;
 mod native_preview;
 mod native_properties;
@@ -62,7 +63,7 @@ impl Plugin for ShaderEditorPlugin {
         app.add_plugins(native_preview::NativeShaderPreview);
         app.add_plugins(native_compiler_log::NativeShaderCompilerLog);
         app.add_plugins(native_properties::NativeShaderProperties);
-        app.add_plugins(renzora_shader::material::hot_reload::WgslHotReloadPlugin);
+        app.add_plugins(hot_reload::WgslHotReloadPlugin);
     }
 }
 
