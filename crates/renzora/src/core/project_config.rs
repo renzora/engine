@@ -358,6 +358,20 @@ struct EditorPrefFile {
     /// channel, where a resolved `"nightly"` would keep them on nightlies forever.
     #[serde(default = "default_update_channel")]
     update_channel: String,
+    /// Set once the onboarding tutorial has been completed or skipped. Per-user
+    /// rather than per-project: the tutorial teaches the *editor*, so a user who
+    /// has already sat through it doesn't want it again the next time they make
+    /// a project. It auto-launches exactly once, on the first editor run after
+    /// installing.
+    #[serde(default)]
+    tutorial_completed: bool,
+    /// Ids of the tutorial chapters (`renzora_tutorial`'s `Chapter::id`) the
+    /// user has finished. The picker ticks these off and uses them to unlock the
+    /// next chapter, so the list is progress, not just history. Separate from
+    /// `tutorial_completed`, which only gates the auto-launch and is also set by
+    /// skipping.
+    #[serde(default)]
+    tutorial_chapters: Vec<String>,
 }
 
 fn default_language() -> String {
@@ -415,6 +429,8 @@ impl Default for EditorPrefFile {
             scroll_speed: default_scroll_speed(),
             console_log_limit: default_console_log_limit(),
             update_channel: default_update_channel(),
+            tutorial_completed: false,
+            tutorial_chapters: Vec::new(),
         }
     }
 }
@@ -644,6 +660,92 @@ pub fn save_update_channel(channel: &str) -> std::io::Result<()> {
         .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
         .unwrap_or_default();
     prefs.update_channel = channel.to_string();
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Has the onboarding tutorial been engaged with (finished *or* skipped) by this
+/// user? `false` only until the first editor session that shows it, which is why
+/// the tutorial auto-launches once per install rather than once per project.
+pub fn load_tutorial_completed() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        false
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return false;
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return false;
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.tutorial_completed)
+            .unwrap_or(false)
+    }
+}
+
+/// Record that the tutorial has been engaged with, so it never auto-launches
+/// again (read-modify-write so other prefs in the file survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_tutorial_completed(completed: bool) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.tutorial_completed = completed;
+    let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
+    std::fs::write(&path, text)
+}
+
+/// Which tutorial chapters this user has finished. Drives the picker's ticks and
+/// its unlock order.
+pub fn load_tutorial_chapters() -> Vec<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(path) = editor_pref_path() else {
+            return Vec::new();
+        };
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return Vec::new();
+        };
+        toml::from_str::<EditorPrefFile>(&text)
+            .map(|f| f.tutorial_chapters)
+            .unwrap_or_default()
+    }
+}
+
+/// Persist the finished-chapter list (read-modify-write so other prefs survive).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_tutorial_chapters(chapters: &[String]) -> std::io::Result<()> {
+    let Some(path) = editor_pref_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "could not resolve home directory for editor preferences",
+        ));
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut prefs = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|t| toml::from_str::<EditorPrefFile>(&t).ok())
+        .unwrap_or_default();
+    prefs.tutorial_chapters = chapters.to_vec();
     let text = toml::to_string_pretty(&prefs).map_err(std::io::Error::other)?;
     std::fs::write(&path, text)
 }

@@ -144,9 +144,9 @@ pub struct Step {
     pub hint: Hint,
 }
 
-/// One guided track. `id` is the persistence key (recorded in `project.toml`
-/// once finished) and must stay stable across releases — renaming one re-runs
-/// the chapter for everyone who'd already done it.
+/// One guided track. `id` is the persistence key (recorded in
+/// `~/.renzora/editor.toml` once finished) and must stay stable across releases
+/// — renaming one re-runs the chapter for everyone who'd already done it.
 pub struct Chapter {
     pub id: &'static str,
     /// Phosphor glyph for the picker row and the card header.
@@ -160,7 +160,7 @@ pub struct Chapter {
 }
 
 /// Every chapter, in the order the picker lists them. Index 0 is the one that
-/// auto-launches on a project's first run.
+/// auto-launches on the user's first run.
 pub const CHAPTERS: &[Chapter] = crate::chapters::CHAPTERS;
 
 /// The chrome elements (by bevy_ui `Name`) the animated highlight box + arrow

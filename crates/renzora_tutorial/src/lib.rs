@@ -21,9 +21,10 @@
 //! The card is draggable by its whole header (ember's `DragHandle` widget),
 //! because a step's target is sometimes exactly where the card is parked.
 //!
-//! A project's first run drops straight into Getting Started; **Help → Getting
-//! Started Tutorial** re-opens at the chapter picker. Progress is tracked in
-//! `project.toml`'s editor prefs.
+//! The first editor run after installing drops straight into Getting Started;
+//! **Help → Getting Started Tutorial** re-opens at the chapter picker. Progress
+//! is tracked per-user in `~/.renzora/editor.toml`, not per-project — see
+//! [`persistence`] for why.
 //!
 //! Modules: [`steps`] (step/chapter vocabulary), [`chapters`] (the content),
 //! [`state`] (the state machine + detection), [`overlay_ui`] (the floating card,

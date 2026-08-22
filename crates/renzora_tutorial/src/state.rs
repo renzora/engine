@@ -252,9 +252,9 @@ pub fn probe_cam_input(
 }
 
 /// Launch the tutorial from either trigger: the Help-menu / command-palette
-/// `TutorialRequested` marker (manual, any time) or an auto first-run on a
-/// project that has never completed it. Waits until ember fonts exist before
-/// building UI.
+/// `TutorialRequested` marker (manual, any time) or an auto first run for a user
+/// who has never seen it — once per install, not once per project. Waits until
+/// ember fonts exist before building UI.
 ///
 /// The two triggers land in different places: a first run drops straight into
 /// Getting Started (a brand-new user shouldn't have to choose a chapter before
@@ -281,7 +281,9 @@ pub fn trigger(
         }
     }
 
-    // Auto first-run, evaluated once a project is loaded.
+    // Auto first-run. Still waits for a project to load — the tutorial's steps
+    // act on an open project, and it's also our only chance to migrate a legacy
+    // per-project completion flag before answering.
     if !*autostart_checked {
         if let Some(p) = project.as_ref() {
             *autostart_checked = true;
@@ -530,7 +532,6 @@ pub fn handle_continue(
 pub fn handle_chapter_pick(
     mut state: ResMut<TutorialState>,
     signals: Signals,
-    project: Option<Res<CurrentProject>>,
     buttons: Query<(&Interaction, &TutorialChapterButton), Changed<Interaction>>,
 ) {
     if !state.active || !state.show_picker {
@@ -546,14 +547,7 @@ pub fn handle_chapter_pick(
     // A locked row is drawn but inert — the click is swallowed here rather than
     // by omitting `Interaction`, so the row still hovers and reads as a real
     // (not-yet-available) chapter.
-    let done: Vec<bool> = CHAPTERS
-        .iter()
-        .map(|c| {
-            project
-                .as_ref()
-                .is_some_and(|p| persistence::is_chapter_done(p, c.id))
-        })
-        .collect();
+    let done = persistence::chapters_done(CHAPTERS.iter().map(|c| c.id));
     if !overlay_ui::is_unlocked(pick, &done) {
         return;
     }
@@ -571,7 +565,6 @@ pub fn handle_chapter_pick(
 pub fn rebuild_body(
     mut commands: Commands,
     fonts: Option<Res<EmberFonts>>,
-    project: Option<Res<CurrentProject>>,
     mut state: ResMut<TutorialState>,
     children: Query<&Children>,
     mut fills: Query<&mut Node, With<TutorialProgressFill>>,
@@ -594,14 +587,7 @@ pub fn rebuild_body(
             commands.entity(c).despawn();
         }
     }
-    let done: Vec<bool> = CHAPTERS
-        .iter()
-        .map(|c| {
-            project
-                .as_ref()
-                .is_some_and(|p| persistence::is_chapter_done(p, c.id))
-        })
-        .collect();
+    let done = persistence::chapters_done(CHAPTERS.iter().map(|c| c.id));
     overlay_ui::build_body(&mut commands, fonts, body, &state, &done);
 
     // Skip acts on the current step, so it has nothing to do on the picker or
@@ -692,7 +678,6 @@ pub fn fire_confetti(
 pub fn handle_buttons(
     mut commands: Commands,
     mut state: ResMut<TutorialState>,
-    project: Option<ResMut<CurrentProject>>,
     dock: Option<ResMut<Dock>>,
     dock_dirty: Option<ResMut<DockDirty>>,
     close: Query<&Interaction, (Changed<Interaction>, With<TutorialCloseButton>)>,
@@ -707,14 +692,12 @@ pub fn handle_buttons(
         return;
     }
 
-    if let Some(mut p) = project {
-        // Closing still marks first-run as handled — nobody wants the tutorial
-        // re-launching at them every time they open the project.
-        persistence::mark_completed(&mut p);
-        if finished {
-            if let Some(chapter) = CHAPTERS.get(state.chapter) {
-                persistence::mark_chapter_done(&mut p, chapter.id);
-            }
+    // Closing still marks first-run as handled — nobody wants the tutorial
+    // re-launching at them every time they open the editor.
+    persistence::mark_completed();
+    if finished {
+        if let Some(chapter) = CHAPTERS.get(state.chapter) {
+            persistence::mark_chapter_done(chapter.id);
         }
     }
 

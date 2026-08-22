@@ -20,7 +20,7 @@ use renzora::core::keybindings::EditorAction;
 
 use crate::steps::{Chapter, Hint, HintAnim, Step, StepKind, NO_HINT};
 
-/// Every chapter, in picker order. Index 0 auto-launches on a project's first run.
+/// Every chapter, in picker order. Index 0 auto-launches on the user's first run.
 pub const CHAPTERS: &[Chapter] = &[
     GETTING_STARTED,
     SCENE_BUILDING,
