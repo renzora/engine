@@ -3159,10 +3159,28 @@ fn rebuild_area(
     // Skipping a dead one is also the *correct* outcome, not just a quiet one:
     // `build_tree` builds fresh content for any panel id missing from
     // `preserved`, so the panel comes back rather than vanishing.
+    //
+    // `preserved` is keyed by panel id, so only the FIRST leaf showing a given
+    // id may be detached. Two leaves in one area can legitimately show the same
+    // panel — drag a second `hierarchy` tab out of its leaf and both are active
+    // in their own leaves — and detaching both then inserting both left the
+    // first entity detached-to-root *and* evicted from the map by the second
+    // insert. Nothing could reach it after that: the child sweep below walks the
+    // area's children and it is no longer anyone's child, and the `drain()`
+    // cleanup at the end no longer lists it. It stayed alive and parentless,
+    // rendering as a root-level node with no tab bar that the user could not
+    // close — and came back on every rebuild (a tab drag) until a restart built
+    // the tree from scratch.
+    //
+    // Leaving the duplicate attached is both the safe and the correct outcome:
+    // it despawns with its old leaf (the taffy rule the block above depends on),
+    // and `build_tree` builds it fresh, because only one leaf can take the
+    // single preserved entity out of the map anyway (`preserved.remove`).
     for leaf in leaves.iter().filter(|l| l.area == area_entity) {
         if !leaf.active.is_empty()
             && reusable.contains(&leaf.active)
             && alive.get(leaf.content).is_ok()
+            && !preserved.contains_key(&leaf.active)
         {
             preserved.insert(leaf.active.clone(), leaf.content);
             commands.entity(leaf.content).remove::<ChildOf>();
