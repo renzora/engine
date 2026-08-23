@@ -198,6 +198,39 @@ if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
 
 > Edges are resolved when you add them — Bevy does no lazy lookup. If your node references another crate's label (e.g. `LumenTraceLabel`), that plugin must register **before** yours, or the edge panics with "node does not exist". Register custom GI/reflection nodes in dependency order.
 
+## Ambient occlusion — the SSAO section
+
+SSAO is not a component you add. It is a **section of the one `WorldEnvironment`**, alongside Fog — select the World Environment entity and the Inspector shows an **SSAO** section whose header toggle is the effect's on/off switch. There is no trash button, because the section is intrinsic to the environment.
+
+Turning it off removes `ScreenSpaceAmbientOcclusion` from the routed cameras outright, so "off" costs nothing (SSAO's pipeline key reads the component directly, in sync with its bind group, so unlike the resident-and-neutral effects this one is safe to toggle by presence).
+
+The section's fields:
+
+| Field | Effect |
+|---|---|
+| **Quality** | Sample-count preset — `Low` (4 spp), `Medium` (8), `High` (18, the default), `Ultra` (54), or `Custom`. Cost scales roughly with the sample count; noise falls as it rises. |
+| **Object Thickness** | How thick, in world units, the engine assumes geometry is behind the depth buffer. A ray passing further behind a surface than this is treated as missing it rather than being occluded by it — raise it to darken thin geometry, lower it to thin out haloes behind foreground objects. Default `0.25`. |
+| **Slice Count** | *Custom only.* Slices traced per pixel. More slices means less noise and a proportionally more expensive pass. |
+| **Samples / Slice** | *Custom only.* Samples per slice side; 2 or 3 is the recommended range. |
+
+The last two rows are hidden unless **Quality** is `Custom`, because every preset supplies its own pair and would override whatever you typed there.
+
+```rust
+// crates/renzora/src/world_environment.rs
+WorldEnvironment {
+    ssao: SsaoSection {
+        enabled: true,
+        quality: SsaoQuality::High,
+        slice_count: 3,
+        samples_per_slice_side: 3,
+        constant_object_thickness: 0.25,
+    },
+    ..default()
+}
+```
+
+Values are clamped on the way to Bevy (`slice_count` 1–16, `samples_per_slice_side` 1–8, thickness ≥ 0), so a hand-edited scene file cannot produce a zero-sample pass or stall the GPU with a huge one. Scenes saved before these fields existed load with the defaults above rather than zeros.
+
 ## Graphics quality tiers
 
 Most of the cost of an idle scene is **fullscreen, resolution-bound** work on the

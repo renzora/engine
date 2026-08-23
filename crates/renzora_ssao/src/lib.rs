@@ -2,7 +2,7 @@
 //! section of [`renzora::WorldEnvironment`] (`ssao`); [`reconcile_ssao`] drives
 //! `ScreenSpaceAmbientOcclusion` from it. See `docs/world-environment-spec.md`.
 
-use bevy::pbr::ScreenSpaceAmbientOcclusion;
+use bevy::pbr::{ScreenSpaceAmbientOcclusion, ScreenSpaceAmbientOcclusionQualityLevel};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,27 @@ pub struct SsaoSettings {
 impl Default for SsaoSettings {
     fn default() -> Self {
         Self { enabled: true }
+    }
+}
+
+/// Translate the authored [`renzora::SsaoQuality`] + custom counts into Bevy's
+/// quality enum.
+///
+/// The `Custom` counts are clamped rather than passed through: Bevy multiplies
+/// them into the per-pixel sample count of a full-resolution compute pass, so a
+/// zero makes the pass produce nothing and a hand-edited scene file with a large
+/// value stalls the GPU. The bounds match the ranges the inspector exposes.
+fn quality_level(s: &renzora::SsaoSection) -> ScreenSpaceAmbientOcclusionQualityLevel {
+    use ScreenSpaceAmbientOcclusionQualityLevel as Q;
+    match s.quality {
+        renzora::SsaoQuality::Low => Q::Low,
+        renzora::SsaoQuality::Medium => Q::Medium,
+        renzora::SsaoQuality::High => Q::High,
+        renzora::SsaoQuality::Ultra => Q::Ultra,
+        renzora::SsaoQuality::Custom => Q::Custom {
+            slice_count: s.slice_count.clamp(1, 16),
+            samples_per_slice_side: s.samples_per_slice_side.clamp(1, 8),
+        },
     }
 }
 
@@ -47,7 +68,12 @@ fn reconcile_ssao(
             continue;
         };
         if env.ssao.enabled {
-            ec.insert(ScreenSpaceAmbientOcclusion::default());
+            ec.insert(ScreenSpaceAmbientOcclusion {
+                quality_level: quality_level(&env.ssao),
+                // Negative thickness would push the occlusion test in front of
+                // the surface; the inspector clamps, but scenes are hand-editable.
+                constant_object_thickness: env.ssao.constant_object_thickness.max(0.0),
+            });
         } else {
             ec.remove::<ScreenSpaceAmbientOcclusion>();
         }

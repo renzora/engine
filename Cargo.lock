@@ -8848,6 +8848,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "renzora",
+ "renzora_ember",
  "renzora_ssao",
 ]
 
