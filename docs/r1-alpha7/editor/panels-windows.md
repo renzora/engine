@@ -54,6 +54,7 @@ That is what makes it the place for panels you want everywhere. Dock the Asset b
 The **dropdown left of the Overlay/Layout button** names the set of tabs the panel is currently showing — **Panels** to start with — and opens onto all of them:
 
 - **Pick a set** to switch to it. The one you're leaving keeps its tabs, its active tab and its splits, so switching back and forth costs nothing.
+- **Reorder** them by dragging a row up or down the list. An accent bar shows where it will land, and the move is applied when you let go — the menu stays open, so putting three sets in the order you want is one trip rather than three. A plain click still picks the set; the drag only starts once you've moved a little, so the two never collide.
 - **Rename** one with the **pencil** at its right-hand end — the row turns into a text field with the caret already in it. `Enter` (or clicking away) commits, `Escape` cancels, and an empty name cancels rather than leaving a row you can't read. You can rename any set from here, not just the one you're on.
 - **New Panel Set** starts an empty one and opens the panel on it. Empty means the panel shows its **Add Panel** button — pick what goes in from there, or drag tabs in as usual.
 - **Remove This Set** drops the set you're on and lands you on its neighbour. It only appears while you have more than one; the panel always keeps at least one set to put tabs in.

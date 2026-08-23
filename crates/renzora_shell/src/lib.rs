@@ -138,6 +138,7 @@ impl Plugin for ShellPlugin {
         app.init_resource::<RibbonDrag>();
         app.init_resource::<RibbonRename>();
         app.init_resource::<BottomSetRename>();
+        app.init_resource::<BottomSetDrag>();
         app.init_resource::<DocTabDrag>();
         app.init_resource::<DocTabRename>();
         app.init_resource::<DocTabMru>();
@@ -212,6 +213,10 @@ impl Plugin for ShellPlugin {
                     // commit runs first for the same reason: its result is one
                     // of the things the rebuild has to pick up.
                     bottom_set_rename_commit,
+                    // Before the click system and the rebuild: this is what
+                    // decides whether a release was a pick or a reorder, and
+                    // both change the list the rebuild reads.
+                    bottom_set_drag,
                     bottom_set_menu_click,
                     sync_bottom_set_menu,
                     bottom_set_focus_rename,
@@ -1285,9 +1290,6 @@ struct BottomSetLabel;
 /// than spawned once, because the set list changes while the chrome stands.
 #[derive(Component)]
 struct BottomSetMenu;
-/// A row that switches to set `0`.
-#[derive(Component)]
-struct BottomSetOption(usize);
 /// The "New Panel Set" row.
 #[derive(Component)]
 struct BottomSetNew;
@@ -1306,6 +1308,59 @@ struct BottomSetRename(Option<usize>);
 /// Marks the inline rename field, carrying the set index it renames.
 #[derive(Component)]
 struct BottomSetRenameInput(usize);
+
+/// A draggable set row: which set it is, and the insertion bar drawn at its top
+/// edge while a reorder drag points at that slot. The vertical twin of
+/// [`DocTabItem`].
+#[derive(Component)]
+struct BottomSetItem {
+    index: usize,
+    marker: Entity,
+}
+
+/// The in-flight reorder of the panel sets, if any.
+#[derive(Resource, Default)]
+struct BottomSetDrag(Option<BottomSetDragState>);
+
+struct BottomSetDragState {
+    /// The set being carried, by index at the time of the press.
+    index: usize,
+    start_cursor: Vec2,
+    /// Cleared until the cursor has moved far enough to call this a drag rather
+    /// than a click — which is what lets one gesture mean both.
+    active: bool,
+    /// Insertion slot in the *pre-removal* list, as [`reorder_panel_sets`] takes
+    /// it.
+    target: usize,
+}
+
+/// Move set `from` to insertion slot `to`, keeping `active` pointed at the same
+/// set it was before.
+///
+/// `to` is a slot in the list *as it stands*, so both the set's own slot and the
+/// one just past it mean "don't move" — the same convention
+/// `DocumentTabState::reorder` uses, and the reason the caller can hand over a
+/// marker position without adjusting for the removal itself.
+///
+/// Only the names and trees move. The set the panel is *showing* lives in
+/// `FixedDock`, not in `sets[active].1`, so a reorder never has to touch the
+/// live tree — it only has to keep `active` on the right slot.
+fn reorder_panel_sets(sets: &mut BottomPanelSets, from: usize, to: usize) {
+    if from >= sets.sets.len() || to > sets.sets.len() || to == from || to == from + 1 {
+        return;
+    }
+    let set = sets.sets.remove(from);
+    let at = if to > from { to - 1 } else { to };
+    let at = at.min(sets.sets.len());
+    sets.sets.insert(at, set);
+    if sets.active == from {
+        sets.active = at;
+    } else if from < sets.active && sets.active <= at {
+        sets.active -= 1;
+    } else if at <= sets.active && sets.active < from {
+        sets.active += 1;
+    }
+}
 
 /// Build the panel-set dropdown: trigger + (empty) menu panel.
 ///
@@ -1444,6 +1499,10 @@ fn bottom_set_row(
             // Block, like the trigger: a row sits over the panel's header
             // filler, which is a resize surface (see the trigger's comment).
             bevy::ui::FocusPolicy::Block,
+            // The reorder drag hit-tests in the cursor's own space rather than
+            // against node centres, which drift under UI scaling — the lesson
+            // `ribbon_interact` and the document tabs both learned the hard way.
+            RelativeCursorPosition::default(),
             renzora_ember::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::Pointer),
             Name::new("bottom-set-row"),
         ))
@@ -1581,7 +1640,30 @@ fn sync_bottom_set_menu(
             ("squares-four", text_muted())
         };
         let row = bottom_set_row(&mut commands, &fonts, icon, color, name.clone());
-        commands.entity(row).insert(BottomSetOption(i));
+        // Insertion bar for a reorder drag: a hairline of accent across the
+        // row's top edge, hidden until the drag points at this slot. Absolute,
+        // so it costs the row no height and can't shift the menu as it moves.
+        let marker = commands
+            .spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(-1.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Px(2.0),
+                    display: Display::None,
+                    ..default()
+                },
+                BackgroundColor(rgb(accent())),
+                bevy::ui::FocusPolicy::Pass,
+                Name::new("bottom-set-insert-marker"),
+            ))
+            .id();
+        commands.entity(row).add_child(marker);
+        // `BottomSetItem` is both the click target and the drag handle — the
+        // row's index is the one thing either needs, so there's no separate
+        // marker component for "this row picks a set".
+        commands.entity(row).insert(BottomSetItem { index: i, marker });
         // Rename pencil at the row's right edge. `Block`, or the press also
         // reaches the row and switches to that set on the way into the field —
         // `Node`'s required `FocusPolicy` is `Pass` in Bevy 0.19.
@@ -1653,7 +1735,6 @@ fn sync_bottom_set_menu(
 /// rename is the exception because the field it opens *is* in the menu.
 #[allow(clippy::too_many_arguments)]
 fn bottom_set_menu_click(
-    options: Query<(&Interaction, &BottomSetOption), Changed<Interaction>>,
     new_rows: Query<&Interaction, (With<BottomSetNew>, Changed<Interaction>)>,
     remove_rows: Query<&Interaction, (With<BottomSetRemove>, Changed<Interaction>)>,
     pencils: Query<(&Interaction, &BottomSetRenameBtn), Changed<Interaction>>,
@@ -1670,14 +1751,9 @@ fn bottom_set_menu_click(
         }
     }
     let mut acted = false;
-    for (interaction, opt) in &options {
-        if *interaction == Interaction::Pressed && opt.0 != sets.active {
-            activate_panel_set(&mut sets, &mut fixed, opt.0);
-            acted = true;
-        } else if *interaction == Interaction::Pressed {
-            acted = true; // picking the live set is just a dismiss
-        }
-    }
+    // Picking a set isn't here: it fires on *release*, in [`bottom_set_drag`],
+    // because the same press can be the start of a reorder. Acting on the press
+    // would switch sets and close the menu out from under the drag.
     for interaction in &new_rows {
         if *interaction != Interaction::Pressed {
             continue;
@@ -1719,6 +1795,129 @@ fn bottom_set_menu_click(
             renzora_ember::widgets::close_popup(&mut commands, trigger);
         }
     }
+}
+
+/// Press-latch reorder for the panel-set rows, plus the plain click that picks
+/// a set: drag a row past a small threshold to move it in [`BottomPanelSets`],
+/// or release without moving to switch to it. The vertical twin of
+/// [`doc_tab_drag`].
+///
+/// Both halves of the gesture live here for the reason that split is usually
+/// made: only the code that watched the press *and* the motion knows which of
+/// the two it was. Switching sets used to happen on the press, in
+/// [`bottom_set_menu_click`], which closed the menu — so a drag ended before it
+/// started.
+///
+/// The reorder is applied once, on release, rather than live as the cursor
+/// crosses each neighbour: the insertion bar is what shows where the row will
+/// land, and a live swap would rebuild the whole menu (and so respawn the row
+/// under the cursor) on every crossing.
+#[allow(clippy::too_many_arguments)]
+fn bottom_set_drag(
+    mut drag: ResMut<BottomSetDrag>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
+    rename: Res<BottomSetRename>,
+    pressed: Query<(&BottomSetItem, &Interaction)>,
+    items: Query<(&BottomSetItem, &RelativeCursorPosition)>,
+    mut nodes: Query<&mut Node>,
+    mut sets: ResMut<BottomPanelSets>,
+    mut fixed: ResMut<renzora_ember::dock::FixedDock>,
+    triggers: Query<Entity, With<BottomSetTrigger>>,
+    mut commands: Commands,
+) {
+    let hide_markers = |items: &Query<(&BottomSetItem, &RelativeCursorPosition)>,
+                        nodes: &mut Query<&mut Node>| {
+        for (it, _) in items {
+            if let Ok(mut n) = nodes.get_mut(it.marker) {
+                if n.display != Display::None {
+                    n.display = Display::None;
+                }
+            }
+        }
+    };
+
+    // A row being renamed is a text field, not a handle.
+    if rename.0.is_some() {
+        drag.0 = None;
+        hide_markers(&items, &mut nodes);
+        return;
+    }
+    let cursor = windows.iter().next().and_then(|w| w.cursor_position());
+
+    if drag.0.is_none() && mouse.just_pressed(MouseButton::Left) {
+        if let Some(cur) = cursor {
+            for (item, interaction) in &pressed {
+                if *interaction == Interaction::Pressed {
+                    drag.0 = Some(BottomSetDragState {
+                        index: item.index,
+                        start_cursor: cur,
+                        active: false,
+                        target: item.index,
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    if let (Some(st), Some(cur)) = (drag.0.as_mut(), cursor) {
+        if (cur - st.start_cursor).length() > 5.0 {
+            st.active = true;
+        }
+    }
+
+    // Which slot the cursor is pointing at, and the marker that says so: the
+    // top half of a row inserts above it, the bottom half below.
+    match drag.0.as_mut() {
+        Some(st) if st.active => {
+            let mut shown: Option<(Entity, bool)> = None;
+            for (it, rcp) in &items {
+                if !rcp.cursor_over {
+                    continue;
+                }
+                let before = rcp.normalized.is_none_or(|n| n.y < 0.0);
+                st.target = if before { it.index } else { it.index + 1 };
+                shown = Some((it.marker, !before));
+                break;
+            }
+            hide_markers(&items, &mut nodes);
+            if let Some((marker, below)) = shown {
+                if let Ok(mut n) = nodes.get_mut(marker) {
+                    n.display = Display::Flex;
+                    if below {
+                        n.top = Val::Auto;
+                        n.bottom = Val::Px(-1.0);
+                    } else {
+                        n.top = Val::Px(-1.0);
+                        n.bottom = Val::Auto;
+                    }
+                }
+            }
+        }
+        _ => hide_markers(&items, &mut nodes),
+    }
+
+    if !mouse.just_released(MouseButton::Left) {
+        return;
+    }
+    hide_markers(&items, &mut nodes);
+    let Some(st) = drag.0.take() else { return };
+    if !st.active {
+        // A click: switch to that set and dismiss, which is what this row did
+        // when the press handled it.
+        if st.index != sets.active {
+            activate_panel_set(&mut sets, &mut fixed, st.index);
+        }
+        for trigger in &triggers {
+            renzora_ember::widgets::close_popup(&mut commands, trigger);
+        }
+        return;
+    }
+    // A reorder leaves the menu open: you are arranging a list, and having it
+    // shut on every move would make ordering three sets three round trips.
+    let to = st.target.min(sets.sets.len());
+    reorder_panel_sets(&mut sets, st.index, to);
 }
 
 /// Focus the panel-set rename field the frame it spawns, so the pencil puts the
