@@ -400,6 +400,16 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 
 ## 8. Code conventions
 
+- **Edit source files with the Edit/Write tools — never through the shell.**
+  No `python - <<'EOF'` heredocs, no `sed -i`, no `perl -pi`, no "write a patch
+  script and run it". Those rewrites are **invisible**: the transcript shows a
+  shell command and `ok`, so the change cannot be reviewed as it happens, a
+  wrong edit is not caught early, and there is no diff to read. Read the file,
+  then `Edit` with a unique `old_string` (or `replace_all` for a repeated
+  change); use `Write` for a genuinely new file. If a change feels too fiddly
+  for `Edit`, that is a signal it is too large for one step — split it, don't
+  reach for a script. Shell remains correct for building, testing, searching,
+  inspecting binaries and running probes; the rule is about *mutating source*.
 - **Comment the WHY, not the what.** This codebase's hallmark is doc-comments
   (`//!` module, `///` item) that explain *why* the code is shaped this way, what
   edge case it handles, and what previously went wrong. Match that density and
@@ -417,6 +427,8 @@ languages coexist in one project. See `docs/r1-alpha7/extending/script-backends.
 
 ## 9. Best practices (audit summary)
 
+- **Edit files with `Edit`/`Write`, never a shell heredoc or `sed -i`** (§8).
+  A change nobody can see in the transcript is a change nobody reviewed.
 - **Trust the constraints.** The one-definition contract crate, the two-layer
   C-ABI negotiation, and the frozen-vs-current docs split are all load-bearing.
   Work *with* them.
