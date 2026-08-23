@@ -306,6 +306,30 @@ pub enum EditorState {
     Inactive,
 }
 
+/// Mirror [`EditorSelection`]'s internal write counter onto the resource's Bevy
+/// change tick, so anything watching the selection with ordinary change
+/// detection actually sees a selection change.
+///
+/// The resource writes through `&self` (an `RwLock`), which by design bypasses
+/// change detection entirely — see `EditorSelection::version`. Without this the
+/// reactive `bind_*` closures that read `is_selected(..)` subscribe to a tick
+/// that never moves, so they run once and are skipped from then on: the row you
+/// just deselected keeps its highlight until an unrelated read of its own (its
+/// `Interaction`, i.e. hovering it) happens to dirty the binding.
+///
+/// `PreUpdate` rather than `Update` on purpose. Selection writes come from
+/// `Update` systems (hierarchy clicks, viewport picking, spawn commands) that
+/// have no ordering relationship with the reactive driver, so bumping here
+/// makes the latency a predictable single frame instead of "whichever way the
+/// scheduler happened to interleave them this time".
+fn sync_selection_change_tick(mut selection: ResMut<EditorSelection>, mut last: Local<u64>) {
+    let version = selection.version();
+    if version != *last {
+        *last = version;
+        selection.set_changed();
+    }
+}
+
 /// Apply queued [`EditorCommands`] (panel/inspector actions push closures here).
 pub fn drain_editor_commands_native(world: &mut World) {
     let cmds = world
@@ -402,6 +426,11 @@ impl Plugin for RenzoraEditorPlugin {
             .init_resource::<renzora::core::IsolationMode>();
 
         register_builtin_tools(&mut app.world_mut().resource_mut::<ToolbarRegistry>());
+
+        // Unconditional: the selection is read by panels, gizmos and the
+        // reactive UI in every editor state, and a missed bump shows up as a
+        // stale highlight rather than as an error.
+        app.add_systems(PreUpdate, sync_selection_change_tick);
 
         app.add_systems(
             Update,

@@ -61,6 +61,8 @@ Drag a row to move it. Where you drop it decides what happens, based on the part
 
 Children move with their parent: rotate or move a parent and its children follow. The editor won't let you drop an object into one of its own children, and the whole move is one undo step.
 
+Until you reorder them by hand, top-level objects sit in the order you added them — so anything you create lands at the bottom of the tree, which is where to look for it. Dragging a top-level row rearranges them for the rest of the session, and new objects still join at the end. That manual arrangement is editor-session state, though: it isn't written into the scene file, so reopening the scene puts the top level back in the order the file lists.
+
 Right-click a row for more options: **Add Child Entity**, **Rename**, **Duplicate**, **Unparent**, **Group as Children**, **Attach ▸**, **label color** swatches, **Delete**, and (for cameras and scene instances) a few extra commands covered below.
 
 ### Attaching a new asset from the Hierarchy

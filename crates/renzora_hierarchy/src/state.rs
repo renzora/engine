@@ -39,6 +39,61 @@ pub struct EntityNode {
     pub type_name: Option<&'static str>,
 }
 
+/// The order in which entities first showed up in the tree — the fallback sort
+/// for root entities that carry no explicit [`HierarchyOrder`].
+///
+/// Roots used to tiebreak on `Entity` itself, which reads like "spawn order" and
+/// isn't. `Entity`'s `Ord` compares `to_bits()`, and `to_bits()` puts the
+/// *generation* in the high 32 bits — so it sorts by generation first and index
+/// second. Index slots are recycled, and the editor recycles constantly (every
+/// tooltip, reactive row and status-bar readout it spawns and despawns frees
+/// one), so a shape spawned now typically lands in a recycled slot with a high
+/// generation and a low index. Two shapes added back to back could therefore
+/// appear anywhere relative to each other and to everything already in the
+/// scene, and the list visibly reshuffled as unrelated entities came and went.
+///
+/// A first-seen counter is the honest version of what the `Entity` tiebreak was
+/// reaching for. It only ever grows, so a new root always lands at the bottom,
+/// which is where you look for the thing you just added.
+#[derive(Resource, Default)]
+pub struct HierarchySpawnSeq {
+    seq: HashMap<Entity, u64>,
+    next: u64,
+}
+
+impl HierarchySpawnSeq {
+    /// Number the entities we haven't seen before and forget the ones that have
+    /// gone away. `present` is the *unfiltered* candidate set: numbering only
+    /// what survives the hierarchy filter would renumber everything else the
+    /// moment the filter cleared, which is exactly the reshuffle this exists to
+    /// prevent.
+    fn sync(&mut self, present: &[Entity]) {
+        let live: HashSet<Entity> = present.iter().copied().collect();
+        let mut fresh: Vec<Entity> = present
+            .iter()
+            .copied()
+            .filter(|e| !self.seq.contains_key(e))
+            .collect();
+        // Several entities can appear in one rebuild (a scene load, a dropped
+        // model). Query iteration is archetype-ordered and therefore not stable
+        // across frames, so number them by allocation index — the closest thing
+        // to spawn order the ECS still remembers once generations are out of the
+        // picture.
+        fresh.sort_by_key(|e| e.index_u32());
+        for e in fresh {
+            self.seq.insert(e, self.next);
+            self.next += 1;
+        }
+        self.seq.retain(|e, _| live.contains(e));
+    }
+
+    /// This entity's first-seen number. `u64::MAX` for anything not numbered
+    /// yet, which sorts it last — the same place a brand-new root belongs.
+    fn of(&self, entity: Entity) -> u64 {
+        self.seq.get(&entity).copied().unwrap_or(u64::MAX)
+    }
+}
+
 /// A query filter for "this entity is a candidate for the hierarchy tree".
 ///
 /// **This is the editor-chrome boundary, and it is deliberately a query filter
@@ -70,9 +125,13 @@ type HierarchyCandidate = (
 ///
 /// Takes `&mut World` only to build the candidate `QueryState` (which registers
 /// the component ids it needs); everything after that is read-only.
-pub fn build_entity_tree(world: &mut World) -> Vec<EntityNode> {
+pub fn build_entity_tree(world: &mut World, spawn_seq: &mut HierarchySpawnSeq) -> Vec<EntityNode> {
     let mut candidates = world.query_filtered::<(Entity, &Name), HierarchyCandidate>();
     let world: &World = world;
+    // Number every candidate *before* the filters below prune any — see
+    // `HierarchySpawnSeq::sync`.
+    let all_candidates: Vec<Entity> = candidates.iter(world).map(|(e, _)| e).collect();
+    spawn_seq.sync(&all_candidates);
     // Resolve hierarchy filter — map component type names to ComponentIds.
     let resolve_ids = |names: &Vec<&'static str>| -> Vec<bevy::ecs::component::ComponentId> {
         let Some(registry) = world.get_resource::<AppTypeRegistry>() else {
@@ -274,16 +333,17 @@ pub fn build_entity_tree(world: &mut World) -> Vec<EntityNode> {
         }
     }
 
-    // Sort root entities by HierarchyOrder component, using Entity index as
-    // tiebreaker so the order is deterministic even when archetype iteration
-    // order shifts (e.g. after component additions from selection changes).
+    // Sort root entities by an explicit `HierarchyOrder` (written by a
+    // drag-reorder) and fall back to the order they entered the tree, so a
+    // freshly spawned root lands at the bottom. The fallback used to be `Entity`
+    // itself, which sorts generation-first — see [`HierarchySpawnSeq`].
     root_indices.sort_by_key(|&idx| {
         let entity = entries[idx].entity;
         let order = world
             .get::<HierarchyOrder>(entity)
             .map(|h| h.0)
             .unwrap_or(u32::MAX);
-        (order, entity)
+        (order, spawn_seq.of(entity))
     });
 
     // Sort children by a key that's deterministic even when entries were

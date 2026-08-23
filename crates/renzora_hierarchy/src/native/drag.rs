@@ -15,6 +15,8 @@ use renzora_ember::font::{ui_font, EmberFonts};
 use renzora_ember::theme::rgb;
 use renzora_undo::{record, CompoundCmd, ReparentCmd, SetHierarchyOrderCmd, UndoCommand, UndoContext};
 
+use crate::cache::HierarchyTreeCache;
+
 use super::components::{HierDropEdge, HierRowClick};
 
 #[derive(Component)]
@@ -285,6 +287,23 @@ fn apply_drop(
             }
         }
 
+        // The root order the panel is currently drawing, which is what a
+        // root-level drop reorders. It comes from the cached tree rather than
+        // being re-derived here: the previous version walked archetypes and
+        // stable-sorted on `HierarchyOrder`, but before the first reorder no
+        // root *has* a `HierarchyOrder`, so the sort was a no-op and the
+        // numbering it wrote came out in archetype iteration order — which
+        // matches nothing the user can see. Dragging one row reshuffled every
+        // other row as a side effect.
+        //
+        // Hoisted out of the loop so a multi-row drag accumulates: each dropped
+        // entity is removed from this list and reinserted, and the next one
+        // sees the result instead of the stale cache again.
+        let mut roots: Vec<Entity> = world
+            .get_resource::<HierarchyTreeCache>()
+            .map(|c| c.nodes.iter().map(|n| n.entity).collect())
+            .unwrap_or_default();
+
         for entity in &drag_entities {
             if *entity == target {
                 continue;
@@ -332,39 +351,23 @@ fn apply_drop(
                         }
                     } else {
                         // Root-level reorder: rewrite HierarchyOrder on all roots.
+                        roots.retain(|&e| e != *entity);
+                        // The cache lags a real edit by up to 100ms, so the drop
+                        // target can be missing from it (dropping onto a root
+                        // that was itself just created). Renumbering around a
+                        // guessed position would scramble the list, so leave the
+                        // orders alone and let the drop be a no-op instead.
+                        let Some(target_pos) = roots.iter().position(|&e| e == target) else {
+                            continue;
+                        };
                         world.entity_mut(*entity).remove_parent_in_place();
-                        let mut roots: Vec<(Entity, u32)> = Vec::new();
-                        for archetype in world.archetypes().iter() {
-                            for arch_entity in archetype.entities() {
-                                let e = arch_entity.id();
-                                if world.get::<Name>(e).is_none() {
-                                    continue;
-                                }
-                                if world.get::<ChildOf>(e).is_some() {
-                                    continue;
-                                }
-                                if world.get::<renzora::core::HideInHierarchy>(e).is_some() {
-                                    continue;
-                                }
-                                if world.get::<bevy::ui::Node>(e).is_some() {
-                                    continue;
-                                }
-                                let order =
-                                    world.get::<HierarchyOrder>(e).map(|h| h.0).unwrap_or(u32::MAX);
-                                roots.push((e, order));
-                            }
-                        }
-                        roots.sort_by_key(|&(_, o)| o);
-                        roots.retain(|&(e, _)| e != *entity);
-                        let target_pos =
-                            roots.iter().position(|&(e, _)| e == target).unwrap_or(0);
                         let insert_pos = if matches!(zone, TreeDropZone::After) {
                             target_pos + 1
                         } else {
                             target_pos
                         };
-                        roots.insert(insert_pos, (*entity, 0));
-                        for (i, &(e, _)) in roots.iter().enumerate() {
+                        roots.insert(insert_pos, *entity);
+                        for (i, &e) in roots.iter().enumerate() {
                             world.entity_mut(e).insert(HierarchyOrder(i as u32));
                         }
                     }

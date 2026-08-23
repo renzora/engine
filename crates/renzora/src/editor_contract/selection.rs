@@ -1,5 +1,6 @@
 //! Global editor selection — shared between hierarchy, inspector, and viewport.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
 use bevy::prelude::*;
@@ -11,17 +12,45 @@ use bevy::prelude::*;
 #[derive(Resource)]
 pub struct EditorSelection {
     selected: RwLock<Vec<Entity>>,
+    /// Bumped by every write. Because the writes go through `&self`, Bevy's
+    /// change detection never sees them — the resource's change tick would sit
+    /// at whatever it was when the resource was inserted, forever.
+    ///
+    /// That is not cosmetic. Ember's reactive bindings subscribe to the change
+    /// ticks of whatever a closure reads, and skip the closure when none of
+    /// them moved. A row that binds its background to `is_selected(entity)`
+    /// therefore recomputed exactly once (its first run, when the dep set is
+    /// still empty and everything counts as dirty) and then went permanently
+    /// clean: selecting a different entity left the old row painted with the
+    /// selection accent until something *else* it read — its own `Interaction`,
+    /// i.e. the mouse happening to pass over it — dirtied the binding.
+    ///
+    /// So writers bump this counter and one system per frame turns a change in
+    /// it into a real `set_changed()`. See `sync_selection_change_tick` in
+    /// `renzora_editor_framework`.
+    version: AtomicU64,
 }
 
 impl Default for EditorSelection {
     fn default() -> Self {
         Self {
             selected: RwLock::new(Vec::new()),
+            version: AtomicU64::new(0),
         }
     }
 }
 
 impl EditorSelection {
+    /// Monotonic write counter — see the [`version`](Self::version) field. Read
+    /// by the system that mirrors it onto the resource's Bevy change tick.
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::Relaxed)
+    }
+
+    fn bump(&self) {
+        self.version.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Get the primary selected entity (first in list), for backward compat.
     pub fn get(&self) -> Option<Entity> {
         self.selected.read().unwrap().first().copied()
@@ -35,6 +64,7 @@ impl EditorSelection {
     /// Set a single selected entity (clears previous selection).
     pub fn set(&self, entity: Option<Entity>) {
         let mut sel = self.selected.write().unwrap();
+        self.bump();
         sel.clear();
         if let Some(e) = entity {
             sel.push(e);
@@ -51,11 +81,13 @@ impl EditorSelection {
             format!("Multi-select: {} entities {:?}", entities.len(), entities),
         );
         *self.selected.write().unwrap() = entities;
+        self.bump();
     }
 
     /// Toggle an entity in the selection (add if absent, remove if present).
     pub fn toggle(&self, entity: Entity) {
         let mut sel = self.selected.write().unwrap();
+        self.bump();
         if let Some(pos) = sel.iter().position(|&e| e == entity) {
             sel.remove(pos);
             crate::console_log::console_info("Selection", format!("Deselected {:?}", entity));
@@ -82,6 +114,7 @@ impl EditorSelection {
             let (start, end) = if a <= b { (a, b) } else { (b, a) };
             let range: Vec<Entity> = visible_order[start..=end].to_vec();
             *self.selected.write().unwrap() = range;
+            self.bump();
         }
     }
 
@@ -93,6 +126,7 @@ impl EditorSelection {
     /// Clear the selection.
     pub fn clear(&self) {
         self.selected.write().unwrap().clear();
+        self.bump();
     }
 }
 
@@ -272,6 +306,51 @@ mod tests {
 
         sel.toggle(e[1]);
         assert!(sel.has_multi_selection());
+    }
+
+    // ── the write counter ────────────────────────────────────────────────────
+
+    /// Every write must move `version`, because that counter is the *only*
+    /// signal the reactive UI has that the selection changed — the `RwLock`
+    /// hides the writes from Bevy's change detection. A write that forgets to
+    /// bump leaves selection highlights painted on the wrong rows.
+    #[test]
+    fn every_write_moves_the_version() {
+        let e = entities(4);
+        let sel = EditorSelection::default();
+        let mut v = sel.version();
+        let mut moved = |sel: &EditorSelection, what: &str| {
+            let now = sel.version();
+            assert!(now != v, "{what} did not bump the version");
+            v = now;
+        };
+
+        sel.set(Some(e[0]));
+        moved(&sel, "set");
+        sel.set(None);
+        moved(&sel, "set(None)");
+        sel.set_multiple(e.clone());
+        moved(&sel, "set_multiple");
+        sel.toggle(e[1]);
+        moved(&sel, "toggle off");
+        sel.toggle(e[1]);
+        moved(&sel, "toggle on");
+        sel.select_range(&e, e[0], e[2]);
+        moved(&sel, "select_range");
+        sel.clear();
+        moved(&sel, "clear");
+    }
+
+    /// A range that resolves to nothing changes no state, so it must not bump —
+    /// otherwise every failed shift-click wakes every selection binding.
+    #[test]
+    fn a_range_that_selects_nothing_leaves_the_version_alone() {
+        let order = entities(3);
+        let hidden = Entity::from_raw_u32(99).unwrap();
+        let sel = EditorSelection::default();
+        let before = sel.version();
+        sel.select_range(&order, hidden, order[1]);
+        assert_eq!(sel.version(), before);
     }
 
     #[test]

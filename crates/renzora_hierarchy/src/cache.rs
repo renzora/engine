@@ -18,7 +18,7 @@ use renzora_editor_framework::{
     EditorLocked, EntityLabelColor, HideInHierarchy, HierarchyFilter, HierarchyOrder,
 };
 
-use crate::state::{build_entity_tree, EntityNode};
+use crate::state::{build_entity_tree, EntityNode, HierarchySpawnSeq};
 
 /// Cached entity tree, produced by `update_hierarchy_cache`.
 #[derive(Resource, Default)]
@@ -132,7 +132,9 @@ pub fn update_hierarchy_cache(world: &mut World, mut last_build: Local<f32>) {
     }
     *last_build = now;
 
-    let nodes = build_entity_tree(world);
+    let nodes = world.resource_scope(|world, mut seq: Mut<HierarchySpawnSeq>| {
+        build_entity_tree(world, &mut seq)
+    });
     let mut cache = world.resource_mut::<HierarchyTreeCache>();
     cache.nodes = nodes;
     cache.version = cache.version.wrapping_add(1);
