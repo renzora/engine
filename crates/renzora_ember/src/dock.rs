@@ -1286,8 +1286,24 @@ struct ParentSplit {
 }
 
 impl ParentSplit {
+    /// Does the parent's divider run *along* this leaf's tab bar, so the bar's
+    /// empty area is a natural extension of it?
+    ///
+    /// Only for a vertical split's lower child: its divider is a horizontal
+    /// line directly above the bar, spanning the same width — which is what
+    /// makes "drag the empty space in the header" mean the same gesture as
+    /// "drag the edge above it" (the global bottom panel is the case people
+    /// actually use).
+    ///
+    /// A *horizontal* split's left child used to qualify too, and that was
+    /// wrong in a way that showed up as a cursor bug: the divider is a thin
+    /// vertical line at the leaf's right edge, but the filler is the whole
+    /// remaining width of the tab bar, so every column but the last showed an
+    /// ew-resize cursor across its entire header — the width of a panel away
+    /// from the boundary it would drag. The vertical dividers are still there
+    /// and still draggable; they're just not secretly the size of a tab bar.
     fn aligned(&self) -> bool {
-        (!self.horizontal && self.is_second) || (self.horizontal && !self.is_second)
+        !self.horizontal && self.is_second
     }
 }
 
@@ -4437,16 +4453,12 @@ fn populate_leaf(
             None
         };
         if let Some(p) = parent.filter(|p| p.aligned()) {
-            let cursor = crate::cursor_icon::parse_cursor(if p.horizontal {
-                "ew-resize"
-            } else {
-                "ns-resize"
-            })
-            .unwrap();
+            // Always vertical now — `aligned()` only accepts the split whose
+            // divider lies along this bar, and that divider is horizontal.
             commands.entity(filler).insert((
                 Interaction::default(),
                 crate::resize::ResizeHandle,
-                crate::cursor_icon::HoverCursor(cursor),
+                crate::cursor_icon::HoverCursor(bevy::window::SystemCursorIcon::NsResize),
                 Divider {
                     container: p.container,
                     first_wrap: p.first_wrap,
@@ -4556,6 +4568,33 @@ fn populate_leaf(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a bar with its parent's divider lying *along* it may double as that
+    /// divider's handle.
+    ///
+    /// Regression guard: a horizontal split's left child qualified too, which
+    /// gave every column but the last an ew-resize cursor across the whole
+    /// width of its tab bar — a panel's width away from the vertical line it
+    /// would actually have dragged.
+    #[test]
+    fn only_a_bar_under_its_divider_doubles_as_a_handle() {
+        let split = |horizontal, is_second| ParentSplit {
+            container: Entity::PLACEHOLDER,
+            first_wrap: Entity::PLACEHOLDER,
+            horizontal,
+            is_second,
+            path: Vec::new(),
+        };
+        // Vertical split, lower child: the divider is the line right above this
+        // bar — the global bottom panel's "drag the header" gesture.
+        assert!(split(false, true).aligned());
+        // Vertical split, upper child: its bar is at the top, nowhere near.
+        assert!(!split(false, false).aligned());
+        // Horizontal split, either side: the divider is a vertical line at one
+        // edge, not something the bar runs along.
+        assert!(!split(true, false).aligned());
+        assert!(!split(true, true).aligned());
+    }
 
     /// The editor's bottom-panel toggle round-trips the bottom region through
     /// detach + attach; the stash must come back bit-identical (tabs, active

@@ -64,9 +64,26 @@ pub fn parse_cursor(name: &str) -> Option<SystemCursorIcon> {
     })
 }
 
+/// The cursor of the topmost laid-out hovered node, from
+/// `(hovered, size, stack index, cursor)` candidates. See the call site for why
+/// both the stack index and the size test are load-bearing.
+fn topmost_hovered(
+    candidates: impl Iterator<Item = (bool, Vec2, u32, SystemCursorIcon)>,
+) -> Option<SystemCursorIcon> {
+    candidates
+        .filter(|(hovered, size, _, _)| *hovered && size.x > 0.0 && size.y > 0.0)
+        .max_by_key(|(_, _, stack, _)| *stack)
+        .map(|(_, _, _, cursor)| cursor)
+}
+
 fn apply_cursor_icon(
     #[cfg(feature = "game_ui")] drag: Res<DragState>,
-    hovered: Query<(&Interaction, &HoverCursor, &bevy::ui::ComputedNode)>,
+    hovered: Query<(
+        &Interaction,
+        &HoverCursor,
+        &bevy::ui::ComputedNode,
+        &bevy::ui::ComputedStackIndex,
+    )>,
     viewport_request: Option<Res<renzora::core::viewport_types::ViewportCursorRequest>>,
     windows: Query<(Entity, &Window)>,
     cursor_opts: Query<&bevy::window::CursorOptions>,
@@ -82,27 +99,34 @@ fn apply_cursor_icon(
     let target = if dragging {
         SystemCursorIcon::Grabbing
     } else {
-        // Skip nodes that aren't laid out. `Interaction` is only updated for
-        // entities the focus pass can see, so a node hidden with
-        // `Display::None` keeps whatever value it held at the moment it was
-        // hidden — hide one while the cursor is on it (closing a panel by
-        // clicking its own toggle does exactly that) and it stays `Hovered`
-        // forever. Since this picks the *first* match rather than the topmost,
-        // one stale entry then owns the cursor for the whole app: the editor's
-        // bottom panel showed `pointer` over its resize handle and `ns-resize`
-        // over its toggle, each supplied by a hidden node from the other state.
+        // The **topmost** hovered node wins, by `ComputedStackIndex` — the same
+        // order bevy_ui paints in and hands interactions out in.
         //
-        // A zero computed size is the test that catches it, and it covers a
-        // `Display::None` ancestor too, which checking this node's own `display`
-        // would miss.
-        let widget = hovered
-            .iter()
-            .find(|(i, _, cn)| {
-                matches!(i, Interaction::Hovered | Interaction::Pressed)
-                    && cn.size().x > 0.0
-                    && cn.size().y > 0.0
-            })
-            .map(|(_, hc, _)| hc.0);
+        // This used to take the first match in query order, which is no order at
+        // all: several nodes are legitimately hovered at once wherever one
+        // overlaps another that doesn't block the pointer, and whichever
+        // happened to come first in the archetype owned the cursor. The editor
+        // hit that repeatedly — a resize cursor showing on the bottom panel's
+        // buttons and dropdown, an ew-resize showing on its ns-resize grip —
+        // because the dock header's filler underneath them is a resize surface,
+        // and it kept winning a race it should never have been in.
+        //
+        // The zero-size test stays, and is separate: `Interaction` is only
+        // updated for entities the focus pass can see, so a node hidden with
+        // `Display::None` keeps whatever value it held when it was hidden (hide
+        // one under the cursor — closing a panel by clicking its own toggle does
+        // exactly that — and it reads `Hovered` forever). A stale entry like
+        // that can carry a high stack index, so topmost alone wouldn't catch it.
+        // Zero computed size does, including via a hidden *ancestor*, which
+        // checking this node's own `display` would miss.
+        let widget = topmost_hovered(hovered.iter().map(|(i, hc, cn, stack)| {
+            (
+                matches!(i, Interaction::Hovered | Interaction::Pressed),
+                cn.size(),
+                stack.0,
+                hc.0,
+            )
+        }));
         let request = viewport_request.and_then(|r| r.0);
         // A concrete widget cursor (a button's `pointer`, a text field's `text`)
         // always wins. But the viewport paints a blanket `crosshair` over its
@@ -158,4 +182,52 @@ fn apply_cursor_icon(
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Update, apply_cursor_icon);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SIZE: Vec2 = Vec2::new(100.0, 20.0);
+
+    /// Overlapping hovered nodes are normal — anything that doesn't block the
+    /// pointer leaves the node beneath it hovered too — so the cursor has to
+    /// come from the one on top, not from whichever the query yields first.
+    ///
+    /// Regression guard: the bottom panel's controls and its ns-resize grip sit
+    /// over the dock header's filler, which is an ew-resize surface. Taking the
+    /// first match let the filler supply the cursor for all of them.
+    #[test]
+    fn the_topmost_hovered_node_supplies_the_cursor() {
+        let filler = (true, SIZE, 10, SystemCursorIcon::EwResize);
+        let grip = (true, SIZE, 42, SystemCursorIcon::NsResize);
+        // Either order in the query; the answer is the same.
+        assert!(matches!(
+            topmost_hovered([filler, grip].into_iter()),
+            Some(SystemCursorIcon::NsResize)
+        ));
+        assert!(matches!(
+            topmost_hovered([grip, filler].into_iter()),
+            Some(SystemCursorIcon::NsResize)
+        ));
+    }
+
+    /// A node hidden under the cursor keeps `Interaction::Hovered` forever, and
+    /// can carry a *higher* stack index than anything real — so topmost alone
+    /// isn't enough. Its computed size collapses to zero, which is the test.
+    #[test]
+    fn a_hidden_node_never_supplies_the_cursor() {
+        let hidden = (true, Vec2::ZERO, 900, SystemCursorIcon::NsResize);
+        let button = (true, SIZE, 5, SystemCursorIcon::Pointer);
+        assert!(matches!(
+            topmost_hovered([hidden, button].into_iter()),
+            Some(SystemCursorIcon::Pointer)
+        ));
+    }
+
+    #[test]
+    fn nothing_hovered_yields_no_cursor() {
+        let idle = (false, SIZE, 7, SystemCursorIcon::Pointer);
+        assert!(topmost_hovered([idle].into_iter()).is_none());
+    }
 }

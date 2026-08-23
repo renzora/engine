@@ -96,6 +96,7 @@ Two things that are **not** affected, and shouldn't be "fixed" with `Block`:
 
 - **Layout scaffolding.** Wrappers, spacers, text and icons inside a button want `Pass` (their default) — that's how a click on a button's label reaches the button. Marking them `Block` breaks the widget.
 - **`RelativeCursorPosition`.** Bevy fills `cursor_over` for *every* node containing the pointer, whoever captures the press. Hover *visuals* on a container that holds its own interactive children should read `cursor_over`, not `Interaction` — otherwise the container flattens out the moment the cursor crosses onto a child that blocks. (Ember's `correct_pointer_state` already clears `cursor_over` for anything clipped by a scroll area or covered by an overlay, so it stays trustworthy.)
+- **The mouse cursor.** Several nodes are hovered at once whenever one overlaps another that passes the pointer, so ember's `apply_cursor_icon` resolves `HoverCursor` by **`ComputedStackIndex`** — the topmost hovered node supplies the cursor, and a node whose computed size is zero (hidden under the cursor, so stuck at `Hovered`) supplies nothing. Add `Block` because your widget owns its press, not to win the cursor.
 
 ## The built-in widget library
 
@@ -161,6 +162,8 @@ Spawn both — the `GlobalZIndex` is the value used until the first rebase and t
 
 This is for depth *within* panel content. A genuinely floating surface — menu, dropdown, modal, drag ghost — wants to be above everything including the bottom panel, so it keeps its absolute band (500 / 700 / 1000 / …); `dropdown`'s `floating_z` does the same ancestor walk for those, upward.
 
+A **full-window modal scrim** is the awkward middle case: it has to cover the bottom panel while still letting those bands open above it. Use `renzora_ember::stacking::MODAL_SCRIM_Z` (300) rather than picking a number. Settings picked 100 — a *tie* with the bottom panel, not a win, so ties fell back to tree order and an open bottom panel painted over the modal.
+
 ### Two copies of one panel are two independent views
 
 The `+` picker doesn't filter out panels that are already open, so **any** panel can be mounted twice — in its workspace *and* in the global bottom panel, or twice in one dock. Anything a panel builds therefore has to be per-instance, not per-panel-id.
@@ -180,7 +183,11 @@ Two builders cover almost every "click a thing, a panel appears" case, and using
 - **A selection** → `dropdown(commands, fonts, &options, selected)`, or `dropdown_compact(.., width)` for a toolbar row (fixed width, tighter padding, 22px tall so it lines up with icon buttons). Both carry a `Bound<usize>`, so `bind_2way(commands, dd, get, set)` wires the box to a resource in both directions. `dropdown_with_icons` takes `(icon, label)` pairs. To hide options that don't apply right now, flip `Node.display` on the rows whose `EmberDropdownOption.dropdown` is your box — `value` stays a stable index, so hiding never renumbers the rest.
 - **A panel of mixed content** (switches, sliders, sections) → `popup_panel(commands, &rows)` for the surface, `icon_popup_trigger(commands, fonts, icon, panel)` for a toolbar-sized icon+caret trigger, and `popup_anchor(commands, trigger, panel)` for the wrapper you add to your layout. Add your own marker components to the trigger for styling. `popup_panel_aligned(.., PopupAlign::Left)` when the trigger sits at the *start* of a strip and a right-aligned panel would grow off-screen. For a plain button or icon trigger with one content node, `popover` / `labeled_icon_popover` / `icon_popover` wrap the same machinery in one call.
 
-Ember toggles the panel on trigger clicks, closes it on an outside click, and flips it above the trigger when opening below would run off the window.
+Ember toggles the panel on trigger clicks, closes it on an outside click, and flips it above the trigger when opening below would run out of sight.
+
+**Never put `Overflow::clip()` on a trigger.** The panel is a *child* of it, and a clipping parent clips absolutely-positioned descendants like everything else — so the popup opens, correctly, inside the trigger's own 20px-tall box and is never seen. It reads exactly like a dropdown that ignores clicks. If the trigger needs a width cap (a long document name, a set name), clip the **label** instead: `min_width: 0` + `Overflow::clip()` + `TextLayout::no_wrap()` on the text node.
+
+For a `dropdown`, "out of sight" is measured against the **clip rect the box is in**, not the window: a menu still gets cut off at the bounds of any scrolling ancestor, since `GlobalZIndex` fixes paint order and not clipping. So a dropdown at the bottom of a panel's scroll area opens upward even when the window below it is empty — which is what a box near the end of Settings does.
 
 The reason to reach for these rather than rolling your own trigger + panel: **ember tags every popup panel and dropdown menu as an `OverlaySurface`**, which is what stops clicks, scrolls and hover from leaking through to whatever is behind the panel. A hand-rolled panel is invisible to that routing, so a click on one of its rows *also* lands in the viewport underneath (selecting an object, starting a box-select) and the viewport's crosshair cursor shows straight through the panel. That was the bug in the viewport toolbar's hand-rolled dropdowns, and — because it carried its own toggle component instead of `Popup` — in `popover` itself. If you must build a floating surface by hand, spawn it with `OverlaySurface` and a `RelativeCursorPosition`.
 

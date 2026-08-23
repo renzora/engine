@@ -306,6 +306,18 @@ fn floating_z(
     z
 }
 
+/// Should a menu of `est` px open *upward* from a box spanning `box_top`..
+/// `box_bottom`?
+///
+/// `top_edge` / `bottom_edge` bound the region the menu can actually be seen in
+/// — the box's clip rect, or the window when nothing clips it. Everything is in
+/// the same physical-px space.
+fn flips_up(box_top: f32, box_bottom: f32, est: f32, top_edge: f32, bottom_edge: f32) -> bool {
+    let room_below = bottom_edge - box_bottom;
+    let room_above = box_top - top_edge;
+    room_below < est && room_above > room_below
+}
+
 pub(crate) fn dropdown_toggle(
     mut commands: Commands,
     mut dropdowns: Query<
@@ -322,6 +334,7 @@ pub(crate) fn dropdown_toggle(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     zs: Query<&GlobalZIndex>,
     parents: Query<&ChildOf>,
+    clips: Query<&bevy::ui::CalculatedClip>,
 ) {
     for (box_e, interaction, mut dd, cn, xf) in &mut dropdowns {
         if *interaction != Interaction::Pressed {
@@ -341,10 +354,19 @@ pub(crate) fn dropdown_toggle(
             .entity(menu)
             .insert(GlobalZIndex(floating_z(box_e, DROPDOWN_Z, &zs, &parents)));
         // Position-aware open: if the estimated menu height doesn't fit below the
-        // box (e.g. the dropdown is near the bottom of a scroll) and there's more
-        // room above, flip it to open upward instead of running off-screen. All
-        // measurements are physical px (ComputedNode/UiGlobalTransform/window) so
-        // they compare directly.
+        // box and there's more room above, flip it to open upward instead of
+        // running out of sight. All measurements are physical px
+        // (ComputedNode/UiGlobalTransform/window/CalculatedClip) so they compare
+        // directly.
+        //
+        // The edges that matter are the *clip's*, not the window's. `GlobalZIndex`
+        // fixes paint order, not clipping: the menu still gets cut off at the
+        // bounds of whatever clipping ancestor the box sits in, and the box's own
+        // `CalculatedClip` is exactly that rect (the menu is its child, so it
+        // inherits it). Measuring against the window instead is why a dropdown at
+        // the bottom of a *scroll area* — Settings' panel being the visible case —
+        // opened downwards into the clip and showed a sliver of one row: the
+        // window had hundreds of px of room left, the scroll viewport had none.
         let flip_up = windows
             .single()
             .ok()
@@ -355,8 +377,11 @@ pub(crate) fn dropdown_toggle(
                 // ~24 logical px per row + padding, capped at the scroll height.
                 let est = (dd.options.len() as f32 * 24.0 + 4.0).min(DROPDOWN_MAX_HEIGHT)
                     * w.scale_factor();
-                let room_below = w.physical_height() as f32 - box_bottom;
-                room_below < est && box_top > room_below
+                let win_bottom = w.physical_height() as f32;
+                let (top_edge, bottom_edge) = clips.get(box_e).map_or((0.0, win_bottom), |c| {
+                    (c.clip.min.y.max(0.0), c.clip.max.y.min(win_bottom))
+                });
+                flips_up(box_top, box_bottom, est, top_edge, bottom_edge)
             })
             .unwrap_or(false);
         if let Ok(mut n) = nodes.get_mut(menu) {
@@ -588,6 +613,29 @@ mod tests {
         let z = sys.run((), &mut world).expect("depth");
 
         assert_eq!(z, 901, "must clear the container it lives inside");
+    }
+
+    /// A dropdown at the bottom of a *clipped* scroll area must open upward,
+    /// however much empty window there is below it.
+    ///
+    /// Regression guard: the room was measured against the window, so the
+    /// Document Tabs dropdown at the bottom of the Settings panel's scroll
+    /// opened downward — into the clip — and showed a sliver of its first row.
+    /// `GlobalZIndex` lifts the menu's paint order out of the scroll, but not
+    /// its clip rect.
+    #[test]
+    fn a_menu_flips_up_at_the_bottom_of_a_clipped_scroll() {
+        // A box on the bottom edge of a scroll viewport spanning 100..400, in a
+        // 900px window: the window has 500px going spare, the viewport none.
+        assert!(flips_up(376.0, 400.0, 120.0, 100.0, 400.0));
+        // The same box measured against the window — what it used to do, and
+        // why it opened into the clip.
+        assert!(!flips_up(376.0, 400.0, 120.0, 0.0, 900.0));
+        // Mid-scroll there's room below, so it still opens downward.
+        assert!(!flips_up(176.0, 200.0, 120.0, 100.0, 400.0));
+        // Cramped both ways: it stays down rather than flipping into *less*
+        // room — near the top of a scroll, below is still the better side.
+        assert!(!flips_up(140.0, 160.0, 200.0, 100.0, 300.0));
     }
 
     #[test]

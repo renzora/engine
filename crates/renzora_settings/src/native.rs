@@ -658,8 +658,10 @@ fn spawn_overlay(
             BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
             // Below the ember popups' own global layers (dropdown menu = 500,
             // color panel = 700) so those open *above* the modal, but above the
-            // default-z chrome so the scrim covers the dock/top bar/status bar.
-            GlobalZIndex(100),
+            // default-z chrome so the scrim covers the dock/top bar/status bar —
+            // and above the global bottom panel, which claims a tier of its own
+            // and used to paint over the modal from the same depth.
+            GlobalZIndex(renzora_ember::stacking::MODAL_SCRIM_Z),
             FocusPolicy::Block,
             Interaction::default(),
             // Capture the wheel so scrolling doesn't bleed to the dock behind.

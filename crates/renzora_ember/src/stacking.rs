@@ -34,6 +34,19 @@
 use bevy::prelude::*;
 use bevy::ui::GlobalZIndex;
 
+/// Depth for a full-window modal scrim that still wants the widget bands to
+/// open above it — a dropdown menu (500), a menu / colour popover (700).
+///
+/// Above the two containers that claim tiers of their own: the global bottom
+/// panel (100) and the dock's root drop overlay (200). The Settings modal used
+/// to sit at 100 itself, which is a *tie* with the bottom panel and not a win —
+/// ties fall back to tree order, and the panel is spawned later, so an open
+/// bottom panel painted its shape strip straight over the modal.
+///
+/// A modal that has nothing to open above it doesn't need this band and should
+/// just use a high one (the ember `overlay` card is at 8000).
+pub const MODAL_SCRIM_Z: i32 = 300;
+
 /// A stacking depth relative to the widget it belongs to, resolved into a real
 /// `GlobalZIndex` by [`z_tier_rebase`]. See the module docs.
 ///
