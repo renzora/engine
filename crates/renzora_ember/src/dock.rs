@@ -4064,8 +4064,27 @@ fn add_panel_click(
                     category,
                     move |w: &mut World| {
                         let sibling = w.get::<DockLeaf>(leaf).and_then(|l| l.tabs.first().cloned());
-                        // Route to the tree owning this leaf's area — a floating
-                        // dock window's, else the primary dock's.
+                        // Route to the tree owning this leaf's area — the fixed
+                        // (global bottom) dock's, else a floating dock window's,
+                        // else the primary dock's.
+                        let add = |tree: &mut DockTree| match &sibling {
+                            Some(sib) => {
+                                tree.add_tab(sib, id.clone());
+                            }
+                            None => *tree = DockTree::leaf(id.clone()),
+                        };
+                        // The fixed area has to be checked first, exactly as
+                        // [`area_tree_mut`] does. It wasn't, so picking a panel
+                        // from the global bottom panel's `+` fell through to the
+                        // primary tree and added the tab to the workspace hidden
+                        // behind the overlay — the bottom panel never changed, so
+                        // the button read as dead.
+                        if w.get_resource::<FixedDock>().is_some_and(|f| f.area == Some(area)) {
+                            let mut fixed = w.resource_mut::<FixedDock>();
+                            add(&mut fixed.tree);
+                            fixed.dirty = true;
+                            return;
+                        }
                         let floating = w
                             .get_resource::<DockWindows>()
                             .and_then(|ws| ws.0.iter().position(|s| s.area == area));
@@ -4073,23 +4092,13 @@ fn add_panel_click(
                             Some(idx) => {
                                 if let Some(mut ws) = w.get_resource_mut::<DockWindows>() {
                                     let st = &mut ws.0[idx];
-                                    match &sibling {
-                                        Some(sib) => {
-                                            st.tree.add_tab(sib, id.clone());
-                                        }
-                                        None => st.tree = DockTree::leaf(id.clone()),
-                                    }
+                                    add(&mut st.tree);
                                     st.dirty = true;
                                 }
                             }
                             None => {
                                 if let Some(mut dock) = w.get_resource_mut::<Dock>() {
-                                    match &sibling {
-                                        Some(sib) => {
-                                            dock.tree.add_tab(sib, id.clone());
-                                        }
-                                        None => dock.tree = DockTree::leaf(id.clone()),
-                                    }
+                                    add(&mut dock.tree);
                                 }
                                 if let Some(mut d) = w.get_resource_mut::<DockDirty>() {
                                     d.0 = true;
