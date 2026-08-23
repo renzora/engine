@@ -7,7 +7,7 @@ use bevy::app::prelude::*;
 use bevy::asset::{embedded_asset, load_embedded_asset, AssetServer, Handle};
 use bevy::camera::{
     prelude::*,
-    visibility::{self, NoFrustumCulling, VisibilityClass},
+    visibility::{self, NoFrustumCulling, RenderLayers, VisibilityClass},
 };
 use bevy::color::{Color, ColorToComponents};
 use bevy::core_pipeline::{
@@ -300,19 +300,31 @@ fn extract_infinite_grids(
             &InfiniteGridSettings,
             &GlobalTransform,
             Option<&InheritedVisibility>,
+            Option<&RenderLayers>,
         )>,
     >,
 ) {
     let mut extracted = Vec::new();
-    for (entity, grid, transform, visibility) in grids.iter() {
+    for (entity, grid, transform, visibility, layers) in grids.iter() {
         if visibility.map(|v| v.get()).unwrap_or(true) {
-            extracted.push((entity, (*grid, *transform)));
+            // Carry the layers across: `queue_infinite_grids` draws into every
+            // view it is handed, so without them an offscreen preview on its own
+            // layer gets the editor's grid drawn through it.
+            let layers = layers.cloned().unwrap_or_default();
+            extracted.push((entity, (*grid, *transform, GridLayers(layers))));
         } else {
             commands.entity(entity).try_remove::<InfiniteGridSettings>();
         }
     }
     commands.try_insert_batch(extracted);
 }
+
+/// The render-world copy of a grid's [`RenderLayers`].
+///
+/// A component of its own rather than reusing `RenderLayers` directly, so it
+/// cannot be confused with a *view's* layers in the queue below.
+#[derive(Component, Clone, Default)]
+pub struct GridLayers(pub RenderLayers);
 
 fn prepare_infinite_grids(
     mut commands: Commands,
@@ -396,9 +408,17 @@ fn queue_infinite_grids(
     transparent_draw_functions: Res<DrawFunctions<Transparent3d>>,
     pipeline: Res<InfiniteGridPipeline>,
     mut pipelines: ResMut<SpecializedRenderPipelines<InfiniteGridPipeline>>,
-    infinite_grids: Query<&GlobalTransform, With<InfiniteGridSettings>>,
+    infinite_grids: Query<(&GlobalTransform, Option<&GridLayers>), With<InfiniteGridSettings>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa), With<ExtractedCamera>>,
+    mut views: Query<
+        (
+            &ExtractedView,
+            &RenderVisibleEntities,
+            &Msaa,
+            Option<&RenderLayers>,
+        ),
+        With<ExtractedCamera>,
+    >,
 ) {
     let Some(draw_function_id) = transparent_draw_functions
         .read()
@@ -408,7 +428,8 @@ fn queue_infinite_grids(
         return;
     };
 
-    for (view, entities, msaa) in views.iter_mut() {
+    for (view, entities, msaa, view_layers) in views.iter_mut() {
+        let view_layers = view_layers.cloned().unwrap_or_default();
         let Some(phase) = transparent_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -426,9 +447,17 @@ fn queue_infinite_grids(
             continue;
         };
         for (render_entity, main_entity) in render_visible_mesh_entities.iter_visible() {
-            let Ok(transform) = infinite_grids.get(*render_entity) else {
+            let Ok((transform, grid_layers)) = infinite_grids.get(*render_entity) else {
                 continue;
             };
+            // Respect render layers. Without this the editor grid draws into
+            // every offscreen preview — material spheres, thumbnail captures,
+            // the import viewport — because each of those is just another view
+            // as far as this queue is concerned.
+            let grid_layers = grid_layers.map(|l| l.0.clone()).unwrap_or_default();
+            if !view_layers.intersects(&grid_layers) {
+                continue;
+            }
             // Don't render if the view is directly on the plane
             if !plane_check(transform, view.world_from_view.translation()) {
                 continue;
