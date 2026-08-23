@@ -77,8 +77,8 @@ Different settings get different controls, picked automatically to match the val
 ## Material
 
 The **Material** section is the fastest way to dress a mesh. Its top row is the
-material reference — thumbnail, name picker, and buttons to browse, open the
-Material Editor, or clear it. Below that is one drop slot per PBR channel (Base
+material reference — thumbnail, name picker, and buttons to create a new
+material (**+**), browse, open the Material Editor, or clear it. Below that is one drop slot per PBR channel (Base
 Color, Normal, Roughness, Metallic, Ambient Occlusion, Emissive): drag an image
 onto a slot and it's wired into the material graph and applied straight away.
 Drag a whole texture set onto the material row and each file is routed to the

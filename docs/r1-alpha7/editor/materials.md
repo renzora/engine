@@ -23,6 +23,10 @@ In the shot above, a color texture feeds the **Base Color** pin, another texture
 
 **Adding nodes:** right-click the graph (or press **`Spacebar`** with the cursor over it) to open a **searchable palette** at the cursor — type to filter, **Enter** picks the first match — and the node spawns where you clicked. The toolbar **Add Node** button opens the same palette. You can also **drag a cable off a pin** and release on empty space: the palette opens and the node you pick is auto-wired to that pin.
 
+**Editing values on the node:** every input pin that *isn't* wired to something shows its editor right under the pin, on the node itself — a scrub field for numbers, X/Y/Z/W fields for vectors, a colour swatch, a checkbox, a text box for names. Drag across a number to scrub it, or click it to type. Wire a cable into that pin and the editor disappears (the wire is supplying the value now); unplug the cable and it comes back.
+
+The **output node is the exception**. It has fifteen-odd pins, and a field on each would bury the wires, so it only shows an editor where a value has actually been set — the factors an imported model brought with it, or something you've typed there before. Everything else stays bare and falls through to the engine's own defaults. To drive one of those pins with a fixed value, wire a **Constant** or **Parameter** node into it.
+
 **Dropping a texture:** drag an image straight from the **Assets** browser onto the graph and release — a **Sample Texture** node appears under the cursor with that image already bound, ready to wire into a pin. Drop several images at once and you get one node per image, cascaded so they don't stack exactly on top of each other.
 
 **Switching a sample's type:** every 2D texture-sample node carries a small **caret** button in its header. Click it to pick a different sampling mode for the same image — **Sample Texture**, **Sample Normal Map**, **Sample Texture LOD**, or **Sample Texture Grad** — without re-dropping it. The bound image is kept; any wires to pins the new mode doesn't have are dropped. (The rest of the header stays a drag handle for moving the node.) The switcher stays within plain-2D modes; array, 3D, and cubemap samples need a matching texture, so add those from the palette.
@@ -78,10 +82,16 @@ way in — most of the time you never need the node graph at all.
 ### The material slot
 
 The top row shows which `.material` the object uses: a preview thumbnail, the
-material's name, and three buttons — **browse** the project's materials,
-**open** this one in the Material Editor, and **remove** it. Click the name to
-pick from a searchable list of every material in the project, or drag a
-`.material` file from the **Assets** browser onto the row.
+material's name, and four buttons — **+** to create a new material, **browse**
+the project's materials, **open** this one in the Material Editor, and
+**remove** it. Click the name to pick from a searchable list of every material
+in the project, or drag a `.material` file from the **Assets** browser onto the
+row.
+
+**+** writes a fresh empty `.material` named after the object into the project's
+`materials/` folder, binds it to the object, and opens it in the Material
+Editor. It always makes a *new* file, so it's also how you give one object its
+own material when it currently shares one with others.
 
 ### Texture slots
 

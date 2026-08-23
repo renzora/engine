@@ -3,7 +3,8 @@
 //! Three stacked pieces, in the order an artist reaches for them:
 //!
 //! 1. **The material slot** — which `.material` the entity uses: thumbnail,
-//!    name picker, browse / open-in-editor / clear, and a whole-row drop target.
+//!    name picker, new / browse / open-in-editor / clear, and a whole-row drop
+//!    target.
 //! 2. **Texture slots** — one row per PBR channel (base color, normal,
 //!    roughness, metallic, AO, emissive). Dropping an image on a row wires it
 //!    into the material graph: the sampler node is created, connected to the
@@ -82,6 +83,7 @@ impl Plugin for NativeMaterialRef {
                 mat_slot_drop,
                 mat_slot_drop_highlight,
                 mat_edit_click,
+                mat_create_click,
                 mat_clear_click,
                 mat_picker_select,
                 mat_revert_click,
@@ -218,6 +220,14 @@ struct MatDropZone {
 }
 #[derive(Component)]
 struct MatEditBtn {
+    entity: Entity,
+}
+/// "New material": writes a fresh `.material` and binds it, *replacing* whatever
+/// the mesh pointed at. Distinct from the drop path's [`ensure_material`], which
+/// keeps an existing material — here the click itself is the request for a new
+/// one, so a mesh sharing a material with five others can be given its own.
+#[derive(Component)]
+struct MatCreateBtn {
     entity: Entity,
 }
 #[derive(Component)]
@@ -627,13 +637,18 @@ fn build_slot(commands: &mut Commands, fonts: &EmberFonts, entity: Entity, path:
         let spacer = commands.spawn(Node { flex_grow: 1.0, min_width: Val::Px(0.0), ..default() }).id();
         commands.entity(actions).add_child(spacer);
     }
+    // Create sits first because it is the answer to "No material" — the state
+    // this row is in the moment a fresh mesh is selected. The other three all
+    // assume a material already exists.
+    let create = icon_btn(commands, fonts, "plus", "Create a new material for this mesh");
+    commands.entity(create).insert(MatCreateBtn { entity });
     let browse = icon_btn(commands, fonts, "folder-open", "Browse project materials");
     commands.entity(browse).insert(Popup::new(panel));
     let edit = icon_btn(commands, fonts, "pencil-simple", "Open in the material editor");
     commands.entity(edit).insert(MatEditBtn { entity });
     let clear = icon_btn(commands, fonts, "x", "Remove this material");
     commands.entity(clear).insert(MatClearBtn { entity });
-    commands.entity(actions).add_children(&[browse, edit, clear]);
+    commands.entity(actions).add_children(&[create, browse, edit, clear]);
 
     commands.entity(col).add_children(&[name_btn, actions]);
     commands.entity(row).add_children(&[thumb, col]);
@@ -709,7 +724,9 @@ fn texture_slot_row(commands: &mut Commands, fonts: &EmberFonts, entity: Entity,
             bevy::ui::FocusPolicy::Block,
             RelativeCursorPosition::default(),
             TexSlotZone { entity, slot: state.slot },
-            HoverTooltip::new(format!("Drop an image to wire it into the material's {} input", state.slot.label.to_ascii_lowercase())),
+            // No tooltip here: the row already spells out its channel in the
+            // label, and six rows that each pop a sentence on hover turn a
+            // glance down the list into a wall of bubbles.
             Name::new("material-texture-slot"),
         ))
         .id();
@@ -1217,6 +1234,16 @@ fn ensure_material(world: &mut World, entity: Entity) -> Option<String> {
     if !existing.is_empty() {
         return Some(existing);
     }
+    create_material(world, entity)
+}
+
+/// Write a fresh empty `.material` under `<project>/materials/` and bind it to
+/// `entity`, whatever it pointed at before.
+///
+/// Returns `None` only when there is no project to write into, or the save
+/// failed — in which case nothing is bound, so the mesh keeps the material it
+/// had rather than losing it to a file that isn't there.
+fn create_material(world: &mut World, entity: Entity) -> Option<String> {
     let project_root = world.get_resource::<CurrentProject>().map(|p| p.path.clone())?;
 
     // Name it after the mesh so the file is findable later; fall back to a
@@ -1364,6 +1391,31 @@ fn mat_edit_click(q: Query<(&Interaction, &MatEditBtn), Changed<Interaction>>, m
                 return;
             }
             let abs = w.get_resource::<CurrentProject>().map(|p| p.resolve_path(&path)).unwrap_or_else(|| PathBuf::from(&path));
+            open_asset_tab(w, &abs, DocTabKind::Material);
+        });
+    }
+}
+
+/// "+" → mint a new material, bind it, and open it in the material editor.
+///
+/// The tab open is the point: a brand-new material is an empty surface, and the
+/// two ways to fill it are dropping images on the texture slots below or wiring
+/// nodes. Landing in the editor makes the second one visible; the slots are
+/// already on screen either way.
+fn mat_create_click(q: Query<(&Interaction, &MatCreateBtn), Changed<Interaction>>, mut commands: Commands) {
+    for (interaction, b) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let e = b.entity;
+        commands.queue(move |w: &mut World| {
+            let Some(path) = create_material(w, e) else { return };
+            // The drawer keys off (entity, path, rev); the path changed, so the
+            // rebuild picks the new file up on its own.
+            let abs = w
+                .get_resource::<CurrentProject>()
+                .map(|p| p.resolve_path(&path))
+                .unwrap_or_else(|| PathBuf::from(&path));
             open_asset_tab(w, &abs, DocTabKind::Material);
         });
     }
