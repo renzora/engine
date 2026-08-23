@@ -49,6 +49,13 @@ fn solari_inspector_entry() -> InspectorEntry {
             // in lib.rs); it is exposed here because keeping raster shadows is a
             // legitimate thing to want while comparing backends.
             bool_field!("Suppress Shadow Maps", SolariGi, suppress_shadow_maps),
+            // Solari samples only directional lights and emissive meshes, and
+            // its camera's `SkipDeferredLighting` removes the clustered-light
+            // pass that would otherwise apply point/spot lights — so without
+            // this they contribute nothing whatsoever. Exposed because the
+            // stand-in spheres are an approximation (a spot loses its cone), and
+            // because seeing Solari's raw behaviour is sometimes the point.
+            bool_field!("Point/Spot Light Proxies", SolariGi, light_proxies),
             // Solari's realtime component (`SolariLighting`) exposes exactly one
             // runtime knob: `reset`, which clears the temporal history. Surface
             // it as a button — handy after a camera cut or when ghosting/dark

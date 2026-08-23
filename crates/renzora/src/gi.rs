@@ -222,6 +222,27 @@ pub struct SolariGi {
     #[serde(default = "shadow_map_suppression_default")]
     #[reflect(default = "shadow_map_suppression_default")]
     pub suppress_shadow_maps: bool,
+    /// Give point and spot lights an invisible emissive sphere in the traced
+    /// scene, so they light it at all.
+    ///
+    /// Solari samples exactly two kinds of light: directional, and emissive
+    /// meshes. Point and spot lights contribute *nothing* — and because a Solari
+    /// camera carries `SkipDeferredLighting`, Bevy's clustered-light pass (the
+    /// only other thing that would apply them) never runs either. A lamp-lit
+    /// scene therefore renders almost black, and nothing gets bright enough to
+    /// bloom.
+    ///
+    /// With this on, each point/spot light gets a small sphere in the
+    /// ray-tracing scene whose emissive radiance is derived from the light's
+    /// luminous power, which Solari samples as a real area light — soft shadows
+    /// and colour bleed included. The sphere is traced-only, never rasterized,
+    /// so nothing new appears in the viewport.
+    ///
+    /// Caveats: a spot light loses its cone (the sphere emits in all
+    /// directions), and `AmbientLight` cannot be represented this way at all.
+    #[serde(default = "light_proxies_default")]
+    #[reflect(default = "light_proxies_default")]
+    pub light_proxies: bool,
 }
 
 /// Default for [`SolariGi::suppress_shadow_maps`], used both by `serde` and by
@@ -231,11 +252,18 @@ fn shadow_map_suppression_default() -> bool {
     true
 }
 
+/// Default for [`SolariGi::light_proxies`]. On, because without it point and
+/// spot lights are simply absent from a Solari render.
+fn light_proxies_default() -> bool {
+    true
+}
+
 impl Default for SolariGi {
     fn default() -> Self {
         Self {
             enabled: true,
             suppress_shadow_maps: shadow_map_suppression_default(),
+            light_proxies: light_proxies_default(),
         }
     }
 }

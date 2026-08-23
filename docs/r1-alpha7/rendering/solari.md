@@ -50,9 +50,10 @@ underlying GPU capability a one-time, plugin-agnostic enablement.
 
 ## What the plugin does when active
 
-- **Settings.** `SolariGi` has two fields: `enabled`, and `suppress_shadow_maps`
-  (surfaced as **Suppress Shadow Maps**, on by default) — see
-  [Performance](#performance).
+- **Settings.** `SolariGi` has three fields: `enabled`; `suppress_shadow_maps`
+  (**Suppress Shadow Maps**, on by default — see [Performance](#performance));
+  and `light_proxies` (**Point/Spot Light Proxies**, on by default — see
+  [Light proxies](#light-proxies)).
 - **Camera.** `SolariGi` is routed from the World Environment onto each active
   camera via `EffectRouting` (the same path Lumen uses). On a routed camera the
   plugin inserts Bevy's `SolariLighting` — whose `#[require]`s pull in HDR and the
@@ -115,24 +116,94 @@ scene comes out darker than the raster pipeline. `bevy_solari` 0.19 samples
 |---|---|
 | `DirectionalLight` (the sun) | Yes |
 | Emissive meshes | Yes — sampled as real area lights |
-| `PointLight` | **No.** Contributes nothing. |
-| `SpotLight` | **No.** Contributes nothing. |
+| `PointLight` | Not natively — Renzora stands one up as an emissive sphere (below) |
+| `SpotLight` | Not natively — same, but the cone is lost |
+| `AmbientLight` | **No**, and there is no workaround |
 | Sky / atmosphere / environment map | **No.** There is no ambient term. |
 
-Point and spot lights aren't dimmed or approximated — the binder never looks at
-them. A street lined with lamp posts simply renders unlit, which is easy to
-mistake for broken GI. The plugin warns when it finds them:
+Point and spot lights aren't dimmed or approximated by Solari — its binder never
+looks at them — and because a Solari camera carries `SkipDeferredLighting`,
+Bevy's clustered-light pass (the only other thing that would apply them) doesn't
+run either. Left alone, a street lined with lamp posts renders unlit, which is
+easy to mistake for broken GI. It also starves [bloom](#bloom): with the lamps
+contributing nothing, very little of the image gets bright enough to cross the
+bloom threshold, so bloom looks broken too.
 
-```
-[solari] 43 point + 2 spot lights contribute NOTHING - Solari samples only
-directional lights and emissive meshes.
+### Light proxies
+
+**Point/Spot Light Proxies** (on the `SolariGi` component, on by default) fixes
+this. Each point or spot light gets a small sphere in the ray-tracing scene whose
+emissive radiance is derived from the light's luminous power, and Solari samples
+that as a first-class area light — soft shadows and colour bleed included.
+
+The sphere carries `RaytracingMesh3d` **without** `Mesh3d`, so it is real to the
+ray tracer and does not exist as far as the rasterizer is concerned: no glowing
+ball appears in the viewport. Proxies are spawned as root entities rather than as
+children of your lights, so your hierarchy is untouched, and they carry no
+`Name`, so scene save ignores them.
+
+The conversion is photometric, not a fudge factor. Bevy stores light intensity as
+luminous power in lumens and converts to luminous intensity with `I = P / 4π`; a
+uniformly-emitting sphere of radius `r` and radiance `L` has `I = L·πr²` in every
+direction, so the proxy uses:
+
+```text
+L = P / (4 π² r²)
 ```
 
-**The workaround that does work:** give the bulb or fixture geometry an emissive
-`StandardMaterial`. Solari samples emissive meshes as area lights, so an emissive
-lamp globe lights the street (and bounces off nearby walls) the way the point
-light used to. It is also more physically sensible — the light has a real shape
-and casts real soft shadows.
+The sphere takes the light's `radius`, clamped to a 2 cm minimum — radiance goes
+as `1/r²`, and Bevy's default `radius` is `0.0`.
+
+Two things it does not solve:
+
+- **A spot light becomes omnidirectional.** Bevy applies the cone as an angular
+  mask over the same `P / 4π` intensity, so the in-cone brightness is right, but
+  a sphere can't carry the mask and the light spills outside the cone. For a
+  downlight that means some illumination where there shouldn't be any. Author
+  real emissive geometry if that matters, or turn the toggle off.
+- **Ambient and sky lighting cannot be represented this way at all.** That means
+  `AmbientLight` *and* the environment map — including the procedural atmosphere
+  the World Environment bakes into one by default. The only shape either could
+  take in a traced scene is an enclosing emissive dome, which would then sit
+  between every surface and the sun.
+
+  **This is usually the single biggest reason a scene looks darker under
+  Solari**, and it is invisible in the scene tree. An outdoor daylight scene
+  draws a large share of its light from the sky: the baked atmosphere IBL is
+  what fills in every surface not facing the sun. Losing it takes facades and
+  shadowed ground close to black while the sunlit ground stays correct. The
+  plugin warns when it finds an `EnvironmentMapLight` or `AmbientLight` on a
+  Solari camera.
+
+  Watch out for auto-exposure making this worse rather than better.
+  `AutoExposureSettings.keep_dark_strength` deliberately *stops* metering from
+  lifting a dark scene — at the defaults it applies up to several stops of extra
+  negative compensation once the metered scene falls below `keep_dark_pivot_ev`.
+  That is the right behaviour for night, but under Solari it compounds a scene
+  that is dim for an unrelated reason. Lower `keep_dark_strength` when comparing
+  the two backends.
+
+You can always author light by hand instead: an emissive `StandardMaterial` on
+the bulb or fixture geometry is sampled exactly the same way, and gives the light
+a real shape.
+
+## Bloom
+
+Bloom is not special-cased for Solari and nothing disables it — but it is
+threshold-driven, and Solari changes how much of the image clears the threshold.
+If bloom seems to stop working when you enable Solari, the cause is almost always
+that the scene got darker rather than that bloom broke:
+
+- Point and spot lights contribute nothing unless
+  [light proxies](#light-proxies) are on. Those lamps are usually what was
+  blooming.
+- There is no ambient or sky term, so everything in shadow sits lower than it
+  did under the raster pipeline.
+- Emissive surfaces still bloom normally — Solari adds `material.emissive` and
+  applies view exposure exactly as the raster path does.
+
+If you want the same look at a lower light level, drop `BloomSettings.threshold`
+rather than raising light intensities.
 
 ## Performance
 
@@ -206,9 +277,10 @@ signature.
 - `StandardMaterial` only; custom-WGSL materials are not traced.
 - Meshes without UVs, or with non-triangle-list/non-indexed geometry, are not lit
   by Solari.
-- **No point or spot lights, and no sky or ambient term.** Solari lights from
-  directional lights and emissive meshes only — see [Lights Solari can
-  see](#lights-solari-can-see). Surfaces facing away from the sun are lit by
+- **No sky or ambient term, and no native point/spot lights.** Solari lights from
+  directional lights and emissive meshes only; point and spot lights work solely
+  through [light proxies](#light-proxies), and `AmbientLight` not at all — see
+  [Lights Solari can see](#lights-solari-can-see). Surfaces facing away from the sun are lit by
   bounce alone, so the image is inherently darker and higher-contrast than the
   forward pipeline. This is most visible with the sun near the horizon (little
   reaches street level) or directly overhead (vertical facades get no direct

@@ -44,6 +44,8 @@ use bevy::prelude::*;
 use bevy::camera::visibility::{InheritedVisibility, RenderLayers, VisibilitySystems};
 use bevy::camera::CameraMainTextureUsages;
 use bevy::core_pipeline::prepass::DeferredPrepass;
+use bevy::ecs::system::SystemParam;
+use bevy::light::{EnvironmentMapLight, GeneratedEnvironmentMapLight, PointLight, SpotLight};
 use bevy::mesh::{Indices, MeshVertexAttributeId, PrimitiveTopology};
 use bevy::platform::collections::HashMap;
 use bevy::pbr::{
@@ -102,6 +104,7 @@ impl Plugin for SolariPlugin {
         app.insert_resource(DefaultOpaqueRendererMethod::forward());
         app.init_resource::<SolariActive>();
         app.init_resource::<RaytracingProxies>();
+        app.init_resource::<LightProxies>();
         // Observers apply the per-camera setup the INSTANT the component is
         // inserted — by our sync, a scene load, or the play-mode scene clone —
         // with no Update-system frame lag. That lag was the cause of the Play /
@@ -138,8 +141,10 @@ impl Plugin for SolariPlugin {
                 mirror_raytracing_meshes,
                 unmirror_out_of_scene_meshes,
                 unmirror_when_idle,
+                sync_light_proxies,
                 log_solari_coverage,
                 warn_unsupported_lights,
+                warn_missing_ambient_sources,
             )
                 .chain()
                 .after(VisibilitySystems::VisibilityPropagate),
@@ -413,6 +418,24 @@ type Unmirrored = (Without<RaytracingMesh3d>, Without<SolariMeshSkip>);
 /// about, either way.
 type Decided = Or<(With<RaytracingMesh3d>, With<SolariMeshSkip>)>;
 
+/// Cameras running Solari that also carry an image-based light — the baked
+/// atmosphere IBL, or an explicit environment map. Aliased to keep clippy's
+/// `type_complexity` lint quiet, which CI runs as `-D warnings`.
+type ImageBasedLit = (
+    With<SolariLighting>,
+    Or<(
+        With<EnvironmentMapLight>,
+        With<GeneratedEnvironmentMapLight>,
+    )>,
+);
+
+/// [`SceneSet`] minus the material, for lights — same visibility and layer
+/// reasoning, but a light has no material to check.
+type SceneSetLight = (
+    &'static InheritedVisibility,
+    Option<&'static RenderLayers>,
+);
+
 /// While Solari is active on any camera, mirror conforming meshes into the
 /// ray-tracing scene. `RaytracingMesh3d` coexists with the rasterized `Mesh3d`;
 /// Solari builds a BLAS from it. Meshes that don't meet Solari's requirements
@@ -572,7 +595,7 @@ fn unmirror_out_of_scene_meshes(
     mut commands: Commands,
     materials: Res<Assets<StandardMaterial>>,
     active: Query<(), With<SolariLighting>>,
-    mirrored: Query<(Entity, SceneSet), With<RaytracingMesh3d>>,
+    mirrored: Query<(Entity, SceneSet), (With<RaytracingMesh3d>, Without<SolariLightProxy>)>,
 ) {
     if active.is_empty() {
         return;
@@ -701,6 +724,240 @@ fn suppress_shadow_maps(
     }
 }
 
+/// Marks an emissive sphere standing in for a point or spot light. Owned
+/// entirely by [`sync_light_proxies`]; nothing else should touch these.
+#[derive(Component)]
+struct SolariLightProxy;
+
+/// The traced-only spheres standing in for point and spot lights, and the unit
+/// sphere mesh they all share.
+#[derive(Resource, Default)]
+struct LightProxies {
+    sphere: Option<Handle<Mesh>>,
+    /// light entity -> (proxy entity, its emissive material)
+    proxies: HashMap<Entity, (Entity, Handle<StandardMaterial>)>,
+}
+
+/// The smallest sphere we will stand in for a light, in metres.
+///
+/// Radiance goes as `1/r²`, so a light left at Bevy's default `radius: 0.0`
+/// would need infinite radiance to carry its power. Clamping to a plausible
+/// bulb size keeps the conversion finite and the sampling well-conditioned.
+const MIN_PROXY_RADIUS: f32 = 0.02;
+
+/// Emissive radiance, in cd/m², for a sphere of `radius` carrying `lumens` of
+/// luminous power in `colour`.
+///
+/// Bevy stores `PointLight::intensity` and `SpotLight::intensity` as luminous
+/// power in lumens and converts to luminous intensity with `Φ / 4π`
+/// (`bevy_pbr`'s `extract_lights`). A uniformly-emitting sphere of radius `r`
+/// and radiance `L` has intensity `I = L · π r²` in every direction, so
+/// matching the two gives:
+///
+/// ```text
+///   L · π r² = Φ / 4π      =>      L = Φ / (4 π² r²)
+/// ```
+///
+/// The result is a real photometric quantity, which is what Solari wants:
+/// `StandardMaterial::emissive` is used directly as radiance, and the view's
+/// exposure is applied afterwards exactly as it is for the sun.
+fn proxy_emissive(colour: LinearRgba, lumens: f32, radius: f32) -> LinearRgba {
+    let radiance = lumens / (4.0 * core::f32::consts::PI * core::f32::consts::PI * radius * radius);
+    LinearRgba::rgb(
+        colour.red * radiance,
+        colour.green * radiance,
+        colour.blue * radiance,
+    )
+}
+
+/// A unit sphere that satisfies Solari's BLAS rules exactly.
+fn build_proxy_sphere() -> Option<Mesh> {
+    let mut mesh = Sphere::new(1.0).mesh().ico(2).ok()?;
+    promote_indices_to_u32(&mut mesh);
+    if mesh.attribute(Mesh::ATTRIBUTE_TANGENT).is_none() && mesh.generate_tangents().is_err() {
+        return None;
+    }
+    mesh.enable_raytracing = true;
+    Some(mesh)
+}
+
+/// Stand each point and spot light up as an emissive sphere in the ray-tracing
+/// scene, so Solari has something to sample.
+///
+/// Solari knows two light kinds — directional, and emissive mesh — and a Solari
+/// camera carries `SkipDeferredLighting`, which removes Bevy's clustered-light
+/// pass along with the deferred lighting it does. Between them, a `PointLight`
+/// contributes nothing at all: not dimmed, not approximated, absent. An emissive
+/// mesh, though, is a first-class area light, so we give each light one.
+///
+/// The proxy carries `RaytracingMesh3d` **without** `Mesh3d`. That is the whole
+/// trick: `RaytracingMesh3d` requires only a material, a transform and
+/// `SyncToRenderWorld`, so the sphere is real to the ray tracer and does not
+/// exist as far as the rasterizer is concerned — no glowing ball appears in the
+/// viewport, and nothing is added to the user's scene.
+///
+/// Proxies are spawned as roots, not as children of the light, so the user's
+/// hierarchy is never modified; the light's `GlobalTransform` is copied across
+/// instead. They carry no `Name`, so scene save (which only serializes named
+/// entities) ignores them.
+///
+/// Approximations worth knowing: a spot light becomes omnidirectional, since a
+/// sphere can't carry a cone — Bevy applies the cone as an angular mask on top
+/// of the same `Φ / 4π` intensity, so the in-cone brightness is right and the
+/// out-of-cone spill is new. `AmbientLight` has no equivalent at all: it would
+/// need an enclosing emissive dome, which would then occlude the sun.
+fn sync_light_proxies(
+    mut commands: Commands,
+    mut store: LightProxyStore,
+    active: Query<(), With<SolariLighting>>,
+    sources: Query<&SolariGi>,
+    point_lights: Query<(Entity, &PointLight, &GlobalTransform, SceneSetLight)>,
+    spot_lights: Query<(Entity, &SpotLight, &GlobalTransform, SceneSetLight)>,
+) {
+    let wanted = !active.is_empty() && sources.iter().any(|gi| gi.enabled && gi.light_proxies);
+    if !wanted {
+        if !store.proxies.proxies.is_empty() {
+            for (proxy, _) in store.proxies.proxies.values() {
+                commands.entity(*proxy).try_despawn();
+            }
+            store.proxies.proxies.clear();
+        }
+        return;
+    }
+
+    if store.proxies.sphere.is_none() {
+        let Some(sphere) = build_proxy_sphere() else {
+            warn!("[solari] could not build the light-proxy sphere; point/spot lights stay unlit");
+            return;
+        };
+        let handle = store.meshes.add(sphere);
+        store.proxies.sphere = Some(handle);
+    }
+
+    let mut live = Vec::new();
+    for (entity, light, transform, (visibility, layers)) in &point_lights {
+        if upsert_light_proxy(
+            &mut store,
+            &mut commands,
+            entity,
+            light.color.into(),
+            light.intensity,
+            light.radius,
+            transform,
+            visibility,
+            layers,
+        ) {
+            live.push(entity);
+        }
+    }
+    for (entity, light, transform, (visibility, layers)) in &spot_lights {
+        if upsert_light_proxy(
+            &mut store,
+            &mut commands,
+            entity,
+            light.color.into(),
+            light.intensity,
+            light.radius,
+            transform,
+            visibility,
+            layers,
+        ) {
+            live.push(entity);
+        }
+    }
+
+    // Drop proxies whose light was deleted, hidden, or moved off layer 0.
+    store.proxies.proxies.retain(|light, (proxy, _)| {
+        let keep = live.contains(light);
+        if !keep {
+            commands.entity(*proxy).try_despawn();
+        }
+        keep
+    });
+}
+
+/// The asset stores [`sync_light_proxies`] writes through, grouped so the system
+/// stays under clippy's argument limit.
+#[derive(SystemParam)]
+struct LightProxyStore<'w> {
+    meshes: ResMut<'w, Assets<Mesh>>,
+    materials: ResMut<'w, Assets<StandardMaterial>>,
+    proxies: ResMut<'w, LightProxies>,
+}
+
+/// Create or refresh one light's proxy. Returns whether the light should have
+/// one at all — `false` means any existing proxy is due to be dropped.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one call site; splitting the light's photometric parameters into a \
+              struct would only move the noise"
+)]
+fn upsert_light_proxy(
+    store: &mut LightProxyStore,
+    commands: &mut Commands,
+    light: Entity,
+    colour: LinearRgba,
+    lumens: f32,
+    radius: f32,
+    transform: &GlobalTransform,
+    visibility: &InheritedVisibility,
+    layers: Option<&RenderLayers>,
+) -> bool {
+    // A hidden light, or one on a preview rig's layer, must not light the scene
+    // — the same reasoning as `in_raytraced_scene`.
+    if !in_raytraced_scene(visibility, layers) {
+        return false;
+    }
+    let Some(sphere) = store.proxies.sphere.clone() else {
+        return false;
+    };
+
+    let radius = radius.max(MIN_PROXY_RADIUS);
+    let emissive = proxy_emissive(colour, lumens, radius);
+    // Scale the unit sphere to the light's radius, positioned where it is.
+    let placement = transform.mul_transform(Transform::from_scale(Vec3::splat(radius)));
+
+    match store.proxies.proxies.get(&light) {
+        Some((proxy, material_handle)) => {
+            if let Some(mut material) = store.materials.get_mut(material_handle) {
+                // Guarded so a static light doesn't mark its material changed
+                // every frame — Solari re-uploads every `StandardMaterial` that
+                // does.
+                if material.emissive != emissive {
+                    material.emissive = emissive;
+                }
+            }
+            // Written every frame: a moving lamp has to drag its light with it,
+            // and `GlobalTransform` too, because ours is a root entity whose
+            // propagation has already run by the time we get here.
+            commands
+                .entity(*proxy)
+                .try_insert((Transform::from(placement), placement));
+        }
+        None => {
+            let material = store.materials.add(StandardMaterial {
+                // Black, so the sphere reflects nothing — it is a light, not a
+                // surface. Opaque keeps it in the BVH unconditionally.
+                base_color: Color::BLACK,
+                emissive,
+                alpha_mode: AlphaMode::Opaque,
+                ..default()
+            });
+            let proxy = commands
+                .spawn((
+                    SolariLightProxy,
+                    RaytracingMesh3d(sphere),
+                    MeshMaterial3d(material.clone()),
+                    Transform::from(placement),
+                    placement,
+                ))
+                .id();
+            store.proxies.proxies.insert(light, (proxy, material));
+        }
+    }
+    true
+}
+
 /// Diagnostic: name the lights Solari silently ignores.
 ///
 /// `bevy_solari` 0.19 knows exactly two kinds of light — see
@@ -716,31 +973,46 @@ fn suppress_shadow_maps(
 /// material on the bulb geometry, which Solari samples as a real area light.
 fn warn_unsupported_lights(
     active: Query<(), With<SolariLighting>>,
+    sources: Query<&SolariGi>,
     directional: Query<(), With<DirectionalLight>>,
     point: Query<(), With<PointLight>>,
     spot: Query<(), With<SpotLight>>,
-    mut last: Local<Option<(usize, usize, usize)>>,
+    proxies: Res<LightProxies>,
+    mut last: Local<Option<(usize, usize, usize, usize)>>,
 ) {
     if active.is_empty() {
         return;
     }
+    let proxied = proxies.proxies.len();
     let now = (
         directional.iter().count(),
         point.iter().count(),
         spot.iter().count(),
+        proxied,
     );
     if *last == Some(now) {
         return;
     }
     *last = Some(now);
 
+    let proxies_on = sources.iter().any(|gi| gi.enabled && gi.light_proxies);
     if now.1 + now.2 > 0 {
-        warn!(
-            "[solari] {} point + {} spot lights contribute NOTHING — Solari samples only \
-             directional lights and emissive meshes. Give the lamp/bulb geometry an emissive \
-             material to light the scene with it.",
-            now.1, now.2
-        );
+        if proxies_on {
+            info!(
+                "[solari] {} point + {} spot lights stood up as emissive area lights ({} \
+                 proxies). Solari samples no point/spot lights of its own; a spot's cone is \
+                 lost in the conversion.",
+                now.1, now.2, now.3
+            );
+        } else {
+            warn!(
+                "[solari] {} point + {} spot lights contribute NOTHING — Solari samples only \
+                 directional lights and emissive meshes, and light proxies are turned off. \
+                 Enable \"Point/Spot Light Proxies\" on the World Environment, or give the \
+                 lamp geometry an emissive material.",
+                now.1, now.2
+            );
+        }
     }
     if now.0 == 0 {
         warn!(
@@ -748,6 +1020,57 @@ fn warn_unsupported_lights(
              Solari has nothing to light from and the view will be black."
         );
     }
+}
+
+/// Warn once about the ambient and image-based light sources Solari throws away.
+///
+/// Unlike point and spot lights, these have no workaround. Both are applied in
+/// Bevy's deferred lighting pass, which a Solari camera's `SkipDeferredLighting`
+/// removes, and Solari has no ambient term and no miss-radiance hook to put them
+/// back. The only shape they could take in a traced scene is an enclosing
+/// emissive dome — which would then sit between every surface and the sun.
+///
+/// This is worth its own warning because **it is usually the single biggest
+/// reason a scene looks darker under Solari**, and it is invisible in the scene
+/// tree. An outdoor daylight scene gets a large share of its light from the sky:
+/// the procedural atmosphere baked into an `EnvironmentMapLight` (Renzora's
+/// World Environment does this by default) is what fills in every surface not
+/// facing the sun. Losing it takes facades and shadowed ground close to black
+/// while the sunlit ground stays correct — which reads as "GI is broken" rather
+/// than "the sky stopped contributing".
+fn warn_missing_ambient_sources(
+    active: Query<(), With<SolariLighting>>,
+    // Both are per-camera components in Bevy 0.19, so ask the Solari cameras
+    // rather than looking for global resources.
+    ambient: Query<&AmbientLight, With<SolariLighting>>,
+    image_based: Query<(), ImageBasedLit>,
+    mut warned: Local<bool>,
+) {
+    if active.is_empty() {
+        *warned = false;
+        return;
+    }
+    if *warned {
+        return;
+    }
+    let has_ambient = ambient.iter().any(|a| a.brightness > 0.0);
+    let has_ibl = !image_based.is_empty();
+    if !has_ambient && !has_ibl {
+        return;
+    }
+    *warned = true;
+    warn!(
+        "[solari] the scene's sky/ambient lighting is ignored{}{} — Solari samples only \
+         directional lights and emissive meshes, so everything not facing the sun is lit by \
+         bounce alone. This is inherent to bevy_solari and is usually the main reason a Solari \
+         render looks much darker than the raster one.",
+        if has_ibl {
+            " (environment map / baked atmosphere IBL)"
+        } else {
+            ""
+        },
+        if has_ambient { " (AmbientLight)" } else { "" },
+    );
 }
 
 /// Diagnostic: log the ray-tracing scene coverage whenever the tallies change
@@ -1101,6 +1424,54 @@ mod tests {
         let proxy = build_raytracing_proxy(&source).expect("proxy should build");
         assert!(matches!(proxy.indices(), Some(Indices::U32(..))));
         assert!(bevy_would_build_a_blas(&proxy));
+    }
+
+    #[test]
+    fn the_proxy_sphere_satisfies_solaris_blas_rules() {
+        // If this sphere doesn't conform, Bevy builds no BLAS for it and every
+        // light proxy is silently missing from the TLAS — the exact failure
+        // mode that made the buildings render black.
+        let sphere = build_proxy_sphere().expect("sphere should build");
+        assert!(bevy_would_build_a_blas(&sphere));
+    }
+
+    #[test]
+    fn proxy_emissive_matches_the_lights_luminous_intensity() {
+        // Bevy converts a light's luminous power to intensity with `I = P / 4pi`
+        // (bevy_pbr `extract_lights`). A sphere of radius r and radiance L has
+        // `I = L * pi * r^2` in every direction, so a correct proxy satisfies
+        // `L * pi * r^2 == P / 4pi`. Checking that identity rather than the
+        // formula means the test still fails if the derivation is wrong.
+        let pi = core::f32::consts::PI;
+        for (lumens, radius) in [(800.0_f32, 0.05_f32), (12000.0, 0.25), (40.0, 0.02)] {
+            let emissive = proxy_emissive(LinearRgba::WHITE, lumens, radius);
+            let intensity_from_proxy = emissive.red * pi * radius * radius;
+            let intensity_from_bevy = lumens / (4.0 * pi);
+            assert!(
+                (intensity_from_proxy - intensity_from_bevy).abs() < intensity_from_bevy * 1e-4,
+                "{lumens} lm at r={radius}: proxy {intensity_from_proxy} cd vs bevy {intensity_from_bevy} cd"
+            );
+        }
+    }
+
+    #[test]
+    fn proxy_emissive_carries_the_light_colour() {
+        let warm = LinearRgba::rgb(1.0, 0.6, 0.3);
+        let emissive = proxy_emissive(warm, 800.0, 0.05);
+        // Ratios preserved, magnitude scaled.
+        assert!((emissive.green / emissive.red - 0.6).abs() < 1e-4);
+        assert!((emissive.blue / emissive.red - 0.3).abs() < 1e-4);
+        assert!(emissive.red > 1.0);
+    }
+
+    #[test]
+    fn a_zero_radius_light_cannot_produce_infinite_radiance() {
+        // Bevy's default `radius` is 0.0 and radiance goes as 1/r^2, so the
+        // clamp is what stops a default point light becoming a NaN/inf emitter
+        // that poisons the whole estimate.
+        let radius = 0.0_f32.max(MIN_PROXY_RADIUS);
+        let emissive = proxy_emissive(LinearRgba::WHITE, 800.0, radius);
+        assert!(emissive.red.is_finite() && emissive.red > 0.0);
     }
 
     #[test]
