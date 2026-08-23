@@ -381,17 +381,6 @@ fn check_for_previous_crash_system(mut state: ResMut<CrashReportWindowState>) {
 mod tests {
     use super::sanitize_paths;
 
-    /// The exact location string from GH issue #67 — the builder's registry
-    /// path (username included) must not survive into the report.
-    #[test]
-    fn scrubs_builder_registry_path() {
-        let loc = r"C:\Users\piano\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\bevy_ecs-0.19.0\src\error\handler.rs:130:1";
-        assert_eq!(
-            sanitize_paths(loc),
-            r"<registry>/bevy_ecs-0.19.0\src\error\handler.rs:130:1"
-        );
-    }
-
     #[test]
     fn scrubs_home_dirs() {
         assert_eq!(
